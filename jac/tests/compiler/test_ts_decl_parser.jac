@@ -97,12 +97,12 @@ test "namespace interface members parse with heritage" {
     assert set(by_name.keys()) == {"theme", "debug"};
     theme_ty = by_name["theme"].ty;
     assert theme_ty is not None
-    and theme_ty.name == "string"
-    and not by_name["theme"].optional;
+        and theme_ty.name == "string"
+        and not by_name["theme"].optional;
     debug_ty = by_name["debug"].ty;
     assert by_name["debug"].optional
-    and debug_ty is not None
-    and debug_ty.name == "boolean";
+        and debug_ty is not None
+        and debug_ty.name == "boolean";
     base = r["Base"];
     assert {m.name for m in base.members} == {"id"};
 }
@@ -175,22 +175,22 @@ test "interface captures property members with types and optionality" {
     assert set(by_name.keys()) == {"theme", "retries", "debug", "tags", "onChange"};
     theme_ty = by_name["theme"].ty;
     assert theme_ty is not None
-    and theme_ty.name == "string"
-    and not by_name["theme"].optional;
+        and theme_ty.name == "string"
+        and not by_name["theme"].optional;
     retries_ty = by_name["retries"].ty;
     assert retries_ty is not None and retries_ty.name == "number";
     debug_ty = by_name["debug"].ty;
     assert by_name["debug"].optional
-    and debug_ty is not None
-    and debug_ty.name == "boolean";
+        and debug_ty is not None
+        and debug_ty.name == "boolean";
     tags_ty = by_name["tags"].ty;
     assert by_name["tags"].readonly
-    and tags_ty is not None
-    and tags_ty.kind == TsTypeKind.ARRAY;
+        and tags_ty is not None
+        and tags_ty.kind == TsTypeKind.ARRAY;
     on_change_ty = by_name["onChange"].ty;
     assert by_name["onChange"].is_method
-    and on_change_ty is not None
-    and on_change_ty.kind == TsTypeKind.FUNC;
+        and on_change_ty is not None
+        and on_change_ty.kind == TsTypeKind.FUNC;
 }
 
 test "interface captures extends heritage" {

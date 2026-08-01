@@ -43,7 +43,7 @@ impl SolidBackend.import_source(symbol: str) -> str {
 }
 
 impl SolidBackend.runtime_source_basename -> str {
-    return "solid_runtime.cl.jac";
+    return "solid_runtime.jac";
 }
 
 impl SolidBackend.vite_plugin_lines -> (tuple[str, str] | None) {

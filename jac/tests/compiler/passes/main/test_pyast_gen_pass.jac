@@ -47,9 +47,8 @@ def joinedstr_invariant_violations(`node: ast3.AST) -> list[str] {
                 } elif isinstance(value, ast3.Constant) {
                     if not isinstance(value.value, str) {
                         violations.append(
-                            f"non-str Constant in JoinedStr at {piece_path}: " + repr(
-                                value.value
-                            )[:80]
+                            f"non-str Constant in JoinedStr at {piece_path}: "
+                                + repr(value.value)[:80]
                         );
                     }
                 } elif not isinstance(value, ast3.FormattedValue) {
@@ -133,13 +132,14 @@ test "super_init_py_to_jac_roundtrip" {
         assert "GrandChild init" in output , f"Expected 'GrandChild init' in output, got: {output}";
         # Verify the order of initialization (base classes init before derived)
         lines = output.strip().split("\n");
-        assert lines == [
-            "Base init",
-            "Child init",
-            "Base init",
-            "Child init",
-            "GrandChild init"
-        ] , f"Unexpected initialization order: {lines}";
+        assert lines
+            == [
+                "Base init",
+                "Child init",
+                "Base init",
+                "Child init",
+                "GrandChild init"
+            ] , f"Unexpected initialization order: {lines}";
     }
 }
 
@@ -241,13 +241,15 @@ test "sem decorator" {
         exec(prog, module.__dict__);
         # Function (full).
         assert (
-            module.fn1._jac_semstr == "A function that takes two integers and returns nothing."
+            module.fn1._jac_semstr
+            == "A function that takes two integers and returns nothing."
         );
         assert module.fn1._jac_semstr_inner["bar"] == "The first integer parameter.";
         assert module.fn1._jac_semstr_inner["baz"] == "The second integer parameter.";
         # Function (Missing baz)
         assert (
-            module.fn2._jac_semstr == "A function that takes one integer and returns nothing."
+            module.fn2._jac_semstr
+            == "A function that takes one integer and returns nothing."
         );
         assert module.fn2._jac_semstr_inner["bar"] == "The first integer parameter.";
         assert "baz" not in module.fn2._jac_semstr_inner;
@@ -255,35 +257,43 @@ test "sem decorator" {
         assert not hasattr(module.fn3, "_jac_semstr");
         # Architype (with body).
         assert (
-            module.Arch1._jac_semstr == "An object that contains two integer properties."
+            module.Arch1._jac_semstr
+            == "An object that contains two integer properties."
         );
         assert module.Arch1._jac_semstr_inner["bar"] == "The first integer property.";
         assert module.Arch1._jac_semstr_inner["baz"] == "The second integer property.";
         # Architype (without body).
         assert (
-            module.Arch2._jac_semstr == "An object that contains two integer properties."
+            module.Arch2._jac_semstr
+            == "An object that contains two integer properties."
         );
         assert module.Arch2._jac_semstr_inner["bar"] == "The first integer property.";
         assert module.Arch2._jac_semstr_inner["baz"] == "The second integer property.";
         # Enum (with body).
         assert (
-            module.Enum1._jac_semstr == "An enumeration that defines two values: Bar and Baz."
+            module.Enum1._jac_semstr
+            == "An enumeration that defines two values: Bar and Baz."
         );
         assert (
-            module.Enum1._jac_semstr_inner["Bar"] == "The Bar value of the Enum1 enumeration."
+            module.Enum1._jac_semstr_inner["Bar"]
+            == "The Bar value of the Enum1 enumeration."
         );
         assert (
-            module.Enum1._jac_semstr_inner["Baz"] == "The Baz value of the Enum1 enumeration."
+            module.Enum1._jac_semstr_inner["Baz"]
+            == "The Baz value of the Enum1 enumeration."
         );
         # Enum (without body).
         assert (
-            module.Enum2._jac_semstr == "An enumeration that defines two values: Bar and Baz."
+            module.Enum2._jac_semstr
+            == "An enumeration that defines two values: Bar and Baz."
         );
         assert (
-            module.Enum2._jac_semstr_inner["Bar"] == "The Bar value of the Enum2 enumeration."
+            module.Enum2._jac_semstr_inner["Bar"]
+            == "The Bar value of the Enum2 enumeration."
         );
         assert (
-            module.Enum2._jac_semstr_inner["Baz"] == "The Baz value of the Enum2 enumeration."
+            module.Enum2._jac_semstr_inner["Baz"]
+            == "The Baz value of the Enum2 enumeration."
         );
     }
 }
@@ -329,7 +339,7 @@ test "iife fixture executes" {
     }
 }
 
-test "string literal import infers cl but rejects sv pin" {
+test "string literal import infers cl but rejects a server pin" {
     code = """import from "react-dom" { render }""";
     prog = JacProgram();
     prog.compile(file_path="test.jac", use_str=code);
@@ -339,26 +349,27 @@ test "string literal import infers cl but rejects sv pin" {
         ]}"
     );
 
-    pinned = """sv { import from "react-dom" { render } }""";
-    prog2 = JacProgram();
-    prog2.compile(file_path="test_pinned.jac", use_str=pinned);
-    assert prog2.errors_had;
-    error_messages = [str(e) for e in prog2.errors_had];
-    assert any(
-        "String literal imports" in msg and "client (cl) imports" in msg
-        for msg in error_messages
-    ) , (f"Expected error for server-pinned string import, got: {error_messages}");
-}
-
-test "string literal import works with cl" {
-    code = """cl {
-    import from "react-dom" { render }
-}""";
-    prog = JacProgram();
-    prog.compile(file_path="test.jac", use_str=code);
-    assert not prog.errors_had , (
-        f"Unexpected errors: {[str(e) for e in prog.errors_had]}"
-    );
+    import tempfile;
+    with tempfile.TemporaryDirectory() as tmpdir {
+        with open(os.path.join(tmpdir, "jac.toml"), "w") as f {
+            f.write(
+                "[project]\nname = \"pin\"\n\n"
+                "[placement.pins]\ntest_pinned = \"server\"\n"
+            );
+        }
+        pin_path = os.path.join(tmpdir, "test_pinned.jac");
+        with open(pin_path, "w") as f {
+            f.write("""import from "react-dom" { render }""");
+        }
+        prog2 = JacProgram();
+        prog2.compile(pin_path);
+        assert prog2.errors_had;
+        error_messages = [str(e) for e in prog2.errors_had];
+        assert any(
+            "String literal imports" in msg and "client (cl) imports" in msg
+            for msg in error_messages
+        ) , (f"Expected error for server-pinned string import, got: {error_messages}");
+    }
 }
 
 test "match case empty wildcard body compiles" {
@@ -443,25 +454,25 @@ test "ClassVar import stays runtime-visible (dataclass can find it)" {
     tc_guard_at_top = False;
     for stmt in py_mod.body {
         if isinstance(stmt, ast3.ImportFrom)
-        and stmt.module == "typing"
-        and any(n.name == "ClassVar" for n in stmt.names) {
+            and stmt.module == "typing"
+            and any(n.name == "ClassVar" for n in stmt.names) {
             classvar_at_top = True;
         }
         if isinstance(stmt, ast3.If)
-        and isinstance(stmt.test, ast3.Attribute)
-        and stmt.test.attr == "TYPE_CHECKING" {
+            and isinstance(stmt.test, ast3.Attribute)
+            and stmt.test.attr == "TYPE_CHECKING" {
             tc_guard_at_top = True;
         }
     }
     assert classvar_at_top , (
-        "expected module-level `from typing import ClassVar`. Source:\n" + ast3.unparse(
-            py_mod
-        )
+        "expected module-level `from typing import ClassVar`. Source:\n"
+        + ast3.unparse(py_mod)
     );
     assert not tc_guard_at_top , (
         "fixture has no explicit TYPE_CHECKING block; any top-level "
         "`if typing.TYPE_CHECKING:` means the auto-classifier came back. "
-        "Source:\n" + ast3.unparse(py_mod)
+        "Source:\n"
+        + ast3.unparse(py_mod)
     );
 
     # Actually run the generated module — this is the runtime check that
@@ -498,22 +509,22 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
     tc_guarded_b = False;
     for stmt in py_mod.body {
         if isinstance(stmt, ast3.ImportFrom)
-        and stmt.module == "typed_import_circ_b"
-        and any(n.name == "B" for n in stmt.names) {
+            and stmt.module == "typed_import_circ_b"
+            and any(n.name == "B" for n in stmt.names) {
             runtime_import_of_b = True;
         }
         if isinstance(stmt, ast3.If)
-        and (
-            (isinstance(stmt.test, ast3.Name) and stmt.test.id == "TYPE_CHECKING")
-            or (
-                isinstance(stmt.test, ast3.Attribute)
-                and stmt.test.attr == "TYPE_CHECKING"
-            )
-        ) {
+            and (
+                (isinstance(stmt.test, ast3.Name) and stmt.test.id == "TYPE_CHECKING")
+                or (
+                    isinstance(stmt.test, ast3.Attribute)
+                    and stmt.test.attr == "TYPE_CHECKING"
+                )
+            ) {
             for inner in stmt.body {
                 if isinstance(inner, ast3.ImportFrom)
-                and inner.module == "typed_import_circ_b"
-                and any(n.name == "B" for n in inner.names) {
+                    and inner.module == "typed_import_circ_b"
+                    and any(n.name == "B" for n in inner.names) {
                     tc_guarded_b = True;
                 }
             }
@@ -522,11 +533,13 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
     assert tc_guarded_b , (
         "expected `import type from typed_import_circ_b { B }` to lower to "
         "`if typing.TYPE_CHECKING: from typed_import_circ_b import B`. "
-        "Source:\n" + ast3.unparse(py_mod)
+        "Source:\n"
+        + ast3.unparse(py_mod)
     );
     assert not runtime_import_of_b , (
         "B from `import type` must NOT appear as a top-level runtime "
-        "import.\nSource:\n" + ast3.unparse(py_mod)
+        "import.\nSource:\n"
+        + ast3.unparse(py_mod)
     );
 
     # End-to-end: actually run both halves and confirm the cycle resolves.

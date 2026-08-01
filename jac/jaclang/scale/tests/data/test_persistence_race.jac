@@ -21,8 +21,8 @@ import from concurrent.futures { ThreadPoolExecutor, as_completed }
 import redis;
 import requests;
 import from pymongo { MongoClient }
-import from testcontainers.mongodb { MongoDbContainer }
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
+import from testcontainers.community.redis { RedisContainer }
 import from jaclang.scale.tests.server_support {
     call_walker,
     extract,

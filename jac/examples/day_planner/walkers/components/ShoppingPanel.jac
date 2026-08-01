@@ -1,6 +1,6 @@
 """Shopping list column -- owns ingredient state, spawns walkers."""
 
-sv import from ..main {
+import from ..main {
     ShoppingItem,
     GenerateShoppingList,
     GetShoppingList,
@@ -46,38 +46,35 @@ def:pub ShoppingPanel -> JsxElement {
         totalCost = totalCost + ing.cost;
     }
 
-    return
-        <div class="column">
-            <h2>Meal Shopping List</h2>
-            <div class="input-row">
-                <input
-                    class="input"
-                    value={mealText}
-                    onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
-                    onKeyPress={handleKeyPress}
-                    placeholder="e.g. 'chicken stir fry for 4'"
-                />
-                <button
-                    class="btn-generate"
-                    onClick={lambda { generateList(); }}
-                    disabled={generating}
-                >
-                    {("Generating..." if generating else "Generate")}
-                </button>
-            </div>
-            {if generating {
-                <div class="generating-msg">Generating with AI...</div>
-                skip;
-            }if len(ingredients) == 0 {
-                <div class="empty-msg">Enter a meal above to generate ingredients.</div>
-                skip;
-            }for ing in ingredients {
-                <IngredientItem key={ing.name} {ing}/>
-            }<div class="shopping-footer">
-                <span class="total">Total: ${f"{totalCost:.2f}"}</span>
-                <button class="btn-clear" onClick={lambda { clearList(); }}>
-                    Clear
-                </button>
-            </div>}
-        </div>;
+    <div class="column">
+        <h2>Meal Shopping List</h2>
+        <div class="input-row">
+            <input
+                class="input"
+                value={mealText}
+                onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
+                onKeyPress={handleKeyPress}
+                placeholder="e.g. 'chicken stir fry for 4'"
+            />
+            <button
+                class="btn-generate"
+                onClick={lambda { generateList(); }}
+                disabled={generating}
+            >
+                {("Generating..." if generating else "Generate")}
+            </button>
+        </div>
+        {if generating {
+            <div class="generating-msg">Generating with AI...</div>
+            skip;
+        }if len(ingredients) == 0 {
+            <div class="empty-msg">Enter a meal above to generate ingredients.</div>
+            skip;
+        }for ing in ingredients {
+            <IngredientItem key={ing.name} {ing}/>
+        }<div class="shopping-footer">
+            <span class="total">Total: ${f"{totalCost:.2f}"}</span>
+            <button class="btn-clear" onClick={lambda { clearList(); }}>Clear</button>
+        </div>}
+    </div>
 }

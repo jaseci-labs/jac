@@ -7,3 +7,8 @@ glob x = 1;  # inline comment
 obj Foo {
     has a: int = 0;  # field comment
 }
+
+"""Function docstring to deslop."""
+def bump(n: int) -> int {
+    return n + 1;  # jac:ignore[E1053]
+}

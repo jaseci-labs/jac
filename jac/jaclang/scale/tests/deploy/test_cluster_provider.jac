@@ -25,7 +25,8 @@ test "AWSProvider and LocalProvider honour their per-provider contracts" {
     assert local.prometheus_scrape_port(8000) == 8000;
     assert local.prometheus_scrape_port(3000) == 3000;
 
-    assert aws.service_url("my-nlb.us-east-1.elb.amazonaws.com", 30080) == "http://my-nlb.us-east-1.elb.amazonaws.com";
+    assert aws.service_url("my-nlb.us-east-1.elb.amazonaws.com", 30080)
+        == "http://my-nlb.us-east-1.elb.amazonaws.com";
     assert aws.service_url(None, 30080) is None;
     assert local.service_url(None, 30080) == "http://localhost:30080";
     assert local.service_url("irrelevant-endpoint", 30080) == "http://localhost:30080";

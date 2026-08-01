@@ -7,17 +7,13 @@ import from jaclang.runtimelib.client.mobile_setup_env {
 }
 import os;
 
-import from jaclang.runtimelib.client.targets.register {
-    register_targets,
-    sync_client_target_choices
-}
+import from jaclang.runtimelib.client.targets.register { sync_client_target_choices }
 import from jaclang.runtimelib.client.targets.registry { ClientTarget }
 import from pathlib { Path }
 
 glob registry = get_registry();
 
 with entry {
-    register_targets();
     sync_client_target_choices();
 }
 

@@ -1,6 +1,6 @@
 """Bundled native `socket` cross-backend equivalence fixture (#6978 Phase 1).
 
-`import socket` binds the bundled `na_stdlib/socket.na.jac` Mechanism-A/F module
+`import socket` binds the bundled `na_stdlib/socket.jac` Mechanism-A/F module
 (a pure-Jac client surface over the libc BSD-sockets FFI floor) on the na
 backend; the sv reference is CPython's real `socket`. There is no live network:
 the owning `test_socket_equivalence` suite stands up a loopback TCP/HTTP server
@@ -57,59 +57,57 @@ def socket_py -> dict {
 }
 
 
-cl def socket_cl -> dict {
+def socket_cl -> dict {
     return {};
 }
 
 
-na {
-    import from socket { create_connection }
+import from socket { create_connection }
 
-    # `_request`/`_status_of` are sv module-level helpers; native code can only
-    # reach them through the JIT interop bridge, so the request string and status
-    # parse are inlined here (the `test_urllib_equivalence` convention) to keep
-    # these functions fully native.
-    def socket_status_na -> int {
-        port = int(os.getenv("JAC_SOCKET_TEST_PORT"));
-        s = create_connection(("127.0.0.1", port));
-        s.sendall(
-            "GET /hello HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".encode()
-        );
-        first = s.recv(4096);
-        s.close();
-        if len(first) < 12 {
-            return -1;
-        }
-        return (first[9] - 48) * 100 + (first[10] - 48) * 10 + (first[11] - 48);
+# `_request`/`_status_of` are sv module-level helpers; native code can only
+# reach them through the JIT interop bridge, so the request string and status
+# parse are inlined here (the `test_urllib_equivalence` convention) to keep
+# these functions fully native.
+def socket_status_na -> int {
+    port = int(os.getenv("JAC_SOCKET_TEST_PORT"));
+    s = create_connection(("127.0.0.1", port));
+    s.sendall(
+        "GET /hello HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".encode()
+    );
+    first = s.recv(4096);
+    s.close();
+    if len(first) < 12 {
+        return -1;
     }
+    return (first[9] - 48) * 100 + (first[10] - 48) * 10 + (first[11] - 48);
+}
 
-    def socket_total_na -> int {
-        port = int(os.getenv("JAC_SOCKET_TEST_PORT"));
-        s = create_connection(("127.0.0.1", port));
-        s.sendall(
-            "GET /hello HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".encode()
-        );
-        total = 0;
+def socket_total_na -> int {
+    port = int(os.getenv("JAC_SOCKET_TEST_PORT"));
+    s = create_connection(("127.0.0.1", port));
+    s.sendall(
+        "GET /hello HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".encode()
+    );
+    total = 0;
+    chunk = s.recv(4096);
+    while len(chunk) > 0 {
+        total += len(chunk);
         chunk = s.recv(4096);
-        while len(chunk) > 0 {
-            total += len(chunk);
-            chunk = s.recv(4096);
-        }
-        s.close();
-        return total;
     }
+    s.close();
+    return total;
+}
 
-    # Connecting to a closed port must raise a *catchable* `OSError` -- proving
-    # the surface's error path unwinds to a handler one module up (native
-    # cross-module exceptions, #7013/#7021), not aborts. Returns 1 if caught.
-    def socket_refused_caught_na -> int {
-        try {
-            # Port 1 on loopback has no listener -> connect() ECONNREFUSED.
-            s = create_connection(("127.0.0.1", 1));
-            s.close();
-            return 0;
-        } except OSError as e {
-            return 1;
-        }
+# Connecting to a closed port must raise a *catchable* `OSError` -- proving
+# the surface's error path unwinds to a handler one module up (native
+# cross-module exceptions, #7013/#7021), not aborts. Returns 1 if caught.
+def socket_refused_caught_na -> int {
+    try {
+        # Port 1 on loopback has no listener -> connect() ECONNREFUSED.
+        s = create_connection(("127.0.0.1", 1));
+        s.close();
+        return 0;
+    } except OSError as e {
+        return 1;
     }
 }

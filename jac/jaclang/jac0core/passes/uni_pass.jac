@@ -59,7 +59,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_builtin_type(nd: uni.BuiltinType) -> None;
     def enter_cast_expr(nd: uni.CastExpr) -> None;
     def enter_cfg_expr(nd: uni.CfgExpr) -> None;
-    def enter_client_block(nd: uni.ClientBlock) -> None;
     def enter_compare_expr(nd: uni.CompareExpr) -> None;
     def enter_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def enter_connect_op(nd: uni.ConnectOp) -> None;
@@ -128,14 +127,12 @@ obj UniPass(ModuleCodegenPass) {
     def enter_module_path(nd: uni.ModulePath) -> None;
     def enter_multi_string(nd: uni.MultiString) -> None;
     def enter_name(nd: uni.Name) -> None;
-    def enter_native_block(nd: uni.NativeBlock) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def enter_py_inline_code(nd: uni.PyInlineCode) -> None;
     def enter_raise_stmt(nd: uni.RaiseStmt) -> None;
     def enter_report_stmt(nd: uni.ReportStmt) -> None;
     def enter_return_stmt(nd: uni.ReturnStmt) -> None;
     def enter_sem_def(nd: uni.SemDef) -> None;
-    def enter_server_block(nd: uni.ServerBlock) -> None;
     def enter_set_compr(nd: uni.SetCompr) -> None;
     def enter_set_val(nd: uni.SetVal) -> None;
     def enter_slice(nd: uni.Slice) -> None;
@@ -173,7 +170,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
     def exit_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
@@ -246,7 +242,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_name(nd: uni.Name) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
@@ -255,7 +250,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_return_stmt(nd: uni.ReturnStmt) -> None;
     def exit_sem_def(nd: uni.SemDef) -> None;
     def exit_semi(nd: uni.Semi) -> None;
-    def exit_server_block(nd: uni.ServerBlock) -> None;
     def exit_set_compr(nd: uni.SetCompr) -> None;
     def exit_set_val(nd: uni.SetVal) -> None;
     def exit_slice(nd: uni.Slice) -> None;
@@ -293,7 +287,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_builtin_type(nd: uni.BuiltinType) -> None;
     def enter_cast_expr(nd: uni.CastExpr) -> None;
     def enter_cfg_expr(nd: uni.CfgExpr) -> None;
-    def enter_client_block(nd: uni.ClientBlock) -> None;
     def enter_compare_expr(nd: uni.CompareExpr) -> None;
     def enter_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def enter_connect_op(nd: uni.ConnectOp) -> None;
@@ -363,7 +356,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_module_path(nd: uni.ModulePath) -> None;
     def enter_multi_string(nd: uni.MultiString) -> None;
     def enter_name(nd: uni.Name) -> None;
-    def enter_native_block(nd: uni.NativeBlock) -> None;
     def enter_open_stmt(nd: uni.OpenStmt) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def enter_py_inline_code(nd: uni.PyInlineCode) -> None;
@@ -371,7 +363,6 @@ obj UniPass(ModuleCodegenPass) {
     def enter_report_stmt(nd: uni.ReportStmt) -> None;
     def enter_return_stmt(nd: uni.ReturnStmt) -> None;
     def enter_sem_def(nd: uni.SemDef) -> None;
-    def enter_server_block(nd: uni.ServerBlock) -> None;
     def enter_set_compr(nd: uni.SetCompr) -> None;
     def enter_set_val(nd: uni.SetVal) -> None;
     def enter_slice(nd: uni.Slice) -> None;
@@ -408,7 +399,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
     def exit_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
@@ -482,7 +472,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_multi_string(nd: uni.MultiString) -> None;
     def exit_name(nd: uni.Name) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_open_stmt(nd: uni.OpenStmt) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
@@ -492,7 +481,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_return_stmt(nd: uni.ReturnStmt) -> None;
     def exit_sem_def(nd: uni.SemDef) -> None;
     def exit_semi(nd: uni.Semi) -> None;
-    def exit_server_block(nd: uni.ServerBlock) -> None;
     def exit_set_compr(nd: uni.SetCompr) -> None;
     def exit_set_val(nd: uni.SetVal) -> None;
     def exit_slice(nd: uni.Slice) -> None;

@@ -52,6 +52,17 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             self._registry = CollectorRegistry();
         }
 
+        try {
+            import from prometheus_client {
+                ProcessCollector,
+                PlatformCollector,
+                GCCollector
+            }
+            ProcessCollector(registry=self._registry);
+            PlatformCollector(registry=self._registry);
+            GCCollector(registry=self._registry);
+        } except Exception { }
+
         buckets = self.config.get("histogram_buckets");
         if buckets {
             buckets = tuple(buckets);
@@ -165,6 +176,10 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             );
         }
         return metrics_endpoint;
+    }
+
+    def expose -> bytes {
+        return generate_latest(self._registry);
     }
 
     def is_enabled -> bool {

@@ -168,10 +168,12 @@ test "py2jac params" {
         ).ir_out.unparse();
     }
     assert (
-        "def isinstance(`obj: object, class_or_tuple: _ClassInfo, /) -> bool {" in output
+        "def isinstance(`obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
+        in output
     );
     assert (
-        "def len(`obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {" in output
+        "def len(`obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
+        in output
     );
 }
 
@@ -329,7 +331,8 @@ test "deep imports interp mode" {
     stdout_value = captured.getvalue();
     # Main module must be registered in the hub; transitive imports may also
     # appear when their bytecode isn't cached yet, so only assert presence.
-    assert os.path.join(FIXTURES, "deep_import_interp.jac") in Jac.get_program().mod.hub;
+    assert os.path.join(FIXTURES, "deep_import_interp.jac")
+        in Jac.get_program().mod.hub;
     assert "one level deeperslHello World!" in stdout_value;
 
     Jac.set_base_path(FIXTURES);
@@ -338,7 +341,8 @@ test "deep imports interp mode" {
     # Main module must be in the hub. Typed-tree inference resolves imports
     # during analysis, so transitive imports may also appear; assert
     # presence rather than exact count (same contract as jac_import above).
-    assert os.path.join(FIXTURES, "deep_import_interp.jac") in Jac.get_program().mod.hub;
+    assert os.path.join(FIXTURES, "deep_import_interp.jac")
+        in Jac.get_program().mod.hub;
 }
 
 test "deep outer imports from loc" {
@@ -602,7 +606,8 @@ test "import jac from py" {
 
     stdout_value = captured.getvalue();
     assert (
-        stdout_value == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
+        stdout_value
+        == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
         "\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n"
     );
 }

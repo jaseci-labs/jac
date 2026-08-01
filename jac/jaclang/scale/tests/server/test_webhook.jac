@@ -17,9 +17,9 @@ import shutil;
 import requests;
 import from logging.handlers { MemoryHandler }
 import from pathlib { Path }
-import from typing { cast }
+import from typing { Any, cast }
 
-import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
 import from pymongo { MongoClient }
 
 import from jaclang.scale.tests.scale_test_client {

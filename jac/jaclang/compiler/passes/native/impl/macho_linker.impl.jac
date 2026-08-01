@@ -126,50 +126,104 @@ def _resolve_macho_name(
 }
 
 
+def _trie_common_prefix(a: str, b: str) -> int {
+    n = min(len(a), len(b));
+    i = 0;
+    while i < n and a[i] == b[i] {
+        i += 1;
+    }
+    return i;
+}
+
 def _build_export_trie(symbols: list[tuple[str, int]]) -> bytes {
-    n = len(symbols);
-    if n == 0 {
+    if len(symbols) == 0 {
         return bytes([0, 0]);
     }
 
-    term_nodes: list[bytes] = [];
+    trie_root: dict = {"term": None, "kids": {}};
     for (name, addr) in symbols {
-        info = _encode_uleb128(EXPORT_SYMBOL_FLAGS_KIND_REGULAR) + _encode_uleb128(
-            addr
-        );
-        tnode = _encode_uleb128(len(info)) + info + bytes([0]);
-        term_nodes.append(tnode);
+        cur = trie_root;
+        rest = name;
+        while True {
+            if rest == "" {
+                cur["term"] = addr;
+                break;
+            }
+            kids = cur["kids"];
+            matched = False;
+            for label in list(kids.keys()) {
+                c = _trie_common_prefix(label, rest);
+                if c == 0 {
+                    continue;
+                }
+                if c == len(label) {
+                    cur = kids[label];
+                } else {
+                    child = kids.pop(label);
+                    mid = {"term": None, "kids": {label[c:]: child}};
+                    kids[label[:c]] = mid;
+                    cur = mid;
+                }
+                rest = rest[c:];
+                matched = True;
+                break;
+            }
+            if not matched {
+                kids[rest] = {"term": addr, "kids": {}};
+                break;
+            }
+        }
     }
-    child_off: list[int] = [0] * n;
 
-    for _iter in range(8) {
-        rootbuf = bytearray();
-        rootbuf.extend(_encode_uleb128(0));
-        rootbuf.append(n);
-        for (i, pair) in enumerate(symbols) {
-            rootbuf.extend(pair[0].encode("utf-8") + b"\x00");
-            rootbuf.extend(_encode_uleb128(child_off[i]));
+    order: list = [];
+    stack: list = [trie_root];
+    while stack {
+        nd = stack.pop();
+        order.append(nd);
+        for label in sorted(nd["kids"].keys(), reverse=True) {
+            stack.append(nd["kids"][label]);
         }
-        pos = len(rootbuf);
-        new_off: list[int] = [];
-        for i in range(n) {
-            new_off.append(pos);
-            pos += len(term_nodes[i]);
+    }
+    node_index: dict = {};
+    for (i, nd) in enumerate(order) {
+        node_index[id(nd)] = i;
+    }
+
+    offsets: list[int] = [0] * len(order);
+    encs: list[bytes] = [];
+    for _iter in range(16) {
+        encs = [];
+        for nd in order {
+            if nd["term"] is not None {
+                info = _encode_uleb128(EXPORT_SYMBOL_FLAGS_KIND_REGULAR)
+                    + _encode_uleb128(nd["term"]);
+                e = _encode_uleb128(len(info)) + info;
+            } else {
+                e = _encode_uleb128(0);
+            }
+            e += bytes([len(nd["kids"])]);
+            for label in sorted(nd["kids"].keys()) {
+                child = nd["kids"][label];
+                e += label.encode("utf-8")
+                    + b"\x00"
+                    + _encode_uleb128(offsets[node_index[id(child)]]);
+            }
+            encs.append(e);
         }
-        if new_off == child_off {
+        pos = 0;
+        new_offsets: list[int] = [];
+        for e in encs {
+            new_offsets.append(pos);
+            pos += len(e);
+        }
+        if new_offsets == offsets {
             break;
         }
-        child_off = new_off;
+        offsets = new_offsets;
     }
     blob = bytearray();
-    blob.extend(_encode_uleb128(0));
-    blob.append(n);
-    for (i, pair) in enumerate(symbols) {
-        blob.extend(pair[0].encode("utf-8") + b"\x00");
-        blob.extend(_encode_uleb128(child_off[i]));
-    }
-    for tn in term_nodes {
-        blob.extend(tn);
+    for e in encs {
+        blob.extend(e);
     }
     return bytes(blob);
 }
@@ -656,8 +710,8 @@ impl MachOLinker._resolve_crossrefs -> None {
     resolved: dict[int, int] = {};
     for (i, s) in enumerate(self.symbols) {
         if (s.n_type & N_TYPE_MASK) == N_UNDF
-        and (s.n_type & N_EXT) != 0
-        and s.name in defined {
+            and (s.n_type & N_EXT) != 0
+            and s.name in defined {
             resolved[i] = defined[s.name];
         }
     }
@@ -694,13 +748,13 @@ impl MachOLinker.build_executable -> bytes {
 
     for (sec_idx, sec) in enumerate(self.sections) {
         if sec.name.startswith("__debug")
-        or sec.name.startswith("__apple")
-        or sec.name == "__compact_unwind"
-        or sec.name == "__eh_frame" {
+            or sec.name.startswith("__apple")
+            or sec.name == "__compact_unwind"
+            or sec.name == "__eh_frame" {
             continue;
         }
         is_text = sec.segname == "__TEXT"
-        and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
+            and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
         is_rodata = sec.segname == "__TEXT" and not is_text and len(sec.data) > 0;
         is_data = sec.segname == "__DATA";
 
@@ -769,18 +823,16 @@ impl MachOLinker.build_executable -> bytes {
     for rel in self.relocations {
         is_got_rel = False;
         if is_arm64 {
-            is_got_rel = rel.rtype in (
-                ARM64_RELOC_GOT_LOAD_PAGE21,
-                ARM64_RELOC_GOT_LOAD_PAGEOFF12
-            );
+            is_got_rel = rel.rtype
+                in (ARM64_RELOC_GOT_LOAD_PAGE21, ARM64_RELOC_GOT_LOAD_PAGEOFF12);
         } else {
             is_got_rel = rel.rtype in (X86_64_RELOC_GOT_LOAD, X86_64_RELOC_GOT);
         }
         if is_got_rel and rel.extern == 1 and rel.symbolnum < len(self.symbols) {
             sname = self.symbols[rel.symbolnum].name;
             if sname
-            and sname not in all_extern_names
-            and sname not in internal_got_syms {
+                and sname not in all_extern_names
+                and sname not in internal_got_syms {
                 internal_got_syms.append(sname);
             }
         }
@@ -959,7 +1011,7 @@ impl MachOLinker.build_executable -> bytes {
         else 0;
     for rel in self.relocations {
         is_unsigned = (is_arm64 and rel.rtype == ARM64_RELOC_UNSIGNED)
-        or (not is_arm64 and rel.rtype == X86_64_RELOC_UNSIGNED);
+            or (not is_arm64 and rel.rtype == X86_64_RELOC_UNSIGNED);
         if is_unsigned and rel.target_sec in data_sections and rel.length == 3 {
             if rel.extern == 1 {
                 sym = self.symbols[rel.symbolnum]
@@ -1118,9 +1170,8 @@ impl MachOLinker.build_executable -> bytes {
         got_addr_map[extern_func_syms[i]] = got_sec_vaddr + i * 8;
     }
     for i in range(len(extern_data_syms)) {
-        got_addr_map[extern_data_syms[i]] = got_sec_vaddr + (
-            len(extern_func_syms) + i
-        ) * 8;
+        got_addr_map[extern_data_syms[i]] = got_sec_vaddr
+            + (len(extern_func_syms) + i) * 8;
     }
     for i in range(len(internal_got_syms)) {
         got_addr_map[internal_got_syms[i]] = got_sec_vaddr + (num_extern_got + i) * 8;
@@ -1132,7 +1183,7 @@ impl MachOLinker.build_executable -> bytes {
 
     for rel in self.relocations {
         if (is_arm64 and rel.rtype == ARM64_RELOC_SUBTRACTOR)
-        or (not is_arm64 and rel.rtype == X86_64_RELOC_SUBTRACTOR) {
+            or (not is_arm64 and rel.rtype == X86_64_RELOC_SUBTRACTOR) {
             continue;
         }
 
@@ -1145,10 +1196,8 @@ impl MachOLinker.build_executable -> bytes {
             sym_name = sym.name;
 
             if is_arm64 {
-                is_got_reloc = rel.rtype in (
-                    ARM64_RELOC_GOT_LOAD_PAGE21,
-                    ARM64_RELOC_GOT_LOAD_PAGEOFF12
-                );
+                is_got_reloc = rel.rtype
+                    in (ARM64_RELOC_GOT_LOAD_PAGE21, ARM64_RELOC_GOT_LOAD_PAGEOFF12);
             } else {
                 is_got_reloc = rel.rtype in (X86_64_RELOC_GOT_LOAD, X86_64_RELOC_GOT);
             }
@@ -1582,13 +1631,13 @@ impl MachOLinker.build_shared_object -> bytes {
     sec_placement: dict[int, tuple[str, int]] = {};
     for (sec_idx, sec) in enumerate(self.sections) {
         if sec.name.startswith("__debug")
-        or sec.name.startswith("__apple")
-        or sec.name == "__compact_unwind"
-        or sec.name == "__eh_frame" {
+            or sec.name.startswith("__apple")
+            or sec.name == "__compact_unwind"
+            or sec.name == "__eh_frame" {
             continue;
         }
         is_text = sec.segname == "__TEXT"
-        and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
+            and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
         is_rodata = sec.segname == "__TEXT" and not is_text and len(sec.data) > 0;
         is_data = sec.segname == "__DATA";
         sec_key = f"{sec.segname}:{sec.name}";
@@ -1649,18 +1698,16 @@ impl MachOLinker.build_shared_object -> bytes {
     for rel in self.relocations {
         is_got_rel = False;
         if is_arm64 {
-            is_got_rel = rel.rtype in (
-                ARM64_RELOC_GOT_LOAD_PAGE21,
-                ARM64_RELOC_GOT_LOAD_PAGEOFF12
-            );
+            is_got_rel = rel.rtype
+                in (ARM64_RELOC_GOT_LOAD_PAGE21, ARM64_RELOC_GOT_LOAD_PAGEOFF12);
         } else {
             is_got_rel = rel.rtype in (X86_64_RELOC_GOT_LOAD, X86_64_RELOC_GOT);
         }
         if is_got_rel and rel.extern == 1 and rel.symbolnum < len(self.symbols) {
             sname = self.symbols[rel.symbolnum].name;
             if sname
-            and sname not in all_extern_names
-            and sname not in internal_got_syms {
+                and sname not in all_extern_names
+                and sname not in internal_got_syms {
                 internal_got_syms.append(sname);
             }
         }
@@ -1849,7 +1896,7 @@ impl MachOLinker.build_shared_object -> bytes {
         else 0;
     for rel in self.relocations {
         is_unsigned = (is_arm64 and rel.rtype == ARM64_RELOC_UNSIGNED)
-        or (not is_arm64 and rel.rtype == X86_64_RELOC_UNSIGNED);
+            or (not is_arm64 and rel.rtype == X86_64_RELOC_UNSIGNED);
         if is_unsigned and rel.target_sec in data_sections and rel.length == 3 {
             if rel.extern == 1 {
                 sym = self.symbols[rel.symbolnum]
@@ -2009,9 +2056,8 @@ impl MachOLinker.build_shared_object -> bytes {
         got_addr_map[extern_func_syms[i]] = got_sec_vaddr + i * 8;
     }
     for i in range(len(extern_data_syms)) {
-        got_addr_map[extern_data_syms[i]] = got_sec_vaddr + (
-            len(extern_func_syms) + i
-        ) * 8;
+        got_addr_map[extern_data_syms[i]] = got_sec_vaddr
+            + (len(extern_func_syms) + i) * 8;
     }
     for i in range(len(internal_got_syms)) {
         got_addr_map[internal_got_syms[i]] = got_sec_vaddr + (num_extern_got + i) * 8;
@@ -2021,7 +2067,7 @@ impl MachOLinker.build_shared_object -> bytes {
     data_bytes = bytearray(data_data);
     for rel in self.relocations {
         if (is_arm64 and rel.rtype == ARM64_RELOC_SUBTRACTOR)
-        or (not is_arm64 and rel.rtype == X86_64_RELOC_SUBTRACTOR) {
+            or (not is_arm64 and rel.rtype == X86_64_RELOC_SUBTRACTOR) {
             continue;
         }
         sym_addr = 0;
@@ -2031,10 +2077,8 @@ impl MachOLinker.build_shared_object -> bytes {
             sym = self.symbols[rel.symbolnum];
             sym_name = sym.name;
             if is_arm64 {
-                is_got_reloc = rel.rtype in (
-                    ARM64_RELOC_GOT_LOAD_PAGE21,
-                    ARM64_RELOC_GOT_LOAD_PAGEOFF12
-                );
+                is_got_reloc = rel.rtype
+                    in (ARM64_RELOC_GOT_LOAD_PAGE21, ARM64_RELOC_GOT_LOAD_PAGEOFF12);
             } else {
                 is_got_reloc = rel.rtype in (X86_64_RELOC_GOT_LOAD, X86_64_RELOC_GOT);
             }

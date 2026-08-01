@@ -1,3 +1,64 @@
+impl NaIRGenPass._emit_os_environ_call(
+    name: str, nd: uni.FuncCall
+) -> (ir.Value | None) {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    params = nd.params or [];
+
+    if name == "get" {
+        return self._emit_os_call("getenv", nd);
+    }
+
+    if name == "pop" {
+        if not params {
+            return None;
+        }
+        nameval = self._codegen_expr(params[0]);
+        if nameval is None {
+            return None;
+        }
+        getenv_fn = self._get_or_declare_extern("getenv", i8p, [i8p]);
+        cur = self.builder.call(getenv_fn, [nameval], name="environ.pop.cur");
+        func = self.builder.function;
+        null_bb = func.append_basic_block(name="envpop.null");
+        ok_bb = func.append_basic_block(name="envpop.ok");
+        merge_bb = func.append_basic_block(name="envpop.merge");
+        is_null = self.builder.icmp_signed(
+            "==", cur, ir.Constant(i8p, None), name="envpop.isnull"
+        );
+        self.builder.cbranch(is_null, null_bb, ok_bb);
+
+        self.builder.position_at_end(null_bb);
+        null_res: ir.Value = ir.Constant(i8p, None);
+        if len(params) >= 2 {
+            _default_val = self._codegen_expr(params[1]);
+            if _default_val is not None
+                and isinstance(_default_val.type, ir.PointerType) {
+                null_res = self._coerce_type(_default_val, i8p);
+
+                self._emit_take_ref(null_res, op="environ_pop_default", loc="");
+            }
+        }
+        self.builder.branch(merge_bb);
+        null_end = self.builder.block;
+
+        self.builder.position_at_end(ok_bb);
+        copied = self._rc_strdup(cur, name="environ.pop.str");
+        unset_fn = self._get_or_declare_extern("unsetenv", i32, [i8p]);
+        self.builder.call(unset_fn, [nameval], name="environ.pop.unset");
+        self.builder.branch(merge_bb);
+        ok_end = self.builder.block;
+
+        self.builder.position_at_end(merge_bb);
+        phi = self.builder.phi(i8p, name="environ.pop.res");
+        phi.add_incoming(null_res, null_end);
+        phi.add_incoming(copied, ok_end);
+        return phi;
+    }
+
+    return None;
+}
+
 impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
     i8 = ir.IntType(8);
     i8p = ir.IntType(8).as_pointer();
@@ -46,7 +107,7 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         if len(params) >= 2 {
             _default_val = self._codegen_expr(params[1]);
             if _default_val is not None
-            and isinstance(_default_val.type, ir.PointerType) {
+                and isinstance(_default_val.type, ir.PointerType) {
                 null_res = self._coerce_type(_default_val, i8p);
 
                 self._emit_take_ref(null_res, op="getenv_default", loc="");
@@ -346,22 +407,76 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
             return None;
         }
 
+        triple = str(self.llvm_module.triple or "").lower();
+        stat_sym = "stat";
+        mode_off = 24;
+        mode_bits = 32;
+        if ("darwin" in triple) or ("apple" in triple) or ("macos" in triple) {
+            mode_off = 4;
+            mode_bits = 16;
+            if "x86_64" in triple {
+                stat_sym = "stat$INODE64";
+            }
+        } elif ("aarch64" in triple) or ("arm64" in triple) {
+            mode_off = 16;
+        }
         buf = self.builder.alloca(ir.ArrayType(i8, 144), name="stat.buf");
         bufp = self.builder.gep(
             buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="stat.bufp"
         );
-        fn = self._get_or_declare_extern("stat", i32, [i8p, i8p]);
+        fn = self._get_or_declare_extern(stat_sym, i32, [i8p, i8p]);
         rc = self.builder.call(fn, [p, bufp], name="ospath.stat");
         ok = self.builder.icmp_signed("==", rc, ir.Constant(i32, 0), name="stat.ok");
-        mode_p8 = self.builder.gep(bufp, [ir.Constant(i64, 24)], name="stat.modep8");
-        mode_p = self.builder.bitcast(mode_p8, i32.as_pointer(), name="stat.modep");
-        mode = self.builder.load(mode_p, name="stat.mode");
+        mode_p8 = self.builder.gep(
+            bufp, [ir.Constant(i64, mode_off)], name="stat.modep8"
+        );
+        if mode_bits == 16 {
+            mode_p16 = self.builder.bitcast(
+                mode_p8, ir.IntType(16).as_pointer(), name="stat.modep"
+            );
+            mode16 = self.builder.load(mode_p16, name="stat.mode16");
+            mode = self.builder.zext(mode16, i32, name="stat.mode");
+        } else {
+            mode_p = self.builder.bitcast(mode_p8, i32.as_pointer(), name="stat.modep");
+            mode = self.builder.load(mode_p, name="stat.mode");
+        }
         fmt = self.builder.and_(mode, ir.Constant(i32, 0o170000), name="stat.fmt");
         want = 0o040000 if name == "isdir" else 0o100000;
         kind = self.builder.icmp_signed(
             "==", fmt, ir.Constant(i32, want), name=f"ospath.{name}.kind"
         );
         return self.builder.and_(ok, kind, name=f"ospath.{name}");
+    }
+
+    if name == "getsize" and params {
+        p = self._codegen_expr(params[0]);
+        if p is None {
+            return None;
+        }
+        triple = str(self.llvm_module.triple or "").lower();
+        stat_sym = "stat";
+        size_off = 48;
+        if ("darwin" in triple) or ("apple" in triple) or ("macos" in triple) {
+            size_off = 96;
+            if "x86_64" in triple {
+                stat_sym = "stat$INODE64";
+            }
+        }
+        buf = self.builder.alloca(ir.ArrayType(i8, 144), name="gsz.buf");
+        bufp = self.builder.gep(
+            buf, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="gsz.bufp"
+        );
+        fn = self._get_or_declare_extern(stat_sym, i32, [i8p, i8p]);
+        rc = self.builder.call(fn, [p, bufp], name="ospath.gsz.stat");
+        ok = self.builder.icmp_signed("==", rc, ir.Constant(i32, 0), name="gsz.ok");
+        size_p8 = self.builder.gep(
+            bufp, [ir.Constant(i64, size_off)], name="gsz.sizep8"
+        );
+        size_p = self.builder.bitcast(size_p8, i64.as_pointer(), name="gsz.sizep");
+        size = self.builder.load(size_p, name="gsz.size");
+        return self.builder.select(
+            ok, size, ir.Constant(i64, -1), name="ospath.getsize"
+        );
     }
 
     return None;

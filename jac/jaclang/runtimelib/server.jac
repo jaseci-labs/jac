@@ -29,9 +29,13 @@ import from jaclang.runtimelib.scheduler { Scheduler }
 import from jaclang.jac0core.constant { Constants as Con }
 import type from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
 
-glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
-         (str, 'JsonValue')
-     ],
+glob JsonValue: TypeAlias = None
+         | str
+         | int
+         | float
+         | bool
+         | list['JsonValue']
+         | dict[(str, 'JsonValue')],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
 obj UserManager {
@@ -214,7 +218,9 @@ obj JacAPIServer {
         has method: str = "",
             path: str = "",
             protocol: APIProtocol = APIProtocol.HTTP,
-            broadcast: bool = False;
+            broadcast: bool = False,
+            produces: str = "",
+            envelope: bool = True;
     }
 
     def postinit -> None;

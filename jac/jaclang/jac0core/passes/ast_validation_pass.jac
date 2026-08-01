@@ -30,6 +30,7 @@ import from jaclang.jac0core.diagnostics {
     E2021,
     E2022,
     E2024,
+    E2084,
     W2019,
     W2020,
     W2021
@@ -60,6 +61,7 @@ class ASTValidationPass(UniPass) {
     def enter_func_call(self: ASTValidationPass, nd: uni.FuncCall) -> None;
     def enter_archetype(self: ASTValidationPass, nd: uni.Archetype) -> None;
     def enter_jsx_slot(self: ASTValidationPass, nd: uni.JsxSlot) -> None;
+    def enter_expr_stmt(self: ASTValidationPass, nd: uni.ExprStmt) -> None;
     def _check_slot_body(
         self: ASTValidationPass, stmts: list, in_loop: bool, loop_kw: str
     ) -> None;

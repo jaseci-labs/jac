@@ -16,7 +16,7 @@ glob GAP_DIR = os.path.join(
 
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
-        import from jaclang.jac0core.parser.parser { parse }
+        import from jaclang.jac0core.parser.frontend { parse }
         (module, had_error) = parse(source, file_path);
         if had_error {
             return None;
@@ -159,7 +159,7 @@ glob GAP_FILES = [
          "bare_semi_at_module_level": ";",
          "assignment_missing_semi": 'with entry { x = 5 }',
          "augmented_assign_missing_semi": 'with entry { x += 1 }',
-         "expression_stmt_missing_semi": 'with entry { print("hi") }',
+         "expression_stmt_missing_semi": 'with entry { print("hi") print("bye"); }',
          "report_missing_semi": 'with entry { report 5 }',
          "chained_assign_missing_semi": 'with entry { x = y = 5 }',
          "typed_assign_missing_semi": 'with entry { x: int = 5 }',
@@ -186,6 +186,9 @@ glob GAP_FILES = [
          "enum_inside_function": "def foo() { enum Color { RED } }"
      },
      MUST_REJECT_VALIDATION: dict[str, str] = {
+         # A tail expression without ';' parses (implicit-return candidate)
+         # but is only legal at the end of a function body — E2084 here.
+         "expression_stmt_tail_no_semi_module_level": 'with entry { print("hi") }',
          "pass_keyword": "with entry { match x { case 1: pass; } }",
          "with_exit_at_module_level": 'with exit { print("bye"); }',
          "empty_match_body": "with entry { match x { } }",
@@ -219,7 +222,7 @@ glob GAP_FILES = [
 
 def parse_and_validate(source: str, file_path: str) -> bool {
     try {
-        import from jaclang.jac0core.parser.parser { parse }
+        import from jaclang.jac0core.parser.frontend { parse }
         (module, had_error) = parse(source, file_path);
         if had_error {
             return True;

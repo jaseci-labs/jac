@@ -1,6 +1,6 @@
 """Tasks column -- owns task list state, spawns walkers for CRUD."""
 
-sv import from ..main { Task, AddTask, ListTasks, ToggleTask, DeleteTask }
+import from ..main { Task, AddTask, ListTasks, ToggleTask, DeleteTask }
 
 import from .TaskItem { TaskItem }
 
@@ -53,35 +53,34 @@ def:pub TasksPanel -> JsxElement {
         ]
     );
 
-    return
-        <div class="column">
-            <h2>Today's Tasks</h2>
-            <div class="input-row">
-                <input
-                    class="input"
-                    value={taskText}
-                    onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
-                    onKeyPress={handleKeyPress}
-                    placeholder="What needs to be done today?"
-                />
-                <button class="btn-add" onClick={lambda { addTask(); }}>Add</button>
-            </div>
-            {if tasksLoading {
-                <div class="loading-msg">Loading tasks...</div>
-                skip;
-            }if len(tasks) == 0 {
-                <div class="empty-msg">No tasks yet. Add one above!</div>
-                skip;
-            }for t in tasks {
-                <TaskItem
-                    key={jid(t)}
-                    task={t}
-                    onToggle={lambda { toggleTask(jid(t)); }}
-                    onDelete={lambda { deleteTask(jid(t)); }}
-                />
-            }}
-            <div class="count">
-                {remaining} {("task" if remaining == 1 else "tasks")} remaining
-            </div>
-        </div>;
+    <div class="column">
+        <h2>Today's Tasks</h2>
+        <div class="input-row">
+            <input
+                class="input"
+                value={taskText}
+                onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
+                onKeyPress={handleKeyPress}
+                placeholder="What needs to be done today?"
+            />
+            <button class="btn-add" onClick={lambda { addTask(); }}>Add</button>
+        </div>
+        {if tasksLoading {
+            <div class="loading-msg">Loading tasks...</div>
+            skip;
+        }if len(tasks) == 0 {
+            <div class="empty-msg">No tasks yet. Add one above!</div>
+            skip;
+        }for t in tasks {
+            <TaskItem
+                key={jid(t)}
+                task={t}
+                onToggle={lambda { toggleTask(jid(t)); }}
+                onDelete={lambda { deleteTask(jid(t)); }}
+            />
+        }}
+        <div class="count">
+            {remaining} {("task" if remaining == 1 else "tasks")} remaining
+        </div>
+    </div>
 }

@@ -22,11 +22,12 @@ can load. jac0 stays the compiler for that tier; only the container is unified.
 This module is therefore **plain Python with no jaclang dependencies** (like the
 sibling ``cache_paths.py`` / ``ext_registry.py``).
 
-Manifest layout (``_precompiled/MANIFEST.json``, format 3; format 2 = the
-same without kind/capabilities/entry/payloads and remains loadable)::
+Manifest layout (``_precompiled/MANIFEST.json``, format 4; format 3 = the
+same without native_artifacts, format 2 also without
+kind/capabilities/entry/payloads -- both remain loadable)::
 
     {
-      "format": 3,
+      "format": 4,
       "kind": "web-app",                # optional: project kind (app images)
       "capabilities": ["has-entry", "has-server", "has-client"],  # optional
       "entry": {"module": "app.main", "path": "main.jac"},        # optional
@@ -76,17 +77,20 @@ from pathlib import Path
 from jaclang.jac0core import ext_registry
 
 MANIFEST_NAME = "MANIFEST.json"
-MANIFEST_FORMAT = 3
+MANIFEST_FORMAT = 4
 # Format 3 adds optional app metadata (kind / capabilities / entry) and
-# payloads on top of format 2's module map; format-2 images stay loadable.
-MANIFEST_FORMATS_ACCEPTED = (2, MANIFEST_FORMAT)
+# payloads on top of format 2's module map; format 4 adds the optional
+# ``native_artifacts`` map (AOT-compiled compiler modules: shared library +
+# marshal layout per fullname). Format-2/3 images stay loadable -- they simply
+# carry no native artifacts.
+MANIFEST_FORMATS_ACCEPTED = (2, 3, MANIFEST_FORMAT)
 # Must match jaclang.jac0core.jir.* ; kept literal here because this module
 # must import before any .jac module (including jir.jac) can. This is the whole
 # point of the bootstrap tier: jac0core modules are loaded from their JIR by the
 # pure-Python section reader below, so they need none of the .jac machinery
 # (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
-JIR_FORMAT_VERSION = 16
+JIR_FORMAT_VERSION = 17
 _HEADER_SIZE = 32
 _SECTIONS_MAGIC = b"JIRX"
 _SEC_BYTECODE = 0x02
@@ -156,6 +160,12 @@ class SealedImage:
         self.kind: str = manifest.get("kind", "")
         self.capabilities: list[str] = manifest.get("capabilities") or []
         self.entry: dict = manifest.get("entry") or {}
+        # Optional AOT native artifacts (format 4): fullname -> entry with
+        # ``lib`` / ``layout`` (precompiled-dir-relative paths), ``triple``,
+        # and per-file sha256 digests.
+        self.native_artifacts: dict[str, dict] = (
+            manifest.get("native_artifacts") or {}
+        )
         # fullname -> (entry, src_relpath). One tree: full-compiler modules and
         # jac0-compiled bootstrap modules share the JIR container + manifest;
         # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).
@@ -163,10 +173,9 @@ class SealedImage:
         self._build_index()
 
     def _build_index(self) -> None:
-        # MODULE_SUFFIXES precedence: when foo.jac and foo.cl.jac both map to
-        # one fullname, earlier (shorter) suffixes win -- same rule the
-        # filesystem finder applies. Process in precedence-sorted order and
-        # keep first.
+        # MODULE_SUFFIXES precedence: earlier (shorter) suffixes win -- same
+        # rule the filesystem finder applies. Process in precedence-sorted
+        # order and keep first.
         def precedence(src: str) -> tuple[int, str]:
             name = os.path.basename(src)
             for i, init in enumerate(ext_registry.INIT_FILES):
@@ -249,6 +258,42 @@ class SealedImage:
                 raise RuntimeError(
                     f"sealed image: payload {path} does not match its manifest sha256"
                 )
+
+    def native_artifact(self, fullname: str) -> tuple[str, dict] | None:
+        """Resolve a sealed AOT native artifact for ``fullname``.
+
+        Returns ``(lib_abspath, layout_dict)`` after hash-verifying both files
+        against the manifest, or None when the image carries no artifact for
+        the module (or it targets another platform). Any integrity or read
+        problem returns None -- callers fall back to the bytecode tier, which
+        is always present and semantically identical.
+        """
+        entry = self.native_artifacts.get(fullname)
+        if not entry:
+            return None
+        lib_rel = entry.get("lib", "")
+        layout_rel = entry.get("layout", "")
+        if not lib_rel or not layout_rel:
+            return None
+        for rel in (lib_rel, layout_rel):
+            if os.path.isabs(rel) or ".." in Path(rel).parts:
+                return None
+        lib_path = self.precompiled_dir / lib_rel
+        layout_path = self.precompiled_dir / layout_rel
+        try:
+            lib_bytes = lib_path.read_bytes()
+            layout_bytes = layout_path.read_bytes()
+        except OSError:
+            return None
+        if hashlib.sha256(lib_bytes).hexdigest() != entry.get("lib_sha256"):
+            return None
+        if hashlib.sha256(layout_bytes).hexdigest() != entry.get("layout_sha256"):
+            return None
+        try:
+            layout_dict = json.loads(layout_bytes)
+        except ValueError:
+            return None
+        return (str(lib_path), layout_dict)
 
     def bootstrap_code(self, fullname: str) -> types.CodeType | None:
         """Code object for a bootstrap-tier module, extracted from its JIR's
@@ -361,6 +406,20 @@ def source_for(fullname: str) -> str | None:
     if found is None:
         return None
     return found[0].debug_source(fullname)
+
+
+def native_artifact_for(fullname: str) -> tuple[str, dict] | None:
+    """Sealed AOT native artifact for ``fullname`` across all images.
+
+    Returns ``(lib_abspath, layout_dict)`` or None. See
+    ``SealedImage.native_artifact`` for the integrity rules.
+    """
+    _jaclang_image()
+    for img in _images:
+        found = img.native_artifact(fullname)
+        if found is not None:
+            return found
+    return None
 
 
 def image_for_bundle_dir(bundle_dir: str | Path) -> SealedImage | None:

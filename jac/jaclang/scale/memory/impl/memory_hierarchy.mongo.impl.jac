@@ -792,7 +792,7 @@ impl MongoBackend._put_node_atomic(
         try {
             if merged_doc {
                 merged_ids_str: list = merged_doc.get('data', {}).get('edges', [])
-                or [];
+                    or [];
                 merged_ids: set = {
                     UUID(s)
                     for s in merged_ids_str
@@ -1011,7 +1011,11 @@ def _format_q_doc(d: dict) -> dict {
 
 impl MongoBackend.inspect_summary -> dict {
     loc = (
-        (self.mongo_url or '<no mongo url>') + '/' + self.db_name + '.' + self.collection_name
+        (self.mongo_url or '<no mongo url>')
+        + '/'
+        + self.db_name
+        + '.'
+        + self.collection_name
     );
     if self.client is None {
         return {
@@ -1210,7 +1214,8 @@ impl MongoBackend.is_recoverable_quarantine(id: UUID) -> bool {
         return _mongo_q_collection(self).find_one(
             {'_id': str(to_uuid(id)), 'reason_code': {'$ne': 'DANGLING_REF'}},
             {'_id': 1}
-        ) is not None;
+        )
+            is not None;
     } except Exception {
         return False;
     }
@@ -1219,7 +1224,11 @@ impl MongoBackend.is_recoverable_quarantine(id: UUID) -> bool {
 
 impl MongoBackend.fsck(repair: bool = False) -> dict {
     loc = (
-        (self.mongo_url or '<no mongo url>') + '/' + self.db_name + '.' + self.collection_name
+        (self.mongo_url or '<no mongo url>')
+        + '/'
+        + self.db_name
+        + '.'
+        + self.collection_name
     );
     fsck_report: dict = {
         'location': loc,

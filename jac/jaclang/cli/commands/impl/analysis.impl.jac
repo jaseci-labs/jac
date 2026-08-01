@@ -6,7 +6,8 @@ import from jaclang.cli.check_report {
     print_failures,
     print_failed_summary,
     print_final_summary,
-    print_native_census
+    print_native_census,
+    print_placement_report
 }
 
 def _maybe_malloc_trim {
@@ -25,7 +26,8 @@ impl check(
     nowarn: bool = False,
     lint_only: bool = False,
     fix: bool = False,
-    native_census: bool = False
+    native_census: bool = False,
+    placements: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
@@ -43,9 +45,8 @@ impl check(
     );
     if unknown_codes {
         console.warning(
-            "Ignoring unknown diagnostic codes in --disable-error-code: " + ", ".join(
-                unknown_codes
-            )
+            "Ignoring unknown diagnostic codes in --disable-error-code: "
+                + ", ".join(unknown_codes)
         );
     }
     if native_census {
@@ -76,6 +77,7 @@ impl check(
     }
 
     failed_results: list[dict] = [];
+    placement_report: dict = {};
     def check_single_file(
         prog: JacProgram, file_path: str
     ) -> tuple[bool, int, int, list, list] {
@@ -107,6 +109,10 @@ impl check(
                 )
             );
 
+            if placements {
+                import from jaclang.jac0core.placement { collect_placement_rows }
+                placement_report.update(collect_placement_rows(prog));
+            }
             for m in prog.mod.hub.values() {
                 m.terminals = [];
                 m.src_terminals = [];
@@ -119,9 +125,9 @@ impl check(
                     i
                     for i in issues
                     if i.loc
-                    and i.loc.mod_path
-                    and i.loc.mod_path.endswith(".jac")
-                    and not _should_ignore(i.loc.mod_path, ignore_list)
+                        and i.loc.mod_path
+                        and i.loc.mod_path.endswith(".jac")
+                        and not _should_ignore(i.loc.mod_path, ignore_list)
                 ];
             }
             filtered_errors = filter_issues(new_errors);
@@ -168,6 +174,9 @@ impl check(
     if native_census {
         import from jaclang.jac0core.compiler { na_census_end }
         print_native_census(na_census_end());
+    }
+    if placements {
+        print_placement_report(placement_report);
     }
     if print_errs and len(failed_results) > 0 {
         print_failures(failed_results, nowarn);
@@ -265,9 +274,8 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             import from jaclang.jac0core.bccache { discover_annex_files }
             import os;
             annex_paths = (
-                discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
-                    str(path_obj), '.test.jac'
-                )
+                discover_annex_files(str(path_obj), '.impl.jac')
+                + discover_annex_files(str(path_obj), '.test.jac')
             );
             for annex_path in annex_paths {
                 if os.path.realpath(annex_path) in covered {
@@ -393,9 +401,8 @@ def _format_single_file_worker(
         import from jaclang.jac0core.bccache { discover_annex_files }
 
         annex_paths = (
-            discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
-                file_path, '.test.jac'
-            )
+            discover_annex_files(file_path, '.impl.jac')
+            + discover_annex_files(file_path, '.test.jac')
         );
         if logical_path {
             phys_parent = str(Path(file_path).resolve().parent);
@@ -506,7 +513,7 @@ def _format_single_file_worker(
             if lintfix {
                 for annex_path in annex_paths {
                     if covered is not None
-                    and (os.path.realpath(annex_path) in covered) {
+                        and (os.path.realpath(annex_path) in covered) {
                         continue;
                     }
                     annex_logical = annex_logical_map.get(annex_path, annex_path);
@@ -960,9 +967,8 @@ impl precommit(
                             continue;
                         }
                         for ap in (
-                            discover_annex_files(abs_t, '.impl.jac') + discover_annex_files(
-                                abs_t, '.test.jac'
-                            )
+                            discover_annex_files(abs_t, '.impl.jac')
+                            + discover_annex_files(abs_t, '.test.jac')
                         ) {
                             ap_rel = os.path.relpath(ap, git_root).replace(os.sep, "/");
                             if ap_rel not in rel_set {
@@ -994,7 +1000,8 @@ impl precommit(
                         "-f",
                         f"--prefix={tmp_root}{os.sep}",
                         "--"
-                    ] + checkout_paths,
+                    ]
+                        + checkout_paths,
                     check=True,
                     cwd=git_root
                 );
@@ -1045,10 +1052,10 @@ impl precommit(
         check_ret = 0;
     }
     if not verify
-    and check_ret == 0
-    and fmt_ret == 0
-    and staged
-    and _staged_dirty_files(git_root, rel_targets) {
+        and check_ret == 0
+        and fmt_ret == 0
+        and staged
+        and _staged_dirty_files(git_root, rel_targets) {
         fmt_ret = 1;
     }
     if not verify and check_ret == 0 and fmt_ret != 0 {
@@ -1097,7 +1104,6 @@ def _staged_dirty_files(git_root: str, rel_targets: list[str]) -> list[str] {
 
 def _install_precommit_hook(force: bool = False) -> int {
     import os;
-    import stat;
     import subprocess;
     try {
         completed = subprocess.run(
@@ -1113,7 +1119,35 @@ def _install_precommit_hook(force: bool = False) -> int {
     git_dir = completed.stdout.strip();
     hooks_dir = os.path.join(git_dir, "hooks");
     os.makedirs(hooks_dir, exist_ok=True);
-    hook_path = os.path.join(hooks_dir, "pre-commit");
+    precommit_body = (
+        "#!/bin/sh\n"
+        "# Installed by `jac precommit --install`\n"
+        "exec jac precommit --staged --verify\n"
+    );
+    commit_msg_body = (
+        "#!/bin/sh\n"
+        "# Installed by `jac precommit --install`\n"
+        "if grep -iEq 'co-authored-by:.*\\b(claude|anthropic|openai|copilot"
+        "|composer|cursor|gpt|gemini|ai|bot)\\b' \"$1\"; then\n"
+        "  echo 'commit-msg: AI co-author attribution is not allowed.' >&2\n"
+        "  exit 1\n"
+        "fi\n"
+    );
+    for pair in [("pre-commit", precommit_body), ("commit-msg", commit_msg_body)] {
+        ret = _write_git_hook(os.path.join(hooks_dir, pair[0]), pair[1], force);
+        if ret != 0 {
+            return ret;
+        }
+    }
+    console.success(f"Installed git hooks in '{hooks_dir}': pre-commit, commit-msg.");
+    console.print("pre-commit runs: jac precommit --staged --verify");
+    console.print("commit-msg blocks AI co-author attribution lines.");
+    return 0;
+}
+
+def _write_git_hook(hook_path: str, body: str, force: bool) -> int {
+    import os;
+    import stat;
     if os.path.exists(hook_path) {
         try {
             with open(hook_path, encoding="utf-8", errors="replace") as f {
@@ -1122,34 +1156,31 @@ def _install_precommit_hook(force: bool = False) -> int {
         } except Exception {
             existing = "";
         }
-
+        is_ours = "Installed by `jac precommit --install`" in existing;
         is_framework = "generated by pre-commit" in existing;
-        if not (is_framework or force) {
-            console.warning(f"A pre-commit hook already exists at '{hook_path}'.");
+        if not (is_ours or is_framework or force) {
+            console.warning(f"A hook already exists at '{hook_path}'.");
             console.warning(
                 "Re-run 'jac precommit --install --force' to replace it "
-                "(the old hook is kept as pre-commit.bak)."
+                "(the old hook is kept as a .bak backup)."
             );
             return 1;
         }
-        backup_path = hook_path + ".bak";
-        try {
-            os.replace(hook_path, backup_path);
-        } except Exception as e {
-            console.error(f"Could not back up the existing hook: {e}");
-            return 1;
+        if not is_ours {
+            backup_path = hook_path + ".bak";
+            try {
+                os.replace(hook_path, backup_path);
+            } except Exception as e {
+                console.error(f"Could not back up the existing hook: {e}");
+                return 1;
+            }
+            kind = "pre-commit framework hook" if is_framework else "existing hook";
+            console.print(f"Replaced {kind} (backup at '{backup_path}').");
         }
-        kind = "pre-commit framework hook" if is_framework else "existing hook";
-        console.print(f"Replaced {kind} (backup at '{backup_path}').");
     }
-    hook_body = (
-        "#!/bin/sh\n"
-        "# Installed by `jac precommit --install`\n"
-        "exec jac precommit --staged --verify\n"
-    );
     try {
         with open(hook_path, "w", encoding="utf-8") as f {
-            f.write(hook_body);
+            f.write(body);
         }
         mode = os.stat(hook_path).st_mode;
         os.chmod(hook_path, mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH);
@@ -1157,8 +1188,6 @@ def _install_precommit_hook(force: bool = False) -> int {
         console.error(f"Failed to write hook: {e}");
         return 1;
     }
-    console.success(f"Installed git pre-commit hook at '{hook_path}'.");
-    console.print("It runs: jac precommit --staged --verify");
     return 0;
 }
 

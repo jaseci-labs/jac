@@ -38,19 +38,7 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         result: list[uni.ElementStmt] = [];
         for (body, _strip) in ModuleCodegenPass.iter_woven_segments(module) {
             for stmt in body {
-                if isinstance(stmt, uni.NativeBlock) {
-                    if (ctx is None or ctx == CodeContext.NATIVE) {
-                        result.extend(stmt.body);
-                    }
-                } elif isinstance(stmt, uni.ClientBlock) {
-                    if (ctx is None or ctx == CodeContext.CLIENT) {
-                        result.extend(stmt.body);
-                    }
-                } elif isinstance(stmt, uni.ServerBlock) {
-                    if (ctx is None or ctx == CodeContext.SERVER) {
-                        result.extend(stmt.body);
-                    }
-                } elif ctx is None {
+                if ctx is None {
                     result.append(stmt);
                 } elif (
                     isinstance(stmt, uni.ContextAwareNode) and stmt.code_context == ctx

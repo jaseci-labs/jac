@@ -24,12 +24,12 @@ def:pub narrate(n: int) -> Generator {
 
 ## sv-to-sv pass-through (streaming gateway)
 
-When another server module `sv import`s the provider, calling its streaming endpoint returns a **live generator**, not a buffered list. Iterate and re-yield to forward each frame the moment it arrives - an unbuffered frame-in/frame-out gateway:
+When the provider runs as its own service (listed in `[scale.microservices.routes]` - see `jac-sv-microservices`), calling its streaming endpoint through the RPC stub returns a **live generator**, not a buffered list. Iterate and re-yield to forward each frame the moment it arrives - an unbuffered frame-in/frame-out gateway:
 
-```jac
+```
 import from typing { Generator }
 
-sv import from analytics { narrate }    # provider's own streaming endpoint
+import from analytics { narrate }    # analytics is in the routes table -> RPC stub
 
 def:pub story() -> Generator {
     def stream -> Generator[str, None, None] {

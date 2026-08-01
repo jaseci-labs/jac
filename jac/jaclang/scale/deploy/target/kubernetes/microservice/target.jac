@@ -69,6 +69,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
+        self._emit("provision", "start", "Provisioning backends");
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
                 k8s_target=self, logger=self.logger, enabled=self.no_image
@@ -76,26 +77,39 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 app_name
             );
         } except Exception as e {
+            self._emit("provision", "error", f"database provisioning failed: {e}");
             return DeploymentResult(
                 success=False, message=f"database provisioning failed: {e}"
             );
         }
+        self._emit("provision", "ok", "Backends provisioned");
 
+        self._emit("bundle", "start", "Generating manifests");
         try {
             bundle = self.generate_manifests(app_config);
         } except Exception as e {
+            self._emit("bundle", "error", f"manifest generation failed: {e}");
             return DeploymentResult(
                 success=False, message=f"manifest generation failed: {e}"
             );
         }
+        self._emit(
+            "bundle",
+            "ok",
+            "Manifests generated",
+            detail={"services": len(bundle.get("pod_specs", {}))}
+        );
 
+        self._emit("apply", "start", "Applying manifests to the cluster");
         try {
             self.apply_manifests(bundle);
         } except Exception as e {
+            self._emit("apply", "error", f"manifest apply failed: {e}");
             return DeploymentResult(
                 success=False, message=f"manifest apply failed: {e}", details=bundle
             );
         }
+        self._emit("apply", "ok", "Manifests applied");
 
         observability_err: str = "";
         try {
@@ -103,6 +117,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception as e {
             observability_err = str(e);
             bundle["observability_error"] = observability_err;
+            self._emit(
+                "observability", "warn", f"observability stack deploy failed: {e}"
+            );
             if self.logger {
                 self.logger.warn(
                     f"Observability stack deploy reported a non-fatal error: {e}",
@@ -111,15 +128,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        self._emit("rollout", "start", "Waiting for the fleet to become ready");
         try {
             self._wait_for_fleet_rollout(bundle);
         } except Exception as e {
+            self._emit("rollout", "error", f"fleet did not become ready: {e}");
             return DeploymentResult(
                 success=False,
                 message=f"fleet did not become ready: {e}",
                 details=bundle
             );
         }
+        self._emit("rollout", "ok", "Fleet is ready");
 
         svc_count = len(bundle["pod_specs"]) - 1;
         success_msg = (
@@ -170,9 +190,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 }
                 phase = str(p.status.phase or '?');
-                statuses = list(p.status.init_container_statuses or []) + list(
-                    p.status.container_statuses or []
-                );
+                statuses = list(p.status.init_container_statuses or [])
+                    + list(p.status.container_statuses or []);
                 pod_reason = "";
                 pod_crash = "";
                 pod_crash_restarts = 0;
@@ -207,7 +226,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                                 if cs.state and cs.state.waiting
                                 else ""
                         )
-                        or ""
+                            or ""
                     ) for cs in statuses
                 ];
                 stuck_creating = (
@@ -329,7 +348,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if not names {
             return;
         }
-        self._load_kube_config();
+        self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         ns = self.k8s_config.namespace;
@@ -429,7 +448,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 };
                 for (pod_name, pod) in creating_now.items() {
                     if creating_streak.get(pod_name, 0) >= 30
-                    and self._pod_mount_wedged(core_v1, ns, pod_name) {
+                        and self._pod_mount_wedged(core_v1, ns, pod_name) {
                         if self._try_self_heal(
                             core_v1,
                             ns,
@@ -481,9 +500,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 else [];
             for p in stuck {
                 timeout_detail += (
-                    f" [pod {p.metadata.name}]" + self._pod_failure_detail(
-                        core_v1, ns, str(p.metadata.name), p
-                    )
+                    f" [pod {p.metadata.name}]"
+                    + self._pod_failure_detail(core_v1, ns, str(p.metadata.name), p)
                 );
             }
         } except Exception {
@@ -507,9 +525,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             if pod is None {
                 pod = core_v1.read_namespaced_pod(pod_name, namespace);
             }
-            statuses = (pod.status.init_container_statuses or []) + (
-                pod.status.container_statuses or []
-            );
+            statuses = (pod.status.init_container_statuses or [])
+                + (pod.status.container_statuses or []);
             for cs in statuses {
                 states: list = [];
                 if cs.state and cs.state.terminated {
@@ -541,11 +558,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         logs_cfg = self._read_microservices_logs_config();
         tracing_cfg = self._read_microservices_tracing_config();
         if not logs_cfg.get("enabled", False)
-        and not tracing_cfg.get("enabled", False) {
+            and not tracing_cfg.get("enabled", False) {
             return;
         }
 
-        self._load_kube_config();
+        self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
 
@@ -562,7 +579,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
         monitoring = MonitoringDeployer(obs_config, self.logger);
-        monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1, provider);
+        monitoring.deploy(
+            app_name,
+            obs_config.namespace,
+            apps_v1,
+            core_v1,
+            provider,
+            scrape_target_service="gateway-service"
+        );
     }
 
     def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None {
@@ -661,7 +685,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,
-            deploy_context=self._deploy_context,
+            deploy_context=self._context_with_env(),
             logger=self.logger,
             no_image=True,
             project_dir=app_config.code_folder,
@@ -671,10 +695,29 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
 
-    def _load_kube_config {
+    def _context_with_env -> DeployContext {
+        if not self.env {
+            return self._deploy_context;
+        }
+        ctx = DeployContext(
+            env_list=list(self._deploy_context.env_list),
+            init_containers=self._deploy_context.init_containers
+        );
+        present = {entry.get("name") for entry in ctx.env_list};
+        for (env_name, env_value) in self.env.items() {
+            if env_name not in present {
+                ctx.env_list.append({"name": env_name, "value": str(env_value)});
+            }
+        }
+        return ctx;
+    }
+
+    def _load_cluster_config {
         kubeconfig_failed: bool = False;
         try {
-            k8s_cluster_config.load_kube_config();
+            k8s_cluster_config.load_kube_config(
+                context=(self.k8s_config.kube_context or None)
+            );
         } except ConfigException {
             kubeconfig_failed = True;
         }
@@ -700,8 +743,65 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
+    def _resolve_service_triggers(svc_name: str, cfg: dict[str, any]) -> list[Trigger] {
+        is_gateway = svc_name == GATEWAY_NAME;
+        has_memory_request = bool(cfg.get("has_memory_request", True));
+        effective_extra = self.k8s_config.extra_triggers if is_gateway else [];
+        triggers: list[Trigger] = [];
+        if not cfg.get("triggers", []) and not effective_extra {
+            triggers = [
+                Trigger(
+                    type="cpu",
+                    metadata={
+                        "averageUtilization": str(
+                            cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
+                        )
+                    }
+                )
+            ];
+            if has_memory_request {
+                triggers.append(
+                    Trigger(
+                        type="memory",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get(
+                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
+                                )
+                            )
+                        }
+                    )
+                );
+            }
+        }
+        for raw in cfg.get("triggers", []) + effective_extra {
+            t = Trigger(
+                type=str(raw.get("type", "")),
+                metadata=dict(raw.get("metadata", {})),
+                name=raw.get("name")
+            );
+            if t.type == "memory" and not has_memory_request {
+                if self.logger {
+                    self.logger.warn(
+                        f"Skipping 'memory' trigger for '{svc_name}': "
+                        "memory_request resolves empty (explicitly set to "
+                        "\"\"); HPA cannot compute memory utilization "
+                        "without a request baseline"
+                    );
+                }
+                continue;
+            }
+            raw_auth = raw.get("auth");
+            if raw_auth {
+                t.auth = TriggerAuth(secret_refs=dict(raw_auth.get("secret_refs", {})));
+            }
+            triggers.append(t);
+        }
+        return triggers;
+    }
+
     def apply_manifests(bundle: dict[str, any]) {
-        self._load_kube_config();
+        self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         policy_v1 = client.PolicyV1Api();
@@ -808,60 +908,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.k8s_config.to_dict(),
                 self.logger
             );
-            triggers = [];
-
-            is_gateway = svc_name == GATEWAY_NAME;
-            effective_extra = self.k8s_config.extra_triggers if is_gateway else [];
-            if not cfg.get("triggers", []) and not effective_extra {
-                triggers = [
-                    Trigger(
-                        type="cpu",
-                        metadata={
-                            "averageUtilization": str(
-                                cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
-                            )
-                        }
-                    ),
-                    Trigger(
-                        type="memory",
-                        metadata={
-                            "averageUtilization": str(
-                                cfg.get(
-                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
-                                )
-                            )
-                        }
-                    )
-                ];
-            }
-            for raw in cfg.get("triggers", []) {
-                t = Trigger(
-                    type=str(raw.get("type", "")),
-                    metadata=dict(raw.get("metadata", {})),
-                    name=raw.get("name")
-                );
-                raw_auth = raw.get("auth");
-                if raw_auth {
-                    t.auth = TriggerAuth(
-                        secret_refs=dict(raw_auth.get("secret_refs", {}))
-                    );
-                }
-                triggers.append(t);
-            }
-            for raw in effective_extra {
-                t = Trigger(
-                    type=str(raw.get("type", "")),
-                    metadata=dict(raw.get("metadata", {})),
-                    name=raw.get("name")
-                );
-                raw_auth = raw.get("auth");
-                if raw_auth {
-                    t.auth = TriggerAuth(
-                        secret_refs=dict(raw_auth.get("secret_refs", {}))
-                    );
-                }
-                triggers.append(t);
-            }
+            triggers = self._resolve_service_triggers(svc_name, cfg);
             autoscaler_name = autoscaler.resource_name_for(k8s_name);
             autoscaler_applied = autoscaler.apply(
                 AutoscalerSpec(
@@ -1034,7 +1081,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
-        self._load_kube_config();
+        self._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         policy_v1 = client.PolicyV1Api();

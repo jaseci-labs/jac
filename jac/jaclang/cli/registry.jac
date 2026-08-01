@@ -1,12 +1,8 @@
-import argparse;
 import from typing { Callable }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
+import from jaclang.cli.command { Arg, CommandSpec }
 
 obj CommandRegistry {
-    has commands: dict[str, CommandSpec] = {},
-        _finalized: bool = False,
-        parser: argparse.ArgumentParser | None = None,
-        sub_parsers: any = None;
+    has commands: dict[str, CommandSpec] = {};
 
     def init -> None;
     def command(
@@ -26,16 +22,8 @@ obj CommandRegistry {
     ) -> list[CommandSpec];
 
     def get_groups -> list[str];
-    def finalize -> argparse.ArgumentParser;
-    def _build_subparser(
-        subparsers: any, spec: CommandSpec
-    ) -> argparse.ArgumentParser;
-
-    def _add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None;
 }
 
 glob _registry: CommandRegistry | None = None;
 
 def get_registry -> CommandRegistry;
-
-def register_feature_commands -> None;

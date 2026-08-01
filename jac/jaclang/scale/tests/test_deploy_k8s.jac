@@ -1,6 +1,5 @@
 import os;
 import time;
-import requests;
 import importlib.resources;
 import from pathlib { Path }
 import from typing { Any }
@@ -13,6 +12,7 @@ import from types { SimpleNamespace }
 
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
+import from jaclang.scale.models.resource_status { ResourceStatus }
 import from jaclang.scale.config.config_loader {
     JacScaleConfig,
     get_scale_config,
@@ -30,33 +30,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-
-def _request_with_retry(
-    method: str,
-    url: str,
-    json: dict[str, any] | None = None,
-    timeout: int = 10,
-    max_retries: int = 60,
-    retry_interval: float = 2.0
-) -> requests.Response {
-    response = None;
-    for attempt in range(max_retries) {
-        response = requests.request(method=method, url=url, json=json, timeout=timeout);
-
-        if response.status_code == 503 {
-            print(
-                f"[DEBUG] {url} returned 503, retrying ({attempt + 1}/{max_retries})..."
-            );
-            time.sleep(retry_interval);
-            continue;
-        }
-
-        return response;
-    }
-
-    assert response is not None , "No response received";
-    return response;
-}
 
 test "early exit" {
     config.load_kube_config();
@@ -117,12 +90,14 @@ test "deployment target methods" {
     service_url = deployment_target.get_service_url(app_name);
     assert service_url is None or isinstance(service_url, str);
 
-    try {
-        status = deployment_target.get_status(app_name);
-        assert status is not None;
-    } except Exception {
-        0;
-    }
+    # get_status swallows k8s errors internally and returns UNKNOWN rather than
+    # raising, so an app that was never deployed must report UNKNOWN - not crash,
+    # and not spuriously report RUNNING.
+    status = deployment_target.get_status(app_name);
+    assert status is not None;
+    assert status.status == ResourceStatus.UNKNOWN , (
+        f"Expected UNKNOWN status for undeployed app '{app_name}', got {status.status}"
+    );
 }
 
 def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> any {
@@ -352,7 +327,10 @@ test "redis template file in package" {
         import from pathlib { Path }
         # jaclang.scale is a .jac package (custom loader) that importlib.resources
         # can't traverse; resolve bundled data via the package __file__ instead.
-        ref = Path(jaclang.scale.__file__).parent / "deploy" / "database" / "redis.conf.template";
+        ref = Path(jaclang.scale.__file__).parent
+            / "deploy"
+            / "database"
+            / "redis.conf.template";
         assert ref.is_file() , (
             "redis.conf.template not discoverable as package data. "
             "Ensure it ships next to the jaclang.scale package."
@@ -576,7 +554,8 @@ test "kubernetes target security policy dicts" {
                 'matchLabels', {}
             ).get(
                 'kubernetes.io/metadata.name'
-            ) == 'kube-system'
+            )
+                == 'kube-system'
             for rule in egress_rules
             if rule.get('to')
         );
@@ -605,9 +584,8 @@ test "kubernetes target security policy dicts" {
     assert mongo_policy is not None;
     mongo_from = mongo_policy['spec']['ingress'][0]['from'];
     assert {'podSelector': {'matchLabels': {'app': app_name}}} in mongo_from;
-    assert {
-        'podSelector': {'matchLabels': {'app': f"{app_name}-mongo-express"}}
-    } in mongo_from;
+    assert {'podSelector': {'matchLabels': {'app': f"{app_name}-mongo-express"}}}
+        in mongo_from;
     assert mongo_policy['spec']['ingress'][0]['ports'][0]['port'] == 27017;
 
     redis_policy = next(
@@ -621,9 +599,8 @@ test "kubernetes target security policy dicts" {
     assert redis_policy is not None;
     redis_from = redis_policy['spec']['ingress'][0]['from'];
     assert {'podSelector': {'matchLabels': {'app': app_name}}} in redis_from;
-    assert {
-        'podSelector': {'matchLabels': {'app': f"{app_name}-redis-insight"}}
-    } in redis_from;
+    assert {'podSelector': {'matchLabels': {'app': f"{app_name}-redis-insight"}}}
+        in redis_from;
     assert redis_policy['spec']['ingress'][0]['ports'][0]['port'] == 6379;
 }
 
@@ -651,7 +628,8 @@ test "get service url switches between http and https based on tls state" {
             "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.NetworkingV1Api",
             return_value=mock_networking_v1
         ) {
-            assert deployment_target.get_service_url("myapp") == "https://app.example.com";
+            assert deployment_target.get_service_url("myapp")
+                == "https://app.example.com";
         }
     }
 
@@ -665,7 +643,8 @@ test "get service url switches between http and https based on tls state" {
             "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.NetworkingV1Api",
             return_value=mock_networking_v1
         ) {
-            assert deployment_target.get_service_url("myapp") == "http://app.example.com";
+            assert deployment_target.get_service_url("myapp")
+                == "http://app.example.com";
         }
     }
 }
@@ -716,7 +695,7 @@ test "enable tls raises when no domain configured" {
     assert raised , "enable_tls should raise when no domain is configured";
 }
 
-test "deploy with domain set stores domain in annotation not ingress host rule" {
+test "deploy with domain set renders host plus catch-all rules and stores domain annotation" {
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
@@ -745,15 +724,17 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
     assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
     created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
 
-    rule = created_body["spec"]["rules"][0];
-    assert "host" not in rule , "ingress rule must not set host before TLS is enabled";
+    rules = created_body["spec"]["rules"];
+    assert len(rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert rules[0].get("host") == "app.example.com" , "first rule must bind the domain host so redeploys keep the TLS cert served (#7707)";
+    assert "host" not in rules[1] , "catch-all rule must keep the raw load-balancer hostname serving before DNS/TLS";
 
     annotations = created_body["metadata"]["annotations"];
     assert annotations.get("jac-scale/domain") == "app.example.com" , "domain must be stored in jac-scale/domain annotation for --enable-tls";
     assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
 }
 
-test "redis ingress rule must not set host before TLS is enabled" {
+test "redis ingress with domain renders host plus catch-all rules" {
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
@@ -784,8 +765,10 @@ test "redis ingress rule must not set host before TLS is enabled" {
         1
     ]["body"];
 
-    redis_rule = redis_created_body["spec"]["rules"][0];
-    assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
+    redis_rules = redis_created_body["spec"]["rules"];
+    assert len(redis_rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert redis_rules[0].get("host") == "app.example.com" , "first Redis rule must bind the domain host (#7707)";
+    assert "host" not in redis_rules[1] , "catch-all Redis rule must keep raw load-balancer access";
 }
 
 test "redis insight cache dashboard spec is correctly built" {
@@ -851,8 +834,8 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     assert acl_vol['secret']['items'][0]['key'] == 'users.acl';
     assert any(
         m['name'] == 'redis-acl'
-        and m['mountPath'] == '/etc/redis-acl'
-        and m.get('readOnly') is True for m in pod['containers'][0]['volumeMounts']
+            and m['mountPath'] == '/etc/redis-acl'
+            and m.get('readOnly') is True for m in pod['containers'][0]['volumeMounts']
     ) , "redis-acl must be mounted read-only at /etc/redis-acl";
 
     raised = False;
@@ -870,8 +853,10 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     }
     assert raised2 , "ACL-significant chars in username must be rejected";
 
-    assert provider._build_connection_string('default', 'pw', 'h') == 'redis://default:pw@h:6379/0';
-    assert provider._build_connection_string('admin', 'pw', 'h') == 'redis://admin:pw@h:6379/0';
+    assert provider._build_connection_string('default', 'pw', 'h')
+        == 'redis://default:pw@h:6379/0';
+    assert provider._build_connection_string('admin', 'pw', 'h')
+        == 'redis://admin:pw@h:6379/0';
     assert secret_sd['connection-string'] == provider.get_connection_string();
 }
 

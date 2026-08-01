@@ -2,7 +2,7 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.34.2"
+version = "0.35.1"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = []
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
-Documentation = "https://docs.jaseci.org"
+Documentation = "https://www.jaclang.org/docs"
 
 # Editable dev loop: reroute `import jaclang` to this in-repo source so the `jac`
 # binary runs your latest edits with no rebuild. Config resolves to the nearest

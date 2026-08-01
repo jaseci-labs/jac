@@ -1,0 +1,146 @@
+import jaclang;
+
+def _read_version_from_toml(toml_path: Path) -> (str | None) {
+    try {
+        data = tomllib.loads(toml_path.read_text(encoding='utf-8'));
+        project = data.get('project', {});
+        if isinstance(project, dict) {
+            ver = project.get('version');
+            if isinstance(ver, str) and ver {
+                return ver;
+            }
+        }
+    } except Exception { }
+    return None;
+}
+
+impl resolve_cli_version -> str {
+    dev_source = os.environ.get('JAC_DEV_SOURCE');
+    if dev_source {
+        toml_path = Path(dev_source) / 'jac.toml';
+        if toml_path.exists() {
+            ver = _read_version_from_toml(toml_path);
+            if ver {
+                return ver;
+            }
+        }
+    }
+
+    jac_file = jaclang.__file__;
+    if jac_file {
+        source_toml = Path(jac_file).parent.parent / 'jac.toml';
+        if source_toml.exists() {
+            ver = _read_version_from_toml(source_toml);
+            if ver {
+                return ver;
+            }
+        }
+    }
+
+    return pkg_version('jaclang');
+}
+
+def _first_command_token(raw_argv: list[str]) -> (str | None) {
+    for tok in raw_argv {
+        if not tok.startswith('-') {
+            return tok;
+        }
+    }
+    return None;
+}
+
+def _looks_like_script_token(tok: str) -> bool {
+    return (not tok.startswith('-') and tok.lower().endswith(('.jac', '.py', '.jab')));
+}
+
+def _write_stdout(text: str) {
+    sys.stdout.write(text);
+    if not text.endswith('\n') {
+        sys.stdout.write('\n');
+    }
+}
+
+def _print_error(message: str) {
+    sys.stderr.write(f"error: {message}\n");
+}
+
+def _render_version_line -> str {
+    import from jaclang.cli.manifest_help { _color, _TITLE, _use_color }
+
+    sys_info = f"{platform.system()} {platform.machine()}";
+    ver = resolve_cli_version();
+    use_color = _use_color();
+    return f"{_color('jac', _TITLE, use_color)} {ver}  ({sys_info})";
+}
+
+impl handle_manifest_route(raw_argv: list[str]) -> None {
+    import from jaclang.cli.manifest { TOMBSTONED_VERBS, known_command_names }
+    import from jaclang.cli.manifest_help {
+        format_curated_help,
+        format_logo,
+        format_verbose_help
+    }
+
+    if raw_argv in (['-V'], ['--version']) {
+        _write_stdout(_render_version_line());
+        return;
+    }
+
+    if raw_argv in (['-h'], ['--help']) {
+        _write_stdout(format_verbose_help());
+        return;
+    }
+
+    if not raw_argv {
+        ver = resolve_cli_version();
+        _write_stdout(format_logo(ver));
+        _write_stdout('');
+        _write_stdout(format_curated_help());
+        return;
+    }
+
+    first = _first_command_token(raw_argv);
+    if first is None {
+        if '-h' in raw_argv or '--help' in raw_argv {
+            _write_stdout(format_verbose_help());
+            return;
+        }
+        if '-V' in raw_argv or '--version' in raw_argv {
+            _write_stdout(_render_version_line());
+            return;
+        }
+        sys.stderr.write('usage: jac [-h] [-V] COMMAND ...\n');
+        _print_error(f"unrecognized arguments: {' '.join(raw_argv)}");
+        sys.exit(2);
+    }
+
+    assert first is not None;
+
+    dispatchable = known_command_names(include_hidden=True);
+    visible = known_command_names();
+
+    if first in TOMBSTONED_VERBS and first not in dispatchable {
+        _print_error(
+            f"'jac {first}' was removed in the CLI cleanup (#7255); "
+            f"use: {TOMBSTONED_VERBS[first]}"
+        );
+        sys.exit(2);
+    }
+
+    if first in dispatchable {
+        command_name = first;
+    } elif _looks_like_script_token(first) {
+        sys.argv = [sys.argv[0], 'run'] + raw_argv;
+        command_name = 'run';
+    } else {
+        choices = "', '".join(sorted(visible));
+        sys.stderr.write('usage: jac [-h] [-V] COMMAND ...\n');
+        _print_error(
+            f"argument COMMAND: invalid choice: {first!r} (choose from '{choices}')"
+        );
+        sys.exit(2);
+    }
+
+    import from jaclang.cli.dispatch { run_selected_command }
+    run_selected_command(command_name);
+}

@@ -19,10 +19,10 @@ Run tests through the binary's bundled runner (`JAC_TEST_JOBS=auto` runs them in
 cd jac && JAC_TEST_JOBS=auto jac test tests
 ```
 
-Run pre-commit checks (formatting, linting):
+Run the formatting/lint gate (same checks the git hook runs):
 
 ```bash
-pre-commit run --all-files
+jac precommit
 ```
 
 ## Package-Specific Notes
@@ -65,7 +65,7 @@ with entry { /* ... */ }
 ## PR Guidelines
 
 - **Target repository**: Always create PRs against `https://github.com/jaseci-labs/jaseci` (not forks). Use `gh pr create --repo jaseci-labs/jaseci`.
-- **Release notes**: If your PR affects Jac developer experience, add a concise bullet under `## jaclang <version> (Unreleased)` in `docs/docs/communityhub/release_notes/jaclang.md`.
+- **Release notes**: If your PR affects Jac developer experience, add a release-note fragment at `release_notes/unreleased/<package>/<PR#>.<category>.md`.
 - **Grouping**: Organize related changes under sections like "Type Checking Enhancements" or "Cloud Platform Updates".
 - **Testing**: Ensure relevant tests pass before submitting.
 

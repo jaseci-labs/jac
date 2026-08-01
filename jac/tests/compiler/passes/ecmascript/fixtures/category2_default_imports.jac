@@ -11,22 +11,21 @@ Based on the table in jac_import_patterns_proposal.md:
 | import Vue from 'vue'         | cl import from vue { default as Vue }     |
 """
 
-cl {
-    # Default import examples
-    import from react { default as React }
-    import from axios { default as axios }
-    import from vue { default as Vue }
 
-    # Default import with relative paths
-    import from .components.Button { default as Button }
-    import from ..lib.utils { default as utils }
+# Default import examples
+import from react { default as React }
+import from axios { default as axios }
+import from vue { default as Vue }
 
-    # Using imported defaults
-    def example_usage() {
-        app = Vue.createApp({});
-        axios.get("/api/data");
-        element = React.createElement("div", {}, "Hello");
+# Default import with relative paths
+import from .components.Button { default as Button }
+import from ..lib.utils { default as utils }
 
-        return element;
-    }
+# Using imported defaults
+def example_usage() {
+    app = Vue.createApp({});
+    axios.get("/api/data");
+    element = React.createElement("div", {}, "Hello");
+
+    return element;
 }

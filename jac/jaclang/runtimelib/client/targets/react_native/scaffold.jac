@@ -48,7 +48,7 @@ def _is_scaffold_managed(path: Path, managed_key: str = "") -> bool {
     }
 
     if path.name in {"index.ts", "jac-app.js"}
-    and _AUTO_GENERATED_INDEX_BANNER in text {
+        and _AUTO_GENERATED_INDEX_BANNER in text {
         return True;
     }
     return False;
@@ -154,7 +154,8 @@ def _build_app_json(app_slug: str, app_id: str, app_name: str) -> str {
 
 def _build_metro_config -> str {
     return (
-        _SCAFFOLD_MARKER + "\n"
+        _SCAFFOLD_MARKER
+        + "\n"
         "const { getDefaultConfig } = require('expo/metro-config');\n"
         "const path = require('path');\n"
         "\n"
@@ -171,7 +172,7 @@ def _build_metro_config -> str {
         "// graph (`Unable to resolve react-dom/client`). jac-src lives inside\n"
         "// the Expo project and is only written by the native build/HMR, so\n"
         "// it stays isolated. Metro watches projectRoot by default, so\n"
-        "// re-staging on a .cl.jac save still triggers Fast Refresh.\n"
+        "// re-staging on a client .jac save still triggers Fast Refresh.\n"
         "config.resolver = config.resolver || {};\n"
         "config.resolver.extraNodeModules = {\n"
         "  ...(config.resolver.extraNodeModules || {}),\n"
@@ -192,7 +193,8 @@ def _build_metro_config -> str {
 
 def _build_babel_config -> str {
     return (
-        _SCAFFOLD_MARKER + "\n"
+        _SCAFFOLD_MARKER
+        + "\n"
         "module.exports = function (api) {\n"
         "  api.cache(true);\n"
         "  return {\n"
@@ -212,7 +214,8 @@ def _build_tsconfig -> str {
 
 def _build_app_tsx -> str {
     return (
-        _SCAFFOLD_MARKER + "\n"
+        _SCAFFOLD_MARKER
+        + "\n"
         "import React from 'react';\n"
         "import { StatusBar } from 'react-native';\n"
         "import {\n"
@@ -251,14 +254,17 @@ def _build_app_tsx -> str {
 
 def _build_placeholder_index -> str {
     return (
-        _SCAFFOLD_MARKER + "\n"
-        "// Placeholder entry; replaced on every `jac build --client react-native`.\n" + build_native_index_entry_body()
+        _SCAFFOLD_MARKER
+        + "\n"
+        "// Placeholder entry; replaced on every `jac build --client react-native`.\n"
+        + build_native_index_entry_body()
     );
 }
 
 def _build_placeholder_jac_app -> str {
     return (
-        _SCAFFOLD_MARKER + "\n"
+        _SCAFFOLD_MARKER
+        + "\n"
         "import React from 'react';\n"
         "import { View, Text } from 'react-native';\n"
         "\n"
@@ -293,7 +299,9 @@ def _build_eas_json -> str {
 
 def _build_gitignore -> str {
     return (
-        "# " + _SCAFFOLD_MARKER + "\n"
+        "# "
+        + _SCAFFOLD_MARKER
+        + "\n"
         "node_modules/\n"
         ".expo/\n"
         "dist/\n"

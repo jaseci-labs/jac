@@ -40,7 +40,9 @@ test "lazy finder loads a .jac submodule of a no-__init__ package" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, " + repr(tmp_path) + ");"
+            "import sys; sys.path.insert(0, "
+            + repr(tmp_path)
+            + ");"
             "import _jac_finder; _jac_finder.install();"
             "assert 'jaclang' not in sys.modules, 'jaclang imported before first .jac use';"
             "import demopkg.greet;"
@@ -65,7 +67,9 @@ test "lazy finder loads a top-level .jac module" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, " + repr(tmp_path) + ");"
+            "import sys; sys.path.insert(0, "
+            + repr(tmp_path)
+            + ");"
             "import _jac_finder; _jac_finder.install();"
             "import solo;"
             "print(solo.ping());"

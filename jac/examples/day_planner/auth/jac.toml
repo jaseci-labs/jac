@@ -29,3 +29,7 @@ base_route_app = "app"
 [byllm.model]
 # default_model = "ollama/gemma4:e4b"
 default_model = "local:gemma-4-e2b"
+
+# The entry module is the server app; components call its priv helpers with auth.
+[placement.pins]
+main = "server"

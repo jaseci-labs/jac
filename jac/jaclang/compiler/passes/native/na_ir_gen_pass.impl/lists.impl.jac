@@ -13,7 +13,16 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     list_struct = self.llvm_module.context.get_identified_type(
         f"List.{elem_type_name}"
     );
-    list_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
+    if self._gc_mode() == "none" {
+        list_struct.set_body(
+            ir.IntType(64),
+            ir.IntType(64),
+            elem_type.as_pointer(),
+            self._nogc_elem_drop_slot_ty()
+        );
+    } else {
+        list_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
+    }
     self.list_types[elem_type_name] = list_struct;
     list_ptr_type = list_struct.as_pointer();
     i64 = ir.IntType(64);
@@ -174,9 +183,13 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                 if nd.loc
                 else 0}";
 
-            return self._rc_call_with_ctx(
+            _empty_new = self._rc_call_with_ctx(
                 helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
             );
+            self._nogc_stamp_elem_drops(
+                _empty_new, self._nogc_type_arg_mangles(nd), "list"
+            );
+            return _empty_new;
         }
         return None;
     }
@@ -211,7 +224,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     }
 
     if isinstance(elem_type, ir.PointerType)
-    and isinstance(elem_type.pointee, ir.LiteralStructType) {
+        and isinstance(elem_type.pointee, ir.LiteralStructType) {
         self._pending_list_elem_struct = elem_type;
     }
 
@@ -225,7 +238,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_list_new_loc, name="list.new"
     );
+    self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd), "list");
 
+    first_val = self._nogc_elem_prep(nd.values[0], first_val);
     append_val = first_val;
     if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
         append_val = self.builder.bitcast(first_val, i8p, name="elem.cast");
@@ -247,10 +262,10 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
             if self._pending_list_elem_struct is not None
-            and isinstance(self._pending_list_elem_struct, ir.PointerType)
-            and isinstance(
-                self._pending_list_elem_struct.pointee, ir.LiteralStructType
-            ) {
+                and isinstance(self._pending_list_elem_struct, ir.PointerType)
+                and isinstance(
+                    self._pending_list_elem_struct.pointee, ir.LiteralStructType
+                ) {
                 val = self._coerce_tuple_to_struct(
                     val, self._pending_list_elem_struct.pointee
                 );
@@ -260,6 +275,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             if _clos_elem is not None and val.type != _decl_elem {
                 val = self._coerce_type(val, _decl_elem);
             }
+            val = self._nogc_elem_prep(nd.values[i], val);
             _boxed_val = val;
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
@@ -271,7 +287,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             );
 
             if isinstance(_boxed_val.type, ir.PointerType)
-            and self._is_owned(_boxed_val) {
+                and self._is_owned(_boxed_val) {
                 self._emit_rc_release_simple(
                     _boxed_val, op="list_init", loc=_linit_loc
                 );
@@ -304,7 +320,11 @@ impl NaIRGenPass._codegen_index(
     above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
     is_oob = self.builder.or_(below, above, name="idx.range.chk");
     self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
-    return self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
+    _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
+    if elem_type_name == "u8" {
+        return self.builder.zext(_got, i64, name="ba.get.zext");
+    }
+    return _got;
 }
 
 impl NaIRGenPass._codegen_any_subscript(
@@ -341,9 +361,8 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
     merge_bb = func.append_basic_block(name="anylen.end");
     b.cbranch(is_str, str_bb, cont_bb);
     b.position_at_end(str_bb);
-    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
     sp = b.inttoptr(payload, i8p, name="anylen.sp");
-    sl = b.call(strlen_fn, [sp], name="anylen.strlen");
+    sl = self._call_str_len(b, sp, name="anylen.strlen");
     b.branch(merge_bb);
     b.position_at_end(cont_bb);
     lp = b.inttoptr(payload, i64.as_pointer(), name="anylen.lp");

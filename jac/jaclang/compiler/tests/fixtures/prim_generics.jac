@@ -29,32 +29,31 @@ def generics_py -> dict {
     };
 }
 
-cl def generics_cl -> dict {
+def generics_cl -> dict {
     return {};
 }
 
-na {
-    def na_gid[T](val: T) -> T {
-        return val;
-    }
 
-    def na_gfirst[T](xs: list[T]) -> T {
-        return xs[0];
-    }
+def na_gid[T](val: T) -> T {
+    return val;
+}
 
-    def generics_na -> dict[str, any] {
-        a = na_gid(41) + 1;
-        s = na_gid("abc");
-        f = na_gid(1.5) + na_gid(2.5);
-        n = na_gfirst([7, 8, 9]);
-        w = na_gfirst(["xy", "z"]);
-        return {
-            "int_id": a,
-            "str_len": len(s),
-            "float_sum": f,
-            "first_int": n,
-            "first_len": len(w),
+def na_gfirst[T](xs: list[T]) -> T {
+    return xs[0];
+}
 
-        };
-    }
+def generics_na -> dict[str, any] {
+    a = na_gid(41) + 1;
+    s = na_gid("abc");
+    f = na_gid(1.5) + na_gid(2.5);
+    n = na_gfirst([7, 8, 9]);
+    w = na_gfirst(["xy", "z"]);
+    return {
+        "int_id": a,
+        "str_len": len(s),
+        "float_sum": f,
+        "first_int": n,
+        "first_len": len(w),
+
+    };
 }

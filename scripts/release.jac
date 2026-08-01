@@ -30,7 +30,7 @@ def update_jac_toml_version(jac_toml_path: Path, new_version: str) {
 
 """Collect release note fragments and assemble into the release notes file.
 
-    Reads fragments from docs/docs/community/release_notes/unreleased/<package>/,
+    Reads fragments from release_notes/unreleased/<package>/,
     inserts a new (Latest Release) section, demotes the old one, and deletes
     the consumed fragment files.
     """

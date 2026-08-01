@@ -562,7 +562,10 @@ def _create_build_context(
 }
 
 def _append_debug_info(formatted: str, error_output: str) -> str {
-    return formatted + "\n\n--- Raw Error (debug=true) ---\n" + error_output + "\n--- End Raw Error ---\n";
+    return formatted
+        + "\n\n--- Raw Error (debug=true) ---\n"
+        + error_output
+        + "\n--- End Raw Error ---\n";
 }
 
 impl format_build_error(

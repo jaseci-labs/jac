@@ -546,8 +546,8 @@ impl Game.legal_moves(color: Color) -> list[Move] {
         if (self.board.castling_rights & ks) != 0 {
             rook: Piece | None = self.board.at(back, 7);
             if rook is not None
-            and rook.kind == PieceKind.ROOK
-            and not rook.has_moved {
+                and rook.kind == PieceKind.ROOK
+                and not rook.has_moved {
                 if self.board.at(back, 5) is None and self.board.at(back, 6) is None {
                     if (
                         not self.in_check(color)
@@ -573,8 +573,8 @@ impl Game.legal_moves(color: Color) -> list[Move] {
         if (self.board.castling_rights & qs) != 0 {
             rook: Piece | None = self.board.at(back, 0);
             if rook is not None
-            and rook.kind == PieceKind.ROOK
-            and not rook.has_moved {
+                and rook.kind == PieceKind.ROOK
+                and not rook.has_moved {
                 if (
                     self.board.at(back, 1) is None
                     and self.board.at(back, 2) is None

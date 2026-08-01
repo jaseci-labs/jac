@@ -63,3 +63,6 @@ keywords = "little-x social jac jaseci"
 author = "Jaseci Labs"
 theme_color = "#f97316"
 icon = "/static/assets/littlex-logo.svg"
+
+[scale.microservices.routes]
+"social_graph" = "/social_graph"

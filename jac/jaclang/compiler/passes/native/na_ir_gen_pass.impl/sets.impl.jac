@@ -6,7 +6,16 @@ impl NaIRGenPass._emit_set_helpers(
     }
 
     set_struct = self.llvm_module.context.get_identified_type(f"Set.{elem_type_name}");
-    set_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
+    if self._gc_mode() == "none" {
+        set_struct.set_body(
+            ir.IntType(64),
+            ir.IntType(64),
+            elem_type.as_pointer(),
+            self._nogc_elem_drop_slot_ty()
+        );
+    } else {
+        set_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
+    }
     self.set_types[elem_type_name] = set_struct;
     set_ptr_type = set_struct.as_pointer();
     i64 = ir.IntType(64);
@@ -53,7 +62,33 @@ impl NaIRGenPass._emit_set_helpers(
         add_fn, b, e_arg, elems_arr, cur_len, elem_type, elem_size
     );
 
-    found_b.ret_void();
+    if self._nogc_headerless()
+        and isinstance(elem_type, ir.PointerType)
+        and isinstance(elem_type.pointee, ir.IntType)
+        and elem_type.pointee.width == 8 {
+        _i8p_dup = ir.IntType(8).as_pointer();
+        _sslot_p = found_b.gep(
+            s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="sadd.dup.slot.p"
+        );
+        _sslot = found_b.load(_sslot_p, name="sadd.dup.slot");
+        _shave = found_b.icmp_unsigned(
+            "!=",
+            _sslot,
+            ir.Constant(self._nogc_elem_drop_slot_ty(), None),
+            name="sadd.dup.have"
+        );
+        _dup_free_bb = add_fn.append_basic_block("dup.free");
+        _dup_done_bb = add_fn.append_basic_block("dup.done");
+        found_b.cbranch(_shave, _dup_free_bb, _dup_done_bb);
+        _fb = ir.IRBuilder(_dup_free_bb);
+        _e_i8_dup = _fb.bitcast(e_arg, _i8p_dup, name="sadd.dup.i8");
+        _fb.call(_sslot, [_e_i8_dup]);
+        _fb.branch(_dup_done_bb);
+        _db = ir.IRBuilder(_dup_done_bb);
+        _db.ret_void();
+    } else {
+        found_b.ret_void();
+    }
 
     grow_bb = add_fn.append_basic_block("grow");
     append_bb = add_fn.append_basic_block("append");
@@ -70,7 +105,7 @@ impl NaIRGenPass._emit_set_helpers(
     cur_len_app = b.load(len_p2, name="len.app");
     elem_slot = b.gep(elems_arr_app, [cur_len_app], name="elem.slot");
 
-    if isinstance(elem_type, ir.PointerType) {
+    if isinstance(elem_type, ir.PointerType) and not self._nogc_headerless() {
         if self.rc_retain_fn is None {
             self._emit_rc_helpers();
         }
@@ -167,10 +202,12 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_set_new_loc, name="set.new"
     );
+    self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd), "set");
     _sinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
 
+    first_val = self._nogc_elem_prep(nd.values[0], first_val);
     self._rc_call_with_ctx(
         helpers["add"], [set_val, first_val], op="set_init", loc=_sinit_loc
     );
@@ -178,6 +215,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            val = self._nogc_elem_prep(nd.values[i], val);
             _orig_sv = val;
             val = self._coerce_type(val, elem_type);
             self._rc_call_with_ctx(

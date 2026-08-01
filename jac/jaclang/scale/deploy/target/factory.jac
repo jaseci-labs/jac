@@ -10,7 +10,7 @@ import from jaclang.project.capabilities {
 
 type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget];
 
-def _ensure_deploy_tooling(dry_run: bool = False) {
+def ensure_deploy_tooling(dry_run: bool = False) {
     if dry_run {
         return;
     }
@@ -31,7 +31,7 @@ def _ensure_deploy_tooling(dry_run: bool = False) {
     }
 }
 
-def _require_deploy_tooling(dry_run: bool = False) {
+def require_deploy_tooling(dry_run: bool = False) {
     if dry_run {
         return;
     }
@@ -57,8 +57,8 @@ class DeploymentTargetFactory {
         }
 
         if target_type == 'kubernetes' {
-            _ensure_deploy_tooling(dry_run);
-            _require_deploy_tooling(dry_run);
+            ensure_deploy_tooling(dry_run);
+            require_deploy_tooling(dry_run);
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
                 KubernetesTarget
             }
@@ -68,8 +68,8 @@ class DeploymentTargetFactory {
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger, dry_run=dry_run);
         } elif target_type == 'kubernetes-microservice' {
-            _ensure_deploy_tooling(dry_run);
-            _require_deploy_tooling(dry_run);
+            ensure_deploy_tooling(dry_run);
+            require_deploy_tooling(dry_run);
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig
             }

@@ -7,7 +7,7 @@ server) and return the `{status, ok, body}` envelope the client runtime expects.
 
 This is the `sv` half of the `cl` -> `sv` path. The `cl` half (the client
 runtime routing a call through `window.__jac_invoke` instead of `fetch`) is
-covered by `jac/tests/runtimelib/test_native_invoke.cl.jac`. Together they prove
+covered by `jac/tests/runtimelib/test_native_invoke.jac`. Together they prove
 the full round-trip without a live webview, a display, or `nacompile`.
 
 The round-trip needs the built-in scale backend (starlette + jaclang.scale). The

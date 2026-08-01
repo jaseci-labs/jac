@@ -431,7 +431,7 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
         return {"js_code": js_code, "warnings": warnings};
     }
     (success, result) = run_with_timeout(
-        _snippet_task(code, _do_jac2js, suffix=".cl.jac"), timeout=DEFAULT_TIMEOUT
+        _snippet_task(code, _do_jac2js, suffix=".jac"), timeout=DEFAULT_TIMEOUT
     );
     if not success {
         return {"js_code": "", "warnings": [str(result)]};
@@ -622,11 +622,7 @@ impl CompilerBridge.graph_viz_snippet(
 
 impl CompilerBridge.list_templates -> dict[str, any] {
     def _do_list_templates -> dict[str, any] {
-        import from jaclang.project.template_registry {
-            get_template_registry,
-            initialize_template_registry
-        }
-        initialize_template_registry();
+        import from jaclang.project.template_registry { get_template_registry }
         registry = get_template_registry();
         templates = registry.list_templates();
         result: list[dict[str, str]] = [];

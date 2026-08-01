@@ -18,48 +18,46 @@ walker create_todo {
 # ============================================================================
 # FRONTEND: Components, State, and Events
 # ============================================================================
-cl import from react {
+import from react {
     useState
 }
 
-cl {
-    def app -> JsxElement {
-        has todos: list = [],
-            input: str = "";
+def app -> JsxElement {
+    has todos: list = [],
+        input: str = "";
 
-        # Event Handler
-        async def addTodo -> None {
-            if not input.strip() {
-                return;
-            }
-            response = root spawn create_todo(text=input.strip());
-            new_todo = response.reports[0][0];
-            todos = todos.concat([new_todo]);
-            input = "";
+    # Event Handler
+    async def addTodo -> None {
+        if not input.strip() {
+            return;
         }
-
-        return
-            <div>
-                <h2>
-                    My Todos
-                </h2>
-                <input
-                    value={input}
-                    onChange={lambda e: any  -> None { input = e.target.value;}}
-                    onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
-                        addTodo();
-                    }}}
-                />
-                <button onClick={addTodo}>
-                    Add Todo
-                </button>
-                <div>
-                    {[<div key={todo._jac_id}>
-                                <span>
-                                    {todo.text}
-                                </span>
-                            </div> for todo in todos]}
-                </div>
-            </div>;
+        response = root spawn create_todo(text=input.strip());
+        new_todo = response.reports[0][0];
+        todos = todos.concat([new_todo]);
+        input = "";
     }
+
+    return
+        <div>
+            <h2>
+                My Todos
+            </h2>
+            <input
+                value={input}
+                onChange={lambda e: any  -> None { input = e.target.value;}}
+                onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
+                    addTodo();
+                }}}
+            />
+            <button onClick={addTodo}>
+                Add Todo
+            </button>
+            <div>
+                {[<div key={todo._jac_id}>
+                            <span>
+                                {todo.text}
+                            </span>
+                        </div> for todo in todos]}
+            </div>
+        </div>;
 }

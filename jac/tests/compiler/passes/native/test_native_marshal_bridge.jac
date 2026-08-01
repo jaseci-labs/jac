@@ -6,7 +6,7 @@ marshalling, view round-trip arguments, and write-through mutation.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 import jaclang.jac0core.unitree as uni;
@@ -17,7 +17,9 @@ glob FIXTURES = os.path.join(
 
 def compile_fixture(fixture: str) -> tuple[ExecutionEngine | None, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     return (ir.gen.native_engine, ir);
@@ -30,7 +32,7 @@ def bridge_fns -> tuple[dict, ExecutionEngine | None] {
         wrap_native_function,
         init_native_globals
     }
-    (eng, ir) = compile_fixture("marshal_bridge.na.jac");
+    (eng, ir) = compile_fixture("marshal_bridge.jac");
     layout = ir.gen.native_layout;
     assert layout is not None;
     init_native_globals(eng, ir.gen.interop_manifest);

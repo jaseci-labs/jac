@@ -45,7 +45,7 @@ impl _compile_runtime_core_js -> str {
     if (not runtime_src) or (not Path(runtime_src).exists()) {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
-    core_path = Path(runtime_src).parent / "client_runtime_core.cl.jac";
+    core_path = Path(runtime_src).parent / "client_runtime_core.jac";
     if not core_path.exists() {
         raise RuntimeError("could not resolve client_runtime_core sibling source");
     }
@@ -117,9 +117,13 @@ impl _build_harness(
     entries = [];
     for t in tests {
         entries.append(
-            "  [" + json.dumps(t["name"]) + ", " + json.dumps(
-                t.get("description", t["name"])
-            ) + ", " + t["name"] + "]"
+            "  ["
+                + json.dumps(t["name"])
+                + ", "
+                + json.dumps(t.get("description", t["name"]))
+                + ", "
+                + t["name"]
+                + "]"
         );
     }
     fn_entries = ",\n".join(entries);
@@ -419,12 +423,7 @@ impl _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None) {
 }
 
 impl module_is_client(filepath: str) -> bool {
-    import from jaclang.jac0core.ext_registry { codespace_of }
     path = os.path.abspath(str(filepath));
-    explicit = codespace_of(os.path.basename(path));
-    if explicit is not None {
-        return explicit == "client";
-    }
     if path in _COLOR_CACHE {
         return _COLOR_CACHE[path];
     }
@@ -437,7 +436,7 @@ impl module_is_client(filepath: str) -> bool {
             path, options=CompileOptions(symtab_ir_only=True, type_check=False)
         );
         result = mod is not None
-        and mod.declares_codespace(CodeContext.CLIENT, path_hint=path);
+            and mod.declares_codespace(CodeContext.CLIENT, path_hint=path);
     } except Exception {
         result = False;
     }
@@ -450,9 +449,8 @@ impl is_cl_test_file(filepath: str) -> bool {
 }
 
 impl is_cl_test_file_for_discovery(filepath: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_test }
     name = os.path.basename(str(filepath));
-    if not (name.startswith("test_") or is_client_test(name)) {
+    if not name.startswith("test_") {
         return False;
     }
     return module_is_client(filepath);

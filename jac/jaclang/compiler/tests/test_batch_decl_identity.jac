@@ -23,7 +23,11 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.bccache { discover_base_file }
 
 glob BATCH_DIR = str(
-         Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures" / "batch_decl_identity"
+         Path(jaclang.__file__).parent
+             / "compiler"
+             / "tests"
+             / "fixtures"
+             / "batch_decl_identity"
      );
 
 

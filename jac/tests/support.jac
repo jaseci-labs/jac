@@ -17,3 +17,17 @@ import from pathlib { Path }
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
      # Repo root (the `jac/` dir): the parent of `tests/`.
      JAC_ROOT: str = str(Path(__file__).resolve().parent.parent);
+
+"""CompileOptions that force a fixture into the native codespace.
+
+The retired .na.jac marker used to do this from the filename; tests that
+compile a fixture and expect a JIT engine now state the mandate explicitly.
+Forced placement keeps lowering failures loud (no server demotion), exactly
+like the old suffix.
+"""
+def native_force_opts -> any {
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    return CompileOptions(
+        type_check=False, force_codespace='native', force_target_program=True
+    );
+}

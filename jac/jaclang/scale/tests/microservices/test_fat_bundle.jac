@@ -48,13 +48,16 @@ test "fat bundles default ON; [scale] fat_bundle=false opts out" {
     assert fat_bundle_setting(_app("[project]\nname = \"a\"\n")) == (True, False);
     assert fat_bundle_setting(
         _app("[project]\nname = \"a\"\n\n[scale]\nreplicas = 1\n")
-    ) == (True, False);
+    )
+        == (True, False);
     assert fat_bundle_setting(
         _app("[project]\nname = \"a\"\n\n[scale]\nfat_bundle = false\n")
-    ) == (False, True);
+    )
+        == (False, True);
     assert fat_bundle_setting(
         _app("[project]\nname = \"a\"\n\n[scale]\nfat_bundle = true\n")
-    ) == (True, True);
+    )
+        == (True, True);
     assert fat_bundle_enabled(_app("[project]\nname = \"a\"\n"));
 }
 

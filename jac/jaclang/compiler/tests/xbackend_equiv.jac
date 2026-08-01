@@ -209,7 +209,7 @@ def run_native_function(eng: object, func_name: str, ir: object = None) -> dict 
         # native imports (they are renamed to __jac_glob_init_<safe_sym> at
         # link time), so run them here too -- otherwise an imported module's
         # runtime-initialized globals (e.g. the bytes alphabets in
-        # na_stdlib/base64.na.jac) are read as null pointers and the JIT'd
+        # na_stdlib/base64.jac) are read as null pointers and the JIT'd
         # fixture segfaults.
         manifest = ir.gen.interop_manifest if (ir is not None) else None;
         sources = manifest.native_transitive_sources if manifest else [];

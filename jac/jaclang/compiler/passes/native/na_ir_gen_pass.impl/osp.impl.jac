@@ -26,12 +26,24 @@ def _load_native_osp_kernel_module -> (uni.Module | None) {
     import from jaclang.jac0core.program { JacProgram }
     _core = os.path.join(os.path.dirname(jaclang.__file__), "jac0core");
     tmp_dir = tempfile.mkdtemp();
-    na_copy = os.path.join(tmp_dir, "osp_kernel.na.jac");
+    na_copy = os.path.join(tmp_dir, "osp_kernel.jac");
     mod = None;
     try {
+        import from jaclang.jac0core.compile_options { CompileOptions as _KernelOpts }
         _write_native_osp_source(_core, na_copy);
         prog = JacProgram();
-        mod = prog.compile(na_copy, no_cgen=True, symtab_ir_only=True);
+        mod = prog.compile(
+            na_copy,
+            options=_KernelOpts(
+                no_cgen=True,
+                symtab_ir_only=True,
+                aot_mode=True,
+                type_check=False,
+                default_codespace='native',
+                force_codespace='native',
+                force_target_program=True
+            )
+        );
     } except Exception {
         mod = None;
     } finally {
@@ -58,7 +70,7 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
 
     _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
     if (_manifest is not None)
-    and ("osp_kernel" not in _manifest.native_transitive_sources) {
+        and ("osp_kernel" not in _manifest.native_transitive_sources) {
         _manifest.native_transitive_sources.append("osp_kernel");
     }
 }
@@ -89,7 +101,7 @@ impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
 impl NaIRGenPass._osp_active -> bool {
     _model = self.ir_in.gen.osp_model;
     return (_model is not None)
-    and (_model.has_event_ability() or _model.uses_construct);
+        and (_model.has_event_ability() or _model.uses_construct);
 }
 
 impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
@@ -868,8 +880,8 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     }
 
     if (origin_val is None)
-    or (_idx >= len(chain))
-    or (not isinstance(chain[_idx], uni.EdgeOpRef)) {
+        or (_idx >= len(chain))
+        or (not isinstance(chain[_idx], uni.EdgeOpRef)) {
         self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
@@ -891,7 +903,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             }
         }
         _is_last_hop = (_idx >= len(chain))
-        or (not isinstance(chain[_idx], uni.EdgeOpRef));
+            or (not isinstance(chain[_idx], uni.EdgeOpRef));
 
         _dir = int(step.edge_dir.value);
         _edge_tag = -1;
@@ -1045,7 +1057,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
         }
         if _result is target_val {
             if isinstance(target_val.type, ir.PointerType)
-            and self._is_owned(target_val) {
+                and self._is_owned(target_val) {
                 self._emit_rc_release_simple(target_val, op="chain_filter", loc="");
             }
         } else {

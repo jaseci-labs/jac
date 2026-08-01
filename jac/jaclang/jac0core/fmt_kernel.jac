@@ -267,12 +267,12 @@ def jac_fmt_int(v: int, spec: str) -> str {
         spec
     );
     if typ == "f"
-    or typ == "F"
-    or typ == "e"
-    or typ == "E"
-    or typ == "g"
-    or typ == "G"
-    or typ == "%" {
+        or typ == "F"
+        or typ == "e"
+        or typ == "E"
+        or typ == "g"
+        or typ == "G"
+        or typ == "%" {
         return jac_fmt_float(float(v), spec);
     }
     if zc == 1 {
@@ -298,12 +298,12 @@ def jac_fmt_int(v: int, spec: str) -> str {
         return _jac_fmt_finish(chr(v), "", "", "", fill, align, zero, width, "", 0);
     }
     if typ != ""
-    and typ != "d"
-    and typ != "n"
-    and typ != "b"
-    and typ != "o"
-    and typ != "x"
-    and typ != "X" {
+        and typ != "d"
+        and typ != "n"
+        and typ != "b"
+        and typ != "o"
+        and typ != "x"
+        and typ != "X" {
         raise ValueError("Unknown format code '" + typ + "' for object of type 'int'");
     }
     gsize = 3;
@@ -381,14 +381,14 @@ def jac_fmt_float(v: float, spec: str) -> str {
         spec
     );
     if typ != ""
-    and typ != "f"
-    and typ != "F"
-    and typ != "e"
-    and typ != "E"
-    and typ != "g"
-    and typ != "G"
-    and typ != "%"
-    and typ != "n" {
+        and typ != "f"
+        and typ != "F"
+        and typ != "e"
+        and typ != "E"
+        and typ != "g"
+        and typ != "G"
+        and typ != "%"
+        and typ != "n" {
         raise ValueError(
             "Unknown format code '" + typ + "' for object of type 'float'"
         );

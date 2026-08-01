@@ -6,7 +6,7 @@ import zlib;
 import from pathlib { Path }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 16,
+     FORMAT_VERSION: int = 17,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
@@ -20,6 +20,7 @@ glob MAGIC = b"JIR\x00",
      SEC_MODKEY: int = 0x08,
      SEC_DEBUG_SRC: int = 0x09,
      SEC_INPUTS: int = 0x0A,
+     SEC_PLACEMENT: int = 0x0B,
      SEC_TERMINATOR: int = 0xFF,
      INPUT_COMPILER: str = "compiler",
      INPUT_MAIN: str = "main",
@@ -189,11 +190,17 @@ def _compiler_fingerprint -> str {
 def _config_fingerprint(source_path: str) -> str {
     codespace_mode = _module_codespace_mode(source_path);
     kind = _module_client_kind(source_path);
+    import from jaclang.jac0core.placement_pins { pins_digest }
+    import from jaclang.jac0core.service_cut { cut_digest }
+    pins = pins_digest(source_path);
+    cut = cut_digest(source_path);
     toml = _find_jac_toml_path(source_path);
     if toml is not None {
-        return f"{codespace_mode}:{kind}:{compute_content_sha256(toml)}";
+        return (
+            f"{codespace_mode}:{kind}:{pins}:{cut}:{compute_content_sha256(toml)}"
+        );
     }
-    return f"{codespace_mode}:{kind}";
+    return f"{codespace_mode}:{kind}:{pins}:{cut}";
 }
 
 def compute_input_fingerprints(source_path: str) -> dict[str, str] {

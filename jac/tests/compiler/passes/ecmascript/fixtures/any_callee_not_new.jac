@@ -7,12 +7,10 @@ emitted `new handler(payload)` for any callee whose type was a
 """
 
 
-cl {
-    async def invoke_any_async(handler: any, payload: dict) {
-        await handler(payload);
-    }
+async def invoke_any_async(handler: any, payload: dict) {
+    await handler(payload);
+}
 
-    def invoke_any_sync(handler: any, payload: dict) {
-        handler(payload);
-    }
+def invoke_any_sync(handler: any, payload: dict) {
+    handler(payload);
 }

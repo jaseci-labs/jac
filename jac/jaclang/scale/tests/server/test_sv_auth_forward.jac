@@ -328,6 +328,39 @@ test "HALF_OPEN probe success closes the breaker" {
     _breaker_reset(mod);
 }
 
+test "HALF_OPEN probe failure re-opens the breaker with a fresh cooldown" {
+    import time;
+    import from jaclang.scale.runtime.rpc.breaker {
+        _breaker_peek,
+        _breaker_force_cooldown_elapsed
+    }
+
+    mod = "breaker_half_open_reopen_test";
+    _breaker_reset(mod);
+
+    for _ in range(_BREAKER_TRIP_THRESHOLD) {
+        breaker_record_failure(mod);
+    }
+    assert breaker_should_skip(mod);
+
+    _breaker_force_cooldown_elapsed(mod);
+    assert not breaker_should_skip(mod);
+    st = _breaker_peek(mod);
+    assert st is not None and st["state"] == "HALF_OPEN";
+
+    before = time.time();
+    breaker_record_failure(mod);
+    after = time.time();
+
+    st = _breaker_peek(mod);
+    assert st is not None and st["state"] == "OPEN";
+    assert before <= st["opened_at"] <= after;
+
+    assert breaker_should_skip(mod);
+
+    _breaker_reset(mod);
+}
+
 test "application error envelope does NOT trip the breaker" {
     mod = "breaker_app_err_test";
     _breaker_reset(mod);
@@ -596,9 +629,8 @@ test "ensure_sv_service early-returns when peer already registered" {
 
     try {
         JacScalePlugin.ensure_sv_service("k9_2_already_registered", ".");
-        assert sv_client._registry["k9_2_already_registered"] == (
-            "http://prior-url.example.com:8000"
-        );
+        assert sv_client._registry["k9_2_already_registered"]
+            == ("http://prior-url.example.com:8000");
     } finally {
         sv_client.unregister("k9_2_already_registered");
         if orig_k8s_host is None {

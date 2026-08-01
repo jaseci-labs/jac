@@ -20,28 +20,18 @@ def _load_deploy_factories -> DeployFactories {
     return DeployFactories(utility=UtilityFactory, target=DeploymentTargetFactory);
 }
 
-def _print_local_ms_banner(
-    routes: dict[str, str], explicit_routes: dict[str, str], ms_configured: bool
-) {
-    import from .runtime.discovery.route_policy { format_route_origin_lines }
+def _print_local_ms_banner(routes: dict[str, str]) {
+    import from .runtime.routing { format_route_lines }
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
-    label = "" if ms_configured else " (auto-detected)";
     console.print(
-        f"Microservice mode{label}: {len(names)} service{plural} "
+        f"Microservice mode: {len(names)} service{plural} "
         f"[{', '.join(names)}], running locally as subprocesses with no "
         f"Docker images.",
         style="cyan"
     );
-    for line in format_route_origin_lines(routes, explicit_routes) {
+    for line in format_route_lines(routes) {
         console.print(f"  {line}", style="muted");
-    }
-
-    if not ms_configured {
-        console.print(
-            "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
-            style="muted"
-        );
     }
 }
 
@@ -70,21 +60,18 @@ def scale_start(
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
     enabled = ms_config.get("enabled", None);
-    explicit_routes = dict(ms_config.get("routes", {}));
     if (not is_sv_sibling) and (not scale) and (enabled is not False) {
         realizer = None;
         should_serve_ms = False;
         try {
-            if filename {
-                import from jaclang.scale.runtime.discovery.discovery {
-                    resolve_routes,
-                    resolve_service_files
-                }
-                ms_config["routes"] = resolve_routes(filename, explicit_routes);
-                ms_config["service_files"] = resolve_service_files(
-                    filename, ms_config["routes"]
-                );
+            import from jaclang.scale.runtime.routing {
+                resolve_routes,
+                resolve_service_files
             }
+            ms_config["routes"] = resolve_routes(ms_config);
+            ms_config["service_files"] = resolve_service_files(
+                ms_config, ms_config["routes"]
+            );
 
             import from jaclang.scale.runtime.realizer.local_realizer { LocalRealizer }
             realizer = LocalRealizer(ms_config=ms_config);
@@ -95,11 +82,7 @@ def scale_start(
         }
         if should_serve_ms and realizer is not None {
             if enabled is None {
-                _print_local_ms_banner(
-                    ms_config.get("routes", {}),
-                    explicit_routes,
-                    scale_config.microservices_declared()
-                );
+                _print_local_ms_banner(ms_config.get("routes", {}));
             }
             realizer.serve();
             return 0;
@@ -304,6 +287,82 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
     return 0;
 }
 
+def _scale_split(module_name: str) -> int {
+    import tomllib;
+    import from jaclang.jac0core.modresolver { find_jac_project_root }
+    import from .runtime.routing { derive_route_prefix, guard_route_name }
+
+    if not module_name {
+        console.print("Module name required: jac scale split <module>", style="error");
+        return 1;
+    }
+    name = module_name[:-4] if module_name.endswith(".jac") else module_name;
+    try {
+        guard_route_name(name);
+    } except ValueError as e {
+        console.print(str(e), style="error");
+        return 1;
+    }
+    proj_root = find_jac_project_root(os.getcwd());
+    if not proj_root {
+        console.print(
+            "No jac.toml found: run `jac scale split` inside a jac project.",
+            style="error"
+        );
+        return 1;
+    }
+    toml_path = pathlib.Path(proj_root) / "jac.toml";
+    text = toml_path.read_text(encoding="utf-8") if toml_path.exists() else "";
+    try {
+        doc = tomllib.loads(text);
+    } except Exception as e {
+        console.print(f"Cannot parse {toml_path}: {e}", style="error");
+        return 1;
+    }
+    declared = (
+        doc.get("scale", {}).get("microservices", {}).get("routes", {})
+        or doc.get("plugins", {}).get("scale", {}).get("microservices", {}).get(
+            "routes", {}
+        )
+    );
+    if name in declared {
+        console.print(
+            f"Service '{name}' is already declared "
+            f"([scale.microservices.routes] -> {declared[name]}).",
+            style="muted"
+        );
+        return 0;
+    }
+    prefix = derive_route_prefix(name);
+    header = "[scale.microservices.routes]";
+    entry_line = name + ' = "' + prefix + '"';
+    lines = text.splitlines();
+    header_idx = -1;
+    for (i, ln) in enumerate(lines) {
+        if ln.strip() == header {
+            header_idx = i;
+            break;
+        }
+    }
+    if header_idx >= 0 {
+        lines.insert(header_idx + 1, entry_line);
+        new_text = "\n".join(lines);
+        if text.endswith("\n") {
+            new_text += "\n";
+        }
+    } else {
+        base = text if (not text or text.endswith("\n")) else text + "\n";
+        sep = "\n" if base else "";
+        new_text = f"{base}{sep}{header}\n{entry_line}\n";
+    }
+    toml_path.write_text(new_text, encoding="utf-8");
+    console.success(
+        f"Declared service '{name}' -> {prefix} in {toml_path}", emoji=False
+    );
+    return 0;
+}
+
+
 @registry.command(
     name="scale",
     help="Manage scale deployments: local microservices (status/stop/restart/logs) and platform deployments (status/destroy on a .jac app)",
@@ -311,13 +370,13 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
         Arg.create(
             "action",
             kind=ArgKind.POSITIONAL,
-            help="Action: status, stop, restart, logs, destroy"
+            help="Action: status, stop, restart, logs, destroy, split"
         ),
         Arg.create(
             "service_name",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Service name (stop/restart/logs), or a .jac app file for platform status/destroy"
+            help="Service name (stop/restart/logs), module to declare as a service (split), or a .jac app file for platform status/destroy"
         ),
         Arg.create(
             "lines",
@@ -341,6 +400,10 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
     ],
     examples=[
         ("jac scale status", "Show status of all microservices"),
+        (
+            "jac scale split orders",
+            "Declare the orders module as a service in [scale.microservices.routes]"
+        ),
         ("jac scale stop orders", "Stop the orders service"),
         ("jac scale restart cart", "Restart the cart service"),
         ("jac scale logs products", "Show logs for products service"),
@@ -368,6 +431,9 @@ def scale_cmd(
         }
         return deploy_destroy(service_name, target, component);
     }
+    if action == "split" {
+        return _scale_split(service_name);
+    }
     import from jaclang.scale.runtime.orchestrator.orchestrator {
         ServiceRegistry,
         build_registry
@@ -385,20 +451,16 @@ def scale_cmd(
         return 1;
     }
 
-    import from jaclang.scale.runtime.discovery.discovery {
-        resolve_routes,
-        resolve_service_files
-    }
-    merged_routes = resolve_routes(".", dict(ms_config.get("routes", {})));
-    if merged_routes {
-        ms_config["routes"] = merged_routes;
-        ms_config["service_files"] = resolve_service_files(".", merged_routes);
+    import from jaclang.scale.runtime.routing { resolve_routes, resolve_service_files }
+    resolved_routes = resolve_routes(ms_config);
+    if resolved_routes {
+        ms_config["routes"] = resolved_routes;
+        ms_config["service_files"] = resolve_service_files(ms_config, resolved_routes);
     } else {
         console.print(
-            "No microservices found: no routes in "
-            "[scale.microservices.routes] and no "
-            "`sv import` / `sv { }` services detected in the "
-            "current directory.",
+            "No microservices declared: add entries to "
+            "[scale.microservices.routes] in jac.toml "
+            "(`jac scale split <module>` adds one).",
             style="error"
         );
         return 1;
@@ -594,9 +656,8 @@ class JacScalePlugin {
         child_env = dict(os.environ);
         child_env["JAC_SV_SIBLING"] = "1";
 
-        cmd = [jac_executable()] + sv_client.headless_start_args(
-            str(module_file), port
-        );
+        cmd = [jac_executable()]
+            + sv_client.headless_start_args(str(module_file), port);
 
         log_dir = base_dir / '.jac' / 'logs';
         log_dir.mkdir(parents=True, exist_ok=True);

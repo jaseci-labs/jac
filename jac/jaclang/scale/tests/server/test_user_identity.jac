@@ -20,7 +20,9 @@ import from jaclang.scale.tests.auth_test_helpers {
 }
 import from jaclang.scale.tests.server_support { get_free_port }
 
-glob FIXTURES_DIR: Path = Path(__file__).parent.parent / "fixtures" / "identity_api";
+glob FIXTURES_DIR: Path = Path(__file__).parent.parent
+         / "fixtures"
+         / "identity_api";
 
 # =============================================================================
 # Helpers

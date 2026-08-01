@@ -47,7 +47,9 @@ jobs:
             byllm:
               - 'jac/jaclang/byllm/**'
             docs:
-              - 'docs/**'
+              - 'jac/jaclang/cli/docs/**'
+              - 'jac/jaclang/cli/skills/**'
+              - 'release_notes/**'
             desktop:
               - 'jac/jaclang/runtimelib/client/targets/desktop/**'
             installer:
@@ -55,7 +57,14 @@ jobs:
 
   # Build (or cache-restore) the jac binary ONCE per run, smoke it hermetically,
   # and publish it (plus the gitignored typeshed stubs) as artifacts. Every
-  # Linux job below gates on this so a cold cache pays a single build.
+  # Linux job below gates on this and downloads the artifact instead of calling
+  # setup-jac again -- a second setup-jac is a ~3 min rebuild whenever
+  # jaclang/** changed (the binary cache key hashes it), paid once per job.
+  # Only jac-check and contribution-checks still run setup-jac: they are
+  # required checks that must not depend on this job (a skipped required check
+  # would satisfy branch protection). Jobs that ship or introspect the binary
+  # by path expect it at jac/zig-out/bin/jac, where setup-jac builds it, so
+  # the download steps below restore it there.
   build-jac:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -334,7 +343,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|/manifest\.impl\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -345,7 +354,7 @@ jobs:
             # Sweep only git-tracked files: the build materializes generated
             # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
             # own sample .jac files), and a bare `find .` walks those too.
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$|/manifest\.impl\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       # When the format check fails on a same-repo PR, run the fixer on the PR
@@ -376,7 +385,7 @@ jobs:
             exit 0
           fi
           git checkout -B "$HEAD_REF" FETCH_HEAD
-          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+          FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|/manifest\.impl\.jac$)' changed-jac.txt || true)"
           if [ -z "$FILES" ]; then
             echo "No formattable .jac files to fix."
             exit 0
@@ -406,6 +415,20 @@ jobs:
       - name: Verify jir_registry.jac is up to date
         run: |
           jac gen-jir-registry --verify
+
+      - name: Verify manifest route table is up to date
+        run: |
+          jac gen-cli-manifest --verify
+
+      - name: Run CLI startup regression tests
+        env:
+          JAC_TEST_JOBS: "0"
+        run: |
+          jac test \
+            jac/tests/cli/test_command_isolation.jac \
+            jac/tests/cli/test_config_key_bridge.jac \
+            jac/tests/cli/test_manifest_parity.jac \
+            jac/tests/cli/test_startup_isolation.jac
 
       - name: Run jac check (using .jacignore)
         run: |
@@ -491,37 +514,11 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Python 3.12 (for the mkdocs docs build)
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install docs project (jaclang is host-provided by the binary)
-        run: jac install -e docs
-
-      - name: Validate Jac code block syntax
-        run: jac run docs/scripts/validate_docs_code.jac
-
-      - name: Build documentation and check links
-        working-directory: docs
-        run: jac -m mkdocs build --strict 2>&1 | tee build.log || true
-
-      - name: Report link warnings
-        working-directory: docs
-        run: |
-          if grep -i "warning" build.log | grep -i "link"; then
-            echo "## ⚠️ Documentation Link Warnings" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            grep -i "warning" build.log | grep -i "link" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "## ✅ All Checks Passed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- Jac code block syntax: ✓" >> $GITHUB_STEP_SUMMARY
-            echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
-          fi
+      - name: Validate Jac code blocks in the docs corpus
+        run: jac run scripts/validate_docs_code.jac
 
       - name: Check Release Notes Updated
         if: |
@@ -552,8 +549,18 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+    - name: Download the jac binary (build-jac artifact)
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: jac/zig-out/bin
+
+    - name: Put jac on PATH
+      # upload-artifact strips the executable bit; restore it. The artifact
+      # lands at jac/zig-out/bin, where setup-jac would have built it.
+      run: |
+        chmod +x "$PWD/jac/zig-out/bin/jac"
+        echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Run Solid jsdom runtime test
       env:
@@ -580,13 +587,27 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+    - name: Download the jac binary (build-jac artifact)
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: jac/zig-out/bin
+
+    - name: Put jac on PATH
+      # upload-artifact strips the executable bit; restore it. The artifact
+      # lands at jac/zig-out/bin, where setup-jac would have built it.
+      run: |
+        chmod +x "$PWD/jac/zig-out/bin/jac"
+        echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Set environment for testing
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests
+      # Serial: xdist workers intermittently disagree on collection of
+      # test_react_native_target.jac ("Different tests were collected").
+      env:
+        JAC_TEST_JOBS: "0"
       run: jac test jac/tests/runtimelib/client --ignore jac/tests/runtimelib/client/test_inprocess_dispatch.jac
 
     - name: Re-run in-process sv dispatch against the built-in scale backend
@@ -611,8 +632,18 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+    - name: Download the jac binary (build-jac artifact)
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: jac/zig-out/bin
+
+    - name: Put jac on PATH
+      # upload-artifact strips the executable bit; restore it. The artifact
+      # lands at jac/zig-out/bin, where setup-jac would have built it.
+      run: |
+        chmod +x "$PWD/jac/zig-out/bin/jac"
+        echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Install byllm deps + test deps
       run: |
@@ -627,27 +658,8 @@ jobs:
     - name: Run package tests
       run: jac test jac/jaclang/byllm/tests
 
-    - name: Install docs dependencies
-      run: jac install -e docs --global
-
-    - name: Build documentation
-      working-directory: docs
-      run: jac -m mkdocs build --strict
-
-    - name: Run documentation validation tests
-      working-directory: docs
-      run: jac test tests/test_docs.jac
-
-    - name: Install Playwright
-      working-directory: docs
-      run: |
-        jac install playwright
-        jac -m playwright install chromium --with-deps
-
-    - name: Run E2E code block tests
-      working-directory: docs
-      # Browser rendering is timing-flaky on CI; retry once (#6528, #6756).
-      run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
+    - name: Run docs corpus tests
+      run: jac test jac/tests/cli/test_docs_content.jac jac/tests/cli/test_guide_docs.jac
 
   test-native-macos:
     needs: changes
@@ -666,6 +678,14 @@ jobs:
       run: |
         jac test jac/tests/compiler/passes/native/test_shared_lib.jac
         jac test jac/tests/compiler/passes/native/test_exec_link.jac
+
+    # na->wasm had no CI lane at all: test_wasm_build.jac ran nowhere and
+    # `vendor-wasm-libc` was never invoked, so a floor compiled from an older
+    # wasm_rt/ (the #7149 __jac64_realloc gap) could only be found by a user.
+    # setup-jac builds the binary, which builds the floor, so this also proves
+    # the shipped floor and the source tree agree.
+    - name: Run na->wasm floor + import-contract tests
+      run: jac test jac/tests/compiler/passes/native/test_wasm_build.jac
 
     - name: Run bundled-stdlib equivalence pins (darwin, #7626 C3)
       env:
@@ -746,8 +766,18 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+    - name: Download the jac binary (build-jac artifact)
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: jac/zig-out/bin
+
+    - name: Put jac on PATH
+      # upload-artifact strips the executable bit; restore it. The artifact
+      # lands at jac/zig-out/bin, where setup-jac would have built it.
+      run: |
+        chmod +x "$PWD/jac/zig-out/bin/jac"
+        echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Build dispatch shim and subprocess binary
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
@@ -788,8 +818,21 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+    - name: Download the jac binary (build-jac artifact)
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: jac/zig-out/bin
+
+    - name: Put jac on PATH
+      # upload-artifact strips the executable bit; restore it. The artifact
+      # MUST land at jac/zig-out/bin: the microservices bundle tests
+      # (test_fat_bundle, test_app_precompile, test_seed_determinism,
+      # test_pvc_injector) read the pod binary from that checkout path via a
+      # __file__-relative lookup and silently self-skip when it is missing.
+      run: |
+        chmod +x "$PWD/jac/zig-out/bin/jac"
+        echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Install scale deps + test deps
       # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -806,7 +849,7 @@ jobs:
           "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
           "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
           "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
-          requests "testcontainers[mongodb,redis]" "moto[s3]>=5.0.0" \
+          requests "testcontainers[mongodb,redis]>=4.15,<5" "moto[s3]>=5.0.0" \
           --global
 
     - name: Run ${{ matrix.group }} tests
@@ -824,6 +867,16 @@ jobs:
           exit 1
         fi
 
+    - name: Run root-level scale tests (identity password, firebase env)
+      if: matrix.group == 'data'
+      # Root-level test_*.jac files the matrix globs don't reach. Base scale
+      # deps only (bcrypt, config) - no firebase-admin needed here.
+      env:
+        JAC_TEST_JOBS: "0"
+      run: |
+        jac test jac/jaclang/scale/tests/test_identity_password.jac -x
+        jac test jac/jaclang/scale/tests/test_firebase_env.jac -x
+
     - name: Install scale firebase deps
       if: matrix.group == 'data'
       run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
@@ -838,6 +891,9 @@ jobs:
         jac test jac/jaclang/scale/tests/test_firestore_db.jac -x
         jac test jac/jaclang/scale/tests/test_firebase_auth_sso.jac -x
 
+  # One job, not a two-leg matrix: the deploy-core and failure-path phases
+  # partition a single test file and share one MicroK8s cluster (exactly how
+  # the suite runs locally), so the cluster + deps setup is paid once.
   test-scale-k8s:
     needs: [changes, build-jac]
     if: >-
@@ -846,18 +902,25 @@ jobs:
        needs.changes.outputs.scale == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [deploy-core, failure-path]
     steps:
       - name: Check out code
         uses: actions/checkout@v5
         with:
           submodules: true
 
-      - name: Set up jac (build the binary)
-        uses: ./.github/actions/setup-jac
+      - name: Download the jac binary (build-jac artifact)
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-binary
+          path: jac/zig-out/bin
+
+      - name: Put jac on PATH
+        # upload-artifact strips the executable bit; restore it. The artifact
+        # MUST land at jac/zig-out/bin: JAC_SCALE_BINARY_PATH below ships that
+        # exact file to the pods.
+        run: |
+          chmod +x "$PWD/jac/zig-out/bin/jac"
+          echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
       - name: Install scale deploy deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -892,7 +955,6 @@ jobs:
           kubectl get nodes -o wide
 
       - name: Run K8 tests (deploy-core)
-        if: matrix.group == 'deploy-core'
         env:
           JAC_TEST_JOBS: "0"
         run: |
@@ -901,7 +963,6 @@ jobs:
           jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"
 
       - name: Run K8 tests (failure-path)
-        if: matrix.group == 'failure-path'
         env:
           JAC_TEST_JOBS: "0"
           # Seal + ship the jac built from this checkout (channel LOCAL) so the
@@ -934,8 +995,26 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
+    - name: Restore typeshed stdlib stubs into the checkout
+      # The precompile step below compiles the CHECKOUT tree, which needs the
+      # gitignored stubs that setup-jac used to materialize.
+      uses: actions/download-artifact@v4
+      with:
+        name: typeshed-stdlib
+        path: jac/jaclang/vendor/typeshed/stdlib
+
+    - name: Download the jac binary (build-jac artifact)
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: jac/zig-out/bin
+
+    - name: Put jac on PATH
+      # upload-artifact strips the executable bit; restore it. The artifact
+      # lands at jac/zig-out/bin, where setup-jac would have built it.
+      run: |
+        chmod +x "$PWD/jac/zig-out/bin/jac"
+        echo "$PWD/jac/zig-out/bin" >> "$GITHUB_PATH"
 
     - name: Precompile all packages
       run: |
@@ -964,81 +1043,84 @@ jobs:
     - name: Run integration tests
       run: jac run scripts/integration_tests.jac
 
-    - name: Install byllm deps (for the built-package byllm test)
-      run: |
-        jac install \
-          "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
-          "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
-          --global
-
     - name: Run tests on built packages
+      # test_byllm.jac is deliberately NOT re-run here: test-packages-and-docs
+      # already runs the full byllm suite against the same build-jac artifact,
+      # so a second pass bought no extra coverage.
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-        # Serial: byllm tests share a SQLite mock-LLM cache.
-        JAC_TEST_JOBS=0 jac test jac/jaclang/byllm/tests/test_byllm.jac
 
-    # ========== this_is_jac fullstack smoke ==========
-    - name: Clone this_is_jac
+    # ========== jac_site fullstack smoke ==========
+    # JAC_NO_DEV_SOURCE=1 on every jac_site step: the site's jac.toml carries a
+    # [dev] jaclang_source stanza for its own contributors, and this smoke must
+    # exercise the payload binary built by THIS job, never a checkout compiler.
+    - name: Clone jac_site
+      env:
+        JAC_NO_DEV_SOURCE: 1
       run: |
-        git clone --depth 1 https://github.com/jaseci-labs/this_is_jac this_is_jac
-        cd this_is_jac && jac install
+        git clone --depth 1 https://github.com/jaseci-labs/jac_site jac_site
+        cd jac_site && jac install
 
-    - name: Type check this_is_jac
-      working-directory: this_is_jac
+    - name: Type check jac_site
+      working-directory: jac_site
+      env:
+        JAC_NO_DEV_SOURCE: 1
       run: jac check main.jac
 
-    - name: Start this_is_jac server in background
-      working-directory: this_is_jac
+    - name: Start jac_site server in background
+      working-directory: jac_site
+      env:
+        JAC_NO_DEV_SOURCE: 1
       run: |
-        timeout 600 jac start main.jac > /tmp/this-is-jac-server.log 2>&1 &
+        timeout 600 jac start main.jac > /tmp/jac-site-server.log 2>&1 &
         SERVER_PID=$!
-        echo "THIS_IS_JAC_PID=$SERVER_PID" >> $GITHUB_ENV
-        echo "this_is_jac server starting with PID $SERVER_PID..."
+        echo "JAC_SITE_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "jac_site server starting with PID $SERVER_PID..."
         sleep 10
         if ! kill -0 $SERVER_PID 2>/dev/null; then
           echo "Server process died during startup"
-          cat /tmp/this-is-jac-server.log
+          cat /tmp/jac-site-server.log
           exit 1
         fi
 
-    - name: Wait for this_is_jac server to be ready
+    - name: Wait for jac_site server to be ready
       run: |
-        echo "Waiting for this_is_jac server on port 8000..."
+        echo "Waiting for jac_site server on port 8000..."
         for i in $(seq 1 24); do
-          if ! kill -0 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null; then
+          if ! kill -0 ${{ env.JAC_SITE_PID }} 2>/dev/null; then
             echo "Server process exited unexpectedly"
-            cat /tmp/this-is-jac-server.log
+            cat /tmp/jac-site-server.log
             exit 1
           fi
           if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-            echo "this_is_jac server is ready (attempt $i)"
+            echo "jac_site server is ready (attempt $i)"
             exit 0
           fi
           echo "Attempt $i/24: not ready, waiting 15s..."
           sleep 15
         done
         echo "Server failed to respond after 24 attempts"
-        tail -100 /tmp/this-is-jac-server.log
+        tail -100 /tmp/jac-site-server.log
         exit 1
 
-    - name: Verify this_is_jac HTTP response
+    - name: Verify jac_site HTTP response
       run: |
         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "this_is_jac root endpoint: HTTP $HTTP_CODE"
+        echo "jac_site root endpoint: HTTP $HTTP_CODE"
         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "this_is_jac server responding correctly"
+          echo "jac_site server responding correctly"
         else
           echo "Unexpected HTTP $HTTP_CODE"
           exit 1
         fi
 
-    - name: Stop this_is_jac server
+    - name: Stop jac_site server
       if: always()
       run: |
-        if [ -n "${{ env.THIS_IS_JAC_PID }}" ]; then
-          kill ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
+        if [ -n "${{ env.JAC_SITE_PID }}" ]; then
+          kill ${{ env.JAC_SITE_PID }} 2>/dev/null || true
           sleep 3
-          kill -9 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
+          kill -9 ${{ env.JAC_SITE_PID }} 2>/dev/null || true
         fi
 
     # ========== fullstack eject smoke ==========
@@ -1088,12 +1170,12 @@ jobs:
           kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
         fi
 
-    - name: Upload this_is_jac server logs
+    - name: Upload jac_site server logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: this-is-jac-test-logs
-        path: /tmp/this-is-jac-server.log
+        name: jac-site-test-logs
+        path: /tmp/jac-site-server.log
         retention-days: 7
 
     - name: Upload fullstack ejected backend logs
@@ -1111,7 +1193,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| this_is_jac | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| jac_site | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -1126,7 +1208,7 @@ jobs:
     needs: [changes, build-jac]
     if: >-
       github.event_name != 'push' &&
-      (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true') &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
@@ -1264,6 +1346,16 @@ jobs:
           bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
               jac/jaclang/scale/tests/fixtures/k8s_e2e
 
+      # Same cluster, separate namespace: deploy examples/sdk-deploy through
+      # the programmatic SDK (ScaleClient) instead of the target-level path
+      # above. official-image leg only - its baked runtime keeps the extra
+      # boot inside the job timeout, and the SDK path is base-image agnostic.
+      - name: Run SDK programmatic deploy e2e (ScaleClient)
+        if: matrix.base == 'official-image'
+        env:
+          CLUSTER_TYPE: kind
+        run: bash jac/jaclang/scale/tests/deploy/sdk_deploy_real_e2e.sh
+
       - name: Dump kubectl state on failure
         if: failure()
         env:
@@ -1303,6 +1395,8 @@ jobs:
             platform: linux-x86_64
           - os: macos-14
             platform: macos-aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
     steps:
       - uses: actions/checkout@v5
 

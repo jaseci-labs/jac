@@ -11,9 +11,10 @@ obj RedisStateBackend(StateBackend) {
                 import from jaclang.scale.persistence.db { get_redis_client }
             } except ImportError as e {
                 raise RuntimeError(
-                    "RedisStateBackend requires the redis client helper " + "(jaclang.scale.persistence.db.get_redis_client); install the optional " + "'data' dependency group. Original error: " + str(
-                        e
-                    )
+                    "RedisStateBackend requires the redis client helper "
+                        + "(jaclang.scale.persistence.db.get_redis_client); install the optional "
+                        + "'data' dependency group. Original error: "
+                        + str(e)
                 );
             }
             self.client = get_redis_client(self.url);

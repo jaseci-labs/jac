@@ -4,17 +4,9 @@ Tests that enum values survive the codespace boundary
 and can be used for comparison/display on the client.
 """
 
-enum Priority {
-    LOW = "low",
-    MEDIUM = "medium",
-    HIGH = "high"
-}
+enum Priority { LOW = "low", MEDIUM = "medium", HIGH = "high" }
 
-enum Status {
-    PENDING,
-    IN_PROGRESS,
-    DONE
-}
+enum Status { PENDING, IN_PROGRESS, DONE }
 
 obj Task {
     has title: str,
@@ -30,19 +22,19 @@ def:pub get_tasks_by_priority(priority: str) -> list[Task] {
     return [];
 }
 
-cl {
-    sv import from .typed_return_enum { create_task, get_tasks_by_priority }
 
-    def:pub app -> JsxElement {
-        has tasks: list = [];
+import from .typed_return_enum { create_task, get_tasks_by_priority }
 
-        async def addHighPriority(title: str) -> None {
-            task = await create_task(title, "high");
-            tasks = tasks + [task];
-        }
+def:pub app -> JsxElement {
+    has tasks: list = [];
 
-        return <div>
+    async def addHighPriority(title: str) -> None {
+        task = await create_task(title, "high");
+        tasks = tasks + [task];
+    }
+
+    return
+        <div>
             {[<span key={t.title}>{t.title}: {t.priority}</span> for t in tasks]}
         </div>;
-    }
 }

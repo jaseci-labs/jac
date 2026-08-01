@@ -43,11 +43,13 @@ test "create jac app" {
             # Verify project directory was created
             project_path = os.path.join(temp_dir, test_project_name);
             assert os.path.exists(project_path);
-            assert os.path.isdir(project_path);
+            assert os.path.isdir(project_path) , f"not a dir: {project_path}";
 
             # Verify main.jac file was created at project root
             app_jac_path = os.path.join(project_path, "main.jac");
-            assert os.path.exists(app_jac_path);
+            assert os.path.exists(app_jac_path) , (
+                f"no app.jac; project has: {os.listdir(project_path)}"
+            );
 
             with open(app_jac_path) as f {
                 app_jac_content = f.read();
@@ -74,11 +76,15 @@ test "create jac app" {
                 config_data = tomllib.load(f);
             }
 
-            assert config_data["project"]["name"] == test_project_name;
+            assert config_data["project"]["name"] == test_project_name , (
+                f"project table: {config_data.get('project')}"
+            );
 
             # Verify serve config includes base_route_app for CL apps
-            assert "serve" in config_data;
-            assert config_data["serve"]["base_route_app"] == "app";
+            assert "serve" in config_data , f"toml tables: {list(config_data.keys())}";
+            assert config_data["serve"]["base_route_app"] == "app" , (
+                f"serve table: {config_data['serve']}"
+            );
 
             # Verify .gitignore was created with correct content
             gitignore_path = os.path.join(project_path, ".gitignore");
@@ -92,7 +98,9 @@ test "create jac app" {
 
             # Verify components directory exists at project root
             components_dir = os.path.join(project_path, "components");
-            assert os.path.exists(components_dir);
+            assert os.path.exists(components_dir) , (
+                f"no components dir; project has: {os.listdir(project_path)}"
+            );
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
@@ -105,8 +113,12 @@ test "create jac app" {
                     package_data = json.load(f);
                 }
                 # Verify core dependencies are in package.json (individual packages)
-                assert "react" in package_data.get("dependencies", {});
-                assert "vite" in package_data.get("devDependencies", {});
+                assert "react" in package_data.get("dependencies", {}) , (
+                    f"package.json deps: {package_data}"
+                );
+                assert "vite" in package_data.get("devDependencies", {}) , (
+                    f"package.json devDeps: {package_data}"
+                );
             }
         } finally {
             # Return to original directory
@@ -174,7 +186,7 @@ test "create jac app existing directory" {
     }
 }
 
-"""Test jac create --kind mobile command creates Button.cl.jac component."""
+"""Test jac create --kind mobile command creates Button.jac component."""
 test "create jac app with button component" {
     test_project_name = "test-jac-app-component";
 
@@ -195,58 +207,80 @@ test "create jac app with button component" {
             );
             (stdout, stderr) = process.communicate();
             result_code = process.returncode;
+            create_report = (
+                f"rc={result_code}\nstdout tail: {stdout[-1500:]}\n"
+                f"stderr tail: {stderr[-1500:]}"
+            );
 
             # Check that command succeeded
-            assert result_code == 0;
+            assert result_code == 0 , f"jac create failed: {create_report}";
             # Check for success message (handles both old and new console formats)
             assert (
                 f"Project '{test_project_name}' created successfully!" in stdout
                 or f"Project '{test_project_name}' created" in stdout
-            );
+            ) , f"no success message: {create_report}";
 
             # Verify project directory was created
             project_path = os.path.join(temp_dir, test_project_name);
-            assert os.path.exists(project_path);
-            assert os.path.isdir(project_path);
+            assert os.path.exists(project_path) , f"no project dir: {create_report}";
+            assert os.path.isdir(project_path) , f"not a dir: {project_path}";
 
             # Verify jac.toml was created
             jac_toml_path = os.path.join(project_path, "jac.toml");
-            assert os.path.exists(jac_toml_path);
+            assert os.path.exists(jac_toml_path) , (
+                f"no jac.toml; dir has: {os.listdir(project_path)}"
+            );
 
             with open(jac_toml_path, "rb") as f {
                 config_data = tomllib.load(f);
             }
 
-            assert config_data["project"]["name"] == test_project_name;
+            assert config_data["project"]["name"] == test_project_name , (
+                f"project table: {config_data.get('project')}"
+            );
 
             # Verify serve config includes base_route_app for CL apps
-            assert "serve" in config_data;
-            assert config_data["serve"]["base_route_app"] == "app";
+            assert "serve" in config_data , f"toml tables: {list(config_data.keys())}";
+            assert config_data["serve"]["base_route_app"] == "app" , (
+                f"serve table: {config_data['serve']}"
+            );
 
-            # Verify components directory and Button.cl.jac were created at project root
+            # Verify components directory and Button.jac were created at project root
             components_dir = os.path.join(project_path, "components");
-            assert os.path.exists(components_dir);
-            assert os.path.isdir(components_dir);
+            assert os.path.exists(components_dir) , (
+                f"no components dir; project has: {os.listdir(project_path)}"
+            );
+            assert os.path.isdir(components_dir) , f"not a dir: {components_dir}";
 
-            button_jac_path = os.path.join(components_dir, "Button.cl.jac");
-            assert os.path.exists(button_jac_path);
+            button_jac_path = os.path.join(components_dir, "Button.jac");
+            assert os.path.exists(button_jac_path) , (
+                f"no Button.jac; components has: {os.listdir(components_dir)}"
+            );
 
             with open(button_jac_path) as f {
                 button_content = f.read();
             }
 
-            assert "def:pub Button" in button_content;
-            assert "base_styles" in button_content;
+            assert "def:pub Button" in button_content , (
+                f"Button.jac head: {button_content[:400]}"
+            );
+            assert "base_styles" in button_content , (
+                f"Button.jac head: {button_content[:400]}"
+            );
 
             # Verify main.jac includes Jac component import
             app_jac_path = os.path.join(project_path, "main.jac");
-            assert os.path.exists(app_jac_path);
+            assert os.path.exists(app_jac_path) , (
+                f"no app.jac; project has: {os.listdir(project_path)}"
+            );
 
             with open(app_jac_path) as f {
                 app_jac_content = f.read();
             }
 
-            assert "cl import from .components.Button { Button }" in app_jac_content;
+            assert "import from .components.Button { Button }" in app_jac_content , (
+                f"main.jac head: {app_jac_content[:400]}"
+            );
             assert "<Button" in app_jac_content;
 
             # Verify README.md includes component information
@@ -257,8 +291,10 @@ test "create jac app with button component" {
                 readme_content = f.read();
             }
 
-            assert "Components" in readme_content;
-            assert "Button.cl.jac" in readme_content;
+            assert "Components" in readme_content , (
+                f"README missing Components section: {readme_content[:600]}"
+            );
+            assert "Button.jac" in readme_content;
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
@@ -269,8 +305,12 @@ test "create jac app with button component" {
                     package_data = json.load(f);
                 }
                 # Verify core dependencies are in package.json (individual packages)
-                assert "react" in package_data.get("dependencies", {});
-                assert "vite" in package_data.get("devDependencies", {});
+                assert "react" in package_data.get("dependencies", {}) , (
+                    f"package.json deps: {package_data}"
+                );
+                assert "vite" in package_data.get("devDependencies", {}) , (
+                    f"package.json devDeps: {package_data}"
+                );
             }
         } finally {
             # Return to original directory
@@ -312,7 +352,7 @@ test "create jac app with skip flag" {
             # Verify project directory was created
             project_path = os.path.join(temp_dir, test_project_name);
             assert os.path.exists(project_path);
-            assert os.path.isdir(project_path);
+            assert os.path.isdir(project_path) , f"not a dir: {project_path}";
 
             # Verify that "Installing default packages" message is NOT in output
             assert "Installing default packages" not in stdout;
@@ -372,8 +412,12 @@ test "create jac app installs default packages" {
                     package_data = json.load(f);
                 }
                 # Verify core dependencies are in package.json (individual packages)
-                assert "react" in package_data.get("dependencies", {});
-                assert "vite" in package_data.get("devDependencies", {});
+                assert "react" in package_data.get("dependencies", {}) , (
+                    f"package.json deps: {package_data}"
+                );
+                assert "vite" in package_data.get("devDependencies", {}) , (
+                    f"package.json devDeps: {package_data}"
+                );
             }
         } finally {
             # Return to original directory
@@ -893,7 +937,8 @@ test "raw template config files from jac toml" {
                 content = f.read();
             }
 
-            assert 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";' in content;
+            assert 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";'
+                in content;
             assert "export const docs = defineDocs({" in content;
             assert "export default defineConfig({});" in content;
             assert "module.exports" not in content;
@@ -1257,9 +1302,12 @@ test "path aliases in generated vite and tsconfig" {
             build_content = build_config_path.read_text();
 
             # Vite aliases strip trailing /* from patterns
-            assert '"@components": path.resolve(projectRoot, "components")' in build_content , f"@components alias not found in build config:\n{build_content}";
-            assert '"@utils": path.resolve(projectRoot, "src/utils")' in build_content , f"@utils alias not found in build config:\n{build_content}";
-            assert '"@shared": path.resolve(projectRoot, "shared/index")' in build_content , f"@shared alias not found in build config:\n{build_content}";
+            assert '"@components": path.resolve(projectRoot, "components")'
+                in build_content , f"@components alias not found in build config:\n{build_content}";
+            assert '"@utils": path.resolve(projectRoot, "src/utils")'
+                in build_content , f"@utils alias not found in build config:\n{build_content}";
+            assert '"@shared": path.resolve(projectRoot, "shared/index")'
+                in build_content , f"@shared alias not found in build config:\n{build_content}";
 
             # Test dev config also includes path aliases
             dev_config_path = bundler.create_vite_config(
@@ -1267,9 +1315,11 @@ test "path aliases in generated vite and tsconfig" {
             );
             dev_content = dev_config_path.read_text();
 
-            assert '"@components": path.resolve(projectRoot, "components")' in dev_content , f"@components alias not found in dev config:\n{dev_content}";
+            assert '"@components": path.resolve(projectRoot, "components")'
+                in dev_content , f"@components alias not found in dev config:\n{dev_content}";
             assert '"@utils": path.resolve(projectRoot, "src/utils")' in dev_content , f"@utils alias not found in dev config:\n{dev_content}";
-            assert '"@shared": path.resolve(projectRoot, "shared/index")' in dev_content , f"@shared alias not found in dev config:\n{dev_content}";
+            assert '"@shared": path.resolve(projectRoot, "shared/index")'
+                in dev_content , f"@shared alias not found in dev config:\n{dev_content}";
 
             # Test tsconfig includes path aliases
             tsconfig_path = bundler.create_tsconfig();

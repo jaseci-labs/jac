@@ -13,11 +13,6 @@ impl JacAnnexPass._load_annexes(
     seen: set[str] = set();
 
     self._merge_annex_group(nd, mod_path, mod_path, seen);
-
-    for variant_path in discover_variant_files(mod_path) {
-        self._merge_annex(nd, variant_path, variant_path, seen);
-        self._merge_annex_group(nd, variant_path, variant_path, seen);
-    }
 }
 
 impl JacAnnexPass._merge_annex_group(
@@ -36,11 +31,6 @@ impl JacAnnexPass._merge_annex(
 ) -> None {
     import from jaclang.jac0core.parser { parse as rd_parse }
     import from jaclang.jac0core.helpers { read_file_with_encoding }
-    import from jaclang.jac0core.compiler {
-        _coerce_client_module,
-        _coerce_server_module,
-        _coerce_native_module
-    }
     if path in seen {
         return;
     }
@@ -48,16 +38,6 @@ impl JacAnnexPass._merge_annex(
     source_str = read_file_with_encoding(path);
 
     (annex_mod, _had_error) = rd_parse(source_str, path, prog=self.prog);
-
-    import from jaclang.jac0core.ext_registry { codespace_of }
-    ctx_codespace = codespace_of(ctx_path);
-    if (ctx_codespace == 'client') {
-        _coerce_client_module(annex_mod);
-    } elif (ctx_codespace == 'server') {
-        _coerce_server_module(annex_mod);
-    } elif (ctx_codespace == 'native') {
-        _coerce_native_module(annex_mod);
-    }
     stmts = list(annex_mod.body);
     if not stmts {
         return;

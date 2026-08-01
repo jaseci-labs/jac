@@ -122,8 +122,8 @@ impl RcFactsPass._asn_makes_region_handle(nd: uni.Assignment) -> bool {
     ) {
         _cal_ab = nd.value.target.sym.decl.find_parent_of_type(uni.Ability);
         if _cal_ab is not None
-        and isinstance(_cal_ab.signature, uni.FuncSignature)
-        and _cal_ab.signature.return_type is not None {
+            and isinstance(_cal_ab.signature, uni.FuncSignature)
+            and _cal_ab.signature.return_type is not None {
             _rt_expr = _cal_ab.signature.return_type;
             while isinstance(_rt_expr, uni.AtomTrailer) {
                 _rt_expr = _rt_expr.target;
@@ -134,8 +134,8 @@ impl RcFactsPass._asn_makes_region_handle(nd: uni.Assignment) -> bool {
         }
     }
     if isinstance(nd.value, uni.Name)
-    and nd.value.sym is not None
-    and nd.value.sym.na_region_handle {
+        and nd.value.sym is not None
+        and nd.value.sym.na_region_handle {
         return True;
     }
     return False;
@@ -165,7 +165,7 @@ impl RcFactsPass._stamp_last_use(ir_in: uni.Module) -> None {
     out: dict[int, list[str]] = {};
     for ab in ir_in.get_all_sub_nodes(uni.Ability) {
         if isinstance(ab.signature, uni.FuncSignature)
-        and isinstance(ab.body, (list, tuple)) {
+            and isinstance(ab.body, (list, tuple)) {
             self._collect_last_use(ab, ab.body, out);
         }
     }
@@ -185,10 +185,10 @@ impl RcFactsPass._collect_last_use(
         for nm in stmt.get_all_sub_nodes(uni.Name) {
             sym = nm.sym;
             if sym is None
-            or sym.storage != SymbolStorage.LOCAL
-            or sym.na_escapes
-            or self._is_param_sym(sym)
-            or nm.sym_name == "self" {
+                or sym.storage != SymbolStorage.LOCAL
+                or sym.na_escapes
+                or self._is_param_sym(sym)
+                or nm.sym_name == "self" {
                 continue;
             }
             if self._enclosing_fn_scope(nm) is not owner {
@@ -340,10 +340,10 @@ impl RcFactsPass._is_alias_value(nm: uni.Name) -> bool {
         return False;
     }
     if p.type_tag is not None
-    and (
-        is_borrow_kind(p.type_tag.ownership)
-        or p.type_tag.ownership == OwnershipKind.IMM
-    ) {
+        and (
+            is_borrow_kind(p.type_tag.ownership)
+            or p.type_tag.ownership == OwnershipKind.IMM
+        ) {
         return False;
     }
     return True;
@@ -361,8 +361,8 @@ impl RcFactsPass._move_candidate_source(nd: uni.Assignment) -> (uni.Name | None)
         return None;
     }
     if nd.type_tag is not None
-    and nd.type_tag.ownership != OwnershipKind.NONE
-    and nd.type_tag.ownership != OwnershipKind.OWN {
+        and nd.type_tag.ownership != OwnershipKind.NONE
+        and nd.type_tag.ownership != OwnershipKind.OWN {
         return None;
     }
     val = nd.value;

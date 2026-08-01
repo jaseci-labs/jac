@@ -1,0 +1,12 @@
+[placement.pins]
+"test_closures.create_shared_counter" = "client"
+"test_closures.create_signal_simple" = "client"
+"test_closures.make_adder" = "client"
+"test_closures.make_counter" = "client"
+"test_closures.test_all_closures" = "client"
+"crossbound_server" = "server"
+"failload_server" = "server"
+"serve_api.greet" = "server"
+
+[scale.microservices.routes]
+"dualrole_analytics" = "/analytics"

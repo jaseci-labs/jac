@@ -9,7 +9,7 @@ shape it would take on the `sv` pathway.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
@@ -18,10 +18,12 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -64,27 +66,27 @@ def capture_stdout(fn: object) -> bytes {
 
 # --- str(obj) ---
 test "str(obj) dispatches to __str__" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_str", ctypes.c_char_p);
     assert f() == b"hello";
 }
 
 test "str(obj) with a computed (f-string) __str__" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_str_computed", ctypes.c_char_p);
     assert f() == b"Q(42)";
 }
 
 # --- f"{obj}" ---
 test "f-string interpolates obj via __str__" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_in_fstring", ctypes.c_char_p);
     assert f() == b"[world]";
 }
 
 # --- default repr fallback (no __str__) ---
 test "str(obj) without __str__ falls back to default repr, not garbage" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "obj_default_repr", ctypes.c_char_p);
     got = f();
     assert got.startswith(b"<Plain object at 0x") , f"got: {got!r}";
@@ -93,20 +95,20 @@ test "str(obj) without __str__ falls back to default repr, not garbage" {
 
 # --- polymorphism (vtable dispatch through a base-typed receiver) ---
 test "str(obj) resolves the runtime subclass __str__" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "poly_str", ctypes.c_char_p);
     assert f() == b"Dog:rex";
 }
 
 test "str(obj) on a base instance uses the base __str__" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "base_str", ctypes.c_char_p);
     assert f() == b"Animal:generic";
 }
 
 # --- null receiver (T | None) ---
 test "str(obj) on a null (None) struct pointer renders \"None\", not a crash" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     f = get_func(eng, "maybe_str", ctypes.c_char_p, ctypes.c_int64);
     assert f(1) == b"set";
     assert f(0) == b"None";
@@ -114,7 +116,7 @@ test "str(obj) on a null (None) struct pointer renders \"None\", not a crash" {
 
 # --- print(obj) ---
 test "print(obj) writes __str__ to stdout" {
-    (eng, _) = compile_native("obj_str.na.jac");
+    (eng, _) = compile_native("obj_str.jac");
     entry = get_func(eng, "jac_entry", None);
     assert capture_stdout(entry) == b"printed\n";
 }

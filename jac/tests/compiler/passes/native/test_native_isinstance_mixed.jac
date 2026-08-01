@@ -9,7 +9,7 @@ payload) for the archetype arms.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
@@ -19,10 +19,12 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -39,7 +41,7 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
 }
 
 test "isinstance mixed: builtin arm matches int and bool, rejects str/None" {
-    (eng, _) = compile_native("isinstance_mixed.na.jac");
+    (eng, _) = compile_native("isinstance_mixed.jac");
     f = get_func(eng, "chk_int_foo", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1 , "int must match the int arm";
     assert f(1) == 0 , "str must not match (int, Foo)";
@@ -48,7 +50,7 @@ test "isinstance mixed: builtin arm matches int and bool, rejects str/None" {
 }
 
 test "isinstance mixed: archetype arm matches exact type and subtype" {
-    (eng, _) = compile_native("isinstance_mixed.na.jac");
+    (eng, _) = compile_native("isinstance_mixed.jac");
     f = get_func(eng, "chk_int_foo", ctypes.c_int64, ctypes.c_int64);
     assert f(2) == 1 , "Foo instance must match the Foo arm";
     assert f(3) == 1 , "Sub(Foo) instance must match the Foo arm via MRO";
@@ -56,7 +58,7 @@ test "isinstance mixed: archetype arm matches exact type and subtype" {
 }
 
 test "isinstance mixed: str + archetype tuple" {
-    (eng, _) = compile_native("isinstance_mixed.na.jac");
+    (eng, _) = compile_native("isinstance_mixed.jac");
     f = get_func(eng, "chk_str_other", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1 , "str must match the str arm";
     assert f(1) == 1 , "Other instance must match the Other arm";
@@ -64,14 +66,14 @@ test "isinstance mixed: str + archetype tuple" {
 }
 
 test "isinstance mixed: hierarchy-less target forces vtable materialization" {
-    (eng, _) = compile_native("isinstance_mixed.na.jac");
+    (eng, _) = compile_native("isinstance_mixed.jac");
     f = get_func(eng, "chk_lone", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1 , "Lone instance must match its own arm";
     assert f(1) == 1 , "float must match the float arm";
 }
 
 test "isinstance mixed: statically typed struct operand" {
-    (eng, _) = compile_native("isinstance_mixed.na.jac");
+    (eng, _) = compile_native("isinstance_mixed.jac");
     f = get_func(eng, "chk_typed_operand", ctypes.c_int64);
     assert f() == 1 , "Sub-typed operand must match the Foo arm";
 }

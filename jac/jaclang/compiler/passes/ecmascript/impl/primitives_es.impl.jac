@@ -628,7 +628,15 @@ impl ESStrEmitter.emit_isidentifier(
 impl ESStrEmitter.emit_islower(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    return "(" + target + " === " + target + ".toLowerCase() && " + target + " !== " + target + ".toUpperCase())";
+    return "("
+        + target
+        + " === "
+        + target
+        + ".toLowerCase() && "
+        + target
+        + " !== "
+        + target
+        + ".toUpperCase())";
 }
 
 impl ESStrEmitter.emit_isnumeric(
@@ -658,7 +666,15 @@ impl ESStrEmitter.emit_istitle(
 impl ESStrEmitter.emit_isupper(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    return "(" + target + " === " + target + ".toUpperCase() && " + target + " !== " + target + ".toLowerCase())";
+    return "("
+        + target
+        + " === "
+        + target
+        + ".toUpperCase() && "
+        + target
+        + " !== "
+        + target
+        + ".toLowerCase())";
 }
 
 impl ESStrEmitter.emit_encode(
@@ -742,7 +758,11 @@ impl ESStrEmitter.emit_op_contains(
 impl ESBytesEmitter.emit_decode(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    return "new TextDecoder(" + (args[0] if len(args) > 0 else "") + ").decode(" + target + ")";
+    return "new TextDecoder("
+        + (args[0] if len(args) > 0 else "")
+        + ").decode("
+        + target
+        + ")";
 }
 
 impl ESBytesEmitter.emit_hex(
@@ -1860,9 +1880,15 @@ impl ESBuiltinEmitter.emit_pow(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 impl ESBuiltinEmitter.emit_divmod(
     self, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "[Math.floor(" + args[0] + " / " + args[1] + "), " + args[0] + " % " + args[
-        1
-    ] + "]";
+    return "[Math.floor("
+        + args[0]
+        + " / "
+        + args[1]
+        + "), "
+        + args[0]
+        + " % "
+        + args[1]
+        + "]";
 }
 
 impl ESBuiltinEmitter.emit_iter(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {

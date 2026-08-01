@@ -14,10 +14,14 @@ not return after `disengage` (tracked upstream), so cl stays unrequired here;
 flip to `require=["na", "cl"]` when cl gains both.
 """
 
-node P { has val: int; }
+node P {
+    has val: int;
+}
 
 walker Walk {
-    has seen: list = [], ends: int = 0;
+    has seen: list = [],
+        ends: int = 0;
+
     can step with P entry {
         self.seen.append(here.val);
         visit [-->] else {
@@ -27,7 +31,9 @@ walker Walk {
 }
 
 walker Halt {
-    has seen: list = [], tail: int = 0;
+    has seen: list = [],
+        tail: int = 0;
+
     can step with P entry {
         self.seen.append(here.val);
         if here.val == 2 {
@@ -39,8 +45,11 @@ walker Halt {
 }
 
 def visit_else_py() -> dict[str, any] {
-    n1 = P(val=1); n2 = P(val=2); n3 = P(val=3);
-    n1 ++> n2; n2 ++> n3;
+    n1 = P(val=1);
+    n2 = P(val=2);
+    n3 = P(val=3);
+    n1 ++> n2;
+    n2 ++> n3;
     w = Walk();
     w spawn n1;
     h = Halt();
@@ -48,26 +57,30 @@ def visit_else_py() -> dict[str, any] {
     return {"seen": w.seen, "ends": w.ends, "hseen": h.seen, "tail": h.tail};
 }
 
-na {
-    def visit_else_na() -> dict[str, any] {
-        n1 = P(val=1); n2 = P(val=2); n3 = P(val=3);
-        n1 ++> n2; n2 ++> n3;
-        w = Walk();
-        w spawn n1;
-        h = Halt();
-        h spawn n1;
-        return {"seen": w.seen, "ends": w.ends, "hseen": h.seen, "tail": h.tail};
-    }
+
+def visit_else_na() -> dict[str, any] {
+    n1 = P(val=1);
+    n2 = P(val=2);
+    n3 = P(val=3);
+    n1 ++> n2;
+    n2 ++> n3;
+    w = Walk();
+    w spawn n1;
+    h = Halt();
+    h spawn n1;
+    return {"seen": w.seen, "ends": w.ends, "hseen": h.seen, "tail": h.tail};
 }
 
-cl {
-    def visit_else_cl() -> dict[str, any] {
-        n1 = P(val=1); n2 = P(val=2); n3 = P(val=3);
-        n1 ++> n2; n2 ++> n3;
-        w = Walk();
-        w spawn n1;
-        h = Halt();
-        h spawn n1;
-        return {"seen": w.seen, "ends": w.ends, "hseen": h.seen, "tail": h.tail};
-    }
+
+def visit_else_cl() -> dict[str, any] {
+    n1 = P(val=1);
+    n2 = P(val=2);
+    n3 = P(val=3);
+    n1 ++> n2;
+    n2 ++> n3;
+    w = Walk();
+    w spawn n1;
+    h = Halt();
+    h spawn n1;
+    return {"seen": w.seen, "ends": w.ends, "hseen": h.seen, "tail": h.tail};
 }

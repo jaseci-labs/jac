@@ -1,7 +1,7 @@
 """Cross-backend `ssl` equivalence over the libssl/libcrypto TLS floor
 (issue #6978 Phase 1, the security-critical leg of the network tier).
 
-`import ssl` binds the bundled `na_stdlib/ssl.na.jac` Mechanism-F module (a
+`import ssl` binds the bundled `na_stdlib/ssl.jac` Mechanism-F module (a
 verifying TLS-client surface over OpenSSL's `libssl`/`libcrypto`) on the na
 backend; the sv reference is CPython's real `ssl`. A loopback HTTPS server is
 stood up with a test-generated self-signed cert for `localhost`; the cert path

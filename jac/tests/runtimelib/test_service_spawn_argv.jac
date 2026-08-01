@@ -15,15 +15,19 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import jaclang.cli.commands.execution;
-import from jaclang.cli.registry { get_registry }
+import from jaclang.cli.manifest { get_command_meta }
+import from jaclang.cli.manifest_parse { build_command_parser }
 import from jaclang.runtimelib { sv_client }
 
 
 """Assert the parser the `jac` entrypoint builds accepts `argv` headless."""
 def _parse_with_real_cli(argv: list) {
-    parser = get_registry().finalize();
+    assert len(argv) >= 1 , f"spawn argv must start with a command: {argv}";
+    meta = get_command_meta(argv[0]);
+    assert meta is not None , f"unknown CLI command in spawn argv: {argv}";
+    parser = build_command_parser(meta);
     try {
-        ns = parser.parse_args(argv);
+        ns = parser.parse_args(argv[1:]);
     } except SystemExit {
         assert False , f"the real `jac` CLI rejected spawn argv: {argv}";
     }

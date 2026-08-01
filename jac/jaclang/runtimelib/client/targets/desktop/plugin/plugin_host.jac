@@ -181,9 +181,11 @@ obj PluginHost {
         if self._wv_lib is None or self._wv_handle == 0 {
             return;
         }
-        js = "window.__jac.__emit__(" + json.dumps(event) + ", " + json.dumps(
-            payload
-        ) + ")";
+        js = "window.__jac.__emit__("
+            + json.dumps(event)
+            + ", "
+            + json.dumps(payload)
+            + ")";
 
         self._wv_lib.webview_eval(ctypes.c_void_p(self._wv_handle), js.encode("utf-8"));
     }

@@ -485,10 +485,8 @@ test "token refresh functionality" {
             assert error_entry["type"] == "missing";
         } else {
             assert "error" in refresh_result;
-            assert refresh_result["error"] in [
-                "Token is required",
-                "Invalid or expired token"
-            ];
+            assert refresh_result["error"]
+                in ["Token is required", "Invalid or expired token"];
         }
 
         response = client.post("/user/refresh-token", json={"token": ""});
@@ -734,10 +732,12 @@ test "/user/me rejects missing or invalid token with 401" {
         assert client.get("/user/me").status_code == 401;
         assert client.get(
             "/user/me", headers={"Authorization": "Bearer not-a-real-token"}
-        ).status_code == 401;
+        ).status_code
+            == 401;
         assert client.raw_client.patch(
             "/user/me", json={"profile": {"firstname": "Alice"}}
-        ).status_code == 401;
+        ).status_code
+            == 401;
     } finally {
         client.close();
     }
@@ -1256,31 +1256,39 @@ test "websocket functionality" {
             f"Expected 400/404/405, got {response.status_code}: {response.text}"
         );
 
-        async def test_nonexistent {
+        async def _assert_ws_rejected(url: str, what: str) {
+            connected = False;
+            err: any = None;
             try {
-                async with websockets.connect(
-                    f"{sv_ws_url}/ws/NonExistentWalker"
-                ) as ws {
+                async with websockets.connect(url) as ws {
                     await ws.recv();
-                    pytest.fail("Expected connection to be rejected");
+                    connected = True;
                 }
-            } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
+            } except Exception as e {
+                err = e;
             }
+            assert not connected , (
+                f"WS upgrade to {what} should have been rejected but connected "
+                f"and received a frame"
+            );
+            resp = err?.response;
+            status = resp?.status_code if resp is not None else err?.status_code;
+            assert status is not None and status >= 400 , (
+                f"WS upgrade to {what} must be rejected at the handshake with a 4xx; "
+                f"got {type(err).__name__} (status={status}). An accepted-then-closed "
+                f"connection or a timeout must not count as a rejection."
+            );
         }
-        asyncio.run(test_nonexistent());
-
-        async def test_http_via_ws {
-            try {
-                async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
-                    await ws.recv();
-                    pytest.fail("Expected connection to be rejected for HTTP walker");
-                }
-            } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
-            }
-        }
-        asyncio.run(test_http_via_ws());
+        asyncio.run(
+            _assert_ws_rejected(
+                f"{sv_ws_url}/ws/NonExistentWalker", "NonExistentWalker"
+            )
+        );
+        asyncio.run(
+            _assert_ws_rejected(
+                f"{sv_ws_url}/ws/CreateTask", "the HTTP-only walker CreateTask"
+            )
+        );
 
         async def test_private_no_auth {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
@@ -2133,9 +2141,7 @@ test "pwa target uses jac-scale server" {
     with tempfile.TemporaryDirectory() as temp_dir {
         temp_path = Path(temp_dir);
         main_jac = temp_path / "main.jac";
-        main_jac.write_text(
-            'cl { def:pub app -> JsxElement { return <div>Test</div>; } }'
-        );
+        main_jac.write_text('def:pub app -> JsxElement { return <div>Test</div>; }');
         jac_toml = temp_path / "jac.toml";
         jac_toml.write_text(
             '''[project]

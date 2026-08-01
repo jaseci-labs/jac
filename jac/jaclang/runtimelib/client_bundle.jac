@@ -43,5 +43,8 @@ obj ClientBundleBuilder {
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
     def _compile_to_js(source_path: Path) -> tuple[str, Module];
+    def _emitted_digest -> str;
     static def _signature(paths: Iterable[Path]) -> str;
 }
+
+def emitted_tree_digest(tree_root: Path) -> str;

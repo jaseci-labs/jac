@@ -226,9 +226,10 @@ impl HotReloader._remove_compiled_output(file_path: str) -> None {
             rel_dir = Path('.');
         }
         output_path = (
-            Path(self.base_path) / self._client_output_dir / rel_dir / self._get_js_filename(
-                file_path
-            )
+            Path(self.base_path)
+            / self._client_output_dir
+            / rel_dir
+            / self._get_js_filename(file_path)
         );
     }
     removed = False;
@@ -397,8 +398,8 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         );
 
         if had_js
-        and js_path is not None
-        and self._extract_js_exports(js_path) != old_exports {
+            and js_path is not None
+            and self._extract_js_exports(js_path) != old_exports {
             console.print(
                 f"  ↻ Export set of {self._get_js_filename(
                     file_path
@@ -574,7 +575,6 @@ impl HotReloader._get_js_filename(file_path: str) -> str {
 
 impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
     import from jaclang.jac0core.program { JacProgram }
-    import from jaclang.jac0core.unitree { ClientBlock, ServerBlock }
     has_client = False;
     has_server = False;
     try {
@@ -582,11 +582,7 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
         mod = prog.compile(file_path, no_cgen=True);
 
         for nd in mod.body {
-            if isinstance(nd, ClientBlock) {
-                has_client = True;
-            } elif isinstance(nd, ServerBlock) {
-                has_server = True;
-            } elif nd?.code_context {
+            if nd?.code_context {
                 if nd.code_context == CodeContext.CLIENT {
                     has_client = True;
                 } else {

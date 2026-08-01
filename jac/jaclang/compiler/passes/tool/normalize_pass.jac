@@ -12,9 +12,6 @@ obj NormalizePass(UniPass) {
     def enter_global_vars(nd: uni.GlobalVars) -> None;
     def enter_test(nd: uni.Test) -> None;
     def enter_module_code(nd: uni.ModuleCode) -> None;
-    def enter_client_block(nd: uni.ClientBlock) -> None;
-    def enter_server_block(nd: uni.ServerBlock) -> None;
-    def enter_native_block(nd: uni.NativeBlock) -> None;
     def enter_py_inline_code(nd: uni.PyInlineCode) -> None;
     def enter_import(nd: uni.Import) -> None;
     def enter_module_path(nd: uni.ModulePath) -> None;

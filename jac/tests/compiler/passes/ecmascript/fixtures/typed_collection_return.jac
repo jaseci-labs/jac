@@ -38,20 +38,22 @@ def:pub get_metrics_by_name -> dict {
     };
 }
 
-cl {
-    sv import from .typed_collection_return { get_metrics, get_dashboard, get_metrics_by_name }
 
-    def:pub app -> JsxElement {
-        has dashboard: any = None;
+import from .typed_collection_return { get_metrics, get_dashboard, get_metrics_by_name }
 
-        async can with entry {
-            dashboard = await get_dashboard();
-        }
+def:pub app -> JsxElement {
+    has dashboard: any = None;
 
-        return <div>
-            <h1>{dashboard.title}</h1>
-            {[<span key={m.name}>{m.name}: {m.value}{m.unit}</span>
-              for m in dashboard.metrics]}
-        </div>;
+    async can with entry {
+        dashboard = await get_dashboard();
     }
+
+    return
+        <div>
+            <h1>{dashboard.title}</h1>
+            {[
+                <span key={m.name}>{m.name}: {m.value}{m.unit}</span>
+                for m in dashboard.metrics
+            ]}
+        </div>;
 }

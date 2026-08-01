@@ -49,29 +49,28 @@ def:pub app -> JsxElement {
     # whitespace, so plain `mouse · <b>WASD</b> move` would render as
     # `mouse ·WASDmove`. Keep these literals until the formatter preserves
     # JSX whitespace on break.
-    return
-        <div id="page">
-            <h1>Jac Cube Shooter - na wasm + cl WebGL, one app module</h1>
-            <div id="hint">
-                {"Click the canvas to capture the mouse · "}
-                <b>WASD</b>
-                {" move · mouse/arrows aim · "}
-                <b>Space</b>
-                {" fire · "}
-                <b>Tab</b>
-                {" release"}
+    <div id="page">
+        <h1>Jac Cube Shooter - na wasm + cl WebGL, one app module</h1>
+        <div id="hint">
+            {"Click the canvas to capture the mouse · "}
+            <b>WASD</b>
+            {" move · mouse/arrows aim · "}
+            <b>Space</b>
+            {" fire · "}
+            <b>Tab</b>
+            {" release"}
+        </div>
+        <div id="wrap">
+            <canvas id="glcanvas" width={960} height={600}></canvas>
+            <div id="hud">
+                {"score "}
+                <b id="hud-score">0</b>
+                {" · "}
+                <b id="hud-fps">0</b>
+                {" fps"}
             </div>
-            <div id="wrap">
-                <canvas id="glcanvas" width={960} height={600}></canvas>
-                <div id="hud">
-                    {"score "}
-                    <b id="hud-score">0</b>
-                    {" · "}
-                    <b id="hud-fps">0</b>
-                    {" fps"}
-                </div>
-            </div>
-        </div>;
+        </div>
+    </div>
 }
 
 import from raylib {
@@ -413,7 +412,8 @@ def jcos(a: float) -> float {
     x8 = x4 * x4;
     x10 = x8 * x2;
     x12 = x8 * x4;
-    return 1.0 - x2 / 2.0 + x4 / 24.0 - x6 / 720.0 + x8 / 40320.0 - x10 / 3628800.0 + x12 / 479001600.0;
+    return 1.0 - x2 / 2.0 + x4 / 24.0 - x6 / 720.0 + x8 / 40320.0 - x10 / 3628800.0
+        + x12 / 479001600.0;
 }
 
 """sin(a) = cos(a - pi/2)."""

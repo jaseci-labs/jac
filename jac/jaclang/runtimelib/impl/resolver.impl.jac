@@ -150,7 +150,7 @@ impl resolve_hop(
         import from jaclang.runtimelib.topology_index { SELF_ROOT }
         if all(
             (lid := idx.node_to_lid.get(uid)) is not None
-            and idx.node_table[lid][2] == SELF_ROOT for uid in current_ids
+                and idx.node_table[lid][2] == SELF_ROOT for uid in current_ids
         ) {
             if slc is not None {
                 ordered = idx.resolve_chain_ordered(

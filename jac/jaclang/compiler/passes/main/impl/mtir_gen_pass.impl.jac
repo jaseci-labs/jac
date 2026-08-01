@@ -146,7 +146,7 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                 if enum_stmt.target and len(enum_stmt.target) > 0 {
                     target = enum_stmt.target[0];
                     if isinstance(target, uni.NameAtom)
-                    or isinstance(target, uni.Name) {
+                        or isinstance(target, uni.Name) {
                         member_name = target.value;
 
                         type_info = None;
@@ -384,8 +384,8 @@ impl MTIRGenPass._extract_tools_from_expr(
 
     for param in params_to_check {
         if isinstance(param, uni.KWPair)
-        and param?.key
-        and param.key.value == 'tools' {
+            and param?.key
+            and param.key.value == 'tools' {
             if param.value?.values {
                 for tool in param.value.values {
                     try {
@@ -393,7 +393,7 @@ impl MTIRGenPass._extract_tools_from_expr(
                         if isinstance(tool, uni.NameAtom) {
                             tool_sym = scope.lookup(tool.value, deep=True);
                         } elif isinstance(tool, uni.AtomTrailer)
-                        and isinstance(tool.right, uni.NameAtom) {
+                            and isinstance(tool.right, uni.NameAtom) {
                             tool_sym = scope.lookup(tool.right.value, deep=True);
                         } elif tool?.symbol_table {
                             tool_sym = tool.symbol_table;
@@ -506,9 +506,9 @@ impl MTIRGenPass._archetype_of_type_expr(
 ) -> uni.Archetype | None {
     sym = self._extract_type_symbol(type_expr, scope);
     if sym
-    and sym?.decl
-    and sym.decl?.name_of
-    and isinstance(sym.decl.name_of, uni.Archetype) {
+        and sym?.decl
+        and sym.decl?.name_of
+        and isinstance(sym.decl.name_of, uni.Archetype) {
         return sym.decl.name_of;
     }
     return None;

@@ -94,7 +94,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
     if jacIsLoggedIn() {
         return <ReactRouterOutlet/>;
     }
-    return <ReactRouterNavigate to={redirect} replace={True}/>;
+    <ReactRouterNavigate to={redirect} replace={True}/>
 }
 
 impl JacAwaiting(props: dict) -> JsxElement {
@@ -487,7 +487,7 @@ impl JacForm(props: dict) -> JsxElement {
                             }}
                         >
                             {fs.isSubmitting and "Submitting..."}{not fs.isSubmitting
-                            and submitLabel}
+                                and submitLabel}
                         </button>
                     );
                 }}

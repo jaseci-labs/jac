@@ -17,7 +17,7 @@ process. Calls run sequentially via `await`, so the swap is race-free.
 """
 
 import from "@jac/runtime" { jacSignup, jacLogin, __setLocalStorage, __getLocalStorage }
-sv import from ..social_graph { setup_profile, create_tweet, follow_user, load_feed }
+import from ..social_graph { setup_profile, create_tweet, follow_user, load_feed }
 
 """One client session: an isolated auth token over the shared runtime."""
 obj TestClient {

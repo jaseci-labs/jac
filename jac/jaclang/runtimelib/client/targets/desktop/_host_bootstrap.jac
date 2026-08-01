@@ -77,7 +77,31 @@ def _generate_host_source(
 
     bootstrap_js = (
         "(function(){try{"
-        "window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';"
+        "var _l={};"
+        "window.__jac={"
+        "invoke:function(p,c,a){"
+        "return fetch('/__jac/invoke',{method:'POST',"
+        "headers:{'Content-Type':'application/json'},"
+        "body:JSON.stringify([p,c,a||{}])})"
+        ".then(function(r){return r.text();})"
+        ".then(function(r){"
+        "if(typeof r==='string')r=JSON.parse(r);"
+        "if(r.ok)return r.data;"
+        "var e=new Error(r.error.message);"
+        "e.code=r.error.code;throw e;"
+        "});"
+        "},"
+        "on:function(ev,cb){"
+        "(_l[ev]=_l[ev]||[]).push(cb);"
+        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
+        "if(i!==-1)a.splice(i,1);};"
+        "},"
+        "__emit__:function(ev,p){"
+        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
+        "}"
+        "};"
+        "window.__JAC_DESKTOP__=true;"
+        "window.__JAC_BROKER__='/__jac';"
         "window.__JAC_NATIVE__=true;"
         "}catch(e){}})();"
     );
@@ -102,7 +126,9 @@ def _generate_host_source(
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
-        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
+        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
+        + _jacpyembed_import_block()
+        + "glob PY_EVAL: i32 = 258;\n"
         f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
         f"glob BOOTSTRAP_JS: str = {json.dumps(bootstrap_js, ensure_ascii=False)};\n"
         f"glob BOOT_ERROR_HTML: str = {json.dumps(

@@ -38,7 +38,7 @@ with entry {
 
 `&mut x` takes the exclusive mutable borrow: any number of live `&`, or exactly one live `&mut`, never both (violations are E1302).
 
-- `own` is **affine**: dropping without consuming is fine, not an error. Passing an owned local to a call, `return`, or field store consumes it.
+- `own` is **affine**: dropping without consuming is fine, not an error. Passing an owned local to a jac-defined call, `return`, or field store consumes it; read-only builtin methods and native stdlib calls borrow instead (see the idioms section below).
 - Storing an owned value into a field/subscript/graph object seals it into managed storage (**the membrane**): the source binding dies, and reading it back yields a plain managed value. `node`/`edge`/`walker` stay fully managed - no `own`/`&` of graph state.
 - Borrows are second-class: returning or storing one is E1306 (single passthrough of a borrow *parameter* is allowed); a borrow outliving its owner is E1304.
 - Sendability (E1308): only `imm`, moved `own` (including an `own Region` handle), or scalars cross `flow`/`thread_run` boundaries; live borrows never do.
@@ -94,6 +94,34 @@ jac nacompile service.jac --gc none --enforce-nogc --assert-no-rc
 3. **Verify**: `--assert-no-rc` fails the build if the emitted IR contains any `__rc_*` helper, trace function, roots-buffer global, or entry-point GC env probe; on success it prints `assert-no-rc ok`.
 
 Under `--gc none` an enforced module compiles **headerless**: owned payloads are bare `malloc` allocations (no RC header) and each free is a direct statically-placed `__drop_<T>` call, which also runs the user `def drop` hook. Note: an unhandled `raise` in an enforced module prints a line and calls `abort()` instead of unwinding.
+
+## Enforced-module idioms (what real programs look like)
+
+- Locals infer ownership from any fresh right-hand side: calls, literals,
+  f-strings, comprehensions, and str-typed subscripts/slices (`p = src[0:n]`
+  is an owned copy and does not consume `src`). Only contract positions
+  (params, returns, `has` fields) need explicit `own`/`&`/`&mut`/`imm`.
+- Read-only builtin methods (`find`, `startswith`, `split`, `join`,
+  `replace`, `get`, `write`, ...) and the native stdlib surface
+  (`os`/`sys`/`time`/`math`/`random`/`struct` calls) borrow their owned
+  receivers and arguments - `i = hay.find(pat)` leaves both live, and
+  `os.system(cmd)` does not seal `cmd`. Passing an owned value to a
+  jac-defined function with an `own` param still moves it.
+- Containers of `str` elements are fully supported: `xs.append(f"x{i}")`,
+  set `add`, dict literals, and `d[k] = v` all work. Fresh strings
+  (f-strings, concats, slices, call results) move into the container; named
+  bindings and string literals are copied in, so the source stays live
+  (`xs.append(s); print(s);` is legal). The container owns its elements and
+  frees them when it drops. A borrowed (`&str`) or field-read string must be
+  laundered through an explicit copy first (`xs.append(f"{p}")`). Containers
+  of archetypes or nested containers are still E1406 until their element-drop
+  monomorphization lands.
+- Typed-base int enum members are scalar constants; string globs are not
+  expressible under the contract - use a `def` returning `own str` for
+  string constants.
+- The compiler's own modules are never enforced: a project-wide
+  `[gc.enforce] modules = ["*"]` applies to your code only, so a release
+  binary can drive a `[dev] jaclang_source` checkout under full enforcement.
 
 ## Measuring and debugging
 

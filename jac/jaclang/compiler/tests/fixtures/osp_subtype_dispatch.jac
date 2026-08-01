@@ -13,16 +13,22 @@ visit/edges), so all three backends match. Native union field access on the
 tuple-trigger `here` landed in #6470, which unblocked this.
 """
 
-node Base { has val: int; }
+node Base {
+    has val: int;
+}
 node Sub(Base) {}
-node Other { has val: int; }
+node Other {
+    has val: int;
+}
 
 walker W {
     has base: int = 0;
     has either: int = 0;
+
     can on_base with Base entry {
         self.base = self.base + here.val;
     }
+
     can on_either with (Sub, Other) entry {
         self.either = self.either + here.val;
     }
@@ -35,20 +41,18 @@ def subtype_dispatch_py() -> dict[str, any] {
     return {"base": w.base, "either": w.either};
 }
 
-na {
-    def subtype_dispatch_na() -> dict[str, any] {
-        w = W();
-        w spawn Sub(val=5);
-        w spawn Other(val=7);
-        return {"base": w.base, "either": w.either};
-    }
+
+def subtype_dispatch_na() -> dict[str, any] {
+    w = W();
+    w spawn Sub(val=5);
+    w spawn Other(val=7);
+    return {"base": w.base, "either": w.either};
 }
 
-cl {
-    def subtype_dispatch_cl() -> dict[str, any] {
-        w = W();
-        w spawn Sub(val=5);
-        w spawn Other(val=7);
-        return {"base": w.base, "either": w.either};
-    }
+
+def subtype_dispatch_cl() -> dict[str, any] {
+    w = W();
+    w spawn Sub(val=5);
+    w spawn Other(val=7);
+    return {"base": w.base, "either": w.either};
 }

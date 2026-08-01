@@ -22,9 +22,13 @@ import from jaclang.runtimelib.transport { TransportResponse }
 import from jaclang.jac0core.runtime { JacRuntime, JacRuntimeInterface }
 
 glob logger = logging.getLogger(__name__),
-     EndpointResponse: TypeAlias = Response | BaseModel | dict[(str, object)] | list[
-         object
-     ] | str | `bytes | None;
+     EndpointResponse: TypeAlias = Response
+         | BaseModel
+         | dict[(str, object)]
+         | list[object]
+         | str
+         | `bytes
+         | None;
 
 obj ParameterHandler {
     has type_converter: JFastApiServer;

@@ -1,0 +1,2754 @@
+# byLLM Reference
+
+byLLM lets you delegate function implementations to large language models. You declare a function signature -- its name, parameter names, and types -- append `by llm`, and the LLM infers the behavior at runtime. byLLM handles prompt construction, model communication, response parsing, and type validation, so your Jac type annotations act as an enforced output schema.
+
+The constructs behind this are *meaning types*: semantic annotations from which prompts are automatically synthesized, making delegation of program logic to large language models (`by llm()`) a typed language feature rather than string engineering. **Meaning-Typed Programming (MTP)** is the paradigm built on them: meaning types are the construct, MTP is the practice of programming with them. A hand-written prompt is glue ([Why Jac Exists](../../quick-guide/why-jac.md)), and byLLM exists so you never write one. This reference covers MTP concepts, configuration, structured outputs, tool calling, and provider setup.
+
+---
+
+## Meaning Typed Programming
+
+Meaning Typed Programming (MTP) is Jac's core AI paradigm. Your function signature -- the name, parameter names, and types -- becomes the specification. The LLM reads this "meaning" and generates appropriate behavior. This works because well-named functions already describe their intent; MTP just makes that intent executable.
+
+### The Concept
+
+MTP treats semantic intent as a first-class type. You declare *what* you want, and AI provides *how*:
+
+```jac
+# The function signature IS the specification
+def classify_sentiment(text: str) -> str by llm;
+
+# Usage - the LLM infers behavior from the name and types
+with entry {
+    result = classify_sentiment("I love this product!");
+    # result = "positive"
+}
+```
+
+### Implicit vs Explicit Semantics
+
+**Implicit** -- derived from function/parameter names:
+
+```jac
+def translate_to_spanish(text: str) -> str by llm;
+```
+
+**Explicit** -- using `sem` for detailed descriptions:
+
+```jac
+sem classify = """
+Analyze the emotional tone of the input text.
+Return exactly one of: 'positive', 'negative', 'neutral'.
+Consider context and sarcasm.
+""";
+
+def classify(text: str) -> str by llm;
+```
+
+### Type Validation
+
+byLLM validates that LLM responses match the declared return type. If the LLM returns an invalid type, byLLM will:
+
+1. **Attempt coercion**, e.g. string `"5"` becomes integer `5`
+2. **Regenerate** the response for a structured return type when the output is empty or cannot be parsed, retrying up to `max_output_retries` times (see [Typed-Output Retry](#typed-output-retry))
+3. **Raise an error** if it still cannot be converted
+
+This means your Jac type system functions as the LLM's output schema. Declaring `-> int` guarantees you receive an integer, and declaring `-> MyObj` guarantees you receive a properly structured object.
+
+---
+
+## Installation
+
+```bash
+jac install byllm
+```
+
+For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):
+
+=== "Ollama (recommended)"
+    ```bash
+    # Install Ollama: https://ollama.com/download
+    ollama pull gemma3:4b
+    ```
+    ```toml
+    [byllm.model]
+    default_model = "ollama/gemma3:4b"
+    ```
+    Separate daemon, automatic GPU detection (CUDA / Metal / Vulkan picked up by Ollama itself), curated quantization registry. byLLM routes through litellm's Ollama provider -- nothing extra to install on the byLLM side.
+
+=== "In-process `local:*` (opt-in extra)"
+    ```bash
+    jac install 'byllm[local]'
+    ```
+    ```toml
+    [byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+    No daemon, single `jac install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
+
+For video support, install with the `video` extra:
+
+```bash
+jac install 'byllm[video]'
+```
+
+---
+
+## Model Configuration
+
+`llm` is **ambient** in Jac -- it's a built-in name, you never import it or pass it as an argument. The model that *powers* `llm` is configured project-wide via `jac.toml` (typical), with an optional per-module override (`glob llm = Model(...)`) when one file needs something different from the rest of the project.
+
+### Project-wide default (typical: `jac.toml`)
+
+```toml
+# jac.toml
+[byllm.model]
+default_model = "gpt-4o-mini"
+```
+
+```jac
+# any file in the project
+def summarize(text: str) -> str by llm();   # uses jac.toml's default
+
+with entry {
+    print(summarize("Jac is a programming language..."));
+}
+```
+
+Most projects do this and nothing else: set the default once, and every `by llm()` in the project picks it up. See [Default Model Configuration](#default-model-configuration) for the full schema (api_key, base_url, proxy, verbose, etc.) and [Supported Providers](#supported-providers) for provider name formats.
+
+### Per-module override
+
+When a single file needs a different model -- most often when composing a [`ModelPool`](#modelpool), calling a fine-tuned endpoint, or pinning a specific provider for that module -- redeclare `llm` as a module-level glob:
+
+```jac
+import from jaclang.byllm.lib { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+def summarize(text: str) -> str by llm();   # uses gpt-4o here only
+```
+
+The glob shadows the project default **for this module only**. Other files keep using whatever `jac.toml` says unless they declare their own `glob llm`.
+
+The name `llm` is just convention -- `by <name>()` accepts any module-level glob whose value is a `Model` (or `ModelPool`). Use whatever name reads best at the call site, especially when one file talks to multiple models:
+
+```jac
+import from jaclang.byllm.lib { Model }
+
+glob fast_model    = Model(model_name="gpt-4o-mini");
+glob smart_model   = Model(model_name="gpt-4o");
+glob summarizer    = Model(model_name="claude-sonnet-4-6");
+
+def quick_label(text: str) -> str by fast_model();
+def deep_analyze(text: str) -> dict by smart_model();
+def tldr(article: str) -> str by summarizer();
+```
+
+`by llm()` only refers to the ambient builtin when no `glob llm` shadows it. Once you define a glob with the name `llm`, that glob takes over for the module; any other named globs (`fast_model`, `smart_model`, ...) coexist alongside it and are selected explicitly per call.
+
+### Model Constructor Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `model_name` | str | Yes | Model identifier (e.g., "gpt-4o", "claude-sonnet-4-6") |
+| `api_key` | str | No | API key for the model provider (defaults to environment variable) |
+| `config` | dict | No | Configuration dictionary (see below) |
+
+**Config Dictionary Options:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `base_url` | str | Custom API endpoint URL (aliases: `host`, `api_base`) |
+| `proxy` | bool | Enable proxy mode (uses OpenAI client with base_url) |
+| `http_client` | bool | Enable direct HTTP requests (for custom endpoints) |
+| `ca_bundle` | str/bool | SSL certificate path, `True` for default, `False` to skip verification |
+| `api_key` | str | API key (alternative to constructor parameter) |
+| `verbose` | bool | Enable verbose/debug logging |
+| `outputs` | list | Mock responses for `MockLLM` testing |
+
+**Example with config:**
+
+```jac
+glob llm = Model(
+    model_name="gpt-4o",
+    config={
+        "base_url": "https://your-endpoint.com/v1",
+        "proxy": True
+    }
+);
+```
+
+### Supported Providers
+
+byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integration, providing access to 100+ providers.
+
+=== "OpenAI"
+    ```toml
+    [byllm.model]
+    default_model = "gpt-4o"
+    ```
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    ```
+
+=== "Anthropic"
+    ```toml
+    [byllm.model]
+    default_model = "claude-sonnet-4-6"
+    ```
+    ```bash
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    ```
+
+=== "Google Gemini"
+    ```toml
+    [byllm.model]
+    default_model = "gemini/gemini-2.0-flash"
+    ```
+    ```bash
+    export GOOGLE_API_KEY="..."
+    ```
+
+=== "Ollama (Local)"
+    ```toml
+    [byllm.model]
+    default_model = "ollama/llama3:70b"
+    ```
+    No API key needed - runs locally. See [Ollama](https://ollama.ai/).
+
+=== "Built-in Local (`local:*`)"
+    ```toml
+    [byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+    No API key, no daemon. byLLM downloads a Q4_K_M GGUF on first use and runs `llama.cpp` in-process. See [Built-in Local Models](#built-in-local-models) below.
+
+=== "HuggingFace"
+    ```toml
+    [byllm.model]
+    default_model = "huggingface/meta-llama/Llama-3.3-70B-Instruct"
+    ```
+    ```bash
+    export HUGGINGFACE_API_KEY="hf_..."
+    ```
+
+You can also override per-file with `glob llm = Model(...)` (see [Per-module override](#per-module-override)).
+
+**Provider Model Name Formats:**
+
+| Provider | Model Name Format | Example |
+|----------|-------------------|---------|
+| OpenAI | `gpt-*` | `gpt-4o`, `gpt-4o-mini` |
+| Anthropic | `claude-*` | `claude-sonnet-4-6` |
+| Google | `gemini/*` | `gemini/gemini-2.0-flash` |
+| Ollama | `ollama/*` | `ollama/llama3:70b` |
+| Built-in Local | `local:<alias>` | `local:gemma-4-e4b`, `local:gemma-4-e2b`, `local:qwen3.5-4b` |
+| HuggingFace | `huggingface/*` | `huggingface/meta-llama/Llama-3.3-70B-Instruct` |
+
+??? tip "Full Provider List"
+    For the complete list of supported providers and model name formats, see the [LiteLLM providers documentation](https://docs.litellm.ai/docs/providers).
+
+---
+
+## Built-in Local Models
+
+!!! tip "Most users want Ollama, not this."
+    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `jac install`.
+
+Any model name prefixed with `local:` runs in-process via `llama.cpp`, with weights pulled from HuggingFace on first use and cached under `~/.cache/jac/models/<alias>/`. No API key, no separate daemon, and no proxy server -- the GGUF is loaded directly into the Jac process. Activate by installing the `[local]` extra:
+
+```bash
+jac install 'byllm[local]' \
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+```
+
+The `--extra-index-url` flag points the installer at `llama-cpp-python`'s prebuilt wheel index. Without it, it falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
+
+The `local:*` route bypasses LiteLLM and replicates what cloud providers do server-side: it flattens multimodal content blocks for `llama.cpp`'s chat templates, rewrites OpenAI-style `json_schema` response formats into the GBNF grammar shape `llama.cpp` understands, and injects schema descriptions (e.g. `1=WORK, 2=PERSONAL, ...`) into the prompt so small open-weight models see the same constraints frontier models receive natively.
+
+### Quick Start
+
+```jac
+def categorize(title: str) -> Category by llm();
+```
+
+```toml
+# jac.toml
+[byllm.model]
+default_model = "local:gemma-4-e4b"
+```
+
+After `jac install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
+
+### Bundled Aliases
+
+| Alias | Repo | Q4_K_M Size | Notes |
+|-------|------|-------------|-------|
+| `gemma-4-e4b` | `unsloth/gemma-4-E4B-it-GGUF` | ~5.0 GB | Default. Google Gemma 4 E4B (instruction-tuned). |
+| `gemma-4-e2b` | `unsloth/gemma-4-E2B-it-GGUF` | ~2.5 GB | Smaller / faster Gemma 4 variant. |
+| `qwen3.5-4b` | `unsloth/Qwen3.5-4B-GGUF` | ~2.8 GB | Alibaba Qwen 3.5 4B (instruction-tuned). |
+
+Run `jac model list` to see download status. Run `jac model pull <alias>` to fetch weights ahead of time (e.g. in a Dockerfile) or `jac model rm <alias>` to free disk.
+
+### First-Run Download Flow
+
+| Context | Behavior |
+|---------|----------|
+| Interactive TTY | Prompts once with the alias, repo, file size, and target path. The answer is cached as a sidecar marker in the alias directory; subsequent runs do not prompt. |
+| Non-interactive (CI, Docker, daemon) | Refuses to download. Surface message: `Local model 'X' is not downloaded and auto-download is disabled in this context. Run: jac model pull X` |
+| `BYLLM_AUTO_DOWNLOAD=1` | Skips the prompt and downloads silently. |
+| `[byllm.local].auto_download = true` | Same as the env override, but project-scoped. |
+
+### GPU Acceleration
+
+The default install uses the CPU-only wheel index. To enable CUDA (or Metal on Apple Silicon), reinstall `llama-cpp-python` from the matching prebuilt-wheel index:
+
+=== "CUDA 12.4"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+    ```
+
+=== "Metal (Apple Silicon)"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+    ```
+
+=== "Vulkan"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/vulkan
+    ```
+
+If your platform isn't covered by a prebuilt wheel, you can compile from source instead:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python
+```
+
+(Replace `GGML_CUDA` with `GGML_METAL` / `GGML_VULKAN` / `GGML_HIP` etc. for other backends.)
+
+Then offload layers via `jac.toml`:
+
+```toml
+[byllm.local]
+n_gpu_layers = -1   # -1 = all layers; positive int = that many; 0 = CPU only
+```
+
+`llama_cpp.llama_supports_gpu_offload()` reports whether the installed wheel was built with GPU support.
+
+### `[byllm.local]` Configuration
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_alias` | str | `"gemma-4-e4b"` | Bundled alias used when `default_model` is unset and no provider API key is detected. |
+| `n_ctx` | int | `0` | Override context window in tokens. `0` uses the alias's bundled default (typically 8192). |
+| `n_gpu_layers` | int | `0` | Layers to offload to GPU. `-1` for all, `0` for CPU only. Requires a GPU-enabled `llama-cpp-python` build. |
+| `n_threads` | int | `0` | CPU thread count. `0` lets `llama.cpp` choose. |
+| `verbose` | bool | `false` | Enable `llama.cpp`'s verbose logging. |
+| `auto_download` | bool | `false` | Skip the first-run prompt and download silently. Equivalent to `BYLLM_AUTO_DOWNLOAD=1`. |
+
+### Environment Overrides
+
+| Variable | Effect |
+|----------|--------|
+| `BYLLM_DEFAULT_MODEL` | Overrides `[byllm.model].default_model` for the current shell. Useful for ad-hoc switches like `BYLLM_DEFAULT_MODEL=local:gemma-4-e4b jac run app.jac`. |
+| `BYLLM_AUTO_DOWNLOAD` | `1` to skip the TTY prompt; `0` to refuse silently. |
+| `JAC_MODELS_DIR` | Override the on-disk cache root. Defaults to `~/.cache/jac/models`. |
+
+### Default Model Resolution
+
+When no model is explicitly set, byLLM picks one in this order:
+
+1. `BYLLM_DEFAULT_MODEL` environment variable
+2. `[byllm.model].default_model` in `jac.toml`
+3. **Auto-detect** -- if any provider API key is present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`), falls through to `gpt-4o-mini`
+4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `jac install 'byllm[local]'`).
+
+### Managing the Cache
+
+The `jac model` CLI command manages the local model cache. See [jac model](../cli/index.md#jac-model) for the full reference.
+
+```bash
+jac model                        # list bundled aliases + download status
+jac model pull gemma-4-e4b       # fetch weights ahead of time
+jac model rm gemma-4-e4b         # delete cached weights for an alias
+```
+
+### Limitations
+
+- `local:*` does not currently support the streaming response path used by some `ModelPool` strategies; use a regular `Model` for streaming.
+- Tool-calling capability depends on the underlying GGUF; not all bundled aliases handle `by llm(tools=[...])` reliably. Frontier cloud models remain the safe default for agentic flows.
+- Multimodal inputs (images, audio) require a `llama-cpp-python` build that ships an `mmproj` handler. The bundled aliases include text-only inference.
+
+---
+
+## ModelPool
+
+`ModelPool` is a drop-in replacement for `Model` that wraps a LiteLLM `Router` running in-process (no subprocess, no proxy server). It handles fallback, retries, and load-distribution across a list of `Model` instances. Use `by pool()` exactly like `by llm()` - no other call-site changes needed.
+
+```jac
+import from jaclang.byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(models=[...], strategy="fallback");
+
+def answer(question: str) -> str by llm();
+```
+
+### Fallback
+
+When the primary model fails, `ModelPool` automatically tries the next model in the list. The `"fallback"` strategy uses ordered priority - each model is attempted in sequence, moving to the next only on failure:
+
+```jac
+import from jaclang.byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="gemini/gemini-2.5-flash"),    # try first
+        Model(model_name="gpt-4o-mini"),                 # if gemini fails
+        Model(model_name="anthropic/claude-sonnet-4-6"),  # last resort
+    ],
+    strategy="fallback",
+);
+```
+
+Any `by llm()` call in the file uses the pool automatically.
+
+### Load-Balancing (simple-shuffle)
+
+For free-tier key rotation or spreading load across multiple API keys for the same model, use the `"simple-shuffle"` strategy. Each call picks a random deployment from the pool:
+
+```jac
+import from jaclang.byllm.lib { Model, ModelPool }
+import os;
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_1")),
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_2")),
+        Model(model_name="gemini/gemini-2.5-flash", api_key=os.getenv("KEY_3")),
+    ],
+    strategy="simple-shuffle",
+);
+```
+
+Each `by llm()` call is routed to a randomly selected deployment - ideal for distributing requests across multiple API keys to stay within per-key rate limits.
+
+### ModelPool Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `models` | list[BaseLLM] | required | List of `Model` instances to include in the pool |
+| `strategy` | str | `"fallback"` | Routing strategy (see table below) |
+| `num_retries` | int | `1` | Number of retries per deployment before moving to the next |
+| `timeout` | float | `60.0` | Per-request timeout in seconds |
+
+**Routing Strategies:**
+
+| Strategy | Behavior |
+|----------|----------|
+| `"fallback"` | Ordered priority - tries models in sequence, moving to the next on failure |
+| `"simple-shuffle"` | Random pick per call - ideal for rotating across multiple API keys |
+| `"cost-based-routing"` | Cheapest deployment via LiteLLM's built-in cost database |
+| `"latency-based-routing"` | Fastest by EWMA-tracked response time |
+| `"usage-based-routing"` | Lowest current TPM/RPM usage |
+| `"least-busy"` | Fewest in-flight requests |
+
+### Global Defaults via `jac.toml`
+
+Set project-wide defaults for `ModelPool` in `jac.toml` under `[byllm.fallback]`:
+
+```toml
+[byllm.fallback]
+strategy = "fallback"    # Default routing strategy
+num_retries = 1          # Retries per deployment
+timeout = 60.0           # Per-request timeout in seconds
+```
+
+Constructor arguments always take precedence over `jac.toml` values.
+
+---
+
+## Project Configuration
+
+### Default Model Configuration
+
+The builtin `llm` is configured via `jac.toml`. This controls the model used by any `by llm()` call that doesn't explicitly override `llm`:
+
+```toml
+[byllm.model]
+default_model = "gpt-4o-mini"    # Model to use (any LiteLLM-supported model)
+api_key = ""                      # API key (env vars take precedence)
+base_url = ""                     # Custom API endpoint URL
+proxy = false                     # Enable proxy mode (uses OpenAI client)
+verbose = false                   # Log LLM calls to stderr
+
+[byllm.call_params]
+temperature = 0.7                 # Optional; omit to use the provider default (0.0-2.0)
+max_tokens = 0                    # Max response tokens (0 = no limit)
+max_output_retries = 3            # Retries for structured output (0 = disabled)
+
+[byllm.litellm]
+local_cost_map = true             # Use local cost map
+drop_params = true                # Drop unsupported params per provider
+debug = false                     # Enable verbose LiteLLM logging
+
+[byllm.fallback]
+strategy = "fallback"             # Default ModelPool routing strategy
+num_retries = 1                   # Retries per deployment
+timeout = 60.0                    # Per-request timeout in seconds
+
+[byllm.parallel]
+enabled = false                   # Parallel tool execution (concurrent dispatch)
+
+[byllm.prompt_caching]
+enabled = true                    # Anthropic prompt caching (auto for Claude models)
+
+[byllm.compaction]
+enabled                = true     # Auto-compact long ReAct loops before hitting the context limit
+threshold_ratio        = 0.80     # Compact when prompt_tokens / ctx_window >= 80 %
+keep_recent_iterations = 3        # Preserve the last N tool-call rounds verbatim
+ctx_window             = 0        # 0 = auto-detect via LiteLLM; set >0 for self-hosted models
+compaction_model       = ""       # Empty = copy of the active model; set to use a cheaper one
+```
+
+**`[byllm.model]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_model` | str | `"gpt-4o-mini"` | LiteLLM model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-6"`, `"gemini/gemini-2.0-flash"`) |
+| `api_key` | str | `""` | API key for the provider. Environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) take precedence |
+| `base_url` | str | `""` | Custom API endpoint URL (for proxy or self-hosted models) |
+| `proxy` | bool | `false` | Enable proxy mode (uses OpenAI client instead of LiteLLM) |
+| `verbose` | bool | `false` | Log LLM calls and parameters to stderr |
+
+**`[byllm.call_params]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `temperature` | float | *unset* | Creativity/randomness (0.0-2.0, lower is more deterministic). Omitted from the request when unset, so the provider applies its own default |
+| `max_tokens` | int | `0` | Maximum response tokens (0 = no limit / model default) |
+| `max_output_retries` | int | `3` | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). See [Typed-Output Retry](#typed-output-retry) |
+
+**`[byllm.litellm]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `local_cost_map` | bool | `true` | Use local cost map instead of fetching from remote |
+| `drop_params` | bool | `true` | Silently drop parameters unsupported by the chosen provider |
+| `debug` | bool | `false` | Enable verbose LiteLLM logging (HTTP requests, retries, headers). When `false`, LiteLLM's internal loggers are silenced. Exceptions are always logged via byLLM's own logger regardless of this setting |
+
+**`[byllm.parallel]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable parallel tool execution. When the LLM emits multiple tool calls in one response, run them concurrently via a shared thread pool. Can also be enabled via `BYLLM_PARALLEL_TOOL_CALLING=true` env var or per-call `parallelize=True`. See [Parallel Tool Calling](#parallel-tool-calling) for details |
+
+**`[byllm.prompt_caching]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Automatically add Anthropic `cache_control` markers to the system prompt and tool schemas. Caches the static prefix across ReAct iterations for up to 90% input token savings. Only applies to Claude models; no effect on other providers |
+
+**`[byllm.compaction]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable automatic message compaction when the ReAct loop approaches the context window limit |
+| `threshold_ratio` | float | `0.80` | Fraction of `ctx_window` at which compaction triggers (e.g. `0.80` = compact when 80 % full) |
+| `keep_recent_iterations` | int | `3` | Number of most-recent tool-call rounds to keep verbatim; earlier rounds are replaced with a summary |
+| `ctx_window` | int | `0` | Global context window override in tokens. `0` = auto-detect via LiteLLM model registry. Set explicitly for self-hosted or unknown models |
+| `compaction_model` | str | `""` | Model used for the summarisation call. Empty string = copy of the currently active model, inheriting its `api_key` and `base_url`. Set to a cheaper model (e.g. `"ollama/llama3.2:1b"`) to reduce compaction cost |
+
+**Minimal setup** -- just set your API key and go:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+```jac
+# No imports needed -- llm is a builtin
+def greet(name: str) -> str by llm();
+
+with entry {
+    print(greet("Alice"));
+}
+```
+
+### System Prompt Override
+
+Override the default system prompt globally via `jac.toml`:
+
+```toml
+[byllm]
+system_prompt = "You are a helpful assistant that provides concise answers."
+```
+
+The system prompt is automatically applied to all `by llm()` function calls, providing:
+
+- Centralized control over LLM behavior across your project
+- Consistent personality without repeating prompts in code
+- Easy updates without touching source code
+
+#### Per-call override with `system_prompt=`
+
+Pass `system_prompt=` as a keyword on any `by llm()` call:
+
+```jac
+def respond(msg: str) -> str by llm(
+    system_prompt="You are a coding assistant. Answer in Jac.",
+    conversation=history
+);
+```
+
+- **Accepts** a `str`. Pass a function returning a `str` instead if the prompt needs to be computed at call time.
+- **Extends** the base SYSTEM: per-call text is appended *after* the `jac.toml` `system_prompt` (or the default), never replaces it.
+- **Precedence**: per-call > `jac.toml` > default.
+
+**Why use it.** Conversational functions (those that pass `conversation=<list>`) keep their persona in the function's `sem` by default -= and byLLM bakes that `sem` into the user message, so the persona duplicates into chat history every turn. Moving the persona to `system_prompt=` puts it in the SYSTEM slot (sent once, cacheable) and eliminates the duplication.
+
+### HTTP Client for Custom Endpoints
+
+For custom or self-hosted models, configure HTTP client in the Model constructor:
+
+```jac
+import from jaclang.byllm.lib { Model }
+
+glob llm = Model(
+    model_name="custom-model",
+    config={
+        "api_base": "https://your-endpoint.com/v1/chat/completions",
+        "api_key": "your_api_key_here",
+        "http_client": True,
+        "ca_bundle": True  # True (default SSL), False (skip), or "/path/to/cert.pem"
+    }
+);
+```
+
+**HTTP Client Options:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `api_base` | str | Full URL to your chat completions endpoint |
+| `api_key` | str | Bearer token for authentication |
+| `http_client` | bool | Enable direct HTTP mode (bypasses LiteLLM) |
+| `ca_bundle` | bool/str | SSL certificate verification |
+
+---
+
+## Core Syntax
+
+### Function Declaration
+
+```jac
+# Basic function
+def function_name(param: type) -> return_type by llm();
+
+# With sem for additional context (recommended for ambiguous names)
+def function_name(param: type) -> return_type by llm();
+sem function_name = "Description of what the function does.";
+```
+
+### Method Declaration
+
+```jac
+obj MyClass {
+    has attribute: str;
+
+    # Method has access to self attributes
+    def method_name() -> str by llm();
+}
+```
+
+### Inline Expression
+
+!!! warning "Not Yet Implemented"
+    The inline `by llm` expression syntax is planned but not yet available. Use a function declaration instead:
+
+    ```jac
+    # Instead of: response = "prompt" by llm;
+    # Use:
+    def explain(topic: str) -> str by llm();
+
+    with entry {
+        response = explain("quantum computing");
+    }
+    ```
+
+---
+
+## Return Types
+
+### Primitive Types
+
+```jac
+def get_summary(text: str) -> str by llm();
+def count_words(text: str) -> int by llm();
+def is_positive(text: str) -> bool by llm();
+def get_score(text: str) -> float by llm();
+```
+
+### Enum Types
+
+```jac
+enum Sentiment {
+    POSITIVE,
+    NEGATIVE,
+    NEUTRAL
+}
+
+def analyze_sentiment(text: str) -> Sentiment by llm();
+```
+
+Enum member semstrings are included in the LLM's schema, helping the model understand what each value means:
+
+```jac
+enum Personality {
+    INTROVERT,
+    EXTROVERT,
+    AMBIVERT
+}
+
+sem Personality.INTROVERT = "Prefers solitude and small groups, energized by alone time";
+sem Personality.EXTROVERT = "Thrives in social settings, energized by interaction";
+sem Personality.AMBIVERT = "Comfortable in both social and solitary settings";
+
+def classify_personality(bio: str) -> Personality by llm();
+```
+
+#### Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are `T` instances. This lets a `by llm()` return type flow directly into APIs that expect `int` or `str` without calling `.value`:
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404, SERVER_ERROR = 500 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
+def get_status(description: str) -> HttpStatus by llm();
+```
+
+`: int` desugars to `IntEnum`, `: str` to `StrEnum`, and any other base `T` to the mixin form `class X(T, Enum)`.
+
+### Object Types
+
+```jac
+obj Person {
+    has name: str;
+    has age: int;
+    has bio: str | None;
+}
+
+def extract_person(text: str) -> Person by llm();
+```
+
+### List Types
+
+```jac
+def extract_keywords(text: str) -> list[str] by llm();
+def find_people(text: str) -> list[Person] by llm();
+```
+
+### Optional Types
+
+```jac
+def find_date(text: str) -> str | None by llm();
+```
+
+---
+
+## Typed-Output Retry
+
+When a function declares a structured return type (anything other than `str`), byLLM expects the model to emit a JSON object matching the type's schema. A weak or distracted model sometimes returns empty content, prose, or malformed JSON that cannot be converted. Instead of failing immediately, byLLM **regenerates** the response before giving up.
+
+### How it works
+
+On a typed (non-`str`) call, byLLM runs the generation and then:
+
+1. If the response parses into the declared type, it is returned.
+2. If parsing raises `OutputConversionError`, or the response is empty or otherwise non-conforming, byLLM resets the conversation to the original prompt, injects a corrective message, and tries again.
+3. Once the retries are exhausted, it raises `OutputConversionError`.
+
+The corrective message restates what went wrong, **echoes the rejected output**, re-shows the JSON schema the response must satisfy, and instructs the model to reply with only a raw JSON object. This is usually enough to recover, including for reasoning models that spend their budget on a hidden channel and return empty content.
+
+A `str` return type is never retried, since any string is a valid result.
+
+### Configuring the retry count
+
+`max_output_retries` is the number of retries **after** the first attempt, so total attempts are `1 + max_output_retries`. The default is `3`; set it to `0` to disable retrying.
+
+Resolution order (first wins): per-call argument, then per-object `Model(...)`, then `jac.toml`, then the built-in default.
+
+```jac
+# Per call: allow up to 5 retries
+def extract(text: str) -> Product by llm(max_output_retries=5);
+
+# Per call: disable retrying
+def extract_strict(text: str) -> Product by llm(max_output_retries=0);
+```
+
+```toml
+# jac.toml: project-wide default
+[byllm.call_params]
+max_output_retries = 5
+```
+
+### When retries are exhausted
+
+If every attempt fails, byLLM raises `OutputConversionError` reporting how many attempts were made and chaining the last underlying error:
+
+```text
+OutputConversionError: typed-output generation failed after 4 attempt(s)
+(3 retries); last error: Failed to convert LLM output to 'Product': ...
+```
+
+The original rejected text remains available on `raw_output` (see [`OutputConversionError.raw_output`](#outputconversionerrorraw_output)).
+
+---
+
+## Invocation Parameters
+
+Parameters passed to `by llm()` at call time:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Omitted when unset, so the provider default applies |
+| `max_tokens` | int | Maximum tokens in response |
+| `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
+| `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
+| `incl_info` | dict | Additional context key-value pairs injected into the prompt |
+| `stream` | bool | Enable streaming output (only supports `str` return type) |
+| `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
+| `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
+| `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
+| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
+| `parallelize` | bool | Enable parallel tool execution for this call. Overrides global `[byllm.parallel]` config. Default: inherits global setting |
+| `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
+| `compaction_enabled` | bool | Enable/disable auto-compaction for this call. Overrides `[byllm.compaction] enabled`. Default: `True` |
+| `threshold_ratio` | float | Fraction of the context window at which compaction triggers. Default: `0.80` |
+| `keep_recent_iterations` | int | Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised. Default: `3` |
+| `ctx_window` | int | Context window size override in tokens. Highest priority - overrides `Model.ctx_window`, `jac.toml`, and LiteLLM auto-detect. `0` = use lower-priority source |
+| `compaction_model` | str | Model name to use for the summarisation call. Empty string / omitted = copy of the active model |
+| `on_compaction` | callable | Hook called instead of built-in summarisation. Signature: `(messages: list, keep_recent: int) -> list`. Must return the compacted message list |
+
+!!! warning "Deprecated: `method` parameter"
+    The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
+
+### Examples
+
+```jac
+# With temperature control
+# Note: Max temperature varies by provider (Anthropic: 0.0-1.0, OpenAI: 0.0-2.0)
+def generate_story(prompt: str) -> str by llm(temperature=0.9);
+def extract_facts(text: str) -> str by llm(temperature=0.0);
+
+# With max tokens
+def summarize(text: str) -> str by llm(max_tokens=100);
+
+# With tools (enables ReAct loop)
+def calculate(expression: str) -> float by llm(tools=[add, multiply]);
+
+# With additional context
+def personalized_greeting(name: str) -> str by llm(
+    incl_info={"current_time": get_time(), "location": "NYC"}
+);
+
+# With streaming
+def generate_essay(topic: str) -> str by llm(stream=True);
+
+# With streaming + logging (yields StreamEvent objects)
+def smart_answer(question: str) -> str by llm(
+    tools=[search_db], stream=True, logging=True
+);
+
+# Multi-turn - bind a caller-owned list as conversation history
+glob history: list = [];
+def chat(message: str) -> str by llm(
+    tools=[search_db],
+    conversation=history
+);
+```
+
+#### What's in the conversation list
+
+After each call byLLM appends the turn to your list **in place** as plain dicts. Iterate it like any list of message dicts:
+
+```python
+{"role": "user",      "content": "How is Paris?"}
+{"role": "assistant", "content": "Let me check.", "tool_calls": [...]}
+{"role": "tool",      "content": "sunny in Paris", "tool_call_id": "...", "name": "get_weather"}
+{"role": "assistant", "content": "It's sunny in Paris."}
+```
+
+The auto-generated SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn. The list is safe to JSON-serialise and replay across sessions.
+
+---
+
+## Semantic Strings (semstrings)
+
+The `sem` keyword attaches semantic descriptions to functions, parameters, type fields, and enum values. These strings are included in the compiler-generated prompt so the LLM sees them at runtime.
+
+!!! tip "Best practice"
+    Always use `sem` to provide context for `by llm()` functions and parameters. Docstrings are for human documentation (and auto-generated API docs) but are **not** included in compiler-generated prompts. Only `sem` declarations affect LLM behavior.
+
+```jac
+obj Customer {
+    has id: str;
+    has name: str;
+    has tier: str;
+}
+
+# Object-level semantic
+sem Customer = "A customer record in the CRM system";
+
+# Attribute-level semantics
+sem Customer.id = "Unique customer identifier (UUID format)";
+sem Customer.name = "Full legal name of the customer";
+sem Customer.tier = "Service tier: 'basic', 'premium', or 'enterprise'";
+
+# Enum value semantics
+enum Priority { LOW, MEDIUM, HIGH }
+sem Priority.HIGH = "Urgent: requires immediate attention";
+```
+
+### Parameter Semantics
+
+```jac
+sem analyze_code.code = "The source code to analyze";
+sem analyze_code.language = "Programming language (python, javascript, etc.)";
+sem analyze_code.return = "A structured analysis with issues and suggestions";
+
+def analyze_code(code: str, language: str) -> dict by llm;
+```
+
+### Complex Semantic Types
+
+```jac
+obj CodeAnalysis {
+    has issues: list[str];
+    has suggestions: list[str];
+    has complexity_score: int;
+    has summary: str;
+}
+
+sem analyze.return = """
+Return a CodeAnalysis object with:
+- issues: List of problems found
+- suggestions: Improvement recommendations
+- complexity_score: 1-10 complexity rating
+- summary: One paragraph overview
+""";
+
+def analyze(code: str) -> CodeAnalysis by llm;
+```
+
+---
+
+## Tool Calling (ReAct)
+
+### Defining Tools
+
+Describe each tool (and its parameters) with `sem` declarations - docstrings are for human readers and are **not** included in the prompt (see [Semantic Strings](#semantic-strings-semstrings)):
+
+```jac
+def get_date() -> str {
+    import from datetime { datetime }
+    return datetime.now().strftime("%Y-%m-%d");
+}
+sem get_date = "Get the current date in YYYY-MM-DD format.";
+
+def search_db(query: str, limit: int = 10) -> list[dict] {
+    # Implementation
+    return results;
+}
+sem search_db = "Search the database for matching records.";
+sem search_db.query = "Free-text search query.";
+sem search_db.limit = "Maximum number of records to return.";
+
+def send_email(recipient: str, subject: str, body: str) -> bool {
+    # Implementation
+    return True;
+}
+sem send_email = "Send an email notification.";
+```
+
+### Using Tools
+
+```jac
+def answer_question(question: str) -> str by llm(
+    tools=[get_date, search_db, send_email]
+);
+```
+
+### Method Tools
+
+```jac
+obj Calculator {
+    has memory: float = 0;
+
+    def add(x: float) -> float {
+        self.memory += x;
+        return self.memory;
+    }
+
+    def clear() -> float {
+        self.memory = 0;
+        return self.memory;
+    }
+
+    def calculate(instructions: str) -> str by llm(
+        tools=[self.add, self.clear]
+    );
+}
+```
+
+### Interrupting the ReAct Loop
+
+Use `on_iteration` to control the loop from outside - stop buttons, token budgets, or doom-loop detection:
+
+```jac
+import from jaclang.byllm.types { IterationAction, IterationContext }
+
+def my_hook(ctx: IterationContext) -> IterationAction {
+    # Stop after 5 iterations
+    if ctx.iteration > 5 {
+        return IterationAction.ABORT;
+    }
+    # Stop if too many tokens used
+    if ctx.total_tokens > 10000 {
+        return IterationAction.ABORT_WITH_SUMMARY;
+    }
+    return IterationAction.CONTINUE;
+}
+
+def agent_task(question: str) -> str by llm(
+    tools=[search, read_file],
+    on_iteration=my_hook
+);
+```
+
+**`IterationContext`** fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `iteration` | int | Current iteration number (starts at 2, since iteration 1 hasn't completed yet) |
+| `last_tool` | str | Name of the last tool executed |
+| `last_result` | str | Truncated result of last tool (500 chars) |
+| `total_tokens` | int | Cumulative token usage across all iterations |
+| `messages` | list | Full message history |
+
+**`IterationAction`** values:
+
+| Action | Behavior |
+|--------|----------|
+| `CONTINUE` | Proceed to next iteration (default) |
+| `ABORT` | Stop immediately, return last tool result |
+| `ABORT_WITH_SUMMARY` | Stop and ask LLM for a final summary |
+
+The callback fires **between iterations**, not between individual tool calls. If the LLM batches multiple tool calls in one iteration, all execute before the callback fires. No callback = old behavior.
+
+---
+
+## Parallel Tool Calling
+
+When the LLM emits multiple tool calls in a single response, byLLM can run them concurrently via a shared thread pool instead of one at a time. This reduces wall-clock time when tools involve I/O (API calls, file reads, database queries).
+
+```
+Sequential (default):     tool_A (1s) → tool_B (1s) → tool_C (1s) = 3s
+Parallel (enabled):       tool_A (1s) ┐
+                          tool_B (1s) ├→ all complete in ~1s
+                          tool_C (1s) ┘
+```
+
+The LLM decides which tools to batch - byLLM runs whatever the LLM emits together in a single response concurrently. Tools emitted in separate responses always run sequentially.
+
+### Enabling Parallel Mode
+
+Three levels of control, from broadest to most specific:
+
+=== "Project-wide (jac.toml)"
+    ```toml
+    [byllm.parallel]
+    enabled = true
+    ```
+    All `by llm()` calls in the project use parallel dispatch.
+
+=== "Environment Variable"
+    ```bash
+    export BYLLM_PARALLEL_TOOL_CALLING=true
+    ```
+    Overrides `jac.toml`. Useful for CI or per-run toggling.
+
+=== "Per-call (inline)"
+    ```jac
+    def my_agent(query: str) -> str by llm(
+        tools=[search, fetch, analyze],
+        parallelize=True
+    );
+    ```
+    Overrides both global config and env var for this specific call.
+
+Default is sequential -- parallel must be explicitly enabled.
+
+### Marking Tools as Sequential
+
+Some tools have side effects (writing files, mutating state) and must not run concurrently. Use `mark_serialize()` to flag them.
+
+When parallel mode is active, `dispatch_batch` checks each batch:
+
+- If **any** tool in the batch has `serialize=True` → the entire batch runs sequentially
+- If **all** tools are parallel-safe → the batch runs concurrently
+
+!!! note
+    `mark_serialize` applies to the function globally. All `by llm()` calls that include the marked tool will respect the constraint.
+
+### Intelligent Scheduling
+
+When parallel is active, byLLM automatically helps the LLM make smart batching decisions:
+
+- **Tool annotations** -- each tool's description gets a `[PARALLEL-SAFE]` or `[SEQUENTIAL]` tag
+- **Scheduling hints** -- rules injected into the system prompt guiding the LLM to batch when all arguments are known upfront and sequence when one tool depends on another's output
+
+### Example
+
+```jac
+import from jaclang.byllm.lib { Model, mark_serialize }
+
+glob llm = Model(model_name="gpt-5.2");
+
+def get_weather(city: str) -> str {
+    import time;
+    time.sleep(1.0);
+    return f"{city}: 22°C, sunny";
+}
+
+sem get_weather = "Get current weather for a city.";
+
+def save_log(message: str) -> str {
+    return f"Logged: {message}";
+}
+
+sem save_log = "Save a message to the activity log. Has side effects.";
+
+def weather_agent(question: str) -> str by llm(
+    tools=[get_weather, save_log],
+    parallelize=True
+);
+
+with entry {
+    mark_serialize(save_log);
+
+    # LLM emits 3 get_weather calls in parallel (~1s instead of ~3s)
+    # save_log is serialized -- any batch containing it runs sequentially.
+    # Intelligent LLMs won't mix [PARALLEL-SAFE] and [SEQUENTIAL] tools in the same batch
+    result = weather_agent(
+        "What's the weather in Tokyo, Paris, and New York?"
+    );
+    print(result);
+}
+```
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `BYLLM_TOOL_WORKERS` | `min(32, cpu_count * 5)` | Max threads in the shared pool (env var) |
+| `parallel_hint` | `True` | Pass `parallel_hint=False` in `by llm()` to disable scheduling hints while keeping parallel execution |
+
+### Verifying Parallel Execution
+
+```bash
+BYLLM_LOG_LEVEL=INFO jac run my_agent.jac
+```
+
+Look for `byllm.parallel` log lines: `dispatch=parallel` confirms concurrent execution, `wall_ms` shows wall-clock time (e.g. ~1000ms for 3 tools that each take 1s proves they ran in parallel)
+
+---
+
+## MCP Tools
+
+byLLM can call tools hosted on any [Model Context Protocol](https://modelcontextprotocol.io/) server. `McpClient` connects to the server, `get_tools()` returns its tools as byLLM tool objects, and you spread them into `by llm(tools=[...])` right alongside your local tools -- the ReAct loop treats both identically.
+
+```jac
+import from jaclang.byllm.lib { McpClient }
+
+glob jac_mcp = McpClient(command="jac", args=["mcp"]);
+
+def cite(source: str) -> str {
+    return f"[source: {source}]";
+}
+sem cite = "Append a citation marker to the answer.";
+
+def ask_about_jac(question: str) -> str by llm(
+    tools=[cite, *jac_mcp.get_tools()]
+);
+sem ask_about_jac = "Answer Jac questions using MCP tools, then cite the source.";
+
+with entry {
+    print(ask_about_jac("How do I declare an async function in Jac?"));
+    jac_mcp.close();
+}
+```
+
+### Selecting specific tools
+
+Pass `names=[...]` to `get_tools()` to expose only the tools you need instead of the server's full inventory:
+
+```jac
+def validate_snippet(code: str) -> str by llm(
+    tools=[*jac_mcp.get_tools(names=["validate_jac"])]
+);
+```
+
+### Remote servers
+
+Point `url` at an HTTP MCP endpoint. With the default `transport="auto"`, a `url` connects over streamable-HTTP:
+
+```jac
+glob msdocs = McpClient(url="https://learn.microsoft.com/api/mcp");
+
+def ask_msdocs(question: str) -> str by llm(tools=[*msdocs.get_tools()]);
+sem ask_msdocs = "Answer Microsoft technology questions via the Microsoft Learn MCP server.";
+
+with entry {
+    print(ask_msdocs("How do I create a Function App in Azure?"));
+    msdocs.close();
+}
+```
+
+Set `transport` and `headers` explicitly for authenticated or non-default endpoints:
+
+```jac
+glob jac_mcp = McpClient(
+    url="https://jac-mcp.jaseci.org/mcp/",
+    transport="streamable-http",
+    headers={"Authorization": "Bearer YOUR_TOKEN"}
+);
+
+def ask_jac_docs(question: str) -> str by llm(tools=[*jac_mcp.get_tools()]);
+```
+
+### `McpClient` Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `command` | str | `""` | Executable to launch for a **stdio** server (e.g. `"jac"`) |
+| `args` | list[str] | `[]` | Arguments passed to `command` (e.g. `["mcp"]`) |
+| `env` | dict[str, str] | `{}` | Extra environment variables for the stdio subprocess |
+| `url` | str | `""` | Endpoint URL for an **HTTP** server |
+| `headers` | dict[str, str] | `{}` | HTTP headers sent with each request (e.g. auth tokens) |
+| `transport` | str | `"auto"` | `"stdio"`, `"sse"`, `"streamable-http"`, or `"auto"` |
+| `timeout` | int | `30` | Connection timeout in seconds |
+
+With `transport="auto"` (the default) byLLM picks the transport from what you set: `command` selects `stdio`, `url` selects `streamable-http`. For an SSE endpoint pass `transport="sse"` explicitly. A client with neither `command` nor `url` raises `McpError`.
+
+### Lifecycle
+
+An `McpClient` holds a live connection -- a stdio subprocess or an HTTP session. `get_tools()` connects lazily on first use; call `close()` when you're done (typically at the end of the `with entry` block) to shut the connection down cleanly.
+
+---
+
+## Auto-Compaction
+
+When a ReAct loop runs many tool-calling iterations the message history grows until it hits the model's context window limit. Auto-compaction monitors token usage after each iteration and automatically summarises old tool-call rounds before the limit is reached, letting agents run indefinitely long tasks without interruption.
+
+### How it works
+
+After every LLM response byLLM compares `prompt_tokens / ctx_window` against a threshold (default 80 %). When the threshold is exceeded:
+
+1. The oldest tool-call rounds are serialised and sent to a summarisation LLM call.
+2. The summary replaces those rounds with a single user message tagged `[Compacted context summary]`.
+3. The system message and original user task (`messages[0]` and `messages[1]`) are always preserved verbatim.
+4. The most-recent `keep_recent_iterations` tool-call rounds are also kept verbatim for immediate context.
+
+The summarisation call goes through the full byLLM stack - it inherits telemetry, prompt caching, and proxy configuration from the active model.
+
+A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up.
+
+### Context window resolution
+
+byLLM resolves the effective context window for each model in priority order:
+
+1. `ctx_window` passed in `by llm(ctx_window=N)` call params *(highest)*
+2. `ctx_window` field on the `Model` object
+3. `[byllm.compaction] ctx_window` in `jac.toml`
+4. LiteLLM model registry (`litellm.get_model_info()`) - covers 100+ providers automatically
+5. `0` - unknown; threshold check is disabled, only the emergency exception path remains *(lowest)*
+
+For **`ModelPool`**, when no explicit override is set, the effective window is `min(ctx_window for each member)` - the most conservative value in the pool.
+
+### Per-call and per-object override
+
+```jac
+# Per-call - highest priority
+def my_agent(query: str) -> str by llm(
+    tools=[search, compute],
+    ctx_window=128000,
+    threshold_ratio=0.75,
+    keep_recent_iterations=5,
+    compaction_model="ollama/llama3.2:1b",
+    compaction_enabled=True,
+    on_compaction=my_hook
+);
+
+# Per-object - applied to every call on this model instance
+glob llm = Model(model_name="gpt-4o", ctx_window=128000);
+```
+
+### Custom compaction hook (`on_compaction`)
+
+Replace the built-in summarisation with your own logic by passing `on_compaction`. The hook receives the full serialised message list and `keep_recent`, and must return the compacted list:
+
+```jac
+def my_compactor(messages: list, keep_recent: int) -> list {
+    # messages[0] = system, messages[1] = original user task - always preserve
+    # messages[2:] = tool-call history to summarise
+    summary = my_domain_summariser(messages[2:]);
+    summary_msg = {"role": "user", "content": f"[Summary] {summary}"};
+    return [messages[0], messages[1], summary_msg] + messages[-keep_recent * 2:];
+}
+
+def my_agent(query: str) -> str by llm(
+    tools=[search],
+    on_compaction=my_compactor
+);
+```
+
+When `on_compaction` is set the built-in summarisation call is skipped entirely - the hook's return value becomes the new message history.
+
+### Using a separate model for compaction
+
+By default byLLM reuses a copy of the active model for the summarisation call, inheriting its `api_key` and `base_url`. Set `compaction_model` to use a cheaper or faster model instead:
+
+```jac
+# In jac.toml - applies globally
+# [byllm.compaction]
+# compaction_model = "ollama/llama3.2:1b"
+
+# Per-call
+def my_agent(query: str) -> str by llm(
+    tools=[search],
+    compaction_model="ollama/llama3.2:1b"
+);
+```
+
+### `CompactionNotEffectiveError`
+
+If the threshold fires on two consecutive iterations with a compaction between them - meaning the summarisation produced no meaningful reduction - byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
+
+---
+
+## Streaming
+
+byLLM supports three streaming modes, each building on the previous:
+
+### Basic Streaming
+
+Stream the final answer token by token:
+
+```jac
+def generate_story(topic: str) -> str by llm(stream=True);
+
+with entry {
+    for token in generate_story("space exploration") {
+        print(token, end="", flush=True);
+    }
+    print();
+}
+```
+
+The function returns a generator that yields raw string tokens as they arrive from the LLM.
+
+### Streaming with Tools
+
+Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is streamed token by token:
+
+```jac
+def get_weather(city: str) -> str {
+    return f"Weather in {city}: Sunny, 22°C";
+}
+
+def answer(question: str) -> str by llm(
+    tools=[get_weather], stream=True
+);
+
+with entry {
+    for token in answer("What's the weather in Tokyo?") {
+        print(token, end="", flush=True);
+    }
+    print();
+}
+```
+
+!!! note
+    With `stream=True` alone (no `logging`), the user sees nothing during intermediate tool calls -- only the final answer is streamed. For visibility into intermediate steps, add `logging=True`.
+
+### Streaming with Logging (`StreamEvent`)
+
+Add `logging=True` alongside `stream=True` to get `StreamEvent` objects that expose every intermediate step -- tool calls, tool results, reasoning thoughts -- in real time:
+
+```jac
+import from jaclang.byllm.lib { StreamEvent }
+
+def get_weather(city: str) -> str {
+    return f"Weather in {city}: Sunny, 22°C";
+}
+
+def get_population(city: str) -> str {
+    return "37.4 million (metro)";
+}
+
+def answer(question: str) -> str by llm(
+    tools=[get_weather, get_population],
+    stream=True,
+    logging=True
+);
+
+with entry {
+    for event in answer("What's the weather and population of Tokyo?") {
+        if event.event_type == "tool_call" {
+            print(f"Calling {event.data['tool']}({event.data['args']})");
+        } elif event.event_type == "tool_result" {
+            print(f"Result: {event.data['result']}");
+        } elif event.event_type == "chunk" {
+            print(event.data["content"], end="", flush=True);
+        } elif event.event_type == "steps_done" {
+            print(f"--- {event.data['iterations']} step(s) done ---");
+        } elif event.event_type == "usage" {
+            print(f"\nTokens used: {event.data['total']}");
+        }
+    }
+}
+```
+
+**Output:**
+
+```
+Calling get_weather({'city': 'Tokyo'})
+Result: Weather in Tokyo: Sunny, 22°C
+Calling get_population({'city': 'Tokyo'})
+Result: 37.4 million (metro)
+--- 2 step(s) done ---
+The weather in Tokyo is sunny at 22°C, and its population is 37.4 million...
+Tokens used: {'prompt_tokens': 850, 'completion_tokens': 45, ...}
+```
+
+With `logging=True`, the user sees the first `tool_call` event after just one LLM call (~1-2s), instead of waiting for all ReAct iterations to finish (~3-4s).
+
+### `StreamEvent` Reference
+
+`StreamEvent` has two fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event_type` | str | The type of event (see table below) |
+| `data` | dict | Event-specific payload |
+
+**Event Types:**
+
+| `event_type` | When emitted | `data` fields |
+|-------------|--------------|---------------|
+| `tool_call` | LLM decided to call a tool | `tool` (str), `args` (dict), `call_id` (str), `iteration` (int) |
+| `tool_result` | Tool finished executing | `tool` (str), `result` (str, truncated), `call_id` (str), `iteration` (int) |
+| `thought` | LLM produced reasoning text before a tool call | `content` (str), `iteration` (int) |
+| `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
+| `chunk` | One token of the final streamed answer | `content` (str) |
+| `usage` | All LLM calls complete (always the last event) | `total` (dict), `per_call` (list[dict]) |
+
+**Importing `StreamEvent`:**
+
+=== "Jac"
+    ```jac
+    import from jaclang.byllm.lib { StreamEvent }
+    ```
+
+=== "Python"
+    ```python
+    from jaclang.byllm.lib import StreamEvent
+    ```
+
+### Usage Tracking
+
+The final `StreamEvent` in every `logging=True` stream is a `usage` event containing aggregated token counts across all LLM calls in that invocation:
+
+```jac
+with entry {
+    for event in my_function("input") {
+        if event.event_type == "usage" {
+            # Aggregated totals across all LLM calls
+            print(event.data["total"]);
+            # e.g. {"prompt_tokens": 1200, "completion_tokens": 85, "total_tokens": 1285}
+
+            # Per-call breakdown (one dict per LLM call in the ReAct loop)
+            for call_usage in event.data["per_call"] {
+                print(call_usage);
+            }
+        }
+    }
+}
+```
+
+#### Cache tokens
+
+When [prompt caching](#project-configuration) is active (automatic for Claude models), each `per_call` dict also carries the provider's cache counters. Read them to measure your cache hit rate:
+
+```jac
+with entry {
+    for event in my_agent("...") {
+        if event.event_type == "usage" {
+            input_tokens = int(event.data["total"].get("prompt_tokens", 0));
+            cached = 0;
+            for call in event.data["per_call"] {
+                # Anthropic reports `cache_read_input_tokens`; OpenAI nests the
+                # count under `prompt_tokens_details.cached_tokens`.
+                cached += int(
+                    call.get("cache_read_input_tokens", 0)
+                    or (call.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+                    or 0
+                );
+            }
+            if input_tokens > 0 {
+                print(f"Cache hit rate: {round(cached / input_tokens * 100, 1)}%");
+            }
+        }
+    }
+}
+```
+
+Cached input tokens are billed at a fraction of the normal rate, so a high hit rate on a long, static system prompt or tool schema is a direct cost saving. See [`[byllm.prompt_caching]`](#project-configuration) to toggle caching.
+
+### Streaming Limitations
+
+- Only supports `str` return type
+
+---
+
+## Multimodal Inputs
+
+byLLM supports image and video inputs through the `Image` and `Video` types. These can be used as parameters in any `by llm()` function or method.
+
+### Image Type
+
+Import and use the `Image` type for image inputs:
+
+```jac
+import from jaclang.byllm.lib { Image }
+
+"""Describe what you see in this image."""
+def describe_image(img: Image) -> str by llm();
+
+with entry {
+    image = Image("photo.jpg");
+    description = describe_image(image);
+    print(description);
+}
+```
+
+#### Supported Input Formats
+
+The `Image` constructor accepts multiple formats:
+
+| Format | Example |
+|--------|---------|
+| File path | `Image("photo.jpg")` |
+| URL (http/https) | `Image("https://example.com/image.png")` |
+| Google Cloud Storage | `Image("gs://bucket/path/image.png")` |
+| Data URL | `Image("data:image/png;base64,...")` |
+| PIL Image | `Image(pil_image)` |
+| Bytes | `Image(raw_bytes)` |
+| BytesIO | `Image(bytes_io_buffer)` |
+| pathlib.Path | `Image(Path("photo.jpg"))` |
+
+#### In-Memory Usage
+
+```jac
+import from jaclang.byllm.lib { Image }
+import io;
+import from PIL { Image as PILImage }
+
+with entry {
+    pil_img = PILImage.open("photo.jpg");
+
+    # From BytesIO buffer
+    buf = io.BytesIO();
+    pil_img.save(buf, format="PNG");
+    img_from_buffer = Image(buf);
+
+    # From raw bytes
+    img_from_bytes = Image(buf.getvalue());
+
+    # From PIL image directly
+    img_from_pil = Image(pil_img);
+}
+```
+
+### Structured Output from Images
+
+Image inputs combine with all return types -- primitives, enums, objects, and lists:
+
+```jac
+import from jaclang.byllm.lib { Image }
+
+obj LineItem {
+    has description: str;
+    has quantity: int;
+    has price: float;
+}
+
+obj Receipt {
+    has store_name: str;
+    has date: str;
+    has items: list[LineItem];
+    has total: float;
+}
+
+"""Extract all information from this receipt image."""
+def parse_receipt(img: Image) -> Receipt by llm();
+
+with entry {
+    receipt = parse_receipt(Image("receipt.jpg"));
+    print(f"Store: {receipt.store_name}");
+    for item in receipt.items {
+        print(f"  - {item.description}: ${item.price}");
+    }
+    print(f"Total: ${receipt.total}");
+}
+```
+
+### Video Type
+
+The `Video` type processes videos by extracting frames at a configurable rate:
+
+```jac
+import from jaclang.byllm.lib { Video }
+
+"""Describe what happens in this video."""
+def explain_video(video: Video) -> str by llm();
+
+with entry {
+    video = Video(path="sample_video.mp4", fps=1);
+    explanation = explain_video(video);
+    print(explanation);
+}
+```
+
+!!! note "Video requires extra dependency"
+    Video support requires `jac install 'byllm[video]'`.
+
+#### Video Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | str | required | Path to the video file |
+| `fps` | int | 1 | Frames per second to extract |
+
+Lower `fps` values extract fewer frames, reducing token usage. Higher values provide more temporal detail.
+
+#### Structured Output from Videos
+
+```jac
+import from jaclang.byllm.lib { Video }
+
+obj VideoAnalysis {
+    has summary: str;
+    has key_events: list[str];
+    has duration_estimate: str;
+    has content_type: str;
+}
+
+"""Analyze this video and extract key information."""
+def analyze_video(video: Video) -> VideoAnalysis by llm();
+```
+
+### Multimodal with Tools
+
+Image and video inputs work with tool calling:
+
+```jac
+import from jaclang.byllm.lib { Image }
+
+"""Search for products matching the description."""
+def search_products(query: str) -> list[str] {
+    return [f"Product matching '{query}' - $29.99"];
+}
+
+"""Look at the image and find similar products."""
+def find_similar_products(img: Image) -> str by llm(
+    tools=[search_products]
+);
+
+with entry {
+    results = find_similar_products(Image("shoe.jpg"));
+    print(results);
+}
+```
+
+### Python Multimodal Integration
+
+Multimodal works in both Python integration modes:
+
+```python
+from jaclang.byllm.lib import Model, Image, by
+
+llm = Model(model_name="gpt-4o")
+
+@by(llm)
+def describe(img: Image) -> str: ...
+
+img = Image("photo.jpg")
+print(describe(img))
+```
+
+For a step-by-step walkthrough, see the [Multimodal AI Tutorial](../../tutorials/ai/multimodal.md).
+
+---
+
+## Context Methods
+
+### incl_info
+
+Pass additional context to the LLM:
+
+```jac
+obj User {
+    has name: str;
+    has preferences: dict;
+
+    def get_recommendation() -> str by llm(
+        incl_info={
+            "current_time": datetime.now().isoformat(),
+            "weather": get_weather(),
+            "trending": get_trending_topics()
+        }
+    );
+}
+```
+
+### Object Context
+
+Methods automatically include object attributes:
+
+```jac
+obj Article {
+    has title: str;
+    has content: str;
+    has author: str;
+
+    # LLM sees title, content, and author
+    def generate_summary() -> str by llm();
+    def suggest_tags() -> list[str] by llm();
+}
+```
+
+---
+
+## Python Integration
+
+byLLM works in Python with the `@by` decorator:
+
+```python
+from jaclang.byllm.lib import Model, by
+from dataclasses import dataclass
+from enum import Enum
+
+llm = Model(model_name="gpt-4o")
+
+@by(llm)
+def translate(text: str, language: str) -> str:  ...
+
+class Sentiment(Enum):
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+
+@by(llm)
+def analyze(text: str) -> Sentiment: ...
+
+@dataclass
+class Person:
+    name: str
+    age: int
+
+@by(llm)
+def extract_person(text: str) -> Person: ...
+```
+
+---
+
+## Best Practices
+
+### 1. Descriptive Names and `sem` for Clarity
+
+```jac
+# Good - name is self-explanatory
+def extract_emails(text: str) -> list[str] by llm();
+
+# Better - sem adds detail when needed
+def extract_emails(text: str) -> list[str] by llm();
+sem extract_emails = "Extract all email addresses from the text. Return empty list if none found.";
+```
+
+### 2. Descriptive Parameters
+
+```jac
+# Good
+def translate(source_text: str, target_language: str) -> str by llm();
+
+# Avoid
+def translate(t: str, l: str) -> str by llm();
+```
+
+### 3. Semantic Strings for Complex Types
+
+```jac
+obj Order {
+    has id: str;
+    has status: str;
+    has items: list[dict];
+}
+
+sem Order.status = "Order status: 'pending', 'processing', 'shipped', 'delivered', 'cancelled'";
+sem Order.items = "List of items with 'sku', 'quantity', and 'price' fields";
+```
+
+### 4. Tool Semantics
+
+Use `sem` to describe tools so the LLM knows when to call them:
+
+```jac
+sem search_products = "Search products in the catalog and return matching records.";
+sem search_products.query = "Search terms";
+sem search_products.category = "Optional category filter";
+sem search_products.max_results = "Maximum number of results (default 10)";
+def search_products(query: str, category: str = "", max_results: int = 10) -> list[dict] {
+    # Implementation
+}
+```
+
+### 5. Limit Tool Count
+
+Too many tools can confuse the LLM. Keep to 5-10 relevant tools per function.
+
+---
+
+## Error Handling
+
+byLLM raises typed exceptions that all inherit from `ByLLMError`. Catching the base class handles any library error; catching a specific subclass lets you respond to exactly the failure that occurred.
+
+### Exception Hierarchy
+
+```
+ByLLMError (base)
+├── AuthenticationError          - API key missing, expired, or rejected
+├── RateLimitError               - Rate limit or quota exceeded
+├── ModelNotFoundError           - Model name does not exist or is unavailable
+├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
+├── FinishToolError              - finish_tool output failed validation against the declared return type
+├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
+└── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
+```
+
+All exceptions are importable from `byllm.lib`.
+
+### Quick Reference
+
+| Exception | When raised |
+|-----------|-------------|
+| `AuthenticationError` | API key is missing, expired, or rejected by the provider |
+| `RateLimitError` | Provider rate limit or token quota is exceeded |
+| `ModelNotFoundError` | The requested `model_name` does not exist or is unavailable |
+| `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
+| `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
+| `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+| `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
+
+### Importing Exceptions
+
+=== "Jac"
+    ```jac
+    import from jaclang.byllm.lib {
+        ByLLMError,
+        AuthenticationError,
+        RateLimitError,
+        ModelNotFoundError,
+        OutputConversionError,
+        ConfigurationError,
+        CompactionNotEffectiveError
+    }
+    ```
+
+=== "Python"
+    ```python
+    from jaclang.byllm.lib import (
+        ByLLMError,
+        AuthenticationError,
+        RateLimitError,
+        ModelNotFoundError,
+        OutputConversionError,
+        ConfigurationError,
+        CompactionNotEffectiveError,
+    )
+    ```
+
+### Catching All byLLM Errors
+
+```jac
+import from jaclang.byllm.lib { ByLLMError }
+
+with entry {
+    try {
+        result = my_llm_function(input);
+    } except ByLLMError as e {
+        print(f"byLLM error: {e}");
+        # Fallback logic
+    }
+}
+```
+
+### Catching Specific Errors
+
+```jac
+import from jaclang.byllm.lib {
+    AuthenticationError,
+    RateLimitError,
+    ModelNotFoundError,
+    OutputConversionError
+}
+
+with entry {
+    try {
+        result = my_llm_function(input);
+    } except AuthenticationError as e {
+        print(f"Auth failed - check your API key: {e}");
+    } except RateLimitError as e {
+        print(f"Rate limit hit - back off and retry: {e}");
+    } except ModelNotFoundError as e {
+        print(f"Unknown model - check model_name in jac.toml: {e}");
+    } except OutputConversionError as e {
+        print(f"Bad LLM output: {e}");
+        print(f"Raw output was: {e.raw_output}");   # inspect the raw string
+    }
+}
+```
+
+### `OutputConversionError.raw_output`
+
+When the LLM returns a value that cannot be converted to the function's declared return type, `OutputConversionError` is raised and the original LLM string is attached as `raw_output`:
+
+```jac
+import from jaclang.byllm.lib { OutputConversionError }
+
+obj Product {
+    has name: str;
+    has price: float;
+}
+
+def extract_product(text: str) -> Product by llm();
+
+with entry {
+    try {
+        p = extract_product("some ambiguous text");
+    } except OutputConversionError as e {
+        print(f"Conversion failed: {e}");
+        print(f"Raw LLM output: {e.raw_output}");
+    }
+}
+```
+
+### `CompactionNotEffectiveError`
+
+Raised when auto-compaction fires on two consecutive iterations without reducing the context size. This prevents an infinite compaction loop:
+
+```jac
+import from jaclang.byllm.lib { CompactionNotEffectiveError }
+
+with entry {
+    try {
+        result = my_long_running_agent(query);
+    } except CompactionNotEffectiveError as e {
+        print(f"Context could not be compacted: {e}");
+        # Recovery options:
+        # 1. Provide a more aggressive on_compaction hook
+        # 2. Increase ctx_window if the model supports it
+        # 3. Switch to a model with a larger context window
+        # 4. Reduce keep_recent_iterations to discard more history
+    }
+}
+```
+
+### `ConfigurationError`
+
+Raised immediately (before any API call) when `by llm()` is used in a way that byLLM cannot support:
+
+```jac
+import from jaclang.byllm.lib { ConfigurationError }
+
+# This will raise ConfigurationError at call time:
+# streaming is only supported for str return types.
+def get_product(prompt: str) -> Product by llm(stream=True);
+```
+
+---
+
+## Testing with MockLLM
+
+Use `MockLLM` for deterministic testing without API calls. Mock responses are returned sequentially from the `outputs` list:
+
+```jac
+import from jaclang.byllm.lib { MockLLM }
+
+glob llm = MockLLM(
+    model_name="mockllm",
+    config={
+        "outputs": ["Mocked response 1", "Mocked response 2"]
+    }
+);
+
+def translate(text: str) -> str by llm();
+def summarize(text: str) -> str by llm();
+
+test "translate returns first mock" {
+    result = translate("Hello");
+    assert result == "Mocked response 1";
+}
+
+test "summarize returns second mock" {
+    result = summarize("Long text...");
+    assert result == "Mocked response 2";
+}
+```
+
+`MockLLM` is useful for:
+
+- Unit testing LLM-powered functions without API costs
+- Deterministic assertions on function behavior
+- CI/CD pipelines where API keys aren't available
+
+#### Injecting usage metadata (for compaction tests)
+
+Each entry in `outputs` may be a `(payload, usage_dict)` tuple to inject token-usage metadata. This lets you test threshold-based auto-compaction without a real model:
+
+```jac
+import from jaclang.byllm.lib { MockLLM, MockToolCall }
+
+def step_a -> str { return "a"; }
+def finish_tool(final_output: str) -> str { return final_output; }
+
+glob llm = MockLLM(
+    model_name="mockllm",
+    ctx_window=1000,
+    config={"outputs": [
+        # (tool_call, usage) - triggers compaction at 85 % of 1000 tokens
+        (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
+        # plain entry - no usage injection, loop exits via finish_tool
+        MockToolCall(tool=finish_tool, args={"final_output": "done"})
+    ]}
+);
+```
+
+Non-tuple entries behave exactly as before - usage defaults to `{}`.
+
+#### Simulating raw model text and errors
+
+A plain string or a pre-built typed instance in `outputs` is returned verbatim, which is fine for happy-path tests but skips byLLM's parsing. To exercise the real parse and retry path (for example to test [typed-output retry](#typed-output-retry)), use these wrappers:
+
+- **`MockRawResponse(content=...)`** routes the text through `parse_response` exactly like a real model: valid JSON parses to the typed object, malformed JSON raises `OutputConversionError` (triggering a retry), and an empty string is returned as-is.
+- **`MockError(error=...)`** raises the wrapped exception when dispatched, to verify that errors which are not `OutputConversionError` propagate without retry.
+- **`MockLLM.seen_prompts`** records the prompt (joined message contents) seen on each dispatch, so a test can assert how many attempts ran and inspect the corrective feedback between them.
+
+```jac
+import from jaclang.byllm.lib { MockLLM, MockRawResponse }
+
+obj Person {
+    has name: str,
+        age: int;
+}
+
+# First response is malformed JSON (triggers a retry); the second parses cleanly.
+glob llm = MockLLM(
+    model_name="mockllm",
+    config={"outputs": [
+        MockRawResponse(content="{\"name\": \"Ada\", \"age\":"),
+        MockRawResponse(content="{\"name\": \"Ada\", \"age\": 36}")
+    ]}
+);
+
+def get_person -> Person by llm();
+
+test "malformed output is retried and recovered" {
+    person = get_person();
+    assert person.name == "Ada" and person.age == 36;
+    assert len(llm.seen_prompts) == 2;                      # one retry
+    assert "{\"name\": \"Ada\", \"age\":" in llm.seen_prompts[1];  # broken output echoed back
+}
+```
+
+To cap or disable retries in a test, pass `max_output_retries` on the by-expression, e.g. `by llm(max_output_retries=1)` (a bare `by llm()` resets call params, so set it there rather than on the constructor).
+
+---
+
+## Complex Structured Output Example
+
+byLLM validates that responses match the declared return type, coercing when possible (e.g., `"5"` → `5`) and raising errors when coercion fails. This enables deeply nested structured outputs:
+
+??? example "Resume Parser"
+
+    ```jac
+    obj Education {
+        has degree: str;
+        has institution: str;
+        has year: int;
+    }
+
+    obj Experience {
+        has title: str;
+        has company: str;
+        has years: int;
+        has description: str;
+    }
+
+    obj Resume {
+        has name: str;
+        has email: str;
+        has phone: str | None;
+        has skills: list[str];
+        has education: list[Education];
+        has experience: list[Experience];
+    }
+
+    def parse_resume(text: str) -> Resume by llm();
+
+    with entry {
+        resume_text = """
+        John Smith
+        john.smith@email.com | (555) 123-4567
+
+        SKILLS: Python, JavaScript, Machine Learning, AWS
+
+        EDUCATION
+        BS Computer Science, MIT, 2018
+        MS Data Science, Stanford, 2020
+
+        EXPERIENCE
+        Senior Engineer at Google (3 years) - Led recommendation systems team
+        Software Developer at Startup Inc (2 years) - Full-stack web development
+        """;
+
+        resume = parse_resume(resume_text);
+        print(f"Name: {resume.name}");
+        print(f"Skills: {', '.join(resume.skills)}");
+        for edu in resume.education {
+            print(f"  - {edu.degree} from {edu.institution} ({edu.year})");
+        }
+    }
+    ```
+
+---
+
+## Agent Telemetry
+
+byLLM provides a built-in telemetry system that emits events after each `by llm()` invocation completes. You can register callbacks to capture per-invocation data - caller name, arguments, model, latency, status, user prompt, agent response, and conversation history.
+
+This is a **publish-only** mechanism: byLLM does not store any telemetry data. You supply a callback function that receives a telemetry record dict for each completed invocation.
+
+### Registering a Callback
+
+=== "Jac"
+    ```jac
+    import from jaclang.byllm.telemetry { register_agent_callback }
+
+    glob telemetry_log: list = [];
+
+    def my_callback(record: dict) -> None {
+        telemetry_log.append(record);
+        print(f"[{record['caller_name']}] {record['model']} - {record['status']} in {record['latency_ms']:.0f}ms");
+    }
+
+    with entry {
+        register_agent_callback(my_callback);
+    }
+    ```
+
+### Telemetry Record Fields
+
+Each callback receives a dict with these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `invocation_id` | `str` | Unique ID for this `by llm()` invocation |
+| `caller_name` | `str` | Name of the function decorated with `by llm()` |
+| `caller_args` | `dict` | Arguments passed to the caller (values truncated to 500 chars) |
+| `user_prompt` | `str` | The user prompt sent to the model (truncated to 2000 chars) |
+| `agent_response` | `str` | The model's response (truncated to 2000 chars, or `"[streaming]"` for streamed responses) |
+| `conversation_history` | `list` | Full message list from the conversation |
+| `model` | `str` | Model name used for the invocation |
+| `latency_ms` | `float` | Wall-clock time for the invocation in milliseconds |
+| `status` | `str` | `"success"` or `"error"` |
+| `error` | `str \| None` | Error message if status is `"error"` (truncated to 1000 chars) |
+
+### Combining with LiteLLM Per-Call Logging
+
+For full observability (tokens, cost, per-call breakdowns), combine the byLLM agent callback with a [litellm CustomLogger](https://docs.litellm.ai/docs/observability/custom_callback#custom-callback-class). The agent callback fires once per `by llm()` invocation, while the litellm callback fires for each underlying LLM API call (including tool-use round-trips).
+
+```jac
+import litellm;
+import from litellm.integrations.custom_logger { CustomLogger }
+import from jaclang.byllm.telemetry { register_agent_callback }
+
+glob llm_call_records: list = [],
+     agent_records: list = [];
+
+# litellm per-call callback - captures tokens & cost
+obj UserTelemetryLogger(CustomLogger) {
+    def log_success_event(
+        kwargs: dict,
+        response_obj: object,
+        start_time: object,
+        end_time: object
+    ) -> None {
+        slp = kwargs.get("standard_logging_object", {}) or {};
+        metadata = kwargs.get("litellm_params", {}).get("metadata", {}) or {};
+        llm_call_records.append({
+            "invocation_id": metadata.get("jac_invocation_id", ""),
+            "model": slp.get("model") or kwargs.get("model"),
+            "prompt_tokens": slp.get("prompt_tokens") or 0,
+            "completion_tokens": slp.get("completion_tokens") or 0,
+            "total_tokens": slp.get("total_tokens") or 0,
+            "cost": slp.get("response_cost") or 0.0,
+            "latency_s": slp.get("response_time") or 0
+        });
+    }
+}
+
+# byllm agent callback - captures caller, args, response
+def capture_agent(record: dict) -> None {
+    agent_records.append(record);
+}
+
+with entry {
+    litellm.callbacks.append(UserTelemetryLogger());
+    register_agent_callback(capture_agent);
+
+    # Now all by llm() calls emit both per-call and per-invocation telemetry.
+    # Use invocation_id to correlate agent records with their LLM call records.
+}
+```
+
+### Telemetry Example
+
+```jac
+import litellm;
+import from litellm.integrations.custom_logger { CustomLogger }
+import from jaclang.byllm.telemetry { register_agent_callback }
+
+glob llm_call_records: list = [],
+     agent_records: list = [];
+
+obj UserTelemetryLogger(CustomLogger) {
+    def log_success_event(
+        kwargs: dict,
+        response_obj: object,
+        start_time: object,
+        end_time: object
+    ) -> None {
+        slp = kwargs.get("standard_logging_object", {}) or {};
+        metadata = kwargs.get("litellm_params", {}).get("metadata", {}) or {};
+        llm_call_records.append({
+            "invocation_id": metadata.get("jac_invocation_id", ""),
+            "total_tokens": slp.get("total_tokens") or 0,
+            "cost": slp.get("response_cost") or 0.0
+        });
+    }
+}
+
+def summarize(text: str) -> str by llm();
+
+with entry {
+    litellm.callbacks.append(UserTelemetryLogger());
+    register_agent_callback(lambda (rec) { agent_records.append(rec); });
+
+    result = summarize("Jac is a programming language built on top of Python.");
+    print(f"Summary: {result}");
+
+    rec = agent_records[0];
+    calls = [c for c in llm_call_records if c.get("invocation_id") == rec.get("invocation_id")];
+    print(f"Caller : {rec.get('caller_name')}");
+    print(f"Status : {rec.get('status')}");
+    print(f"Latency: {rec.get('latency_ms', 0):.0f} ms");
+    print(f"Tokens : {sum(c.get('total_tokens', 0) for c in calls)}");
+    print(f"Cost   : ${sum(c.get('cost', 0.0) for c in calls):.6f}");
+}
+```
+
+**Output (values vary by model):**
+
+```
+Summary: Programming involves designing, writing, testing, and maintaining code to create software applications and systems.
+Caller : summarize
+Status : success
+Latency: 1482 ms
+Tokens : 89
+Cost   : $0.000021
+```
+
+---
+
+## LiteLLM Proxy Server
+
+byLLM can connect to a [LiteLLM proxy server](https://docs.litellm.ai/docs/simple_proxy) for enterprise deployments. This allows centralized model management, rate limiting, and cost tracking.
+
+### Setup
+
+1. Deploy LiteLLM proxy following the [official documentation](https://docs.litellm.ai/docs/proxy/deploy)
+
+2. Connect byLLM to the proxy:
+
+```jac
+import from jaclang.byllm.lib { Model }
+
+glob llm = Model(
+    model_name="gpt-4o",
+    api_key="your_litellm_virtual_key",
+    config={"api_base": "http://localhost:8000"}
+);
+```
+
+```python
+from jaclang.byllm.lib import Model
+
+llm = Model(
+    model_name="gpt-4o",
+    api_key="your_litellm_virtual_key",
+    config={"api_base": "http://localhost:8000"}
+)
+```
+
+### Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `model_name` | The model to use (must be configured in LiteLLM proxy) |
+| `api_key` | LiteLLM virtual key or master key (not the provider API key) |
+| `config` | Configuration dict; set `api_base` to the URL of your LiteLLM proxy server (also accepts `base_url` or `host` as aliases) |
+
+For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys).
+
+### Enabling Telemetry in LiteLLM Proxy Server
+
+When serving with the built-in scale subsystem (`jac start`), LLM telemetry is automatically enabled. The server registers both a **litellm CustomLogger** (for per-call token/cost tracking) and a **byLLM agent callback** (for per-invocation metadata), then exposes REST endpoints for querying the collected data.
+
+The telemetry endpoints are:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/llm/telemetry/summary` | Aggregate stats: total calls, tokens, cost, latency, per-model and per-caller breakdowns |
+| `GET /admin/llm/telemetry/traces` | Paginated list of invocation traces (supports `?caller=`, `?model=`, `?status=` filters) |
+| `GET /admin/llm/telemetry/traces/{id}` | Full detail for a single trace including all associated LLM call records |
+| `GET /admin/llm/telemetry/filters` | Available filter values (callers, models, statuses) |
+
+All endpoints require admin authentication via the `Authorization` header.
+
+---
+
+## Creating Custom Model Classes
+
+For self-hosted models or custom APIs not supported by LiteLLM, create a custom model class by inheriting from `BaseLLM`.
+
+### Implementation
+
+=== "Python"
+    ```python
+    from jaclang.byllm.llm import BaseLLM
+    from openai import OpenAI
+
+    class MyCustomModel(BaseLLM):
+        def __init__(self, model_name: str, **kwargs) -> None:
+            """Initialize the custom model."""
+            super().__init__(model_name, **kwargs)
+
+        def model_call_no_stream(self, params):
+            """Handle non-streaming calls."""
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(**params)
+            return response
+
+        def model_call_with_stream(self, params):
+            """Handle streaming calls."""
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(stream=True, **params)
+            return response
+    ```
+
+=== "Jac"
+    ```jac
+    import from jaclang.byllm.llm { BaseLLM }
+    import from openai { OpenAI }
+
+    obj MyCustomModel(BaseLLM) {
+        has model_name: str;
+        has config: dict = {};
+
+        def post_init() {
+            super().__init__(model_name=self.model_name, **self.config);
+        }
+
+        def model_call_no_stream(params: dict) -> object {
+            client = OpenAI(api_key=self.api_key);
+            response = client.chat.completions.create(**params);
+            return response;
+        }
+
+        def model_call_with_stream(params: dict) -> object {
+            client = OpenAI(api_key=self.api_key);
+            response = client.chat.completions.create(stream=True, **params);
+            return response;
+        }
+    }
+    ```
+
+### Usage
+
+```jac
+glob llm = MyCustomModel(model_name="my-custom-model");
+
+def generate(prompt: str) -> str by llm();
+```
+
+### Required Methods
+
+| Method | Description |
+|--------|-------------|
+| `model_call_no_stream(params)` | Handle standard (non-streaming) LLM calls |
+| `model_call_with_stream(params)` | Handle streaming LLM calls |
+
+The `params` dictionary contains the formatted request including messages, model name, and any additional parameters.
+
+---
+
+## Advanced Python Integration
+
+byLLM provides two modes for Python integration:
+
+### Mode 1: Direct Python Import
+
+Import byLLM directly in Python using the `@by` decorator:
+
+```python
+from dataclasses import dataclass
+from jaclang.byllm.lib import Model, Image, by
+
+llm = Model(model_name="gpt-4o")
+
+@dataclass
+class Person:
+    full_name: str
+    description: str
+    year_of_birth: int
+
+@by(llm)
+def get_person_info(img: Image) -> Person: ...
+
+# Usage
+img = Image("photo.jpg")
+person = get_person_info(img)
+print(f"Name: {person.full_name}")
+```
+
+### Mode 2: Implement in Jac, Import to Python (Recommended)
+
+Implement AI features in Jac and import seamlessly into Python:
+
+=== "ai.jac"
+    ```jac
+    import from jaclang.byllm.lib { Image }
+
+    obj Person {
+        has full_name: str;
+        has description: str;
+        has year_of_birth: int;
+    }
+
+    sem Person.description = "Short biography";
+
+    def get_person_info(img: Image) -> Person by llm();
+    sem get_person_info = "Extract person information from the image.";
+    ```
+
+=== "main.py"
+    ```python
+    from ai import Image, Person, get_person_info
+
+    img = Image("photo.jpg")
+    person = get_person_info(img)
+    print(f"Name: {person.full_name}")
+    ```
+
+### Semstrings in Python
+
+Use the `@Jac.sem` decorator for semantic strings in Python:
+
+```python
+from jaclang import JacRuntimeInterface as Jac
+from dataclasses import dataclass
+from jaclang.byllm.lib import Model, by
+
+llm = Model(model_name="gpt-4o")
+
+@Jac.sem("Represents a personal record", {
+    "name": "Full legal name",
+    "dob": "Date of birth (YYYY-MM-DD)",
+    "ssn": "Last four digits of Social Security Number"
+})
+@dataclass
+class Person:
+    name: str
+    dob: str
+    ssn: str
+
+@by(llm)
+def check_eligibility(person: Person, service: str) -> bool: ...
+```
+
+### Hyperparameters in Python
+
+```python
+@by(llm(temperature=0.3, max_tokens=100))
+def generate_joke() -> str: ...
+```
+
+### Tools in Python
+
+```python
+def get_weather(city: str) -> str:
+    return f"The weather in {city} is sunny."
+
+@by(llm(tools=[get_weather]))
+def answer_question(question: str) -> str: ...
+```
+
+---
+
+## Agentic AI Patterns
+
+### AI Agents as Walkers
+
+Combine graph traversal with LLM reasoning by using walkers as AI agents:
+
+```jac
+node Place {
+    has name: str;
+}
+
+def decide_action(goal: str, current: str, memory: list[dict]) -> str by llm();
+sem decide_action = "Given the agent's goal, current location, and memory of past decisions, decide the next action.";
+
+walker AIAgent {
+    has goal: str;
+    has memory: list[dict] = [];
+
+    can decide with Place entry {
+        decision = decide_action(self.goal, here.name, self.memory);
+        self.memory.append({"location": here.name, "decision": decision});
+        visit [-->];
+    }
+}
+```
+
+### LLM-Guided Traversal (`visit ... by llm`)
+
+A plain `visit [-->]` queues **every** matching successor. Add `by llm()` and the
+model decides which successor(s) the walker should visit next. This is useful when the
+next hop depends on the meaning of each edge/node rather than a hard-coded filter.
+
+In its simplest form you add nothing but `by llm()`:
+
+```jac
+walker dispatcher {
+    has request: str = "urgent escalation";
+
+    can route with Desk entry {
+        visit [-->] by llm();
+    }
+}
+```
+
+With no parameters, the model routes from context alone. Each candidate is rendered as
+an **(edge, node) pair** relative to the current node, so the model can condition on the
+connecting edge's type and attributes, not just node data. The walker's own state plus
+the current node are injected automatically (no need to smuggle them through
+`incl_info`). Candidate, field, and ability descriptions are sourced from
+[semstrings](#semantic-strings-semstrings). By default `select` is `"all"`, so the
+walker visits **every** successor the model picks.
+
+This bare form leans entirely on those descriptions, so it works best when your edges,
+nodes, and the walker carry meaningful `sem` strings. The two parameters below sharpen
+the decision.
+
+#### Steering the choice with `intent`
+
+`intent` is free-text shown to the model describing what the traversal is trying to
+achieve. It is the main lever for guiding routing:
+
+```jac
+walker dispatcher {
+    can route with Desk entry {
+        visit [-->] by llm(intent="Route along the highest-priority edge");
+    }
+}
+```
+
+#### Constraining how many nodes are visited
+
+The `select` parameter caps the cardinality of the result. The model is told the
+constraint in its prompt **and** the returned selection is truncated to honor it:
+
+| `select` value | Meaning |
+|----------------|---------|
+| `"all"` *(default)* | Visit every successor the model chooses (no cap). |
+| `1` | Visit **exactly one** successor (the single best match). |
+| `k` *(int)* | Visit **exactly `k`** successors. |
+| `(min, max)` *(tuple)* | Visit **between `min` and `max`** successors, inclusive. |
+
+```jac
+walker explorer {
+    can branch with Page entry {
+        # Pick the single best next node
+        visit [-->] by llm(select=1, intent="Go to the most relevant section");
+
+        # Fan out to at most three, at least one
+        visit [-->] by llm(select=(1, 3), intent="Explore the promising branches");
+
+        # Take exactly two
+        visit [-->] by llm(select=2, intent="Compare the two strongest candidates");
+    }
+}
+```
+
+!!! note
+    `select` bounds the count; it does not force it upward when too few candidates
+    qualify. With `select=2` but only one sensible successor, the walker visits one.
+    For `(min, max)`, `max` is a **hard cap** (the result is truncated to it), but
+    `min` is **advisory**: the model is *asked* to pick at least `min`, yet routing
+    can only visit candidates the model actually chose (and there may be fewer than
+    `min` available), so a shortfall is surfaced as a warning rather than enforced.
+
+### Tool-Using Agents
+
+Agents combine LLM reasoning with tool functions. The LLM decides which tools to call and in what order (ReAct loop):
+
+```jac
+import from jaclang.byllm.lib { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+glob kb: dict = {
+    "products": ["Widget A", "Widget B", "Service X"],
+    "prices": {"Widget A": 99, "Widget B": 149, "Service X": 29},
+    "inventory": {"Widget A": 50, "Widget B": 0, "Service X": 999}
+};
+
+"""List all available products."""
+def list_products() -> list[str] {
+    return kb["products"];
+}
+
+"""Get the price of a product."""
+def get_price(product: str) -> str {
+    if product in kb["prices"] {
+        return f"${kb['prices'][product]}";
+    }
+    return "Product not found";
+}
+
+"""Check if a product is in stock."""
+def check_inventory(product: str) -> str {
+    qty = kb["inventory"].get(product, 0);
+    return f"In stock ({qty} available)" if qty > 0 else "Out of stock";
+}
+
+def sales_agent(request: str) -> str by llm(
+    tools=[list_products, get_price, check_inventory]
+);
+sem sales_agent = "Help customers browse products, check prices and availability.";
+```
+
+### Context Injection with `incl_info`
+
+Pass additional runtime context to the LLM without modifying function signatures:
+
+```jac
+glob company_info = """
+Company: TechCorp
+Products: CloudDB, SecureAuth, DataViz
+Support Hours: 9 AM - 5 PM EST
+""";
+
+def support_agent(question: str) -> str by llm(
+    incl_info={"company_context": company_info}
+);
+sem support_agent = "Answer customer questions about our products and services.";
+```
+
+The `incl_info` dict keys and values are injected into the prompt as additional context. This is useful for dynamic information that changes between calls.
+
+### Agentic Walkers
+
+Walkers that traverse document graphs and use LLM for analysis:
+
+```jac
+node Document {
+    has title: str;
+    has content: str;
+    has summary: str = "";
+}
+
+def summarize(content: str) -> str by llm();
+sem summarize = "Summarize this document in 2-3 sentences.";
+
+walker DocumentAgent {
+    has query: str;
+
+    can process with Root entry {
+        all_docs = [-->][?:Document];
+
+        for doc in all_docs {
+            if self.query.lower() in doc.content.lower() {
+                doc.summary = summarize(doc.content);
+                report {"title": doc.title, "summary": doc.summary};
+            }
+        }
+    }
+}
+```
+
+### Multi-Agent Systems
+
+Orchestrate multiple specialized walkers:
+
+```jac
+walker Coordinator {
+    can coordinate with Root entry {
+        research = root spawn Researcher(topic="AI");
+        writer = root spawn Writer(style="technical");
+        reviewer = root spawn Reviewer();
+
+        report {
+            "research": research.reports,
+            "draft": writer.reports,
+            "review": reviewer.reports
+        };
+    }
+}
+```
+
+---
+
+## Related Resources
+
+- [byLLM Quickstart Tutorial](../../tutorials/ai/quickstart.md)
+- [Structured Outputs Tutorial](../../tutorials/ai/structured-outputs.md)
+- [Agentic AI Tutorial](../../tutorials/ai/agentic.md)
+- [Multimodal AI Tutorial](../../tutorials/ai/multimodal.md)
+- [MTP Research Paper](https://arxiv.org/abs/2405.08965)
+- [LiteLLM Documentation](https://docs.litellm.ai/docs)

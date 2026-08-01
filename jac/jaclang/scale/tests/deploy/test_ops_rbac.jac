@@ -42,7 +42,6 @@ test "build_ops_rbac: mutations append patch/delete verbs" {
     assert "patch" in mverbs and "delete" in mverbs;
     assert len(mut_rb["role"]["rules"]) > len(ro["role"]["rules"]) , "mutation rules are appended";
 
-    assert build_ops_rbac("a", "n", "", False)["role_binding"]["subjects"][0][
-        "name"
-    ] == "default";
+    assert build_ops_rbac("a", "n", "", False)["role_binding"]["subjects"][0]["name"]
+        == "default";
 }

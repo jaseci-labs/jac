@@ -4,7 +4,7 @@ def:pub get_items -> list {
     return [1, 2, 3];
 }
 
-cl def app -> str {
+def app -> str {
     has items: list = [],
         count: int = 0;
 

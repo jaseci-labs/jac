@@ -25,9 +25,9 @@ obj MicroserviceOrchestrator {
     def start_local -> None {
         if not self.ms_config.get("routes", {}) {
             logger.warning(
-                "No microservices to run: no routes were declared or discovered "
-                "(no `sv import` / `sv { }` markers next to the entry file). "
-                "Set [scale.microservices.routes] to declare them explicitly."
+                "No microservices to run: [scale.microservices.routes] is empty. "
+                "Declare services there (`jac scale split <module>` adds one) "
+                "to enable microservice mode."
             );
             return;
         }

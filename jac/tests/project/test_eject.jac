@@ -32,16 +32,38 @@ def _silent_eject(source: str, output: str = "", force: bool = False) -> int {
 def _write_project(src: Path, name: str = "test_app") {
     src.mkdir(parents=True, exist_ok=True);
     (src / "jac.toml").write_text(
-        f'[project]\nname = "{name}"\nversion = "0.1.0"\nentry-point = "main.jac"\n' + '[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\n'
+        f'[project]\nname = "{name}"\nversion = "0.1.0"\nentry-point = "main.jac"\n'
+            + '[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\n'
     );
     (src / "main.jac").write_text(
-        'import from server { Greet }\n\n' + 'cl {\n' + '    import from .frontend { app as ClientApp }\n' + '    def:pub app -> JsxElement {\n' + '        return <ClientApp/>;\n' + '    }\n' + '}\n'
+        'import from server { Greet }\n\n'
+            + 'import from .frontend { app as ClientApp }\n\n'
+            + 'def:pub app -> JsxElement {\n'
+            + '    return <ClientApp/>;\n'
+            + '}\n'
     );
-    (src / "server.sv.jac").write_text(
-        'walker:pub Greet {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report f"Hello, {self.name}!";\n' + '    }\n' + '}\n\n' + 'walker Secret {\n' + '    has reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report "secret";\n' + '    }\n' + '}\n'
+    (src / "server.jac").write_text(
+        'walker:pub Greet {\n'
+            + '    has name: str,\n'
+            + '        reports: list[str] = [];\n'
+            + '    can g with Root entry {\n'
+            + '        report f"Hello, {self.name}!";\n'
+            + '    }\n'
+            + '}\n\n'
+            + 'walker Secret {\n'
+            + '    has reports: list[str] = [];\n'
+            + '    can g with Root entry {\n'
+            + '        report "secret";\n'
+            + '    }\n'
+            + '}\n'
     );
-    (src / "frontend.cl.jac").write_text(
-        '"""Client UI."""\n' + 'sv import from server { Greet }\n\n' + 'def:pub app -> JsxElement {\n' + '    has msg: str = "hi";\n' + '    return <div>{msg}</div>;\n' + '}\n'
+    (src / "frontend.jac").write_text(
+        '"""Client UI."""\n'
+            + 'import from server { Greet }\n\n'
+            + 'def:pub app -> JsxElement {\n'
+            + '    has msg: str = "hi";\n'
+            + '    return <div>{msg}</div>;\n'
+            + '}\n'
     );
 }
 
@@ -63,7 +85,7 @@ def _has_jaclang_import(py_text: str) -> bool {
     for line in py_text.splitlines() {
         stripped = line.strip();
         if stripped.startswith("import jaclang")
-        or stripped.startswith("from jaclang") {
+            or stripped.startswith("from jaclang") {
             return True;
         }
     }
@@ -118,7 +140,7 @@ test "backend exposes the server walker and not the client app" {
         assert "from server import Greet" in main_py;
         assert '@app.post("/walker/Greet")' in main_py;
         assert "class GreetIn(BaseModel)" in main_py;
-        # The .cl.jac `app` component must never become a backend endpoint.
+        # The .jac `app` component must never become a backend endpoint.
         assert "/function/app" not in main_py;
         assert "from frontend import" not in main_py;
     }
@@ -133,7 +155,8 @@ test "backend runs walkers on the jaclang runtime via ExecutionManager" {
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
         # Walkers run on the real runtime; responses use the {"data": ...} envelope.
-        assert "from jaclang.runtimelib.server import UserManager, ExecutionManager" in main_py;
+        assert "from jaclang.runtimelib.server import UserManager, ExecutionManager"
+            in main_py;
         assert "_em.spawn_walker(_W_Greet" in main_py;
         assert '"data"' in main_py;
         # The compiled module keeps its real jaclang runtime imports.
@@ -226,7 +249,9 @@ test "byLLM projects vendor jaclang.byllm and pin the llm capability deps" {
             '[project]\nname = "llmapp"\nentry-point = "main.jac"\n'
         );
         (src / "main.jac").write_text(
-            'import from jaclang.byllm.lib { Model }\n\n' + 'glob llm = Model(model_name="mockllm", config={"outputs": ["ok"]});\n\n' + 'def:pub summarize(text: str) -> str by llm();\n'
+            'import from jaclang.byllm.lib { Model }\n\n'
+                + 'glob llm = Model(model_name="mockllm", config={"outputs": ["ok"]});\n\n'
+                + 'def:pub summarize(text: str) -> str by llm();\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -260,7 +285,7 @@ test "plain projects do not vendor byllm or pin llm deps" {
 
 
 # ==================== frontend ====================
-test "frontend compiles .cl.jac pages to JavaScript" {
+test "frontend compiles .jac pages to JavaScript" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
         _write_project(src, "myapp");
@@ -395,7 +420,7 @@ test "load_eject_project_metadata falls back to source dir name on placeholder" 
 
 
 # ==================== backend-only projects (no client app) ====================
-"""Materialize a walker-only project: no `cl {}` block / `.cl.jac`, so no
+"""Materialize a walker-only project: no `cl {}` block / `.jac`, so no
 client `app` component exists."""
 def _write_backend_only_project(src: Path, name: str = "be_app") {
     src.mkdir(parents=True, exist_ok=True);
@@ -403,7 +428,12 @@ def _write_backend_only_project(src: Path, name: str = "be_app") {
         f'[project]\nname = "{name}"\nentry-point = "main.jac"\n'
     );
     (src / "main.jac").write_text(
-        'walker:pub Ping {\n' + '    has reports: list[str] = [];\n' + '    can run with Root entry {\n' + '        report "pong";\n' + '    }\n' + '}\n'
+        'walker:pub Ping {\n'
+            + '    has reports: list[str] = [];\n'
+            + '    can run with Root entry {\n'
+            + '        report "pong";\n'
+            + '    }\n'
+            + '}\n'
     );
 }
 
@@ -432,7 +462,7 @@ def _model_fields(main_py: str, model: str) -> set {
         if isinstance(node, ast.ClassDef) and (node.name == model) {
             for stmt in node.body {
                 if isinstance(stmt, ast.AnnAssign)
-                and isinstance(stmt.target, ast.Name) {
+                    and isinstance(stmt.target, ast.Name) {
                     names.add(stmt.target.id);
                 }
             }
@@ -450,7 +480,17 @@ test "request model includes fields inherited from a base walker" {
             '[project]\nname = "inh"\nentry-point = "main.jac"\n'
         );
         (src / "main.jac").write_text(
-            'walker:pub Base {\n' + '    has a: int,\n' + '        b: str = "def";\n' + '    has reports: list[int] = [];\n' + '}\n\n' + 'walker:pub Compute(Base) {\n' + '    has c: int;\n' + '    can run with Root entry {\n' + '        report self.a + self.c;\n' + '    }\n' + '}\n'
+            'walker:pub Base {\n'
+                + '    has a: int,\n'
+                + '        b: str = "def";\n'
+                + '    has reports: list[int] = [];\n'
+                + '}\n\n'
+                + 'walker:pub Compute(Base) {\n'
+                + '    has c: int;\n'
+                + '    can run with Root entry {\n'
+                + '        report self.a + self.c;\n'
+                + '    }\n'
+                + '}\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -482,7 +522,8 @@ test "[eject.db] sqlalchemy vendors the backend, provider wiring, and SQLAlchemy
         assert (
             "from jaclang.runtimelib.storage.sqlalchemy_memory "
             "import SqlAlchemyMemory"
-        ) in main_py;
+        )
+            in main_py;
         assert "set_persistent_memory_provider" in main_py;
         assert "JAC_DB_URL" in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
@@ -517,7 +558,11 @@ test "requirements.txt carries the project's Python [dependencies]" {
         _write_project(src, "depapp");
         toml = (src / "jac.toml").read_text();
         (src / "jac.toml").write_text(
-            toml + '\n[dependencies]\npymupdf = ">=1.28"\nrequests = "*"\n' + 'pillow = "12.0"\nrapidocr = "latest"\n' + 'byllm = ">=0.6"\njaclang = ">=0.30"\nBYLLM = "*"\n' + 'fastapi = ">=0.100"\n'
+            toml
+                + '\n[dependencies]\npymupdf = ">=1.28"\nrequests = "*"\n'
+                + 'pillow = "12.0"\nrapidocr = "latest"\n'
+                + 'byllm = ">=0.6"\njaclang = ">=0.30"\nBYLLM = "*"\n'
+                + 'fastapi = ">=0.100"\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -629,7 +674,12 @@ test "script modules not imported by the entry module get no endpoints" {
         # A standalone CLI script: module-level `with entry` side effects
         # must never run inside the generated server.
         (src / "tool.jac").write_text(
-            'def cli_main() {\n' + '    print("cli");\n' + '}\n\n' + 'with entry {\n' + '    cli_main();\n' + '}\n'
+            'def cli_main() {\n'
+                + '    print("cli");\n'
+                + '}\n\n'
+                + 'with entry {\n'
+                + '    cli_main();\n'
+                + '}\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -653,7 +703,10 @@ test "modules transitively imported by the entry module keep endpoints" {
         );
         (src / "main.jac").write_text('import from api { ping }\n');
         (src / "api.jac").write_text(
-            'import from util { double }\n\n' + 'def:pub ping(x: int) -> int {\n' + '    return double(x);\n' + '}\n'
+            'import from util { double }\n\n'
+                + 'def:pub ping(x: int) -> int {\n'
+                + '    return double(x);\n'
+                + '}\n'
         );
         (src / "util.jac").write_text(
             'def double(x: int) -> int {\n' + '    return x * 2;\n' + '}\n'
@@ -673,7 +726,14 @@ test "entry module with server-side entry code is imported by main.py" {
         src = Path(td) / "bootapp";
         _write_project(src, "bootapp");
         (src / "main.jac").write_text(
-            'import from server { Greet }\n\n' + 'with entry {\n' + '    print("boot");\n' + '}\n\n' + 'cl {\n' + '    import from .frontend { app as ClientApp }\n' + '    def:pub app -> JsxElement {\n' + '        return <ClientApp/>;\n' + '    }\n' + '}\n'
+            'import from server { Greet }\n\n'
+                + 'with entry {\n'
+                + '    print("boot");\n'
+                + '}\n\n'
+                + 'import from .frontend { app as ClientApp }\n\n'
+                + 'def:pub app -> JsxElement {\n'
+                + '    return <ClientApp/>;\n'
+                + '}\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -693,7 +753,8 @@ test "client runtime sibling chunks are copied alongside __jac_runtime.js" {
         compiled = src / ".jac" / "client" / "compiled";
         compiled.mkdir(parents=True, exist_ok=True);
         (compiled / "client_runtime.js").write_text(
-            'import { x } from "./client_runtime_core.js";\n' + 'export const runtime = x;\n'
+            'import { x } from "./client_runtime_core.js";\n'
+                + 'export const runtime = x;\n'
         );
         (compiled / "client_runtime_core.js").write_text("export const x = 1;\n");
         rc = _silent_eject(str(src));
@@ -748,7 +809,12 @@ test "@restspec functions get their declared paths mounted" {
             '[project]\nname = "restapp"\nentry-point = "main.jac"\n'
         );
         (src / "main.jac").write_text(
-            'import from jaclang.runtimelib.builtin { restspec }\n' + 'import from jaclang.scale.jserver.jserver { HTTPMethod }\n\n' + '@restspec(method=HTTPMethod.POST, path="/api/v1/hello")\n' + 'def:pub hello(name: str = "") -> dict {\n' + '    return {"hi": name};\n' + '}\n'
+            'import from jaclang.runtimelib.builtin { restspec }\n'
+                + 'import from jaclang.scale.jserver.jserver { HTTPMethod }\n\n'
+                + '@restspec(method=HTTPMethod.POST, path="/api/v1/hello")\n'
+                + 'def:pub hello(name: str = "") -> dict {\n'
+                + '    return {"hi": name};\n'
+                + '}\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -770,7 +836,10 @@ def _write_upload_project(src: Path, name: str = "up_app") {
     );
     (src / "main.jac").write_text('import from up { ingest }\n');
     (src / "up.jac").write_text(
-        'import from fastapi { UploadFile }\n\n' + 'def:pub ingest(file: UploadFile) -> dict {\n' + '    return {"name": file.filename};\n' + '}\n'
+        'import from fastapi { UploadFile }\n\n'
+            + 'def:pub ingest(file: UploadFile) -> dict {\n'
+            + '    return {"name": file.filename};\n'
+            + '}\n'
     );
 }
 
@@ -848,7 +917,8 @@ test "a module that is only a docstring is not emitted as a backend module" {
         # A multi-line docstring module with no real statements (mirrors a
         # compiled client page): it must not become a backend .py module.
         (src / "notes.jac").write_text(
-            '"""First line of the module docstring\n' + 'that wraps onto a second line."""\n'
+            '"""First line of the module docstring\n'
+                + 'that wraps onto a second line."""\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -881,10 +951,15 @@ test "byLLM plugin config is emitted into backend/jac.toml" {
         src = Path(td) / "llmcfg";
         src.mkdir(parents=True, exist_ok=True);
         (src / "jac.toml").write_text(
-            '[project]\nname = "llmcfg"\nversion = "0.2.0"\nentry-point = "main.jac"\n' + '\n[byllm.model]\n' + 'default_model = "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}"\n' + 'api_key = "${BYLLM_API_KEY:-EMPTY}"\n' + '\n[byllm.call_params]\ntemperature = 0.0\nmax_tokens = 1024\n'
+            '[project]\nname = "llmcfg"\nversion = "0.2.0"\nentry-point = "main.jac"\n'
+                + '\n[byllm.model]\n'
+                + 'default_model = "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}"\n'
+                + 'api_key = "${BYLLM_API_KEY:-EMPTY}"\n'
+                + '\n[byllm.call_params]\ntemperature = 0.0\nmax_tokens = 1024\n'
         );
         (src / "main.jac").write_text(
-            'import from jaclang.byllm.lib { Model }\n\n' + 'def:pub ask(q: str) -> str by Model()(query=q);\n'
+            'import from jaclang.byllm.lib { Model }\n\n'
+                + 'def:pub ask(q: str) -> str by Model()(query=q);\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -959,7 +1034,8 @@ test "a user import named jac_test is not stripped (only jaclib imports are)" {
             'def jac_test() -> str {\n    return "custom";\n}\n'
         );
         (src / "helper.jac").write_text(
-            'import from userlib { jac_test }\n\n' + 'def:pub run() -> str {\n    return jac_test();\n}\n'
+            'import from userlib { jac_test }\n\n'
+                + 'def:pub run() -> str {\n    return jac_test();\n}\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;

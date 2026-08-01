@@ -12,10 +12,13 @@ report-aggregation half of nested spawning is covered py-side by `osp_report`
 until `report` lowering lands on na/cl.
 """
 
-node Item { has val: int; }
+node Item {
+    has val: int;
+}
 
 walker Inner {
     has got: int = 0;
+
     can grab with Item entry {
         self.got = here.val;
     }
@@ -23,6 +26,7 @@ walker Inner {
 
 walker Outer {
     has sum: int = 0;
+
     can run with Item entry {
         inner = Inner();
         inner spawn Item(val=here.val * 2);
@@ -36,18 +40,16 @@ def nested_spawn_py() -> dict[str, any] {
     return {"sum": o.sum};
 }
 
-na {
-    def nested_spawn_na() -> dict[str, any] {
-        o = Outer();
-        o spawn Item(val=4);
-        return {"sum": o.sum};
-    }
+
+def nested_spawn_na() -> dict[str, any] {
+    o = Outer();
+    o spawn Item(val=4);
+    return {"sum": o.sum};
 }
 
-cl {
-    def nested_spawn_cl() -> dict[str, any] {
-        o = Outer();
-        o spawn Item(val=4);
-        return {"sum": o.sum};
-    }
+
+def nested_spawn_cl() -> dict[str, any] {
+    o = Outer();
+    o spawn Item(val=4);
+    return {"sum": o.sum};
 }

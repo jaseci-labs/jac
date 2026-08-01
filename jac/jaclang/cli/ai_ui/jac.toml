@@ -28,3 +28,6 @@ description = "Watch the jac ai agent plan, build, and QA in real time"
 keywords = "jac ai agent visualizer"
 author = "Jaseci Labs"
 theme_color = "#6366f1"
+
+[scale.microservices.routes]
+"server" = "/server"

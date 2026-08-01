@@ -9,8 +9,7 @@ def fmt_long_py -> dict {
     return {"fmt_long": format(10.0 / 3.0, ".70f")};
 }
 
-na {
-    def fmt_long_na -> dict[str, any] {
-        return {"fmt_long": format(10.0 / 3.0, ".70f")};
-    }
+
+def fmt_long_na -> dict[str, any] {
+    return {"fmt_long": format(10.0 / 3.0, ".70f")};
 }

@@ -462,7 +462,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'labels': {
                     'app': redis_name,
                     'component': 'cache',
-                    'managed-by': 'jac-scale'
+                    'managed': 'jac-scale'
                 }
             },
             'spec': {

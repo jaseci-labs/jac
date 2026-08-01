@@ -178,6 +178,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         _view_acc_counter: int = 0,
         _view_awaiting_tries: set[int] = set(),
         sv_import_stubs: list[es.Statement] = [],
+        na_import_stubs: list[es.Statement] = [],
         needs_jac_runtime: bool = False,
         needs_osp_kernel: bool = False,
         needs_osp_graph: bool = False,
@@ -274,9 +275,15 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
-    def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _partition_client_import_items(nd: uni.Import) -> (tuple[list, list] | None);
+    def _generate_sv_import_stubs(
+        nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+    ) -> None;
+
     def _sv_import_item_is_type(nd: uni.Import, item: uni.ModuleItem) -> bool;
     def _record_sv_backend(nd: uni.Import) -> None;
+    def _generate_na_import_binding(nd: uni.Import) -> None;
+    def _is_client_native_import(nd: uni.Import) -> bool;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def _es_json_literal(value: any) -> any;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
@@ -508,8 +515,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _is_call_target(nd: uni.UniNode) -> bool;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_test(nd: uni.Test) -> None;
     def exit_token(nd: uni.Token) -> None;
     def exit_semi(nd: uni.Semi) -> None;

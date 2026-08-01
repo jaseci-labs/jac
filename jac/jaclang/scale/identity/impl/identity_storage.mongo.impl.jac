@@ -31,7 +31,8 @@ impl MongoIdentityStorage.identity_taken(value: str) -> bool {
     return self.users_col.count_documents(
         {'identities.value_normalized': normalized, 'status': {'$ne': 'disabled'}},
         limit=1
-    ) > 0;
+    )
+        > 0;
 }
 
 impl MongoIdentityStorage.delete_user(user_id: str) -> bool {

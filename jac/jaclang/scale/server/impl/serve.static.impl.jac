@@ -27,7 +27,11 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
         file_name = Path(file_path).name;
 
         client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / file_path;
-        client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
+        client_build_dist_file_simple = base_path
+            / '.jac'
+            / 'client'
+            / 'dist'
+            / file_name;
 
         dist_file = base_path / 'dist' / file_path;
         dist_file_simple = base_path / 'dist' / file_name;

@@ -3,10 +3,11 @@
 # baked at BUILD time so containers pay neither cost at boot:
 #   1. the runtime payload is extracted (pinned under XDG_CACHE_HOME so any
 #      runtime HOME hits the warm path) - skips jac's one-time setup
-#   2. the scale serve closure (fastapi, uvicorn, pymongo, ...) is installed
-#      into the runtime site via a seed `jac install` - pods need no pip for
-#      the serving stack (installs from an init container cannot reach the
-#      main container anyway: they land on the container-local runtime site)
+#   2. the scale serve closure (fastapi, uvicorn, pymongo, ...) is resolved by
+#      a seed `jac install` and promoted into the runtime site - pods need no
+#      pip for the serving stack (installs from an init container cannot reach
+#      the main container anyway: they land on the container-local runtime
+#      site)
 #
 # Built per release by .github/workflows/build-binaries.yml (docker-image job):
 #   jaseci/jaclang:<version>  - each jaclang release
@@ -31,15 +32,17 @@ COPY ${TARGETARCH}/jac /usr/local/bin/jac
 
 # ca-certificates: jac downloads deps over TLS. git: [dependencies.git] installs.
 # The seed project carries scale intent, so its `jac install` resolves the
-# serve capability closure into the runtime site (pip never targets project
-# venvs: the embedded interpreter pins its own prefix). setuptools is seeded
-# explicitly: the embedded runtime ships without it, and in-pod installs of
-# any dependency lacking a wheel for this Python fall back to an sdist build
-# that needs setuptools.build_meta - pip fails the whole install without it
-# (the venv-path self-seed does not apply to runtime-site installs). The
-# launcher write-probes the cache root before taking the warm path, so the
-# root dir must stay writable for any uid (sticky bit); the tree itself stays
-# read-only.
+# serve capability closure via jac's own logic. The standalone binary installs
+# into the seed project's .jac/venv (created from the runtime's bundled
+# CPython - same interpreter, same ABI), so the venv's site-packages is then
+# promoted into the runtime site, where the embedded interpreter imports from
+# at serve time - pods pay no pip at boot. setuptools lands there too: the
+# seed declares it (>=75) and venv creation seeds the build backend - in-pod
+# installs of any dependency lacking a wheel for this Python fall back to an
+# sdist build that needs setuptools.build_meta - pip fails the whole install
+# without it. The launcher write-probes the cache root before taking the warm
+# path, so the root dir must stay writable for any uid (sticky bit); the tree
+# itself stays read-only.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/* \
@@ -50,8 +53,11 @@ RUN apt-get update \
     && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n[dependencies]\nsetuptools = ">=75"\n\n[serve]\nbase_route_app = "app"\n\n[scale.kubernetes]\nnamespace = "seed"\n\n[scale.database]\nbackend = "mongodb"\n' > /tmp/seed/jac.toml \
     && printf 'with entry {}\n' > /tmp/seed/main.jac \
     && (cd /tmp/seed && jac install) \
-    && ls /opt/jac/cache/jac/rt/*/python/lib/python3*/site-packages | grep -q fastapi \
-    && ls /opt/jac/cache/jac/rt/*/python/lib/python3*/site-packages | grep -q setuptools \
+    && rt_lib=$(ls -d /opt/jac/cache/jac/rt/*/python/lib/python3.*) \
+    && mkdir -p "$rt_lib/site-packages" \
+    && cp -a /tmp/seed/.jac/venv/lib/python3.*/site-packages/. "$rt_lib/site-packages/" \
+    && ls "$rt_lib/site-packages" | grep -q fastapi \
+    && ls "$rt_lib/site-packages" | grep -q setuptools \
     && rm -rf /tmp/seed \
     && chmod -R a+rX /opt/jac/cache \
     && chmod 1777 /opt/jac/cache/jac

@@ -97,9 +97,9 @@ walker update_session {
         self.show_summary = response.show_summary;
         here.terminate_conversation = response.terminate_conversation;
         self.terminate_conversation = response.terminate_conversation;
-        here.conversation = here.conversation + [
-            {"role": "user", "content": self.utterance}
-        ] + [{"role": "assistant", "content": response.follow_up_questions}];
+        here.conversation = here.conversation
+            + [{"role": "user", "content": self.utterance}]
+            + [{"role": "assistant", "content": response.follow_up_questions}];
 
         if response.show_summary {
             if response.terminate_conversation {

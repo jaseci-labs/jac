@@ -23,10 +23,20 @@ glob registry = get_registry();
             short="s"
         ),
         Arg.create(
-            "main", typ=bool, default=True, help="Treat module as __main__", short="m"
+            "main",
+            typ=bool,
+            default=True,
+            help="Treat module as __main__",
+            short="m",
+            config_key="run.main"
         ),
         Arg.create(
-            "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
+            "cache",
+            typ=bool,
+            default=True,
+            help="Enable compilation cache",
+            short="c",
+            config_key="run.cache"
         ),
         Arg.create(
             "profile",
@@ -117,7 +127,14 @@ def run(
             default="",
             help="Entry .jac file (default: [project] entry-point from jac.toml)"
         ),
-        Arg.create("port", typ=int, default=8000, help="Port to serve on", short="p"),
+        Arg.create(
+            "port",
+            typ=int,
+            default=8000,
+            help="Port to serve on",
+            short="p",
+            config_key="serve.port"
+        ),
         Arg.create(
             "api_port",
             typ=int,
@@ -156,8 +173,22 @@ def enter(
             default="main.jac",
             help="Path to .jac file (default: main.jac)"
         ),
-        Arg.create("port", typ=int, default=8000, help="Server port", short="p"),
-        Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
+        Arg.create(
+            "port",
+            typ=int,
+            default=8000,
+            help="Server port",
+            short="p",
+            config_key="serve.port"
+        ),
+        Arg.create(
+            "main",
+            typ=bool,
+            default=True,
+            help="Treat as __main__",
+            short="m",
+            config_key="run.main"
+        ),
         Arg.create(
             "faux",
             typ=bool,

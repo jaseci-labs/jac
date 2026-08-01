@@ -21,6 +21,13 @@ pub const LlvmRelease = struct {
     triple: []const u8,
     manifest_sha256: []const u8,
     zip_size: u64,
+    /// true = repackaged official upstream release binaries; false = built from
+    /// source by llvm-slice (externals like zlib/zstd/libxml2 OFF). On macOS
+    /// this decides the whole shim link shape: upstream archives are ThinLTO
+    /// bitcode that ld64 must lower via the slice's own libLTO.dylib and they
+    /// reference zlib/zstd/libxml2, while a from-source slice is plain native
+    /// Mach-O with no external deps (build.zig macosShim; payload.zig marker).
+    upstream: bool,
 };
 
 /// The pinned slice for an (os, arch), or null for platforms we don't pin.
@@ -39,6 +46,7 @@ pub fn llvmRelease(os: std.Target.Os.Tag, arch: std.Target.Cpu.Arch) ?LlvmReleas
                 .triple = "x86_64-linux-libcxx",
                 .manifest_sha256 = "6c227bfc95829729a93b8af44eeae182489df5a2bb16fd5bb5fe9b36d8877d54",
                 .zip_size = 667452266,
+                .upstream = false,
             },
             // libc++ slice, same zig c++ @ 2.17 build as x86_64 (built natively
             // on ubuntu-24.04-arm, llvm-slice#4); isLibcxx routes the shim to
@@ -48,6 +56,7 @@ pub fn llvmRelease(os: std.Target.Os.Tag, arch: std.Target.Cpu.Arch) ?LlvmReleas
                 .triple = "aarch64-linux-libcxx",
                 .manifest_sha256 = "0315f2d83f4cab6cc5e0ef94b5d6999306109b27d0955549e7af46897ca28c34",
                 .zip_size = 462054429,
+                .upstream = false,
             },
             else => null,
         },
@@ -57,6 +66,19 @@ pub fn llvmRelease(os: std.Target.Os.Tag, arch: std.Target.Cpu.Arch) ?LlvmReleas
                 .triple = "aarch64-apple-darwin",
                 .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
                 .zip_size = 743879473,
+                .upstream = true,
+            },
+            // Upstream ships no macOS Intel binaries for 22.x, so this slice is
+            // built from source by llvm-slice (build-macos-x64.yml) on the
+            // macos-15-intel runner: plain native archives (no ThinLTO/libLTO),
+            // externals OFF, minos pinned to 12.0 so release binaries reach
+            // 2015-and-newer Intel Macs.
+            .x86_64 => .{
+                .dirname = "LLVM-22.1.8-macOS-X64",
+                .triple = "x86_64-apple-darwin",
+                .manifest_sha256 = "a984b4f7aef1978386f74ff2ea4b30d76f9e0b33d08dbae57bee9fea9bb16f9d",
+                .zip_size = 49613317,
+                .upstream = false,
             },
             else => null,
         },

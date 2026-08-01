@@ -20,13 +20,8 @@ glob _PASSTHROUGH_SEGMENTS: set[str] = {
          "graph"
      };
 
-glob _SERVICE_MEMBER_SEGMENTS: set[str] = _PASSTHROUGH_SEGMENTS | {
-         "healthz",
-         "health",
-         "metrics",
-         "openapi.json",
-         "docs"
-     };
+glob _SERVICE_MEMBER_SEGMENTS: set[str] = _PASSTHROUGH_SEGMENTS
+         | {"healthz", "health", "metrics", "openapi.json", "docs"};
 
 glob ROUTE_BUILTIN: str = "builtin",
      ROUTE_ADMIN: str = "admin",

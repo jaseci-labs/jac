@@ -11,8 +11,8 @@ import from typing { cast }
 import redis;
 import requests;
 import from pymongo { MongoClient }
-import from testcontainers.mongodb { MongoDbContainer }
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
+import from testcontainers.community.redis { RedisContainer }
 import from jaclang.jac0core.archetype { Root }
 import from jaclang.scale.memory.context { JScaleExecutionContext }
 import from jaclang.scale.memory.memory_hierarchy { _process_cache, MongoBackend }
@@ -619,9 +619,9 @@ test "L2 and L3 commit with server restart" {
         for key in redis_keys {
             val = redis_client.get(key);
             if val
-            and b"Task" in val
-            and b'"id": 500' in val
-            and b'"title": "L2/L3 Test"' in val {
+                and b"Task" in val
+                and b'"id": 500' in val
+                and b'"title": "L2/L3 Test"' in val {
                 task_found_in_redis = True;
                 break;
             }
@@ -1020,9 +1020,8 @@ test "partial update only writes mutated fields — unmodified fields survive in
             {"$set": {"data.archetype.metadata.__sentinel__": "PRESERVED"}}
         );
         sentinel_check = collection.find_one({"_id": item_id});
-        assert sentinel_check["data"]["archetype"]["metadata"].get("__sentinel__") == "PRESERVED" , (
-            "Sentinel injection failed"
-        );
+        assert sentinel_check["data"]["archetype"]["metadata"].get("__sentinel__")
+            == "PRESERVED" , ("Sentinel injection failed");
 
         post_request(base_url, "/walker/AppendTag", {"id": 42, "tag": "urgent"}, token);
 
@@ -1030,7 +1029,8 @@ test "partial update only writes mutated fields — unmodified fields survive in
         assert "urgent" in doc["data"]["archetype"]["tags"] , (
             "tags mutation was not persisted to MongoDB"
         );
-        assert doc["data"]["archetype"]["metadata"].get("__sentinel__") == "PRESERVED" , (
+        assert doc["data"]["archetype"]["metadata"].get("__sentinel__")
+            == "PRESERVED" , (
             "put_partial overwrote metadata — a full $set was issued instead of a partial one"
         );
     } finally {

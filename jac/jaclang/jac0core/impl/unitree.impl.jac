@@ -25,7 +25,7 @@ impl UniNode._construct_sub_node_tab -> None {
             if (k in self.__sub_node_tab) {
                 self.__sub_node_tab[k].extend(v);
             } else {
-                self.__sub_node_tab[k] = copy(v);
+                self.__sub_node_tab[k] = `list(v);
             }
         }
         if (`type(i) in self.__sub_node_tab) {
@@ -140,11 +140,11 @@ impl UniNode.resolve_tok_range -> tuple[(Token, Token)] {
 impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
     import from jaclang.jac0core.constant { TOKEN_MAP }
     value = value
-    or (
-        DELIM_MAP[name]
-            if (name in DELIM_MAP)
-            else TOKEN_MAP.get(name.value, name.value)
-    );
+        or (
+            DELIM_MAP[name]
+                if (name in DELIM_MAP)
+                else TOKEN_MAP.get(name.value, name.value)
+        );
     return Token(
         name=name,
         value=value,
@@ -178,7 +178,6 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
 }
 
 impl UniNode.codespace -> CodeContext {
-    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
     if isinstance(self, ContextAwareNode) {
         if (self.code_context == CodeContext.CLIENT) {
             return CodeContext.CLIENT;
@@ -189,19 +188,7 @@ impl UniNode.codespace -> CodeContext {
     }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
-        if isinstance(nd, ServerBlock) {
-            return CodeContext.SERVER;
-        }
-        if isinstance(nd, ClientBlock) {
-            return CodeContext.CLIENT;
-        }
-        if isinstance(nd, NativeBlock) {
-            return CodeContext.NATIVE;
-        }
         if isinstance(nd, ContextAwareNode) {
-            if nd._source_context_token() is not None {
-                return nd.code_context;
-            }
             context = nd.code_context;
             if (context == CodeContext.CLIENT) {
                 return CodeContext.CLIENT;
@@ -215,13 +202,6 @@ impl UniNode.codespace -> CodeContext {
                 return CodeContext.NATIVE;
             }
             if nd.decided_codespace == CodeContext.CLIENT.value {
-                return CodeContext.CLIENT;
-            }
-            mp = nd.loc.mod_path if nd.loc is not None else '';
-            if mp and is_native_module(mp) {
-                return CodeContext.NATIVE;
-            }
-            if mp and is_client_module(mp) {
                 return CodeContext.CLIENT;
             }
             return CodeContext.SERVER;
@@ -240,31 +220,14 @@ impl UniNode.in_native_context -> bool {
 }
 
 impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module, is_native_module }
     if ctx != CodeContext.SERVER and self.decided_codespace == ctx.value {
-        return True;
-    }
-    mp = self.loc.mod_path
-        if (self.loc is not None and self.loc.mod_path)
-        else path_hint;
-    if ctx == CodeContext.NATIVE and bool(mp) and is_native_module(mp) {
-        return True;
-    }
-    if ctx == CodeContext.CLIENT and bool(mp) and is_client_module(mp) {
         return True;
     }
     if self.body {
         for _stmt in self.body {
-            if ctx == CodeContext.NATIVE and isinstance(_stmt, NativeBlock) {
-                return True;
-            }
-            if ctx == CodeContext.CLIENT and isinstance(_stmt, ClientBlock) {
-                return True;
-            }
-
             if ctx != CodeContext.SERVER
-            and isinstance(_stmt, ContextAwareNode)
-            and _stmt.code_context == ctx {
+                and isinstance(_stmt, ContextAwareNode)
+                and _stmt.code_context == ctx {
                 return True;
             }
         }
@@ -577,7 +540,7 @@ impl UniScopeNode.def_insert(
         force_overwrite=force_overwrite,
         imported=imported
     );
-    self.update_py_ctx_for_def(nd);
+    self.update_expr_ctx_for_def(nd);
     return nd.sym;
 }
 
@@ -586,9 +549,9 @@ impl UniScopeNode.chain_def_insert(node_list: list[AstSymbolNode]) -> None {
         return;
     }
     cur_sym_tab: (UniScopeNode | None) = node_list[0].sym_tab;
-    node_list[-1].name_spec.py_ctx_func = ast3.Store;
+    node_list[-1].name_spec.expr_ctx = ExprCtx.STORE;
     if isinstance(node_list[-1].name_spec, AstSymbolNode) {
-        node_list[-1].name_spec.py_ctx_func = ast3.Store;
+        node_list[-1].name_spec.expr_ctx = ExprCtx.STORE;
     }
     node_list = node_list[:-1];
     for i in node_list {
@@ -638,18 +601,18 @@ impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
     }
 }
 
-impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
-    nd.name_spec.py_ctx_func = ast3.Store;
+impl UniScopeNode.update_expr_ctx_for_def(nd: AstSymbolNode) -> None {
+    nd.name_spec.expr_ctx = ExprCtx.STORE;
     if (isinstance(nd, (TupleVal, ListVal)) and nd.values) {
         def fix(item: TupleVal | ListVal | UnaryExpr) {
             if isinstance(item, UnaryExpr) {
                 if isinstance(item.operand, AstSymbolNode) {
-                    item.operand.name_spec.py_ctx_func = ast3.Store;
+                    item.operand.name_spec.expr_ctx = ExprCtx.STORE;
                 }
             } elif isinstance(item, (TupleVal, ListVal)) {
                 for i in item.values {
                     if isinstance(i, AstSymbolNode) {
-                        i.name_spec.py_ctx_func = ast3.Store;
+                        i.name_spec.expr_ctx = ExprCtx.STORE;
                     } elif isinstance(i, AtomTrailer) {
                         self.chain_def_insert(i.as_attr_list);
                     }
@@ -702,8 +665,8 @@ impl AstSymbolNode.sym_category.getter -> SymbolType {
     return self.name_spec.sym_category;
 }
 
-impl AstSymbolNode.py_ctx_func.getter -> type[ast3.AST] {
-    return self.name_spec.py_ctx_func;
+impl AstSymbolNode.expr_ctx.getter -> ExprCtx {
+    return self.name_spec.expr_ctx;
 }
 
 impl AstSymbolNode.type_sym_tab.getter -> (UniScopeNode | None) {
@@ -736,18 +699,6 @@ impl ContextAwareNode.postinit -> None {
     self.code_context = CodeContext.SERVER;
 }
 
-
-impl ContextAwareNode._source_context_token -> (Token | None) {
-    for kid in self.kid {
-        if (
-            isinstance(kid, Token)
-            and (kid.name in (Tok.KW_CLIENT, Tok.KW_SERVER, Tok.KW_NATIVE))
-        ) {
-            return kid;
-        }
-    }
-    return None;
-}
 
 impl WalkerStmtOnlyNode.postinit -> None {
     self.from_walker = False;
@@ -863,7 +814,7 @@ impl NameAtom.postinit -> None {
     self._sym = None;
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
-    self._py_ctx_func = ast3.Load;
+    self._expr_ctx = ExprCtx.LOAD;
     AtomExpr.postinit(self);
 }
 
@@ -923,14 +874,13 @@ impl NameAtom.sem_token.getter -> (tuple[(SemTokType, SemTokMod)] | None) {
     if (
         self.sym
         and (self.sym.decl.name_of == self.sym.decl)
-        and (self.sym_name in dir(builtins))
-        and callable(getattr(builtins, self.sym_name))
+        and (self.sym_name in BUILTIN_CALLABLE_NAMES)
     ) {
         return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
     }
     if self.sym {
         if self.type is not None
-        and type(self.type).__name__ in ('FunctionType', 'OverloadedType') {
+            and type(self.type).__name__ in ('FunctionType', 'OverloadedType') {
             return (SemTokType.FUNCTION, SemTokMod.DEFINITION);
         }
         return (SemTokType.PROPERTY, SemTokMod.DEFINITION);
@@ -1094,24 +1044,6 @@ impl ModuleCode.postinit -> None {
 }
 
 
-impl ClientBlock.postinit -> None {
-    self.body = `list(self.body);
-    UniNode.postinit(self);
-}
-
-
-impl ServerBlock.postinit -> None {
-    self.body = `list(self.body);
-    UniNode.postinit(self);
-}
-
-
-impl NativeBlock.postinit -> None {
-    self.body = `list(self.body);
-    UniNode.postinit(self);
-}
-
-
 impl PyInlineCode.postinit -> None {
     UniNode.postinit(self);
     CodeBlockStmt.postinit(self);
@@ -1177,14 +1109,25 @@ impl Import.has_string_path.getter -> bool {
     return False;
 }
 
-impl Import.is_sv_marked.getter -> bool {
-    tok = self._source_context_token();
-    return (tok is not None and tok.name == Tok.KW_SERVER);
-}
-
-impl Import.is_cl_marked.getter -> bool {
-    tok = self._source_context_token();
-    return (tok is not None and tok.name == Tok.KW_CLIENT);
+impl Import.is_service_import.getter -> bool {
+    if self.from_loc is None or not self.items {
+        return False;
+    }
+    import os;
+    import from jaclang.jac0core.service_cut { is_service_module_stem }
+    mod_path = self.loc.mod_path or '';
+    stem = self.from_loc.base_module_name;
+    if not stem or not is_service_module_stem(mod_path, stem) {
+        return False;
+    }
+    own_stem = '';
+    if mod_path {
+        own_stem = os.path.basename(mod_path);
+        if own_stem.endswith('.jac') {
+            own_stem = own_stem[:-4];
+        }
+    }
+    return stem != own_stem;
 }
 
 impl Import.is_virtual_jac.getter -> bool {
@@ -1276,9 +1219,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
         resolve_native_module
     }
     mod_path = self.loc.mod_path if self.loc else None;
-    is_native = self.in_native_context()
-    or (mod_path is not None and mod_path.endswith('.na.jac'));
-    if not is_native {
+    if not self.in_native_context() {
         return None;
     }
     base = self.dot_path_str;
@@ -1574,15 +1515,15 @@ impl Ability.method_owner.getter -> Archetype | Enum | None {
             if (self.parent and isinstance(self.parent, (Archetype, Enum)))
             else None
     )
-    or (
-        self.parent.decl_link
-            if (
-                self.parent
-                and isinstance(self.parent, ImplDef)
-                and isinstance(self.parent.decl_link, (Archetype, Enum))
-            )
-            else None
-    );
+        or (
+            self.parent.decl_link
+                if (
+                    self.parent
+                    and isinstance(self.parent, ImplDef)
+                    and isinstance(self.parent.decl_link, (Archetype, Enum))
+                )
+                else None
+        );
     if (found is None) and (self.accessor_kind != "") {
         nodew = self.parent;
         while nodew is not None {
@@ -1865,7 +1806,7 @@ impl DeleteStmt.postinit -> None {
 }
 
 
-impl DeleteStmt.py_ast_targets.getter -> list[ast3.AST] {
+impl DeleteStmt.py_ast_targets.getter -> list {
     return [i.gen.py_ast[0] for i in self.target.values]
         if (isinstance(self.target, TupleVal) and self.target.values)
         else self.target.gen.py_ast;
@@ -1942,8 +1883,6 @@ impl BoolExpr.postinit -> None {
 impl LambdaExpr.postinit -> None {
     if (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
         self.body = `list(self.body);
-    } else {
-        self.body = cast(Expr, self.body);
     }
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -1967,6 +1906,14 @@ impl LambdaExpr.tail_return_expr -> Expr | None {
         if not isinstance(s, Semi)
     ];
     if (len(stmts) == 1 and isinstance(stmts[0], ExprStmt)) {
+        return stmts[0].expr;
+    }
+    if (
+        len(stmts) == 1
+        and isinstance(stmts[0], ReturnStmt)
+        and stmts[0].is_implicit
+        and stmts[0].expr is not None
+    ) {
         return stmts[0].expr;
     }
     return None;
@@ -2442,7 +2389,7 @@ impl Name.init(
     self._sym = None;
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
-    self._py_ctx_func = ast3.Load;
+    self._expr_ctx = ExprCtx.LOAD;
     Expr.postinit(self);
     AstSymbolNode._init_symbol(
         self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR
@@ -2522,13 +2469,11 @@ impl Literal.init(
     Expr.postinit(self);
 }
 
-impl Literal.lit_value.getter -> int | str | float | bool | None | Callable[
-    ([], Any)
-] | EllipsisType {
+impl Literal.lit_value.getter -> int | str | float | bool | None | type | object {
     raise NotImplementedError;
 }
 
-impl BuiltinType.lit_value.getter -> Callable[([], Any)] {
+impl BuiltinType.lit_value.getter -> type {
     if (self.value not in Literal.type_map) {
         raise TypeError(f"ICE: {self.value} is not a callable builtin");
     }
@@ -2547,6 +2492,18 @@ impl String.lit_value.getter -> str {
     if isinstance(self.value, `bytes) {
         return self.value;
     }
+    if (self.parent and isinstance(self.parent, FString)) {
+        fstring_parent: FString = self.parent;
+        is_raw = False;
+        if (fstring_parent.start and fstring_parent.start.value) {
+            prefix = fstring_parent.start.value.lower();
+            is_raw = 'r' in prefix;
+        }
+        if is_raw {
+            return self.value;
+        }
+        return _decode_str_escapes(self.value);
+    }
     if `any(
         (
             self.value.startswith(prefix)
@@ -2555,75 +2512,20 @@ impl String.lit_value.getter -> str {
     ) {
         return eval(self.value);
     } elif self.value.startswith(("'", '"')) {
+        inner = self.value;
         if (
-            not self.find_parent_of_type(FString)
-            or not (self.parent and isinstance(self.parent, FString))
+            (len(inner) >= 6)
+            and (
+                (inner.startswith('"""') and inner.endswith('"""'))
+                or (inner.startswith("'''") and inner.endswith("'''"))
+            )
         ) {
-            try {
-                return ast3.literal_eval(self.value);
-            } except (ValueError, SyntaxError) {
-                if (
-                    (self.value.startswith('"""') and self.value.endswith('"""'))
-                    or (self.value.startswith("'''") and self.value.endswith("'''"))
-                ) {
-                    return self.value[3:-3];
-                }
-                return self.value[1:-1];
-            }
+            inner = inner[3:-3];
+        } else {
+            inner = inner[1:-1];
         }
-        try {
-            return ast3.literal_eval(self.value);
-        } except (ValueError, SyntaxError) {
-            fstring_parent2: FString = self.parent;
-            is_raw2 = False;
-            if (
-                fstring_parent2
-                and fstring_parent2.start
-                and fstring_parent2.start.value
-            ) {
-                prefix2 = fstring_parent2.start.value.lower();
-                is_raw2 = 'r' in prefix2;
-            }
-            if not is_raw2 {
-                result = self.value;
-                try {
-                    result = ast3.literal_eval(f'"{result}"');
-                } except (ValueError, SyntaxError) {
-                    placeholder = '\x00';
-                    result = result.replace('\\\\', placeholder);
-                    result = result.replace('\\n', '\n');
-                    result = result.replace('\\t', '\t');
-                    result = result.replace('\\r', '\r');
-                    result = result.replace(placeholder, '\\');
-                }
-                return result;
-            }
-            return self.value;
-        }
+        return _decode_str_escapes(inner);
     } else {
-        if (self.parent and isinstance(self.parent, FString)) {
-            fstring_parent: FString = self.parent;
-            is_raw = False;
-            if (fstring_parent.start and fstring_parent.start.value) {
-                prefix = fstring_parent.start.value.lower();
-                is_raw = 'r' in prefix;
-            }
-            if not is_raw {
-                result = self.value;
-
-                try {
-                    result = ast3.literal_eval(f'"{result}"');
-                } except (ValueError, SyntaxError) {
-                    placeholder = '\x00';
-                    result = result.replace('\\\\', placeholder);
-                    result = result.replace('\\n', '\n');
-                    result = result.replace('\\t', '\t');
-                    result = result.replace('\\r', '\r');
-                    result = result.replace(placeholder, '\\');
-                }
-                return result;
-            }
-        }
         return self.value;
     }
 }
@@ -2636,7 +2538,7 @@ impl Null.lit_value.getter -> None {
     return None;
 }
 
-impl Ellipsis.lit_value.getter -> EllipsisType {
+impl Ellipsis.lit_value.getter -> object {
     return ...;
 }
 
@@ -2721,7 +2623,7 @@ impl Source.code.getter -> str {
     return self.value;
 }
 
-impl PythonModuleAst.init(ast: ast3.Module, orig_src: Source) -> None {
+impl PythonModuleAst.init(ast: object, orig_src: Source) -> None {
     super.init();
     self.ast = ast;
     self.orig_src = orig_src;
@@ -2755,10 +2657,10 @@ impl NameAtom.sym.setter(sym: Symbol) {
     self._sym = sym;
 }
 
-impl NameAtom.py_ctx_func.getter -> type[ast3.expr_context] {
-    return self._py_ctx_func;
+impl NameAtom.expr_ctx.getter -> ExprCtx {
+    return self._expr_ctx;
 }
 
-impl NameAtom.py_ctx_func.setter(py_ctx_func: type[ast3.expr_context]) {
-    self._py_ctx_func = py_ctx_func;
+impl NameAtom.expr_ctx.setter(expr_ctx: ExprCtx) {
+    self._expr_ctx = expr_ctx;
 }

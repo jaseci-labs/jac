@@ -47,10 +47,10 @@ test "na host boots the fused runtime via libjacpyembed (no display)" {
         # The shim must sit $ORIGIN-adjacent so the host's `import from jacpyembed`
         # resolves the sibling libjacpyembed at load (it ships in the fused runtime).
         _stage_pyembed_shim(out_dir);
-        (out_dir / "host.na.jac").write_text(host_src);
+        (out_dir / "host.jac").write_text(host_src);
         binary = out_dir / "engineboot";
         comp = subprocess.run(
-            [jac, "nacompile", "host.na.jac", "-o", "engineboot"],
+            [jac, "nacompile", "host.jac", "-o", "engineboot"],
             cwd=tmp,
             capture_output=True,
             text=True,

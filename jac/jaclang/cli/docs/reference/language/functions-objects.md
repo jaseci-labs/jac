@@ -1,0 +1,1038 @@
+# Functions and Objects
+
+**On this page:**
+
+- [Functions and Abilities](#functions-and-abilities) - Function declaration, parameters, abilities
+- [Object-Oriented Programming](#object-oriented-programming) - Objects, inheritance, enums
+- [Implementations and Forward Declarations](#implementations-and-forward-declarations) - Impl blocks, separation of interface
+
+---
+
+This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for functions and methods, and `can` for event-triggered abilities on archetypes. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
+
+## Functions and Abilities
+
+Functions in Jac use familiar `def` syntax with mandatory type annotations. Jac also introduces "abilities" (`can`) for methods attached to nodes, edges, and walkers. Abilities can be triggered automatically based on context (like when a walker visits a node) rather than being called explicitly.
+
+### 1 Function Declaration
+
+```jac
+def add(a: int, b: int) -> int {
+    return a + b;
+}
+
+def greet(name: str) -> str {
+    return f"Hello, {name}!";
+}
+
+# No return value
+def log(message: str) {
+    print(f"[LOG] {message}");
+}
+```
+
+#### Implicit Returns
+
+The final expression of a function body, written *without* a trailing `;`,
+is the function's return value -- the same tail-expression rule as Rust.
+The semicolon is the switch: `expr;` is an ordinary discarded statement,
+while a trailing `expr` right before the closing `}` returns its value.
+
+```jac
+def add(a: int, b: int) -> int {
+    a + b
+}
+
+def classify(n: int) -> str {
+    if n > 0 {
+        return "pos";  # early returns stay explicit
+    }
+    "non-pos"
+}
+```
+
+The tail expression is type-checked exactly like an explicit `return`
+(`E1002` on mismatch), and it satisfies the all-paths-return analysis
+(`E1004`). Two guardrails keep the rule unambiguous:
+
+- An expression without `;` anywhere *other* than the end of a function,
+  ability, or lambda body is an error (`E2084`) -- blocks such as `if`
+  bodies do not produce values.
+- Falling off the end of a body whose last statement kept its `;` still
+  returns `None`, so `def f -> int { 42; }` remains the `E1004`
+  missing-return error, never a silent implicit return.
+
+### 2 Docstrings
+
+Docstrings appear *before* declarations (not inside like Python):
+
+```jac
+"""Module-level docstring."""
+
+"Function docstring."
+def add(a: int, b: int) -> int {
+    return a + b;
+}
+
+"Object docstring."
+obj Person {
+    has name: str;
+}
+```
+
+### 3 Parameter Types and Ordering
+
+**Parameter Categories:**
+
+| Category | Syntax | Description |
+|----------|--------|-------------|
+| Positional-only | Before `/` | Must be passed by position |
+| Positional-or-keyword | Normal params | Can be passed either way |
+| Variadic positional | `*args` | Collects extra positional args |
+| Keyword-only | After `*` or `*args` | Must be passed by keyword |
+| Variadic keyword | `**kwargs` | Collects extra keyword args |
+
+**Required Parameter Order:**
+
+```jac
+def complete_example(
+    pos_only1: int,           # 1. Positional-only parameters
+    pos_only2: str,
+    /,                         # 2. Positional-only marker
+    pos_or_kw: float,          # 3. Normal (positional-or-keyword)
+    with_default: int = 10,    # 4. Parameters with defaults
+    *args: int,                # 5. Variadic positional
+    kw_only: str,              # 6. Keyword-only (after * or *args)
+    kw_default: bool = True,   # 7. Keyword-only with default
+    **kwargs: any              # 8. Variadic keyword (must be last)
+) {
+    print("called");
+}
+```
+
+**Positional-only parameters (`/`):**
+
+```jac
+def greet(name: str, /) -> str {
+    return f"Hello, {name}!";
+}
+
+with entry {
+    greet("Alice");      # OK
+    # greet(name="Alice"); # Error: positional-only
+}
+```
+
+**Keyword-only parameters (after `*`):**
+
+```jac
+def configure(*, host: str, port: int = 8080) {
+    print(f"Connecting to {host}:{port}");
+}
+
+with entry {
+    configure(host="localhost");           # OK
+    # configure("localhost", 8080);        # Error: keyword-only
+    configure(host="localhost", port=443); # OK
+}
+```
+
+**Variadic parameters:**
+
+```jac
+# *args collects extra positional arguments
+def sum_all(*values: int) -> int {
+    return sum(values);
+}
+
+# **kwargs collects extra keyword arguments
+def build_config(**options: object) -> dict {
+    return dict(options);
+}
+
+# Combined
+def flexible(required: int, *args: int, **kwargs: object) {
+    print(f"Required: {required}");
+    print(f"Extra positional: {args}");
+    print(f"Extra keyword: {kwargs}");
+}
+
+with entry {
+    sum_all(1, 2, 3, 4, 5);  # 15
+    build_config(debug=True, verbose=False);  # {"debug": True, "verbose": False}
+    flexible(1, 2, 3, name="test");
+    # Required: 1
+    # Extra positional: (2, 3)
+    # Extra keyword: {"name": "test"}
+}
+```
+
+**Unpacking arguments:**
+
+```jac
+def add(a: int, b: int, c: int) -> int {
+    return a + b + c;
+}
+
+with entry {
+    # Unpack list/tuple into positional args
+    values = [1, 2, 3];
+    result = add(*values);  # add(1, 2, 3)
+
+    # Unpack dict into keyword args
+    params = {"a": 1, "b": 2, "c": 3};
+    result = add(**params);  # add(a=1, b=2, c=3)
+
+    # Combined unpacking
+    result = add(*[1, 2], **{"c": 3});  # add(1, 2, c=3)
+}
+```
+
+### 4 `can` vs `def`
+
+Jac has two keywords for defining callable behavior: `def` for standard functions/methods and `can` for event-driven abilities on archetypes. Use `def` when you want explicit calling; use `can` when behavior should trigger automatically based on walker/node context.
+
+| Feature | `def` | `can` |
+|---------|-------|-------|
+| **Call style** | Called explicitly: `obj.method()` | Triggered automatically on walker entry/exit |
+| **Used in** | Any archetype, standalone functions | Walkers, nodes, edges |
+| **Syntax** | `def name(args) -> Type { }` | `can name with NodeType entry { }` |
+| **Best for** | Regular methods, utility functions, API endpoints | Graph traversal logic, event handlers |
+
+```jac
+walker ListItems {
+    has items: list = [];
+
+    # 'can' ability -- fires automatically when walker enters a Root node
+    can collect with Root entry {
+        visit [-->];
+    }
+
+    # 'can' ability -- fires on each Item node visited
+    can gather with Item entry {
+        self.items.append(here.value);
+    }
+
+    # 'can' ability -- fires when walker exits Root
+    can report_all with Root exit {
+        report self.items;
+    }
+}
+```
+
+> See [Object-Spatial Programming](osp.md) for complete walker and ability documentation.
+
+### 5 Methods
+
+The `def` keyword declares methods on archetypes:
+
+```jac
+obj Calculator {
+    has total: float = 0.0;
+
+    def add(value: float) -> float {
+        self.total += value;
+        return self.total;
+    }
+
+    def reset() {
+        self.total = 0.0;
+    }
+}
+```
+
+### 6 Static Methods and Class Methods
+
+Jac provides three method modifiers: `def` (instance method, receives `self`), `static def` (no receiver), and `class def` (class method, receives the class itself).
+
+```jac
+obj Counter {
+    static has count: int = 0;
+
+    # Static method -- no self or cls, pure utility
+    static def get_count() -> int {
+        return Counter.count;
+    }
+
+    # Static factory -- explicit class name keeps the return type clean
+    static def make() -> Counter {
+        return Counter();
+    }
+
+    # Instance method -- self is the instance
+    def increment() {
+        Counter.count += 1;
+    }
+}
+```
+
+| Modifier | Receiver | Use case |
+|----------|----------|----------|
+| `def` | `self` (implicit) | Instance behavior |
+| `static def` | none | Utility functions, named constructors |
+| `class def` | the class (implicit) | Class-bound methods that need access to the class object |
+
+#### Factory Methods
+
+The simplest way to expose a named constructor is a `static def` that returns the enclosing type:
+
+```jac
+obj Animal {
+    has name: str,
+        sound: str = "...";
+
+    static def named(name: str) -> Animal {
+        return Animal(name=name);
+    }
+
+    def speak() -> str {
+        return f"{self.name} says {self.sound}";
+    }
+}
+
+obj Dog(Animal) {
+    has sound: str = "woof";
+}
+
+with entry {
+    a = Animal.named("Rex");
+    print(a.speak());         # Rex says ...
+    d = Dog(name="Rex");
+    print(d.speak());         # Rex says woof
+}
+```
+
+#### `Self` as a Type Annotation
+
+`Self` works as a type annotation in instance methods, enabling fluent/builder patterns where each method returns the receiver:
+
+```jac
+obj QueryBuilder {
+    has table: str = "",
+        limit_val: int = -1;
+
+    def from_table(table: str) -> Self {
+        self.table = table;
+        return self;
+    }
+
+    def limit(n: int) -> Self {
+        self.limit_val = n;
+        return self;
+    }
+}
+
+with entry {
+    q = QueryBuilder().from_table("users").limit(10);
+}
+```
+
+| Context | `Self` resolves to |
+|---------|-------------------|
+| Instance `def` return annotation | `type(self)` -- the runtime class, used for fluent return-self |
+
+!!! note "Polymorphic `class def` factories"
+    A `class def` that returns `Self` and constructs `Self(...)` runs correctly today -- subclass calls return subclass instances -- but the static checker does not yet bind `Self` in `class def` return positions or as a callable target. For clean `jac check` output, prefer the `static def` factory above and name the concrete class explicitly. Tracking issue: polymorphic `Self` in `class def` is a planned type-checker enhancement.
+
+### 7 Lambda Expressions
+
+Lambda parameters are parenthesized and the body is always braced; a
+zero-parameter lambda may omit the parens entirely (`lambda { 42; }`). A body
+that is a single expression statement is the **implicit return**
+(`lambda (x: int) { x + 1; }` returns `x + 1`); a multi-statement body uses an
+explicit `return` (with no `return`, it returns `None`).
+
+Lambdas also follow the function-body tail-expression rule: the final
+expression without a trailing `;` is the return value, even in a
+multi-statement body (`lambda (x: int) { y = x + 1; y * 10 }` returns
+`y * 10`).
+
+```jac
+# Simple lambda -- single expression statement is the implicit return
+glob add = lambda (a: int, b: int) -> int { a + b; };
+
+# Lambda with a multi-statement block (explicit return)
+glob process = lambda (x: int) -> int {
+    result = x * 2;
+    result += 1;
+    return result;
+};
+
+# Lambda without parameters (parens optional when there are none)
+glob get_value = lambda { 42; };
+
+# Lambda with return type only
+glob get_default = lambda -> int { 100; };
+
+# Lambda with default parameters
+glob power = lambda (x: int = 2, y: int = 3) { x ** y; };
+
+# Using lambdas
+glob numbers = [1, 2, 3, 4, 5];
+glob squared = list(map(lambda (x: int) { x ** 2; }, numbers));
+glob evens = list(filter(lambda (x: int) { x % 2 == 0; }, numbers));
+
+# Lambda returning lambda (closure -- see callout below)
+glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
+glob add_five = make_adder(5);  # add_five(10) returns 15
+```
+
+!!! info "Closures"
+    A lambda (or nested `def`) captures variables from its enclosing scope, producing a *closure*. Each call to the outer function creates a fresh binding, so independently configured callables don't share state:
+
+    ```jac
+    glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
+
+    with entry {
+        add_five = make_adder(5);
+        add_ten  = make_adder(10);
+        print(add_five(10));   # 15
+        print(add_ten(10));    # 20  (each closure keeps its own captured x)
+    }
+    ```
+
+    Captured values are read freely. To mutate state across calls, prefer returning a configured object (see [IIFE & Anonymous Factories](#8-iife-anonymous-factories) below) over rebinding a captured local.
+
+### 8 IIFE & Anonymous Factories
+
+An *Immediately Invoked Function Expression* defines a function and calls it in the same expression -- useful for inlining a one-shot computation, or for producing a configured value from a private scope.
+
+**Lambda IIFE** (single expression):
+
+```jac
+with entry {
+    result = (lambda (x: int) -> int { x * 2; })(5);   # result = 10
+}
+```
+
+**`def` IIFE** (multi-statement, anonymous):
+
+```jac
+with entry {
+    config = (def () -> dict {
+        host = "localhost";
+        port = 8080;
+        return {"host": host, "port": port, "url": f"http://{host}:{port}"};
+    })();
+    print(config);
+}
+```
+
+**Anonymous factory** -- IIFE + closure to produce a configured callable. This is Jac's equivalent of the JS `x => y => x + y` factory idiom:
+
+```jac
+with entry {
+    adder = (def make_adder(x: int) {
+        return lambda (y: int) { x + y; };
+    })(10);
+
+    print(adder(5));   # 15
+}
+```
+
+**Typed-product factory** -- when the product needs methods or a fixed shape, return an `obj` instance instead of a dict. The factory itself is an anonymous lambda that closes over its arguments:
+
+```jac
+obj Counter {
+    has count: int;
+    def inc { self.count += 1; }
+    def get -> int  { return self.count; }
+}
+
+glob make_counter = lambda (start: int) -> Counter { Counter(count=start); };
+
+with entry {
+    c = make_counter(10);
+    c.inc(); c.inc(); c.inc();
+    print(c.get());   # 13
+}
+```
+
+!!! note "Why no anonymous archetypes?"
+    Jac's `obj`, `node`, `edge`, and `walker` archetypes must be declared with a name at module scope -- there is no inline `obj { has x: int; }` expression. For one-off structural products use a `dict`; when you need methods or a stable type, declare a named `obj` once and have the factory return instances of it.
+
+!!! tip "Coming from JavaScript?"
+    | JS idiom | Jac equivalent |
+    |---|---|
+    | `x => x + 1` | `lambda (x: int) { x + 1; }` |
+    | `() => ({a: 1})` | `lambda { {"a": 1}; }` |
+    | `(() => 42)()` | `(def () -> int { return 42; })()` |
+    | `x => y => x + y` | `lambda (x: int) { lambda (y: int) { x + y; }; }` |
+    | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |
+
+    Jac lambdas require type annotations on parameters and a braced body; a bare trailing expression is the implicit return (`lambda (x: int) { x + 1; }`).
+
+### 9 Decorators
+
+```jac
+def decorator(func: object) -> object {
+    return func;
+}
+
+def decorator_with_args(arg1: object, arg2: object) -> object {
+    return lambda (func: object) { func; };
+}
+
+@decorator
+def my_function {
+    print("decorated");
+}
+
+@decorator_with_args("a", "b")
+def another_function {
+    print("decorated with args");
+}
+```
+
+### 10 Access Modifiers
+
+For a **top-level** `def`, the access tag controls cross-module visibility (a *project* is the directory tree rooted at its `jac.toml`):
+
+```jac
+# Public -- visible to any module, including a consuming project (exported)
+def:pub public_func { }
+
+# Protected -- visible within the same project (shared jac.toml root)
+def:protect _project_func { }
+
+# Private -- visible only within the declaring module
+def:priv _private_func { }
+```
+
+The same tags mean *member encapsulation* on a `has`/`def` declared inside an archetype (`:protect` then means the declaring class **and its subclasses**), and a separate auth-only meaning on served endpoints. See the [Access Modifiers reference](access-modifiers.md) for the full three-context model.
+
+??? example "Try it: Functions complete example"
+    ```jac
+    def greet(name: str) -> str {
+        return f"Hello, {name}!";
+    }
+
+    def add(a: int, b: int) -> int {
+        return a + b;
+    }
+
+    def apply(func: Callable[[int, int], int], x: int, y: int) -> int {
+        return func(x, y);
+    }
+
+    with entry {
+        print(greet("World"));
+        print(add(3, 4));
+        print(apply(lambda (x: int, y: int) -> int { return x * y; }, 5, 6));
+    }
+    ```
+
+---
+
+## Object-Oriented Programming
+
+Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
+
+### 1 Objects (Classes)
+
+Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see [Object-Spatial Programming](osp.md)).
+
+!!! note "When to use `obj` vs `class`"
+    Jac's `obj` enforces stricter semantics than Python's `class` -- fields are declared upfront with `has`, constructors are auto-generated, and the structure is designed to be portable across codespaces (server, client, native). This strictness is intentional: it enables the compiler to target multiple execution environments from the same source code.
+
+    If you need Python-specific class machinery like metaclasses, use a Python `class` instead. Jac provides `static def` for static methods, `class def` for class methods (with `Self`), `static has` for class-level fields, and native `has x: T { getter; setter; deleter; }` property syntax (see §6 below).
+
+```jac
+obj Person {
+    has name: str;
+    has age: int;
+
+    def postinit() {
+        # Called after the auto-generated init completes
+        print(f"Created {self.name}");
+    }
+
+    def greet() -> str {
+        return f"Hi, I'm {self.name}";
+    }
+}
+
+with entry {
+    # Usage
+    person = Person(name="Alice", age=30);
+    print(person.greet());
+}
+```
+
+### 2 Explicit vs. Dynamic Attributes
+
+Jac enforces a **declarative data model**. All instance attributes must be declared upfront using `has`. While the current runtime might permit dynamic attribute assignment (adding a field that wasn't in `has`), this is considered an **anti-pattern** and will be strictly forbidden in future compiler versions.
+
+> [!WARNING]
+> **Dynamic Attribute Assignment is an Anti-Pattern**
+> Explicitly declare all fields using `has`. Avoid adding new attributes to an instance after creation, as this violates the declarative nature of Jac objects and breaks portability across codespaces (server, client, native).
+
+**Anti-Pattern (Dynamic Assignment):**
+
+```jac
+obj Person {
+    has name: str;
+}
+
+with entry {
+    p = Person(name="Alice");
+    p.height = 175; # INVALID: 'height' is not in 'has'
+    print(p.height);
+}
+```
+
+**Correct Approach (Declarative):**
+
+```jac
+obj Person {
+    has name: str,
+        height: int = 0; # Declare all expected fields
+}
+
+with entry {
+    p = Person(name="Alice", height=175);
+    print(p.height);
+}
+```
+
+#### Initialization with `postinit`
+
+If an attribute's value depends on other fields or requires complex calculation during setup, use the `postinit` field modifier and define a `postinit` method.
+
+```jac
+obj Rectangle {
+    has width: float,
+        height: float;
+    has area: float postinit;
+
+    def postinit() {
+        self.area = self.width * self.height;
+    }
+}
+```
+
+#### More Examples (Using `class`)
+
+Even when using `class` for Python compatibility, you should avoid dynamic assignment within methods:
+
+**Avoid this pattern:**
+
+```jac
+class Dog {
+    def rename() {
+        self.secret = "oops"; # Dynamic assignment - Avoid!
+    }
+
+    def train() {
+        self.trick = "sit"; # Dynamic assignment - Avoid!
+    }
+}
+```
+
+**Prefer this pattern:**
+
+```jac
+obj Dog {
+    has secret: str = "",
+        trick: str = "";
+
+    def rename() {
+        self.secret = "oops";
+    }
+
+    def train() {
+        self.trick = "sit";
+    }
+}
+```
+
+### 3 Inheritance
+
+```jac
+obj Animal {
+    has name: str;
+
+    def speak() -> str {
+        return "";  # Base implementation
+    }
+}
+
+obj Dog(Animal) {
+    has breed: str = "Unknown";
+
+    override def speak() -> str {
+        return "Woof!";
+    }
+}
+
+obj Cat(Animal) {
+    override def speak() -> str {
+        return "Meow!";
+    }
+}
+
+# Trackable mixin
+obj Trackable {
+    has tracked: bool = False;
+}
+
+# Multiple inheritance
+# Note: When a parent has fields with defaults, all child fields
+# must also have defaults (Python dataclass constraint)
+obj Pet(Animal, Trackable) {
+    has owner: str = "";
+    has name: str = "";
+}
+```
+
+### 3 Enumerations
+
+```jac
+enum Color {
+    RED = "red",
+    GREEN = "green",
+    BLUE = "blue"
+}
+
+# With auto values
+enum Status {
+    PENDING,
+    ACTIVE,
+    COMPLETED
+}
+
+with entry {
+    # Usage
+    color = Color.RED;
+    status = Status.ACTIVE;
+    print(f"Color: {color}, Status: {status}");
+}
+```
+
+### 4 Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are instances of `T`. The base type follows the enum name after a colon. `int` and `str` desugar to Python's `IntEnum` and `StrEnum`; any other base `T` desugars to the mixin form `class X(T, Enum)`.
+
+```jac
+enum HttpStatus: int {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+enum Tag: str {
+    OPEN = "open",
+    CLOSE = "close"
+}
+
+with entry {
+    # Members compare and behave as the underlying type
+    print(HttpStatus.OK == 200);             # True
+    print(isinstance(Tag.OPEN, str));        # True
+    print(HttpStatus.OK + 1);                # 201 -- arithmetic works
+}
+```
+
+| Declaration | Desugars to |
+|-------------|-------------|
+| `enum X { A = 0 }` | `class X(Enum)` |
+| `enum X: int { A = 0 }` | `class X(IntEnum)` |
+| `enum X: str { A = "a" }` | `class X(StrEnum)` |
+| `enum X: T { A = T(...) }` | `class X(T, Enum)` (mixin) |
+
+Prefer the `: int` / `: str` forms above for the common case. The mixin form over a custom `obj`/`class` base is a thin wrapper over Python's `class X(T, Enum)` and behaves **surprisingly**: the value you assign to a member is passed to the base's constructor rather than transparently proxied, so a member does *not* expose the wrapped instance's attributes the way you might expect.
+
+```jac
+obj Box {
+    has size: int = 0;
+}
+
+enum Crate: Box {
+    SMALL = Box(size=1),
+    LARGE = Box(size=9)
+}
+
+with entry {
+    # Surprising: not the int 1
+    print(Crate.SMALL.size);    # Box(size=1)
+    print(Crate.SMALL.value);   # Box(size=Box(size=1))
+}
+```
+
+Reach for the mixin form only when `T` itself subclasses a primitive; for members that should carry rich state, use a plain `enum` whose members map to real `obj` instances, or store the data on the members some other way.
+
+### 5 Enums with Inline Python
+
+```jac
+enum HttpStatus {
+    OK = 200,
+    NOT_FOUND = 404
+
+    ::py::
+    def is_success(self):
+        return 200 <= self.value < 300
+
+    @property
+    def message(self):
+        return {200: "OK", 404: "Not Found"}.get(self.value, "Unknown")
+    ::py::
+}
+```
+
+### 6 Properties and Encapsulation
+
+Properties expose computed or validated access to data while looking like plain field access at the call site. Declare them with a `has` binding followed by an accessor block containing `getter`, `setter`, and/or `deleter`.
+
+**Pure computed property** -- no backing storage, just derived from other fields:
+
+```jac
+obj Circle {
+    has radius: float = 1.0;
+
+    has diameter: float {
+        getter { return self.radius * 2.0; }
+    }
+}
+```
+
+**Property over explicit backing storage** -- backing fields are always declared explicitly with `has` and referenced via `self._<name>`:
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) {
+                if value < 0.0 {
+                    raise ValueError("balance cannot be negative");
+                }
+                self._balance = value;
+            }
+            deleter { self._balance = 0.0; }
+        }
+}
+```
+
+**Impl-separated accessor bodies** -- property accessors follow the same def/impl split as regular methods, using dotted-impl syntax:
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float;
+            setter(value: float);
+            deleter;
+        }
+}
+
+impl Account.balance.getter -> float { return self._balance; }
+impl Account.balance.setter(value: float) {
+    if value < 0.0 { raise ValueError("negative"); }
+    self._balance = value;
+}
+impl Account.balance.deleter { self._balance = 0.0; }
+```
+
+**Read-only properties** -- omit the `setter` to make a property read-only. Assignment is rejected at type-check time with `E1005`.
+
+**Rules:**
+
+- `has x: T { ... }` is *always* a property -- it never allocates backing storage.
+- `has x: T = value;` (no block) is *always* a field.
+- The two cannot be combined: `has x: T = value { ... }` is rejected with `E0080`. Declare backing storage as a separate `has` field.
+- An empty accessor block emits `E0081`.
+- The setter's write type is the property's declared type -- assignments are type-checked against it.
+
+??? example "Try it: Objects and Enums complete example"
+    ```jac
+    enum Color {
+        RED = "red",
+        GREEN = "green",
+        BLUE = "blue"
+    }
+
+    obj Animal {
+        has name: str,
+            sound: str;
+
+        def speak() -> str {
+            return f"{self.name} says {self.sound}!";
+        }
+    }
+
+    obj Dog(Animal) {
+        has breed: str;
+
+        def speak() -> str {
+            return f"{self.name} the {self.breed} says {self.sound}!";
+        }
+    }
+
+    with entry {
+        dog = Dog(name="Rex", sound="woof", breed="Labrador");
+        print(dog.speak());
+        print(f"Favorite color: {Color.BLUE.value}");
+    }
+    ```
+
+---
+
+## Implementations and Forward Declarations
+
+Jac separates *interface* (what an object has and can do) from *implementation* (how it does it). This separation enables cleaner architecture, easier testing, and better organization of large codebases. You declare the interface in one place and implement abilities in `impl` blocks -- even in separate files.
+
+### 1 Mutual References
+
+Jac resolves symbols across the entire module before type-checking bodies, so types can reference each other in any order with no forward declarations. Forward declarations exist in some languages because their compiler walks top-to-bottom; Jac's doesn't.
+
+```jac
+# Define in any order -- the checker sees both types before it
+# resolves either body.
+obj User {
+    has name: str;
+    has posts: list[Post] = [];
+}
+
+obj Post {
+    has content: str;
+    has author: User;
+}
+```
+
+A second `obj User { ... }` block with the same name is a duplicate-declaration error (`E0077`). Jac's separation model is *decl + impl*, not *decl + decl* -- see Implementation Blocks below for the supported way to split a type across files.
+
+### 2 Implementation Blocks
+
+The `impl` keyword attaches method bodies to declared abilities. This pattern keeps your interface clean and readable while moving implementation details elsewhere. It's particularly useful for large classes, for providing multiple implementations (like mock versions for testing), or for organizing abilities that span many lines.
+
+```jac
+# Interface (declaration)
+obj Calculator {
+    has value: float = 0.0;
+
+    def add(x: float) -> float;
+    def multiply(x: float) -> float;
+}
+
+# Implementation
+impl Calculator.add {
+    self.value += x;
+    return self.value;
+}
+
+impl Calculator.multiply {
+    self.value *= x;
+    return self.value;
+}
+```
+
+### 3 Separate Implementation Files
+
+Convention: Use `.impl.jac` files for implementations.
+
+**calculator.jac:**
+
+```jac
+obj Calculator {
+    has value: float = 0.0;
+    def add(x: float) -> float;
+    def multiply(x: float) -> float;
+}
+```
+
+**calculator.impl.jac:**
+
+```jac
+impl Calculator.add {
+    self.value += x;
+    return self.value;
+}
+
+impl Calculator.multiply {
+    self.value *= x;
+    return self.value;
+}
+```
+
+### 4 One Module, Three Codespaces
+
+A single `.jac` module can span all three codespaces -- server, client, and native. There is no per-file spelling for placement: the compiler infers each declaration's codespace from the code itself (JSX and npm imports seed client, extern C declarations seed native, everything else defaults to server), and `[placement.pins]` in `jac.toml` is the override when a decision must be forced. The only compound filename suffixes are the annexes: `.impl.jac` for implementations and `.test.jac` for tests. See [Codespace Model](primitives.md#codespace-model) for the inference rules and [Placement](../placement.md) for pins.
+
+Under `[build] default_codespace = "native"` (the default), the placement solver decides whether a whole anchor-free module can lower natively; a module that prefers native but cannot lower demotes to the server codespace with a note. To force a whole module native, use `jac nacompile`, `jac build --as native`, or `CompileOptions(force_codespace='native')`.
+
+#### Native Modules
+
+Native-placed modules compile to LLVM IR and execute via JIT (MCJIT). Native code runs as machine code, bypassing the Python runtime entirely. This is useful for performance-critical code and for calling C libraries directly.
+
+**C Library Imports:**
+
+Native code can import C shared libraries using the `import from` syntax with extern function declarations. The extern declarations are themselves the native seed: the import and the declarations that use its names place native, even in an otherwise mixed module. The library is named either by an explicit path string (used verbatim, for a pinned or versioned file) or by a logical name (dotted and extensionless, resolved to the platform's filename):
+
+<!-- jac-skip -->
+```jac
+# math_native.jac
+import from "/usr/lib/libm.so.6" {
+    def sqrt(x: f64) -> f64;
+    def pow(base: f64, exp: f64) -> f64;
+}
+
+def hypotenuse(a: f64, b: f64) -> f64 {
+    return sqrt(a * a + b * b);
+}
+```
+
+Declarations inside the braces are body-less function signatures that become LLVM `declare` (extern) statements. The shared library is loaded automatically at JIT time, and symbols are resolved by name.
+
+**Type mapping:** Jac's `int` maps to `i64` and `float` maps to `f64` in native code. Use fixed-width types (`i8`, `i16`, `i32`, `u8`, `u16`, `u32`, `f32`, etc.) when C functions expect specific sizes. The compiler automatically coerces between standard and fixed-width types at call boundaries.
+
+**Example -- calling raylib from Jac:**
+
+Here the library is named by its logical name `raylib`, which the backend resolves to `libraylib.so` on Linux, `libraylib.dylib` on macOS, and `raylib.dll` on Windows -- so this one source compiles for every platform:
+
+<!-- jac-skip -->
+```jac
+# game.jac
+import from raylib {
+    def InitWindow(width: i32, height: i32, title: str) -> None;
+    def CloseWindow() -> None;
+    def WindowShouldClose() -> i8;
+    def BeginDrawing() -> None;
+    def EndDrawing() -> None;
+    def ClearBackground(color: i32) -> None;
+    def DrawText(text: str, x: i32, y: i32, size: i32, color: i32) -> None;
+}
+
+with entry {
+    InitWindow(800, 600, "Hello from Jac");
+    while WindowShouldClose() == 0 {
+        BeginDrawing();
+        ClearBackground(0);
+        DrawText("Jac + Raylib", 300, 280, 30, -1);
+        EndDrawing();
+    }
+    CloseWindow();
+}
+```
+
+### 5 When to Use Implementations
+
+- **Circular dependencies**: Forward declare to break cycles
+- **Code organization**: Keep interfaces clean
+- **UI components**: Separate render tree from method logic (`.jac` + `.impl.jac`)
+- **Plugin architectures**: Define interfaces that plugins implement
+- **Large codebases**: Separate concerns across files
+- **C interop**: Declare an extern C surface with `import from` to call C libraries directly from JIT-compiled native code
+
+---
+
+## Learn More
+
+**Tutorials:**
+
+- [Jac Basics](../../tutorials/language/basics.md) - Objects, functions, and syntax
+- [Testing](../testing.md) - Write tests for your code
+
+**Related Reference:**
+
+- [Types and Values](types-and-values.md), [Variables and Scope](variables-and-scope.md), [Control Flow](control-flow.md) - The language core
+- [Object-Spatial Programming](osp.md) - Nodes, edges, walkers

@@ -10,15 +10,14 @@ walker create_todo {
 
     can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
-        report new_todo ;
+        report new_todo;
     }
 }
 
 # Explicit client block importing from the standalone client module
-cl {
-    import from .separated_client { app as ClientApp }
 
-    def:pub app -> JsxElement {
-        return <ClientApp />;
-    }
+import from .separated_client { app as ClientApp }
+
+def:pub app -> JsxElement {
+    return <ClientApp/>;
 }

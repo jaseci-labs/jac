@@ -22,7 +22,7 @@ import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.jac0core.parser.parser { parse }
+import from jaclang.jac0core.parser.frontend { parse }
 import from jaclang.runtimelib.test { parametrize }
 
 glob FIXTURES = os.path.join(
@@ -210,7 +210,8 @@ test "W0100: each invalid escape warns once" {
 
 # ── E0025: JS arrow function syntax (=>) ───────────────────────────
 test "E0025: js arrow in jsx attribute slot" {
-    src = 'cl { def:pub Foo() -> JsxElement {' + ' return <button onClick={e => doThing(e)}>Click</button>; } }';
+    src = 'cl { def:pub Foo() -> JsxElement {'
+        + ' return <button onClick={e => doThing(e)}>Click</button>; } }';
     (prog, _) = parse_with_prog(src);
     assert has_diagnostic_code(prog, "E0025");
     assert count_diagnostic_code(prog, "E0025") == 1;
@@ -385,7 +386,7 @@ test "E0070: duplicate decorator" {
     pytest.skip("E0070 not yet implemented");
     (has_err, prog) = parse_and_validate('@staticmethod\n@staticmethod\ndef foo() { }');
     assert has_err
-    or (prog is not None and has_diagnostic_code(prog, "E0070", in_warnings=True));
+        or (prog is not None and has_diagnostic_code(prog, "E0070", in_warnings=True));
 }
 
 test "E0071: bare except not last" {
@@ -445,11 +446,12 @@ test "E0063: glob in statement position is always rejected" {
     }
 }
 
-test "E0063: glob inside a codespace block is valid" {
-    # glob is a declaration, so it is allowed directly under cl/sv/na blocks.
+test "removed placement-marker blocks raise the migration error" {
+    # cl/sv/na blocks were removed with #7772; the parser points authors at
+    # 'jac fix placement' instead of a bare syntax error.
     for src in ["cl { glob counter: int = 0; }", "sv { glob token = \"x\"; }"] {
         (has_err, _) = parse_and_validate(src);
-        assert not has_err , f"Unexpected error for: {src}";
+        assert has_err , f"Expected the marker-removal error for: {src}";
     }
 }
 
@@ -639,7 +641,7 @@ test "E1042: missing await on sv-imported call (issue #6236)" {
     # `sv import` functions are async RPC stubs on the client; calling one
     # without `await` assigns a coroutine to a typed field and crashes at
     # runtime. `jac check` must flag it.
-    (prog, _) = compile_and_check("type_E1042_sv_missing_await.cl.jac");
+    (prog, _) = compile_and_check("type_E1042_sv_missing_await.jac");
     assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited sv import call; "
     f"errors={[str(e) for e in prog.errors_had]}";
 }
@@ -1115,6 +1117,34 @@ test "redundant `{...}` slot wrapping inside slot body raises E2023" {
     );
 }
 
+test "implicit return outside function tail position raises E2084" {
+    (program, _) = compile_and_check("implicit_return_rules.jac");
+    # `misplaced_in_if` (tail of an `if` body) and the module-level
+    # `with entry` tail should each fire E2084; the function-tail
+    # implicit returns must not.
+    n = count_diagnostic_code(program, "E2084");
+    assert n == 2 , (
+        f"E2084 should fire for if-body and module-level tails only, got {n}"
+    );
+    # The recovery path must not produce an E0002 parse-error cascade —
+    # the placement diagnostic replaces it entirely.
+    assert count_diagnostic_code(program, "E0002") == 0 , (
+        "tail-expression recovery must not cascade into E0002"
+    );
+}
+
+test "implicit return participates in return-type checking" {
+    (program, _) = compile_and_check("implicit_return_rules.jac");
+    # `wrong_type_tail` returns a string from `-> int` via implicit return.
+    assert has_diagnostic_code(program, "E1002") , (
+        "implicit return must be type-checked like an explicit return"
+    );
+    # `ok_tail`'s implicit return satisfies the all-paths-return analysis.
+    assert not has_diagnostic_code(program, "E1004") , (
+        "a tail implicit return must count as returning on all paths"
+    );
+}
+
 test "redundant `{expr}` slot wrapping inside slot body raises E2028 (issue #6733)" {
     # `RedundantExprSlotWrap` re-wraps three *expression* bodies — a string
     # literal `{"none"}`, an arithmetic expr `{n + 1}` and a JSX element
@@ -1146,7 +1176,8 @@ test "genuine collection literals in a slot body are not mistaken for slot wraps
     # disambiguates them, so the parser leaves them as collection literals and
     # must NOT raise E2028. Uses `parse_with_prog` so the parser diagnostics
     # (E2028 is parser-emitted) are captured.
-    src = 'def:pub C(a: int) -> JsxElement { ' + 'return <ul>{for x in [a] { {1, 2}; {a: 1}; }}</ul>; }';
+    src = 'def:pub C(a: int) -> JsxElement { '
+        + 'return <ul>{for x in [a] { {1, 2}; {a: 1}; }}</ul>; }';
     (prog, _) = parse_with_prog(src);
     n = count_diagnostic_code(prog, "E2028");
     assert n == 0 , f"genuine collection literals must not raise E2028, got {n}";

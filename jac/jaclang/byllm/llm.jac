@@ -65,6 +65,7 @@ obj BaseLLM {
     has model_name: str,
         config: dict = {},
         api_key: str = "",
+        api_base: str = "",
         call_params: dict[(str, object)] = {},
         ctx_window: int = 0,
         supports_native_tools: bool = True,

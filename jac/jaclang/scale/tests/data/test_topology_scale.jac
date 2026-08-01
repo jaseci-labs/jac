@@ -69,7 +69,8 @@ test "topology_index_data survives Serializer round-trip" {
         idx_after = restored.get_topology_index();
         assert isinstance(idx_after, TopologyIndex) , (
             "Topology index should survive Serializer round-trip. "
-            "Got topology_index_data=" + str(restored.topology_index_data)
+            "Got topology_index_data="
+            + str(restored.topology_index_data)
         );
         assert len(idx_after.node_table) == len(idx_before.node_table) , (
             f"Node count mismatch: {len(idx_after.node_table)} vs {len(

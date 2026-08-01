@@ -68,6 +68,7 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_lcompr_loc, name="compr.list"
     );
+    self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd), "list");
 
     self._codegen_compr_walk(
         nd.compr, 0, "list", list_val, nd.out_expr, None, elem_type_name
@@ -148,6 +149,7 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dcompr_loc, name="dcompr.dict"
     );
+    self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd), "dict");
 
     self._codegen_compr_walk(
         nd.compr, 0, "dict", dict_val, key_expr, val_expr, dict_key
@@ -221,6 +223,7 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_scompr_loc, name="scompr.set"
     );
+    self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd), "set");
 
     self._codegen_compr_walk(
         nd.compr, 0, "set", set_val, out_expr, None, elem_type_name
@@ -240,6 +243,7 @@ impl NaIRGenPass._emit_compr_element(
     if kind == "dict" {
         key_val = self._codegen_expr(key_expr);
         value_val = self._codegen_expr(val_expr);
+        value_val = self._nogc_elem_prep(val_expr, value_val);
         if key_val is not None and value_val is not None {
             helpers = self.dict_helpers.get(spec);
             if helpers is not None {
@@ -254,11 +258,11 @@ impl NaIRGenPass._emit_compr_element(
                 self.builder.call(helpers["set"], [acc, key_val, value_val]);
 
                 if isinstance(_boxed_key.type, ir.PointerType)
-                and self._is_owned(_boxed_key) {
+                    and self._is_owned(_boxed_key) {
                     self._emit_rc_release_simple(_boxed_key, op="dcompr_key", loc="");
                 }
                 if isinstance(_boxed_val_compr.type, ir.PointerType)
-                and self._is_owned(_boxed_val_compr) {
+                    and self._is_owned(_boxed_val_compr) {
                     self._emit_rc_release_simple(
                         _boxed_val_compr, op="dcompr_val", loc=""
                     );
@@ -269,6 +273,7 @@ impl NaIRGenPass._emit_compr_element(
     }
     if kind == "set" {
         val = self._codegen_expr(key_expr);
+        val = self._nogc_elem_prep(key_expr, val);
         if val is not None {
             helpers = self.set_helpers.get(spec);
             if helpers is not None {
@@ -277,7 +282,7 @@ impl NaIRGenPass._emit_compr_element(
                 expected_type = helpers["elem_type"];
                 if val.type != expected_type {
                     if isinstance(val.type, ir.PointerType)
-                    and isinstance(expected_type, ir.PointerType) {
+                        and isinstance(expected_type, ir.PointerType) {
                         val = self.builder.bitcast(
                             val, expected_type, name="scompr.cast"
                         );
@@ -288,7 +293,7 @@ impl NaIRGenPass._emit_compr_element(
                 self.builder.call(helpers["add"], [acc, val]);
 
                 if isinstance(_scompr_boxed.type, ir.PointerType)
-                and self._is_owned(_scompr_boxed) {
+                    and self._is_owned(_scompr_boxed) {
                     self._emit_rc_release_simple(
                         _scompr_boxed, op="scompr_elem", loc=""
                     );
@@ -299,6 +304,7 @@ impl NaIRGenPass._emit_compr_element(
     }
 
     val = self._codegen_expr(key_expr);
+    val = self._nogc_elem_prep(key_expr, val);
     if val is not None {
         helpers = self.list_helpers.get(spec);
         if helpers is not None {
@@ -325,7 +331,7 @@ impl NaIRGenPass._emit_compr_element(
             );
 
             if isinstance(_compr_boxed_val.type, ir.PointerType)
-            and self._is_owned(_compr_boxed_val) {
+                and self._is_owned(_compr_boxed_val) {
                 self._emit_rc_release_simple(
                     _compr_boxed_val, op="compr_elem", loc=_compr_loc
                 );
@@ -429,7 +435,7 @@ impl NaIRGenPass._codegen_compr_walk(
 
     if elem_val.type != actual_elem_type {
         if isinstance(elem_val.type, ir.PointerType)
-        and isinstance(actual_elem_type, ir.PointerType) {
+            and isinstance(actual_elem_type, ir.PointerType) {
             elem_val = self.builder.bitcast(
                 elem_val, actual_elem_type, name="compr.elem.cast"
             );

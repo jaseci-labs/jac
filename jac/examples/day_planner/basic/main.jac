@@ -106,17 +106,16 @@ import "./styles.css";
 def:pub TaskItem(
     task: Task, onToggle: Callable[[], None], onDelete: Callable[[], None]
 ) -> JsxElement {
-    return
-        <div class="task-item">
-            <input type="checkbox" checked={task.done} onChange={onToggle}/>
-            <span class={"task-title " + ("task-done" if task.done else "")}>
-                {task.title}
-            </span>
-            {(<span class="category">{task.category}</span>)
-                if task.category and task.category != "other"
-                else None}
-            <button class="btn-delete" onClick={onDelete}>X</button>
-        </div>;
+    <div class="task-item">
+        <input type="checkbox" checked={task.done} onChange={onToggle}/>
+        <span class={"task-title " + ("task-done" if task.done else "")}>
+            {task.title}
+        </span>
+        {(<span class="category">{task.category}</span>)
+            if task.category and task.category != "other"
+            else None}
+        <button class="btn-delete" onClick={onDelete}>X</button>
+    </div>
 }
 
 """Tasks column -- owns task list state, fetches on mount."""
@@ -160,48 +159,46 @@ def:pub TasksColumn -> JsxElement {
         ]
     );
 
-    return
-        <div class="column">
-            <h2>Today's Tasks</h2>
-            <div class="input-row">
-                <input
-                    class="input"
-                    value={task_text}
-                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
-                    onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
-                        add_new_task();
-                    }}}
-                    placeholder="What needs to be done today?"
-                />
-                <button class="btn-add" onClick={add_new_task}>Add</button>
-            </div>
-            {[
-                <TaskItem
-                    key={jid(t)}
-                    task={t}
-                    onToggle={lambda { toggle(jid(t)); }}
-                    onDelete={lambda { remove(jid(t)); }}
-                /> for t in tasks
-            ]}
-            <div class="count">
-                {remaining} {("task" if remaining == 1 else "tasks")} remaining
-            </div>
-        </div>;
+    <div class="column">
+        <h2>Today's Tasks</h2>
+        <div class="input-row">
+            <input
+                class="input"
+                value={task_text}
+                onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
+                    add_new_task();
+                }}}
+                placeholder="What needs to be done today?"
+            />
+            <button class="btn-add" onClick={add_new_task}>Add</button>
+        </div>
+        {[
+            <TaskItem
+                key={jid(t)}
+                task={t}
+                onToggle={lambda { toggle(jid(t)); }}
+                onDelete={lambda { remove(jid(t)); }}
+            /> for t in tasks
+        ]}
+        <div class="count">
+            {remaining} {("task" if remaining == 1 else "tasks")} remaining
+        </div>
+    </div>
 }
 
 """Single ingredient row -- presentational."""
 def:pub IngredientItem(ing: ShoppingItem) -> JsxElement {
-    return
-        <div class="ingredient-item">
-            <div class="ing-info">
-                <span class="ing-name">{ing.name}</span>
-                <span class="ing-qty">{ing.quantity} {ing.unit}</span>
-            </div>
-            <div class="ing-meta">
-                {(<span class="carb-badge">Carbs</span>) if ing.carby else None}
-                <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
-            </div>
-        </div>;
+    <div class="ingredient-item">
+        <div class="ing-info">
+            <span class="ing-name">{ing.name}</span>
+            <span class="ing-qty">{ing.quantity} {ing.unit}</span>
+        </div>
+        <div class="ing-meta">
+            {(<span class="carb-badge">Carbs</span>) if ing.carby else None}
+            <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
+        </div>
+    </div>
 }
 
 """Shopping list column -- owns ingredient state, fetches on mount."""
@@ -233,49 +230,47 @@ def:pub ShoppingColumn -> JsxElement {
         total_cost = total_cost + ing.cost;
     }
 
-    return
-        <div class="column">
-            <h2>Meal Shopping List</h2>
-            <div class="input-row">
-                <input
-                    class="input"
-                    value={meal_text}
-                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
-                    onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
-                        generate_meal_list();
-                    }}}
-                    placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
-                />
-                <button
-                    class="btn-generate"
-                    onClick={generate_meal_list}
-                    disabled={generating}
-                >
-                    {("Generating..." if generating else "Generate")}
-                </button>
+    <div class="column">
+        <h2>Meal Shopping List</h2>
+        <div class="input-row">
+            <input
+                class="input"
+                value={meal_text}
+                onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
+                    generate_meal_list();
+                }}}
+                placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
+            />
+            <button
+                class="btn-generate"
+                onClick={generate_meal_list}
+                disabled={generating}
+            >
+                {("Generating..." if generating else "Generate")}
+            </button>
+        </div>
+        {(<div class="generating-msg">Generating with AI...</div>)
+            if generating
+            else None}
+        {[<IngredientItem key={ing.name} ing={ing}/> for ing in ingredients]}
+        {(
+            <div class="shopping-footer">
+                <span class="total">Total: ${f"{total_cost:.2f}"}</span>
+                <button class="btn-clear" onClick={clear_list}>Clear</button>
             </div>
-            {(<div class="generating-msg">Generating with AI...</div>)
-                if generating
-                else None}
-            {[<IngredientItem key={ing.name} ing={ing}/> for ing in ingredients]}
-            {(
-                <div class="shopping-footer">
-                    <span class="total">Total: ${f"{total_cost:.2f}"}</span>
-                    <button class="btn-clear" onClick={clear_list}>Clear</button>
-                </div>
-            )
-                if len(ingredients) > 0
-                else None}
-        </div>;
+        )
+            if len(ingredients) > 0
+            else None}
+    </div>
 }
 
 def:pub app -> JsxElement {
-    return
-        <div class="container">
-            <h1>AI Day Planner</h1>
-            <div class="two-column">
-                <TasksColumn/>
-                <ShoppingColumn/>
-            </div>
-        </div>;
+    <div class="container">
+        <h1>AI Day Planner</h1>
+        <div class="two-column">
+            <TasksColumn/>
+            <ShoppingColumn/>
+        </div>
+    </div>
 }

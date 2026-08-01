@@ -455,7 +455,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     is_dtor_zero = b.icmp_unsigned(
         "==", dtor_val, ir.Constant(i64, 0), name="dtor.zero"
     );
-    b.cbranch(is_dtor_zero, log_free_bb, call_dtor_bb);
+    is_dtor_len = b.icmp_unsigned(
+        "!=",
+        b.and_(dtor_val, ir.Constant(i64, 1), name="dtor.lowbit"),
+        ir.Constant(i64, 0),
+        name="dtor.is.len"
+    );
+    b.cbranch(
+        b.or_(is_dtor_zero, is_dtor_len, name="dtor.skip"), log_free_bb, call_dtor_bb
+    );
 
     b = ir.IRBuilder(call_dtor_bb);
     dtor_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
@@ -567,6 +575,188 @@ impl NaIRGenPass._emit_magic_check(
     );
 }
 
+impl NaIRGenPass._emit_str_len_helpers -> None {
+    if self.str_len_fn is not None {
+        return;
+    }
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
+    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8_ptr]);
+    _headerless = self._nogc_headerless();
+
+    len_fn = self._define_function("__jac_str_len", ir.FunctionType(i64, [i8_ptr]));
+    len_fn.linkage = "private";
+    len_fn.args[0].name = "s";
+    _l_entry = len_fn.append_basic_block("entry");
+    b = ir.IRBuilder(_l_entry);
+    if _headerless {
+        _l_null = b.icmp_unsigned(
+            "==", len_fn.args[0], ir.Constant(i8_ptr, None), name="sl.null"
+        );
+        _l_zero = len_fn.append_basic_block("zero");
+        _l_slow0 = len_fn.append_basic_block("slow");
+        b.cbranch(_l_null, _l_zero, _l_slow0);
+        b = ir.IRBuilder(_l_zero);
+        b.ret(ir.Constant(i64, 0));
+        b = ir.IRBuilder(_l_slow0);
+        b.ret(b.call(strlen_fn, [len_fn.args[0]], name="sl.strlen"));
+    } else {
+        _l_zero = len_fn.append_basic_block("zero");
+        _l_sent = len_fn.append_basic_block("check.sentinel");
+        _l_magic = len_fn.append_basic_block("check.magic");
+        _l_hdr = len_fn.append_basic_block("hdr");
+        _l_fast = len_fn.append_basic_block("fast");
+        _l_slow = len_fn.append_basic_block("slow");
+        _l_null = b.icmp_unsigned(
+            "==", len_fn.args[0], ir.Constant(i8_ptr, None), name="sl.null"
+        );
+        b.cbranch(_l_null, _l_zero, _l_sent);
+        b = ir.IRBuilder(_l_zero);
+        b.ret(ir.Constant(i64, 0));
+        b = ir.IRBuilder(_l_sent);
+        _l_rc_slot = b.gep(
+            len_fn.args[0], [ir.Constant(i64, HDR_RC_OFF)], name="sl.rc.slot"
+        );
+        _l_rc = b.load(b.bitcast(_l_rc_slot, i64_ptr, name="sl.rc.p"), name="sl.rc");
+        _l_static = b.icmp_unsigned(
+            "==", _l_rc, ir.Constant(i64, RC_SENTINEL), name="sl.static"
+        );
+        b.cbranch(_l_static, _l_hdr, _l_magic);
+        b = ir.IRBuilder(_l_magic);
+        _l_mc = self._emit_magic_check(b, len_fn.args[0], name_prefix="sl.mc");
+        b.cbranch(_l_mc, _l_hdr, _l_slow);
+        b = ir.IRBuilder(_l_hdr);
+        _l_dt_slot = b.gep(
+            len_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="sl.dt.slot"
+        );
+        _l_dv = b.load(b.bitcast(_l_dt_slot, i64_ptr, name="sl.dt.p"), name="sl.dv");
+        _l_odd = b.and_(_l_dv, ir.Constant(i64, 1), name="sl.odd");
+        b.cbranch(
+            b.icmp_unsigned("!=", _l_odd, ir.Constant(i64, 0), name="sl.has.len"),
+            _l_fast,
+            _l_slow
+        );
+        b = ir.IRBuilder(_l_fast);
+        b.ret(b.lshr(_l_dv, ir.Constant(i64, 1), name="sl.len"));
+        b = ir.IRBuilder(_l_slow);
+        b.ret(b.call(strlen_fn, [len_fn.args[0]], name="sl.strlen"));
+    }
+    self.str_len_fn = len_fn;
+    self._emit_str_stamp_and_new();
+}
+
+impl NaIRGenPass._emit_str_stamp_and_new -> None {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
+    _headerless = self._nogc_headerless();
+    stamp_fn = self._define_function(
+        "__jac_str_stamp", ir.FunctionType(ir.VoidType(), [i8_ptr, i64])
+    );
+    stamp_fn.linkage = "private";
+    stamp_fn.args[0].name = "s";
+    stamp_fn.args[1].name = "n";
+    _s_entry = stamp_fn.append_basic_block("entry");
+    _s_done = stamp_fn.append_basic_block("done");
+    b = ir.IRBuilder(_s_entry);
+    if _headerless {
+        b.branch(_s_done);
+    } else {
+        _s_magic = stamp_fn.append_basic_block("check.magic");
+        _s_store = stamp_fn.append_basic_block("store");
+        _s_null = b.icmp_unsigned(
+            "==", stamp_fn.args[0], ir.Constant(i8_ptr, None), name="ss.null"
+        );
+        b.cbranch(_s_null, _s_done, _s_magic);
+        b = ir.IRBuilder(_s_magic);
+        _s_mc = self._emit_magic_check(b, stamp_fn.args[0], name_prefix="ss.mc");
+        b.cbranch(_s_mc, _s_store, _s_done);
+        b = ir.IRBuilder(_s_store);
+        _s_enc = b.or_(
+            b.shl(stamp_fn.args[1], ir.Constant(i64, 1), name="ss.shl"),
+            ir.Constant(i64, 1),
+            name="ss.enc"
+        );
+        _s_slot = b.gep(
+            stamp_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="ss.slot"
+        );
+        b.store(_s_enc, b.bitcast(_s_slot, i64_ptr, name="ss.slot.p"));
+        b.branch(_s_done);
+    }
+    b = ir.IRBuilder(_s_done);
+    b.ret_void();
+    self.str_stamp_fn = stamp_fn;
+
+    memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
+    new_fn = self._define_function(
+        "__jac_str_new", ir.FunctionType(i8_ptr, [i8_ptr, i64])
+    );
+    new_fn.linkage = "weak_odr";
+    new_fn.args[0].name = "data";
+    new_fn.args[1].name = "n";
+    _n_entry = new_fn.append_basic_block("entry");
+    b = ir.IRBuilder(_n_entry);
+    _n_null = b.icmp_unsigned(
+        "==", new_fn.args[0], ir.Constant(i8_ptr, None), name="sn.null"
+    );
+    _n_len = b.select(_n_null, ir.Constant(i64, 0), new_fn.args[1], name="sn.n");
+    _n_size = b.add(_n_len, ir.Constant(i64, 1), name="sn.size");
+    _n_buf = b.call(self.rc_alloc_fn, [_n_size], name="sn.buf");
+    _n_copy = new_fn.append_basic_block("copy");
+    _n_fin = new_fn.append_basic_block("finish");
+    b.cbranch(
+        b.icmp_unsigned("==", _n_len, ir.Constant(i64, 0), name="sn.empty"),
+        _n_fin,
+        _n_copy
+    );
+    b = ir.IRBuilder(_n_copy);
+    b.call(memcpy_fn, [_n_buf, new_fn.args[0], _n_len]);
+    b.branch(_n_fin);
+    b = ir.IRBuilder(_n_fin);
+    _n_end = b.gep(_n_buf, [_n_len], name="sn.end");
+    b.store(ir.Constant(i8, 0), _n_end);
+    if not _headerless {
+        if self.rc_set_type_fn is not None {
+            _i32n = ir.IntType(32);
+            _n_tag_gv = self._get_snprintf_fmt("str");
+            _n_tag = b.gep(
+                _n_tag_gv, [ir.Constant(_i32n, 0), ir.Constant(_i32n, 0)], name="sn.tag"
+            );
+            b.call(self.rc_set_type_fn, [_n_buf, _n_tag]);
+        }
+        b.call(stamp_fn, [_n_buf, _n_len]);
+    }
+    b.ret(_n_buf);
+    self.str_new_fn = new_fn;
+}
+
+impl NaIRGenPass._call_str_len(
+    b: ir.IRBuilder, ptr: ir.Value, name: str = "s.len"
+) -> ir.Value {
+    if self.str_len_fn is None {
+        self._emit_str_len_helpers();
+    }
+    return b.call(self.str_len_fn, [ptr], name=name);
+}
+
+impl NaIRGenPass._stamp_str_len(
+    b: ir.IRBuilder, ptr: ir.Value, len_val: ir.Value
+) -> None {
+    if self._nogc_headerless() {
+        return;
+    }
+    if self.str_stamp_fn is None {
+        self._emit_str_len_helpers();
+    }
+    b.call(self.str_stamp_fn, [ptr, len_val]);
+}
+
 impl NaIRGenPass._emit_set_type_tag(
     b: ir.IRBuilder, ptr_i8: ir.Value, type_name: str
 ) -> None {
@@ -621,7 +811,7 @@ impl NaIRGenPass._emit_rc_release_simple(
 ) -> None {
     if self._nogc_headerless() {
         if not self._nogc_osp_skip(ptr)
-        and not self._nogc_emit_drop(ptr, op=op, loc=loc) {
+            and not self._nogc_emit_drop(ptr, op=op, loc=loc) {
             self._nogc_free_scratch(ptr, op);
         }
         return;
@@ -658,7 +848,7 @@ impl NaIRGenPass._emit_rc_release_typed(
 ) -> None {
     if self._nogc_headerless() {
         if not self._nogc_osp_skip(val)
-        and not self._nogc_emit_drop(val, op=op, loc=loc) {
+            and not self._nogc_emit_drop(val, op=op, loc=loc) {
             self._nogc_free_scratch(val, op);
         }
         return;
@@ -708,7 +898,7 @@ impl NaIRGenPass._arch_is_walker_name(arch_name: str) -> bool {
 
 impl NaIRGenPass._nogc_headerless -> bool {
     return getattr(self.ir_in.gen, "nogc_enforced", False)
-    and self._gc_mode() == "none";
+        and self._gc_mode() == "none";
 }
 
 impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
@@ -739,7 +929,7 @@ impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
     b.position_at_end(body_bb);
     _dobj = b.bitcast(fn.args[0], struct_type.as_pointer(), name="drop.obj");
     _hook = self.struct_drop_hooks.get(type_name)
-    or self.func_symtab.get(f"{type_name}.drop");
+        or self.func_symtab.get(f"{type_name}.drop");
     if _hook is not None {
         self.struct_drop_hooks[type_name] = _hook;
         b.call(_hook, [_dobj]);
@@ -762,8 +952,8 @@ impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
         if _pname in self.struct_types or _pname == type_name {
             _fld_drop = self._emit_struct_drop_fn(_pname);
         } elif _pname.startswith("List.")
-        or _pname.startswith("Dict.")
-        or _pname.startswith("Set.") {
+            or _pname.startswith("Dict.")
+            or _pname.startswith("Set.") {
             _fld_drop = self._emit_container_drop_fn(_pname);
         }
         if _fld_drop is None {
@@ -819,15 +1009,69 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
     b.position_at_end(body_bb);
     cont = b.bitcast(fn.args[0], _struct.as_pointer(), name="drop.cont");
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    i64 = ir.IntType(64);
     _elems = list(_struct.elements);
+    _bufs = [];
+    _slots = [];
     for (_fi, _fty) in enumerate(_elems) {
         if _fi < 2 or not isinstance(_fty, ir.PointerType) {
             continue;
         }
+        if isinstance(_fty.pointee, ir.FunctionType) {
+            _slots.append(_fi);
+        } else {
+            _bufs.append((_fi, _fty));
+        }
+    }
+    _len_v = None;
+    if _slots {
+        _len_p = b.gep(
+            cont, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="drop.len.p"
+        );
+        _len_v = b.load(_len_p, name="drop.len");
+    }
+    for (_bk, _bpair) in enumerate(_bufs) {
+        (_fi, _fty) = _bpair;
         dp = b.gep(
             cont, [ir.Constant(i32, 0), ir.Constant(i32, _fi)], name=f"drop.data{_fi}.p"
         );
         dv = b.load(dp, name=f"drop.data{_fi}");
+        if _len_v is not None
+            and _bk < len(_slots)
+            and isinstance(_fty.pointee, ir.PointerType) {
+            _si = _slots[_bk];
+            _sp = b.gep(
+                cont,
+                [ir.Constant(i32, 0), ir.Constant(i32, _si)],
+                name=f"edrop{_fi}.slot.p"
+            );
+            _sfn = b.load(_sp, name=f"edrop{_fi}.slot");
+            _have = b.icmp_unsigned(
+                "!=", _sfn, ir.Constant(_elems[_si], None), name=f"edrop{_fi}.have"
+            );
+            _idx_p = b.alloca(i64, name=f"edrop{_fi}.idx");
+            b.store(ir.Constant(i64, 0), _idx_p);
+            _chk_bb = fn.append_basic_block(f"edrop{_fi}.chk");
+            _loop_bb = fn.append_basic_block(f"edrop{_fi}.body");
+            _next_bb = fn.append_basic_block(f"edrop{_fi}.next");
+            b.cbranch(_have, _chk_bb, _next_bb);
+
+            b.position_at_end(_chk_bb);
+            _iv = b.load(_idx_p, name=f"edrop{_fi}.i");
+            _more = b.icmp_signed("<", _iv, _len_v, name=f"edrop{_fi}.more");
+            b.cbranch(_more, _loop_bb, _next_bb);
+
+            b.position_at_end(_loop_bb);
+            _iv2 = b.load(_idx_p, name=f"edrop{_fi}.i2");
+            _ep = b.gep(dv, [_iv2], name=f"edrop{_fi}.elem.p");
+            _ev = b.load(_ep, name=f"edrop{_fi}.elem");
+            _ei8 = b.bitcast(_ev, i8p, name=f"edrop{_fi}.elem.i8");
+            b.call(_sfn, [_ei8]);
+            b.store(b.add(_iv2, ir.Constant(i64, 1), name=f"edrop{_fi}.inc"), _idx_p);
+            b.branch(_chk_bb);
+
+            b.position_at_end(_next_bb);
+        }
         dv_i8 = b.bitcast(dv, i8p, name=f"drop.data{_fi}.i8");
         b.call(free_fn, [dv_i8]);
     }
@@ -837,6 +1081,106 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
     b.position_at_end(done_bb);
     b.ret_void();
     return fn;
+}
+
+impl NaIRGenPass._nogc_elem_drop_slot_ty -> ir.Type {
+    return ir.FunctionType(ir.VoidType(), [ir.IntType(8).as_pointer()]).as_pointer();
+}
+
+impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list {
+    _m = "";
+    try {
+        _m = expr.type.mangle() if (expr is not None and expr.type is not None) else "";
+    } except Exception {
+        return [];
+    }
+    _open = _m.find("[");
+    if _open < 0 or not _m.endswith("]") {
+        return [];
+    }
+    _inner = _m[_open + 1:-1];
+    _args: list = [];
+    _depth = 0;
+    _cur = "";
+    for _ch in _inner {
+        if _ch == "[" {
+            _depth += 1;
+        } elif _ch == "]" {
+            _depth -= 1;
+        }
+        if _ch == "," and _depth == 0 {
+            _args.append(_cur.strip());
+            _cur = "";
+        } else {
+            _cur += _ch;
+        }
+    }
+    if _cur.strip() {
+        _args.append(_cur.strip());
+    }
+    return _args;
+}
+
+impl NaIRGenPass._nogc_stamp_elem_drops(
+    cont: ir.Value | None, elem_mangles: list, family: str
+) -> None {
+    if cont is None or self._gc_mode() != "none" {
+        return;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    _slot_ty = self._nogc_elem_drop_slot_ty();
+    _slot_specs: list = [];
+    if family == "dict" {
+        if len(elem_mangles) >= 2 {
+            _slot_specs = [(4, elem_mangles[0]), (5, elem_mangles[1])];
+        }
+    } elif len(elem_mangles) >= 1 {
+        _slot_specs = [(3, elem_mangles[0])];
+    }
+    _cont_struct = cont.type?.pointee;
+    _n_fields = len(list(getattr(_cont_struct, "elements", []) or []));
+    for (_idx, _em) in _slot_specs {
+        if _em != "str" or _idx >= _n_fields {
+            continue;
+        }
+        free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+        _fn_cast = self.builder.bitcast(free_fn, _slot_ty, name="edrop.stamp.fn");
+        _sp = self.builder.gep(
+            cont, [ir.Constant(i32, 0), ir.Constant(i32, _idx)], name="edrop.stamp.p"
+        );
+        self.builder.store(_fn_cast, _sp);
+    }
+}
+
+impl NaIRGenPass._nogc_elem_prep(
+    expr: uni.UniNode | None, val: ir.Value | None
+) -> (ir.Value | None) {
+    if val is None or self._gc_mode() != "none" {
+        return val;
+    }
+    if not (
+        isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.IntType)
+        and val.type.pointee.width == 8
+    ) {
+        return val;
+    }
+    if isinstance(expr, uni.FString) {
+        return val;
+    }
+    if isinstance(expr, uni.AtomTrailer) and isinstance(expr.right, uni.IndexSlice) {
+        _bm = "";
+        try {
+            _bm = expr.target.type.mangle() if expr.target.type is not None else "";
+        } except Exception {
+            _bm = "";
+        }
+        if _bm == "str" {
+            return val;
+        }
+    }
+    return self._rc_strdup(val, name="elem.copy");
 }
 
 impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool {
@@ -851,8 +1195,8 @@ impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> 
         _pointee = val.type?.pointee;
         _pname = getattr(_pointee, "name", "") or "";
         if _pname.startswith("List.")
-        or _pname.startswith("Dict.")
-        or _pname.startswith("Set.") {
+            or _pname.startswith("Dict.")
+            or _pname.startswith("Set.") {
             _fn = self._emit_container_drop_fn(_pname);
         }
     }
@@ -866,14 +1210,15 @@ impl NaIRGenPass._nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> 
 }
 
 impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
-    if op not in (
-        "print_tmp",
-        "fstr_obj_tmp",
-        "mstr_old",
-        "mstr_val",
-        "fstring",
-        "str_index"
-    ) {
+    if op
+        not in (
+            "print_tmp",
+            "fstr_obj_tmp",
+            "mstr_old",
+            "mstr_val",
+            "fstring",
+            "str_index"
+        ) {
         return;
     }
     if not isinstance(val.type, ir.PointerType) {
@@ -921,7 +1266,7 @@ impl NaIRGenPass._emit_scope_cleanup(
         }
 
         if isinstance(alloca.type, ir.PointerType)
-        and isinstance(alloca.type.pointee, ir.PointerType) {
+            and isinstance(alloca.type.pointee, ir.PointerType) {
             if var_name in self.region_handle_vars {
                 if var_name != skip_var {
                     _region_handles.append((var_name, alloca));
@@ -988,8 +1333,7 @@ impl NaIRGenPass._rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value {
     i8_ptr = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
 
-    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8_ptr]);
-    slen = self.builder.call(strlen_fn, [ptr], name="str.len");
+    slen = self._call_str_len(self.builder, ptr, name="str.len");
 
     alloc_size = self.builder.add(slen, ir.Constant(i64, 1), name="str.alloc.size");
     _strdup_loc = getattr(ptr, 'jac_loc', '');
@@ -1000,6 +1344,7 @@ impl NaIRGenPass._rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value {
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     self.builder.call(memcpy_fn, [new_str, ptr, alloc_size]);
     self._emit_set_type_tag(self.builder, new_str, "str");
+    self._stamp_str_len(self.builder, new_str, slen);
 
     self._mark_owned(new_str);
     return new_str;
@@ -1037,7 +1382,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
 
     _hook = self.struct_drop_hooks.get(arch_name)
-    or self.func_symtab.get(f"{arch_name}.drop");
+        or self.func_symtab.get(f"{arch_name}.drop");
     if _hook is not None {
         self.struct_drop_hooks[arch_name] = _hook;
         b.call(_hook, [release_fn.args[0]]);
@@ -1045,8 +1390,8 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
 
     _has_ref_fields = any(
         isinstance(_ft, ir.PointerType)
-        and _fn not in opaque_fields
-        and field_indices.get(_fn, -1) >= 0 for (_fn, _ft) in field_types.items()
+            and _fn not in opaque_fields
+            and field_indices.get(_fn, -1) >= 0 for (_fn, _ft) in field_types.items()
     );
     if _has_ref_fields {
         _cycles_on = self._gc_mode() == "cycles";

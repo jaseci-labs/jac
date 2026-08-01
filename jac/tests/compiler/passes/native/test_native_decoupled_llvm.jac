@@ -46,9 +46,9 @@ def _scan_llvmlite_imports(tree: Path) -> list[str] {
 
 test "jaclang runtime does not import the python llvmlite package" {
     hits = _scan_llvmlite_imports(Path(jaclang.__file__).parent);
-    assert not hits , "llvmlite is decoupled (#6925) -- import " + "jaclang.compiler.passes.native.llvm{.binding} instead. Offenders:\n" + "\n".join(
-        hits
-    );
+    assert not hits , "llvmlite is decoupled (#6925) -- import "
+        + "jaclang.compiler.passes.native.llvm{.binding} instead. Offenders:\n"
+        + "\n".join(hits);
 }
 
 
@@ -68,7 +68,8 @@ test "vendored ir builder emits expected IR" {
 
 
 test "vendored binding parses, verifies and prints a module" {
-    txt = "define i32 @add(i32 %a, i32 %b) {\n" + "entry:\n  %r = add i32 %a, %b\n  ret i32 %r\n}\n";
+    txt = "define i32 @add(i32 %a, i32 %b) {\n"
+        + "entry:\n  %r = add i32 %a, %b\n  ret i32 %r\n}\n";
     mod = llvm.parse_assembly(txt);
     mod.verify();
     out = str(mod);

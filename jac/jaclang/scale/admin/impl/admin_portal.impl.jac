@@ -1023,8 +1023,6 @@ impl JacAPIServerAdmin.admin_graph_data(
 impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
-    import re;
-    import from jaclang.scale._optdeps.prometheus { generate_latest, REGISTRY }
     error = self.require_admin(Authorization);
     if error {
         return error;
@@ -1040,7 +1038,7 @@ impl JacAPIServerAdmin.admin_get_metrics(
         );
     }
     try {
-        raw_metrics = generate_latest(REGISTRY).decode('utf-8');
+        raw_metrics = self._metrics.expose().decode('utf-8');
         metrics_data = _parse_prometheus_text(raw_metrics);
         summary = _calculate_metrics_summary(metrics_data);
 
@@ -1102,8 +1100,8 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
                 value_str = regex_match.group(3);
                 labels: dict = {};
                 if labels_str
-                and labels_str.startswith('{')
-                and labels_str.endswith('}') {
+                    and labels_str.startswith('{')
+                    and labels_str.endswith('}') {
                     for lm in label_re.finditer(labels_str[1:-1]) {
                         labels[lm.group(1)] = lm.group(2);
                     }
@@ -1116,7 +1114,7 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
                 found_metric = None;
                 for m in metrics_data {
                     if m['name'] == metric_name
-                    or metric_name.startswith(m['name'] + '_') {
+                        or metric_name.startswith(m['name'] + '_') {
                         found_metric = m;
                         break;
                     }
@@ -1177,7 +1175,7 @@ def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
                 if v['suffix'] == '_sum' and isinstance(v['value'], (int, float)) {
                     total_sum += v['value'];
                 } elif v['suffix'] == '_count'
-                and isinstance(v['value'], (int, float)) {
+                    and isinstance(v['value'], (int, float)) {
                     total_count += int(v['value']);
                 }
             }

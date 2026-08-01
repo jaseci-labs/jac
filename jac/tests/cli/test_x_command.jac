@@ -104,7 +104,9 @@ test "_run_entry_point runs the tool, forwards argv, returns its exit code" {
     try {
         site = Path(tmp) / "site";
         argv_file = str(Path(tmp) / "argv.txt");
-        body = "import sys\ndef main():\n    open(" + repr(argv_file) + ", 'w').write(repr(sys.argv))\n    sys.exit(7)\n";
+        body = "import sys\ndef main():\n    open("
+            + repr(argv_file)
+            + ", 'w').write(repr(sys.argv))\n    sys.exit(7)\n";
         make_fake_tool(site, "demo", "demo_run_pkg", body);
 
         ep = find_ep(site, "demo");

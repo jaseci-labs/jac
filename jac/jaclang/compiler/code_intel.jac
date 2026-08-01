@@ -319,9 +319,9 @@ def _write_index_cache(file: str, idx: ModuleIndex) {
             string_pool_size=0
         );
         empty_payload = zlib.compress(bytes(1), 1);
-        blob = header.to_bytes() + empty_payload + write_sections(
-            {SEC_SYMINDEX: payload}
-        );
+        blob = header.to_bytes()
+            + empty_payload
+            + write_sections({SEC_SYMINDEX: payload});
         path = _index_cache_path(file);
         path.parent.mkdir(parents=True, exist_ok=True);
         tmp = path.with_suffix(".tmp");

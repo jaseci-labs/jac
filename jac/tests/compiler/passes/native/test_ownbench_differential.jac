@@ -47,10 +47,9 @@ def _mode_flags(mode: str) -> list[str] {
 """Compile `src` to `out_bin` under `mode`; assert success."""
 def _nacompile(src: str, mode: str, out_bin: str) {
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "nacompile", src] + _mode_flags(mode) + [
-            "-o",
-            out_bin
-        ],
+        [sys.executable, "-m", "jaclang", "nacompile", src]
+            + _mode_flags(mode)
+            + ["-o", out_bin],
         capture_output=True,
         text=True,
         timeout=300,

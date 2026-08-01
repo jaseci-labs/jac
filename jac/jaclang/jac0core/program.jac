@@ -23,7 +23,9 @@ class JacProgram {
         _dependents: dict[str, set[str]],
         _track_dependencies: bool,
         _inferred_mods: set,
-        _analyses_run: dict;
+        _analyses_run: dict,
+        _placement_summaries: dict,
+        _placement_state: dict;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;

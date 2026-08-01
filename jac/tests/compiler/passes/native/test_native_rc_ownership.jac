@@ -18,7 +18,7 @@ what freed memory happens to contain.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -29,12 +29,17 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(
     fixture: str, gc_mode: str | None = None
 ) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    opts = CompileOptions(na_gc_mode=gc_mode) if gc_mode is not None else None;
+    opts = CompileOptions(
+        type_check=False,
+        force_codespace='native',
+        force_target_program=True,
+        na_gc_mode=(gc_mode if gc_mode is not None else "cycles")
+    );
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
@@ -74,7 +79,7 @@ def fn_ir(ir: uni.Module, name: str) -> str {
 test "glob return: list cache survives a for-loop over the accessor call" {
     # `for c in cmd_defs()` releases the loop collection it owns; the callee
     # must have retained the glob list or the cache dies after one scan.
-    (eng, _) = compile_native("rc_glob_return.na.jac");
+    (eng, _) = compile_native("rc_glob_return.jac");
     get_func(eng, "jac_entry", None)();
     scan_twice = get_func(eng, "scan_twice", ctypes.c_int64);
     result = scan_twice();
@@ -82,7 +87,7 @@ test "glob return: list cache survives a for-loop over the accessor call" {
 }
 
 test "glob return: heap glob string survives repeated accessor calls" {
-    (eng, _) = compile_native("rc_glob_return.na.jac");
+    (eng, _) = compile_native("rc_glob_return.jac");
     get_func(eng, "jac_entry", None)();
     name_len_twice = get_func(eng, "name_len_twice", ctypes.c_int64);
     result = name_len_twice();
@@ -90,7 +95,7 @@ test "glob return: heap glob string survives repeated accessor calls" {
 }
 
 test "glob return: accessor called inline inside len() twice" {
-    (eng, _) = compile_native("rc_glob_return.na.jac");
+    (eng, _) = compile_native("rc_glob_return.jac");
     get_func(eng, "jac_entry", None)();
     defs_len_inline = get_func(eng, "defs_len_inline", ctypes.c_int64);
     result = defs_len_inline();
@@ -101,7 +106,7 @@ test "glob return: accessor called inline inside len() twice" {
 test "tuple unpack: second join over the same list is intact" {
     # Scope exit releases the unpack locals; without the retain the last
     # tuple's strings are freed while the list still holds them.
-    (eng, _) = compile_native("rc_tuple_unpack.na.jac");
+    (eng, _) = compile_native("rc_tuple_unpack.jac");
     get_func(eng, "jac_entry", None)();
     join_twice = get_func(eng, "join_twice", ctypes.c_int64);
     result = join_twice();
@@ -109,7 +114,7 @@ test "tuple unpack: second join over the same list is intact" {
 }
 
 test "tuple unpack: early return of an unpack-bound local keeps the list" {
-    (eng, _) = compile_native("rc_tuple_unpack.na.jac");
+    (eng, _) = compile_native("rc_tuple_unpack.jac");
     get_func(eng, "jac_entry", None)();
     early_ret = get_func(eng, "early_return_keeps_list", ctypes.c_int64);
     result = early_ret();
@@ -121,7 +126,7 @@ test "param shadow: other fn's param names add no retain-on-return" {
     # `push(s, v)` is never called; its param `v` must not make `make_vec`'s
     # `return v` path treat the fresh local as a borrowed param and retain it
     # (rc=2 at the caller -> every returned Vec leaks).
-    (eng, ir) = compile_native("rc_param_shadow_return.na.jac");
+    (eng, ir) = compile_native("rc_param_shadow_return.jac");
     body = fn_ir(ir, "make_vec");
     n = body.count('call void @"__rc_retain"');
     assert n == 0 , f"make_vec should return its owned local with no retain, found {n}";
@@ -134,7 +139,7 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
     # `use2(a: &Box, b: &Box)`'s param names match `churn`'s two fresh loop
     # locals; the loop-exit (iter_end) cleanup must still release both or the
     # final iteration's Boxes are never freed.
-    (eng, ir) = compile_native("rc_param_shadow_looptail.na.jac");
+    (eng, ir) = compile_native("rc_param_shadow_looptail.jac");
     body = fn_ir(ir, "churn");
     assert "iter.cleanup.a" in body , "loop-exit cleanup for local 'a' was suppressed";
     assert "iter.cleanup.b" in body , "loop-exit cleanup for local 'b' was suppressed";
@@ -148,21 +153,21 @@ test "heap-element container compiles and runs under --gc rc" {
     # The list[str] element-release helper used to re-enter _emit_rc_helpers
     # (its guard checked a cycles-only global) and redefine __rc_debug:
     # DuplicatedNameError ICE under rc, fine under the default cycles mode.
-    (eng, _) = compile_native("rc_heap_container.na.jac", gc_mode="rc");
+    (eng, _) = compile_native("rc_heap_container.jac", gc_mode="rc");
     count_strs = get_func(eng, "count_strs", ctypes.c_int64);
     result = count_strs();
     assert result == 2 , f"Expected 2, got {result}";
 }
 
 test "heap-element container compiles and runs under plain --gc none" {
-    (eng, _) = compile_native("rc_heap_container.na.jac", gc_mode="none");
+    (eng, _) = compile_native("rc_heap_container.jac", gc_mode="none");
     count_strs = get_func(eng, "count_strs", ctypes.c_int64);
     result = count_strs();
     assert result == 2 , f"Expected 2, got {result}";
 }
 
 test "import sys compiles under --gc rc (argv list is a heap container)" {
-    (eng, _) = compile_native("rc_import_sys.na.jac", gc_mode="rc");
+    (eng, _) = compile_native("rc_import_sys.jac", gc_mode="rc");
     addr = eng.get_function_address("argc_minus_one");
     assert addr != 0 , "argc_minus_one not emitted";
 }
@@ -170,7 +175,7 @@ test "import sys compiles under --gc rc (argv list is a heap container)" {
 # --- def drop parity across gc modes (issue #7466, 4) ---
 """Run the drop fixture and assert the hook fired once per destroyed Res."""
 def check_drop_parity(gc_mode: str | None) {
-    (eng, ir) = compile_native("rc_drop_hook.na.jac", gc_mode=gc_mode);
+    (eng, ir) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
     body = fn_ir(ir, "__rc_release_Res");
     assert 'call' in body and 'Res.drop' in body , "managed release fn does not invoke the drop hook";
     run_drops = get_func(eng, "run_drops", ctypes.c_int64);

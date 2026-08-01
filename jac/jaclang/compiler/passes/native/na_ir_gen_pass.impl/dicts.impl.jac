@@ -47,6 +47,23 @@ impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
     return ("i64", 0);
 }
 
+impl NaIRGenPass._dict_val_spec(val_type: ir.Type) -> str {
+    if isinstance(val_type, ir.DoubleType) {
+        return "f64";
+    }
+    if self?.jacval_type and val_type == self.jacval_type {
+        return "jacval";
+    }
+    if isinstance(val_type, ir.PointerType) {
+        _pointee = val_type.pointee;
+        if isinstance(_pointee, ir.IdentifiedStructType) and _pointee.name {
+            return "ptr_" + str(_pointee.name).replace(".", "_");
+        }
+        return "ptr";
+    }
+    return "i64";
+}
+
 impl NaIRGenPass._emit_dict_helpers(
     key_type_name: str,
     val_type_name: str,
@@ -70,9 +87,20 @@ impl NaIRGenPass._emit_dict_helpers(
     dict_struct = self.llvm_module.context.get_identified_type(
         f"Dict.{key_type_name}.{val_type_name}"
     );
-    dict_struct.set_body(
-        ir.IntType(64), ir.IntType(64), key_type.as_pointer(), val_type.as_pointer()
-    );
+    if self._gc_mode() == "none" {
+        dict_struct.set_body(
+            ir.IntType(64),
+            ir.IntType(64),
+            key_type.as_pointer(),
+            val_type.as_pointer(),
+            self._nogc_elem_drop_slot_ty(),
+            self._nogc_elem_drop_slot_ty()
+        );
+    } else {
+        dict_struct.set_body(
+            ir.IntType(64), ir.IntType(64), key_type.as_pointer(), val_type.as_pointer()
+        );
+    }
     self.dict_types[dict_key] = dict_struct;
     dict_ptr_type = dict_struct.as_pointer();
     i64 = ir.IntType(64);
@@ -132,7 +160,7 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_found = found_b.load(idx_alloca, name="idx.found");
     val_ptr_found = found_b.gep(vals_arr, [idx_found], name="val.ptr.found");
 
-    if isinstance(val_type, ir.PointerType) {
+    if isinstance(val_type, ir.PointerType) and not self._nogc_headerless() {
         if self.rc_retain_fn is None {
             self._emit_rc_helpers();
         }
@@ -190,21 +218,33 @@ impl NaIRGenPass._emit_dict_helpers(
     val_slot = b.gep(vals_arr_app, [cur_len_app], name="val.slot");
 
     _i8pd2 = ir.IntType(8).as_pointer();
-    if isinstance(key_type, ir.PointerType) {
-        if self.rc_retain_fn is None {
-            self._emit_rc_helpers();
+    _k_store = k_arg;
+    if self._nogc_headerless() {
+        if (
+            isinstance(key_type, ir.PointerType)
+            and isinstance(key_type.pointee, ir.IntType)
+            and key_type.pointee.width == 8
+        ) {
+            _strdup_d = self._get_or_declare_extern("strdup", _i8pd2, [_i8pd2]);
+            _k_store = b.call(_strdup_d, [k_arg], name="dapp_key_copy");
         }
-        _k_cast_d = b.bitcast(k_arg, _i8pd2, name="dapp_kret_cast");
-        b.call(self.rc_retain_fn, [_k_cast_d]);
-    }
-    if isinstance(val_type, ir.PointerType) {
-        if self.rc_retain_fn is None {
-            self._emit_rc_helpers();
+    } else {
+        if isinstance(key_type, ir.PointerType) {
+            if self.rc_retain_fn is None {
+                self._emit_rc_helpers();
+            }
+            _k_cast_d = b.bitcast(k_arg, _i8pd2, name="dapp_kret_cast");
+            b.call(self.rc_retain_fn, [_k_cast_d]);
         }
-        _v_cast_d = b.bitcast(v_arg, _i8pd2, name="dapp_vret_cast");
-        b.call(self.rc_retain_fn, [_v_cast_d]);
+        if isinstance(val_type, ir.PointerType) {
+            if self.rc_retain_fn is None {
+                self._emit_rc_helpers();
+            }
+            _v_cast_d = b.bitcast(v_arg, _i8pd2, name="dapp_vret_cast");
+            b.call(self.rc_retain_fn, [_v_cast_d]);
+        }
     }
-    b.store(k_arg, key_slot);
+    b.store(_k_store, key_slot);
     b.store(v_arg, val_slot);
     new_len = b.add(cur_len_app, ir.Constant(i64, 1), name="new.len");
     b.store(new_len, len_p2);
@@ -431,7 +471,11 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         _dk = self._dict_key_of(nd);
         _helpers = self.dict_helpers.get(_dk) if _dk is not None else None;
         if _helpers is not None {
-            return self.builder.call(_helpers["new"], [], name="dict.empty");
+            _empty_dv = self.builder.call(_helpers["new"], [], name="dict.empty");
+            self._nogc_stamp_elem_drops(
+                _empty_dv, self._nogc_type_arg_mangles(nd), "dict"
+            );
+            return _empty_dv;
         }
         return None;
     }
@@ -446,24 +490,27 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     _own_dk = self._dict_key_of(nd);
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
 
-    key_type = first_key.type;
-    (key_type_name, key_size) = self._dict_key_spec(key_type);
-    if use_jacval {
-        val_type = self.jacval_type;
-        val_type_name = "jacval";
+    if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
+        dict_key = _own_dk;
+        helpers = self.dict_helpers[dict_key];
+        key_type = helpers["key_type"];
+        val_type = helpers["val_type"];
     } else {
-        val_type = first_val.type;
-        val_type_name = "i64";
-        if isinstance(val_type, ir.DoubleType) {
-            val_type_name = "f64";
-        } elif isinstance(val_type, ir.PointerType) {
-            val_type_name = "ptr";
+        key_type = first_key.type;
+        (key_type_name, key_size) = self._dict_key_spec(key_type);
+        if use_jacval {
+            val_type = self.jacval_type;
+            val_type_name = "jacval";
+        } else {
+            val_type = first_val.type;
+            val_type_name = self._dict_val_spec(val_type);
         }
+        dict_key = f"{key_type_name}:{val_type_name}";
+        self._emit_dict_helpers(
+            key_type_name, val_type_name, key_type, val_type, key_size
+        );
+        helpers = self.dict_helpers[dict_key];
     }
-    dict_key = f"{key_type_name}:{val_type_name}";
-
-    self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
-    helpers = self.dict_helpers[dict_key];
 
     _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
@@ -471,14 +518,20 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     dict_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_dict_new_loc, name="dict.new"
     );
+    self._nogc_stamp_elem_drops(dict_val, self._nogc_type_arg_mangles(nd), "dict");
     _dinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
 
-    first_store_val = self._box_to_jacval(first_val) if use_jacval else first_val;
+    first_val = self._nogc_elem_prep(first_pair.value, first_val);
+    first_store_val = (
+        self._box_to_jacval(first_val)
+            if use_jacval
+            else self._coerce_type(first_val, val_type)
+    );
     self._rc_call_with_ctx(
         helpers["set"],
-        [dict_val, first_key, first_store_val],
+        [dict_val, self._coerce_type(first_key, key_type), first_store_val],
         op="dict_init",
         loc=_dinit_loc
     );
@@ -499,6 +552,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         k = self._codegen_expr(pair.key);
         v = self._codegen_expr(pair.value);
         if k is not None and v is not None {
+            v = self._nogc_elem_prep(pair.value, v);
             _orig_k = k;
             _orig_v = v;
             k = self._coerce_type(k, key_type);

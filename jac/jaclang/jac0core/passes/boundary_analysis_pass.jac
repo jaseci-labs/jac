@@ -14,13 +14,17 @@ class BoundaryAnalysisPass(UniPass) {
         self: BoundaryAnalysisPass, name_node: (uni.UniNode | None)
     ) -> (uni.Ability | None);
 
+    def _signature_of_decl(
+        self: BoundaryAnalysisPass, decl: (uni.Ability | None)
+    ) -> tuple[(str, list[str], list[str])];
+
     def _get_context(self: BoundaryAnalysisPass, nd: uni.UniNode) -> InteropContext;
     def _extract_type_name(
         self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
     ) -> str;
 
     def _resolve_native_module(
-        self: BoundaryAnalysisPass, module_name: str
+        self: BoundaryAnalysisPass, module_name: str, inferred_ok: bool = True
     ) -> (str | None);
 
     def _in_native_module(self: BoundaryAnalysisPass) -> bool;
@@ -39,6 +43,11 @@ class BoundaryAnalysisPass(UniPass) {
         nd: uni.Import,
         module_name: str,
         caller_ctx: InteropContext
+    ) -> None;
+
+    def _register_na_client_import(self: BoundaryAnalysisPass, nd: uni.Import) -> None;
+    def _register_client_bridged_import(
+        self: BoundaryAnalysisPass, nd: uni.Import
     ) -> None;
 
     def _collect_abilities(
@@ -76,13 +85,4 @@ class BoundaryAnalysisPass(UniPass) {
     def _literal_default(self: BoundaryAnalysisPass, expr: any) -> tuple[(bool, any)];
     def after_pass(self: BoundaryAnalysisPass) -> None;
     def _record_access_levels(self: BoundaryAnalysisPass, manifest: any) -> None;
-    def enter_archetype(self: BoundaryAnalysisPass, nd: uni.Archetype) -> None;
-    def _classify(self: BoundaryAnalysisPass, body_nodes: list) -> dict;
-    def _scan(self: BoundaryAnalysisPass, nd: (uni.UniNode | None)) -> None;
-    def _call_target_symbol(
-        self: BoundaryAnalysisPass, call: uni.FuncCall
-    ) -> (uni.Symbol | None);
-
-    def _callee_body(self: BoundaryAnalysisPass, call: uni.FuncCall) -> list;
-    def _resolved_body(self: BoundaryAnalysisPass, owner: uni.UniNode) -> list;
 }

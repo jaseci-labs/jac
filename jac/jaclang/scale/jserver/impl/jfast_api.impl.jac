@@ -170,7 +170,7 @@ impl JFastApiServer.run_server(
             return;
         } except SystemExit as e {
             if "Address already in use" in str(e)
-            or "address already in use" in str(e) {
+                or "address already in use" in str(e) {
                 current_port += 1;
             } else {
                 raise;
@@ -305,7 +305,7 @@ impl JFastApiServer._resolve_type(
         return (`dict[resolved_k, resolved_v]);
     }
     if (origin is Union)
-    or (types?.UnionType and isinstance(type_obj, types.UnionType)) {
+        or (types?.UnionType and isinstance(type_obj, types.UnionType)) {
         resolved_args = tuple(
             self._resolve_type(getattr(a, '__name__', str(a)), a) for a in args
         );
@@ -729,8 +729,8 @@ impl JFastApiServer._create_endpoint_function(
     body_type_map: dict[str, any] = {};
     for param in body_params {
         if param.name
-        and (param.type_obj is not None)
-        and (param.type_obj is not Any) {
+            and (param.type_obj is not None)
+            and (param.type_obj is not Any) {
             body_type_map[param.name] = param.type_obj;
         }
     }
@@ -1005,8 +1005,8 @@ impl JFastApiServer.init(
         user_root_id: (str | None) = None;
 
         if authorization
-        and isinstance(authorization, str)
-        and authorization.startswith('Bearer ') {
+            and isinstance(authorization, str)
+            and authorization.startswith('Bearer ') {
             token = authorization[7:];
 
             if self._user_manager {

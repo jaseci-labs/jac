@@ -87,25 +87,25 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
                     return (True, lv % rv);
                 }
                 if opv == "**"
-                and isinstance(lv, int)
-                and isinstance(rv, int)
-                and rv >= 0
-                and abs(lv) < 1024
-                and rv < 63 {
+                    and isinstance(lv, int)
+                    and isinstance(rv, int)
+                    and rv >= 0
+                    and abs(lv) < 1024
+                    and rv < 63 {
                     return (True, lv ** rv);
                 }
                 if opv == "<<"
-                and isinstance(lv, int)
-                and isinstance(rv, int)
-                and 0 <= rv
-                and rv < 64 {
+                    and isinstance(lv, int)
+                    and isinstance(rv, int)
+                    and 0 <= rv
+                    and rv < 64 {
                     return (True, lv << rv);
                 }
                 if opv == ">>"
-                and isinstance(lv, int)
-                and isinstance(rv, int)
-                and 0 <= rv
-                and rv < 64 {
+                    and isinstance(lv, int)
+                    and isinstance(rv, int)
+                    and 0 <= rv
+                    and rv < 64 {
                     return (True, lv >> rv);
                 }
                 if opv == "&" and isinstance(lv, int) and isinstance(rv, int) {
@@ -119,10 +119,10 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
                 }
             }
             if opv == "*"
-            and isinstance(lv, str)
-            and isinstance(rv, int)
-            and 0 <= rv
-            and rv < 4096 {
+                and isinstance(lv, str)
+                and isinstance(rv, int)
+                and 0 <= rv
+                and rv < 4096 {
                 return (True, lv * rv);
             }
         } except Exception {

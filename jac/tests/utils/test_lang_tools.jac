@@ -64,7 +64,8 @@ test "sym sym dot" {
     jac_file = os.path.join(LANG_FIXTURES, "hello.jac");
     out = tool.ir(["sym", jac_file]);
     assert (
-        "\n|   +-- ConnectionAbortedError\n|   |   +-- public var\n|   +-- ConnectionError\n|" not in out
+        "\n|   +-- ConnectionAbortedError\n|   |   +-- public var\n|   +-- ConnectionError\n|"
+        not in out
     );
     check_list = ["######", "# hello #", "######", "SymTable::Module(hello)"];
     for i in check_list {
@@ -78,6 +79,7 @@ test "uninode doc" {
     tool = AstTool();
     auto_uni = tool.autodoc_uninode();
     assert (
-        "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr , CodeBlockStmt| body" in auto_uni
+        "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr , CodeBlockStmt| body"
+        in auto_uni
     );
 }

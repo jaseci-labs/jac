@@ -1,7 +1,4 @@
 import from .tokens { Token, TokenKind, SourceLoc }
-import from .lexer { Lexer }
-
-import jaclang.jac0core.parser.lexer as na_lexer;
 
 import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
@@ -32,8 +29,7 @@ import from jaclang.jac0core.diagnostics {
     E2028,
     W0060,
     E0048,
-    W0063,
-    DIAGNOSTICS
+    W0063
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -51,9 +47,7 @@ import from jaclang.jac0core.unitree {
     ModuleCode,
     PyInlineCode
 }
-import from jaclang.jac0core.unitree { ClientBlock, ServerBlock, NativeBlock }
 import from jaclang.jac0core.unitree { Import, ModulePath, ModuleItem }
-import from jaclang.jac0core.unitree { CommentToken }
 import from jaclang.jac0core.unitree {
     Archetype,
     Ability,
@@ -276,9 +270,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_PUB: Tok.KW_PUB.value,
          TokenKind.KW_PRIV: Tok.KW_PRIV.value,
          TokenKind.KW_PROT: Tok.KW_PROT.value,
-         TokenKind.KW_CLIENT: Tok.KW_CLIENT.value,
-         TokenKind.KW_SERVER: Tok.KW_SERVER.value,
-         TokenKind.KW_NATIVE: Tok.KW_NATIVE.value,
          TokenKind.KW_SELF: Tok.KW_SELF.value,
          TokenKind.KW_PROPS: Tok.KW_PROPS.value,
          TokenKind.KW_INIT: Tok.KW_INIT.value,
@@ -431,6 +422,7 @@ obj Parser {
     def parse_expression(allow_cast: bool = True) -> Expr;
     def _check_js_arrow_fault -> bool;
     def _recover_js_arrow_fault(left: Expr) -> Expr;
+    def _recover_removed_marker;
     def _recover_missing_connect_rhs -> bool;
     def _recover_misplaced_disconnect -> None;
     def parse_concurrent_expr -> Expr;
@@ -499,11 +491,9 @@ obj Parser {
     def _dispatch_decorated;
     def _dispatch_async;
     def parse_docstring_target;
-    def parse_client_block -> ClientBlock;
-    def parse_server_block -> ServerBlock;
-    def parse_native_block -> NativeBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
+    def _apply_implicit_return(body: list) -> list;
     def parse_ctrl_stmt -> CtrlStmt | DisengageStmt | None;
     def parse_statement;
     def parse_if_stmt -> IfStmt;
@@ -574,85 +564,4 @@ obj Parser {
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
     def parse_type_params -> tuple;
-}
-
-def parse(
-    source: str, file_path: str = "<input>", prog: (JacProgram | None) = None
-) -> tuple[Module, bool] {
-    import os;
-    if os.environ.get("JAC_NATIVE_LEXER") == "0" {
-        _lx = Lexer(source=source, file_path=file_path);
-        tokens = _lx.tokenize();
-        comments = _lx.comments;
-        diags = _lx.diags;
-        lex_error_count = _lx.error_count;
-    } else {
-        (tokens, comments, diags, lex_error_count) = na_lexer.tokenize_full(
-            source, file_path
-        );
-    }
-
-    if prog is not None and diags {
-        diag_src = Source(source, mod_path=file_path);
-        for d in diags {
-            loc = d.loc;
-            dtok = UniToken(
-                orig_src=diag_src,
-                name="ERROR" if d.is_error else "WARNING",
-                value="",
-                line=loc.line,
-                end_line=loc.end_line,
-                col_start=loc.col_start,
-                col_end=loc.col_end,
-                pos_start=loc.pos_start,
-                pos_end=loc.pos_end
-            );
-            code = DIAGNOSTICS.get(d.code_str) if d.code_str else None;
-            alrt = Alert(d.message, CodeLocInfo(dtok, dtok), Lexer, code=code);
-            if d.is_error {
-                prog.errors_had.append(alrt);
-            } else {
-                prog.warnings_had.append(alrt);
-            }
-        }
-    }
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
-    module = parser.parse();
-
-    if module.source and comments {
-        for cdata in comments {
-            ct = CommentToken(
-                orig_src=module.source,
-                name="COMMENT",
-                value=cdata.value,
-                line=cdata.line,
-                end_line=cdata.end_line,
-                col_start=cdata.col_start,
-                col_end=cdata.col_end,
-                pos_start=cdata.pos_start,
-                pos_end=cdata.pos_end,
-                kid=[]
-            );
-            module.source.comments.append(ct);
-        }
-    }
-
-    if module.source {
-        import re;
-        ignore_pattern = re.compile(r'#\s*jac:ignore\[([^\]]+)\]');
-        for comment in module.source.comments {
-            m = ignore_pattern.search(comment.value);
-            if m {
-                codes = {c.strip() for c in m.group(1).split(',')};
-                line = comment.line_no;
-                if line in module.source.inline_suppressions {
-                    module.source.inline_suppressions[line].update(codes);
-                } else {
-                    module.source.inline_suppressions[line] = codes;
-                }
-            }
-        }
-    }
-    had_error = parser.error_count > 0 or lex_error_count > 0;
-    return (module, had_error);
 }

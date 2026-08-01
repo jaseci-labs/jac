@@ -434,11 +434,47 @@ obj IndexInfo {
     has value: (Node | None) = None;
 }
 
-glob Statement = ExpressionStatement | BlockStatement | ReturnStatement | BreakStatement | ContinueStatement | IfStatement | SwitchStatement | ThrowStatement | TryStatement | WhileStatement | ForStatement | ForOfStatement | FunctionDeclaration | VariableDeclaration | ClassDeclaration,
+glob Statement = ExpressionStatement
+         | BlockStatement
+         | ReturnStatement
+         | BreakStatement
+         | ContinueStatement
+         | IfStatement
+         | SwitchStatement
+         | ThrowStatement
+         | TryStatement
+         | WhileStatement
+         | ForStatement
+         | ForOfStatement
+         | FunctionDeclaration
+         | VariableDeclaration
+         | ClassDeclaration,
      Expression = (
-         Identifier | Literal | ThisExpression | ArrayExpression | ObjectExpression | FunctionExpression | ArrowFunctionExpression | UnaryExpression | BinaryExpression | AssignmentExpression | LogicalExpression | MemberExpression | ConditionalExpression | CallExpression | NewExpression | AwaitExpression | TemplateLiteral | JsxElement | JsxFragment
+         Identifier
+         | Literal
+         | ThisExpression
+         | ArrayExpression
+         | ObjectExpression
+         | FunctionExpression
+         | ArrowFunctionExpression
+         | UnaryExpression
+         | BinaryExpression
+         | AssignmentExpression
+         | LogicalExpression
+         | MemberExpression
+         | ConditionalExpression
+         | CallExpression
+         | NewExpression
+         | AwaitExpression
+         | TemplateLiteral
+         | JsxElement
+         | JsxFragment
      ),
-     Pattern = Identifier | ArrayPattern | ObjectPattern | AssignmentPattern | RestElement,
+     Pattern = Identifier
+         | ArrayPattern
+         | ObjectPattern
+         | AssignmentPattern
+         | RestElement,
      Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration,
      ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
 

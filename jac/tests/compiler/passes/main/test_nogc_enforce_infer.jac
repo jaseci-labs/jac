@@ -43,9 +43,41 @@ def enforced_codes(fixture: str) -> list[str] {
 }
 
 test "scalar call-result local reused in a for-range header is clean" {
-    assert enforced_codes("scalar_call_range.na.jac") == [];
+    assert enforced_codes("scalar_call_range.jac") == [];
 }
 
 test "heap call-result local is still move-tracked (E1301 on reuse)" {
-    assert enforced_codes("heap_call_still_tracked.na.jac") == ["E1301"];
+    assert enforced_codes("heap_call_still_tracked.jac") == ["E1301"];
+}
+
+test "slice of a borrowed param infers an owned local" {
+    assert enforced_codes("slice_of_borrow.jac") == [];
+}
+
+test "typed-base enum members are scalar constants under enforcement" {
+    assert enforced_codes("int_enum_members.jac") == [];
+}
+
+test "read-only method calls borrow their owned receiver and args" {
+    assert enforced_codes("readonly_borrows.jac") == [];
+}
+
+test "native stdlib sinks borrow named owned arguments" {
+    assert enforced_codes("stdlib_sink_borrows.jac") == [];
+}
+
+test "compiler-internal modules are exempt from ambient enforcement" {
+    import jaclang;
+    path = os.path.join(
+        os.path.dirname(jaclang.__file__), "compiler", "passes", "main", "dataflow.jac"
+    );
+    prog = JacProgram();
+    opts = CompileOptions(type_check=True, na_gc_mode="none", nogc_enforce_all=True);
+    prog.compile(file_path=path, options=opts);
+    e14 = [
+        a.code.code
+        for a in prog.errors_had
+        if a.code is not None and a.code.code.startswith("E14")
+    ];
+    assert e14 == [] , f"jaclang's own modules must never be nogc-enforced: {e14}";
 }

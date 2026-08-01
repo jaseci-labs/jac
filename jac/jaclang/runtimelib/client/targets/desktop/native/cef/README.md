@@ -7,7 +7,7 @@ consistent Chromium rendering engine across all platforms. Use the
 ## Architecture
 
 The `cef` host is a single `jac nacompile` binary. There is **no C
-shim**: the CEF vtables and glue are written in Jac-native (`*.na.jac`) and
+shim**: the CEF vtables and glue are written in Jac-native (`*.jac`) and
 compiled directly. libpython is **not** used to talk to Chromium; it only
 embeds a minimal CPython runtime for the loopback HTTP server.
 
@@ -15,21 +15,21 @@ embeds a minimal CPython runtime for the loopback HTTP server.
 
 | Library | Link style | Purpose |
 |---------|------------|---------|
-| **libcef** | `import from "libcef.so"` in `cef.na.jac` (AOT) | Browser window, rendering, message loop |
-| **libcef_dispatch** | `import from "libcef_dispatch.so"` in `cef.na.jac` (AOT) | Jac-native helper for the few things FFI can't express directly |
-| **libpython** | `import from "libpython…"` in generated `host.na.jac` (AOT) | Embed CPython: loopback server, `oauth_broker.py`, read `_port` |
+| **libcef** | `import from "libcef.so"` in `cef.jac` (AOT) | Browser window, rendering, message loop |
+| **libcef_dispatch** | `import from "libcef_dispatch.so"` in `cef.jac` (AOT) | Jac-native helper for the few things FFI can't express directly |
+| **libpython** | `import from "libpython…"` in generated `host.jac` (AOT) | Embed CPython: loopback server, `oauth_broker.py`, read `_port` |
 
 **CEF FFI**: CEF's C API requires client-side vtable structs with refcount
-callbacks and precise memory layout. `cef_dispatch.na.jac` (compiled to
+callbacks and precise memory layout. `cef_dispatch.jac` (compiled to
 `libcef_dispatch.so`) owns all CEF vtable structs (`cef_app_t`, `cef_client_t`,
 `cef_life_span_handler_t`, …) as flat Jac clib structs with `Callable` fields.
-`cef.na.jac` is a thin facade over that shared library. The exported CEF
+`cef.jac` is a thin facade over that shared library. The exported CEF
 entry points used directly by hosts (`cef_run_message_loop`, `cef_shutdown`) are
 imported from `libcef.so`. `libcef_dispatch.so` wraps the two things Jac FFI
 cannot express: calling methods on CEF-returned objects through their vtable
 pointers, and allocating data structs with mixed-size fields.
 
-**libpython FFI**: the generated `host.na.jac` AOT-links the system libpython
+**libpython FFI**: the generated `host.jac` AOT-links the system libpython
 soname and calls a small C-API surface (`Py_Initialize`/`Py_Finalize`,
 `PyRun_SimpleString`/`PyRun_String`, `PyLong_AsLong`,
 `PyEval_SaveThread`/`PyEval_RestoreThread`). The embedded interpreter is
@@ -39,7 +39,7 @@ soname and calls a small C-API surface (`Py_Initialize`/`Py_Finalize`,
 ### CEF subprocesses
 
 CEF spawns render/GPU/utility helper processes. These run the standalone
-`cef-subprocess` binary (built from `cef_subprocess.na.jac`), staged beside the
+`cef-subprocess` binary (built from `cef_subprocess.jac`), staged beside the
 host. The host's first call, `cef_execute_subprocess()`, returns `>= 0` when the
 current process *is* a CEF subprocess so the host can exit early.
 
@@ -56,7 +56,7 @@ this ordering.
 ### Startup sequence
 
 ```
-with entry {                       # generated host.na.jac
+with entry {                       # generated host.jac
   ├─ cef_execute_subprocess()      # CEF subprocess? exit early
   ├─ cef_startup(cache_path, …)    # CEF init / dispatch bootstrap
   ├─ Py_Initialize()               # embed CPython (AOT-linked)
@@ -74,27 +74,27 @@ with entry {                       # generated host.na.jac
 
 Both targets boot through the same runtime module (`native/host_boot.jac` --
 plugins, in-process dispatch, loopback server + `oauth_broker`), and both
-compile a generated `host.na.jac` via `jac nacompile`. They differ only in
+compile a generated `host.jac` via `jac nacompile`. They differ only in
 the renderer:
 
 | | Native (`desktop`) | CEF (`cef`) |
 |--|-------------------|---------------------|
 | Renderer FFI | Jac `na` → `libwebview.so` | Jac `na` → `libcef.so` + `libcef_dispatch.so` |
-| Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` in `cef_dispatch.na.jac` (V8 globals) |
+| Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` in `cef_dispatch.jac` (V8 globals) |
 
 ## Contents
 
 | File | Role |
 |------|------|
-| `cef.na.jac` | Thin Jac binding over `libcef_dispatch.so` + message-loop imports from `libcef.so` |
-| `cef_dispatch.na.jac` | Source for `libcef_dispatch.so` (vtable structs, callbacks, lifecycle) |
-| `cef_platform.na.jac` | Shared stub vtables + `/proc/self/cmdline` parsing (spliced into both `.na.jac` sources at the `# PLATFORM` marker) |
-| `cef_subprocess.na.jac` | Source for the `cef-subprocess` helper binary |
+| `cef.jac` | Thin Jac binding over `libcef_dispatch.so` + message-loop imports from `libcef.so` |
+| `cef_dispatch.jac` | Source for `libcef_dispatch.so` (vtable structs, callbacks, lifecycle) |
+| `cef_platform.jac` | Shared stub vtables + `/proc/self/cmdline` parsing (spliced into both `.jac` sources at the `# PLATFORM` marker) |
+| `cef_subprocess.jac` | Source for the `cef-subprocess` helper binary |
 | `build.jac` | Runnable entry: `jac run build.jac` → `libcef_dispatch.so` + `cef-subprocess` (used by CI) |
 | `cef_sums.lock` | Pinned CEF version + archive SHA-1 digests (download trust anchor) |
 | `minimal-fonts.conf` | fontconfig used at runtime via `FONTCONFIG_FILE` |
-| `cef_smoke.na.jac` | Smoke test: init + shutdown |
-| `cef_test_host.na.jac` | Manual test: opens a page in a CEF window |
+| `cef_smoke.jac` | Smoke test: init + shutdown |
+| `cef_test_host.jac` | Manual test: opens a page in a CEF window |
 
 ## Prerequisites
 
@@ -128,7 +128,7 @@ Without setuid, the host passes `--no-sandbox` (OK for dev).
 
 - **Pinned CEF version**: `cef_sums.lock` pins the exact CEF version (its
   `# version:` directive) and archive digests. The flat
-  struct layouts in `cef.na.jac` / `cef_dispatch.na.jac` are version-specific
+  struct layouts in `cef.jac` / `cef_dispatch.jac` are version-specific
   (field offsets and `sizeof` are hard-coded for the pinned major); a version
   bump requires re-verifying every offset.
 - **Bootstrap JS injection**: the `on_context_created` handler sets

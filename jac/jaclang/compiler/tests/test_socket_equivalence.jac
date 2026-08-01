@@ -1,7 +1,7 @@
 """Cross-backend `socket` equivalence over the libc BSD-sockets floor
 (issue #6978 Phase 1, the network tier `ssl` + `http`/`urllib` build on).
 
-`import socket` binds the bundled `na_stdlib/socket.na.jac` Mechanism-A/F module
+`import socket` binds the bundled `na_stdlib/socket.jac` Mechanism-A/F module
 (a pure-Jac TCP-client surface over the libc socket FFI floor) on the na
 backend; the sv reference is CPython's real `socket`. There is no live network:
 a loopback HTTP server is stood up on an ephemeral port, its port published in

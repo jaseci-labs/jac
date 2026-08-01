@@ -50,27 +50,29 @@ walker get_project_tasks {
     }
 }
 
-cl {
-    def:pub app -> JsxElement {
-        has projects: list = [],
-            tasks: list = [];
 
-        async can with entry {
-            result = root spawn create_project(name="My Project", description="Test");
-            project = result.reports[0][0];
-            projects = [project];
-        }
+def:pub app -> JsxElement {
+    has projects: list = [],
+        tasks: list = [];
 
-        async def loadTasks(projectId: str) -> None {
-            result = projectId spawn get_project_tasks();
-            tasks = result.reports;
-        }
-
-        return <div>
-            {[<div key={p.name}>
-                <h2>{p.name}</h2>
-                <p>{p.description}</p>
-            </div> for p in projects]}
-        </div>;
+    async can with entry {
+        result = root spawn create_project(name="My Project", description="Test");
+        project = result.reports[0][0];
+        projects = [project];
     }
+
+    async def loadTasks(projectId: str) -> None {
+        result = projectId spawn get_project_tasks();
+        tasks = result.reports;
+    }
+
+    return
+        <div>
+            {[
+                <div key={p.name}>
+                    <h2>{p.name}</h2>
+                    <p>{p.description}</p>
+                </div> for p in projects
+            ]}
+        </div>;
 }

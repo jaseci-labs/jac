@@ -28,10 +28,7 @@ walker get_org_tree {
     }
 
     can enter_dept with Department entry {
-        report {
-            "department": here,
-            "employees": [-->[?:Employee]]
-        };
+        report {"department": here, "employees": [-->[?:Employee]]};
     }
 }
 
@@ -55,31 +52,35 @@ walker transfer_employee {
     }
 }
 
-cl {
-    def:pub app -> JsxElement {
-        has departments: list = [],
-            selectedDept: any = None;
 
-        async can with entry {
-            result = root spawn get_org_tree();
-            departments = result.reports;
-        }
+def:pub app -> JsxElement {
+    has departments: list = [],
+        selectedDept: any = None;
 
-        async def addEmployee(name: str, role: str) -> None {
-            if selectedDept {
-                result = jid(selectedDept) spawn add_employee(
-                    name=name, role=role, dept_id=jid(selectedDept)
-                );
-                newEmp = result.reports[0][0];
-            }
-        }
-
-        return <div>
-            {[<div key={d.department.name}>
-                <h2>{d.department.name}</h2>
-                {[<span key={e.name}>{e.name} ({e.role})</span>
-                  for e in d.employees]}
-            </div> for d in departments]}
-        </div>;
+    async can with entry {
+        result = root spawn get_org_tree();
+        departments = result.reports;
     }
+
+    async def addEmployee(name: str, role: str) -> None {
+        if selectedDept {
+            result = jid(selectedDept) spawn add_employee(
+                name=name, role=role, dept_id=jid(selectedDept)
+            );
+            newEmp = result.reports[0][0];
+        }
+    }
+
+    return
+        <div>
+            {[
+                <div key={d.department.name}>
+                    <h2>{d.department.name}</h2>
+                    {[
+                        <span key={e.name}>{e.name} ({e.role})</span>
+                        for e in d.employees
+                    ]}
+                </div> for d in departments
+            ]}
+        </div>;
 }

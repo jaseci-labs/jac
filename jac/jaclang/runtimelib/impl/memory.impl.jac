@@ -808,8 +808,8 @@ impl SqliteMemory.get_roots -> Generator[Root, None, None] {
                 }
                 cls = Serializer._get_class(arch_module, arch_type);
                 if cls is not None
-                and isinstance(cls, type)
-                and issubclass(cls, Root) {
+                    and isinstance(cls, type)
+                    and issubclass(cls, Root) {
                     candidate_ids.append(uid);
                 }
             }
@@ -973,8 +973,8 @@ impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) ->
                 edges_removed = set(delta[1]);
 
                 if (edges_added or edges_removed)
-                and intent.cas_version is not None
-                and stored_anchor.version != intent.cas_version {
+                    and intent.cas_version is not None
+                    and stored_anchor.version != intent.cas_version {
                     raise WriteConflict(
                         anchor_id=anchor.id,
                         expected_version=intent.cas_version,

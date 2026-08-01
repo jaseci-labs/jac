@@ -2,10 +2,8 @@
 `sv import` from a server module that crashes at import time (#6507 fail-loud).
 """
 
-cl {
-    import from .failload_frontend { Panel as ClientPanel }
+import from .failload_frontend { Panel as ClientPanel }
 
-    def:pub app -> JsxElement {
-        return <ClientPanel/>;
-    }
+def:pub app -> JsxElement {
+    <ClientPanel/>
 }

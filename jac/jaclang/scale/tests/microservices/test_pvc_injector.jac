@@ -56,7 +56,12 @@ test "secrets are stripped and secret-bearing files excluded from the sealed .ja
         }
         with open(os.path.join(project, "jac.toml"), "w") as handle {
             handle.write(
-                "plugins.scale.secrets.jwt = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[plugins.scale.database]\nbackend = \"mongo\"\n" + "[plugins.scale]\n# nested creds annotation\nsecrets.token = \"nestedshh\"\n" + "[plugins.scale.secrets]\nmongodb_uri = \"mongodb://u:p@h\"\n" + "# s3 access creds\n[scale.secrets]\napi_key = \"shhhh\"\n"
+                "plugins.scale.secrets.jwt = \"topsecret\"\n"
+                    + "[project]\nname = \"x\"\n"
+                    + "[plugins.scale.database]\nbackend = \"mongo\"\n"
+                    + "[plugins.scale]\n# nested creds annotation\nsecrets.token = \"nestedshh\"\n"
+                    + "[plugins.scale.secrets]\nmongodb_uri = \"mongodb://u:p@h\"\n"
+                    + "# s3 access creds\n[scale.secrets]\napi_key = \"shhhh\"\n"
             );
         }
         raw = pack_jab(project, "", _JAC_BIN.read_bytes());

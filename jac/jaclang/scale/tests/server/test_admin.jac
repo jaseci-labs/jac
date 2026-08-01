@@ -81,10 +81,10 @@ test "admin login non-admin user rejected" {
             "/admin/login", json={"username": username, "password": "userpass123"}
         );
         assert response.status_code in [401, 403]
-        or (
-            response.status_code == 200
-            and extract_data(response.json()).get("requires_password_reset")
-        );
+            or (
+                response.status_code == 200
+                and extract_data(response.json()).get("requires_password_reset")
+            );
     } finally {
         client.close();
     }

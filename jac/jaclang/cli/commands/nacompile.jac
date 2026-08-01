@@ -9,7 +9,9 @@ glob registry = get_registry();
     hidden=True,
     args=[
         Arg.create(
-            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac or .na.jac file"
+            "filename",
+            kind=ArgKind.POSITIONAL,
+            help="Path to the .jac file to compile natively"
         ),
         Arg.create(
             "output",
@@ -64,24 +66,24 @@ glob registry = get_registry();
 
     ],
     examples=[
-        ("jac nacompile program.na.jac", "Compile to ./program"),
+        ("jac nacompile program.jac", "Compile to ./program"),
         ("jac nacompile program.jac", "Auto-promote and compile to ./program"),
-        ("jac nacompile program.na.jac -o mybin", "Compile to ./mybin"),
-        ("jac nacompile program.na.jac --scrub", "Clean rebuild (wipe IR cache)"),
+        ("jac nacompile program.jac -o mybin", "Compile to ./mybin"),
+        ("jac nacompile program.jac --scrub", "Clean rebuild (wipe IR cache)"),
         (
-            "jac nacompile program.na.jac -g",
+            "jac nacompile program.jac -g",
             "Compile with DWARF debug info (gdb ./program works)"
         ),
         (
-            "jac nacompile game.na.jac --target wasm32 -o game.wasm",
+            "jac nacompile game.jac --target wasm32 -o game.wasm",
             "Compile to a wasm module"
         ),
         (
-            "jac nacompile mathlib.na.jac --shared",
+            "jac nacompile mathlib.jac --shared",
             "Build ./libmathlib.so exporting its `:pub` functions over the C ABI"
         ),
         (
-            "jac nacompile service.na.jac --gc none --assert-no-rc",
+            "jac nacompile service.jac --gc none --assert-no-rc",
             "Compile and prove the artifact contains no RC/collector machinery"
         ),
 

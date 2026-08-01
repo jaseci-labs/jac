@@ -47,7 +47,7 @@ def:pub app -> JsxElement {
         count = 0;                                    # mount effect
     }
 
-    return <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
         <Text>Hello, {name}</Text>
         <TextInput
             value={name}
@@ -58,7 +58,7 @@ def:pub app -> JsxElement {
         <Pressable style={styles.button} onPress={lambda { count = count + 1; }}>
             <Text style={styles.label}>Clicks: {str(count)}</Text>
         </Pressable>
-    </ScrollView>;
+    </ScrollView>
 }
 ```
 
@@ -78,7 +78,7 @@ Handlers are usually inline `lambda`; close over row data: `onPress={lambda { op
 **Lists** - comprehension in a JSX slot with a `key`: `{[<Card key={p["id"]} p={p}/> for p in items]}`.
 **Conditionals** - Jac ternary; empty branch is `<View/>`: `{(<Progress/>) if busy else <View/>}`.
 **Components** declare props as typed params: `def Card(p: dict) -> JsxElement {...}`, called `<Card p={p}/>`.
-**Backend** - call walkers as usual: `result = root spawn create(name=txt); fresh = result.reports[0];` or `sv import` + `await fn(arg)` (positional). Auth: `import from "@jac/runtime" { jacLogin, jacSignup, jacLogout }` (backed by `expo-secure-store` on native).
+**Backend** - call walkers as usual: `result = root spawn create(name=txt); fresh = result.reports[0];` or import the server function + `await fn(arg)` (positional). Auth: `import from "@jac/runtime" { jacLogin, jacSignup, jacLogout }` (backed by `expo-secure-store` on native).
 
 ## Styling - React Native `StyleSheet` only
 

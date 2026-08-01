@@ -134,9 +134,8 @@ test "deep chain" {
     idx.add_edge(r, a, "E1");
     idx.add_edge(a, b, "E2");
     idx.add_edge(b, c, "E3");
-    assert idx.resolve_chain({r}, [("E1", "A", 2), ("E2", "B", 2), ("E3", "C", 2)]) == {
-        c
-    };
+    assert idx.resolve_chain({r}, [("E1", "A", 2), ("E2", "B", 2), ("E3", "C", 2)])
+        == {c};
 }
 
 test "multi hop selective" {
@@ -157,9 +156,8 @@ test "multi hop selective" {
         idx.add_edge(a_ids[i], b, "E2");
         b_ids.append(b);
     }
-    assert idx.resolve_chain({r}, [("E1", "NodeA", 2), ("E2", "NodeB", 2)]) == set(
-        b_ids
-    );
+    assert idx.resolve_chain({r}, [("E1", "NodeA", 2), ("E2", "NodeB", 2)])
+        == set(b_ids);
 }
 
 test "cross root ids" {
@@ -288,9 +286,8 @@ test "v1 blob migrates to v2 on decode and warms up MRO via mutation" {
 
     # Re-encoding the migrated index produces a v2 blob that round-trips.
     re_decoded = TopologyIndex.decode(idx.encode());
-    assert re_decoded.resolve_chain({root_id}, [(None, "BaseContent", 2)]) == {
-        new_child
-    };
+    assert re_decoded.resolve_chain({root_id}, [(None, "BaseContent", 2)])
+        == {new_child};
 }
 
 # ── Compact-encoding fidelity ────────────────────────────────────────

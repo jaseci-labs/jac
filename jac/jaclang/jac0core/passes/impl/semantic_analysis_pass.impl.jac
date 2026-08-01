@@ -2,11 +2,11 @@ impl SemanticAnalysisPass.enter_archetype(
     self: SemanticAnalysisPass, nd: uni.Archetype
 ) -> None {
     def inform_from_walker(nd: uni.UniNode) {
-        for i in nd.get_all_sub_nodes(uni.VisitStmt) + nd.get_all_sub_nodes(
-            uni.DisengageStmt
-        ) + nd.get_all_sub_nodes(uni.EdgeOpRef) + nd.get_all_sub_nodes(
-            uni.EventSignature
-        ) + nd.get_all_sub_nodes(uni.TypedCtxBlock) {
+        for i in nd.get_all_sub_nodes(uni.VisitStmt)
+            + nd.get_all_sub_nodes(uni.DisengageStmt)
+            + nd.get_all_sub_nodes(uni.EdgeOpRef)
+            + nd.get_all_sub_nodes(uni.EventSignature)
+            + nd.get_all_sub_nodes(uni.TypedCtxBlock) {
             i.from_walker = True;
         }
     }
@@ -130,7 +130,7 @@ impl SemanticAnalysisPass._update_ctx(
     if isinstance(nd, uni.AtomTrailer) {
         self._change_atom_trailer_ctx(nd);
     } elif isinstance(nd, uni.AstSymbolNode) {
-        nd.sym_tab.update_py_ctx_for_def(nd);
+        nd.sym_tab.update_expr_ctx_for_def(nd);
     } else {
         self.emit(E2008, target=type(nd).__name__);
     }
@@ -140,7 +140,7 @@ impl SemanticAnalysisPass.enter_has_var(
     self: SemanticAnalysisPass, nd: uni.HasVar
 ) -> None {
     if isinstance(nd.parent, uni.ArchHas) {
-        nd.sym_tab.update_py_ctx_for_def(nd);
+        nd.sym_tab.update_expr_ctx_for_def(nd);
     } else {
         self.ice('HasVar should be under ArchHas');
     }
@@ -149,7 +149,7 @@ impl SemanticAnalysisPass.enter_has_var(
 impl SemanticAnalysisPass.enter_param_var(
     self: SemanticAnalysisPass, nd: uni.ParamVar
 ) -> None {
-    nd.sym_tab.update_py_ctx_for_def(nd);
+    nd.sym_tab.update_expr_ctx_for_def(nd);
 }
 
 impl SemanticAnalysisPass.enter_assignment(
@@ -185,9 +185,9 @@ impl SemanticAnalysisPass._change_atom_trailer_ctx(
 ) -> None {
     last = nd.right;
     if isinstance(last, uni.AtomExpr) {
-        last.name_spec.py_ctx_func = ast3.Store;
+        last.name_spec.expr_ctx = ExprCtx.STORE;
         if isinstance(last.name_spec, uni.AstSymbolNode) {
-            last.name_spec.py_ctx_func = ast3.Store;
+            last.name_spec.expr_ctx = ExprCtx.STORE;
         }
     }
 }

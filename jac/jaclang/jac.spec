@@ -240,12 +240,6 @@ jsx_child ::=
 
 element_stmt ::=
     ";"
-    | client_block
-    | "cl" element_stmt
-    | server_block
-    | "sv" element_stmt
-    | native_block
-    | "na" element_stmt
     | type_alias
     | import_stmt
     | archetype
@@ -260,14 +254,7 @@ element_stmt ::=
     | module_code
 
 docstring_target ::=
-    STRING
-    (test | enum | type_alias | global_var | impl_def | module_code | element_stmt)?
-
-client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
-
-server_block ::= "sv" ("{" element_stmt* "}" | element_stmt)?
-
-native_block ::= "na" ("{" element_stmt* "}" | element_stmt)?
+    STRING (test | enum | type_alias | global_var | impl_def | module_code)?
 
 module_code ::=
     "with" ("exit" | "entry")? (":" (NAME | KWESC_NAME))? "{" code_block_stmts "}"

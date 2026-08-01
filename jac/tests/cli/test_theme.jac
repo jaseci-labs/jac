@@ -211,9 +211,8 @@ test "retheme restyles hyphenated and stem-mismatch components" {
             resolve_single_component("input-otp", "nova")["content"]
         );
         # Precondition: the two styles must actually differ, else the assert is trivial.
-        assert resolve_single_component("input-group", "nova")["content"] != resolve_single_component(
-            "input-group", "mira"
-        )["content"];
+        assert resolve_single_component("input-group", "nova")["content"]
+            != resolve_single_component("input-group", "mira")["content"];
         toml_path = Path(tmpdir) / "jac.toml";
         toml_path.write_text(
             '[project]\nname = "x"\n\n[jac-shadcn]\nstyle = "nova"\ntheme = "neutral"\nfont = "figtree"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
@@ -226,12 +225,10 @@ test "retheme restyles hyphenated and stem-mismatch components" {
         );
         ok = retheme_project(config, {"style": "mira"});
         assert ok == True;
-        assert (ui / "input_group.jac").read_text() == resolve_single_component(
-            "input-group", "mira"
-        )["content"];
-        assert (ui / "otp_input.jac").read_text() == resolve_single_component(
-            "input-otp", "mira"
-        )["content"];
+        assert (ui / "input_group.jac").read_text()
+            == resolve_single_component("input-group", "mira")["content"];
+        assert (ui / "otp_input.jac").read_text()
+            == resolve_single_component("input-otp", "mira")["content"];
     }
 }
 

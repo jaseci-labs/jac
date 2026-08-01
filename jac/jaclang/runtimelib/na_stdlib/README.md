@@ -1,6 +1,6 @@
 # Bundled native standard library (`na_stdlib`)
 
-Pure-Jac `.na.jac` modules shipped with jaclang that implement a
+Pure-Jac `.jac` modules shipped with jaclang that implement a
 Python-congruent **standard library for the native (na) compiler pathway**
 (issues [#6404] / [#6940]). This is **Mechanism B**: ordinary Jac compiled and
 linked like user code, with zero per-module backend work.
@@ -13,10 +13,13 @@ searches **nearest-wins**:
 
 1. the importing project's own tree (a flat sibling, then the dotted hierarchy
    walked up to the filesystem root), then
-2. this bundled root (`native_stdlib_root()`).
+2. this bundled root (`native_stdlib_root()`), which is native **by
+   location** -- its modules are plain `.jac` files. At either step a per-OS
+   variant `<name>.<os>.jac` (e.g. `_dirent_native.darwin.jac`) is probed
+   before the plain `<name>.jac`.
 
 So `import from os.path { normpath }` binds CPython's `posixpath` on the sv
-(Python) pathway and `na_stdlib/os/path.na.jac` on the na (native) pathway (the
+(Python) pathway and `na_stdlib/os/path.jac` on the na (native) pathway (the
 *same source* on both), while a user module of the same name always shadows the
 bundled one. A bundled module links through the existing cross-module machinery
 (binding population, then extern forward-decl, then `link_in`), on both the AOT
@@ -24,9 +27,9 @@ bundled one. A bundled module links through the existing cross-module machinery
 
 ## Shipped modules
 
-- **`os/path.na.jac`** (#6940 Phase 0) -- pure-string POSIX path helpers
+- **`os/path.jac`** (#6940 Phase 0) -- pure-string POSIX path helpers
   (`normpath`, `dirname`, `basename`, `split`, `splitext`, `isabs`).
-- **`json.na.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
+- **`json.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
   CPython's default `(', ', ': ')` separators and insertion-ordered keys.
   One documented divergence: only the control set + JSON metacharacters are
@@ -34,7 +37,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
   `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
   pinned byte-for-byte against CPython in the native suite.)
-- **`datetime.na.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
+- **`datetime.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
   `timezone` pair. `timezone.utc` is a class attribute and `datetime.now` /
   `datetime.fromtimestamp` are class-level constructors, riding the native
   static-method and class-attribute capability added for #6951. The civil date
@@ -42,7 +45,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
-- **`gzip.na.jac`** (#6978 Phase 2) -- a Mechanism-B gzip framing over the
+- **`gzip.jac`** (#6978 Phase 2) -- a Mechanism-B gzip framing over the
   bundled `zlib` floor (no new FFI): `compress(data, compresslevel=9, mtime=0)`
   and `decompress(data)`. gzip is zlib's DEFLATE engine plus an RFC 1952 header,
   CRC-32, and ISIZE trailer, so the surface reuses the `zlib` floor's one-shot
@@ -72,7 +75,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   unknown method / CRC / length), `EOFError` (truncation), or `zlib.error`
   (corrupt DEFLATE data). The `GzipFile` class and streaming file API are out
   of scope.
-- **`base64.na.jac`** (#6978 Phase 3) -- self-contained RFC 4648
+- **`base64.jac`** (#6978 Phase 3) -- self-contained RFC 4648
   base16/base32/base64 (`b16`/`b32`/`b64` encode+decode, `altchars`,
   `standard_`/`urlsafe_` variants) plus RFC 1924 base85 (`b85encode`/`b85decode`,
   the alphabet CPython's `base64.b85encode` uses). A big-endian bit-accumulator
@@ -95,7 +98,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   `b""` here (na has no None-able `bytes` parameter), and bad `altchars`/
   `map01` lengths raise `ValueError` where CPython asserts; the Ascii85
   (`a85`) variant is a follow-up.
-- **`textwrap.na.jac`** (#6978 Phase 3) -- the greedy line wrapper (`wrap`,
+- **`textwrap.jac`** (#6978 Phase 3) -- the greedy line wrapper (`wrap`,
   `fill`) plus `dedent` and `indent`, a faithful port of CPython's
   `TextWrapper._wrap_chunks`/`_handle_long_word` over primitives (following
   CPython **>= 3.14** long-word semantics -- 3.14 stopped breaking a long word
@@ -111,7 +114,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   TextWrapper defaults matched (`expand_tabs`, `replace_whitespace`,
   `drop_whitespace`, `break_long_words`, empty indents, no `max_lines`);
   `indent` splits on `"\n"`; `shorten`/`TextWrapper` not provided.
-- **`csv.na.jac`** (#6978 Phase 3) -- `reader` for the default **excel** dialect
+- **`csv.jac`** (#6978 Phase 3) -- `reader` for the default **excel** dialect
   (delimiter `,`, quotechar `"`, `doublequote=True`, `skipinitialspace=False`,
   QUOTE_MINIMAL). Field parsing matches CPython exactly (quoted fields, doubled
   quotes, a quote opening a field only at its start, literal mid-field quotes,
@@ -129,7 +132,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   feeding a file's raw split lines with multi-line quoted fields diverges from
   CPython's file-object mode; `writer`/`DictReader`/`DictWriter`/custom
   dialects not provided.
-- **`pprint.na.jac`** (#6978 Phase 3) -- `pformat` rendering a single-line repr
+- **`pprint.jac`** (#6978 Phase 3) -- `pformat` rendering a single-line repr
   with dict keys sorted (CPython `sort_dicts=True`) and Python `repr`
   conventions for str/int/bool/None/list/dict, including full string escaping:
   backslash/quotes, `\n`/`\t`/`\r` short forms, and `\xNN` for the remaining
@@ -147,7 +150,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   vs 8 are both invisible to `isinstance`, and `any` truthiness/`is None` are
   not native-compilable), so they render as `"None"` -- a documented
   divergence.
-- **`difflib.na.jac`** (#6978 Phase 3) -- `SequenceMatcher`
+- **`difflib.jac`** (#6978 Phase 3) -- `SequenceMatcher`
   (`ratio`/`get_matching_blocks`/`set_seq1`/`set_seq2`, full 4-arg constructor
   including `autojunk`) and `get_close_matches`, a port of CPython's
   longest-match DP, matching-block recursion, and `__chain_b` popular-element
@@ -161,7 +164,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   its `str` rendering would differ);
   `get_opcodes`/`unified_diff`/`ndiff`/`Differ`/`HtmlDiff` not provided.
 
-- **`statistics.na.jac`** (#7593 item 18) -- double-precision
+- **`statistics.jac`** (#7593 item 18) -- double-precision
   `fmean`/`mean`/`median`/`median_low`/`median_high`/`variance`/`pvariance`/
   `stdev`/`pstdev` over generic `[T]` defs, so int and float sequences both
   monomorphize without boxing. SCOPE/divergences: results always compute in
@@ -170,7 +173,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   raise `ValueError` directly (CPython's `StatisticsError` subclasses
   `ValueError`, so `except ValueError` behaves identically on both backends).
 
-- **`shutil.na.jac`** (#7593 item 18) -- `which`/`copyfile`/`copy`/`copy2`/
+- **`shutil.jac`** (#7593 item 18) -- `which`/`copyfile`/`copy`/`copy2`/
   `move`/`rmtree` over the native os intrinsics (getenv, path.join,
   path.isdir, path.isfile, path.basename) plus direct libc (access, unlink,
   rmdir, rename, opendir/readdir/closedir). The dirent d_name offset follows
@@ -181,11 +184,11 @@ bundled one. A bundled module links through the existing cross-module machinery
   symlinks are recursed into rather than unlinked; errors raise `ValueError`
   rather than CPython's `OSError` subclasses.
 
-- **`keyword.na.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
+- **`keyword.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
   `issoftkeyword` mirroring CPython's lists verbatim, ordering included
   (stable since 3.10's soft-keyword additions).
 
-- **`fractions.na.jac`** (#6978 Phase 2) -- a pure-Jac (Mechanism B) `Fraction`
+- **`fractions.jac`** (#6978 Phase 2) -- a pure-Jac (Mechanism B) `Fraction`
   over native `int`, normalized on construction via Euclid's GCD with the sign
   carried by the numerator and the denominator kept positive (CPython's value
   model). Construction/reduction (`Fraction(n, d)`), `numerator` /
@@ -207,8 +210,10 @@ flat `import os`, not bundled here (see
 
 ## Adding a module
 
-1. Drop `<name>.na.jac` (or `<pkg>/<name>.na.jac` for a dotted import) here,
-   exporting its API with `def:pub`.
+1. Drop `<name>.jac` (or `<pkg>/<name>.jac` for a dotted import) here,
+   exporting its API with `def:pub`. If a module needs platform-specific
+   code, add a `<name>.<os>.jac` variant (e.g. `_dirent_native.darwin.jac`);
+   it wins over the plain file on that OS.
 2. Use only the native-supported subset; prefer typed containers
    (`list[str]`, `dict[str, any]`). A bare `list = []` defaults to `i64`
    elements. An empty `list[any] = []` then grown with `.append(x)` lowers and
@@ -230,15 +235,15 @@ flat `import os`, not bundled here (see
 ## Mechanism / portability
 
 - **B (here)**: pure-Jac on primitives; portable to every native target
-  (ELF/Mach-O/PE/WASM). Preferred. Example: `os/path.na.jac`.
+  (ELF/Mach-O/PE/WASM). Preferred. Example: `os/path.jac`.
 - **A**: compiler intrinsics over libm/libc/syscalls (`math`, `time`, `os`,
   `random`, `struct`); native-host only.
 - **F**: thin FFI wrappers over a system C library; native-host only. Examples:
-  `_ssl_native.na.jac` -- the floor the verifying TLS client `ssl` is built on,
-  over OpenSSL `libssl`/`libcrypto` (issue #6978 Phase 1); `_socket_native.na.jac`
-  over libc BSD sockets; `_hashlib_native.na.jac` over the bundled `libcrypto`.
+  `_ssl_native.jac` -- the floor the verifying TLS client `ssl` is built on,
+  over OpenSSL `libssl`/`libcrypto` (issue #6978 Phase 1); `_socket_native.jac`
+  over libc BSD sockets; `_hashlib_native.jac` over the bundled `libcrypto`.
   An F module declares its C entry points with `import from <lib> { def ...; }`.
-  `urllib/request.na.jac` (`urlopen`) is a pure-Jac surface over the `socket` +
+  `urllib/request.jac` (`urlopen`) is a pure-Jac surface over the `socket` +
   `ssl` floors -- it links no foreign C beyond libc/libssl/libcrypto (no
   libcurl) -- pinned sv<->na congruent by `test_urllib_equivalence.jac` against a
   loopback HTTP server.
@@ -252,10 +257,10 @@ Mechanism-A intercepts, not here.
 never reimplemented; it is the system `libz`, reached through a thin FFI floor,
 exactly as CPython's `zlib` wraps the same library. The split is deliberate:
 
-- `_zlib_native.na.jac`: the **FFI floor**. An `import from z { def ... }` block
+- `_zlib_native.jac`: the **FFI floor**. An `import from z { def ... }` block
   binds `libz` by logical name (`z` → `libz.so` / `libz.dylib` / `z.dll`) and
   re-exports each entry behind a `z_`-prefixed wrapper.
-- `zlib.na.jac`: the **pure-Jac surface**: the Python-shaped API
+- `zlib.jac`: the **pure-Jac surface**: the Python-shaped API
   (`compress` / `decompress` / `crc32` / `adler32`, CPython argument orders and
   defaults), layered on the floor.
 
@@ -270,11 +275,11 @@ Two conventions make foreign byte I/O work:
   `crc32`) would shadow it. Bind the non-colliding variant instead; the floor
   uses `crc32_z` / `adler32_z`.
 
-`bz2` (#6978 Phase 2) follows the same two-file split: `_bz2_native.na.jac`
+`bz2` (#6978 Phase 2) follows the same two-file split: `_bz2_native.jac`
 wraps the one-shot `BZ2_bzBuffToBuffCompress` / `BZ2_bzBuffToBuffDecompress`
 buffer API (logical name `bz2` -> `libbz2`; the in-process JIT dlopens the
 system library, while AOT `nacompile` consumes the bundled `libbz2.a`), and
-`bz2.na.jac` is the Python-shaped `compress(data, compresslevel=9)` /
+`bz2.jac` is the Python-shaped `compress(data, compresslevel=9)` /
 `decompress(data)` surface. `compress` produces a single bzip2 stream
 byte-identical to CPython's (same default `workFactor`); note `libbz2`'s
 one-shot API is 32-bit throughout -- `sourceLen` is a by-value C `unsigned int`

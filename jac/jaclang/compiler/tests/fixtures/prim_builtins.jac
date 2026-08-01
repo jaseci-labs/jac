@@ -257,7 +257,7 @@ def builtins_py -> dict {
     };
 }
 
-cl def builtins_cl -> dict {
+def builtins_cl -> dict {
     nums: list = [1, 2, 3, 4, 5];
     s: str = "hello";
 
@@ -477,227 +477,226 @@ cl def builtins_cl -> dict {
     };
 }
 
-na {
-    def builtins_na -> dict[str, any] {
-        items: list[int] = [1, 2, 3, 4, 5];
 
-        lst1: list[int] = [10, 20, 30, 20];
-        lst2: list[int] = [10, 20, 30];
-        lst3: list[int] = [1, 1, 1, 2, 1];
+def builtins_na -> dict[str, any] {
+    items: list[int] = [1, 2, 3, 4, 5];
 
-        lst_empty: list[int] = [];
-        lst_one: list[int] = [42];
-        lst_many: list[int] = [1, 2, 3, 4, 5];
-        lst_neg: list[int] = [-1, 0, 1];
-        sum_empty: int = sum(lst_empty);
-        sum_one: int = sum(lst_one);
-        sum_many: int = sum(lst_many);
-        sum_neg: int = sum(lst_neg);
+    lst1: list[int] = [10, 20, 30, 20];
+    lst2: list[int] = [10, 20, 30];
+    lst3: list[int] = [1, 1, 1, 2, 1];
 
-        lst_f: list[int] = [0, 0, 0];
-        lst_ot: list[int] = [0, 0, 1];
-        lst_at: list[int] = [1, 2, 3];
-        any_empty: int = 1 if any(lst_empty) else 0;
-        any_all_false: int = 1 if any(lst_f) else 0;
-        any_one_true: int = 1 if any(lst_ot) else 0;
-        any_all_true: int = 1 if any(lst_at) else 0;
+    lst_empty: list[int] = [];
+    lst_one: list[int] = [42];
+    lst_many: list[int] = [1, 2, 3, 4, 5];
+    lst_neg: list[int] = [-1, 0, 1];
+    sum_empty: int = sum(lst_empty);
+    sum_one: int = sum(lst_one);
+    sum_many: int = sum(lst_many);
+    sum_neg: int = sum(lst_neg);
 
-        lst_of: list[int] = [1, 0, 3];
-        all_empty: int = 1 if all(lst_empty) else 0;
-        all_all_true: int = 1 if all(lst_at) else 0;
-        all_one_false: int = 1 if all(lst_of) else 0;
-        all_all_false: int = 1 if all(lst_f) else 0;
+    lst_f: list[int] = [0, 0, 0];
+    lst_ot: list[int] = [0, 0, 1];
+    lst_at: list[int] = [1, 2, 3];
+    any_empty: int = 1 if any(lst_empty) else 0;
+    any_all_false: int = 1 if any(lst_f) else 0;
+    any_one_true: int = 1 if any(lst_ot) else 0;
+    any_all_true: int = 1 if any(lst_at) else 0;
 
-        dm1: tuple[int, int] = divmod(17, 5);
-        dm1_q: int = dm1[0];
-        dm1_r: int = dm1[1];
-        dm2: tuple[int, int] = divmod(10, 3);
-        dm2_q: int = dm2[0];
-        dm2_r: int = dm2[1];
-        dm3: tuple[int, int] = divmod(7, 1);
-        dm3_q: int = dm3[0];
-        dm3_r: int = dm3[1];
+    lst_of: list[int] = [1, 0, 3];
+    all_empty: int = 1 if all(lst_empty) else 0;
+    all_all_true: int = 1 if all(lst_at) else 0;
+    all_one_false: int = 1 if all(lst_of) else 0;
+    all_all_false: int = 1 if all(lst_f) else 0;
 
-        sort_nums: list[int] = [3, 1, 4, 1, 5, 9, 2, 6];
-        sort_desc: list[int] = [5, 4, 3, 2, 1];
-        sort_single: list[int] = [42];
-        sort_asc: list[int] = [1, 2, 3, 4, 5];
+    dm1: tuple[int, int] = divmod(17, 5);
+    dm1_q: int = dm1[0];
+    dm1_r: int = dm1[1];
+    dm2: tuple[int, int] = divmod(10, 3);
+    dm2_q: int = dm2[0];
+    dm2_r: int = dm2[1];
+    dm3: tuple[int, int] = divmod(7, 1);
+    dm3_q: int = dm3[0];
+    dm3_r: int = dm3[1];
 
-        s_nums: list[int] = sorted(sort_nums);
-        s_desc: list[int] = sorted(sort_desc);
-        s_single: list[int] = sorted(sort_single);
-        s_asc: list[int] = sorted(sort_asc);
+    sort_nums: list[int] = [3, 1, 4, 1, 5, 9, 2, 6];
+    sort_desc: list[int] = [5, 4, 3, 2, 1];
+    sort_single: list[int] = [42];
+    sort_asc: list[int] = [1, 2, 3, 4, 5];
 
-        r_nums: list[int] = list(reversed(sort_nums));
-        r_desc: list[int] = list(reversed(sort_desc));
-        r_single: list[int] = list(reversed(sort_single));
+    s_nums: list[int] = sorted(sort_nums);
+    s_desc: list[int] = sorted(sort_desc);
+    s_single: list[int] = sorted(sort_single);
+    s_asc: list[int] = sorted(sort_asc);
 
-        conv_list: list[int] = [1, 2, 3];
-        conv_set: set[int] = {1, 2, 3};
-        ll: list[int] = list(conv_list);
-        ss: set[int] = set(conv_set);
-        ls: list[int] = list(conv_set);
-        sl: set[int] = set(conv_list);
+    r_nums: list[int] = list(reversed(sort_nums));
+    r_desc: list[int] = list(reversed(sort_desc));
+    r_single: list[int] = list(reversed(sort_single));
 
-        f_zero: int = 1 if bool(0) else 0;
-        f_empty_str: int = 1 if bool("") else 0;
-        f_zero_float: int = 1 if bool(0.0) else 0;
-        f_empty_list: int = 1 if bool([]) else 0;
-        f_empty_dict: int = 1 if bool({}) else 0;
-        t_one: int = 1 if bool(1) else 0;
-        t_str: int = 1 if bool("hello") else 0;
-        t_list: int = 1 if bool([1, 2]) else 0;
-        t_dict: int = 1 if bool({"a": 1}) else 0;
-        t_neg: int = 1 if bool(-1) else 0;
-        t_float: int = 1 if bool(3.14) else 0;
+    conv_list: list[int] = [1, 2, 3];
+    conv_set: set[int] = {1, 2, 3};
+    ll: list[int] = list(conv_list);
+    ss: set[int] = set(conv_set);
+    ls: list[int] = list(conv_set);
+    sl: set[int] = set(conv_list);
 
-        fmt_int: str = format(42, "d");
-        fmt_hex: str = format(255, "x");
-        fmt_oct: str = format(255, "o");
+    f_zero: int = 1 if bool(0) else 0;
+    f_empty_str: int = 1 if bool("") else 0;
+    f_zero_float: int = 1 if bool(0.0) else 0;
+    f_empty_list: int = 1 if bool([]) else 0;
+    f_empty_dict: int = 1 if bool({}) else 0;
+    t_one: int = 1 if bool(1) else 0;
+    t_str: int = 1 if bool("hello") else 0;
+    t_list: int = 1 if bool([1, 2]) else 0;
+    t_dict: int = 1 if bool({"a": 1}) else 0;
+    t_neg: int = 1 if bool(-1) else 0;
+    t_float: int = 1 if bool(3.14) else 0;
 
-        hash_int: int = hash(42);
-        hash_str: int = hash("hello");
-        repr_int: str = repr(42);
-        repr_neg: str = repr(-17);
+    fmt_int: str = format(42, "d");
+    fmt_hex: str = format(255, "x");
+    fmt_oct: str = format(255, "o");
 
-        fs_src: list[int] = [1, 2, 3];
-        fs: frozenset[int] = frozenset(fs_src);
+    hash_int: int = hash(42);
+    hash_str: int = hash("hello");
+    repr_int: str = repr(42);
+    repr_neg: str = repr(-17);
 
-        byte_src: list[int] = [72, 101, 108, 108, 111];
-        bs: bytes = bytes(byte_src);
+    fs_src: list[int] = [1, 2, 3];
+    fs: frozenset[int] = frozenset(fs_src);
 
-        ba_src: list[int] = [68, 69];
-        ba: bytearray = bytearray(ba_src);
+    byte_src: list[int] = [72, 101, 108, 108, 111];
+    bs: bytes = bytes(byte_src);
 
-        # slice builtin
-        sl1 = slice(5);
-        s1_stop: int = sl1.stop;
-        sl2 = slice(1, 5);
-        s2_start: int = sl2.start;
-        s2_stop: int = sl2.stop;
-        sl3 = slice(0, 10, 2);
-        s3_start: int = sl3.start;
-        s3_stop: int = sl3.stop;
-        s3_step: int = sl3.step;
+    ba_src: list[int] = [68, 69];
+    ba: bytearray = bytearray(ba_src);
 
-        return {
-            "abs_pos": abs(5),
-            "abs_neg": abs(-7),
-            "min_two": min(3, 7),
-            "max_two": max(3, 7),
-            "pow_int": pow(2, 10),
-            "chr_65": chr(65),
-            "chr_97": chr(97),
-            "ord_a": ord("a"),
-            "ord_A": ord("A"),
-            "int_from_str": int("42"),
-            "int_from_neg_str": int("-17"),
-            "len_str": len("hello"),
-            "len_empty": len(""),
-            "len_list": len(items),
-            "hex_0": hex(0),
-            "hex_255": hex(255),
-            "hex_16": hex(16),
-            "hex_neg": hex(-1),
-            "oct_0": oct(0),
-            "oct_8": oct(8),
-            "oct_255": oct(255),
-            "oct_neg": oct(-1),
-            "bin_0": bin(0),
-            "bin_1": bin(1),
-            "bin_10": bin(10),
-            "bin_255": bin(255),
-            "bin_neg": bin(-1),
-            "round_int": round(5),
-            "round_float_down": round(3.2),
-            "round_float_up": round(3.7),
-            "round_neg": round(-2.3),
-            "float_from_str": float("3.14"),
-            "float_from_int_str": float("42"),
-            "float_neg_str": float("-1.5"),
-            "str_from_int": str(42),
-            "str_from_neg": str(-17),
-            "list_count_one": lst1.count(20),
-            "list_count_zero": lst2.count(99),
-            "list_count_many": lst3.count(1),
-            "sum_empty": sum_empty,
-            "sum_one": sum_one,
-            "sum_many": sum_many,
-            "sum_neg": sum_neg,
-            "any_empty": any_empty,
-            "any_all_false": any_all_false,
-            "any_one_true": any_one_true,
-            "any_all_true": any_all_true,
-            "all_empty": all_empty,
-            "all_all_true": all_all_true,
-            "all_one_false": all_one_false,
-            "all_all_false": all_all_false,
-            "dm1_q": dm1_q,
-            "dm1_r": dm1_r,
-            "dm2_q": dm2_q,
-            "dm2_r": dm2_r,
-            "dm3_q": dm3_q,
-            "dm3_r": dm3_r,
-            "s_len": len(s_nums),
-            "s0": s_nums[0],
-            "s1": s_nums[1],
-            "s2": s_nums[2],
-            "s3": s_nums[3],
-            "s4": s_nums[4],
-            "s5": s_nums[5],
-            "s6": s_nums[6],
-            "s7": s_nums[7],
-            "s_desc0": s_desc[0],
-            "s_desc4": s_desc[4],
-            "s_single0": s_single[0],
-            "s_asc0": s_asc[0],
-            "s_asc4": s_asc[4],
-            "r_len": len(r_nums),
-            "r0": r_nums[0],
-            "r7": r_nums[7],
-            "r_desc0": r_desc[0],
-            "r_desc4": r_desc[4],
-            "r_single0": r_single[0],
-            "orig0": sort_nums[0],
-            "desc0": sort_desc[0],
-            "ll_len": len(ll),
-            "ll0": ll[0],
-            "ll2": ll[2],
-            "ss_len": len(ss),
-            "ls_len": len(ls),
-            "ls_sum": sum(ls),
-            "sl_len": len(sl),
-            "abs_neg_float": abs(-3.14),
-            "abs_pos_float": abs(3.14),
-            "min_float": min(3.5, 1.2),
-            "max_float": max(3.5, 1.2),
-            "f_zero": f_zero,
-            "f_empty_str": f_empty_str,
-            "f_zero_float": f_zero_float,
-            "f_empty_list": f_empty_list,
-            "f_empty_dict": f_empty_dict,
-            "t_one": t_one,
-            "t_str": t_str,
-            "t_list": t_list,
-            "t_dict": t_dict,
-            "t_neg": t_neg,
-            "t_float": t_float,
-            "fmt_int": fmt_int,
-            "fmt_hex": fmt_hex,
-            "fmt_oct": fmt_oct,
-            "hash_int": hash_int,
-            "repr_int": repr_int,
-            "repr_neg": repr_neg,
-            "ascii_str": ascii("hello"),
-            "fs_na_len": len(fs),
-            "bs_len": len(bs),
-            "ba_len": len(ba),
-            "s1_stop": s1_stop,
-            "s2_start": s2_start,
-            "s2_stop": s2_stop,
-            "s3_start": s3_start,
-            "s3_stop": s3_stop,
-            "s3_step": s3_step
-        };
-    }
+    # slice builtin
+    sl1 = slice(5);
+    s1_stop: int = sl1.stop;
+    sl2 = slice(1, 5);
+    s2_start: int = sl2.start;
+    s2_stop: int = sl2.stop;
+    sl3 = slice(0, 10, 2);
+    s3_start: int = sl3.start;
+    s3_stop: int = sl3.stop;
+    s3_step: int = sl3.step;
+
+    return {
+        "abs_pos": abs(5),
+        "abs_neg": abs(-7),
+        "min_two": min(3, 7),
+        "max_two": max(3, 7),
+        "pow_int": pow(2, 10),
+        "chr_65": chr(65),
+        "chr_97": chr(97),
+        "ord_a": ord("a"),
+        "ord_A": ord("A"),
+        "int_from_str": int("42"),
+        "int_from_neg_str": int("-17"),
+        "len_str": len("hello"),
+        "len_empty": len(""),
+        "len_list": len(items),
+        "hex_0": hex(0),
+        "hex_255": hex(255),
+        "hex_16": hex(16),
+        "hex_neg": hex(-1),
+        "oct_0": oct(0),
+        "oct_8": oct(8),
+        "oct_255": oct(255),
+        "oct_neg": oct(-1),
+        "bin_0": bin(0),
+        "bin_1": bin(1),
+        "bin_10": bin(10),
+        "bin_255": bin(255),
+        "bin_neg": bin(-1),
+        "round_int": round(5),
+        "round_float_down": round(3.2),
+        "round_float_up": round(3.7),
+        "round_neg": round(-2.3),
+        "float_from_str": float("3.14"),
+        "float_from_int_str": float("42"),
+        "float_neg_str": float("-1.5"),
+        "str_from_int": str(42),
+        "str_from_neg": str(-17),
+        "list_count_one": lst1.count(20),
+        "list_count_zero": lst2.count(99),
+        "list_count_many": lst3.count(1),
+        "sum_empty": sum_empty,
+        "sum_one": sum_one,
+        "sum_many": sum_many,
+        "sum_neg": sum_neg,
+        "any_empty": any_empty,
+        "any_all_false": any_all_false,
+        "any_one_true": any_one_true,
+        "any_all_true": any_all_true,
+        "all_empty": all_empty,
+        "all_all_true": all_all_true,
+        "all_one_false": all_one_false,
+        "all_all_false": all_all_false,
+        "dm1_q": dm1_q,
+        "dm1_r": dm1_r,
+        "dm2_q": dm2_q,
+        "dm2_r": dm2_r,
+        "dm3_q": dm3_q,
+        "dm3_r": dm3_r,
+        "s_len": len(s_nums),
+        "s0": s_nums[0],
+        "s1": s_nums[1],
+        "s2": s_nums[2],
+        "s3": s_nums[3],
+        "s4": s_nums[4],
+        "s5": s_nums[5],
+        "s6": s_nums[6],
+        "s7": s_nums[7],
+        "s_desc0": s_desc[0],
+        "s_desc4": s_desc[4],
+        "s_single0": s_single[0],
+        "s_asc0": s_asc[0],
+        "s_asc4": s_asc[4],
+        "r_len": len(r_nums),
+        "r0": r_nums[0],
+        "r7": r_nums[7],
+        "r_desc0": r_desc[0],
+        "r_desc4": r_desc[4],
+        "r_single0": r_single[0],
+        "orig0": sort_nums[0],
+        "desc0": sort_desc[0],
+        "ll_len": len(ll),
+        "ll0": ll[0],
+        "ll2": ll[2],
+        "ss_len": len(ss),
+        "ls_len": len(ls),
+        "ls_sum": sum(ls),
+        "sl_len": len(sl),
+        "abs_neg_float": abs(-3.14),
+        "abs_pos_float": abs(3.14),
+        "min_float": min(3.5, 1.2),
+        "max_float": max(3.5, 1.2),
+        "f_zero": f_zero,
+        "f_empty_str": f_empty_str,
+        "f_zero_float": f_zero_float,
+        "f_empty_list": f_empty_list,
+        "f_empty_dict": f_empty_dict,
+        "t_one": t_one,
+        "t_str": t_str,
+        "t_list": t_list,
+        "t_dict": t_dict,
+        "t_neg": t_neg,
+        "t_float": t_float,
+        "fmt_int": fmt_int,
+        "fmt_hex": fmt_hex,
+        "fmt_oct": fmt_oct,
+        "hash_int": hash_int,
+        "repr_int": repr_int,
+        "repr_neg": repr_neg,
+        "ascii_str": ascii("hello"),
+        "fs_na_len": len(fs),
+        "bs_len": len(bs),
+        "ba_len": len(ba),
+        "s1_stop": s1_stop,
+        "s2_start": s2_start,
+        "s2_stop": s2_stop,
+        "s3_start": s3_start,
+        "s3_stop": s3_stop,
+        "s3_step": s3_step
+    };
 }

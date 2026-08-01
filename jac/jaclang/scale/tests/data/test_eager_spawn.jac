@@ -84,7 +84,8 @@ test "eager spawn: ensure_all registers URLs from env vars" {
     os.environ["JAC_SV_EAGER_ENV_MOD_URL"] = "http://eager-env-mod.example";
     try {
         __jac_sv.ensure_all(["eager_env_mod"]);
-        assert __jac_sv._registry.get("eager_env_mod") == "http://eager-env-mod.example";
+        assert __jac_sv._registry.get("eager_env_mod")
+            == "http://eager-env-mod.example";
     } finally {
         del os.environ["JAC_SV_EAGER_ENV_MOD_URL"];
         if "eager_env_mod" in __jac_sv._registry {

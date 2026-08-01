@@ -33,7 +33,8 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
                 for c in _calls
                 if not c.endswith(".sha256")
             ]
-        ) == 1;
+        )
+            == 1;
         assert binmod.download_release_binary("dev", "x86_64") == _payload;
         # Round two fetched only the tiny checksum; the binary came from cache.
         assert len(
@@ -42,7 +43,8 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
                 for c in _calls
                 if not c.endswith(".sha256")
             ]
-        ) == 1;
+        )
+            == 1;
     } finally {
         binmod._http_get_bytes = saved_http;
         if saved_env is None {

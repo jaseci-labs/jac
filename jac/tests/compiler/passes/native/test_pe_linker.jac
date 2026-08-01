@@ -30,7 +30,7 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      WIN_TRIPLE = "x86_64-pc-windows-msvc",
-     FIXTURE = "pe_smoke.na.jac";
+     FIXTURE = "pe_smoke.jac";
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -44,9 +44,35 @@ def _inject_pe_entry(ir: str) -> str {
         if ("@exit" in ir or '@"exit"' in ir)
         else 'declare void @exit(i32)\n\n';
     fltused = "" if "@_fltused" in ir else '@_fltused = global i32 0\n\n';
-    return ir + (
-        '\n' + glob_ir + exit_decl + fltused + 'declare i32 @__getmainargs(ptr, ptr, ptr, i32, ptr)\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '  store i32 %argc, ptr @__jac_argc\n' + '  store ptr %argv, ptr @__jac_argv\n' + '  call void @jac_entry()\n' + '  ret i32 0\n' + '}\n\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %argc.addr = alloca i32\n' + '  %argv.addr = alloca ptr\n' + '  %env.addr = alloca ptr\n' + '  %si = alloca i32\n' + '  store i32 0, ptr %si\n' + '  %gr = call i32 @__getmainargs(ptr %argc.addr, ptr %argv.addr, ptr %env.addr, i32 0, ptr %si)\n' + '  %ac = load i32, ptr %argc.addr\n' + '  %av = load ptr, ptr %argv.addr\n' + '  %r = call i32 @main(i32 %ac, ptr %av)\n' + '  call void @exit(i32 %r)\n' + '  ret void\n' + '}\n'
-    );
+    return ir
+        + (
+            '\n'
+            + glob_ir
+            + exit_decl
+            + fltused
+            + 'declare i32 @__getmainargs(ptr, ptr, ptr, i32, ptr)\n\n'
+            + 'define i32 @main(i32 %argc, ptr %argv) {\n'
+            + 'entry:\n'
+            + '  store i32 %argc, ptr @__jac_argc\n'
+            + '  store ptr %argv, ptr @__jac_argv\n'
+            + '  call void @jac_entry()\n'
+            + '  ret i32 0\n'
+            + '}\n\n'
+            + 'define void @_jac_win_start() {\n'
+            + 'entry:\n'
+            + '  %argc.addr = alloca i32\n'
+            + '  %argv.addr = alloca ptr\n'
+            + '  %env.addr = alloca ptr\n'
+            + '  %si = alloca i32\n'
+            + '  store i32 0, ptr %si\n'
+            + '  %gr = call i32 @__getmainargs(ptr %argc.addr, ptr %argv.addr, ptr %env.addr, i32 0, ptr %si)\n'
+            + '  %ac = load i32, ptr %argc.addr\n'
+            + '  %av = load ptr, ptr %argv.addr\n'
+            + '  %r = call i32 @main(i32 %ac, ptr %av)\n'
+            + '  call void @exit(i32 %r)\n'
+            + '  ret void\n'
+            + '}\n'
+        );
 }
 
 
@@ -223,7 +249,20 @@ test "data import: dllimport global resolves through an IAT slot (#7626 C4)" {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     src = (
-        'target triple = "x86_64-pc-windows-msvc"\n' + '@ext_counter = external dllimport global i64\n' + 'declare void @exit(i32)\n' + 'define i64 @read_it() {\n' + 'entry:\n' + '  %v = load i64, i64* @ext_counter\n' + '  ret i64 %v\n' + '}\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %r = call i64 @read_it()\n' + '  call void @exit(i32 0)\n' + '  ret void\n' + '}\n'
+        'target triple = "x86_64-pc-windows-msvc"\n'
+        + '@ext_counter = external dllimport global i64\n'
+        + 'declare void @exit(i32)\n'
+        + 'define i64 @read_it() {\n'
+        + 'entry:\n'
+        + '  %v = load i64, i64* @ext_counter\n'
+        + '  ret i64 %v\n'
+        + '}\n'
+        + 'define void @_jac_win_start() {\n'
+        + 'entry:\n'
+        + '  %r = call i64 @read_it()\n'
+        + '  call void @exit(i32 0)\n'
+        + '  ret void\n'
+        + '}\n'
     );
     mod = llvm.parse_assembly(src);
     mod.verify();
@@ -254,7 +293,20 @@ test "data import: direct reference to imported data is a loud link error (#7626
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     src = (
-        'target triple = "x86_64-pc-windows-msvc"\n' + '@stdout = external global i8*\n' + 'declare void @exit(i32)\n' + 'define i8* @read_it() {\n' + 'entry:\n' + '  %v = load i8*, i8** @stdout\n' + '  ret i8* %v\n' + '}\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %r = call i8* @read_it()\n' + '  call void @exit(i32 0)\n' + '  ret void\n' + '}\n'
+        'target triple = "x86_64-pc-windows-msvc"\n'
+        + '@stdout = external global i8*\n'
+        + 'declare void @exit(i32)\n'
+        + 'define i8* @read_it() {\n'
+        + 'entry:\n'
+        + '  %v = load i8*, i8** @stdout\n'
+        + '  ret i8* %v\n'
+        + '}\n'
+        + 'define void @_jac_win_start() {\n'
+        + 'entry:\n'
+        + '  %r = call i8* @read_it()\n'
+        + '  call void @exit(i32 0)\n'
+        + '  ret void\n'
+        + '}\n'
     );
     mod = llvm.parse_assembly(src);
     mod.verify();

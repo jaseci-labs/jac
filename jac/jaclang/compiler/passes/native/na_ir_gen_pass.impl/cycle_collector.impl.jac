@@ -537,11 +537,16 @@ impl NaIRGenPass._emit_rc_collect_white_reclaim(
     );
     dtor_val = b.load(dtor_slot, name="cw.dtor.val");
 
-    b.cbranch(
-        b.icmp_unsigned("==", dtor_val, ir.Constant(i64, 0), name="cw.dtor.zero"),
-        raw_free_bb,
-        call_dtor_bb
+    _cw_zero = b.icmp_unsigned(
+        "==", dtor_val, ir.Constant(i64, 0), name="cw.dtor.zero"
     );
+    _cw_len = b.icmp_unsigned(
+        "!=",
+        b.and_(dtor_val, ir.Constant(i64, 1), name="cw.dtor.lowbit"),
+        ir.Constant(i64, 0),
+        name="cw.dtor.is.len"
+    );
+    b.cbranch(b.or_(_cw_zero, _cw_len, name="cw.dtor.skip"), raw_free_bb, call_dtor_bb);
 
     b = ir.IRBuilder(call_dtor_bb);
     dtor_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);

@@ -26,7 +26,6 @@ class JacScaleConfig(PluginConfigBase) {
     def get_emailer_config(self: JacScaleConfig) -> dict[str, any];
     def get_auth_config(self: JacScaleConfig) -> dict[str, any];
     def get_microservices_config(self: JacScaleConfig) -> dict[str, any];
-    def microservices_declared(self: JacScaleConfig) -> bool;
 }
 
 def normalize_microservices_config(ms_config: dict[str, any]) -> dict[str, any];

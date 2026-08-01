@@ -6,8 +6,8 @@ impl add_unique_text_edit(
     } else {
         for existing_edit in changes[key] {
             if existing_edit.range.start == new_edit.range.start
-            and existing_edit.range.end == new_edit.range.end
-            and existing_edit.new_text == new_edit.new_text {
+                and existing_edit.range.end == new_edit.range.end
+                and existing_edit.new_text == new_edit.new_text {
                 return;
             }
         }
@@ -52,8 +52,8 @@ impl get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol] {
     owner_syms = {owner_sym(tab) for tab in nd.kid_scope};
     for (key, item) in nd.names_in_scope.items() {
         if key in _BUILTIN_NAMES
-        or item in owner_syms
-        or item.decl.loc.mod_path != nd.loc.mod_path {
+            or item in owner_syms
+            or item.decl.loc.mod_path != nd.loc.mod_path {
             continue;
         }
         pos = create_range(item.decl.loc);
@@ -160,15 +160,16 @@ impl gen_diagnostics(
         )
         for error in errors
         if error.loc.mod_path == from_path
-    ] + [
-        lspt.Diagnostic(
-            range=create_range(warning.loc),
-            message=_message(warning),
-            severity=lspt.DiagnosticSeverity.Warning,
-            code=warning.code.code if warning.code else None,
-            source="jac"
-        )
-        for warning in warnings
-        if warning.loc.mod_path == from_path
-    ];
+    ]
+        + [
+            lspt.Diagnostic(
+                range=create_range(warning.loc),
+                message=_message(warning),
+                severity=lspt.DiagnosticSeverity.Warning,
+                code=warning.code.code if warning.code else None,
+                source="jac"
+            )
+            for warning in warnings
+            if warning.loc.mod_path == from_path
+        ];
 }

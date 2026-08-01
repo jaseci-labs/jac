@@ -67,16 +67,15 @@ def:pub Button(props: any) -> JsxElement {
             </Slot.Root>;
     }
 
-    return
-        <button
-            data-slot="button"
-            data-variant={variant}
-            data-size={size}
-            className={computedClass}
-            {**restProps}
-        >
-            {props["children"]}
-        </button>;
+    <button
+        data-slot="button"
+        data-variant={variant}
+        data-size={size}
+        className={computedClass}
+        {**restProps}
+    >
+        {props["children"]}
+    </button>
 }
 
 def:pub buttonVariants -> any {

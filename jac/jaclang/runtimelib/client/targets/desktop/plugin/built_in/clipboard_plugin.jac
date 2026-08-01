@@ -95,10 +95,11 @@ obj ClipboardPlugin(DesktopPlugin) {
             if platform == "linux" {
                 try {
                     subprocess.run(
-                        ["xclip", "-selection", "clipboard"],
+                        ["xclip", "-selection", "clipboard", "-in"],
                         input=text.encode("utf-8"),
                         check=True,
-                        capture_output=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                         timeout=5
                     );
                 } except FileNotFoundError {
@@ -106,7 +107,8 @@ obj ClipboardPlugin(DesktopPlugin) {
                         ["xsel", "--clipboard", "--input"],
                         input=text.encode("utf-8"),
                         check=True,
-                        capture_output=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                         timeout=5
                     );
                 }

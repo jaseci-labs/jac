@@ -7,8 +7,11 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.client.asset_processor { AssetProcessor }
 import from jaclang.runtimelib.client.import_processor { ImportProcessor }
 import from jaclang.runtimelib.client.jac_to_js { JacToJSCompiler }
-import from jaclang.runtimelib.client.route_scanner { RouteScanner }
-import from jaclang.jac0core.ext_registry { CLIENT_SUFFIX, ANNEX_SUFFIXES }
+import from jaclang.runtimelib.client.route_scanner {
+    RouteScanner,
+    resolve_route_exports
+}
+import from jaclang.jac0core.ext_registry { ANNEX_SUFFIXES }
 
 with entry {
     if TYPE_CHECKING { }
@@ -30,11 +33,9 @@ class JacClientCompiler {
             'JacClientErrorBoundary'
         ];
 
-        COMPOUND_EXTENSIONS = ['.native.cl.jac', '.native.jac', CLIENT_SUFFIX] + list(
-            ANNEX_SUFFIXES
-        );
+        COMPOUND_EXTENSIONS = ['.native.jac'] + list(ANNEX_SUFFIXES);
 
-        PLATFORM_RUNTIME_FILES = {"react-native": "client_runtime_native.cl.jac"};
+        PLATFORM_RUNTIME_FILES = {"react-native": "client_runtime_native.jac"};
     }
 
     def init(
@@ -48,6 +49,7 @@ class JacClientCompiler {
     );
 
     def _get_client_dir(self: JacClientCompiler) -> Path;
+    def _collect_na_modules(self: JacClientCompiler, mod: any) -> None;
     def _jac_path_to_js(self: JacClientCompiler, rel_str: str) -> str;
     def _native_variant(self: JacClientCompiler, path: Path) -> Path;
     def compile_runtime_utils(
@@ -93,13 +95,9 @@ class JacClientCompiler {
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
-    def _route_exports(
-        self: JacClientCompiler, module_path: Path
-    ) -> tuple[((str | None), (str | None))];
-
-    def _route_exports_from_ast(
-        self: JacClientCompiler, mod: Any
-    ) -> tuple[((str | None), (str | None))];
+    def _warn_pages_without_routes(
+        self: JacClientCompiler, scanner: RouteScanner
+    ) -> None;
 
     def _generate_routes_manifest(self: JacClientCompiler) -> None;
     def _write_source_map(

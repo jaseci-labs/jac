@@ -66,64 +66,63 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
         }
     }
 
-    return
-        <div class="auth-container">
-            <div class="auth-card">
-                <h1 class="auth-title">AI Day Planner</h1>
-                <p class="auth-subtitle">
-                    {("Create your account" if isSignup else "Welcome back")}
-                </p>
-                {if error {
-                    <div class="auth-error">{error}</div>
-                }}
-                <form onSubmit={handleSubmit}>
-                    <div class="form-field">
-                        <label class="form-label">Username</label>
-                        <input
-                            type="text"
-                            value={username}
-                            onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
-                            placeholder="Enter username"
-                            class="auth-input"
-                        />
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Password</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
-                            placeholder="Enter password"
-                            class="auth-input"
-                        />
-                    </div>
-                    <button type="submit" disabled={loading} class="auth-submit">
-                        {(
-                            "Processing..."
-                                if loading
-                                else ("Create Account" if isSignup else "Sign In")
-                        )}
-                    </button>
-                </form>
-                <div class="auth-toggle">
-                    <span class="auth-toggle-text">
-                        {(
-                            "Already have an account? "
-                                if isSignup
-                                else "Don't have an account? "
-                        )}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={lambda {
-                            isSignup = not isSignup;
-                            error = "";
-                        }}
-                        class="auth-toggle-btn"
-                    >
-                        {("Sign In" if isSignup else "Sign Up")}
-                    </button>
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1 class="auth-title">AI Day Planner</h1>
+            <p class="auth-subtitle">
+                {("Create your account" if isSignup else "Welcome back")}
+            </p>
+            {if error {
+                <div class="auth-error">{error}</div>
+            }}
+            <form onSubmit={handleSubmit}>
+                <div class="form-field">
+                    <label class="form-label">Username</label>
+                    <input
+                        type="text"
+                        value={username}
+                        onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
+                        placeholder="Enter username"
+                        class="auth-input"
+                    />
                 </div>
+                <div class="form-field">
+                    <label class="form-label">Password</label>
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
+                        placeholder="Enter password"
+                        class="auth-input"
+                    />
+                </div>
+                <button type="submit" disabled={loading} class="auth-submit">
+                    {(
+                        "Processing..."
+                            if loading
+                            else ("Create Account" if isSignup else "Sign In")
+                    )}
+                </button>
+            </form>
+            <div class="auth-toggle">
+                <span class="auth-toggle-text">
+                    {(
+                        "Already have an account? "
+                            if isSignup
+                            else "Don't have an account? "
+                    )}
+                </span>
+                <button
+                    type="button"
+                    onClick={lambda {
+                        isSignup = not isSignup;
+                        error = "";
+                    }}
+                    class="auth-toggle-btn"
+                >
+                    {("Sign In" if isSignup else "Sign Up")}
+                </button>
             </div>
-        </div>;
+        </div>
+    </div>
 }

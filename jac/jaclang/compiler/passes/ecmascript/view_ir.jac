@@ -73,13 +73,24 @@ obj IfChild {
     has test: es.Expression,
         consequent:
             list[
-                TextChild | DynamicChild | ElementChild | SlotChild | IfChild | EachChild
+                TextChild
+                    | DynamicChild
+                    | ElementChild
+                    | SlotChild
+                    | IfChild
+                    | EachChild
             ],
         alternate:
             (
                 list[
-                    TextChild | DynamicChild | ElementChild | SlotChild | IfChild | EachChild
-                ] | None
+                    TextChild
+                        | DynamicChild
+                        | ElementChild
+                        | SlotChild
+                        | IfChild
+                        | EachChild
+                ]
+                | None
             ),
         js_fallback: es.Expression,
         jac_node: (uni.UniNode | None);
@@ -91,7 +102,12 @@ obj EachChild {
         key: (es.Expression | None),
         body:
             list[
-                TextChild | DynamicChild | ElementChild | SlotChild | IfChild | EachChild
+                TextChild
+                    | DynamicChild
+                    | ElementChild
+                    | SlotChild
+                    | IfChild
+                    | EachChild
             ],
         js_fallback: es.Expression,
         jac_node: (uni.UniNode | None);
@@ -102,7 +118,12 @@ obj ViewElement {
         attrs: list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr],
         children:
             list[
-                TextChild | DynamicChild | ElementChild | SlotChild | IfChild | EachChild
+                TextChild
+                    | DynamicChild
+                    | ElementChild
+                    | SlotChild
+                    | IfChild
+                    | EachChild
             ],
         jac_node: (uni.UniNode | None);
 }

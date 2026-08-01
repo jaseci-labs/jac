@@ -3,7 +3,7 @@
 Pure computation is native-COMPATIBLE, but compatibility never implies
 placement: unmarked code with no FFI surface defaults to server. Native
 inference needs an extern-decl import seed; otherwise going native stays
-an explicit build choice (`na {}`, `.na.jac`, or nacompile auto-promotion
+an explicit build choice (`na {}`, `.jac`, or nacompile auto-promotion
 of a target module).
 """
 

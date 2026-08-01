@@ -29,6 +29,7 @@ class ViteCompiler {
     def create_entry_file(self: ViteCompiler, module_path: Path) -> None;
     def _create_pages_entry_content(self: ViteCompiler, module_path: Path) -> str;
     def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
+    def _emit_wasm_module(self: ViteCompiler, module_path: Path) -> None;
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[str, str, list[str], list[str]];

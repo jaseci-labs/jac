@@ -51,7 +51,12 @@ test "deploy uses patch not replace for main ingress" {
     assert not networking_v1.replace_namespaced_ingress.called , "replace_namespaced_ingress must never be called";
 }
 
-test "patch body never contains spec.tls or host" {
+test "patch body keeps spec.tls untouched and renders host plus catch-all rules" {
+    # spec.tls is map-merged by patch, so omitting it preserves what
+    # enable_tls set. Rules are a REPLACED list: omitting the host does
+    # not preserve it, it wipes the binding the certificate is served
+    # from (#7707). A domain app must therefore re-render the host rule
+    # itself, alongside a catch-all for raw load-balancer access.
     networking_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
 
@@ -61,8 +66,10 @@ test "patch body never contains spec.tls or host" {
     body = networking_v1.patch_namespaced_ingress.call_args[1]['body'];
     assert 'tls' not in body.get('spec', {}) , "spec.tls must not appear in the patch body";
     rules = body.get('spec', {}).get('rules', []);
-    assert len(rules) > 0 , "patch body must include at least one rule";
-    assert 'host' not in rules[0] , "rules[*].host must not appear in the patch body";
+    assert len(rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert rules[0].get('host') == 'example.com' , "first rule must bind the domain host";
+    assert 'host' not in rules[1] , "second rule must stay a catch-all";
+    assert rules[0]['http'] == rules[1]['http'] , "both rules must serve the same paths";
 }
 
 test "patch body contains jac-scale-owned annotations" {
@@ -158,6 +165,7 @@ test "redis ingress patch body never contains spec.tls or host" {
     redis_body = all_calls[1][1]['body'];
     assert 'tls' not in redis_body.get('spec', {}) , "RedisInsight Ingress spec.tls must not appear in patch body";
     redis_rules = redis_body.get('spec', {}).get('rules', []);
-    assert len(redis_rules) > 0 , "RedisInsight patch body must include at least one rule";
-    assert 'host' not in redis_rules[0] , "RedisInsight Ingress rules[*].host must not appear in patch body";
+    assert len(redis_rules) == 2 , "domain app must render a host rule plus a catch-all";
+    assert redis_rules[0].get('host') == 'example.com' , "first RedisInsight rule must bind the domain host";
+    assert 'host' not in redis_rules[1] , "second RedisInsight rule must stay a catch-all";
 }

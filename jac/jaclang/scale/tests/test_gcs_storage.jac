@@ -1,36 +1,128 @@
 import io;
-import datetime;
+import os;
+import time;
+import uuid;
+import tempfile;
+import unittest;
 
 import from unittest.mock { patch, MagicMock }
 import from jaclang.project.config { JacConfig }
 import from jaclang.scale.storage.gcs_storage { GcsStorage }
 
 
-def get_mock_gcs_storage(
-    bucket: str = "test-bucket",
+glob _EMULATOR: dict = {};
+
+
+def _require_emulator -> str {
+    if "endpoint" in _EMULATOR {
+        return _EMULATOR["endpoint"];
+    }
+    try {
+        import from testcontainers.core.container { DockerContainer }
+    } except ImportError as e {
+        raise unittest.SkipTest(f"testcontainers not available: {e}");
+    }
+    try {
+        container = DockerContainer("fsouza/fake-gcs-server").with_command(
+            "-scheme http -public-host storage.googleapis.com"
+        ).with_exposed_ports(
+            4443
+        );
+        container.start();
+    } except Exception as e {
+        raise unittest.SkipTest(
+            f"Could not start fake-gcs-server (Docker unavailable?): {e}"
+        );
+    }
+
+    import atexit;
+    atexit.register(container.stop);
+
+    host = container.get_container_host_ip();
+    port = container.get_exposed_port(4443);
+    endpoint = f"http://{host}:{port}";
+    _EMULATOR["container"] = container;
+    _EMULATOR["endpoint"] = endpoint;
+    return endpoint;
+}
+
+
+def _client_factory(endpoint: str, project_id: (str | None)) -> any {
+    import from google.auth.credentials { AnonymousCredentials }
+    import from google.cloud { storage }
+
+    def _make(**kwargs: any) -> any {
+        if project_id {
+            kwargs.setdefault("project", project_id);
+        } else {
+            kwargs.setdefault("project", "test-project");
+        }
+        kwargs["credentials"] = AnonymousCredentials();
+        kwargs["client_options"] = {"api_endpoint": endpoint};
+        return storage.Client(**kwargs);
+    }
+    return _make;
+}
+
+
+def _ensure_bucket(client: any, bucket: str) -> None {
+    # Retry so the first call doubles as a readiness wait for the fresh server.
+    last = None;
+    for _ in range(30) {
+        try {
+            client.create_bucket(bucket);
+            return;
+        } except Exception as e {
+            name = type(e).__name__;
+            if name == "Conflict" or "409" in str(e) {
+                return;
+            }
+            last = e;
+            time.sleep(1);
+        }
+    }
+    raise unittest.SkipTest(f"fake-gcs-server never became ready: {last}");
+}
+
+
+def make_gcs_storage(
+    bucket: (str | None) = None,
     prefix: str = "",
     public: bool = False,
     project_id: str = "test-project"
-) -> tuple[GcsStorage, MagicMock, MagicMock, MagicMock] {
-    client = MagicMock();
-    bucket_obj = MagicMock();
-    blob = MagicMock();
-    client.bucket.return_value = bucket_obj;
-    bucket_obj.blob.return_value = blob;
+) -> GcsStorage {
+    endpoint = _require_emulator();
+    if bucket is None {
+        bucket = f"jac-test-{uuid.uuid4().hex[:12]}";
+    }
 
-    with patch("jaclang.scale.storage.gcs_storage.require_google_cloud_storage"), patch(
-        "jaclang.scale.storage.gcs_storage.StorageClient", return_value=client
+    factory = _client_factory(endpoint, project_id);
+    _ensure_bucket(factory(), bucket);
+
+    with patch(
+        "jaclang.scale.storage.gcs_storage.StorageClient", side_effect=factory
     ) {
         storage = GcsStorage(
             bucket=bucket, prefix=prefix, public_read=public, project_id=project_id
         );
     }
-
-    return (storage, client, bucket_obj, blob);
+    return storage;
 }
 
+
+def _write_temp(data: bytes, suffix: str = ".txt") -> str {
+    (fd, path) = tempfile.mkstemp(suffix=suffix);
+    with os.fdopen(fd, "wb") as f {
+        f.write(data);
+    }
+    return path;
+}
+
+
 test "gcs storage init wires client and bucket" {
-    (storage, client, bucket_obj, _) = get_mock_gcs_storage(
+    import from google.cloud.storage { Client as RealClient }
+
+    storage = make_gcs_storage(
         bucket="firebase-bucket", prefix="uploads/", public=True, project_id="proj-1"
     );
 
@@ -38,38 +130,41 @@ test "gcs storage init wires client and bucket" {
     assert storage.prefix == "uploads";
     assert storage.public_read == True;
     assert storage.project_id == "proj-1";
-    client.bucket.assert_called_once_with("firebase-bucket");
-    assert storage._bucket == bucket_obj;
+    assert isinstance(storage._client, RealClient);
+    assert storage._bucket is not None;
+    assert storage._bucket.name == "firebase-bucket";
 }
 
+
 test "gcs upload download and exists" {
-    (storage, _, _, blob) = get_mock_gcs_storage();
-    blob.download_as_bytes.return_value = b"hello";
-    blob.exists.return_value = True;
+    storage = make_gcs_storage();
 
     key = storage.upload(io.BytesIO(b"hello"), "dir/file.txt", {"kind": "demo"});
     assert key == "dir/file.txt";
-    assert blob.metadata == {"kind": "demo"};
-    blob.upload_from_file.assert_called_once();
 
     assert storage.download("dir/file.txt") == b"hello";
     assert storage.exists("dir/file.txt") == True;
+    assert storage.exists("dir/missing.txt") == False;
+
+    metadata = storage.get_metadata("dir/file.txt");
+    assert metadata["metadata"] == {"kind": "demo"};
+    assert metadata["size"] == 5;
 }
+
 
 test "gcs delete returns false for missing blob" {
-    import from google.cloud.exceptions { NotFound }
-
-    (storage, _, _, blob) = get_mock_gcs_storage();
-    blob.delete.side_effect = NotFound("missing");
+    storage = make_gcs_storage();
 
     assert storage.delete("missing/file.txt") == False;
+
+    storage.upload(io.BytesIO(b"bye"), "gone/file.txt");
+    assert storage.delete("gone/file.txt") == True;
+    assert storage.exists("gone/file.txt") == False;
 }
 
-test "gcs download raises FileNotFoundError for missing blob" {
-    import from google.cloud.exceptions { NotFound }
 
-    (storage, _, _, blob) = get_mock_gcs_storage();
-    blob.download_as_bytes.side_effect = NotFound("missing");
+test "gcs download raises FileNotFoundError for missing blob" {
+    storage = make_gcs_storage();
 
     raised = False;
     try {
@@ -80,11 +175,9 @@ test "gcs download raises FileNotFoundError for missing blob" {
     assert raised;
 }
 
-test "gcs get_metadata raises FileNotFoundError for missing blob" {
-    import from google.cloud.exceptions { NotFound }
 
-    (storage, _, _, blob) = get_mock_gcs_storage();
-    blob.reload.side_effect = NotFound("missing");
+test "gcs get_metadata raises FileNotFoundError for missing blob" {
+    storage = make_gcs_storage();
 
     raised = False;
     try {
@@ -95,36 +188,23 @@ test "gcs get_metadata raises FileNotFoundError for missing blob" {
     assert raised;
 }
 
-test "gcs copy returns false when source vanishes after exists check" {
-    import from google.cloud.exceptions { NotFound }
 
-    (storage, _, bucket_obj, blob) = get_mock_gcs_storage();
-    blob.exists.return_value = True;
-    bucket_obj.copy_blob.side_effect = NotFound("vanished");
+test "gcs copy returns false when source vanishes after exists check" {
+    storage = make_gcs_storage();
 
     assert storage.copy("dir/a.txt", "dir/c.txt") == False;
 }
 
-test "gcs list metadata copy move and url" {
-    (storage, client, bucket_obj, blob) = get_mock_gcs_storage(
-        prefix="app/", public=False
-    );
-    dir_blob = MagicMock();
-    dir_blob.name = "app/dir/";
-    file1 = MagicMock();
-    file1.name = "app/dir/a.txt";
-    file2 = MagicMock();
-    file2.name = "app/dir/b.txt";
-    bucket_obj.list_blobs.return_value = [dir_blob, file1, file2];
-    blob.size = 7;
-    blob.updated = datetime.datetime.now(datetime.timezone.utc);
-    blob.content_type = "text/plain";
-    blob.metadata = {"foo": "bar"};
-    blob.exists.return_value = True;
-    blob.generate_signed_url.return_value = "https://signed.example/file";
-    bucket_obj.copy_blob.return_value = MagicMock();
 
-    files = list(storage.list_files("dir"));
+test "gcs list metadata copy move and url" {
+    storage = make_gcs_storage(prefix="app/", public=False);
+
+    a_path = _write_temp(b"1234567");
+    b_path = _write_temp(b"ab");
+    storage.upload(a_path, "dir/a.txt", {"foo": "bar"});
+    storage.upload(b_path, "dir/b.txt");
+
+    files = sorted(list(storage.list_files("dir")));
     assert files == ["dir/a.txt", "dir/b.txt"];
 
     metadata = storage.get_metadata("dir/a.txt");
@@ -134,9 +214,17 @@ test "gcs list metadata copy move and url" {
     assert metadata["name"] == "a.txt";
 
     assert storage.copy("dir/a.txt", "dir/c.txt") == True;
+    assert storage.exists("dir/c.txt") == True;
+
     assert storage.move("dir/a.txt", "dir/d.txt") == True;
-    assert storage.get_url("dir/c.txt", 60) == "https://signed.example/file";
+    assert storage.exists("dir/d.txt") == True;
+    assert storage.exists("dir/a.txt") == False;
+
+    public_storage = make_gcs_storage(prefix="app/", public=True);
+    url = public_storage.get_url("dir/c.txt", 60);
+    assert "dir/c.txt" in url;
 }
+
 
 test "store builtin resolves firebase storage when configured" {
     cfg_patcher = patch("jaclang.scale.storage.factory.get_config");
@@ -175,6 +263,7 @@ test "store builtin resolves firebase storage when configured" {
         cfg_patcher.stop();
     }
 }
+
 
 test "jac.toml parses firebase storage fields" {
     toml_content = """

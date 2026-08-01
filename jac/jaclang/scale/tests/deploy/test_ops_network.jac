@@ -62,7 +62,7 @@ test "ingress resolves host->service:port + LB; PVC claimants from pods" {
         }
     );
     assert ing["rules"][0]["service"] == "gateway-service"
-    and ing["lb"] == ["abc.elb.amazonaws.com"];
+        and ing["lb"] == ["abc.elb.amazonaws.com"];
 
     claims = pvc_claimants(
         [

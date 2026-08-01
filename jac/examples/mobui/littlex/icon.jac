@@ -49,11 +49,10 @@ glob LUCIDE = {
     (active like / brand mark); `width` is the stroke weight."""
 def:pub Icon(name: str, size: int, color: str, fill: bool, width: float) -> JsxElement {
     Glyph = LUCIDE[name];
-    return
-        <Glyph
-            size={size}
-            color={color}
-            fill={(color if fill else "none")}
-            strokeWidth={width}
-        />;
+    <Glyph
+        size={size}
+        color={color}
+        fill={(color if fill else "none")}
+        strokeWidth={width}
+    />
 }

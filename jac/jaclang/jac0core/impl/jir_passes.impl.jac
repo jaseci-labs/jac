@@ -555,10 +555,10 @@ impl JirReader._init_caches -> None {
         SymbolType,
         EdgeDir,
         CodeContext,
+        ExprCtx,
         OwnershipKind
     }
     import from jaclang.jac0core.codeinfo { CodeLocInfo }
-    import ast as ast3;
 
     self._CodeLocInfo = CodeLocInfo;
     self._Expr = Expr;
@@ -575,7 +575,7 @@ impl JirReader._init_caches -> None {
     self._ModulePath = ModulePath;
     self._ModuleItem = ModuleItem;
     self._SymbolType_UNKNOWN = SymbolType.UNKNOWN;
-    self._ast3_Load = ast3.Load;
+    self._ExprCtx_LOAD = ExprCtx.LOAD;
     self._SpecialVarRef = SpecialVarRef;
     self._ContextAwareNode = ContextAwareNode;
     self._CodeContext_SERVER = CodeContext.SERVER;
@@ -776,7 +776,7 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         nd.setdefault('_sym', None);
         nd.setdefault('_sym_name', '');
         nd.setdefault('_sym_category', self._SymbolType_UNKNOWN);
-        nd.setdefault('_py_ctx_func', self._ast3_Load);
+        nd.setdefault('_expr_ctx', self._ExprCtx_LOAD);
     }
 
     if isinstance(ir_node, self._AstSymbolNode) {

@@ -31,10 +31,6 @@ def resolve_client_kind_context(
 }
 
 def mobui_module_exempt(mod_path: str, project_root: (str | None)) -> bool {
-    if mod_path.endswith(".cl.jac") and not mod_path.endswith(".native.cl.jac") {
-        return True;
-    }
-
     if not project_root {
         return True;
     }

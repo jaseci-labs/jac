@@ -1,22 +1,21 @@
 ---
 name: jac-native
-description: Compiling Jac to native machine code via LLVM - native sections in regular .jac files (inferred from extern C seeds; the `na` marker pins pure compute), `jac run --autonative`, and standalone zero-dependency binaries via `jac nacompile`; the supported subset, Python-congruent stdlib, C FFI, and gotchas. Load when speeding up a hot loop, building a native binary or CLI tool, or working with native code. For C-ABI shared libraries see `jac-native-shared`; for in-browser wasm see `jac-native-wasm`.
+description: Compiling Jac to native machine code via LLVM - whole-module native inference under `jac run` (the default codespace), native sections in mixed .jac files (inferred from extern C seeds; [placement.pins] pins pure compute), and standalone zero-dependency binaries via `jac nacompile`; the supported subset, Python-congruent stdlib, C FFI, and gotchas. Load when speeding up a hot loop, building a native binary or CLI tool, or working with native code. For C-ABI shared libraries see `jac-native-shared`; for in-browser wasm see `jac-native-wasm`.
 ---
 
 The native codespace compiles Jac through LLVM to machine code - no Python runtime, no external compiler or linker (Jac bundles the whole toolchain). Three verbs:
 
 ```bash
-jac run app.jac                            # Python path - full language, PyPI, OSP
-jac run --autonative app.jac -- x --flag   # try native, silent Python fallback; `--` separates program args
-jac nacompile app.jac -o app               # standalone zero-dependency binary
+jac run app.jac -- x --flag    # placement inferred: native when the module can lower, else Python (full language, PyPI, OSP) with a note; `--` separates program args
+jac nacompile app.jac -o app   # standalone zero-dependency binary - forces native, loud errors
 ./app x --flag
 ```
 
-- `jac nacompile` compiles a **plain `.jac`** (auto-promoting when only native-compatible features are used); an explicit all-native file pin remains available as an override (see `jac-codespaces`).
-- `--autonative` prints `[Module 'app.jac' executed natively]` when a plain `.jac` is promoted; a file using walkers/async just runs on Python with no message.
+- `jac nacompile` compiles a **plain `.jac`**, coercing the whole module native - anything that cannot lower is a loud compile error, never a demotion. `jac build --as native` is the project-level equivalent; `CompileOptions(force_codespace='native')` the programmatic one.
+- Under `[build] default_codespace = "native"` (the default), `jac run` executes a verdict-passing module natively; a module using walkers/PyPI/async just runs on Python, with a dim `note:` when a native-preferring module had to demote. Set `default_codespace = "server"` to opt a project out.
 - A standalone binary REQUIRES `with entry { }` - otherwise: *"No entry point found."*
 - `jac nacompile --target wasm32|windows|macos` cross-targets; `--shared` builds a C-ABI library (see the sibling skills); `--gc cycles|rc|none` picks the memory-management runtime (see `jac-native-memory`).
-- **Native placement is inferred from extern C declarations.** An import whose braces declare C-ABI functions (`import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) is an FFI surface only the native backend can satisfy, so it seeds native placement and the declarations using it follow (see `jac-codespaces`). Consuming a native *module* (`import from mymod { fast_fn }`) is not a signal, and pure code that merely fits the native subset stays server: without an FFI seed, going native is an explicit build choice - `jac nacompile`, `jac run --autonative`, or the explicit native markers (see `jac-codespaces`) - all still fully valid as overrides.
+- **Native placement is inferred - at two granularities.** Whole markerless modules: the placement solver (blocker scan + import-closure fixpoint) compiles a module native when it can lower, demoting to server with a note otherwise. Within mixed files: an import whose braces declare C-ABI functions (`import from raylib { def InitWindow(w: i32, h: i32, title: str) -> None; }`) is an FFI surface only the native backend can satisfy, so it seeds native placement and the declarations using it follow (see `jac-codespaces`). Consuming a native *module* (`import from mymod { fast_fn }`) is not a signal. When native must be mandatory, force it: `jac nacompile`, `jac build --as native`, or the explicit `na` markers.
 
 ## Headline example - a CLI tool
 
@@ -42,7 +41,7 @@ with entry {
 }
 ```
 
-`jac nacompile tool.jac -o tool && ./tool World --shout` -> `HELLO, WORLD!`. Same argv via `jac run --autonative tool.jac -- World --shout`.
+`jac nacompile tool.jac -o tool && ./tool World --shout` -> `HELLO, WORLD!`. Same argv via `jac run tool.jac -- World --shout` (runs natively under the default codespace).
 
 ## What the native subset supports (much more than loops)
 
@@ -55,7 +54,7 @@ with entry {
 - **File I/O**: `open`/`read`/`write`/`close`, `with open(...) as f { }`, custom `__enter__`/`__exit__`.
 - **Builtins**: `print`, `len`, `range`, `abs`/`min`/`max`/`pow`, `chr`/`ord`, `str`/`int`/`float`, `input`; f-strings. **str methods**: `upper`/`lower`/`strip`/`split`/`join`/`replace`/`find`/`startswith`/`endswith`/`count`; substring `in`.
 
-**Stdlib** (Python-congruent subset, same source runs on both pathways): `math` (libm-backed), `time` (clocks + `sleep`), `sys` (`argv`/`exit`/`maxsize`/`platform`/`byteorder`), `os` + `os.path` subset (`getcwd`/`getenv`/`mkdir`/`remove`/`system`; `join`/`basename`/`exists`/`isfile`), `random` (faithful MT19937 - same seed gives the same sequence as CPython).
+**Stdlib** (Python-congruent subset, same source runs on both pathways): `math` (libm-backed), `time` (clocks + `sleep`), `sys` (`argv`/`exit`/`maxsize`/`platform`/`byteorder`), `os` + `os.path` subset (`getcwd`/`getenv`/`mkdir`/`remove`/`system`; `join`/`basename`/`dirname`/`realpath`/`exists`/`isfile`/`isdir`/`getsize`), `random` (faithful MT19937 - same seed gives the same sequence as CPython). An unsupported `os.path` member is a compile error (E5090) naming the member. `os.system` returns the raw POSIX wait status (exit code x 256), same as CPython; `os.path.getsize` returns -1 for a path that cannot be stat'ed instead of raising.
 
 Anything else fails **loudly at compile time** - `import json` -> *"Native pathway does not yet support Python module import 'json'"*. Unsupported imports never silently produce a garbage binary. PyPI imports never work natively; keep that code in the Python codespace.
 
@@ -98,7 +97,7 @@ with entry {
 }
 ```
 
-These pure-compute functions carry no FFI seed, so they default to Python; pin the hot section native with an `na` block, or an `na` prefix on one declaration (see `jac-codespaces` for the marker syntax), then run with plain `jac run`. Interop stubs are generated automatically in both directions; primitives, collections, and `obj` instances cross the boundary. Each codespace only sees its own definitions at compile time (context isolation) - a native function referencing a Python function defined *after* the native section fails E5090 and returns 0.
+These pure-compute functions carry no FFI seed, and the `json` import anchors this mixed module server, so they default to Python; pin the hot functions native in `jac.toml` (`[placement.pins] "main.sum_squares" = "native"` - see `jac-codespaces`), or move them into their own anchor-free module (which compiles whole-module native by verdict, or gets a module-level `"native"` pin), then run with plain `jac run`. Interop stubs are generated automatically in both directions; primitives, collections, and `obj` instances cross the boundary. Each codespace only sees its own definitions at compile time (context isolation) - a native function referencing a Python function defined *after* the native section fails E5090 and returns 0.
 
 ## Native-to-native imports + decl/impl separation
 

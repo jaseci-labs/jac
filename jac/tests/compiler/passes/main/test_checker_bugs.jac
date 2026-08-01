@@ -577,7 +577,7 @@ test "bug_impl1_has_var_shadow_in_impl_body" {
     );
     program = JacProgram();
     program.compile(
-        os.path.join(fixture_dir, "impl_has_var_reassign.cl.jac"), type_check=True
+        os.path.join(fixture_dir, "impl_has_var_reassign.jac"), type_check=True
     );
 
     # Expected after fix: 0 errors. The impl body should type-check cleanly:

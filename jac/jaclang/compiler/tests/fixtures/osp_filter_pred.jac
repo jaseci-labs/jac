@@ -50,78 +50,76 @@ def filter_pred_py -> dict[str, any] {
     };
 }
 
-na {
-    def filter_pred_na -> dict[str, any] {
-        hub = Item(val=0, done=True);
-        a = Item(val=1, done=False);
-        b = Item(val=2, done=True);
-        c = Item(val=3, done=False);
-        hub ++> a;
-        hub ++> b;
-        hub ++> c;
-        pending = [hub-->[?:Item]][?done==False];
-        combined = [hub-->[?:Item, val>1]];
-        multi = [hub-->[?:Item, val>1, done==False]];
-        inchain = [hub-->[?:Item, done==False]];
-        pending_vals: list[int] = [];
-        for i in pending {
-            pending_vals.append(i.val);
-        }
-        combined_vals: list[int] = [];
-        for i in combined {
-            combined_vals.append(i.val);
-        }
-        multi_vals: list[int] = [];
-        for i in multi {
-            multi_vals.append(i.val);
-        }
-        inchain_vals: list[int] = [];
-        for i in inchain {
-            inchain_vals.append(i.val);
-        }
-        return {
-            "pending": pending_vals,
-            "combined": combined_vals,
-            "multi": multi_vals,
-            "inchain": inchain_vals
-        };
+
+def filter_pred_na -> dict[str, any] {
+    hub = Item(val=0, done=True);
+    a = Item(val=1, done=False);
+    b = Item(val=2, done=True);
+    c = Item(val=3, done=False);
+    hub ++> a;
+    hub ++> b;
+    hub ++> c;
+    pending = [hub-->[?:Item]][?done==False];
+    combined = [hub-->[?:Item, val>1]];
+    multi = [hub-->[?:Item, val>1, done==False]];
+    inchain = [hub-->[?:Item, done==False]];
+    pending_vals: list[int] = [];
+    for i in pending {
+        pending_vals.append(i.val);
     }
+    combined_vals: list[int] = [];
+    for i in combined {
+        combined_vals.append(i.val);
+    }
+    multi_vals: list[int] = [];
+    for i in multi {
+        multi_vals.append(i.val);
+    }
+    inchain_vals: list[int] = [];
+    for i in inchain {
+        inchain_vals.append(i.val);
+    }
+    return {
+        "pending": pending_vals,
+        "combined": combined_vals,
+        "multi": multi_vals,
+        "inchain": inchain_vals
+    };
 }
 
-cl {
-    def filter_pred_cl -> dict[str, any] {
-        hub = Item(val=0, done=True);
-        a = Item(val=1, done=False);
-        b = Item(val=2, done=True);
-        c = Item(val=3, done=False);
-        hub ++> a;
-        hub ++> b;
-        hub ++> c;
-        pending = [hub-->[?:Item]][?done==False];
-        combined = [hub-->[?:Item, val>1]];
-        multi = [hub-->[?:Item, val>1, done==False]];
-        inchain = [hub-->[?:Item, done==False]];
-        pending_vals: list[int] = [];
-        for i in pending {
-            pending_vals.append(i.val);
-        }
-        combined_vals: list[int] = [];
-        for i in combined {
-            combined_vals.append(i.val);
-        }
-        multi_vals: list[int] = [];
-        for i in multi {
-            multi_vals.append(i.val);
-        }
-        inchain_vals: list[int] = [];
-        for i in inchain {
-            inchain_vals.append(i.val);
-        }
-        return {
-            "pending": pending_vals,
-            "combined": combined_vals,
-            "multi": multi_vals,
-            "inchain": inchain_vals
-        };
+
+def filter_pred_cl -> dict[str, any] {
+    hub = Item(val=0, done=True);
+    a = Item(val=1, done=False);
+    b = Item(val=2, done=True);
+    c = Item(val=3, done=False);
+    hub ++> a;
+    hub ++> b;
+    hub ++> c;
+    pending = [hub-->[?:Item]][?done==False];
+    combined = [hub-->[?:Item, val>1]];
+    multi = [hub-->[?:Item, val>1, done==False]];
+    inchain = [hub-->[?:Item, done==False]];
+    pending_vals: list[int] = [];
+    for i in pending {
+        pending_vals.append(i.val);
     }
+    combined_vals: list[int] = [];
+    for i in combined {
+        combined_vals.append(i.val);
+    }
+    multi_vals: list[int] = [];
+    for i in multi {
+        multi_vals.append(i.val);
+    }
+    inchain_vals: list[int] = [];
+    for i in inchain {
+        inchain_vals.append(i.val);
+    }
+    return {
+        "pending": pending_vals,
+        "combined": combined_vals,
+        "multi": multi_vals,
+        "inchain": inchain_vals
+    };
 }

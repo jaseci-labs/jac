@@ -4,7 +4,7 @@ Derived from numba/llvmlite (BSD-2-Clause): the two pure-Python layers -- `ir`
 (the IR builder) and `binding` (ctypes marshalling over the LLVMPY_* C ABI) --
 were translated to Jac with `py2jac` and are now first-party code maintained
 here. The verbatim C++ LLVMPY_* shim it binds to lives at jac/native/ (compiled
-+ statically linked by Zig). See docs/docs/internals/llvmlite_decoupling.md.
++ statically linked by Zig). See issue #6925 for the decoupling history.
 """
 import os;
 

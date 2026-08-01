@@ -33,7 +33,7 @@ def _rollout_status(dep: dict) -> dict {
 
     for c in conditions {
         if c.get("type") == "Progressing"
-        and str(c.get("reason", "")) == "ProgressDeadlineExceeded" {
+            and str(c.get("reason", "")) == "ProgressDeadlineExceeded" {
             return {
                 "status": "stuck",
                 "reason": "ProgressDeadlineExceeded",
@@ -60,7 +60,7 @@ def summarize_deployment(dep: dict) -> dict {
     containers = ((spec.get("template", {}) or {}).get("spec", {}) or {}).get(
         "containers", []
     )
-    or [];
+        or [];
     images: list = [];
     for c in containers {
         img = c.get("image");

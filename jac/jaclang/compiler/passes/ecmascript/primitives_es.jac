@@ -55,7 +55,15 @@ def _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str {
     as parameters keeps them evaluated once, in the enclosing scope, so a
     call-expression callback is not re-run per element.
     """;
-    return "((_f, _s) => _s." + method + "((_v) => " + cb_body + "))(" + fn + ", " + seq + ")";
+    return "((_f, _s) => _s."
+        + method
+        + "((_v) => "
+        + cb_body
+        + "))("
+        + fn
+        + ", "
+        + seq
+        + ")";
 }
 
 

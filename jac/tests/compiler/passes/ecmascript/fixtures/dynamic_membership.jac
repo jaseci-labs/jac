@@ -9,11 +9,12 @@ A raw JavaScript `in` is wrong for the dynamic case: it throws a TypeError on
 string operands and tests array *indices* rather than element values.
 """
 
-cl def opaque(x: any) -> any {
+
+def opaque(x: any) -> any {
     return x;
 }
 
-cl def membership() -> dict {
+def membership() -> dict {
     s = opaque("hello world");
     nums = opaque([10, 20, 30]);
     mapping = opaque({"alpha": 1, "beta": 2});

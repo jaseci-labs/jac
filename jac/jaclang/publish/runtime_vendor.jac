@@ -128,7 +128,7 @@ def scan_jaclang_imports(py_src: str) -> set[str] {
         for child in py_ast.iter_child_nodes(nd) {
             tc = in_tc;
             if isinstance(child, py_ast.If)
-            and ("TYPE_CHECKING" in py_ast.unparse(child.test)) {
+                and ("TYPE_CHECKING" in py_ast.unparse(child.test)) {
                 tc = True;
             }
             if (not tc) and isinstance(child, py_ast.Import) {
@@ -228,7 +228,7 @@ def build_runtime_closure(
             return True;
         }
         if (not include_byllm)
-        and ((mod == "jaclang.byllm") or mod.startswith("jaclang.byllm.")) {
+            and ((mod == "jaclang.byllm") or mod.startswith("jaclang.byllm.")) {
             return True;
         }
         return False;

@@ -18,7 +18,11 @@ impl NaIRGenPass._native_archetypes(module: uni.Module) -> list[uni.Archetype] {
             result[aname] = arch;
         }
     }
-    return list(result.values());
+    return [
+        a
+        for a in result.values()
+        if not a.type_params
+    ];
 }
 
 impl NaIRGenPass._forward_declare_archetype_names(module: uni.Module) -> None {
@@ -67,7 +71,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability) {
                     if stmt.signature is not None
-                    and isinstance(stmt.signature, uni.FuncSignature) {
+                        and isinstance(stmt.signature, uni.FuncSignature) {
                         self._forward_declare_method(arch_name, stmt);
                     } elif stmt.signature is None and stmt.body is not None {
                         method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
@@ -182,7 +186,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability) {
                     if stmt.signature is not None
-                    and isinstance(stmt.signature, uni.FuncSignature) {
+                        and isinstance(stmt.signature, uni.FuncSignature) {
                         self._codegen_method(arch_name, stmt);
                     } elif isinstance(stmt.signature, uni.EventSignature) {
                         self._codegen_event_method(arch_name, stmt);
@@ -231,8 +235,8 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
         }
         for stmt in ancestor_arch.body {
             if isinstance(stmt, uni.Ability)
-            and stmt.signature is not None
-            and isinstance(stmt.signature, uni.FuncSignature) {
+                and stmt.signature is not None
+                and isinstance(stmt.signature, uni.FuncSignature) {
                 method_name = stmt.name_ref.sym_name if stmt.name_ref else None;
                 if method_name is not None and method_name not in provided_methods {
                     full_name = f"{arch_name}.{method_name}";
@@ -406,6 +410,9 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     if full_name in self.method_funcs {
         return;
     }
+    if full_name in self._native_skipped_methods {
+        return;
+    }
     sig = method.signature;
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None or sig is None {
@@ -413,8 +420,18 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     }
     _is_static = method.is_static;
 
+    _m_params = sig.get_parameters();
+    if (
+        not _is_static
+        and _m_params
+        and _m_params[0].name
+        and _m_params[0].name.value == "self"
+    ) {
+        _m_params = _m_params[1:];
+    }
+
     param_types: list[ir.Type] = [] if _is_static else [struct_type.as_pointer()];
-    for p in sig.get_parameters() {
+    for p in _m_params {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
         );
@@ -431,7 +448,7 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     if not _is_static {
         func.args[0].name = "self";
     }
-    for (i, p) in enumerate(sig.get_parameters()) {
+    for (i, p) in enumerate(_m_params) {
         func.args[i + _base].name = p.name.value if p.name else f"arg{i}";
     }
     self.method_funcs[full_name] = func;
@@ -486,7 +503,16 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     }
 
     sig = method.signature;
-    for (i, p) in enumerate(sig.get_parameters()) {
+    _body_params = sig.get_parameters();
+    if (
+        not _is_static
+        and _body_params
+        and _body_params[0].name
+        and _body_params[0].name.value == "self"
+    ) {
+        _body_params = _body_params[1:];
+    }
+    for (i, p) in enumerate(_body_params) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i + _base];
         if param_name in self.closure_cell_vars {
@@ -503,7 +529,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         self.local_vars[param_name] = alloca;
 
         if isinstance(arg_val.type, ir.PointerType)
-        and bool(p.name?.sym?.param_rebound) {
+            and bool(p.name?.sym?.param_rebound) {
             self._emit_rc_retain(arg_val, op="param_promote", loc=full_name);
         } else {
             self.param_vars.add(param_name);
@@ -511,7 +537,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     }
 
     _isolate = method_name not in ("init", "__init__", "postinit", "__post_init__")
-    and method_name not in self.vtable_method_indices.get(arch_name, {});
+        and method_name not in self.vtable_method_indices.get(arch_name, {});
     _err_mark = len(self.prog.errors_had) if _isolate else 0;
     _local_mark = len(self.errors_had) if _isolate else 0;
 
@@ -696,9 +722,10 @@ impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str]
     }
     for part in parts {
         if isinstance(part, uni.TupleVal)
-        or (
-            isinstance(part, uni.BinaryExpr) and getattr(part.op, "value", "") == "|"
-        ) {
+            or (
+                isinstance(part, uni.BinaryExpr)
+                and getattr(part.op, "value", "") == "|"
+            ) {
             for nm in self._trigger_member_structs(part) {
                 if nm not in out {
                     out.append(nm);
@@ -758,7 +785,7 @@ impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
             }
             other_types = self.struct_field_types.get(other, {});
             if other_idx[fname] != base_idx[fname]
-            or base_types.get(fname) != other_types.get(fname) {
+                or base_types.get(fname) != other_types.get(fname) {
                 return fname;
             }
         }
@@ -946,8 +973,8 @@ impl NaIRGenPass._codegen_instantiation(
         obj_ptr = self._entry_alloca(struct_type, f"stk.{type_name}");
         _tgt_asgn = nd.find_parent_of_type(uni.Assignment);
         if _tgt_asgn is not None
-        and len(_tgt_asgn.target) == 1
-        and isinstance(_tgt_asgn.target[0], uni.Name) {
+            and len(_tgt_asgn.target) == 1
+            and isinstance(_tgt_asgn.target[0], uni.Name) {
             self.nogc_stack_vars.add(_tgt_asgn.target[0].sym_name);
         }
     } elif _stack_ok {
@@ -1243,7 +1270,7 @@ impl NaIRGenPass._codegen_instantiation(
             if val is None {
                 ftype_probe = field_types.get(fname);
                 if ftype_probe is not None
-                and isinstance(ftype_probe, ir.PointerType) {
+                    and isinstance(ftype_probe, ir.PointerType) {
                     for (dict_key, dtype) in self.dict_types.items() {
                         if ftype_probe == dtype.as_pointer() {
                             helpers = self.dict_helpers.get(dict_key);
@@ -1419,6 +1446,23 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name is None {
         return None;
     }
+    if (
+        method_name in ("get", "keys", "values", "items", "setdefault", "update", "pop")
+        and self._type_key_of(trailer.target) in ("any", "Any")
+    ) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="method",
+            name=f"{method_name} (on an `any` receiver)",
+            help_text=(
+                "Method calls on an `any`-typed dict are not lowered natively "
+                "yet; annotate the receiver with a concrete dict[...] type or "
+                "move this code to a @sv/Python context."
+            )
+        );
+        return None;
+    }
 
     if (
         target_name is not None
@@ -1432,6 +1476,24 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 _sfull = _cand;
                 break;
             }
+        }
+        if _sfull is not None
+            and (
+                _sfull in self._native_skipped_methods
+                or _sfull not in self.method_funcs
+            ) {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="method",
+                name=_sfull,
+                help_text=(
+                    f"'{method_name}' has no native lowering and was demoted "
+                    f"to its Python implementation; it cannot be called from "
+                    f"native code. Call it from a Python/@sv context instead."
+                )
+            );
+            return None;
         }
         if _sfull is not None {
             _sfunc = self.method_funcs[_sfull];
@@ -1533,7 +1595,25 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         and self?._native_stdlib_modules
         and "os" in self._native_stdlib_modules
     ) {
+        if method_name not in NATIVE_OSPATH_FUNCS {
+            self.emit(E5090, node_override=nd, kind="os.path member", name=method_name);
+            return None;
+        }
         return self._emit_ospath_call(method_name, nd);
+    }
+
+    if (
+        isinstance(trailer.target, uni.AtomTrailer)
+        and trailer.target.is_attr
+        and self._get_name(trailer.target.target) == "os"
+        and self._get_name(trailer.target.right) == "environ"
+        and self?._native_stdlib_modules
+        and "os" in self._native_stdlib_modules
+    ) {
+        _env_res = self._emit_os_environ_call(method_name, nd);
+        if _env_res is not None {
+            return _env_res;
+        }
     }
 
     if (
@@ -1593,6 +1673,15 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     list_spec = self._list_spec_of(trailer.target);
+    if list_spec == "u8" and method_name in ("append", "extend") {
+        _ba_recv = self._codegen_expr(trailer.target);
+        if _ba_recv is not None {
+            _ba_res = self._dispatch_bytearray_method(method_name, _ba_recv, nd);
+            if _ba_res is not None {
+                return _ba_res;
+            }
+        }
+    }
     if list_spec is not None {
         list_val = self._codegen_expr(trailer.target);
         if list_val is not None {
@@ -1601,10 +1690,29 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             arg_vals = self._codegen_call_args(nd);
             _orig_args = list(arg_vals);
 
+            _prep_idx = -1;
+            if method_name == "append" and arg_vals {
+                _prep_idx = 0;
+            } elif method_name == "insert" and len(arg_vals) > 1 {
+                _prep_idx = 1;
+            }
+            if _prep_idx >= 0 {
+                _prep_params = list(nd.params or []);
+                if _prep_idx < len(_prep_params) {
+                    _prep_e = _prep_params[_prep_idx];
+                    _prep_e = (
+                        _prep_e.value if isinstance(_prep_e, uni.KWPair) else _prep_e
+                    );
+                    arg_vals[_prep_idx] = self._nogc_elem_prep(
+                        _prep_e, arg_vals[_prep_idx]
+                    );
+                }
+            }
+
             _elem_struct = self.var_list_elem_struct.get(target_name);
             if _elem_struct is not None
-            and isinstance(_elem_struct, ir.PointerType)
-            and isinstance(_elem_struct.pointee, ir.LiteralStructType) {
+                and isinstance(_elem_struct, ir.PointerType)
+                and isinstance(_elem_struct.pointee, ir.LiteralStructType) {
                 _tidx = -1;
                 if method_name == "append" and arg_vals {
                     _tidx = 0;
@@ -1651,6 +1759,16 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         set_val = self._codegen_expr(trailer.target);
         if set_val is not None {
             arg_vals = self._codegen_call_args(nd);
+            if method_name == "add" and arg_vals {
+                _sprep_params = list(nd.params or []);
+                if _sprep_params {
+                    _sprep_e = _sprep_params[0];
+                    _sprep_e = (
+                        _sprep_e.value if isinstance(_sprep_e, uni.KWPair) else _sprep_e
+                    );
+                    arg_vals[0] = self._nogc_elem_prep(_sprep_e, arg_vals[0]);
+                }
+            }
             result = self._dispatch_primitive_method(
                 "set", method_name, set_val, arg_vals, elem_type_name
             );
@@ -1844,7 +1962,7 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         } else {
             _owner = self._resolve_method_owner(type_name, method_name);
             if _owner is not None
-            and f"{_owner}.{method_name}" in self._native_skipped_methods {
+                and f"{_owner}.{method_name}" in self._native_skipped_methods {
                 _demoted = True;
             }
         }
@@ -1883,9 +2001,8 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         );
     }
 
-    args: list[ir.Value] = [obj_val] + self._codegen_bound_args(
-        nd, func, self_offset=1
-    );
+    args: list[ir.Value] = [obj_val]
+        + self._codegen_bound_args(nd, func, self_offset=1);
 
     if self._arch_has_vtable(type_name) and not _is_mono_method {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
@@ -2019,8 +2136,8 @@ impl NaIRGenPass._codegen_field_access(
 
     target_struct = self.struct_types.get(type_name);
     if target_struct is not None
-    and isinstance(obj_val.type, ir.PointerType)
-    and obj_val.type.pointee is not target_struct {
+        and isinstance(obj_val.type, ir.PointerType)
+        and obj_val.type.pointee is not target_struct {
         obj_val = self.builder.bitcast(
             obj_val, target_struct.as_pointer(), name=f"narrow.{type_name}"
         );

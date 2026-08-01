@@ -319,3 +319,40 @@ def create_tree_func(`root: TreeNode) -> dict {
         "node_count": _tree_count(`root)
     };
 }
+
+# ============================================================================
+# Raw response body: @restspec(envelope=False) + produces
+# Public (`:pub`) so the raw-body path is exercised without an auth header --
+# the motivating case is an unauthenticated `curl | bash` installer script.
+# ============================================================================
+"""Raw body with an explicit content type."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/raw/script.sh",
+    produces="text/x-shellscript",
+    envelope=False
+)
+def:pub raw_script -> str {
+    return "#!/usr/bin/env bash\necho jac\n";
+}
+
+"""Raw body with no `produces` falls back to text/plain."""
+@restspec(method=HTTPMethod.GET, path="/raw/plain", envelope=False)
+def:pub raw_plain -> str {
+    return "plain body";
+}
+
+"""A non-str return under envelope=False is JSON-encoded into the body, but
+without the transport envelope wrapping it."""
+@restspec(
+    method=HTTPMethod.GET, path="/raw/json", produces="application/json", envelope=False
+)
+def:pub raw_json -> dict {
+    return {"a": 1};
+}
+
+"""Envelope stays on by default -- regression guard for the opt-in."""
+@restspec(method=HTTPMethod.GET, path="/raw/enveloped")
+def:pub still_enveloped -> str {
+    return "wrapped";
+}

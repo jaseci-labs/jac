@@ -513,11 +513,38 @@ def wrap_native_function(
     param_types = func_layout.param_types;
     fl = func_layout;
 
+    str_new_fn: any = None;
+    if any(pt == "i8*" for pt in param_types) {
+        _sn_addr = 0;
+        for _sn_name in ("jac_str_new", "__jac_str_new") {
+            try {
+                _sn_addr = engine.get_function_address(_sn_name);
+            } except Exception {
+                _sn_addr = 0;
+            }
+            if _sn_addr {
+                break;
+            }
+        }
+        if _sn_addr {
+            _sn_type = ctypes.CFUNCTYPE(
+                ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64
+            );
+            str_new_fn = _sn_type(_sn_addr);
+        }
+    }
+
     def wrapper(*args: any) -> any {
         c_args: list = [];
         for (arg, pt) in zip(args, param_types) {
             if (pt == "i8*" and isinstance(arg, str)) {
-                c_args.append(arg.encode("utf-8"));
+                _b = arg.encode("utf-8");
+                if str_new_fn is not None {
+                    _sp = str_new_fn(_b, len(_b));
+                    c_args.append(ctypes.cast(_sp, ctypes.c_char_p));
+                } else {
+                    c_args.append(_b);
+                }
             } elif isinstance(arg, NativeStructView) {
                 c_args.append(arg.addr);
             } elif isinstance(arg, NativeListView) {

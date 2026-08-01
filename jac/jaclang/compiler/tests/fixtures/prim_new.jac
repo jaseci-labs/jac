@@ -65,30 +65,29 @@ def new_py -> dict {
     };
 }
 
-cl def new_cl -> dict {
+def new_cl -> dict {
     return {};
 }
 
-na {
-    def new_na -> dict[str, any] {
-        w = new(NewWidget, 5);
-        p = new(NewPair, 3, 4);
-        d = NewWidget(6);
-        m = new(NewWidget);
-        lab = NewLabel("tag", 3);
-        dv = NewDerived(10, 20);
-        n2 = new(NewDerived, 7, 8);
-        mixed = NewDerived(30, y=40);
-        return {
-            "area": w.area(),
-            "pair": p.a * 10 + p.b,
-            "direct": d.area(),
-            "dflt": m.size,
-            "label": lab.name,
-            "label_count": lab.count,
-            "inherit": dv.x * 100 + dv.y,
-            "inherit_new": n2.x * 100 + n2.y,
-            "mixed": mixed.x * 100 + mixed.y
-        };
-    }
+
+def new_na -> dict[str, any] {
+    w = new(NewWidget, 5);
+    p = new(NewPair, 3, 4);
+    d = NewWidget(6);
+    m = new(NewWidget);
+    lab = NewLabel("tag", 3);
+    dv = NewDerived(10, 20);
+    n2 = new(NewDerived, 7, 8);
+    mixed = NewDerived(30, y=40);
+    return {
+        "area": w.area(),
+        "pair": p.a * 10 + p.b,
+        "direct": d.area(),
+        "dflt": m.size,
+        "label": lab.name,
+        "label_count": lab.count,
+        "inherit": dv.x * 100 + dv.y,
+        "inherit_new": n2.x * 100 + n2.y,
+        "mixed": mixed.x * 100 + mixed.y
+    };
 }

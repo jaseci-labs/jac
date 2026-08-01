@@ -3,7 +3,7 @@
 This is the `sv` half of a Jac-native desktop app: one walker (carrying a field,
 to exercise the `fields` part of the request contract) and one `sv` function.
 The `cl` half -- the client runtime routing a call through `window.__jac_invoke`
-instead of `fetch` -- is covered by `jac/tests/runtimelib/test_native_invoke.cl.jac`.
+instead of `fetch` -- is covered by `jac/tests/runtimelib/test_native_invoke.jac`.
 Together the two tests exercise the full `cl` -> `sv` in-process path (#6596)
 without needing a live webview, a display, or `nacompile`.
 """

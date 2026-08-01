@@ -16,7 +16,8 @@ def get_state_backend(scale_enabled: bool = False) -> StateBackend {
                 backend = RedisStateBackend();
             } except Exception as e {
                 logger.warning(
-                    f"RedisStateBackend unavailable ({e}); falling back to " + "InProcessStateBackend. Shared state will NOT span replicas."
+                    f"RedisStateBackend unavailable ({e}); falling back to "
+                        + "InProcessStateBackend. Shared state will NOT span replicas."
                 );
                 backend = InProcessStateBackend();
             }

@@ -396,7 +396,8 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
                 "items": []
             };
             HPAAutoscaler().destroy_collection("default", "managed=jac-scale");
-            assert mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.call_count == 2;
+            assert mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.call_count
+                == 2;
         }
     }
 }

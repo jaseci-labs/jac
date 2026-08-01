@@ -41,6 +41,18 @@ glob NATIVE_OS_FUNCS: set[str] = {
 
      };
 
+glob NATIVE_OSPATH_FUNCS: set[str] = {
+         "join",
+         "basename",
+         "dirname",
+         "realpath",
+         "exists",
+         "isfile",
+         "isdir",
+         "getsize",
+
+     };
+
 glob NATIVE_RANDOM_FUNCS: set[str] = {
          "seed",
          "random",
@@ -51,7 +63,7 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
 
      };
 
-glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
+glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", "pack_into", };
 
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
@@ -206,6 +218,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
         rc_safe_free_fn: (ir.Function | None) = None,
+        str_len_fn: (ir.Function | None) = None,
+        str_stamp_fn: (ir.Function | None) = None,
+        str_new_fn: (ir.Function | None) = None,
         rc_roots_buf_gv: object = None,
         rc_roots_cap_gv: object = None,
         rc_roots_count_gv: object = None,
@@ -269,6 +284,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
+    def _predeclare_nested_siblings(nd: uni.Ability) -> None;
     def _codegen_test(nd: uni.Test) -> None;
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
@@ -309,6 +325,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     has lambda_captures: dict[str, list[tuple]] = {},
         _pending_lambda_captures: (list[tuple] | None) = None,
         nested_captures: dict[str, tuple] = {},
+        _nested_predecl: dict = {},
+        _bytearray_fns: dict = {},
         generator_fns: dict[str, uni.Ability] = {},
         generic_fns: dict[str, uni.Ability] = {},
         _generic_methods: dict[str, uni.Ability] = {},
@@ -696,6 +714,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> ir.Value;
 
     def _dict_key_spec(key_type: ir.Type) -> tuple;
+    def _dict_val_spec(val_type: ir.Type) -> str;
     def _emit_rc_alloc_container(
         b: ir.IRBuilder,
         container_ptr_type: ir.Type,
@@ -815,10 +834,26 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_clock_gettime(clock_id: int) -> tuple;
     def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _mt_ensure -> None;
     def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _ensure_bytearray_type -> ir.Type;
+    def _bytearray_runtime_fns -> dict;
+    def _bytearray_src_of(val: ir.Value) -> (tuple | None);
+    def _dispatch_bytearray_method(
+        method_name: str, recv: ir.Value, nd: uni.FuncCall
+    ) -> (ir.Value | None);
+
+    def _emit_struct_pack_into(
+        nd: uni.FuncCall,
+        params: list,
+        fields: list[tuple[str, int, bool]],
+        total: int,
+        little: bool
+    ) -> (ir.Value | None);
+
     def _emit_struct_pack(
         nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
     ) -> (ir.Value | None);
@@ -1057,6 +1092,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _split_call_kwargs(nd: uni.FuncCall) -> dict;
     def _gc_mode -> str;
     def _emit_rc_helpers -> None;
+    def _emit_str_len_helpers -> None;
+    def _emit_str_stamp_and_new -> None;
+    def _call_str_len(b: ir.IRBuilder, ptr: ir.Value, name: str = "s.len") -> ir.Value;
+    def _stamp_str_len(b: ir.IRBuilder, ptr: ir.Value, len_val: ir.Value) -> None;
     def _emit_rc_roots_globals -> None;
     def _emit_trace_fn(arch_name: str) -> None;
     def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
@@ -1124,6 +1163,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
     def _emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | None);
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
+    def _nogc_elem_drop_slot_ty -> ir.Type;
+    def _nogc_stamp_elem_drops(
+        cont: ir.Value | None, elem_mangles: list, family: str
+    ) -> None;
+
+    def _nogc_elem_prep(
+        expr: uni.UniNode | None, val: ir.Value | None
+    ) -> (ir.Value | None);
+
+    def _nogc_type_arg_mangles(expr: uni.UniNode | None) -> list;
     def _emit_arena_helpers -> None;
     def _register_region_handle_var(nd: uni.Assignment, var_name: str) -> None;
     def _region_alloc(size: ir.Value, name: str = "region.alloc") -> ir.Value;

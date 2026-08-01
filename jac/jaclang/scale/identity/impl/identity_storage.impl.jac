@@ -195,9 +195,9 @@ impl IdentityStorage.update_password(
     found = False;
     for cred in credentials {
         if cred.get('type') == 'password'
-        and IdentityStorage.verify_password(
-            current_password, cred.get('password_hash', '')
-        ) {
+            and IdentityStorage.verify_password(
+                current_password, cred.get('password_hash', '')
+            ) {
             found = True;
             break;
         }

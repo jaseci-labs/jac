@@ -1,15 +1,70 @@
 ---
 name: jac-native-wasm
-description: Running native-compiled Jac in the browser as WebAssembly - native code (inferred from extern-decl imports, or an explicit `na` block) compiled to /static/main.wasm by `jac start`, instantiated from a client page; `__jac_glob_init()`, BigInt i64 marshalling, externs-as-wasm-imports, the JS-side libc surface (malloc bump allocator, __multi3, WebAssembly.Module.imports introspection), and standalone `jac nacompile --target wasm32`. Load when building in-browser native compute: a game loop, simulation, or client-side hot loop. Pair with `jac-cl-components` (the page side) and `jac-native` (the native subset).
+description: Running native-compiled Jac in the browser as WebAssembly - the client->native import edge (client code imports a native Jac module; the build emits /static/<stem>.wasm and binds lazy async stubs), `set_na_env` for modules with app FFI, plus the raw mechanics underneath - `__jac_glob_init()`, BigInt i64 marshalling, externs-as-wasm-imports, WebAssembly.Module.imports introspection, and standalone `jac nacompile --target wasm32`. Load when building in-browser native compute: a game loop, simulation, or client-side hot loop. Pair with `jac-cl-components` (the page side) and `jac-native` (the native subset).
 ---
 
-The native codespace's second target: instead of a host binary, your module's native code compiles to **WebAssembly** and runs in the browser, driven by a client page - native-speed compute with no server round-trip. Jac's own wasm linker produces the module; no emscripten, no `wasm-ld`. Native placement is inferred from extern-decl imports (`import from raylib { def ... ; }`) and the code that uses them, so no marker is needed; pure compute with no FFI surface (like `count_primes` below) has nothing to infer from, so you pin it native with an explicit `na` block (see `jac-codespaces`).
+The native codespace's second target: instead of a host binary, your module's native code compiles to **WebAssembly** and runs in the browser, driven by a client page - native-speed compute with no server round-trip. Jac's own wasm linker produces the module; no emscripten, no `wasm-ld`. Native placement is inferred from extern-decl imports (`import from raylib { def ... ; }`) and the code that uses them; pure compute with no FFI surface (like `count_primes` below) has nothing to infer from, so you pin it native in `jac.toml` (`[placement.pins] "main.count_primes" = "native"`) or pin the kernel module native (see `jac-codespaces`).
+
+## The first-class path: importing a native module from client code
+
+Keep the native code in its own module - pin it native (or let an
+anchor-free kernel infer native) - and import it from client code with a plain
+import - the client -> native twin of the RPC bridge:
+
+```
+# host.jac (any client module)
+import from .kernel { count_primes }     # kernel.jac (native-placed) -> wasm edge
+
+async def show {
+    print(await count_primes(20000));    # lazy: first call fetches + instantiates
+}
+```
+
+What the one import does:
+
+- **Emission**: the client build compiles `kernel.jac` (a native dependency, so `pub` is its export marker) to
+  `/static/kernel.wasm` (+ a `.wasm.imports.json` manifest). The module needs
+  no other importer; `jac.toml [gc]` settings apply (e.g. `default = "none"`
+  for a zero-RC artifact).
+- **Binding**: each imported name becomes a generated async stub
+  (`__na_bind` in `@jac/wasm_host`) that instantiates the module on first
+  call and dispatches to its export - so calls are `await`ed, exactly like
+  client calls to server endpoints. `__jac_glob_init()` and BigInt marshalling
+  of the *stub-crossed scalars still apply* (an int return arrives as BigInt).
+- **Direction decides the crossing**: the same import written in *server*
+  code is the server -> native ctypes crossing and executes the module
+  server-side; written in client code it is the wasm edge and compiles to
+  nothing under Python. The edge claims only decidedly-native targets -
+  pinned `"native"`, already native-compiled, or carrying a real
+  native anchor (ownership annotations, clib extern decls); a plain `pub`
+  module with no anchor reads as a server endpoint and bridges over RPC
+  instead. The interop manifest records who calls what.
+
+If the native module declares app FFI (raylib-style extern decls), register
+the JS implementations before the first stub call; the shim object you pass
+receives `.exports`/`.mem` at instantiation for direct raw-export access:
+
+```
+import from "@jac/wasm_host" { set_na_env }
+
+import from .arena { init }              # arena.jac (native-placed)
+
+async def launch(shim: any, env_fns: dict) {
+    set_na_env("arena", shim, {"env": env_fns});   # stem, host shim, import object
+    game = await init();                           # instantiates, then calls the export
+}
+```
+
+A pure-computation module needs no `set_na_env` at all. Everything below is
+the raw mechanics underneath this edge - reach for it when hand-driving the
+instance (hot rAF loops on `shim.exports`), or when loading a
+`jac nacompile`-built module outside a Jac client app.
 
 ## One module, both halves
 
 ```jac
 # main.jac
-def count_primes(n: int) -> int {   # pure compute -> pin native with an na block (see jac-codespaces)
+def count_primes(n: int) -> int {   # pure compute -> pin native via [placement.pins] (see jac-codespaces)
     count = 0;
     i = 2;
     while i < n {
@@ -35,7 +90,7 @@ def:pub app -> JsxElement {
         wasm.__jac_glob_init();                        # REQUIRED before any other export
         answer = f"{wasm.count_primes(BigInt(20000))}";  # i64 param must be a BigInt
     }
-    return <div><p>{"primes below 20000: "}<b>{answer}</b></p></div>;
+    <div><p>{"primes below 20000: "}<b>{answer}</b></p></div>
 }
 ```
 

@@ -40,9 +40,8 @@ def _filter_type_name_by_code(key: _CodeKey) -> (str | None) {
     result: (str | None) = None;
     try {
         closure = inspect.getclosurevars(key.filt);
-        for val in `list(closure.nonlocals.values()) + `list(
-            closure.globals.values()
-        ) {
+        for val in `list(closure.nonlocals.values())
+            + `list(closure.globals.values()) {
             if isinstance(val, `type) and issubclass(val, Archetype) {
                 result = val.__name__;
                 break;

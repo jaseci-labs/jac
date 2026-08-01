@@ -115,7 +115,7 @@ def runtime_errors_py -> dict {
     return results;
 }
 
-cl def runtime_errors_cl -> dict {
+def runtime_errors_cl -> dict {
     results: dict = {};
 
     try {
@@ -359,139 +359,138 @@ def test_runtime_finally_py -> int {
     return result;
 }
 
-na {
-    def test_divzero_catch_exact_na -> int {
-        result: int = 0;
-        try {
-            x: float = 1 / 0;
-        } except ZeroDivisionError {
-            result = 1;
-        }
-        return result;
-    }
 
-    def test_divzero_catch_parent_na -> int {
-        result: int = 0;
-        try {
-            x: float = 1 / 0;
-        } except ArithmeticError {
-            result = 1;
-        }
-        return result;
+def test_divzero_catch_exact_na -> int {
+    result: int = 0;
+    try {
+        x: float = 1 / 0;
+    } except ZeroDivisionError {
+        result = 1;
     }
+    return result;
+}
 
-    def test_divzero_catch_grandparent_na -> int {
-        result: int = 0;
-        try {
-            x: float = 1 / 0;
-        } except Exception {
-            result = 1;
-        }
-        return result;
+def test_divzero_catch_parent_na -> int {
+    result: int = 0;
+    try {
+        x: float = 1 / 0;
+    } except ArithmeticError {
+        result = 1;
     }
+    return result;
+}
 
-    def test_divzero_wrong_handler_na -> int {
-        result: int = 0;
-        try {
-            try {
-                x: float = 1 / 0;
-            } except ValueError {
-                result = 1;
-            }
-        } except ArithmeticError {
-            result = 2;
-        }
-        return result;
+def test_divzero_catch_grandparent_na -> int {
+    result: int = 0;
+    try {
+        x: float = 1 / 0;
+    } except Exception {
+        result = 1;
     }
+    return result;
+}
 
-    def test_modulo_zero_na -> int {
-        result: int = 0;
-        try {
-            x: int = 5 % 0;
-        } except ArithmeticError {
-            result = 1;
-        }
-        return result;
-    }
-
-    def test_index_oob_catch_exact_na -> int {
-        result: int = 0;
-        items: list[int] = [10, 20, 30];
-        try {
-            x: int = items[99];
-        } except IndexError {
-            result = 1;
-        }
-        return result;
-    }
-
-    def test_index_oob_catch_parent_na -> int {
-        result: int = 0;
-        items: list[int] = [10, 20, 30];
-        try {
-            x: int = items[99];
-        } except LookupError {
-            result = 1;
-        }
-        return result;
-    }
-
-    def test_index_oob_catch_exception_na -> int {
-        result: int = 0;
-        items: list[int] = [10, 20, 30];
-        try {
-            x: int = items[99];
-        } except Exception {
-            result = 1;
-        }
-        return result;
-    }
-
-    def test_key_error_catch_exact_na -> int {
-        result: int = 0;
-        d: dict[str, int] = {"a": 1};
-        try {
-            x: int = d["z"];
-        } except KeyError {
-            result = 1;
-        }
-        return result;
-    }
-
-    def test_key_error_catch_parent_na -> int {
-        result: int = 0;
-        d: dict[str, int] = {"a": 1};
-        try {
-            x: int = d["z"];
-        } except LookupError {
-            result = 1;
-        }
-        return result;
-    }
-
-    def test_multi_handler_runtime_na -> int {
-        result: int = 0;
+def test_divzero_wrong_handler_na -> int {
+    result: int = 0;
+    try {
         try {
             x: float = 1 / 0;
         } except ValueError {
             result = 1;
-        } except ArithmeticError {
-            result = 2;
-        } except Exception {
-            result = 3;
         }
-        return result;
+    } except ArithmeticError {
+        result = 2;
     }
+    return result;
+}
 
-    def test_runtime_finally_na -> int {
-        result: int = 0;
-        try {
-            x: float = 1 / 0;
-        } except ZeroDivisionError {
-            result = result + 1;
-        } finally {
-            result = result + 10;
-        }
-        return result;
+def test_modulo_zero_na -> int {
+    result: int = 0;
+    try {
+        x: int = 5 % 0;
+    } except ArithmeticError {
+        result = 1;
     }
+    return result;
+}
+
+def test_index_oob_catch_exact_na -> int {
+    result: int = 0;
+    items: list[int] = [10, 20, 30];
+    try {
+        x: int = items[99];
+    } except IndexError {
+        result = 1;
+    }
+    return result;
+}
+
+def test_index_oob_catch_parent_na -> int {
+    result: int = 0;
+    items: list[int] = [10, 20, 30];
+    try {
+        x: int = items[99];
+    } except LookupError {
+        result = 1;
+    }
+    return result;
+}
+
+def test_index_oob_catch_exception_na -> int {
+    result: int = 0;
+    items: list[int] = [10, 20, 30];
+    try {
+        x: int = items[99];
+    } except Exception {
+        result = 1;
+    }
+    return result;
+}
+
+def test_key_error_catch_exact_na -> int {
+    result: int = 0;
+    d: dict[str, int] = {"a": 1};
+    try {
+        x: int = d["z"];
+    } except KeyError {
+        result = 1;
+    }
+    return result;
+}
+
+def test_key_error_catch_parent_na -> int {
+    result: int = 0;
+    d: dict[str, int] = {"a": 1};
+    try {
+        x: int = d["z"];
+    } except LookupError {
+        result = 1;
+    }
+    return result;
+}
+
+def test_multi_handler_runtime_na -> int {
+    result: int = 0;
+    try {
+        x: float = 1 / 0;
+    } except ValueError {
+        result = 1;
+    } except ArithmeticError {
+        result = 2;
+    } except Exception {
+        result = 3;
+    }
+    return result;
+}
+
+def test_runtime_finally_na -> int {
+    result: int = 0;
+    try {
+        x: float = 1 / 0;
+    } except ZeroDivisionError {
+        result = result + 1;
+    } finally {
+        result = result + 10;
+    }
+    return result;
 }

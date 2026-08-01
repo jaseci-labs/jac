@@ -25,19 +25,19 @@ def:pub bulk_update(items: list[SearchFilter]) -> int {
     return len(items);
 }
 
-cl {
-    sv import from .typed_args_obj { search, bulk_update }
 
-    def:pub app -> JsxElement {
-        has results: any = None;
+import from .typed_args_obj { search, bulk_update }
 
-        async def doSearch(query: str) -> None {
-            filter = SearchFilter(query=query, max_results=20);
-            results = await search(filter);
-        }
+def:pub app -> JsxElement {
+    has results: any = None;
 
-        return <div>
+    async def doSearch(query: str) -> None {
+        filter = SearchFilter(query=query, max_results=20);
+        results = await search(filter);
+    }
+
+    return
+        <div>
             <span>Found {results.total_count} items</span>
         </div>;
-    }
 }

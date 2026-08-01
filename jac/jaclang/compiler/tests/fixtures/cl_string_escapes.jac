@@ -21,10 +21,11 @@ def escapes_py() -> dict {
         "unicode": "café",
         "mixed": "line1\nline2\tend\\done",
         "concat": "a\nb" "c\td",
+
     };
 }
 
-cl def escapes_cl() -> dict {
+def escapes_cl() -> dict {
     return {
         "newline": "x\ny",
         "tab": "a\tb",
@@ -36,20 +37,21 @@ cl def escapes_cl() -> dict {
         "unicode": "café",
         "mixed": "line1\nline2\tend\\done",
         "concat": "a\nb" "c\td",
+
     };
 }
 
-na {
-    def escapes_na() -> dict[str, any] {
-        return {
-            "newline": "x\ny",
-            "tab": "a\tb",
-            "carriage": "a\rb",
-            "backslash": "c:\\path",
-            "dquote": "say \"hi\"",
-            "squote": 'it\'s',
-            "mixed": "line1\nline2\tend\\done",
-            "concat": "a\nb" "c\td",
-        };
-    }
+
+def escapes_na() -> dict[str, any] {
+    return {
+        "newline": "x\ny",
+        "tab": "a\tb",
+        "carriage": "a\rb",
+        "backslash": "c:\\path",
+        "dquote": "say \"hi\"",
+        "squote": 'it\'s',
+        "mixed": "line1\nline2\tend\\done",
+        "concat": "a\nb" "c\td",
+
+    };
 }

@@ -54,15 +54,8 @@ def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
         base = s[:s.index("[")].strip();
         inner = s[s.index("[") + 1:-1];
         args = [a.strip() for a in _split_top(inner, ",")];
-        if base in (
-            "list",
-            "List",
-            "Sequence",
-            "Iterable",
-            "set",
-            "Set",
-            "frozenset"
-        ) {
+        if base
+            in ("list", "List", "Sequence", "Iterable", "set", "Set", "frozenset") {
             elem = _map_type(args[0], False, ts) if args and args[0] else any_t;
             return f"Array<{elem}>";
         }
@@ -191,9 +184,9 @@ impl inject_jsdoc(js: str, blocks: dict[str, str]) -> str {
     out = js;
     for (name, block) in blocks.items() {
         pattern = re.compile(
-            r"(?m)^([ \t]*)((?:export\s+)?(?:async\s+)?(?:function|class)\s+" + re.escape(
-                name
-            ) + r"\b)"
+            r"(?m)^([ \t]*)((?:export\s+)?(?:async\s+)?(?:function|class)\s+"
+                + re.escape(name)
+                + r"\b)"
         );
 
         def _repl(m: any) -> str {

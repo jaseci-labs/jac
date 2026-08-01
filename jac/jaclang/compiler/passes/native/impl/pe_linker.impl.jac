@@ -163,10 +163,10 @@ impl PeLinker.build_executable -> bytes {
     imp_bases: list[str] = [];
     for s in self.symbols {
         if s is not None
-        and s.sec_num == 0
-        and s.storage_class == SYM_CLASS_EXTERNAL
-        and s.name
-        and s.weak_tag < 0 {
+            and s.sec_num == 0
+            and s.storage_class == SYM_CLASS_EXTERNAL
+            and s.name
+            and s.weak_tag < 0 {
             if s.name.startswith("__imp_") {
                 _base = s.name[6:];
                 if _base and _base not in imp_bases {
@@ -369,8 +369,8 @@ impl PeLinker.build_executable -> bytes {
             if s.sec_num == 0 and s.name in thunk_off {
                 trva = text_rva + thunk_off[s.name];
             } elif s.sec_num == 0
-            and s.name.startswith("__imp_")
-            and s.name[6:] in sym_iat_va {
+                and s.name.startswith("__imp_")
+                and s.name[6:] in sym_iat_va {
                 trva = sym_iat_va[s.name[6:]] - IMAGE_BASE;
             } elif s.sec_num == 0 and s.name in extern_data {
                 raise ValueError(
@@ -620,10 +620,10 @@ impl PeLinker.build_shared_object -> bytes {
     extern_funcs: list[str] = [];
     for s in self.symbols {
         if s is not None
-        and s.sec_num == 0
-        and s.storage_class == SYM_CLASS_EXTERNAL
-        and s.name
-        and s.weak_tag < 0 {
+            and s.sec_num == 0
+            and s.storage_class == SYM_CLASS_EXTERNAL
+            and s.name
+            and s.weak_tag < 0 {
             if s.name not in extern_funcs {
                 extern_funcs.append(s.name);
             }
@@ -703,7 +703,7 @@ impl PeLinker.build_shared_object -> bytes {
     has_reloc = False;
     for rel in self.relocations {
         if (rel.rtype == REL_ADDR64 or rel.rtype == REL_ADDR32)
-        and sec_seg.get(rel.target_sec) is not None {
+            and sec_seg.get(rel.target_sec) is not None {
             has_reloc = True;
             break;
         }

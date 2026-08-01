@@ -14,7 +14,12 @@ import from pathlib { Path }
 # sys.path before the bare imports below resolve. Top-level statements run in
 # source order, so this entry block puts it on the path before the imports.
 glob _plugin_dir = str(
-         Path(jaclang.__file__).parent / "runtimelib" / "client" / "targets" / "desktop" / "plugin"
+         Path(jaclang.__file__).parent
+             / "runtimelib"
+             / "client"
+             / "targets"
+             / "desktop"
+             / "plugin"
      );
 
 with entry {

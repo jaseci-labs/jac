@@ -508,19 +508,20 @@ test "walker purger" {
             args=[]
         );
         output = capture_get(captured).strip();
-        assert output == (
-            "Root()\n"
-            "A(id=0)\nA(id=1)\n"
-            "B(id=0)\nB(id=1)\nB(id=0)\nB(id=1)\n"
-            "C(id=0)\nC(id=1)\nC(id=0)\nC(id=1)\nC(id=0)\nC(id=1)\nC(id=0)\nC(id=1)\n"
-            "D(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\n"
-            "D(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\n"
-            "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
-            "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
-            "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
-            "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
-            "125\n124"
-        );
+        assert output
+            == (
+                "Root()\n"
+                "A(id=0)\nA(id=1)\n"
+                "B(id=0)\nB(id=1)\nB(id=0)\nB(id=1)\n"
+                "C(id=0)\nC(id=1)\nC(id=0)\nC(id=1)\nC(id=0)\nC(id=1)\nC(id=0)\nC(id=1)\n"
+                "D(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\n"
+                "D(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\nD(id=0)\nD(id=1)\n"
+                "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
+                "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
+                "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
+                "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
+                "125\n124"
+            );
         captured = capture_start();
         execution.enter(
             filename=os.path.join(FIXTURES, "graph_purger.jac"),
@@ -755,11 +756,12 @@ test "savable object" {
         prints = capture_get(captured).strip().split("\n");
         id = prints[0];
 
-        assert prints[1] == (
-            "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
-            "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
-            "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-        ) , f"create printed: {prints!r}";
+        assert prints[1]
+            == (
+                "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
+                "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
+                "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
+            ) , f"create printed: {prints!r}";
 
         captured = capture_start();
 
@@ -800,11 +802,12 @@ test "savable object" {
         );
 
         got = capture_get(captured).strip();
-        assert got == (
-            "SavableObject(val=1, arr=[1], json={'a': 1}, parent=Parent(val=2, arr=[1, 2], json"
-            "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>, child=Child(val=3, arr=[1, 2, 3], json"
-            "={'a': 1, 'b': 2, 'c': 3}, enum_field=<Enum.A: 'a'>)), enum_field=<Enum.B: 'b'>)"
-        ) , f"update printed: {got!r}";
+        assert got
+            == (
+                "SavableObject(val=1, arr=[1], json={'a': 1}, parent=Parent(val=2, arr=[1, 2], json"
+                "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>, child=Child(val=3, arr=[1, 2, 3], json"
+                "={'a': 1, 'b': 2, 'c': 3}, enum_field=<Enum.A: 'a'>)), enum_field=<Enum.B: 'b'>)"
+            ) , f"update printed: {got!r}";
 
         captured = capture_start();
 
@@ -845,15 +848,16 @@ test "traversing save" {
             args=[]
         );
 
-        assert capture_get(captured).strip() == (
-            "digraph {\n"
-            "node [style=\"filled\", shape=\"ellipse\", fillcolor=\"invis\", fontcolor=\"black\"];\n"
-            "0 -> 1 [label=\"\"];\n"
-            "1 -> 2 [label=\"\"];\n"
-            "0 [label=\"Root()\"fillcolor=\"#FFE9E9\"];\n"
-            "1 [label=\"A()\"fillcolor=\"#F0FFF0\"];\n"
-            "2 [label=\"B()\"fillcolor=\"#F5E5FF\"];\n}"
-        );
+        assert capture_get(captured).strip()
+            == (
+                "digraph {\n"
+                "node [style=\"filled\", shape=\"ellipse\", fillcolor=\"invis\", fontcolor=\"black\"];\n"
+                "0 -> 1 [label=\"\"];\n"
+                "1 -> 2 [label=\"\"];\n"
+                "0 [label=\"Root()\"fillcolor=\"#FFE9E9\"];\n"
+                "1 [label=\"A()\"fillcolor=\"#F0FFF0\"];\n"
+                "2 [label=\"B()\"fillcolor=\"#F5E5FF\"];\n}"
+            );
     } finally {
         Jac.set_base_path(_orig_base);
         shutil.rmtree(_tmpdir, ignore_errors=True);

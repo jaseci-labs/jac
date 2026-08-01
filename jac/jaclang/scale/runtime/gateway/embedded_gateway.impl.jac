@@ -71,7 +71,7 @@ impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
 
             if resolved.is_relative_to(dist.resolve()) and resolved.is_file() {
                 ctype: str = mimetypes.guess_type(str(resolved))[0]
-                or "application/octet-stream";
+                    or "application/octet-stream";
                 return Response(content=resolved.read_bytes(), media_type=ctype);
             }
         } except OSError {

@@ -106,7 +106,7 @@ def micro_suite_combined_test(rel_path: str) -> None {
             before_fmt = ast3.dump(code_gen.gen.py_ast[0], indent=2);
             after_fmt = ast3.dump(code_gen_fmt.gen.py_ast[0], indent=2);
             assert isinstance(code_gen, uni.Module)
-            and isinstance(code_gen_fmt, uni.Module) , "Parsed objects are not modules.";
+                and isinstance(code_gen_fmt, uni.Module) , "Parsed objects are not modules.";
             diff = "\n".join(
                 unified_diff(before_fmt.splitlines(), after_fmt.splitlines())
             );

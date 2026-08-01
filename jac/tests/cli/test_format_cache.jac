@@ -273,9 +273,10 @@ test "schema version is namespaced so old entries cannot be misread" {
         key = cache.make_key(b"x", lintfix=False, config_fingerprint="cfg");
         cache.mark_clean(key);
         # The entry lives under a version-namespaced subtree.
-        assert FORMAT_CACHE_SCHEMA_VERSION in str(
-            cache.entry_path(key).relative_to(d)
-        ) , (f"cache path must carry the schema version; got {cache.entry_path(key)}");
+        assert FORMAT_CACHE_SCHEMA_VERSION
+            in str(cache.entry_path(key).relative_to(d)) , (
+            f"cache path must carry the schema version; got {cache.entry_path(key)}"
+        );
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }

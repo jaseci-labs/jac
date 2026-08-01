@@ -136,7 +136,8 @@ class StorageFactory {
                 storage_config["public_read"] = public_env.lower() == "true";
             }
             if (
-                resolved_project := resolve_firebase_project_id(
+                resolved_project
+                := resolve_firebase_project_id(
                     [
                         f"JAC_STORAGE_{env_prefix}_PROJECT_ID",
                         f"JAC_STORAGE_{other_prefix}_PROJECT_ID",

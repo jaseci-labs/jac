@@ -29,7 +29,7 @@ import from jaclang.compiler.passes.native.wasm_host_abi {
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
-     FIXTURE = "wasm_host_probe.na.jac";
+     FIXTURE = "wasm_host_probe.jac";
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 def _require_libc {
@@ -191,4 +191,205 @@ console.log(`out=${JSON.stringify(out)} compute=${c}`);
     # float repr, alloc-churning concat, and str.lower all format in-module and
     # arrive through jac_host1.write — the exact #7048 breakage surface.
     assert last == 'out="3.14\\n11\\nup\\n" compute=21' , f"unexpected: {last}";
+}
+
+# ─── stale-floor detection ───────────────────────────────────────────────────
+# The vendored bitcode is a build artifact with no recorded link to
+# wasm_rt/*.c. When an adapter is added to jac_abi64.c and the floor is not
+# rebuilt, the rename in _link_wasm_libc emits __jac64_<name> against a libc
+# that never defined it, and the failure used to surface much later in the
+# linker as "compiler drift ... add it to wasm_rt or to wasm_host_abi.jac" --
+# advice that is wrong twice over (it IS in wasm_rt, and the host ABI is
+# syscalls only). These pin the two guards that now catch it up front.
+test "abi64 adapter gap is reported against the floor, not the app" {
+    _require_libc();
+    src = _wasm_libc_dir();
+    d = tempfile.mkdtemp();
+    floor = os.path.join(d, "libc");
+    shutil.copytree(src, floor);
+    # Drop the one object carrying the __jac64_* widening adapters, leaving an
+    # otherwise complete floor: exactly the shape of a pre-adapter build.
+    abi = os.path.join(floor, "jac_abi64.bc");
+    if not os.path.exists(abi) {
+        pytest.skip("floor has no jac_abi64.bc to remove");
+    }
+    os.remove(abi);
+    merged = os.path.join(floor, "_merged.bc");
+    if os.path.exists(merged) {
+        os.remove(merged);
+    }
+    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
+    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = floor;
+    try {
+        with pytest.raises(RuntimeError) as ei {
+            emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        }
+        msg = str(ei.value);
+        assert "is stale" in msg , msg;
+        assert "__jac64_" in msg , msg;
+        # Names the floor, never tells the reader to touch the host ABI.
+        assert floor in msg , msg;
+        assert "wasm_host_abi" not in msg , msg;
+    } finally {
+        if prev is None {
+            del os.environ["JAC_NATIVE_WASM_LIBC_DIR"];
+        } else {
+            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
+        }
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+test "every adapted libc name has a floor adapter" {
+    _require_libc();
+    import from jaclang.compiler.passes.native.wasm_build {
+        _ABI64_ADAPTED,
+        _wasm_rt_src_dir
+    }
+    src = os.path.join(_wasm_rt_src_dir(), "jac_abi64.c");
+    text = Path(src).read_text();
+    missing = sorted(
+        [
+            nm
+            for nm in _ABI64_ADAPTED
+            if ("__jac64_" + nm) not in text
+        ]
+    );
+    assert not missing , f"_ABI64_ADAPTED names with no adapter in jac_abi64.c: {missing}";
+}
+
+"""The built floor, not just its C source, defines every adapted symbol.
+
+This is the check that was missing when #7149 added __jac64_realloc: the
+source test above passed, the fixtures linked (none of them reached realloc),
+and the gap only showed up in a user's project. Scanning the bitcode catches a
+floor compiled from an older tree no matter what any fixture happens to call.
+"""
+test "the built floor defines every abi64 adapter" {
+    _require_libc();
+    import from jaclang.compiler.passes.native.wasm_build { _ABI64_ADAPTED }
+    libc_dir = _wasm_libc_dir();
+    blobs = [
+        Path(os.path.join(libc_dir, f)).read_bytes()
+        for f in os.listdir(libc_dir)
+        if f.endswith(".bc")
+    ];
+    assert blobs , f"no bitcode in {libc_dir}";
+    missing = [];
+    for nm in sorted(_ABI64_ADAPTED) {
+        needle = ("__jac64_" + nm).encode();
+        if not any([needle in b for b in blobs]) {
+            missing.append(nm);
+        }
+    }
+    assert not missing , f"floor at {libc_dir} defines no adapter for {missing}; rebuild it with `zig build vendor-wasm-libc`";
+}
+
+# ─── source-manifest verification ────────────────────────────────────────────
+# The adapter and import checks are symbol-presence checks: a floor whose
+# jac_alloc.c changed behaviour but kept its symbols links cleanly and ships
+# the old code. SOURCES.sha256 is what closes that, and it is the same file
+# the payload tool uses as its incremental-rebuild key.
+test "a floor built from different wasm_rt sources is refused" {
+    _require_libc();
+    import from jaclang.compiler.passes.native.wasm_build { FLOOR_MANIFEST }
+    src = _wasm_libc_dir();
+    if not os.path.isfile(os.path.join(src, FLOOR_MANIFEST)) {
+        pytest.skip("floor predates SOURCES.sha256");
+    }
+    d = tempfile.mkdtemp();
+    floor = os.path.join(d, "libc");
+    shutil.copytree(src, floor);
+    # Rewrite one entry's digest rather than editing the real tree: the check
+    # compares recorded bytes against what is on disk, so a wrong record is
+    # indistinguishable from a source that moved underneath the floor.
+    man = os.path.join(floor, FLOOR_MANIFEST);
+    rows = Path(man).read_text().splitlines();
+    patched = [];
+    hit = "";
+    for row in rows {
+        if row.endswith(" jac_alloc.c") and not hit {
+            hit = "jac_alloc.c";
+            patched.append(("0" * 64) + " jac_alloc.c");
+        } else {
+            patched.append(row);
+        }
+    }
+    assert hit , "manifest has no jac_alloc.c entry";
+    Path(man).write_text("\n".join(patched) + "\n");
+
+    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
+    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = floor;
+    try {
+        with pytest.raises(RuntimeError) as ei {
+            emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        }
+        msg = str(ei.value);
+        assert "different wasm_rt sources" in msg , msg;
+        assert "jac_alloc.c" in msg , msg;
+    } finally {
+        if prev is None {
+            del os.environ["JAC_NATIVE_WASM_LIBC_DIR"];
+        } else {
+            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
+        }
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+"""A floor with no manifest is unverifiable, not wrong: older artifacts and
+hand-built floors must keep working rather than hard-fail on a missing file."""
+test "a floor without a manifest still links" {
+    _require_libc();
+    import from jaclang.compiler.passes.native.wasm_build { FLOOR_MANIFEST }
+    src = _wasm_libc_dir();
+    d = tempfile.mkdtemp();
+    floor = os.path.join(d, "libc");
+    shutil.copytree(src, floor);
+    man = os.path.join(floor, FLOOR_MANIFEST);
+    if os.path.exists(man) {
+        os.remove(man);
+    }
+    prev = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", None);
+    os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = floor;
+    try {
+        mod = emit_wasm_from_ir(fixture_ir(), [], app_imports=set());
+        assert mod and len(mod) > 0;
+    } finally {
+        if prev is None {
+            del os.environ["JAC_NATIVE_WASM_LIBC_DIR"];
+        } else {
+            os.environ["JAC_NATIVE_WASM_LIBC_DIR"] = prev;
+        }
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+"""[gc] default = "none" promises an RC-free artifact; the audit is what makes
+compile_to_wasm fail loudly instead of shipping RC machinery the shim then has
+to service. Pure-IR checks -- no vendored libc needed."""
+test "rc audit passes clean IR and rejects rc machinery" {
+    import from jaclang.compiler.passes.native.wasm_build { _assert_ir_rc_free }
+    _assert_ir_rc_free("define void @jac_entry() {\nret void\n}", "clean.jac");
+    dirty = "declare void @__rc_retain(ptr)\ndefine void @jac_entry() {\nret void\n}";
+    raised = False;
+    try {
+        _assert_ir_rc_free(dirty, "dirty.jac");
+    } except RuntimeError as e {
+        raised = True;
+        assert "__rc_retain" in str(e);
+    }
+    assert raised;
+}
+
+test "rc audit rejects entry-point gc env probes" {
+    import from jaclang.compiler.passes.native.wasm_build { _assert_ir_rc_free }
+    probing = '@.s = constant [10 x i8] c"JAC_NO_GC\\00"';
+    raised = False;
+    try {
+        _assert_ir_rc_free(probing, "probe.jac");
+    } except RuntimeError {
+        raised = True;
+    }
+    assert raised;
 }

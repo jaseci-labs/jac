@@ -86,7 +86,7 @@ def _run(
         with unittest.mock.patch.object(
             kubernetes.client, "CoreV1Api", return_value=core
         ) {
-            with unittest.mock.patch.object(target, "_load_kube_config") {
+            with unittest.mock.patch.object(target, "_load_cluster_config") {
                 with unittest.mock.patch.object(time, "sleep") {
                     try {
                         target._wait_for_fleet_rollout(bundle, timeout=timeout);

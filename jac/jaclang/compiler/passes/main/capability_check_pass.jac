@@ -1,5 +1,6 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
 import from jaclang.jac0core.codeinfo { NATIVE_SUPPORTED_STDLIB }
 
@@ -26,6 +27,7 @@ obj PortabilityWarnPass(Transform[uni.Module, uni.Module]) {
     def transform(ir_in: uni.Module) -> uni.Module;
     def _check_js_globals(mod: uni.Module) -> None;
     def _check_js_methods(mod: uni.Module) -> None;
+    def _find_call_is_js_style(call: uni.FuncCall) -> bool;
     def _check_js_keywords(mod: uni.Module) -> None;
     def _check_js_properties(mod: uni.Module) -> None;
 }

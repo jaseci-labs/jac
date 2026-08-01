@@ -9,7 +9,7 @@ closures, and free defs all observe the same module state as CPython.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
@@ -19,10 +19,12 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -39,7 +41,7 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
 }
 
 test "entry globals: lambda reads an entry-assigned name late-bound" {
-    (eng, _) = compile_native("entry_globals.na.jac");
+    (eng, _) = compile_native("entry_globals.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     n = get_func(eng, "acc_len", ctypes.c_int64);
@@ -50,7 +52,7 @@ test "entry globals: lambda reads an entry-assigned name late-bound" {
 }
 
 test "entry globals: a free def reads entry-assigned module state" {
-    (eng, _) = compile_native("entry_globals.na.jac");
+    (eng, _) = compile_native("entry_globals.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "read_k", ctypes.c_int64);

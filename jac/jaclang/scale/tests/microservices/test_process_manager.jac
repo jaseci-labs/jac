@@ -7,6 +7,45 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 import from jaclang.scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 
+"""Start a real HTTP health endpoint on a free port.
+
+The server answers every GET with `srv.health_code` (toggle it live to flip a
+service between healthy 200 and unhealthy 503) and counts requests in
+`srv.request_count`. Returns the server; use `_health_url(srv)` for its base URL
+and `srv.shutdown(); srv.server_close()` to kill it.
+"""
+def _serve_health(code: int = 200) -> any {
+    import http.server;
+    import threading;
+
+    def _do_get(handler_self: any) {
+        handler_self.server.request_count += 1;
+        status = handler_self.server.health_code;
+        handler_self.send_response(status);
+        handler_self.send_header("Content-Type", "text/plain");
+        handler_self.end_headers();
+        handler_self.wfile.write(b"ok");
+    }
+
+    def _log_quiet(handler_self: any, fmt: str, *args: any) { }
+
+    handler_cls = type(
+        "_HealthHandler",
+        (http.server.BaseHTTPRequestHandler, ),
+        {"do_GET": _do_get, "log_message": _log_quiet}
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls);
+    srv.health_code = code;
+    srv.request_count = 0;
+    t = threading.Thread(target=srv.serve_forever, daemon=True);
+    t.start();
+    return srv;
+}
+
+def _health_url(srv: any) -> str {
+    return f"http://127.0.0.1:{srv.server_address[1]}";
+}
+
 test "auto assigns hash-based ports in 18000-18999 range" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
@@ -221,34 +260,41 @@ test "start service passes the registry's subdir file path to jac start" {
 }
 
 test "check all health marks a dead managed process STOPPED without HTTP polling" {
-    reg = ServiceRegistry();
-    reg.register(
-        ServiceEntry(
-            name="orders",
-            file="orders.jac",
-            prefix="/orders",
-            port=8001,
-            url="http://127.0.0.1:8001",
-            status=ServiceStatus.STARTING
-        )
-    );
-    pm = ServiceProcessManager(registry=reg);
+    srv = _serve_health(200);
+    try {
+        reg = ServiceRegistry();
+        reg.register(
+            ServiceEntry(
+                name="orders",
+                file="orders.jac",
+                prefix="/orders",
+                port=8001,
+                url=_health_url(srv),
+                status=ServiceStatus.STARTING
+            )
+        );
+        pm = ServiceProcessManager(registry=reg);
 
-    dead_proc = unittest.mock.MagicMock();
-    dead_proc.pid = 12345;
-    dead_proc.poll = unittest.mock.MagicMock(return_value=1);
-    pm.processes["orders"] = dead_proc;
+        dead_proc = unittest.mock.MagicMock();
+        dead_proc.pid = 12345;
+        dead_proc.poll = unittest.mock.MagicMock(return_value=1);
+        pm.processes["orders"] = dead_proc;
 
-    with unittest.mock.patch.object(pm, "check_health") as hc {
         results = pm.check_all_health();
-    }
 
-    assert reg.entries["orders"].status == ServiceStatus.STOPPED , (
-        f"a dead child can never become healthy; status must be STOPPED, "
-        f"got {reg.entries['orders'].status}"
-    );
-    assert results["orders"] == False;
-    hc.assert_not_called();
+        assert reg.entries["orders"].status == ServiceStatus.STOPPED , (
+            f"a dead child can never become healthy; status must be STOPPED, "
+            f"got {reg.entries['orders'].status}"
+        );
+        assert results["orders"] == False;
+        assert srv.request_count == 0 , (
+            f"a dead child must not be HTTP-polled, the live 200 endpoint saw "
+            f"{srv.request_count} requests"
+        );
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
 }
 
 test "check all health reports a dead process once, not every poll" {
@@ -279,9 +325,8 @@ test "check all health reports a dead process once, not every poll" {
         exit_reports = [
             c
             for c in (
-                list(fake_log.warning.call_args_list) + list(
-                    fake_log.error.call_args_list
-                )
+                list(fake_log.warning.call_args_list)
+                + list(fake_log.error.call_args_list)
             )
             if "exited" in str(c)
         ];
@@ -306,11 +351,19 @@ test "check all health marks service unhealthy after max failures" {
 
     pm = ServiceProcessManager(registry=reg, _max_failures=2);
 
-    with unittest.mock.patch.object(pm, "check_health", return_value=False) {
+    srv = _serve_health(503);
+    reg.entries["orders"].url = _health_url(srv);
+    try {
         pm.check_all_health();
         assert reg.entries["orders"].status != ServiceStatus.UNHEALTHY;
         pm.check_all_health();
         assert reg.entries["orders"].status == ServiceStatus.UNHEALTHY;
+        assert srv.request_count == 2 , (
+            f"each poll must hit the real endpoint, got {srv.request_count}"
+        );
+    } finally {
+        srv.shutdown();
+        srv.server_close();
     }
 }
 
@@ -328,16 +381,20 @@ test "check all health resets failure count on success" {
 
     pm = ServiceProcessManager(registry=reg, _max_failures=3);
 
-    with unittest.mock.patch.object(pm, "check_health", return_value=False) {
+    srv = _serve_health(503);
+    reg.entries["orders"].url = _health_url(srv);
+    try {
         pm.check_all_health();
-    }
-    assert pm._failure_counts["orders"] == 1;
+        assert pm._failure_counts["orders"] == 1;
 
-    with unittest.mock.patch.object(pm, "check_health", return_value=True) {
+        srv.health_code = 200;
         pm.check_all_health();
+        assert pm._failure_counts["orders"] == 0;
+        assert reg.entries["orders"].status == ServiceStatus.HEALTHY;
+    } finally {
+        srv.shutdown();
+        srv.server_close();
     }
-    assert pm._failure_counts["orders"] == 0;
-    assert reg.entries["orders"].status == ServiceStatus.HEALTHY;
 }
 
 test "restart stops then starts service" {

@@ -15,28 +15,19 @@ def alias_retain_py -> dict {
 }
 
 
-cl def alias_retain_cl -> dict {
+def alias_retain_cl -> dict {
     return {};
 }
 
 
-na {
-    def len_probe_na(val: any) -> int {
-        d: dict[str, any] = val;
-        return len(d);
-    }
+def len_probe_na(val: any) -> int {
+    d: dict[str, any] = val;
+    return len(d);
+}
 
-    def alias_retain_na -> dict[str, any] {
-        payload: dict[str, any] = {};
-        payload["n"] = 42;
-        pa: any = payload;
-        return {
-            "a": 1,
-            "b": 2,
-            "c": 3,
-            "d": 4,
-            "e": 5,
-            "len_thru_alias": len_probe_na(pa)
-        };
-    }
+def alias_retain_na -> dict[str, any] {
+    payload: dict[str, any] = {};
+    payload["n"] = 42;
+    pa: any = payload;
+    return {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "len_thru_alias": len_probe_na(pa)};
 }

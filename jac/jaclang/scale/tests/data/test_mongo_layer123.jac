@@ -5,8 +5,8 @@ import redis;
 import from typing { cast }
 import from uuid { uuid4, UUID }
 import from pymongo { MongoClient }
-import from testcontainers.mongodb { MongoDbContainer }
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
+import from testcontainers.community.redis { RedisContainer }
 
 import from jaclang.jac0core.archetype {
     Anchor,
@@ -684,7 +684,7 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
     reloaded_edges = cast(NodeAnchor, reloaded).edges;
     edge_ids = [str(e.id) if e?.id else str(e) for e in reloaded_edges];
     assert fake_edge_id in edge_ids
-    or any(fake_edge_id in str(e) for e in reloaded_edges) , (
+        or any(fake_edge_id in str(e) for e in reloaded_edges) , (
         f"added edge must appear in reloaded anchor's edges; got: {reloaded_edges}"
     );
 

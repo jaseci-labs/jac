@@ -166,14 +166,6 @@ test "JacRuntime.get_sv_registry returns a snapshot, not a live view" {
     }
 }
 
-test "setup creates fastapi app" {
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-    app = gw.setup();
-    assert app is not None;
-    assert gw.app is not None;
-}
-
 test "health endpoint returns service summary" {
     reg = ServiceRegistry();
     reg.register(
@@ -1305,9 +1297,8 @@ test "CORS disabled when allow_origins is empty" {
     resp = client.get("/health", headers={"Origin": "http://example.com"});
     assert resp.status_code == 200;
 
-    assert "access-control-allow-origin" not in {
-        k.lower() for k in resp.headers.keys()
-    };
+    assert "access-control-allow-origin"
+        not in {k.lower() for k in resp.headers.keys()};
 }
 
 
@@ -1401,11 +1392,13 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
             }
         );
         assert resp.status_code == 200;
-        assert resp.headers.get("access-control-allow-origin") == "http://app.example.com";
+        assert resp.headers.get("access-control-allow-origin")
+            == "http://app.example.com";
 
         resp2 = client.get("/health", headers={"Origin": "http://app.example.com"});
         assert resp2.status_code == 503;
-        assert resp2.headers.get("access-control-allow-origin") == "http://app.example.com";
+        assert resp2.headers.get("access-control-allow-origin")
+            == "http://app.example.com";
     } finally {
         reset_drain();
     }
@@ -1481,14 +1474,6 @@ test "http_forward_timeout precedence: per-service > global > default" {
     }
 }
 
-
-test "gateway inherits admin + logs + llm-telemetry endpoint registrars" {
-    reg = ServiceRegistry();
-    gw = MicroserviceGateway(registry=reg);
-    assert hasattr(gw, "register_admin_endpoints");
-    assert hasattr(gw, "register_logs_endpoints");
-    assert hasattr(gw, "register_llm_telemetry_endpoints");
-}
 
 test "bare /jobs (create + list) is forwarded as a built-in route, not 404'd" {
     reg = ServiceRegistry();

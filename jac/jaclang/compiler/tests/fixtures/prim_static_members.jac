@@ -68,23 +68,21 @@ def static_members_py() -> dict {
 }
 
 
-cl def static_members_cl() -> dict {
+def static_members_cl() -> dict {
     return {};
 }
 
 
-na {
-    def static_members_na() -> dict[str, any] {
-        p: Point = Point.at(3, 4);
-        return {
-            "shade": Color.shade(5),
-            "combine": Color.combine(1, 2),
-            "count": Color.count,
-            "label": Color.label,
-            "derived_tag": Derived.tag,
-            "derived_origin": Derived.origin(),
-            "factory_sum": p.sum(),
+def static_members_na() -> dict[str, any] {
+    p: Point = Point.at(3, 4);
+    return {
+        "shade": Color.shade(5),
+        "combine": Color.combine(1, 2),
+        "count": Color.count,
+        "label": Color.label,
+        "derived_tag": Derived.tag,
+        "derived_origin": Derived.origin(),
+        "factory_sum": p.sum(),
 
-        };
-    }
+    };
 }

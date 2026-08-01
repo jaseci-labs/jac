@@ -80,7 +80,7 @@ def collect_foreign_fns(modules: list) -> dict {
                     continue;
                 }
                 if decl.signature is None
-                or not isinstance(decl.signature, uni.FuncSignature) {
+                    or not isinstance(decl.signature, uni.FuncSignature) {
                     continue;
                 }
                 fname = decl.name_ref.sym_name if decl.name_ref else None;

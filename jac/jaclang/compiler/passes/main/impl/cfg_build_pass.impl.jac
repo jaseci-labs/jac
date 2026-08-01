@@ -72,8 +72,8 @@ impl CoalesceBBPass.printgraph_cfg -> str {
                         if isinstance(eb, uni.ElseIf) and out_head is eb {
                             label = ' [label="F"]';
                         } elif isinstance(eb, uni.ElseStmt)
-                        and eb.body
-                        and out_head is eb.body[0] {
+                            and eb.body
+                            and out_head is eb.body[0] {
                             label = ' [label="F"]';
                         }
                     }
@@ -119,7 +119,10 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
         return 'for ' + nd.target.unparse() + ' in ' + nd.collection.unparse();
     }
     if isinstance(nd, uni.IterForStmt) {
-        return 'for ' + nd.iter.unparse() + nd.condition.unparse() + nd.count_by.unparse();
+        return 'for '
+            + nd.iter.unparse()
+            + nd.condition.unparse()
+            + nd.count_by.unparse();
     }
 
     if isinstance(nd, uni.MatchStmt) {
@@ -294,9 +297,9 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
             has_bool_sc = isinstance(_unwrap_parens(prev.condition), uni.BoolExpr);
         }
         if has_else
-        and isinstance(
-            prev, (uni.IfStmt, uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
-        ) {
+            and isinstance(
+                prev, (uni.IfStmt, uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
+            ) {
             self._connect_tails(prev, next);
             if isinstance(prev, uni.IfStmt) {
                 empty_true = not prev.body;
@@ -457,7 +460,7 @@ impl CFGBuildPass._patch_inner_bool(
 
 impl CFGBuildPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     if isinstance(nd.parent, (uni.IfStmt, uni.WhileStmt, uni.ElseIf))
-    and nd is nd.parent.condition {
+        and nd is nd.parent.condition {
         return;
     }
     if len(nd.values) >= 2 {
@@ -555,8 +558,8 @@ impl _is_structural_child(nd: uni.UniNode) -> bool {
 impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
     import from jaclang.compiler.symbol_utils { collect_assigned_symbols }
     if isinstance(nd, (uni.CodeBlockStmt, uni.Archetype))
-    and not isinstance(nd, uni.Semi)
-    and not _is_structural_child(nd) {
+        and not isinstance(nd, uni.Semi)
+        and not _is_structural_child(nd) {
         nd.affected_symbols.update(collect_assigned_symbols(nd));
     }
 
@@ -737,7 +740,7 @@ impl CFGBuildPass._wire_compr_filters(
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.Assignment)) {
+            and not isinstance(encl, (uni.InnerCompr, uni.Assignment)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }

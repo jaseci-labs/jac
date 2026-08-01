@@ -11,7 +11,9 @@ impl QueryPlan.is_trivial -> bool {
 impl QueryPlan.needs -> set[str] {
     needs: set[str] = set();
     if self.node_type_final is not None
-    or any(h.edge_type is not None or h.node_type is not None for h in self.chain) {
+        or any(
+            h.edge_type is not None or h.node_type is not None for h in self.chain
+        ) {
         needs.add('type_pushdown');
     }
     if self.field_predicates {

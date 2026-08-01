@@ -27,8 +27,8 @@ impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
     opaque_fields = self.struct_field_opaque.get(arch_name, set());
     for (fname, ftype) in field_types.items() {
         if isinstance(ftype, ir.PointerType)
-        and fname not in opaque_fields
-        and field_indices.get(fname, -1) >= 0 {
+            and fname not in opaque_fields
+            and field_indices.get(fname, -1) >= 0 {
             return True;
         }
     }

@@ -84,7 +84,8 @@ test "sem def match" {
     assert sym_inner_value is not None;
     assert sym_inner_value.decl is not None;
     assert sym_inner_value.decl.name_of is not None;
-    assert sym_inner_value.decl.name_of.semstr == "A value specific to the inner class.";
+    assert sym_inner_value.decl.name_of.semstr
+        == "A value specific to the inner class.";
 }
 
 test "sem def match for s e m prefixed functions" {
@@ -98,19 +99,22 @@ test "sem def match for s e m prefixed functions" {
 
     sym_summarize = mod.lookup("summarize_text");
     assert sym_summarize is not None;
-    assert sym_summarize.decl.name_of.semstr == "Summarize the given text into a concise summary." , (
+    assert sym_summarize.decl.name_of.semstr
+        == "Summarize the given text into a concise summary." , (
         f"s-prefix: expected sem string, got '{sym_summarize.decl.name_of.semstr}'"
     );
 
     sym_evaluate = mod.lookup("evaluate_score");
     assert sym_evaluate is not None;
-    assert sym_evaluate.decl.name_of.semstr == "Evaluate and return a numeric score for the text." , (
+    assert sym_evaluate.decl.name_of.semstr
+        == "Evaluate and return a numeric score for the text." , (
         f"e-prefix: expected sem string, got '{sym_evaluate.decl.name_of.semstr}'"
     );
 
     sym_merge = mod.lookup("merge_results");
     assert sym_merge is not None;
-    assert sym_merge.decl.name_of.semstr == "Merge multiple results into a single combined output." , (
+    assert sym_merge.decl.name_of.semstr
+        == "Merge multiple results into a single combined output." , (
         f"m-prefix: expected sem string, got '{sym_merge.decl.name_of.semstr}'"
     );
 

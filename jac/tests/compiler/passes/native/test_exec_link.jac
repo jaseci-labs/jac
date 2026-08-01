@@ -16,7 +16,7 @@ import from jaclang.cli.commands.nacompile {
 import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
-     FIXTURE = "exec_smoke.na.jac";
+     FIXTURE = "exec_smoke.jac";
 
 
 def _compile_ir(fixture: str, triple: str) -> str {
@@ -101,9 +101,15 @@ def _inject_macho(ir_txt: str) -> str {
     globals_ir = ""
         if "__jac_argc" in ir_txt
         else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    return ir_txt + (
-        "\n; --- injected entry point ---\n" + globals_ir + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n"
-    );
+    return ir_txt
+        + (
+            "\n; --- injected entry point ---\n"
+            + globals_ir
+            + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n"
+            + "    store i32 %argc, ptr @__jac_argc\n"
+            + "    store ptr %argv, ptr @__jac_argv\n"
+            + "    call void @jac_entry()\n    ret i32 0\n}\n"
+        );
 }
 
 
@@ -175,7 +181,7 @@ test "ELF executable links, runs, and prints through the C ABI" {
 
 
 test "multiple `with entry` blocks emit a single jac_entry (issue #6660)" {
-    ir_txt = _compile_ir("multi_entry.na.jac", llvm.get_default_triple());
+    ir_txt = _compile_ir("multi_entry.jac", llvm.get_default_triple());
     n = ir_txt.count('define void @"jac_entry"');
     assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
 }
@@ -186,7 +192,7 @@ test "concatenated `with entry` blocks run in source order (issue #6660)" {
 
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(
-            _inject_elf(_compile_ir("multi_entry.na.jac", triple)), triple
+            _inject_elf(_compile_ir("multi_entry.jac", triple)), triple
         );
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry");
@@ -204,7 +210,7 @@ test "concatenated `with entry` blocks run in source order (issue #6660)" {
 
 test "a terminating `with entry` block stops later blocks (issue #6660)" {
     triple = llvm.get_default_triple();
-    ir_txt = _compile_ir("multi_entry_terminator.na.jac", triple);
+    ir_txt = _compile_ir("multi_entry_terminator.jac", triple);
 
     n = ir_txt.count('define void @"jac_entry"');
     assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
@@ -225,7 +231,7 @@ test "a terminating `with entry` block stops later blocks (issue #6660)" {
 
 test "glob-init runs before every `with entry` block (issue #6660)" {
     triple = llvm.get_default_triple();
-    ir_txt = _compile_ir("multi_entry_glob.na.jac", triple);
+    ir_txt = _compile_ir("multi_entry_glob.jac", triple);
 
     assert ir_txt.count('define void @"jac_entry"') == 1 , "expected exactly one jac_entry";
     assert "__jac_glob_init" in ir_txt , "expected a __jac_glob_init call in jac_entry";
@@ -251,7 +257,7 @@ test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
     triple = llvm.get_default_triple();
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(
-            _inject_elf(_compile_ir("xmod_exc_main.na.jac", triple)), triple
+            _inject_elf(_compile_ir("xmod_exc_main.jac", triple)), triple
         );
         d = tempfile.mkdtemp();
         out = os.path.join(d, "xmod_exc_main");

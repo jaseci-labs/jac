@@ -28,10 +28,8 @@ impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
             if short {
                 pattern += "|" + short;
             }
-            line = '                %s) COMPREPLY=($(compgen -W "%s" -- "$cur")); return ;;' % (
-                pattern,
-                " ".join(choices)
-            );
+            line = '                %s) COMPREPLY=($(compgen -W "%s" -- "$cur")); return ;;'
+                % (pattern, " ".join(choices));
             prev_cases.append(line);
         }
         value_cases.append(_BASH_VALUE_CASE % (c["name"], "\n".join(prev_cases)));
@@ -61,14 +59,8 @@ impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
             cmd_cases.append(_BASH_CMD_NO_FILES % (c["name"], flags));
         }
     }
-    return _BASH_TEMPLATE % (
-        exe,
-        cmd_names,
-        value_block,
-        "\n".join(cmd_cases),
-        exe,
-        exe
-    );
+    return _BASH_TEMPLATE
+        % (exe, cmd_names, value_block, "\n".join(cmd_cases), exe, exe);
 }
 
 impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
@@ -86,13 +78,8 @@ impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
             h = helptext.replace("'", "'\\''").replace("[", "\\[").replace("]", "\\]");
             if short {
                 args_lines.append(
-                    "                '(%s %s)'{%s,%s}'[%s]' \\" % (
-                        short,
-                        long,
-                        short,
-                        long,
-                        h
-                    )
+                    "                '(%s %s)'{%s,%s}'[%s]' \\"
+                        % (short, long, short, long, h)
                 );
             } else {
                 args_lines.append("                '%s[%s]' \\" % (long, h));
@@ -102,13 +89,8 @@ impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
             vals = " ".join(choices);
             if short {
                 args_lines.append(
-                    "                '(%s %s)'{%s,%s}'[]:value:(%s)' \\" % (
-                        short,
-                        long,
-                        short,
-                        long,
-                        vals
-                    )
+                    "                '(%s %s)'{%s,%s}'[]:value:(%s)' \\"
+                        % (short, long, short, long, vals)
                 );
             } else {
                 args_lines.append(
@@ -121,7 +103,9 @@ impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
         }
 
         if args_lines {
-            body = "            _arguments -s \\\n" + "\n".join(args_lines) + "\n                ;;";
+            body = "            _arguments -s \\\n"
+                + "\n".join(args_lines)
+                + "\n                ;;";
         } else {
             body = "            ;;";
         }
@@ -137,11 +121,8 @@ impl _static_fish(commands: list[dict[str, any]], exe: str) -> str {
     for c in commands {
         h = c["help"].replace("'", "\\'");
         lines.append(
-            "complete -c %s -n '__fish_use_subcommand' -a '%s' -d '%s'" % (
-                exe,
-                c["name"],
-                h
-            )
+            "complete -c %s -n '__fish_use_subcommand' -a '%s' -d '%s'"
+                % (exe, c["name"], h)
         );
     }
 

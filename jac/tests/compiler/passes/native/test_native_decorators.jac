@@ -1,4 +1,4 @@
-"""Decorator handling on the native (.na.jac / na {}) pipeline.
+"""Decorator handling on the native (.jac / na {}) pipeline.
 
 Before the capability gate learned about decorators, a decorated function in a
 native module compiled silently WITHOUT its decorator: the undecorated body ran,
@@ -8,7 +8,7 @@ with a structured error — never dropped.
 """
 
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
@@ -18,9 +18,9 @@ glob FIXTURES_DIR = os.path.join(
 
 """Compile a snippet through the native pipeline and return the program."""
 def compile_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES_DIR, f"_decorator_{label}.na.jac");
+    path = os.path.join(FIXTURES_DIR, f"_decorator_{label}.jac");
     prog = JacProgram();
-    prog.compile(file_path=path, use_str=code);
+    prog.compile(file_path=path, use_str=code, options=native_force_opts());
     return prog;
 }
 
@@ -39,13 +39,15 @@ def fmt_errors(prog: JacProgram) -> str {
     return str([str(e) for e in prog.errors_had]);
 }
 
-"""Compile a .na.jac fixture, run module glob-init (as init_native_globals
+"""Compile a .jac fixture, run module glob-init (as init_native_globals
 does in production), and return the JIT engine."""
 def compile_fixture(fixture: str) -> object {
     import ctypes;
     import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES_DIR, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES_DIR, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -70,7 +72,7 @@ def get_func(eng: object, name: str, restype: object, *argtypes: object) -> obje
 # applied at glob-init to the raw function, calls go through the slot.
 test "decorator: registration decorator runs at glob-init, calls pass through" {
     import ctypes;
-    eng = compile_fixture("decorators.na.jac");
+    eng = compile_fixture("decorators.jac");
     f = get_func(eng, "use_val", ctypes.c_int64);
     # val(4) = 5 through the identity-decorated slot; marks counted 3
     # glob-init applications module-wide (val once, stacked twice).
@@ -79,14 +81,14 @@ test "decorator: registration decorator runs at glob-init, calls pass through" {
 
 test "decorator: a decorator returning another function redirects calls" {
     import ctypes;
-    eng = compile_fixture("decorators.na.jac");
+    eng = compile_fixture("decorators.jac");
     f = get_func(eng, "use_val2", ctypes.c_int64);
     assert f() == 42 , "val2 must route to alt via the slot, not the raw body";
 }
 
 test "decorator: stacked decorators apply and calls still resolve" {
     import ctypes;
-    eng = compile_fixture("decorators.na.jac");
+    eng = compile_fixture("decorators.jac");
     f = get_func(eng, "use_stacked", ctypes.c_int64);
     assert f() == 93 , "stacked(10)=9 through slot; marks==3 at call time";
 }

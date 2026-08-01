@@ -1,4 +1,4 @@
-import from react { useState, useEffect, useCallback, createContext, useContext }
+import from "react" { useState, useEffect, useCallback, createContext, useContext }
 import from "class-variance-authority" { cva }
 import from "@radix-ui/react-slot" { Slot }
 import from "@hugeicons/react" { HugeiconsIcon }
@@ -98,8 +98,9 @@ def:pub SidebarProvider(props: any) -> JsxElement {
     );
     useEffect(
         lambda -> any {
-            handleKeyDown = lambda (event: any) -> any { if event.key == SIDEBAR_KEYBOARD_SHORTCUT
-            and (event.metaKey or event.ctrlKey) {
+            handleKeyDown = lambda (event: any) -> any { if event.key
+                == SIDEBAR_KEYBOARD_SHORTCUT
+                and (event.metaKey or event.ctrlKey) {
                 event.preventDefault();
                 toggleSidebar();
             }};
@@ -124,20 +125,19 @@ def:pub SidebarProvider(props: any) -> JsxElement {
         "--sidebar-width": SIDEBAR_WIDTH,
         "--sidebar-width-icon": SIDEBAR_WIDTH_ICON
     };
-    return
-        <SidebarContext.Provider value={ctxValue}>
-            <div
-                data-slot="sidebar-wrapper"
-                style={mergedStyle}
-                className={cn(
-                    "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
-                    props["className"]
-                )}
-                {**attrs}
-            >
-                {props["children"]}
-            </div>
-        </SidebarContext.Provider>;
+    <SidebarContext.Provider value={ctxValue}>
+        <div
+            data-slot="sidebar-wrapper"
+            style={mergedStyle}
+            className={cn(
+                "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+                props["className"]
+            )}
+            {**attrs}
+        >
+            {props["children"]}
+        </div>
+    </SidebarContext.Provider>
 }
 
 def:pub Sidebar(props: any) -> JsxElement {
@@ -240,187 +240,171 @@ def:pub SidebarTrigger(props: any) -> JsxElement {
         props["onClick"] and props["onClick"](event);
         toggleSidebar and toggleSidebar();
     };
-    return
-        <Button
-            data-sidebar="trigger"
-            data-slot="sidebar-trigger"
-            variant="ghost"
-            size="icon-sm"
-            className={cn("cn-sidebar-trigger", props["className"])}
-            onClick={handleClick}
-            {**props}
-        >
-            <HugeiconsIcon icon={SidebarLeftIcon} className="cn-rtl-flip" size={16}/>
-            <span className="sr-only">Toggle Sidebar</span>
-        </Button>;
+    <Button
+        data-sidebar="trigger"
+        data-slot="sidebar-trigger"
+        variant="ghost"
+        size="icon-sm"
+        className={cn("cn-sidebar-trigger", props["className"])}
+        onClick={handleClick}
+        {**props}
+    >
+        <HugeiconsIcon icon={SidebarLeftIcon} className="cn-rtl-flip" size={16}/>
+        <span className="sr-only">Toggle Sidebar</span>
+    </Button>
 }
 
 def:pub SidebarRail(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     ctx: any = useContext(SidebarContext);
     toggleSidebar: any = ctx.toggleSidebar if ctx else None;
-    return
-        <button
-            data-sidebar="rail"
-            data-slot="sidebar-rail"
-            aria-label="Toggle Sidebar"
-            tabIndex={-1}
-            onClick={toggleSidebar}
-            title="Toggle Sidebar"
-            className={cn(
-                "cn-sidebar-rail absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] sm:flex",
-                props["className"]
-            )}
-            {**attrs}
-        />;
+    <button
+        data-sidebar="rail"
+        data-slot="sidebar-rail"
+        aria-label="Toggle Sidebar"
+        tabIndex={-1}
+        onClick={toggleSidebar}
+        title="Toggle Sidebar"
+        className={cn(
+            "cn-sidebar-rail absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] sm:flex",
+            props["className"]
+        )}
+        {**attrs}
+    />
 }
 
 def:pub SidebarInset(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <main
-            data-slot="sidebar-inset"
-            className={cn(
-                "cn-sidebar-inset relative flex w-full flex-1 flex-col",
-                props["className"]
-            )}
-            {**attrs}
-        />;
+    <main
+        data-slot="sidebar-inset"
+        className={cn(
+            "cn-sidebar-inset relative flex w-full flex-1 flex-col", props["className"]
+        )}
+        {**attrs}
+    />
 }
 
 def:pub SidebarInput(props: any) -> JsxElement {
-    return
-        <Input
-            data-slot="sidebar-input"
-            data-sidebar="input"
-            className={cn("cn-sidebar-input", props["className"])}
-            {**props}
-        />;
+    <Input
+        data-slot="sidebar-input"
+        data-sidebar="input"
+        className={cn("cn-sidebar-input", props["className"])}
+        {**props}
+    />
 }
 
 def:pub SidebarHeader(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="sidebar-header"
-            data-sidebar="header"
-            className={cn("cn-sidebar-header flex flex-col", props["className"])}
-            {**attrs}
-        />;
+    <div
+        data-slot="sidebar-header"
+        data-sidebar="header"
+        className={cn("cn-sidebar-header flex flex-col", props["className"])}
+        {**attrs}
+    />
 }
 
 def:pub SidebarFooter(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="sidebar-footer"
-            data-sidebar="footer"
-            className={cn("cn-sidebar-footer flex flex-col", props["className"])}
-            {**attrs}
-        />;
+    <div
+        data-slot="sidebar-footer"
+        data-sidebar="footer"
+        className={cn("cn-sidebar-footer flex flex-col", props["className"])}
+        {**attrs}
+    />
 }
 
 def:pub SidebarSeparator(props: any) -> JsxElement {
-    return
-        <Separator
-            data-slot="sidebar-separator"
-            data-sidebar="separator"
-            className={cn("cn-sidebar-separator w-auto", props["className"])}
-            {**props}
-        />;
+    <Separator
+        data-slot="sidebar-separator"
+        data-sidebar="separator"
+        className={cn("cn-sidebar-separator w-auto", props["className"])}
+        {**props}
+    />
 }
 
 def:pub SidebarContent(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="sidebar-content"
-            data-sidebar="content"
-            className={cn(
-                "cn-sidebar-content flex min-h-0 flex-1 flex-col overflow-auto group-data-[collapsible=icon]:overflow-hidden",
-                props["className"]
-            )}
-            {**attrs}
-        />;
+    <div
+        data-slot="sidebar-content"
+        data-sidebar="content"
+        className={cn(
+            "cn-sidebar-content flex min-h-0 flex-1 flex-col overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+            props["className"]
+        )}
+        {**attrs}
+    />
 }
 
 def:pub SidebarGroup(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="sidebar-group"
-            data-sidebar="group"
-            className={cn(
-                "cn-sidebar-group relative flex w-full min-w-0 flex-col",
-                props["className"]
-            )}
-            {**attrs}
-        />;
+    <div
+        data-slot="sidebar-group"
+        data-sidebar="group"
+        className={cn(
+            "cn-sidebar-group relative flex w-full min-w-0 flex-col", props["className"]
+        )}
+        {**attrs}
+    />
 }
 
 def:pub SidebarGroupLabel(props: any) -> JsxElement {
     asChild = props["asChild"] or False;
     Comp = Slot if asChild else "div";
-    return
-        <Comp
-            data-slot="sidebar-group-label"
-            data-sidebar="group-label"
-            className={cn(
-                "cn-sidebar-group-label flex shrink-0 items-center outline-hidden [&>svg]:shrink-0",
-                props["className"]
-            )}
-            {**props}
-        />;
+    <Comp
+        data-slot="sidebar-group-label"
+        data-sidebar="group-label"
+        className={cn(
+            "cn-sidebar-group-label flex shrink-0 items-center outline-hidden [&>svg]:shrink-0",
+            props["className"]
+        )}
+        {**props}
+    />
 }
 
 def:pub SidebarGroupAction(props: any) -> JsxElement {
     asChild = props["asChild"] or False;
     Comp = Slot if asChild else "button";
-    return
-        <Comp
-            data-slot="sidebar-group-action"
-            data-sidebar="group-action"
-            className={cn(
-                "cn-sidebar-group-action flex aspect-square items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
-                props["className"]
-            )}
-            {**props}
-        />;
+    <Comp
+        data-slot="sidebar-group-action"
+        data-sidebar="group-action"
+        className={cn(
+            "cn-sidebar-group-action flex aspect-square items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
+            props["className"]
+        )}
+        {**props}
+    />
 }
 
 def:pub SidebarGroupContent(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="sidebar-group-content"
-            data-sidebar="group-content"
-            className={cn("cn-sidebar-group-content w-full", props["className"])}
-            {**attrs}
-        />;
+    <div
+        data-slot="sidebar-group-content"
+        data-sidebar="group-content"
+        className={cn("cn-sidebar-group-content w-full", props["className"])}
+        {**attrs}
+    />
 }
 
 def:pub SidebarMenu(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <ul
-            data-slot="sidebar-menu"
-            data-sidebar="menu"
-            className={cn(
-                "cn-sidebar-menu flex w-full min-w-0 flex-col", props["className"]
-            )}
-            {**attrs}
-        />;
+    <ul
+        data-slot="sidebar-menu"
+        data-sidebar="menu"
+        className={cn(
+            "cn-sidebar-menu flex w-full min-w-0 flex-col", props["className"]
+        )}
+        {**attrs}
+    />
 }
 
 def:pub SidebarMenuItem(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <li
-            data-slot="sidebar-menu-item"
-            data-sidebar="menu-item"
-            className={cn("group/menu-item relative", props["className"])}
-            {**attrs}
-        />;
+    <li
+        data-slot="sidebar-menu-item"
+        data-sidebar="menu-item"
+        className={cn("group/menu-item relative", props["className"])}
+        {**attrs}
+    />
 }
 
 def:pub SidebarMenuButton(props: any) -> JsxElement {
@@ -447,16 +431,10 @@ def:pub SidebarMenuButton(props: any) -> JsxElement {
     }
     tooltipProps = {"children": tooltip} if isinstance(tooltip, str) else tooltip;
     isHidden = state != "collapsed" or isMobile;
-    return
-        <Tooltip>
-            <TooltipTrigger asChild={True}>{button}</TooltipTrigger>
-            <TooltipContent
-                side="right"
-                align="center"
-                hidden={isHidden}
-                {**tooltipProps}
-            />
-        </Tooltip>;
+    <Tooltip>
+        <TooltipTrigger asChild={True}>{button}</TooltipTrigger>
+        <TooltipContent side="right" align="center" hidden={isHidden} {**tooltipProps}/>
+    </Tooltip>
 }
 
 def:pub SidebarMenuAction(props: any) -> JsxElement {
@@ -466,31 +444,29 @@ def:pub SidebarMenuAction(props: any) -> JsxElement {
     hoverClass = "peer-data-active/menu-button:text-sidebar-accent-foreground group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 aria-expanded:opacity-100 md:opacity-0"
         if showOnHover
         else "";
-    return
-        <Comp
-            data-slot="sidebar-menu-action"
-            data-sidebar="menu-action"
-            className={cn(
-                "cn-sidebar-menu-action flex items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
-                hoverClass,
-                props["className"]
-            )}
-            {**props}
-        />;
+    <Comp
+        data-slot="sidebar-menu-action"
+        data-sidebar="menu-action"
+        className={cn(
+            "cn-sidebar-menu-action flex items-center justify-center outline-hidden transition-transform group-data-[collapsible=icon]:hidden [&>svg]:shrink-0",
+            hoverClass,
+            props["className"]
+        )}
+        {**props}
+    />
 }
 
 def:pub SidebarMenuBadge(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="sidebar-menu-badge"
-            data-sidebar="menu-badge"
-            className={cn(
-                "cn-sidebar-menu-badge flex items-center justify-center tabular-nums select-none group-data-[collapsible=icon]:hidden",
-                props["className"]
-            )}
-            {**attrs}
-        />;
+    <div
+        data-slot="sidebar-menu-badge"
+        data-sidebar="menu-badge"
+        className={cn(
+            "cn-sidebar-menu-badge flex items-center justify-center tabular-nums select-none group-data-[collapsible=icon]:hidden",
+            props["className"]
+        )}
+        {**attrs}
+    />
 }
 
 def:pub SidebarMenuSkeleton(props: any) -> JsxElement {
@@ -499,52 +475,45 @@ def:pub SidebarMenuSkeleton(props: any) -> JsxElement {
     widthState = useState(lambda -> any { return f"{int(Math.random() * 40 + 50)}%"; });
     width = widthState[0];
     skeletonStyle = {"--skeleton-width": width};
-    return
-        <div
-            data-slot="sidebar-menu-skeleton"
-            data-sidebar="menu-skeleton"
-            className={cn(
-                "cn-sidebar-menu-skeleton flex items-center", props["className"]
-            )}
-            {**attrs}
-        >
-            {showIcon
+    <div
+        data-slot="sidebar-menu-skeleton"
+        data-sidebar="menu-skeleton"
+        className={cn("cn-sidebar-menu-skeleton flex items-center", props["className"])}
+        {**attrs}
+    >
+        {showIcon
             and (
                 <Skeleton
                     className="cn-sidebar-menu-skeleton-icon"
                     data-sidebar="menu-skeleton-icon"
                 />
             )}
-            <Skeleton
-                className="cn-sidebar-menu-skeleton-text max-w-(--skeleton-width) flex-1"
-                data-sidebar="menu-skeleton-text"
-                style={skeletonStyle}
-            />
-        </div>;
+        <Skeleton
+            className="cn-sidebar-menu-skeleton-text max-w-(--skeleton-width) flex-1"
+            data-sidebar="menu-skeleton-text"
+            style={skeletonStyle}
+        />
+    </div>
 }
 
 def:pub SidebarMenuSub(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <ul
-            data-slot="sidebar-menu-sub"
-            data-sidebar="menu-sub"
-            className={cn(
-                "cn-sidebar-menu-sub flex min-w-0 flex-col", props["className"]
-            )}
-            {**attrs}
-        />;
+    <ul
+        data-slot="sidebar-menu-sub"
+        data-sidebar="menu-sub"
+        className={cn("cn-sidebar-menu-sub flex min-w-0 flex-col", props["className"])}
+        {**attrs}
+    />
 }
 
 def:pub SidebarMenuSubItem(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <li
-            data-slot="sidebar-menu-sub-item"
-            data-sidebar="menu-sub-item"
-            className={cn("group/menu-sub-item relative", props["className"])}
-            {**attrs}
-        />;
+    <li
+        data-slot="sidebar-menu-sub-item"
+        data-sidebar="menu-sub-item"
+        className={cn("group/menu-sub-item relative", props["className"])}
+        {**attrs}
+    />
 }
 
 def:pub SidebarMenuSubButton(props: any) -> JsxElement {
@@ -552,16 +521,15 @@ def:pub SidebarMenuSubButton(props: any) -> JsxElement {
     size = props["size"] or "md";
     isActive = props["isActive"] or False;
     Comp = Slot if asChild else "a";
-    return
-        <Comp
-            data-slot="sidebar-menu-sub-button"
-            data-sidebar="menu-sub-button"
-            data-size={size}
-            data-active={isActive}
-            className={cn(
-                "cn-sidebar-menu-sub-button flex min-w-0 -translate-x-px items-center overflow-hidden outline-hidden group-data-[collapsible=icon]:hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:shrink-0",
-                props["className"]
-            )}
-            {**props}
-        />;
+    <Comp
+        data-slot="sidebar-menu-sub-button"
+        data-sidebar="menu-sub-button"
+        data-size={size}
+        data-active={isActive}
+        className={cn(
+            "cn-sidebar-menu-sub-button flex min-w-0 -translate-x-px items-center overflow-hidden outline-hidden group-data-[collapsible=icon]:hidden disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:shrink-0",
+            props["className"]
+        )}
+        {**props}
+    />
 }

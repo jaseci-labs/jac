@@ -340,8 +340,8 @@ def path_matches_exclude(
     for pattern in patterns {
         if '/' in pattern {
             if fnmatch(norm, pattern)
-            or fnmatch(norm, '*/' + pattern)
-            or fnmatch('_/' + norm, pattern) {
+                or fnmatch(norm, '*/' + pattern)
+                or fnmatch('_/' + norm, pattern) {
                 return True;
             }
         } else {
@@ -421,8 +421,8 @@ def evaluate_version_condition(condition: 'uni.Expr') -> bool | None {
         return True;
     }
     if isinstance(cond, uni.UnaryExpr)
-    and cond.op.name == Tok.NOT
-    and _is_type_checking_ref(cond.operand) {
+        and cond.op.name == Tok.NOT
+        and _is_type_checking_ref(cond.operand) {
         return False;
     }
     if not isinstance(cond, uni.CompareExpr) {

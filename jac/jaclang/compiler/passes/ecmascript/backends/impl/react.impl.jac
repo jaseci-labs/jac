@@ -31,7 +31,7 @@ impl ReactBackend.required_globals -> list[str] {
 }
 
 impl ReactBackend.runtime_source_basename -> str {
-    return "client_runtime.cl.jac";
+    return "client_runtime.jac";
 }
 
 impl ReactBackend.vite_aliases -> dict[str, str] {

@@ -83,7 +83,7 @@ impl MicroserviceGateway.serve_static(file_path: str) -> Response | None {
     }
 
     if content_type.startswith("text/")
-    or content_type in ("application/javascript", "application/json") {
+        or content_type in ("application/javascript", "application/json") {
         return Response(
             content=target.read_text(encoding="utf-8"), media_type=content_type
         );
@@ -147,7 +147,7 @@ impl MicroserviceGateway.serve_extra_static(
     }
 
     if content_type.startswith("text/")
-    or content_type in ("application/javascript", "application/json") {
+        or content_type in ("application/javascript", "application/json") {
         return Response(
             content=target.read_text(encoding="utf-8"), media_type=content_type
         );
@@ -211,7 +211,7 @@ impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
     }
 
     if content_type.startswith("text/")
-    or content_type in ("application/javascript", "application/json") {
+        or content_type in ("application/javascript", "application/json") {
         return Response(
             content=target.read_text(encoding="utf-8"), media_type=content_type
         );
@@ -294,7 +294,7 @@ impl MicroserviceGateway.aggregate_graph_data(request: Request) -> Response | No
 
     for (svc_name, svc_entry) in self.registry.entries.items() {
         if svc_entry.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING)
-        or not svc_entry.url {
+            or not svc_entry.url {
             continue;
         }
         target_url = f"{svc_entry.url}/graph/data";
@@ -373,7 +373,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
 
     for (svc_name, svc_entry) in self.registry.entries.items() {
         if svc_entry.status in (ServiceStatus.HEALTHY, ServiceStatus.STARTING)
-        and svc_entry.url {
+            and svc_entry.url {
             target_url = f"{svc_entry.url}{path}";
             if query {
                 target_url = f"{target_url}?{query}";
@@ -568,6 +568,9 @@ impl MicroserviceGateway.setup -> FastAPI {
         )
     );
 
+    import from jaclang.scale.observability.factory { UtilityFactory }
+    self._metrics = UtilityFactory.create_metrics('prometheus', mon_cfg);
+
     import from jaclang.scale.runtime.context.tracing {
         install_tracing,
         start_server_span,
@@ -698,6 +701,11 @@ impl MicroserviceGateway.setup -> FastAPI {
                     time.time() - start
                 );
             }
+            if gw._metrics is not None and gw._metrics.is_enabled() {
+                gw._metrics.record_request(
+                    request.method, path, resp.status_code, time.time() - start
+                );
+            }
             return resp;
         } finally {
             end_span(span);
@@ -784,6 +792,7 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_admin_endpoints();
     self.register_logs_endpoints();
     self.register_llm_telemetry_endpoints();
+    self.register_workloads_endpoints();
 
     self.register_traces_endpoints();
     self.register_ops_endpoints();
@@ -802,7 +811,7 @@ impl MicroserviceGateway._install_admin_api -> None {
 
     logger.info(
         "Admin JSON API installed on gateway "
-        "(/admin/login, /admin/me, /admin/users, /admin/logs/*, ...)"
+        "(/admin/login, /admin/me, /admin/users, /admin/workloads/*, /admin/logs/*, ...)"
     );
     logger.info(
         "Gateway-owned identity installed "

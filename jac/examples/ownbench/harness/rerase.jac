@@ -41,8 +41,8 @@ def rerase(text: str) -> str {
             continue;
         }
         if stack
-        and stripped == "}"
-        and (len(line) - len(line.lstrip())) == stack[-1] {
+            and stripped == "}"
+            and (len(line) - len(line.lstrip())) == stack[-1] {
             stack.pop();
             continue;
         }

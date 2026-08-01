@@ -92,6 +92,9 @@ def get_target_registry -> TargetRegistry {
     import from jaclang.runtimelib.client.targets.registry { TargetRegistry }
     if _registry is None {
         _registry = TargetRegistry();
+
+        import from jaclang.runtimelib.client.targets.register { register_targets }
+        register_targets();
     }
     return _registry;
 }

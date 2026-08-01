@@ -9,6 +9,7 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
+        force_codespace: str = "",
         na_gc_mode: str = "cycles",
         nogc_enforce_all: bool = False,
         nogc_cli_target: str = "",

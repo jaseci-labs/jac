@@ -70,10 +70,11 @@ test "rec 1.4: for-loop slot fires W2021 when no key is derivable" {
     # keyless for-loop fires it. When item 1's auto-fragment lands,
     # priorities 1-3 will short-circuit before W2021 reaches the loops
     # that *do* have a derivable key.
-    prog = compile_for_diag("loop_no_derivable_key.cl.jac");
+    prog = compile_for_diag("loop_no_derivable_key.jac");
     assert has_code(prog, "W2021", in_warnings=True) , (
         "a keyless for-loop with no auto-derivable key must fire W2021; "
-        "warnings were: " + str(
+        "warnings were: "
+        + str(
             [
                 (w.code.code if w.code else "?") + ": " + str(w)
                 for w in prog.warnings_had
@@ -96,7 +97,8 @@ test "rec 1.5: keyless for-loop in a slot fires a warning (#6082 item 2)" {
     );
     assert has_warning , (
         "a keyless `for` slot must fire either W2019 (extended from "
-        "while) or W2021 (new); warnings were: " + str(
+        "while) or W2021 (new); warnings were: "
+        + str(
             [
                 (w.code.code if w.code else "?") + ": " + str(w)
                 for w in prog.warnings_had
@@ -112,7 +114,8 @@ test "rec 3: E2024 -- `has` declared inside a JSX slot body is rejected" {
     # and emits E2024.
     prog = compile_for_diag("has_in_slot.jac");
     assert has_code(prog, "E2024") , (
-        "declaring `has` inside a JSX slot body must raise E2024; " "errors were: " + str(
+        "declaring `has` inside a JSX slot body must raise E2024; " "errors were: "
+        + str(
             [(e.code.code if e.code else "?") + ": " + str(e) for e in prog.errors_had]
         )
     );
@@ -124,7 +127,7 @@ test "rec 5: `{name}` JSX attribute shorthand expands to name={name}" {
     # `<Box title={title} count={count} onClick={onClick}/>`. Parser-
     # level addition only; the lowering target is the same
     # `JsxNormalAttribute` as the explicit form.
-    es_ast = compile_to_esast("prop_shorthand.cl.jac");
+    es_ast = compile_to_esast("prop_shorthand.jac");
     js_code = es_to_js(es_ast);
 
     # The shorthand props must reach the __jacJsx call as named keys
@@ -143,13 +146,13 @@ test "rec 5: `{name}` JSX attribute shorthand expands to name={name}" {
 test "rec 9: a .style.css annex is auto-scoped and rewrites JSX className refs" {
     # #6082 item 10 -- files sharing a base name form one logical module.
     # A `.style.css` annex (`style_annex.style.css`) declares scoped classes
-    # for `style_annex.cl.jac`; the compiler hashes each declared selector
+    # for `style_annex.jac`; the compiler hashes each declared selector
     # per-module, rewrites the CSS rule, and rewrites JSX `className`
     # literals that match a declared class to the same hashed form. The
     # rewritten CSS is emitted as `gen.css` plus a side-effect import.
     import re;
     prog = JacProgram();
-    path = os.path.join(SLOT_EXT, "style_annex.cl.jac");
+    path = os.path.join(SLOT_EXT, "style_annex.jac");
     ir = prog.compile(file_path=path, no_cgen=True);
     assert not prog.errors_had , (
         "Compilation errors: " + str([str(e) for e in prog.errors_had])
@@ -161,8 +164,8 @@ test "rec 9: a .style.css annex is auto-scoped and rewrites JSX className refs" 
     # Declared class names are hashed to `card-<8 hex>` and the bare form
     # must not survive in the bundle.
     assert re.search(r'"className":\s*"card-[0-9a-f]{8}"', js_code) , (
-        "annex-declared class names should be hashed in the JSX className "
-        "literal:\n" + js_code
+        "annex-declared class names should be hashed in the JSX className " "literal:\n"
+        + js_code
     );
     assert '"className": "card"' not in js_code , (
         "the unrewritten bare class name must not survive in the bundle"
@@ -196,7 +199,7 @@ test "sibling slots: each accumulator IIFE declares its own `let` binding" {
     # throws `ReferenceError: __jac_view_kids is not defined` under
     # ES-module strict mode (the whole authenticated littleX app crashed
     # on render). Every accumulator init must now be a `let`.
-    es_ast = compile_to_esast("sibling_slots.cl.jac");
+    es_ast = compile_to_esast("sibling_slots.jac");
     js_code = es_to_js(es_ast);
     import re;
 
@@ -204,7 +207,8 @@ test "sibling slots: each accumulator IIFE declares its own `let` binding" {
     bare = re.findall(r'(?<![\w])(?<!let )__jac_view_kids\w* = \[\]', js_code);
     assert not bare , (
         "every slot accumulator must be declared with `let`; found a bare "
-        "reassignment that throws ReferenceError in a sibling IIFE:\n" + js_code
+        "reassignment that throws ReferenceError in a sibling IIFE:\n"
+        + js_code
     );
     # Two sibling slots => two distinct accumulator bindings, the first
     # keeping the bare `__jac_view_kids` name (preserved for diagnostics)
@@ -224,13 +228,14 @@ test "issue #6732: a bare expression statement in a slot is accumulated" {
     # conditional content written that way silently rendered nothing. A bare
     # expression statement is template content, exactly like a bare element,
     # and must be accumulated too -- consistent with the `{expr}` slot.
-    es_ast = compile_to_esast("bare_expr_slot.cl.jac");
+    es_ast = compile_to_esast("bare_expr_slot.jac");
     js_code = es_to_js(es_ast);
 
     # A (the bug): the conditional bare string must be pushed, not dropped.
     assert '.push("BARE_STRING_A")' in js_code , (
         "a bare string statement inside a slot must be accumulated into the "
-        "slot's children, not evaluated and discarded:\n" + js_code
+        "slot's children, not evaluated and discarded:\n"
+        + js_code
     );
     # B (no regression): a bare JSX element is still pushed.
     assert '__jacJsx("span", {}, ["ELEMENT_STRING_B"])' in js_code , (
@@ -239,7 +244,8 @@ test "issue #6732: a bare expression statement in a slot is accumulated" {
     # C (no regression): the single-expression ternary slot stays inline.
     assert '(show ? "TERNARY_STRING_C" : "")' in js_code , (
         "a single-expression `{... if ... else ...}` slot stays a plain "
-        "expression child:\n" + js_code
+        "expression child:\n"
+        + js_code
     );
 
     # The general rule covers every value-producing expression statement,
@@ -252,7 +258,8 @@ test "issue #6732: a bare expression statement in a slot is accumulated" {
     );
     assert ".push(label)" in js_code , (
         "a bare identifier statement in a `for` slot body must be "
-        "accumulated each iteration:\n" + js_code
+        "accumulated each iteration:\n"
+        + js_code
     );
 }
 
@@ -261,11 +268,10 @@ test "issue #6732: no misleading W0060 docstring warning inside a slot" {
     # go before the declaration") -- doubly wrong: the string is slot content,
     # not a docstring, and it now renders. A bare string in a JSX slot body
     # must not be mis-flagged as a misplaced docstring.
-    prog = compile_for_diag("bare_expr_slot.cl.jac");
+    prog = compile_for_diag("bare_expr_slot.jac");
     assert not has_code(prog, "W0060", in_warnings=True) , (
         "a bare string inside a JSX `{...}` slot body is template content, "
-        "not a docstring, and must not fire W0060: " + str(
-            [(w.code.code if w.code else "?") for w in prog.warnings_had]
-        )
+        "not a docstring, and must not fire W0060: "
+        + str([(w.code.code if w.code else "?") for w in prog.warnings_had])
     );
 }

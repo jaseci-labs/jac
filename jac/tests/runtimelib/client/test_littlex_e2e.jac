@@ -132,7 +132,7 @@ def _require_playwright -> any {
 }
 
 # ---- Playwright auth-form drivers (selectors verified against
-#      littleX/components/AuthForm.cl.jac) ----
+#      littleX/components/AuthForm.jac) ----
 # littleX has NO /login or /signup routes: the app renders <AuthForm> inline
 # at the root whenever the user is not logged in. The form fields are
 # id="lx-username" (type=text) and id="lx-password" (type=password); the

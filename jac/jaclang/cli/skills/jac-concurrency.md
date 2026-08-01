@@ -62,7 +62,7 @@ Rule of thumb: blocking/synchronous functions you want overlapped → `flow`. An
 
 - `flow`/`wait` are **reserved keywords** - can't be variable names (see `jac-core-cheatsheet`).
 - `await` outside an `async def` is invalid - from `with entry`, drive async code with `asyncio.run(main())`.
-- On the client, **`sv import` endpoint calls are async - always `await` them** or you get a `Promise`, not data (see `jac-fullstack-patterns`).
+- On the client, **imported server-endpoint calls are async - always `await` them** or you get a `Promise`, not data (see `jac-fullstack-patterns`).
 - `wait` in a loop body that also contains the `flow` = accidental serial execution. Two passes: launch-all, then wait-all.
 - Ownership-annotated payloads must be **sendable** across `flow` (E1308): scalars, `imm`, or an `own` moved into the boundary - a live `&`/`&mut` borrow can't cross. Moving an `own Region` handle transfers its whole region subgraph zero-copy, legal only while no borrows of the handle are live. Unannotated code is unaffected. See `jac-native-memory`.
 

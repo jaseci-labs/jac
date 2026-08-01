@@ -43,7 +43,7 @@ impl Lexer._track_view_context(tok: Token) {
         self._brace_depth += 1;
     } elif k == TokenKind.RBRACE {
         if len(self._view_body_depths) > 0
-        and self._brace_depth == self._view_body_depths[-1] {
+            and self._brace_depth == self._view_body_depths[-1] {
             self._view_body_depths.pop();
         }
         if self._brace_depth > 0 {
@@ -53,33 +53,34 @@ impl Lexer._track_view_context(tok: Token) {
 }
 
 impl Lexer.prev_is_value -> bool {
-    return self.prev_token_kind in [
-        TokenKind.NAME,
-        TokenKind.KWESC_NAME,
-        TokenKind.INT,
-        TokenKind.FLOAT,
-        TokenKind.HEX,
-        TokenKind.BIN,
-        TokenKind.OCT,
-        TokenKind.STRING,
-        TokenKind.BOOL,
-        TokenKind.NULL,
-        TokenKind.ELLIPSIS,
-        TokenKind.RPAREN,
-        TokenKind.RSQUARE,
-        TokenKind.RBRACE,
-        TokenKind.KW_SELF,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_HERE,
-        TokenKind.KW_ROOT,
-        TokenKind.F_DQ_END,
-        TokenKind.F_SQ_END,
-        TokenKind.F_TDQ_END,
-        TokenKind.F_TSQ_END,
-        TokenKind.JSX_SELF_CLOSE,
-        TokenKind.JSX_TAG_END,
-        TokenKind.JSX_FRAG_CLOSE
-    ];
+    return self.prev_token_kind
+        in [
+            TokenKind.NAME,
+            TokenKind.KWESC_NAME,
+            TokenKind.INT,
+            TokenKind.FLOAT,
+            TokenKind.HEX,
+            TokenKind.BIN,
+            TokenKind.OCT,
+            TokenKind.STRING,
+            TokenKind.BOOL,
+            TokenKind.NULL,
+            TokenKind.ELLIPSIS,
+            TokenKind.RPAREN,
+            TokenKind.RSQUARE,
+            TokenKind.RBRACE,
+            TokenKind.KW_SELF,
+            TokenKind.KW_SUPER,
+            TokenKind.KW_HERE,
+            TokenKind.KW_ROOT,
+            TokenKind.F_DQ_END,
+            TokenKind.F_SQ_END,
+            TokenKind.F_TDQ_END,
+            TokenKind.F_TSQ_END,
+            TokenKind.JSX_SELF_CLOSE,
+            TokenKind.JSX_TAG_END,
+            TokenKind.JSX_FRAG_CLOSE
+        ];
 }
 
 impl Lexer._width_of(lead: int) -> int {
@@ -214,7 +215,7 @@ impl Lexer.match_string(expected: str) -> bool {
     exp = expected.encode("utf-8");
     exp_bytes = len(exp);
     if self.pos + exp_bytes <= self._source_len
-    and self._enc[self.pos:self.pos + exp_bytes] == exp {
+        and self._enc[self.pos:self.pos + exp_bytes] == exp {
         for _ in range(len(expected)) {
             self.advance();
         }
@@ -390,10 +391,10 @@ impl Lexer.scan_identifier -> Token {
 
         if not self.at_end() and self.current() == "i" {
             if self._slice(self.pos, self.pos + 2) == "in"
-            and (
-                self.pos + 2 >= self._source_len
-                or not self.is_alnum(self._char_at(self.pos + 2))
-            ) {
+                and (
+                    self.pos + 2 >= self._source_len
+                    or not self.is_alnum(self._char_at(self.pos + 2))
+                ) {
                 self.advance();
                 self.advance();
                 return self.make_token(
@@ -417,10 +418,10 @@ impl Lexer.scan_identifier -> Token {
 
         if not self.at_end() and self.current() == "n" {
             if self._slice(self.pos, self.pos + 3) == "not"
-            and (
-                self.pos + 3 >= self._source_len
-                or not self.is_alnum(self._char_at(self.pos + 3))
-            ) {
+                and (
+                    self.pos + 3 >= self._source_len
+                    or not self.is_alnum(self._char_at(self.pos + 3))
+                ) {
                 self.advance();
                 self.advance();
                 self.advance();
@@ -470,7 +471,7 @@ impl Lexer.scan_number -> Token {
             value += self.advance();
             kind = TokenKind.HEX;
             while not self.at_end()
-            and (self.is_hex_digit(self.current()) or self.current() == "_") {
+                and (self.is_hex_digit(self.current()) or self.current() == "_") {
                 value += self.advance();
             }
             return self.make_token(kind, value, start_line, start_col, start_pos);
@@ -478,9 +479,11 @@ impl Lexer.scan_number -> Token {
             value += self.advance();
             kind = TokenKind.BIN;
             while not self.at_end()
-            and (
-                self.current() == "0" or self.current() == "1" or self.current() == "_"
-            ) {
+                and (
+                    self.current() == "0"
+                    or self.current() == "1"
+                    or self.current() == "_"
+                ) {
                 value += self.advance();
             }
             return self.make_token(kind, value, start_line, start_col, start_pos);
@@ -488,9 +491,11 @@ impl Lexer.scan_number -> Token {
             value += self.advance();
             kind = TokenKind.OCT;
             while not self.at_end()
-            and (
-                self.current() >= "0" and self.current() <= "7" or self.current() == "_"
-            ) {
+                and (
+                    self.current() >= "0"
+                    and self.current() <= "7"
+                    or self.current() == "_"
+                ) {
                 value += self.advance();
             }
             return self.make_token(kind, value, start_line, start_col, start_pos);
@@ -498,7 +503,7 @@ impl Lexer.scan_number -> Token {
     }
 
     while not self.at_end()
-    and (self.is_digit(self.current()) or self.current() == "_") {
+        and (self.is_digit(self.current()) or self.current() == "_") {
         value += self.advance();
     }
 
@@ -506,7 +511,7 @@ impl Lexer.scan_number -> Token {
         kind = TokenKind.FLOAT;
         value += self.advance();
         while not self.at_end()
-        and (self.is_digit(self.current()) or self.current() == "_") {
+            and (self.is_digit(self.current()) or self.current() == "_") {
             value += self.advance();
         }
     }
@@ -518,7 +523,7 @@ impl Lexer.scan_number -> Token {
             value += self.advance();
         }
         while not self.at_end()
-        and (self.is_digit(self.current()) or self.current() == "_") {
+            and (self.is_digit(self.current()) or self.current() == "_") {
             value += self.advance();
         }
     }
@@ -531,7 +536,7 @@ impl Lexer.scan_leading_dot_float -> Token {
     start_pos = self.pos;
     value = self.advance();
     while not self.at_end()
-    and (self.is_digit(self.current()) or self.current() == "_") {
+        and (self.is_digit(self.current()) or self.current() == "_") {
         value += self.advance();
     }
 
@@ -541,7 +546,7 @@ impl Lexer.scan_leading_dot_float -> Token {
             value += self.advance();
         }
         while not self.at_end()
-        and (self.is_digit(self.current()) or self.current() == "_") {
+            and (self.is_digit(self.current()) or self.current() == "_") {
             value += self.advance();
         }
     }
@@ -960,8 +965,8 @@ impl Lexer.scan_jsx_tag_token -> Token {
     if self.is_alpha(ch) {
         value = "";
         while self.is_alnum(self.current())
-        or self.current() == "-"
-        or self.current() == "_" {
+            or self.current() == "-"
+            or self.current() == "_" {
             value += self.advance();
         }
         return self.make_token(
@@ -1154,8 +1159,8 @@ impl Lexer.scan_regular_token -> Token {
             return self.scan_fstring("f");
         }
         if ch == "r"
-        and self.peek() == "f"
-        and (self.peek(2) == "\"" or self.peek(2) == "'") {
+            and self.peek() == "f"
+            and (self.peek(2) == "\"" or self.peek(2) == "'") {
             self.advance();
             self.advance();
             return self.scan_fstring("rf");
@@ -1176,11 +1181,11 @@ impl Lexer.scan_regular_token -> Token {
     }
 
     if ch == ":"
-    and self.peek() == ":"
-    and self.peek(2) == "p"
-    and self.peek(3) == "y"
-    and self.peek(4) == ":"
-    and self.peek(5) == ":" {
+        and self.peek() == ":"
+        and self.peek(2) == "p"
+        and self.peek(3) == "y"
+        and self.peek(4) == ":"
+        and self.peek(5) == ":" {
         return self.scan_pynline();
     }
 
@@ -1203,11 +1208,11 @@ impl Lexer.scan_pynline -> Token {
     code = "";
     while not self.at_end() {
         if self.current() == ":"
-        and self.peek() == ":"
-        and self.peek(2) == "p"
-        and self.peek(3) == "y"
-        and self.peek(4) == ":"
-        and self.peek(5) == ":" {
+            and self.peek() == ":"
+            and self.peek(2) == "p"
+            and self.peek(3) == "y"
+            and self.peek(4) == ":"
+            and self.peek(5) == ":" {
             for _ in range(6) {
                 self.advance();
             }
@@ -1630,12 +1635,13 @@ impl Lexer.scan_operator -> Token {
 impl Lexer.next_token -> Token {
     mode = self.current_mode();
 
-    if mode in [
-        LexerMode.FSTRING_DQ,
-        LexerMode.FSTRING_SQ,
-        LexerMode.FSTRING_TDQ,
-        LexerMode.FSTRING_TSQ
-    ] {
+    if mode
+        in [
+            LexerMode.FSTRING_DQ,
+            LexerMode.FSTRING_SQ,
+            LexerMode.FSTRING_TDQ,
+            LexerMode.FSTRING_TSQ
+        ] {
         return self.scan_fstring_content();
     } elif mode == LexerMode.FSTRING_EXPR {
         return self.scan_fstring_expr_token();
@@ -1674,12 +1680,16 @@ impl Lexer.next_token -> Token {
             return self.scan_jsx_open_start();
         }
         if self.in_view_body()
-        and self.prev_token_kind in [
-            TokenKind.RBRACE,
-            TokenKind.JSX_TAG_END,
-            TokenKind.JSX_SELF_CLOSE,
-            TokenKind.JSX_FRAG_CLOSE
-        ] {
+            and self.prev_token_kind
+                in [
+                    TokenKind.RBRACE,
+                    TokenKind.JSX_TAG_END,
+                    TokenKind.JSX_SELF_CLOSE,
+                    TokenKind.JSX_FRAG_CLOSE
+                ] {
+            return self.scan_jsx_open_start();
+        }
+        if self.prev_token_kind in [TokenKind.RBRACE] {
             return self.scan_jsx_open_start();
         }
     }
@@ -1690,8 +1700,8 @@ impl Lexer.next_token -> Token {
             return self.scan_fstring("f");
         }
         if ch == "r"
-        and self.peek() == "f"
-        and (self.peek(2) == "\"" or self.peek(2) == "'") {
+            and self.peek() == "f"
+            and (self.peek(2) == "\"" or self.peek(2) == "'") {
             self.advance();
             self.advance();
             return self.scan_fstring("rf");
@@ -1712,11 +1722,11 @@ impl Lexer.next_token -> Token {
     }
 
     if ch == ":"
-    and self.peek() == ":"
-    and self.peek(2) == "p"
-    and self.peek(3) == "y"
-    and self.peek(4) == ":"
-    and self.peek(5) == ":" {
+        and self.peek() == ":"
+        and self.peek(2) == "p"
+        and self.peek(3) == "y"
+        and self.peek(4) == ":"
+        and self.peek(5) == ":" {
         return self.scan_pynline();
     }
 

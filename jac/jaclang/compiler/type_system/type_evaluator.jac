@@ -220,6 +220,8 @@ obj TypeEvaluator {
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _resolve_client_npm_module(node_: uni.ModulePath) -> (str | None);
+    def _client_npm_base(spec: str, mod_path: str) -> (str | None);
+    def _client_entry_mod_path -> (str | None);
     def _get_ts_declared_item_type(
         from_loc: uni.ModulePath, item_name: str
     ) -> (TypeBase | None);

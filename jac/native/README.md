@@ -54,4 +54,4 @@ by the Jac binding (resolution order: `JAC_LLVM_SHIM`, the payload's
 - `--skip-precompile` (mkpayload) skips the JIR precompile for fast link
   validation; shipping builds keep it for fast first-run startup.
 
-See `docs/docs/internals/llvmlite_decoupling.md` and issue #6925.
+See issue #6925 for the llvmlite decoupling history.

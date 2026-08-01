@@ -28,8 +28,8 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
             _in_return and isinstance(v.type, ir.PointerType) and not self._is_owned(v)
         ) {
             is_named_local = isinstance(val, uni.Name)
-            and val.sym_name in self.local_vars
-            and val.sym_name not in self.param_vars;
+                and val.sym_name in self.local_vars
+                and val.sym_name not in self.param_vars;
             if not is_named_local {
                 self._emit_rc_retain(v, op="return_tuple_elem");
                 self._mark_owned(v);
@@ -89,17 +89,17 @@ impl NaIRGenPass._codegen_tuple_unpack(
         struct_type = tuple_val.type;
         is_value = True;
     } elif isinstance(tuple_val.type, ir.PointerType)
-    and isinstance(tuple_val.type.pointee, ir.LiteralStructType) {
+        and isinstance(tuple_val.type.pointee, ir.LiteralStructType) {
         struct_type = tuple_val.type.pointee;
     }
 
     if struct_type is None
-    and isinstance(tuple_val.type, ir.PointerType)
-    and tuple_node is not None {
+        and isinstance(tuple_val.type, ir.PointerType)
+        and tuple_node is not None {
         cast_ptr_type = self._infer_unpack_struct_ptr(tuple_node);
         if cast_ptr_type is not None
-        and isinstance(cast_ptr_type, ir.PointerType)
-        and isinstance(cast_ptr_type.pointee, ir.LiteralStructType) {
+            and isinstance(cast_ptr_type, ir.PointerType)
+            and isinstance(cast_ptr_type.pointee, ir.LiteralStructType) {
             tuple_val = self.builder.bitcast(
                 tuple_val, cast_ptr_type, name="unpack.cast"
             );
@@ -210,11 +210,11 @@ impl NaIRGenPass._coerce_tuple_to_struct(
     val: ir.Value, target_struct: ir.Type
 ) -> ir.Value {
     if not isinstance(val.type, ir.LiteralStructType)
-    or not isinstance(target_struct, ir.LiteralStructType) {
+        or not isinstance(target_struct, ir.LiteralStructType) {
         return val;
     }
     if val.type == target_struct
-    or len(val.type.elements) != len(target_struct.elements) {
+        or len(val.type.elements) != len(target_struct.elements) {
         return val;
     }
     out = ir.Constant(target_struct, ir.Undefined);

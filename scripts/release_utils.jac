@@ -23,7 +23,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
          "jaclang": PackageInfo(
              dir="jac",
              pypi="jaclang",
-             release_notes="docs/docs/community/release_notes/jaclang.md",
+             release_notes="jac/jaclang/cli/docs/community/release_notes/jaclang.md",
              notes_display="jaclang",
          )
          # byLLM was Tier 2 (published to PyPI as `byllm`); it is now folded into

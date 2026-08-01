@@ -74,17 +74,18 @@ test "resolve_active_backend reads solid from project config" {
 test "solid reports signals runtime symbols for reactive lowering" {
     backend = SolidBackend();
     init = es.Literal(value=0, raw="0");
-    assert backend.state_field_symbols(StateField(name="count", init_expr=init)) == [
-        "createSignal"
-    ];
+    assert backend.state_field_symbols(StateField(name="count", init_expr=init))
+        == ["createSignal"];
     # Refs are deferred on Solid — a `let` binding needs no import.
     assert backend.ref_field_symbols(RefField(name="node", init_expr=init)) == [];
     assert backend.effect_symbols(
         Effect(body=[], deps=[], is_entry=True, is_async=False)
-    ) == ["createEffect"];
+    )
+        == ["createEffect"];
     assert backend.effect_symbols(
         Effect(body=[], deps=[], is_entry=False, is_async=False)
-    ) == ["onCleanup"];
+    )
+        == ["onCleanup"];
     try_expr = es.Identifier(name="tryFn");
     awaiting_only = AsyncBoundary(
         try_expr=try_expr, awaiting_expr=None, except_exprs=[]
@@ -114,7 +115,7 @@ test "solid aug-assign uses a functional updater (contract §5.3)" {
 }
 
 test "solid counter fixture: createSignal, accessor reads, setter writes (fixture #1)" {
-    js = compile_fixture_with_backend("reactive_state.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("reactive_state.jac", SolidBackend());
     # State declaration uses createSignal, not useState.
     assert "const [count, setCount] = createSignal(0)" in js;
     assert "useState" not in js;
@@ -133,7 +134,7 @@ test "solid counter fixture: createSignal, accessor reads, setter writes (fixtur
 }
 
 test "solid aug-assign fixture emits functional updaters (fixture #3)" {
-    js = compile_fixture_with_backend("reactive_aug_assign.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("reactive_aug_assign.jac", SolidBackend());
     assert "setCount(prev => (prev + 5))" in js;
     assert "setCount(prev => (prev - 2))" in js;
     assert "setCount(prev => (prev * 3))" in js;
@@ -166,7 +167,7 @@ test "solid async effect keeps the IIFE and ignores the dep array" {
 }
 
 test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixture #4/#6)" {
-    js = compile_fixture_with_backend("reactive_view_audit.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("reactive_view_audit.jac", SolidBackend());
     # Dynamic attribute value and dynamic child are bare `{expr}` — un-thunked on
     # the JSX/dom-expressions path (the compiler owns reactive tracking).
     assert "value={count()}" in js , "dynamic attribute value should be un-thunked";
@@ -181,7 +182,7 @@ test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixtur
 }
 
 test "solid lifts a keyed comprehension to native <For> (Branch 4)" {
-    js = compile_fixture_with_backend("jsx_control_flow.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("jsx_control_flow.jac", SolidBackend());
     # A `[<li> for x in items]` comprehension lowers to native `<For each>`, NOT
     # `.map()`; the `(item) => element` render callback supplies the body.
     assert "<For each={items}>" in js , (
@@ -206,7 +207,7 @@ test "solid lifts a keyed comprehension to native <For> (Branch 4)" {
 }
 
 test "solid lifts a view-shaped ternary to native <Show> (Branch 4)" {
-    js = compile_fixture_with_backend("jsx_control_flow.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("jsx_control_flow.jac", SolidBackend());
     # `<A/> if cond else <B/>` lowers to `<Show when={cond} fallback={<B/>}>`.
     assert "<Show when={flag}" in js , (
         "a view-shaped ternary should lower to <Show when={...}>:\n" + js
@@ -223,7 +224,7 @@ test "solid lifts a view-shaped ternary to native <Show> (Branch 4)" {
 }
 
 test "JS family renders lifted control flow from the carried js_fallback (Branch 4)" {
-    js = compile_fixture_with_backend("jsx_control_flow.cl.jac", ReactBackend());
+    js = compile_fixture_with_backend("jsx_control_flow.jac", ReactBackend());
     # React/Preact never emit Solid control-flow components — the lifted nodes
     # carry the producer's already-lowered `.map()`/`?:`, rendered via `__jacJsx`,
     # so output is byte-for-byte what it was before the producer learned to lift.
@@ -236,7 +237,7 @@ test "JS family renders lifted control flow from the carried js_fallback (Branch
 }
 
 test "solid awaiting lowers to a native solid-js Suspense import" {
-    js = compile_fixture_with_backend("view_awaiting.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("view_awaiting.jac", SolidBackend());
     # Unlike the acceptance-matrix smoke check, assert the import *source*: the
     # awaiting clause must lower to Solid's own Suspense, not the React shim.
     assert 'import { Suspense } from "solid-js";' in js , f"expected a solid-js Suspense import, got: {js[:200]}";
@@ -260,7 +261,8 @@ test "solid entry script renders via solid-js/web" {
     assert 'solid-js/h' not in script;
     assert "createRoot" not in script;
     assert 'JacClientErrorBoundary' in script;
-    assert '<JacClientErrorBoundary FallbackComponent={ErrorFallback} onError={__jacReactErrorHandler}>' in script;
+    assert '<JacClientErrorBoundary FallbackComponent={ErrorFallback} onError={__jacReactErrorHandler}>'
+        in script;
     assert '<App />' in script;
     assert 'getElementById("__jac_root")' in script;
 }
@@ -289,10 +291,12 @@ test "solid file-based-routing entry mounts via solid-js/web + router shim" {
     assert '<Route path={r.path} component={r.element} />' in script;
     # AuthGuard nests the protected routes and renders the matched child
     # (`props.children`) when authenticated.
-    assert 'function _AuthGuardRoute(props) { return AuthGuard({ redirect: "/login", children: props.children }); }' in script;
+    assert 'function _AuthGuardRoute(props) { return AuthGuard({ redirect: "/login", children: props.children }); }'
+        in script;
     assert '<Route component={_AuthGuardRoute}>' in script;
     # Root layout (when present) rides the router's `root` prop.
-    assert 'const routerProps = RootLayout ? { root: __jacMakeLayoutRoot(RootLayout) } : {};' in script;
+    assert 'const routerProps = RootLayout ? { root: __jacMakeLayoutRoot(RootLayout) } : {};'
+        in script;
     assert '<Router {...routerProps}>' in script;
     # The router tree is `<App />`, wrapped in the error boundary.
     assert '<App />' in script;
@@ -324,14 +328,14 @@ test "backend.build_pages_entry_script dispatches per framework" {
 }
 
 test "solid selects its own framework-free runtime shim" {
-    # Solid must NOT ride the React-flavored `client_runtime.cl.jac`; it has its
+    # Solid must NOT ride the React-flavored `client_runtime.jac`; it has its
     # own shim that re-exports the shared core with zero React imports (no __jacJsx —
     # the JSX path no longer needs a hyperscript factory). Overrides the basename
     # inherited from ReactBackend.
-    assert SolidBackend().runtime_source_basename() == "solid_runtime.cl.jac";
-    assert client_runtime_cl_basename("solid") == "solid_runtime.cl.jac";
+    assert SolidBackend().runtime_source_basename() == "solid_runtime.jac";
+    assert client_runtime_cl_basename("solid") == "solid_runtime.jac";
     path = resolve_client_runtime_cl_path("solid");
-    assert path.endswith("solid_runtime.cl.jac");
+    assert path.endswith("solid_runtime.jac");
     assert os.path.isfile(path);
 }
 
@@ -423,10 +427,12 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     # Solid onTouched uses onChange only (stale onBlur errorMap across fields);
     # error display is gated on isTouched in JacForm. onBlur mode still exists.
     assert (
-        'validators["onBlur"] = schema;\n        validators["onChange"] = schema' not in use_jac_form
+        'validators["onBlur"] = schema;\n        validators["onChange"] = schema'
+        not in use_jac_form
     ) , "Solid onTouched must not wire both onBlur and onChange validators";
     assert (
-        'form_mode === "onTouched")) {\n    validators["onChange"] = schema;' in use_jac_form
+        'form_mode === "onTouched")) {\n    validators["onChange"] = schema;'
+        in use_jac_form
     ) , "Solid onTouched must validate on change only";
     # Error boundary + async boundary over solid-js primitives.
     assert "function JacClientErrorBoundary(" in js;
@@ -492,7 +498,7 @@ test "solid runtime shim imports no react ecosystem package" {
     # Statically scan the shim source (and its impl) for any React-ecosystem import.
     runtime_dir = Path(resolve_client_runtime_cl_path("solid")).parent;
     sources = [
-        runtime_dir / "solid_runtime.cl.jac",
+        runtime_dir / "solid_runtime.jac",
         runtime_dir / "impl" / "solid_runtime.impl.jac"
     ];
     forbidden = [

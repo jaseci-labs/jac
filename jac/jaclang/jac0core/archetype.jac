@@ -217,9 +217,10 @@ obj JsxElement {
         children: list;
 }
 
-glob ObjectSpatialFilter: TypeAlias = Callable[[Archetype], bool] | Archetype | list[
-         Archetype
-     ] | None;
+glob ObjectSpatialFilter: TypeAlias = Callable[[Archetype], bool]
+         | Archetype
+         | list[Archetype]
+         | None;
 
 obj ObjectSpatialDestination {
     has direction: EdgeDir,

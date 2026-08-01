@@ -21,18 +21,18 @@ def:pub get_single_metric(name: str) -> Metric {
     return Metric(name=name, value=0.0);
 }
 
-cl {
-    sv import from .typed_dict_return { get_metrics_map, get_single_metric }
 
-    def:pub app -> JsxElement {
-        has metrics: any = None;
+import from .typed_dict_return { get_metrics_map, get_single_metric }
 
-        async can with entry {
-            metrics = await get_metrics_map();
-        }
+def:pub app -> JsxElement {
+    has metrics: any = None;
 
-        return <div>
+    async can with entry {
+        metrics = await get_metrics_map();
+    }
+
+    return
+        <div>
             <span>{metrics}</span>
         </div>;
-    }
 }

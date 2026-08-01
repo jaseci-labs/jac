@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import enum
 import os
+import re
 from dataclasses import dataclass, field
 from types import ModuleType
 
@@ -2464,55 +2465,23 @@ def discover_impl_files(jac_path: str) -> list[str]:
     dir_path = os.path.dirname(jac_path) or "."
     base_name = os.path.basename(base)
 
-    # Detect variant suffix (.sv/.cl/.na) and compute bare base
-    bare_base = base
-    bare_base_name = base_name
-    variant = None
-    for vext in reg.VARIANT_STEM_SUFFIXES:
-        if base_name.endswith(vext):
-            variant = vext
-            bare_base_name = base_name[: -len(vext)]
-            bare_base = os.path.join(dir_path, bare_base_name)
-            break
 
-    # Same directory: foo.impl.jac (or foo.na.impl.jac for variants)
+    # Same directory: foo.impl.jac
     impl_file = f"{base}{impl_suffix}"
     if os.path.isfile(impl_file):
         impls.append(impl_file)
 
-    # Module folder: foo.impl/*.impl.jac (or foo.na.impl/*.impl.jac)
+    # Module folder: foo.impl/*.impl.jac (or foo.sv.impl/*.impl.jac)
     impl_dir = f"{base}{impl_folder}"
     if os.path.isdir(impl_dir):
         for f in sorted(os.listdir(impl_dir)):
             if f.endswith(impl_suffix):
                 impls.append(os.path.join(impl_dir, f))
 
-    # Shared folder: impl/foo.impl.jac (or impl/foo.na.impl.jac)
+    # Shared folder: impl/foo.impl.jac (or impl/foo.sv.impl.jac)
     shared_impl = os.path.join(dir_path, "impl", f"{base_name}{impl_suffix}")
     if os.path.isfile(shared_impl):
         impls.append(shared_impl)
-
-    # For variant files, also check bare impl files when no bare head exists
-    if variant is not None:
-        bare_head = f"{bare_base}.jac"
-        if not os.path.isfile(bare_head):
-            # Same directory: foo.impl.jac
-            bare_impl = f"{bare_base}{impl_suffix}"
-            if os.path.isfile(bare_impl) and bare_impl not in impls:
-                impls.append(bare_impl)
-            # Module folder: foo.impl/*.impl.jac
-            bare_impl_dir = f"{bare_base}{impl_folder}"
-            if os.path.isdir(bare_impl_dir):
-                for f in sorted(os.listdir(bare_impl_dir)):
-                    fp = os.path.join(bare_impl_dir, f)
-                    if f.endswith(impl_suffix) and fp not in impls:
-                        impls.append(fp)
-            # Shared folder: impl/foo.impl.jac
-            bare_shared = os.path.join(
-                dir_path, "impl", f"{bare_base_name}{impl_suffix}"
-            )
-            if os.path.isfile(bare_shared) and bare_shared not in impls:
-                impls.append(bare_shared)
 
     return impls
 

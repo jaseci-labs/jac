@@ -167,8 +167,7 @@ impl static_fstring_spec_text(spec: uni.UniNode) -> (str | None) {
 
 impl native_capability_violations(mod: uni.Module) -> list {
     import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
-    import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-    import ast as ast3;
+    import from jaclang.jac0core.constant { CodeContext, ExprCtx, Tokens as Tok }
     out: list = [];
     _stdlib_help: (str | None) = None;
 
@@ -182,7 +181,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
             continue;
         }
         for _nm in _stmt.get_all_sub_nodes(typ=uni.Name) {
-            if _nm._py_ctx_func != ast3.Load {
+            if _nm.expr_ctx != ExprCtx.LOAD {
                 continue;
             }
             if _nm.find_parent_of_type(uni.Import) is not None {
@@ -222,7 +221,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
                         and len(item.path) == 1
                     );
                     if (stmt.is_absorb or _plain_bare)
-                    and resolve_native_module(mod_name, _base_dir)[1] is not None {
+                        and resolve_native_module(mod_name, _base_dir)[1] is not None {
                         continue;
                     }
 
@@ -263,15 +262,15 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
 
             if isinstance(nd, uni.CtrlStmt)
-            and isinstance(nd.ctrl, uni.Token)
-            and (nd.ctrl.name == Tok.KW_SKIP) {
+                and isinstance(nd.ctrl, uni.Token)
+                and (nd.ctrl.name == Tok.KW_SKIP) {
                 _encl = nd.find_parent_of_type(uni.Ability);
                 _in_event = (_encl is not None)
-                and isinstance(_encl.signature, uni.EventSignature);
+                    and isinstance(_encl.signature, uni.EventSignature);
                 if (_encl is None) {
                     _encl_impl = nd.find_parent_of_type(uni.ImplDef);
                     _in_event = (_encl_impl is not None)
-                    and isinstance(_encl_impl.spec, uni.EventSignature);
+                        and isinstance(_encl_impl.spec, uni.EventSignature);
                 }
                 if not _in_event {
                     out.append((nd, "statement", "SkipStmt", _NATIVE_SKIP_HELP));
@@ -280,7 +279,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
 
             if isinstance(nd, (uni.Ability, uni.ArchSpec, uni.ImplDef))
-            and nd.decorators {
+                and nd.decorators {
                 _dec_static_fn = (
                     isinstance(nd, uni.Ability)
                     and not isinstance(nd.parent, uni.Archetype)
@@ -319,7 +318,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
                 if _vp_encl is None {
                     _vp_impl = nd.find_parent_of_type(uni.ImplDef);
                     if _vp_impl is not None
-                    and isinstance(_vp_impl.decl_link, uni.Ability) {
+                        and isinstance(_vp_impl.decl_link, uni.Ability) {
                         _vp_encl = _vp_impl.decl_link;
                     }
                 }
@@ -385,10 +384,10 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
 
             if isinstance(nd, uni.UnaryExpr)
-            and isinstance(nd.op, uni.Token)
-            and nd.op.name == Tok.STAR_POW
-            and isinstance(nd.parent, uni.FuncCall)
-            and nd in (nd.parent.params or []) {
+                and isinstance(nd.op, uni.Token)
+                and nd.op.name == Tok.STAR_POW
+                and isinstance(nd.parent, uni.FuncCall)
+                and nd in (nd.parent.params or []) {
                 out.append(
                     (nd, "call argument unpacking", nd.op.value, _NATIVE_UNPACK_HELP)
                 );
@@ -396,15 +395,17 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
 
             if isinstance(nd, uni.KWPair)
-            and nd.key is None
-            and isinstance(nd.parent, uni.FuncCall) {
+                and nd.key is None
+                and isinstance(nd.parent, uni.FuncCall) {
                 out.append((nd, "call argument unpacking", "**", _NATIVE_UNPACK_HELP));
                 continue;
             }
 
             if isinstance(nd, uni.Ability)
-            and not isinstance(nd.signature, (uni.FuncSignature, uni.EventSignature))
-            and isinstance(nd.parent, uni.Archetype) {
+                and not isinstance(
+                    nd.signature, (uni.FuncSignature, uni.EventSignature)
+                )
+                and isinstance(nd.parent, uni.Archetype) {
                 _sig_kind = (
                     type(nd.signature).__name__
                         if nd.signature is not None
@@ -442,11 +443,18 @@ impl native_capability_violations(mod: uni.Module) -> list {
             }
 
             if isinstance(nd, uni.AtomTrailer)
-            and nd.is_attr
-            and isinstance(nd.right, uni.Name)
-            and (nd.target.type is not None)
-            and nd.target.type.is_any_type() {
+                and nd.is_attr
+                and isinstance(nd.right, uni.Name)
+                and (nd.target.type is not None)
+                and nd.target.type.is_any_type() {
                 _fld = nd.right.value;
+                if (
+                    _fld == "environ"
+                    and isinstance(nd.target, uni.Name)
+                    and nd.target.value == "os"
+                ) {
+                    continue;
+                }
                 out.append(
                     (
                         nd,
@@ -473,8 +481,8 @@ impl native_capability_violations(mod: uni.Module) -> list {
                     _hops += 1;
                     _ci += 1;
                     if (_ci < len(_chain))
-                    and isinstance(_chain[_ci], uni.FilterCompr)
-                    and (_chain[_ci].f_type is not None) {
+                        and isinstance(_chain[_ci], uni.FilterCompr)
+                        and (_chain[_ci].f_type is not None) {
                         _ci += 1;
                     }
                 }
@@ -535,10 +543,10 @@ impl PortabilityWarnPass.transform(ir_in: uni.Module) -> uni.Module {
 }
 
 impl PortabilityWarnPass._check_js_globals(mod: uni.Module) -> None {
-    import ast as ast3;
+    import from jaclang.jac0core.constant { ExprCtx }
     all_names = mod.get_all_sub_nodes(typ=uni.Name);
     for name_nd in all_names {
-        if name_nd._py_ctx_func != ast3.Load {
+        if name_nd.expr_ctx != ExprCtx.LOAD {
             continue;
         }
 
@@ -577,23 +585,45 @@ impl PortabilityWarnPass._check_js_methods(mod: uni.Module) -> None {
 
         parent = trailer.parent;
         is_method_call = isinstance(parent, uni.FuncCall) and parent.target is trailer;
-
-        if is_method_call {
-            self.emit(
-                W6002,
-                node_override=trailer.right,
-                method=method_name,
-                alternative=JS_METHODS[method_name]
-            );
+        if not is_method_call {
+            continue;
         }
+
+        if trailer.right.sym is not None {
+            continue;
+        }
+        if method_name == "find" and not self._find_call_is_js_style(parent) {
+            continue;
+        }
+        self.emit(
+            W6002,
+            node_override=trailer.right,
+            method=method_name,
+            alternative=JS_METHODS[method_name]
+        );
     }
 }
 
+impl PortabilityWarnPass._find_call_is_js_style(call: uni.FuncCall) -> bool {
+    params = call.params;
+    if params is None or len(params) != 1 {
+        return False;
+    }
+    arg = params[0];
+    if isinstance(arg, uni.LambdaExpr) {
+        return True;
+    }
+    if isinstance(arg, uni.Name) and arg.sym is not None {
+        return arg.sym.sym_type in (SymbolType.ABILITY, SymbolType.METHOD);
+    }
+    return False;
+}
+
 impl PortabilityWarnPass._check_js_keywords(mod: uni.Module) -> None {
-    import ast as ast3;
+    import from jaclang.jac0core.constant { ExprCtx }
     all_names = mod.get_all_sub_nodes(typ=uni.Name);
     for name_nd in all_names {
-        if name_nd._py_ctx_func != ast3.Load {
+        if name_nd.expr_ctx != ExprCtx.LOAD {
             continue;
         }
 
@@ -607,8 +637,8 @@ impl PortabilityWarnPass._check_js_keywords(mod: uni.Module) -> None {
 
         parent = name_nd.parent;
         if isinstance(parent, uni.AtomTrailer)
-        and parent.is_attr
-        and parent.right is name_nd {
+            and parent.is_attr
+            and parent.right is name_nd {
             continue;
         }
         if name_nd.value in JS_KEYWORDS {
@@ -633,6 +663,10 @@ impl PortabilityWarnPass._check_js_properties(mod: uni.Module) -> None {
         }
         prop_name = trailer.right.value;
         if prop_name not in JS_PROPERTIES {
+            continue;
+        }
+
+        if trailer.right.sym is not None {
             continue;
         }
 

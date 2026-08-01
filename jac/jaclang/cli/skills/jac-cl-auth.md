@@ -12,7 +12,7 @@ Client auth uses four helpers from `@jac/runtime`. **Return types differ - get t
 | `jacLogout()` | no | `None` | - (call it, no assign) |
 | `jacIsLoggedIn()` | no | `bool` | - (use inline) |
 
-These patterns apply in any client code - plain `.jac` components inferred client (the `@jac/runtime` import itself is a string-path npm import, which is client-only syntax; markers are optional overrides - see `jac-codespaces`).
+These patterns apply in any client code - plain `.jac` components inferred client (the `@jac/runtime` import itself is a string-path npm import, which is client-only syntax - see `jac-codespaces`).
 
 The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`dict`** shaped `{"success": bool, "user_id" | "error": ...}`, and it is *always* a non-empty (truthy) dict - so `if not signup_result` can **never** catch a failed signup. Check the `success` key instead: `if not signup_result["success"] { ... }`. (Typing a `jacSignup` result as `bool` also fails `jac check` with `E1001: Cannot assign dict to bool`.)
 
@@ -25,7 +25,7 @@ When the same form that signs a user up also calls a `def:priv` endpoint (saving
 3. `await save_profile(...)` - only NOW does the `def:priv` call have an authenticated session
 
 ```
-# `save_profile` here is YOUR server function (def:priv) - imported from a .sv.jac module.
+# `save_profile` here is YOUR server function (def:priv) - imported from a server module.
 async def handle_register(name: str, email: str, password: str) -> str {
     # Pre-declare every var that holds an `await` result. `let` scoping in the
     # generated JS can otherwise leave them undefined at the if-check.
@@ -101,7 +101,7 @@ def:pub Dashboard() -> JsxElement {
     if not jacIsLoggedIn() {
         return <Navigate to="/login" replace={True} />;
     }
-    return <div className="p-4">Welcome to the dashboard</div>;
+    <div className="p-4">Welcome to the dashboard</div>
 }
 ```
 
@@ -114,7 +114,7 @@ def:pub Dashboard() -> JsxElement {
 import from "@jac/runtime" { AuthGuard, Outlet }
 
 def:pub AuthShell() -> JsxLayout {
-    return <AuthGuard redirect="/login"><Outlet /></AuthGuard>;
+    <AuthGuard redirect="/login"><Outlet /></AuthGuard>
 }
 ```
 

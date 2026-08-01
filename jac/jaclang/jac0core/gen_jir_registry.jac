@@ -97,8 +97,8 @@ def generate -> str {
     for name in sorted(dir(ut_mod)) {
         attr = getattr(ut_mod, name);
         if isinstance(attr, type)
-        and issubclass(attr, UniNode)
-        and attr is not UniNode {
+            and issubclass(attr, UniNode)
+            and attr is not UniNode {
             all_classes.append((name, attr));
         }
     }

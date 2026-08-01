@@ -7,8 +7,12 @@ a `get_client_targets` hook. These tests pin that direct-registration contract.
 
 import from pathlib { Path }
 
-glob _client_dir = Path(__file__).parent.parent.parent.parent / "jaclang" / "runtimelib" / "client",
+glob _client_dir = Path(__file__).parent.parent.parent.parent
+         / "jaclang"
+         / "runtimelib"
+         / "client",
      _register_jac = _client_dir / "targets" / "register.jac",
+     _registry_jac = _client_dir / "targets" / "registry.jac",
      _cli_jac = _client_dir / "cli.jac";
 
 test "register_targets registers the built-in client targets directly" {
@@ -40,14 +44,23 @@ test "register.jac registers built-in targets without a plugin group" {
     assert "with entry" not in content;
 }
 
-test "cli registers targets before syncing choices at import" {
-    content = _cli_jac.read_text().replace("\r\n", "\n");
-    assert "register_targets();" in content;
-    assert "sync_client_target_choices();" in content;
-    reg_idx = content.index("register_targets();");
-    sync_idx = content.index("sync_client_target_choices();");
-    assert reg_idx < sync_idx , "register_targets must run before sync_client_target_choices";
-    # Registration now happens at module import (with entry), since the CLI
-    # imports this module at startup; there is no create_cmd hook anymore.
-    assert "with entry {" in content;
+test "targets register lazily before sync reads them" {
+    # Registration was folded into first registry access (lazy init): the CLI
+    # no longer calls register_targets() eagerly. get_target_registry() self-
+    # registers on first access, so any reader -- including the CLI's import-
+    # time sync_client_target_choices() -- sees the built-in targets.
+    cli_content = _cli_jac.read_text().replace("\r\n", "\n");
+    # The CLI still triggers the import-time sync that wires target choices.
+    assert "sync_client_target_choices();" in cli_content;
+    assert "with entry {" in cli_content;
+    # The eager register_targets() call must not have returned to cli.jac.
+    assert "register_targets();" not in cli_content;
+
+    registry_content = _registry_jac.read_text().replace("\r\n", "\n");
+    # Lazy self-registration: register_targets() runs on first access, before
+    # the registry is handed back to any caller (so before sync reads it).
+    assert "register_targets();" in registry_content;
+    reg_idx = registry_content.index("register_targets();");
+    ret_idx = registry_content.index("return _registry;");
+    assert reg_idx < ret_idx , "register_targets must run before get_target_registry returns";
 }

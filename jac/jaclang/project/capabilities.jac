@@ -325,7 +325,7 @@ def byllm_intent_capabilities(config: JacConfig) -> set[str] {
     model = byllm.get("model");
     default_model = model.get("default_model", "") if isinstance(model, dict) else "";
     if (isinstance(default_model, str) and default_model.startswith("local:"))
-    or isinstance(byllm.get("local"), dict) {
+        or isinstance(byllm.get("local"), dict) {
         caps.add("llm.local");
     }
     return caps;

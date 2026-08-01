@@ -244,7 +244,7 @@ test "syntax error surfaces a console diagnostic" {
             source = f.read();
         }
         with open(main_path, "w") as f {
-            f.write(source.replace("cl {", "cl {{{{", 1));
+            f.write("}\n" + source);
         }
         port = get_free_port();
         jac_cmd = get_jac_command();

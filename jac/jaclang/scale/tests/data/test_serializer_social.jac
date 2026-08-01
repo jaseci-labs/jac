@@ -10,7 +10,7 @@ import from jaclang.scale.tests.fixtures.social_graph {
 import from jaclang.scale.persistence.lib { kvstore }
 import from jaclang.scale.persistence.db { close_all_db_connections }
 import from jaclang.scale.config.config_loader { reset_scale_config }
-import from testcontainers.mongodb { MongoDbContainer }
+import from testcontainers.community.mongodb { MongoDbContainer }
 import from uuid { uuid4 }
 import from jaclang.jac0core.archetype { NodeAnchor, EdgeAnchor, ObjectAnchor }
 
@@ -39,8 +39,8 @@ test "serialize user node" {
     serialized = Serializer.serialize(u, include_type=True);
     deserialized = Serializer.deserialize(serialized);
     assert deserialized.name == "Alice"
-    and deserialized.role == "admin"
-    and deserialized.age == 30;
+        and deserialized.role == "admin"
+        and deserialized.age == 30;
     assert type(deserialized) == User;
 }
 
@@ -136,8 +136,8 @@ test "ref_mode: shared refs deduplicated, circular graphs terminate, $ref round-
 
     off = Serializer.serialize([alice, bob], ref_mode=False);
     assert off[0]["city"]["name"] == "Metropolis"
-    and off[1]["city"]["name"] == "Metropolis"
-    and "$ref" not in str(off);
+        and off[1]["city"]["name"] == "Metropolis"
+        and "$ref" not in str(off);
 
     bob.friend = alice;
     alice.friend = bob;
@@ -167,7 +167,7 @@ test "ref_mode: mutations reflect inline, identity and $ref stay stable across l
     city.name = "Gotham";
     data = Serializer.serialize(alice, ref_mode=True);
     assert data["city"]["name"] == "Gotham"
-    and data["friend"]["city"]["$ref"] == city_id;
+        and data["friend"]["city"]["$ref"] == city_id;
 
     alice.friend = None;
     data2 = Serializer.serialize(alice, ref_mode=True);
@@ -176,7 +176,7 @@ test "ref_mode: mutations reflect inline, identity and $ref stay stable across l
     alice.friend = Person(name="Carol", city=City(name="Star City"));
     data3 = Serializer.serialize(alice, ref_mode=True);
     assert data3["friend"]["name"] == "Carol"
-    and data3["friend"]["city"]["name"] == "Star City";
+        and data3["friend"]["city"]["name"] == "Star City";
 
     assert jid(city) == city_id and jid(alice) == alice_id;
 }
@@ -186,8 +186,8 @@ test "ref_mode: unknown $ref falls back to typed anchor stub" {
 
     stub = Serializer._deserialize_value({"$ref": ref_id.hex});
     assert isinstance(stub, ObjectAnchor)
-    and stub.id == ref_id
-    and not stub.is_populated();
+        and stub.id == ref_id
+        and not stub.is_populated();
 
     assert isinstance(
         Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "node"}), NodeAnchor
@@ -201,7 +201,7 @@ test "ref_mode: unknown $ref falls back to typed anchor stub" {
     user_dict = {"$ref": "some-value", "name": "Alice", "count": 42};
     result = Serializer._deserialize_value(user_dict);
     assert isinstance(result, dict)
-    and result["$ref"] == "some-value"
-    and result["name"] == "Alice"
-    and result["count"] == 42;
+        and result["$ref"] == "some-value"
+        and result["name"] == "Alice"
+        and result["count"] == 42;
 }

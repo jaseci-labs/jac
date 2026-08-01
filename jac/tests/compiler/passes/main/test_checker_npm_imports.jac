@@ -32,10 +32,10 @@ import from .checker_npm_harness {
 test "generated cn() type-checks cleanly against declared npm types" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td));
-        util = proj / "lib" / "utils.cl.jac";
+        util = proj / "lib" / "utils.jac";
         util.write_text(
-            'cl import from "clsx" { clsx }\n'
-            'cl import from "tailwind-merge" { twMerge }\n\n'
+            'import from "clsx" { clsx }\n'
+            'import from "tailwind-merge" { twMerge }\n\n'
             'def:pub cn(*inputs: any) -> str {\n'
             '    return twMerge(clsx(inputs));\n'
             '}\n'
@@ -55,9 +55,9 @@ test "generated cn() type-checks cleanly against declared npm types" {
 test "declared npm types are real: misuse is a genuine type error" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td));
-        bad = proj / "lib" / "misuse.cl.jac";
+        bad = proj / "lib" / "misuse.jac";
         bad.write_text(
-            'cl import from "clsx" { clsx }\n\n'
+            'import from "clsx" { clsx }\n\n'
             'def:pub bad() -> int {\n'
             '    return clsx("a");\n'
             '}\n'
@@ -73,9 +73,9 @@ test "declared npm types are real: misuse is a genuine type error" {
 test "undeclared npm imports stay gradual with W1102" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td));
-        f = proj / "lib" / "untyped.cl.jac";
+        f = proj / "lib" / "untyped.jac";
         f.write_text(
-            'cl import from "untyped-pkg" { mystery }\n\n'
+            'import from "untyped-pkg" { mystery }\n\n'
             'def:pub use() -> str {\n'
             '    return mystery(1);\n'
             '}\n'
@@ -91,9 +91,9 @@ test "undeclared npm imports stay gradual with W1102" {
 test "strict knob escalates untyped external imports to E1120" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td), strict=True);
-        f = proj / "lib" / "untyped.cl.jac";
+        f = proj / "lib" / "untyped.jac";
         f.write_text(
-            'cl import from "untyped-pkg" { mystery }\n\n'
+            'import from "untyped-pkg" { mystery }\n\n'
             'def:pub use() -> str {\n'
             '    return mystery(1);\n'
             '}\n'
@@ -102,9 +102,9 @@ test "strict knob escalates untyped external imports to E1120" {
         assert "E1120" in err_codes , '[check] untyped-external = "error" must escalate to E1120, '
         f"got codes={err_codes}";
         # Declared imports are unaffected by strict mode.
-        ok = proj / "lib" / "ok.cl.jac";
+        ok = proj / "lib" / "ok.jac";
         ok.write_text(
-            'cl import from "clsx" { clsx }\n\n'
+            'import from "clsx" { clsx }\n\n'
             'def:pub c() -> str {\n'
             '    return clsx("a");\n'
             '}\n'
@@ -119,9 +119,9 @@ test "strict knob escalates untyped external imports to E1120" {
 test "missing module warns W1100 without cascading E1002" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td));
-        f = proj / "lib" / "missing.cl.jac";
+        f = proj / "lib" / "missing.jac";
         f.write_text(
-            'cl import from "not-installed-pkg" { ghost }\n\n'
+            'import from "not-installed-pkg" { ghost }\n\n'
             'def:pub g() -> str {\n'
             '    return ghost();\n'
             '}\n'
@@ -138,7 +138,7 @@ test "missing module warns W1100 without cascading E1002" {
 test "npm resolver handles exports maps, scoped packages, and @types" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td));
-        base = str(proj / "lib" / "x.cl.jac");
+        base = str(proj / "lib" / "x.jac");
         # Classic package: ESM module entry preferred via exports "import".
         clsx_entry = resolve_client_npm_package("clsx", base);
         assert clsx_entry is not None and clsx_entry.endswith("clsx.mjs") , f"clsx entry: {clsx_entry}";
@@ -155,7 +155,9 @@ test "npm resolver handles exports maps, scoped packages, and @types" {
         assert scoped_entry is not None and scoped_entry.endswith("index.js") , f"scoped entry: {scoped_entry}";
         scoped_dts = resolve_client_npm_declarations("@scoped/tool", base);
         assert scoped_dts is not None
-        and scoped_dts.endswith(os.path.join("@types", "scoped__tool", "index.d.ts")) , f"scoped dts: {scoped_dts}";
+            and scoped_dts.endswith(
+                os.path.join("@types", "scoped__tool", "index.d.ts")
+            ) , f"scoped dts: {scoped_dts}";
         # Negative cases.
         assert resolve_client_npm_package("not-installed", base) is None;
         assert resolve_client_npm_package("./local", base) is None;

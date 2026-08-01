@@ -21,16 +21,22 @@ def _cef_dir -> Path {
     here = Path(os.path.abspath(__file__)).parent;
     probe = here;
     for _ in range(8) {
-        cand = probe / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / "cef";
-        if (cand / "cef.na.jac").exists() {
+        cand = probe
+            / "jaclang"
+            / "runtimelib"
+            / "client"
+            / "targets"
+            / "desktop"
+            / "native"
+            / "cef";
+        if (cand / "cef.jac").exists() {
             return cand;
         }
         probe = probe.parent;
     }
     raise RuntimeError(
-        "jaclang/runtimelib/client/targets/desktop/native/cef/cef.na.jac not found from " + str(
-            here
-        )
+        "jaclang/runtimelib/client/targets/desktop/native/cef/cef.jac not found from "
+            + str(here)
     );
 }
 
@@ -42,12 +48,12 @@ def _compile_cef_host(host_src: str) -> tuple {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
-        shutil.copy2(str(_cef_dir() / "cef.na.jac"), os.path.join(tmp, "cef.na.jac"));
-        with open(os.path.join(tmp, "host.na.jac"), "w") as f {
+        shutil.copy2(str(_cef_dir() / "cef.jac"), os.path.join(tmp, "cef.jac"));
+        with open(os.path.join(tmp, "host.jac"), "w") as f {
             f.write(host_src);
         }
         result = subprocess.run(
-            [jac, "nacompile", "host.na.jac", "-o", "out"],
+            [jac, "nacompile", "host.jac", "-o", "out"],
             cwd=tmp,
             capture_output=True,
             text=True,
@@ -131,11 +137,11 @@ test "nacompile invokes a zero-arg function called from entry with parentheses" 
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
-        with open(os.path.join(tmp, "m.na.jac"), "w") as f {
+        with open(os.path.join(tmp, "m.jac"), "w") as f {
             f.write("import sys;\ndef _go { sys.exit(7); }\nwith entry { _go(); }\n");
         }
         comp = subprocess.run(
-            [jac, "nacompile", "m.na.jac", "-o", "out"],
+            [jac, "nacompile", "m.jac", "-o", "out"],
             cwd=tmp,
             capture_output=True,
             text=True,
@@ -158,25 +164,25 @@ with `()`. Guards against re-introducing the bare-name no-op that left the
 cef-subprocess entry and `g_exe_dir_buf` initialization dead."""
 test "cef native lifecycle functions are invoked with parentheses" {
     cef = _cef_dir();
-    sub = (cef / "cef_subprocess.na.jac").read_text();
-    disp = (cef / "cef_dispatch.na.jac").read_text();
+    sub = (cef / "cef_subprocess.jac").read_text();
+    disp = (cef / "cef_dispatch.jac").read_text();
     # Required paren-form invocations.
     for needle in [
         "_subprocess_main()",
         "_subprocess_bootstrap()",
         "cef_main_args_create()"
     ] {
-        assert needle in sub , f"cef_subprocess.na.jac must invoke {needle}";
+        assert needle in sub , f"cef_subprocess.jac must invoke {needle}";
     }
-    assert "_init_exe_dir()" in disp , "cef_dispatch.na.jac must invoke _init_exe_dir()";
+    assert "_init_exe_dir()" in disp , "cef_dispatch.jac must invoke _init_exe_dir()";
     # No bare no-op invocation (name followed directly by `;`, not `(`).
     checks = [
         (
-            "cef_subprocess.na.jac",
+            "cef_subprocess.jac",
             sub,
             ["_subprocess_main", "_subprocess_bootstrap", "cef_main_args_create"]
         ),
-        ("cef_dispatch.na.jac", disp, ["_init_exe_dir"]),
+        ("cef_dispatch.jac", disp, ["_init_exe_dir"]),
 
     ];
     for (fname, body, fns) in checks {
@@ -193,10 +199,10 @@ Previously the env var was a silent no-op -- the GPU process still spawned and
 crashed on hosts with no usable GL. Pins the wiring so it cannot regress."""
 test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
     cef = _cef_dir();
-    disp = (cef / "cef_dispatch.na.jac").read_text();
+    disp = (cef / "cef_dispatch.jac").read_text();
     # The env var must be read inside the cmdline handler ...
     assert 'cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU")' in disp , (
-        "cef_dispatch.na.jac must read JAC_CEF_DISABLE_GPU in _on_before_cmdline"
+        "cef_dispatch.jac must read JAC_CEF_DISABLE_GPU in _on_before_cmdline"
     );
     # ... and it must append the disable-gpu switch (not just rely on HEADLESS).
     block = re.search(

@@ -34,9 +34,8 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
 
     if breaker_should_skip(module_name) {
         raise RuntimeError(
-            f"sv-to-sv RPC '{module_name}.{func_name}' blocked by " + f"open circuit breaker (cooldown {int(
-                _BREAKER_COOLDOWN_SECONDS
-            )}s)"
+            f"sv-to-sv RPC '{module_name}.{func_name}' blocked by "
+                + f"open circuit breaker (cooldown {int(_BREAKER_COOLDOWN_SECONDS)}s)"
         );
     }
 
@@ -50,7 +49,8 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
         import httpx;
     } except ImportError {
         raise RuntimeError(
-            "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
+            "httpx is required for sv-to-sv RPC calls. "
+                + "Install it via `pip install httpx`."
         );
     }
 
@@ -110,7 +110,8 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
     breaker_record_failure(module_name);
 
     raise RuntimeError(
-        f"sv-to-sv RPC '{module_name}.{func_name}' failed after " + f"{max_attempts} attempts: {last_err}"
+        f"sv-to-sv RPC '{module_name}.{func_name}' failed after "
+            + f"{max_attempts} attempts: {last_err}"
     );
 }
 
@@ -134,9 +135,8 @@ def walker_call(
 
     if breaker_should_skip(module_name) {
         raise RuntimeError(
-            f"sv-to-sv walker spawn '{label}' blocked by " + f"open circuit breaker (cooldown {int(
-                _BREAKER_COOLDOWN_SECONDS
-            )}s)"
+            f"sv-to-sv walker spawn '{label}' blocked by "
+                + f"open circuit breaker (cooldown {int(_BREAKER_COOLDOWN_SECONDS)}s)"
         );
     }
 
@@ -145,7 +145,8 @@ def walker_call(
         import httpx;
     } except ImportError {
         raise RuntimeError(
-            "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
+            "httpx is required for sv-to-sv RPC calls. "
+                + "Install it via `pip install httpx`."
         );
     }
 
@@ -196,7 +197,8 @@ def walker_call(
     breaker_record_failure(module_name);
 
     raise RuntimeError(
-        f"sv-to-sv walker spawn '{label}' failed after " + f"{max_attempts} attempts: {last_err}"
+        f"sv-to-sv walker spawn '{label}' failed after "
+            + f"{max_attempts} attempts: {last_err}"
     );
 }
 
@@ -281,6 +283,6 @@ def _hydrate_walker_envelope(
     msg = err.get("message") if isinstance(err, dict) else str(err);
     raise RuntimeError(
         f"sv-to-sv walker spawn '{module_name}.{walker_name}' failed: {msg
-        or 'unknown error'}"
+            or 'unknown error'}"
     );
 }

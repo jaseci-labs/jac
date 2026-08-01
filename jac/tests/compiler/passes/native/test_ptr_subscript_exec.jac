@@ -1,3 +1,4 @@
+import from tests.support { native_force_opts }
 import ctypes;
 import os;
 import from pathlib { Path }
@@ -5,10 +6,12 @@ import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-"""Compile a .na.jac fixture; return (prog, ir) without asserting on errors."""
+"""Compile a .jac fixture; return (prog, ir) without asserting on errors."""
 def _compile(fixture: str) -> tuple {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     return (prog, ir);
 }
 
@@ -21,7 +24,7 @@ def _getf(eng: object, name: str, restype: object, *argtypes: object) -> object 
 
 # ─── compile cleanliness ─────────────────────────────────────────────────────
 test "ptr subscript fixture compiles with no errors, no E9002 ICE (#6707, #6708)" {
-    (prog, _) = _compile("ptr_subscript.na.jac");
+    (prog, _) = _compile("ptr_subscript.jac");
     codes = [
         e.code.code
         for e in (prog.errors_had or [])
@@ -41,7 +44,7 @@ test "ptr subscript fixture compiles with no errors, no E9002 ICE (#6707, #6708)
 
 # ─── read path execution (#6708) ─────────────────────────────────────────────
 test "ptr subscript read returns correct field values (#6708)" {
-    (prog, ir) = _compile("ptr_subscript.na.jac");
+    (prog, ir) = _compile("ptr_subscript.jac");
     # Guard: fail cleanly on a broken compile rather than calling garbage JIT
     # code (which segfaults the worker).
     assert not prog.errors_had , f"compile errors block execution: {[
@@ -90,7 +93,7 @@ test "ptr subscript read returns correct field values (#6708)" {
 
 # ─── write path execution (#6707) ────────────────────────────────────────────
 test "ptr subscript write stores into the right element, neighbors intact (#6707)" {
-    (prog, ir) = _compile("ptr_subscript.na.jac");
+    (prog, ir) = _compile("ptr_subscript.jac");
     assert not prog.errors_had , f"compile errors block execution: {[
         str(e) for e in prog.errors_had
     ]}";

@@ -123,10 +123,10 @@ def _start_loopback(
 ) {
     dist = os.path.join(app_dir, "dist");
     store = SessionStore(os.path.join(data_dir, ".jac", "desktop", "session.json"));
-    server_cls: any = socketserver.TCPServer;
+
+    server_cls: any = socketserver.ThreadingTCPServer;
+    server_cls.daemon_threads = True;
     if mode == "cef" {
-        server_cls = socketserver.ThreadingTCPServer;
-        server_cls.daemon_threads = True;
         handler = make_handler(
             dist,
             store,
@@ -135,7 +135,7 @@ def _start_loopback(
             sv_bridge=inprocess_forward
         );
     } else {
-        handler = make_handler(dist, store);
+        handler = make_handler(dist, store, dispatch=ctx.dispatch);
     }
     server_cls.allow_reuse_address = True;
     pref = preferred_port(app_name);
@@ -147,7 +147,9 @@ def _start_loopback(
             pinned = int(pinned_raw);
         } except ValueError {
             raise RuntimeError(
-                "JAC_DESKTOP_BROKER_PORT must be a port number, got '" + pinned_raw + "'"
+                "JAC_DESKTOP_BROKER_PORT must be a port number, got '"
+                    + pinned_raw
+                    + "'"
             );
         }
         try {
@@ -155,9 +157,10 @@ def _start_loopback(
             port = pinned;
         } except OSError as bind_err {
             raise RuntimeError(
-                "JAC_DESKTOP_BROKER_PORT " + str(pinned) + " could not be bound: " + str(
-                    bind_err
-                )
+                "JAC_DESKTOP_BROKER_PORT "
+                    + str(pinned)
+                    + " could not be bound: "
+                    + str(bind_err)
             );
         }
     } else {

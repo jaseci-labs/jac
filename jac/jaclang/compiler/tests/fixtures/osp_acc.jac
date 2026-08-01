@@ -10,11 +10,16 @@ functions live in their codespace block.
 """
 
 # --- shared archetypes (one declaration, compiled by every backend) ---
-node Item { has val: int; }
+node Item {
+    has val: int;
+}
 
 walker Acc {
     has total: int = 0;
-    can grab with Item entry { self.total = self.total + here.val; }
+
+    can grab with Item entry {
+        self.total = self.total + here.val;
+    }
 }
 
 # --- py reference (sv runtime) ---
@@ -26,21 +31,20 @@ def acc_py() -> dict[str, any] {
 }
 
 # --- na (native LLVM) ---
-na {
-    def acc_na() -> dict[str, any] {
-        w = Acc();
-        w spawn Item(val=10);
-        w spawn Item(val=32);
-        return {"total": w.total};
-    }
+
+def acc_na() -> dict[str, any] {
+    w = Acc();
+    w spawn Item(val=10);
+    w spawn Item(val=32);
+    return {"total": w.total};
 }
 
+
 # --- cl (ECMAScript, in-process via the kernel) ---
-cl {
-    def acc_cl() -> dict[str, any] {
-        w = Acc();
-        w spawn Item(val=10);
-        w spawn Item(val=32);
-        return {"total": w.total};
-    }
+
+def acc_cl() -> dict[str, any] {
+    w = Acc();
+    w spawn Item(val=10);
+    w spawn Item(val=32);
+    return {"total": w.total};
 }

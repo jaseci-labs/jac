@@ -7,8 +7,8 @@ client->server bindings the compiler resolves into live endpoints, so they no
 longer need to be re-imported here under the server context.
 """
 
-cl import from .frontend { app as ClientApp }
+import from .frontend { app as ClientApp }
 
-cl def:pub app -> JsxElement {
-    return <ClientApp/>;
+def:pub app -> JsxElement {
+    <ClientApp/>
 }

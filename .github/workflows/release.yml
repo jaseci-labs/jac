@@ -285,7 +285,7 @@ jobs:
               continue
             fi
             missing=()
-            for p in linux-x86_64 linux-aarch64 macos-aarch64; do
+            for p in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64; do
               printf '%s\n' "$assets" | grep -qx "jac-${VERSION}-${p}" || missing+=("jac-${VERSION}-${p}")
             done
             [ ${#missing[@]} -eq 0 ] && break
@@ -297,18 +297,24 @@ jobs:
             sleep 5
           done
 
-          # Flip draft -> published + latest in one PATCH, but only while it is
-          # still a draft. A re-run, or an action=publish dispatch from an older
-          # commit, must not drag `--latest` back onto an older version --
-          # install.sh resolves latest, so that would silently downgrade users.
-          # (Same idempotency tag-and-release applies to draft/latest state.)
+          # Flip draft -> published, but `--latest` must never move backwards:
+          # install.sh resolves latest, so a re-run or a backport release
+          # (0.34.8 after 0.35.0) would silently downgrade users. The draft is
+          # invisible to /releases/latest, so that is the published newest.
           is_draft="$(gh release view "$VTAG" --json isDraft --jq '.isDraft' 2>/dev/null || echo true)"
           if [ "$is_draft" = "true" ]; then
+            latest_tag="$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
+            if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
+              latest_flag="--latest"
+            else
+              latest_flag="--latest=false"
+              echo "Backport: $latest_tag stays latest, $VTAG publishes without the pointer."
+            fi
             gh release edit "$VTAG" \
               --verify-tag \
               --draft=false \
-              --latest
-            echo "Published $VTAG as latest with all assets attached."
+              "$latest_flag"
+            echo "Published $VTAG ($latest_flag) with all assets attached."
           else
             echo "$VTAG is already published; leaving the latest pointer untouched."
           fi

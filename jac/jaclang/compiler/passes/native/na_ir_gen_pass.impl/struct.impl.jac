@@ -95,6 +95,9 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
     if name == "unpack" {
         return self._emit_struct_unpack(nd, params, fields, total, little);
     }
+    if name == "pack_into" {
+        return self._emit_struct_pack_into(nd, params, fields, total, little);
+    }
     return None;
 }
 

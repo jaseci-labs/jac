@@ -19,7 +19,9 @@ import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
 }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
-    desktop_app_runtime_env
+    desktop_app_runtime_env,
+    jac_desktop_deps_shell_export,
+    jac_desktop_webkit_shell_export
 }
 
 def _ensure_libwebview(webview_dir: Path) -> Path {
@@ -28,7 +30,14 @@ def _ensure_libwebview(webview_dir: Path) -> Path {
         return lib;
     }
     console.print(f"  Building {libwebview_name()} (one-time)...", style="muted");
-    res = subprocess.run([str(webview_dir / "build_libwebview.sh")]);
+    script = webview_dir / "build_libwebview.sh";
+
+    try {
+        script.chmod(script.stat().st_mode | 0o111);
+    } except OSError {
+        ;
+    }
+    res = subprocess.run([str(script)]);
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
             f"Failed to build {libwebview_name()} - is WebKitGTK + a C toolchain installed? "
@@ -65,7 +74,7 @@ def _assemble_native_host(
     lib = _ensure_libwebview(webview_dir);
     out_lib_name = libwebview_name();
     shutil.copy2(lib, output_dir / out_lib_name);
-    shutil.copy2(webview_dir / "webview.na.jac", output_dir / "webview.na.jac");
+    shutil.copy2(webview_dir / "webview.jac", output_dir / "webview.jac");
 
     sv_root = entry_file.parent;
     sv_stage = output_dir / "sv";
@@ -102,12 +111,12 @@ def _assemble_native_host(
         dispatch.debug,
         plugin_configs
     );
-    (output_dir / "host.na.jac").write_text(host_src);
+    (output_dir / "host.jac").write_text(host_src);
 
     console.print("  Compiling native host (jac nacompile)...", style="muted");
     binary = output_dir / app_name;
     res = subprocess.run(
-        [_jac_bin(), "nacompile", str(output_dir / "host.na.jac"), "-o", str(binary)],
+        [_jac_bin(), "nacompile", str(output_dir / "host.jac"), "-o", str(binary)],
         cwd=str(output_dir),
         env=_jac_subprocess_env()
     );
@@ -121,13 +130,14 @@ def _assemble_native_host(
         stray.unlink();
     }
     launcher = output_dir / f"{app_name}-launch.sh";
+    venv_dir = project_dir / ".jac" / "venv";
+    venv_rel = os.path.relpath(str(venv_dir), str(output_dir));
+
     launcher.write_text(
-        "#!/bin/sh\n"
-        "cd \"$(dirname \"$0\")\" || exit 1\n"
-        "export GDK_BACKEND=\"${GDK_BACKEND:-x11}\"\n"
-        "export WEBKIT_DISABLE_DMABUF_RENDERER=\"${WEBKIT_DISABLE_DMABUF_RENDERER:-1}\"\n"
-        "export WEBKIT_DISABLE_COMPOSITING_MODE=\"${WEBKIT_DISABLE_COMPOSITING_MODE:-1}\"\n"
-        f"exec ./{app_name} \"$@\"\n"
+        ("#!/bin/sh\n" "cd \"$(dirname \"$0\")\" || exit 1\n")
+            + jac_desktop_webkit_shell_export()
+            + jac_desktop_deps_shell_export(venv_rel)
+            + f"exec ./{app_name} \"$@\"\n"
     );
     os.chmod(launcher, 0o755);
     return binary;

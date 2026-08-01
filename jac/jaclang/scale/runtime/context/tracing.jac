@@ -88,9 +88,9 @@ def parse_traceparent(header: str | None) -> dict | None {
     sid_hex = parts[2];
     flags_hex = parts[3];
     if len(version) != 2
-    or len(tid_hex) != 32
-    or len(sid_hex) != 16
-    or len(flags_hex) != 2 {
+        or len(tid_hex) != 32
+        or len(sid_hex) != 16
+        or len(flags_hex) != 2 {
         return None;
     }
     try {
@@ -151,8 +151,8 @@ def install_tracing(
     try {
         svc = service_name or os.getenv("JAC_SV_NAME", "unknown");
         base = endpoint
-        or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-        or "http://localhost:4318";
+            or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+            or "http://localhost:4318";
         traces_url = base.rstrip("/") + "/v1/traces";
 
         resource = Resource.create(

@@ -33,7 +33,7 @@ obj MicroserviceDatabaseProvisioner {
             return ctx;
         }
 
-        self.k8s_target._load_kube_config();
+        self.k8s_target._load_cluster_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         namespace: str = cfg.namespace;

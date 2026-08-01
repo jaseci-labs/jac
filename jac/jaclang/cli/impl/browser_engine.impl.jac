@@ -492,8 +492,8 @@ impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tu
             continue;
         }
         if prev is not None
-        and abs(st["x"] - prev[0]) < 1
-        and abs(st["y"] - prev[1]) < 1 {
+            and abs(st["x"] - prev[0]) < 1
+            and abs(st["y"] - prev[1]) < 1 {
             return (st["x"], st["y"]);
         }
         prev = (st["x"], st["y"]);
@@ -678,7 +678,7 @@ impl _format_console_event(method: str, params: dict) -> (str | None) {
     if method == "Runtime.exceptionThrown" {
         d = params.get("exceptionDetails", {});
         desc = (d.get("exception") or {}).get("description")
-        or d.get("text", "uncaught exception");
+            or d.get("text", "uncaught exception");
         return f"[error] {desc}";
     }
     if method == "Log.entryAdded" {

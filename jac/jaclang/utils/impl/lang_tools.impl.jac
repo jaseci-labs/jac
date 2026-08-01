@@ -92,7 +92,15 @@ impl AstTool.ir(args: list[str]) -> str {
                 for module_ in prog.mod.hub.values() {
                     mod_name = module_.name;
                     t = '#' * len(mod_name);
-                    out += '##' + t + '##\n# ' + mod_name + ' #\n##' + t + '##\n' + module_.sym_tab.sym_pp() + '\n';
+                    out += '##'
+                        + t
+                        + '##\n# '
+                        + mod_name
+                        + ' #\n##'
+                        + t
+                        + '##\n'
+                        + module_.sym_tab.sym_pp()
+                        + '\n';
                 }
                 return out;
 
@@ -106,7 +114,15 @@ impl AstTool.ir(args: list[str]) -> str {
                 for module_ in prog.mod.hub.values() {
                     mod_name = module_.name;
                     t = '#' * len(mod_name);
-                    out += '##' + t + '##\n# ' + mod_name + ' #\n##' + t + '##\n' + module_.pp() + '\n';
+                    out += '##'
+                        + t
+                        + '##\n# '
+                        + mod_name
+                        + ' #\n##'
+                        + t
+                        + '##\n'
+                        + module_.pp()
+                        + '\n';
                 }
                 return out;
 
@@ -190,7 +206,8 @@ impl AstTool.py_uni_nodes -> str {
     for i in node_names {
         nd = pascal_to_snake(i);
         this_func = (
-            f"def proc_{nd}(self, node: py_ast.{i}) -> ast.UniNode:\n" + '    """Process python node."""\n\n'
+            f"def proc_{nd}(self, node: py_ast.{i}) -> ast.UniNode:\n"
+            + '    """Process python node."""\n\n'
         );
         if (nd not in pass_func_names) {
             missing.append(this_func);
@@ -247,7 +264,8 @@ impl AstTool.init -> None {
         if (
             issubclass(cls, uni.UniNode)
             and (
-                cls.__name__ not in [
+                cls.__name__
+                not in [
                     'UniNode',
                     'UniScopeNode',
                     'UniCFGNode',

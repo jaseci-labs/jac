@@ -77,12 +77,10 @@ def _compile_runtime_to_js -> str {
         return _compiled_runtime_js;
     }
     plugin_dir = _jac_client_plugin_dir();
-    core_src = os.path.join(plugin_dir, "client_runtime_core.cl.jac");
-    native_src = os.path.join(plugin_dir, "client_runtime_native.cl.jac");
+    core_src = os.path.join(plugin_dir, "client_runtime_core.jac");
+    native_src = os.path.join(plugin_dir, "client_runtime_native.jac");
     if not os.path.isfile(core_src) or not os.path.isfile(native_src) {
-        pytest.skip(
-            "client_runtime_core.cl.jac or client_runtime_native.cl.jac not found"
-        );
+        pytest.skip("client_runtime_core.jac or client_runtime_native.jac not found");
     }
     jac_bin = shutil.which("jac");
     if not jac_bin {
@@ -101,9 +99,9 @@ def _compile_runtime_to_js -> str {
         pytest.skip(f"jac2js native failed: {native_result.stderr}");
     }
     _compiled_runtime_js = (
-        _strip_esm_export_line(core_result.stdout) + "\n" + _strip_runtime_core_import(
-            _strip_esm_export_line(native_result.stdout)
-        )
+        _strip_esm_export_line(core_result.stdout)
+        + "\n"
+        + _strip_runtime_core_import(_strip_esm_export_line(native_result.stdout))
     );
     return _compiled_runtime_js;
 }
@@ -356,7 +354,27 @@ test "registered renderer receives (tag, props, children) verbatim" {
     js = _compile_runtime_to_js();
     snippet = _slice_renderer_fns(js);
     harness = (
-        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n" + snippet + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n" + "const calls = [];\n" + "__jacRegisterRenderer({ create: (tag, props, children) => {\n" + "  calls.push({tag, props, children}); return 'stub-element';\n" + "}});\n" + "const out = __jacJsx('button', {id: 'x'}, ['hi']);\n" + "if (out !== 'stub-element') {\n" + "  console.error('expected stub return, got', out); process.exit(1);\n" + "}\n" + "if (calls.length !== 1) {\n" + "  console.error('expected 1 call, got', calls.length); process.exit(1);\n" + "}\n" + "const c = calls[0];\n" + "if (c.tag !== 'button') { console.error('tag', c); process.exit(1); }\n" + "if (c.props.id !== 'x') { console.error('props', c); process.exit(1); }\n" + "if (!Array.isArray(c.children) || c.children[0] !== 'hi') {\n" + "  console.error('children mismatch', c); process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n"
+        + snippet
+        + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n"
+        + "const calls = [];\n"
+        + "__jacRegisterRenderer({ create: (tag, props, children) => {\n"
+        + "  calls.push({tag, props, children}); return 'stub-element';\n"
+        + "}});\n"
+        + "const out = __jacJsx('button', {id: 'x'}, ['hi']);\n"
+        + "if (out !== 'stub-element') {\n"
+        + "  console.error('expected stub return, got', out); process.exit(1);\n"
+        + "}\n"
+        + "if (calls.length !== 1) {\n"
+        + "  console.error('expected 1 call, got', calls.length); process.exit(1);\n"
+        + "}\n"
+        + "const c = calls[0];\n"
+        + "if (c.tag !== 'button') { console.error('tag', c); process.exit(1); }\n"
+        + "if (c.props.id !== 'x') { console.error('props', c); process.exit(1); }\n"
+        + "if (!Array.isArray(c.children) || c.children[0] !== 'hi') {\n"
+        + "  console.error('children mismatch', c); process.exit(1);\n"
+        + "}\n"
+        + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"dispatch harness failed: stdout={out} stderr={err}";
@@ -370,7 +388,18 @@ test "native renderer auto-installs when nothing is registered" {
     js = _compile_runtime_to_js();
     snippet = _slice_renderer_fns(js);
     harness = (
-        "const __jacNativeCreate = (tag, props, children) => ['native', tag];\n" + snippet + "globalThis.__jacGetRenderer__ = __jacGetRenderer;\n" + "const out = __jacJsx('div', {className: 'x'}, []);\n" + "if (!globalThis.__jacRenderer__) {\n" + "  console.error('native renderer did not auto-install'); process.exit(1);\n" + "}\n" + "if (!Array.isArray(out) || out[1] !== 'div') {\n" + "  console.error('tag not forwarded to installed create', out);\n" + "  process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "const __jacNativeCreate = (tag, props, children) => ['native', tag];\n"
+        + snippet
+        + "globalThis.__jacGetRenderer__ = __jacGetRenderer;\n"
+        + "const out = __jacJsx('div', {className: 'x'}, []);\n"
+        + "if (!globalThis.__jacRenderer__) {\n"
+        + "  console.error('native renderer did not auto-install'); process.exit(1);\n"
+        + "}\n"
+        + "if (!Array.isArray(out) || out[1] !== 'div') {\n"
+        + "  console.error('tag not forwarded to installed create', out);\n"
+        + "  process.exit(1);\n"
+        + "}\n"
+        + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"auto-install harness failed: stdout={out} stderr={err}";
@@ -382,7 +411,21 @@ test "registration survives runtime re-evaluation (HMR sim)" {
     snippet = _slice_renderer_fns(js);
     module_iife = "(() => {\n" + snippet + "return __jacJsx;\n})()";
     harness = (
-        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n" + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n" + "const firstJsx = " + module_iife + ";\n" + "firstJsx;\n" + "globalThis.__jacRenderer__ = { create: (t,p,c) => 'native:' + t };\n" + "const reloadedJsx = " + module_iife + ";\n" + "const out = reloadedJsx('div', {}, []);\n" + "if (out !== 'native:div') {\n" + "  console.error('HMR clobbered renderer, got', out); process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n"
+        + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n"
+        + "const firstJsx = "
+        + module_iife
+        + ";\n"
+        + "firstJsx;\n"
+        + "globalThis.__jacRenderer__ = { create: (t,p,c) => 'native:' + t };\n"
+        + "const reloadedJsx = "
+        + module_iife
+        + ";\n"
+        + "const out = reloadedJsx('div', {}, []);\n"
+        + "if (out !== 'native:div') {\n"
+        + "  console.error('HMR clobbered renderer, got', out); process.exit(1);\n"
+        + "}\n"
+        + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"HMR harness failed: stdout={out} stderr={err}";

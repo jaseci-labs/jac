@@ -25,7 +25,7 @@ walker:pub leave_note {
     can run with Root entry {
         # Connect denial no-ops with an empty result (plus a diagnostic) -
         # guard so a denied write reports cleanly instead of crashing.
-        fresh = root.shared +>: HasNote() :+> Note(text=self.text);
+        fresh = root.shared +>:HasNote():+> Note(text=self.text);
         if fresh {
             # The note is owned by its author; open it to all readers.
             grant(fresh, level=ReadPerm);
@@ -48,5 +48,57 @@ walker:pub make_readonly {
     can run with Root entry {
         grant(root.shared, level=ReadPerm);
         report "locked";
+    }
+}
+
+# Commons state deletable by anyone: the archetype opens WRITE to all, so
+# any identity can clear stale generations regardless of who created them.
+node Bin {
+    has tag: str = "";
+
+    def __jac_access__ -> any {
+        return "WRITE";
+    }
+}
+
+edge HasBin {}
+
+walker:pub leave_bin {
+    has tag: str = "";
+
+    can run with Root entry {
+        fresh = root.shared +>:HasBin():+> Bin(tag=self.tag);
+        report 1 if fresh is not None else 0;
+    }
+}
+
+walker:pub read_bins {
+    can run with Root entry {
+        report sorted([b.tag for b in [root.shared-->[?:Bin]]]);
+        report len(root.shared.__jac__.edges);
+    }
+}
+
+# Reports the shared root's edge count from the same request that deleted,
+# before any traversal can quarantine a dangling ref - the direct witness
+# that a node delete takes cross-owner incident edges with it.
+walker:pub clear_bins {
+    can run with Root entry {
+        bins = [root.shared-->[?:Bin]];
+        for b in bins {
+            del b;
+        }
+        report len(bins);
+        report len(root.shared.__jac__.edges);
+    }
+}
+
+walker:pub clear_notes {
+    can run with Root entry {
+        notes = [root.shared-->[?:Note]];
+        for n in notes {
+            del n;
+        }
+        report len(notes);
     }
 }

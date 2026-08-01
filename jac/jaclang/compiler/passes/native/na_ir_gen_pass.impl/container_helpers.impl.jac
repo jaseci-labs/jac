@@ -9,6 +9,22 @@ impl NaIRGenPass._emit_container_new_fn(
     result = self._emit_rc_alloc_container(b, container_ptr_type, data_types);
     container_ptr = result[0];
 
+    if self._gc_mode() == "none" {
+        _i32_nz = ir.IntType(32);
+        _slot_ty_nz = self._nogc_elem_drop_slot_ty();
+        for _j in range(len(data_types)) {
+            _slot_p_nz = b.gep(
+                container_ptr,
+                [
+                    ir.Constant(_i32_nz, 0),
+                    ir.Constant(_i32_nz, 2 + len(data_types) + _j)
+                ],
+                name=f"edrop{_j}.init"
+            );
+            b.store(ir.Constant(_slot_ty_nz, None), _slot_p_nz);
+        }
+    }
+
     if self._nogc_headerless() {
         dtor_fn = None;
     }

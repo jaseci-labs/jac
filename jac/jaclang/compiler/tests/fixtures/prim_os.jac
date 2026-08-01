@@ -62,56 +62,55 @@ def os_py() -> dict {
     };
 }
 
-cl def os_cl() -> dict {
+def os_cl() -> dict {
     return {};
 }
 
-na {
-    def os_na() -> dict[str, any] {
-        made_ok: int = 0;
-        p: str = "/tmp/jac_eq_na_dir";
-        os.mkdir(p);
-        isd: int = os.path.isdir(p);
-        if isd == 1 {
-            os.rmdir(p);
-            ex: int = os.path.exists(p);
-            if ex == 0 {
-                made_ok = 1;
-            }
-        }
-        pid_pos: int = os.getpid() > 0;
-        makedirs_ok: int = 0;
-        deep: str = "/tmp/jac_eq_na_mk/a/b/c";
-        os.makedirs(deep);
-        mkd: int = os.path.isdir(deep);
-        if mkd == 1 {
-            makedirs_ok = 1;
-            os.rmdir("/tmp/jac_eq_na_mk/a/b/c");
-            os.rmdir("/tmp/jac_eq_na_mk/a/b");
-            os.rmdir("/tmp/jac_eq_na_mk/a");
-            os.rmdir("/tmp/jac_eq_na_mk");
-        }
-        return {
-            "cwd": os.getcwd(),
-            "path_env": os.getenv("PATH"),
-            "pid_pos": pid_pos,
-            "makedirs_ok": makedirs_ok,
-            "realpath_root": os.path.realpath("/"),
-            "realpath_cwd": os.path.realpath(os.getcwd()),
-            "join2": os.path.join("a", "b"),
-            "join_trail": os.path.join("a/", "b"),
-            "join_abs": os.path.join("a", "/b"),
-            "join3": os.path.join("x", "y", "z"),
-            "basename": os.path.basename("/usr/local/bin"),
-            "dirname": os.path.dirname("/usr/local/bin"),
-            "basename_noslash": os.path.basename("file.txt"),
-            "dirname_noslash": os.path.dirname("file.txt"),
-            "exists_tmp": os.path.exists("/tmp"),
-            "isdir_tmp": os.path.isdir("/tmp"),
-            "isfile_tmp": os.path.isfile("/tmp"),
-            "exists_missing": os.path.exists("/no/such/path/xyz123"),
-            "mkdir_rmdir_ok": made_ok,
 
-        };
+def os_na() -> dict[str, any] {
+    made_ok: int = 0;
+    p: str = "/tmp/jac_eq_na_dir";
+    os.mkdir(p);
+    isd: int = os.path.isdir(p);
+    if isd == 1 {
+        os.rmdir(p);
+        ex: int = os.path.exists(p);
+        if ex == 0 {
+            made_ok = 1;
+        }
     }
+    pid_pos: int = os.getpid() > 0;
+    makedirs_ok: int = 0;
+    deep: str = "/tmp/jac_eq_na_mk/a/b/c";
+    os.makedirs(deep);
+    mkd: int = os.path.isdir(deep);
+    if mkd == 1 {
+        makedirs_ok = 1;
+        os.rmdir("/tmp/jac_eq_na_mk/a/b/c");
+        os.rmdir("/tmp/jac_eq_na_mk/a/b");
+        os.rmdir("/tmp/jac_eq_na_mk/a");
+        os.rmdir("/tmp/jac_eq_na_mk");
+    }
+    return {
+        "cwd": os.getcwd(),
+        "path_env": os.getenv("PATH"),
+        "pid_pos": pid_pos,
+        "makedirs_ok": makedirs_ok,
+        "realpath_root": os.path.realpath("/"),
+        "realpath_cwd": os.path.realpath(os.getcwd()),
+        "join2": os.path.join("a", "b"),
+        "join_trail": os.path.join("a/", "b"),
+        "join_abs": os.path.join("a", "/b"),
+        "join3": os.path.join("x", "y", "z"),
+        "basename": os.path.basename("/usr/local/bin"),
+        "dirname": os.path.dirname("/usr/local/bin"),
+        "basename_noslash": os.path.basename("file.txt"),
+        "dirname_noslash": os.path.dirname("file.txt"),
+        "exists_tmp": os.path.exists("/tmp"),
+        "isdir_tmp": os.path.isdir("/tmp"),
+        "isfile_tmp": os.path.isfile("/tmp"),
+        "exists_missing": os.path.exists("/no/such/path/xyz123"),
+        "mkdir_rmdir_ok": made_ok,
+
+    };
 }

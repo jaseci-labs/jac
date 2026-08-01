@@ -69,37 +69,33 @@ def:pub app -> JsxElement {
     has count: int = 0,
         name: str = "";
 
-    return
-        <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-            <View style={styles.card}>
-                <Text style={styles.title}>mobUI primitives</Text>
-            </View>
-            <View style={styles.card}>
-                <Text style={styles.label}>Image</Text>
-                <Image
-                    source={{uri: "https://reactnative.dev/img/tiny_logo.png"}}
-                    style={styles.avatar}
-                />
-            </View>
-            <View style={styles.card}>
-                <Text style={styles.label}>Pressable + state</Text>
-                <Text style={styles.value}>Count: {count}</Text>
-                <Pressable
-                    style={styles.button}
-                    onPress={lambda { count = count + 1; }}
-                >
-                    <Text style={styles.buttonLabel}>Increment</Text>
-                </Pressable>
-            </View>
-            <View style={styles.card}>
-                <Text style={styles.label}>TextInput (controlled)</Text>
-                <TextInput
-                    style={styles.input}
-                    value={name}
-                    placeholder="Type your name"
-                    onChangeText={lambda (t: str) { name = t; }}
-                />
-                <Text style={styles.value}>Hello, {name}</Text>
-            </View>
-        </ScrollView>;
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+            <Text style={styles.title}>mobUI primitives</Text>
+        </View>
+        <View style={styles.card}>
+            <Text style={styles.label}>Image</Text>
+            <Image
+                source={{uri: "https://reactnative.dev/img/tiny_logo.png"}}
+                style={styles.avatar}
+            />
+        </View>
+        <View style={styles.card}>
+            <Text style={styles.label}>Pressable + state</Text>
+            <Text style={styles.value}>Count: {count}</Text>
+            <Pressable style={styles.button} onPress={lambda { count = count + 1; }}>
+                <Text style={styles.buttonLabel}>Increment</Text>
+            </Pressable>
+        </View>
+        <View style={styles.card}>
+            <Text style={styles.label}>TextInput (controlled)</Text>
+            <TextInput
+                style={styles.input}
+                value={name}
+                placeholder="Type your name"
+                onChangeText={lambda (t: str) { name = t; }}
+            />
+            <Text style={styles.value}>Hello, {name}</Text>
+        </View>
+    </ScrollView>
 }

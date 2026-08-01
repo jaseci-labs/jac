@@ -17,7 +17,7 @@ import from .ui.alert_dialog {
     AlertDialogCancel
 }
 import from ..lib.utils { cn }
-sv import from ..social_graph { Tweet }
+import from ..social_graph { Tweet }
 
 def:pub TweetCard(
     tweet: Tweet,
@@ -70,184 +70,172 @@ def:pub TweetCard(
         if tweet.created_at
         else "";
 
-    return
-        <article
-            className="lx-fade-up flex gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/30"
-        >
-            <Avatar className="size-10 shrink-0">
-                <AvatarImage src={author_avatar} alt={tweet.author_username}/>
-                <AvatarFallback>{initial}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 text-sm">
-                    <span className="font-display font-bold text-foreground truncate">
-                        {display_name}
-                    </span>
-                    <span className="text-muted-foreground truncate">
-                        {"@" + display_name}
-                    </span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="text-muted-foreground">{date_str}</span>
-                    {if is_mine {
-                        <div className="ml-auto">
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild={True}>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+    <article
+        className="lx-fade-up flex gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/30"
+    >
+        <Avatar className="size-10 shrink-0">
+            <AvatarImage src={author_avatar} alt={tweet.author_username}/>
+            <AvatarFallback>{initial}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-sm">
+                <span className="font-display font-bold text-foreground truncate">
+                    {display_name}
+                </span>
+                <span className="text-muted-foreground truncate">
+                    {"@" + display_name}
+                </span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">{date_str}</span>
+                {if is_mine {
+                    <div className="ml-auto">
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild={True}>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                    <Trash2 size={15}/>
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete post?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This can't be undone and it will be removed from your profile and the feed.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        className="bg-destructive text-white hover:bg-destructive/90"
+                                        onClick={lambda { onDelete(jid(tweet)); }}
                                     >
-                                        <Trash2 size={15}/>
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>
-                                            Delete post?
-                                        </AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This can't be undone and it will be removed from your profile and the feed.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
-                                            className="bg-destructive text-white hover:bg-destructive/90"
-                                            onClick={lambda { onDelete(jid(tweet)); }}
-                                        >
-                                            Delete
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
-                    }}
-                </div>
-                <p
-                    className="mt-0.5 whitespace-pre-wrap break-words text-[0.95rem] leading-relaxed text-foreground"
-                >
-                    {tweet.content}
-                </p>
-                <TooltipProvider>
-                    <div className="mt-2 flex items-center gap-1 text-muted-foreground">
-                        <Tooltip>
-                            <TooltipTrigger asChild={True}>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-reply/10 hover:text-reply"
-                                    onClick={lambda { showComments = not showComments; }}
-                                >
-                                    <MessageCircle size={16}/>
-                                    {if comment_count > 0 {
-                                        <span className="text-xs">
-                                            {str(comment_count)}
-                                        </span>
-                                    }}
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Reply</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                            <TooltipTrigger asChild={True}>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-repost/10 hover:text-repost"
-                                    onClick={lambda { onRepost(
-                                        jid(tweet), tweet.content, tweet.author_username
-                                    ); }}
-                                >
-                                    <Repeat2 size={16}/>
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Repost</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                            <TooltipTrigger asChild={True}>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={cn(
-                                        "h-8 gap-1.5 rounded-full px-2 hover:bg-like/10 hover:text-like",
-                                        "text-like"
-                                            if is_liked
-                                            else "text-muted-foreground"
-                                    )}
-                                    onClick={lambda { onLike(jid(tweet)); }}
-                                >
-                                    <Heart
-                                        size={16}
-                                        fill={"currentColor" if is_liked else "none"}
-                                    />
-                                    {if like_count > 0 {
-                                        <span className="text-xs">
-                                            {str(like_count)}
-                                        </span>
-                                    }}
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                {"Unlike" if is_liked else "Like"}
-                            </TooltipContent>
-                        </Tooltip>
-                    </div>
-                </TooltipProvider>
-                {if showComments {
-                    <div
-                        className="mt-3 flex flex-col gap-3 border-t border-border pt-3"
-                    >
-                        {for c in tweet.comments {
-                            <div className="flex gap-2" key={c["created_at"]}>
-                                <Avatar className="size-7 shrink-0">
-                                    <AvatarImage
-                                        src={"https://i.pravatar.cc/150?u=fake@" + c[
-                                            "username"
-                                        ]}
-                                        alt={c["username"]}
-                                    />
-                                    <AvatarFallback className="text-[0.6rem]">
-                                        {c["username"][0].upper()}
-                                    </AvatarFallback>
-                                </Avatar>
-                                <div
-                                    className="rounded-2xl rounded-tl-sm bg-muted px-3 py-1.5"
-                                >
-                                    <div
-                                        className="text-xs font-semibold text-foreground"
-                                    >
-                                        {c["username"]}
-                                    </div>
-                                    <div className="text-sm text-foreground/90">
-                                        {c["content"]}
-                                    </div>
-                                </div>
-                            </div>
-                        }}
-                        <div className="flex items-center gap-2">
-                            <Input
-                                placeholder="Post your reply..."
-                                value={commentText}
-                                onChange={lambda (e: ChangeEvent) { commentText = e.target.value; }}
-                                onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter"
-                                and commentText.strip() {
-                                    onComment(jid(tweet), commentText);
-                                    commentText = "";
-                                }}}
-                            />
-                            <Button
-                                size="icon"
-                                disabled={not commentText.strip()}
-                                onClick={lambda { if commentText.strip() {
-                                    onComment(jid(tweet), commentText);
-                                    commentText = "";
-                                }}}
-                            >
-                                <Send size={16}/>
-                            </Button>
-                        </div>
+                                        Delete
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                 }}
             </div>
-        </article>;
+            <p
+                className="mt-0.5 whitespace-pre-wrap break-words text-[0.95rem] leading-relaxed text-foreground"
+            >
+                {tweet.content}
+            </p>
+            <TooltipProvider>
+                <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+                    <Tooltip>
+                        <TooltipTrigger asChild={True}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-reply/10 hover:text-reply"
+                                onClick={lambda { showComments = not showComments; }}
+                            >
+                                <MessageCircle size={16}/>
+                                {if comment_count > 0 {
+                                    <span className="text-xs">
+                                        {str(comment_count)}
+                                    </span>
+                                }}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Reply</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild={True}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-repost/10 hover:text-repost"
+                                onClick={lambda { onRepost(
+                                    jid(tweet), tweet.content, tweet.author_username
+                                ); }}
+                            >
+                                <Repeat2 size={16}/>
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Repost</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild={True}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className={cn(
+                                    "h-8 gap-1.5 rounded-full px-2 hover:bg-like/10 hover:text-like",
+                                    "text-like" if is_liked else "text-muted-foreground"
+                                )}
+                                onClick={lambda { onLike(jid(tweet)); }}
+                            >
+                                <Heart
+                                    size={16}
+                                    fill={"currentColor" if is_liked else "none"}
+                                />
+                                {if like_count > 0 {
+                                    <span className="text-xs">{str(like_count)}</span>
+                                }}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            {"Unlike" if is_liked else "Like"}
+                        </TooltipContent>
+                    </Tooltip>
+                </div>
+            </TooltipProvider>
+            {if showComments {
+                <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
+                    {for c in tweet.comments {
+                        <div className="flex gap-2" key={c["created_at"]}>
+                            <Avatar className="size-7 shrink-0">
+                                <AvatarImage
+                                    src={"https://i.pravatar.cc/150?u=fake@"
+                                        + c["username"]}
+                                    alt={c["username"]}
+                                />
+                                <AvatarFallback className="text-[0.6rem]">
+                                    {c["username"][0].upper()}
+                                </AvatarFallback>
+                            </Avatar>
+                            <div
+                                className="rounded-2xl rounded-tl-sm bg-muted px-3 py-1.5"
+                            >
+                                <div className="text-xs font-semibold text-foreground">
+                                    {c["username"]}
+                                </div>
+                                <div className="text-sm text-foreground/90">
+                                    {c["content"]}
+                                </div>
+                            </div>
+                        </div>
+                    }}
+                    <div className="flex items-center gap-2">
+                        <Input
+                            placeholder="Post your reply..."
+                            value={commentText}
+                            onChange={lambda (e: ChangeEvent) { commentText = e.target.value; }}
+                            onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter"
+                                and commentText.strip() {
+                                onComment(jid(tweet), commentText);
+                                commentText = "";
+                            }}}
+                        />
+                        <Button
+                            size="icon"
+                            disabled={not commentText.strip()}
+                            onClick={lambda { if commentText.strip() {
+                                onComment(jid(tweet), commentText);
+                                commentText = "";
+                            }}}
+                        >
+                            <Send size={16}/>
+                        </Button>
+                    </div>
+                </div>
+            }}
+        </div>
+    </article>
 }

@@ -17,7 +17,10 @@ glob _SAME_SITE_VALUES: frozenset = frozenset({"same-origin", "none"});
 glob DEFAULT_PREFIX: str = "/__jac",
      ALLOWED_PLATFORMS: tuple = ("google", "github", "apple"),
      ALLOWED_OPERATIONS: tuple = ("login", "register"),
-     _CLOSE_PAGE: str = "<!doctype html><meta charset=utf-8><title>{heading}</title>" + "<body style='font-family:system-ui,sans-serif;text-align:center;margin-top:4rem'>" + "<h2>{heading}</h2><p>{body}</p>" + "<p style='color:#888'>You can close this window and return to the app.</p>";
+     _CLOSE_PAGE: str = "<!doctype html><meta charset=utf-8><title>{heading}</title>"
+         + "<body style='font-family:system-ui,sans-serif;text-align:center;margin-top:4rem'>"
+         + "<h2>{heading}</h2><p>{body}</p>"
+         + "<p style='color:#888'>You can close this window and return to the app.</p>";
 
 
 class SessionStore {
@@ -283,8 +286,8 @@ def make_handler(
             is_callback = route == cb_route or route.startswith(cb_route + "/");
 
             if route.startswith(prefix)
-            and not is_callback
-            and self._reject_cross_site() {
+                and not is_callback
+                and self._reject_cross_site() {
                 return;
             }
             if route == prefix + "/health" {
@@ -393,7 +396,7 @@ def make_handler(
                 return;
             }
             if sv_bridge is not None
-            and (route.startswith("/walker/") or route.startswith("/function/")) {
+                and (route.startswith("/walker/") or route.startswith("/function/")) {
                 try {
                     n = int(self.headers.get("Content-Length", 0) or 0);
                 } except (TypeError, ValueError) {

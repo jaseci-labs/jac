@@ -6,11 +6,8 @@ the overall program should compile without hanging.
 """
 
 def app -> JsxElement {
-    return
-        <div>
-            <span>
-                {"*"}
-            </span>
-            #  <--
-        </div>;
+    <div>
+        <span>{"*"}</span>
+        #  <--
+    </div>
 }

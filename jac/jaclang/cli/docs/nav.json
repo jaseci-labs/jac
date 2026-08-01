@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "site_name": "Jac - One Language, Whole Stack, No Glue",
+  "nav": [
+    {
+      "title": "Start Here",
+      "items": [
+        {
+          "title": "What & Why",
+          "items": [
+            { "title": "What is Jac", "page": "quick-guide/index.md" },
+            { "title": "Why Jac", "page": "quick-guide/why-jac.md" },
+            { "title": "The Two Ideas", "page": "quick-guide/ideas-behind-jac.md" },
+            { "title": "Core Concepts", "page": "quick-guide/what-makes-jac-different.md" },
+            { "title": "One App, Two Stacks", "page": "quick-guide/jac-vs-traditional-stack.md" },
+            { "title": "Vocabulary", "page": "quick-guide/vocabulary.md" },
+            { "title": "Install", "page": "quick-guide/install.md" },
+            { "title": "One Binary, Build Anything", "page": "quick-guide/one-binary.md" }
+          ]
+        },
+        { "title": "Build Anything", "page": "quick-guide/project-kinds.md" },
+        {
+          "title": "I like to build…",
+          "items": [
+            { "title": "CLI tools & native binaries", "page": "build/cli-and-native.md" },
+            { "title": "Backend APIs & services", "page": "build/backend-apis.md" },
+            { "title": "Full-stack web apps", "page": "build/fullstack-web.md" },
+            { "title": "Desktop & mobile apps", "page": "build/desktop-mobile.md" },
+            { "title": "AI agents & LLM apps", "page": "build/ai-agents.md" },
+            { "title": "Reusable libraries & packages", "page": "build/libraries.md" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Learn",
+      "items": [
+        {
+          "title": "Language Fundamentals",
+          "items": [
+            { "title": "New to Programming?", "page": "tutorials/language/coding_primer.md" },
+            { "title": "Jac Fundamentals", "page": "tutorials/language/basics.md" },
+            { "title": "Object-Spatial Programming", "page": "tutorials/language/osp.md" },
+            { "title": "Debugging", "page": "tutorials/language/debugging.md" }
+          ]
+        },
+        { "title": "Build to Learn — AI Day Planner", "page": "tutorials/first-app/build-ai-day-planner.md" },
+        {
+          "title": "Full-Stack Tutorials",
+          "items": [
+            { "title": "Project Setup", "page": "tutorials/fullstack/setup.md" },
+            { "title": "Components", "page": "tutorials/fullstack/components.md" },
+            { "title": "State Management", "page": "tutorials/fullstack/state.md" },
+            { "title": "NPM Packages & UI Libraries", "page": "tutorials/fullstack/npm-and-libraries.md" },
+            { "title": "Advanced Patterns & JS Interop", "page": "tutorials/fullstack/advanced-patterns.md" },
+            { "title": "Backend Integration", "page": "tutorials/fullstack/backend.md" },
+            { "title": "Authentication", "page": "tutorials/fullstack/auth.md" },
+            { "title": "Routing", "page": "tutorials/fullstack/routing.md" }
+          ]
+        },
+        {
+          "title": "AI Tutorials",
+          "items": [
+            { "title": "Your First AI Function", "page": "tutorials/ai/quickstart.md" },
+            { "title": "Structured Outputs", "page": "tutorials/ai/structured-outputs.md" },
+            { "title": "Agentic AI", "page": "tutorials/ai/agentic.md" },
+            { "title": "Multimodal", "page": "tutorials/ai/multimodal.md" },
+            { "title": "AI-Assisted Development (MCP)", "page": "tutorials/ai/mcp-quickstart.md" }
+          ]
+        },
+        {
+          "title": "Desktop & Mobile Tutorials",
+          "items": [
+            { "title": "Desktop App", "page": "tutorials/fullstack/desktop.md" },
+            { "title": "Mobile App", "page": "tutorials/fullstack/mobile.md" }
+          ]
+        },
+        {
+          "title": "Native Tutorials",
+          "items": [
+            { "title": "Build a Chess Engine", "page": "tutorials/native/chess.md" },
+            { "title": "WebAssembly in the Browser", "page": "tutorials/native/wasm.md" }
+          ]
+        },
+        {
+          "title": "Package & Extend",
+          "items": [
+            { "title": "Publish a Library", "page": "tutorials/extend/publish-a-library.md" }
+          ]
+        },
+        {
+          "title": "Ship It — Deploy & Scale",
+          "items": [
+            { "title": "Local API Server", "page": "tutorials/production/local.md" },
+            { "title": "Microservices", "page": "tutorials/production/microservices.md" },
+            { "title": "Kubernetes", "page": "tutorials/production/kubernetes.md" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reference",
+      "items": [
+        { "title": "Overview", "page": "reference/index.md" },
+        {
+          "title": "Language",
+          "items": [
+            { "title": "Foundation", "page": "reference/language/foundation.md" },
+            { "title": "Types & Values", "page": "reference/language/types-and-values.md" },
+            { "title": "Variables & Scope", "page": "reference/language/variables-and-scope.md" },
+            { "title": "Operators", "page": "reference/language/operators.md" },
+            { "title": "Control Flow", "page": "reference/language/control-flow.md" },
+            { "title": "Primitives & Codespace Semantics", "page": "reference/language/primitives.md" },
+            { "title": "Functions & Objects", "page": "reference/language/functions-objects.md" },
+            { "title": "Access Modifiers", "page": "reference/language/access-modifiers.md" },
+            { "title": "Object-Spatial Programming", "page": "reference/language/osp.md" },
+            { "title": "Concurrency", "page": "reference/language/concurrency.md" },
+            { "title": "Comprehensions & Filters", "page": "reference/language/advanced.md" },
+            { "title": "Walker Patterns", "page": "reference/language/walker-responses.md" },
+            { "title": "Gradual Borrow Checking", "page": "reference/language/ownership-borrowing.md" },
+            { "title": "Syntax Cheatsheet", "page": "reference/language/syntax-cheatsheet.md" }
+          ]
+        },
+        { "title": "Native Compilation", "page": "reference/language/native-pathway.md" },
+        {
+          "title": "Capabilities & Plugins",
+          "items": [
+            { "title": "byLLM (Meaning Types, built-in)", "page": "reference/plugins/byllm.md" },
+            {
+              "title": "Scale (Deploy, built-in)",
+              "items": [
+                { "title": "Overview", "page": "reference/plugins/jac-scale.md" },
+                { "title": "HTTP API & Walkers", "page": "reference/plugins/jac-scale-http.md" },
+                { "title": "Data & Storage", "page": "reference/plugins/jac-scale-persistence.md" },
+                { "title": "Kubernetes & Operations", "page": "reference/plugins/jac-scale-kubernetes.md" }
+              ]
+            },
+            { "title": "jac-client (Full-Stack)", "page": "reference/plugins/jac-client.md" },
+            { "title": "jac-desktop", "page": "reference/plugins/jac-desktop.md" }
+          ]
+        },
+        {
+          "title": "Python Integration",
+          "items": [
+            { "title": "Interoperability", "page": "reference/language/python-integration.md" },
+            { "title": "Library Mode", "page": "reference/language/library-mode.md" },
+            { "title": "Import Anything", "page": "reference/import-anything.md" }
+          ]
+        },
+        {
+          "title": "Developer Workflow",
+          "items": [
+            { "title": "CLI Commands", "page": "reference/cli/index.md" },
+            { "title": "MCP Server", "page": "reference/mcp.md" },
+            { "title": "Agent Skills & MCP", "page": "reference/agent-skills-and-mcp.md" },
+            { "title": "Configuration", "page": "reference/config/index.md" },
+            { "title": "Publishing Packages", "page": "reference/publishing.md" },
+            { "title": "Persistence & Schema Migration", "page": "reference/persistence.md" },
+            { "title": "Placement", "page": "reference/placement.md" },
+            { "title": "Errors & Warnings", "page": "reference/diagnostics.md" },
+            { "title": "Code Organization", "page": "reference/code-organization.md" },
+            { "title": "Testing", "page": "reference/testing.md" },
+            { "title": "Jac Ninja Editor", "page": "reference/ninja.md" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Community",
+      "items": [
+        { "title": "Contributing", "page": "community/contributing.md" },
+        { "title": "Codebase Guide", "page": "community/codebase-guide.md" },
+        { "title": "Research & Papers", "page": "community/research.md" },
+        { "title": "FAQ", "page": "community/faq.md" },
+        { "title": "Breaking Changes", "page": "community/breaking-changes.md" },
+        { "title": "Jac Playground", "url": "https://playground.jaseci.org/cl/app" },
+        {
+          "title": "Release Notes",
+          "items": [
+            { "title": "Jaclang", "page": "community/release_notes/jaclang.md" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Internals",
+      "items": [
+        { "title": "Abstractions Inventory", "page": "internals/abstractions.md" },
+        { "title": "Ownership Checker Specification", "page": "internals/ownership-checker-spec.md" },
+        { "title": "Import Patterns", "page": "internals/jac_import_patterns.md" },
+        { "title": "Compiler Architecture", "page": "internals/compiler_architecture.md" },
+        { "title": "Cross-Codespace Interop", "page": "internals/interop.md" }
+      ]
+    },
+    { "title": "Ask Jac GPT ✨", "url": "https://jac-gpt.jaseci.org" }
+  ]
+}

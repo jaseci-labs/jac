@@ -16,11 +16,11 @@ impl runtime_pkg_name(framework: str = "") -> str {
     import from jaclang.runtimelib.runtime_source { client_runtime_cl_basename }
     base = client_runtime_cl_basename(framework);
 
-    if base == "client_runtime.cl.jac" {
+    if base == "client_runtime.jac" {
         return RUNTIME_PKG_NAME;
     }
 
-    suffix = base.split("_runtime.cl.jac")[0] or base;
+    suffix = base.split("_runtime.jac")[0] or base;
     return f"{RUNTIME_PKG_NAME}-{suffix}";
 }
 
@@ -197,7 +197,7 @@ def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
                 continue;
             }
             seen.add(rel);
-            src = base / (rel[:-3] + ".cl.jac");
+            src = base / (rel[:-3] + ".jac");
             dep_js = _compile_cl_to_js(src);
             out.append((rel, dep_js));
             worklist.append((posixpath.dirname(rel), dep_js));

@@ -29,9 +29,15 @@ base_route_app = "app"
 
 [client]
 
-# NO [scale.*] config - deliberately: the zero-config example (#7137/#7140/#7144).
-# Services/routes/database/client entry are all auto-derived; the e2e harness
-# appends its test-only opt-ins (ingress/logs/cors) at run time.
+# The routes table below is the authoritative service cut (#7772): each key
+# runs as its own service pod behind the gateway. Everything else
+# (database/client entry) stays derived; the e2e harness appends its
+# test-only opt-ins (ingress/logs/cors) at run time.
+
+[scale.microservices.routes]
+products_app = "/products"
+orders_app = "/orders"
+cart_app = "/cart"
 
 # --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
 [scale.microservices.logs]

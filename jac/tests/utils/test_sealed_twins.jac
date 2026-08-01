@@ -56,8 +56,8 @@ string sharing differently)."""
 def _same_code(x: any, y: any) -> bool {
     import types;
     if x.co_filename != y.co_filename
-    or x.co_code != y.co_code
-    or x.co_name != y.co_name {
+        or x.co_code != y.co_code
+        or x.co_name != y.co_name {
         return False;
     }
     xs = [
@@ -89,7 +89,7 @@ test "co_filename patcher twins are exact inverses" {
         if isinstance(c, types.CodeType)
     ];
     assert nested
-    and all(c.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac" for c in nested);
+        and all(c.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac" for c in nested);
     back = sealed._patch_code_filenames(
         sentinel_code, PRECOMPILE_SENTINEL, "/repo/pkg"
     );

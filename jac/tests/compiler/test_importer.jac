@@ -52,11 +52,8 @@ test "modules correct" {
     JacRuntimeInterface.attach_program(JacProgram());
     Jac.jac_import("fixtures.hello_world", base_path=TEST_DIR);
     assert "module 'fixtures.hello_world'" in str(Jac.loaded_modules);
-    assert "/tests/compiler/fixtures/hello_world.jac" in str(
-        Jac.loaded_modules
-    ).replace(
-        "\\\\", "/"
-    );
+    assert "/tests/compiler/fixtures/hello_world.jac"
+        in str(Jac.loaded_modules).replace("\\\\", "/");
 }
 
 test "jac py import" {
@@ -68,7 +65,8 @@ test "jac py import" {
     stdout_value = captured_output.getvalue();
     assert "Hello World!" in stdout_value;
     assert (
-        "{SomeObj(a=10): 'check'} [MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]" in stdout_value
+        "{SomeObj(a=10): 'check'} [MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]"
+        in stdout_value
     );
 }
 
@@ -81,7 +79,8 @@ test "jac py import auto" {
     stdout_value = captured_output.getvalue();
     assert "Hello World!" in stdout_value;
     assert (
-        "{SomeObj(a=10): 'check'} [MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]" in stdout_value
+        "{SomeObj(a=10): 'check'} [MyObj(apple=5, banana=7), MyObj(apple=5, banana=7)]"
+        in stdout_value
     );
 }
 
@@ -327,9 +326,9 @@ test "get_bytecode busts in-memory hub when .impl.jac changes" {
         os.utime(impl_file, (future, future));
         got = tag_of();
         assert got == 20 , (
-            "stale in-memory hub bytecode reused; expected 20 after " + "annex edit, got " + str(
-                got
-            )
+            "stale in-memory hub bytecode reused; expected 20 after "
+            + "annex edit, got "
+            + str(got)
         );
     }
 }

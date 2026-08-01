@@ -252,19 +252,17 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
+        import from jaclang.scale.runtime.routing { resolve_routes }
         ms_cfg = dict(self._ms_cfg());
-        proj = self.project_dir or app_config.code_folder;
-        routes: dict[str, str] = resolve_routes(proj, dict(ms_cfg.get("routes", {})));
+        routes: dict[str, str] = resolve_routes(ms_cfg);
         ms_cfg["routes"] = routes;
         self.microservices_config = ms_cfg;
 
         if not routes {
             raise ValueError(
-                "No microservices found to deploy: declare "
-                "[scale.microservices.routes] in jac.toml, or add "
-                "`sv import` / `sv { }` services under the project root so they "
-                "can be auto-discovered."
+                "No microservices to deploy: declare them in "
+                "[scale.microservices.routes] in jac.toml "
+                "(`jac scale split <module>` adds one)."
             );
         }
 
@@ -328,8 +326,12 @@ obj MicroserviceManifestBuilder {
         if not os.path.isdir(root_dir) {
             return False;
         }
-        matches = glob.glob(os.path.join(root_dir, "**", "*.cl.jac"), recursive=True);
-        return len(matches) > 0;
+        for probe in ("pages", "components") {
+            if os.path.isdir(os.path.join(root_dir, probe)) {
+                return True;
+            }
+        }
+        return False;
     }
 
     def _shared_volumes_config -> list[dict[str, any]] {
@@ -415,7 +417,7 @@ obj MicroserviceManifestBuilder {
             }
             size = str(vol.get("size", "1Gi")).strip() or "1Gi";
             access_mode = str(vol.get("access_mode", "ReadWriteOnce")).strip()
-            or "ReadWriteOnce";
+                or "ReadWriteOnce";
             storage_class = str(vol.get("storage_class", "")).strip();
             pvc_name = k8s_safe_name(name);
 
@@ -467,6 +469,12 @@ obj MicroserviceManifestBuilder {
 
     def _user_secret_name -> str {
         return f"{self.k8s_config.app_name}-secrets";
+    }
+
+    def _owner_labels -> dict[str, str] {
+        return {
+            str(k): str(v) for (k, v) in dict(self.k8s_config.labels or {}).items()
+        };
     }
 
     def _service_account_name -> str {
@@ -547,18 +555,23 @@ obj MicroserviceManifestBuilder {
         return env;
     }
 
+    def _resolved_memory_request(svc_cfg: dict[str, any], is_gateway: bool) -> str {
+        val = svc_cfg.get("memory_request");
+        if val is None {
+            val = self.k8s_config.memory_request;
+        }
+        if val is None {
+            val = "2Gi" if is_gateway else "1Gi";
+        }
+        return str(val) if val else "";
+    }
+
     def _build_resources(
         svc_cfg: dict[str, any], is_gateway: bool = False
     ) -> dict[str, any] {
         cfg = self.k8s_config;
 
-        memory_request_val = svc_cfg.get("memory_request");
-        if memory_request_val is None {
-            memory_request_val = cfg.memory_request;
-        }
-        if memory_request_val is None {
-            memory_request_val = "2Gi" if is_gateway else "1Gi";
-        }
+        memory_request_val = self._resolved_memory_request(svc_cfg, is_gateway);
         memory_limit_val = svc_cfg.get("memory_limit");
         if memory_limit_val is None {
             memory_limit_val = cfg.memory_limit;
@@ -644,6 +657,7 @@ obj MicroserviceManifestBuilder {
         k8s_name = k8s_safe_name(svc_name);
         role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
         labels: dict[str, str] = {
+            ** self._owner_labels(),
             "app": k8s_name,
             "managed": "jac-scale",
             "jac-scale.role": role
@@ -704,7 +718,11 @@ obj MicroserviceManifestBuilder {
             "metadata": {
                 "name": f"{k8s_name}-service",
                 "namespace": self.k8s_config.namespace,
-                "labels": {"app": k8s_name, "managed": "jac-scale"}
+                "labels": {
+                    ** self._owner_labels(),
+                    "app": k8s_name,
+                    "managed": "jac-scale"
+                }
             },
             "spec": spec
         };
@@ -729,6 +747,9 @@ obj MicroserviceManifestBuilder {
             "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
             "memory_target": int(
                 hpa.get("memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET)
+            ),
+            "has_memory_request": bool(
+                self._resolved_memory_request(svc, svc_name == GATEWAY_NAME)
             ),
             "triggers": raw_triggers
         };
@@ -847,8 +868,8 @@ obj MicroserviceManifestBuilder {
         if client_entry {
             gw_prefix = (
                 f'if [ ! -f .jac/client/dist/index.html ]; then '
-                f'jac build "{client_entry}" --client web '
-                f'|| echo "[jac-scale] client build failed; / will 404"; '
+                f'echo "[jac-scale] building client bundle ({client_entry})"; '
+                f'jac build "{client_entry}" --client web; '
                 f'fi; '
             );
         }

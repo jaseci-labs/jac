@@ -65,7 +65,8 @@ test "sub abilities multi" {
 
 test "guess game" {
     output = run_jac(os.path.join(FIXTURES, "guess_game.jac"));
-    assert output == "Too high!\nToo low!\nToo high!\nCongratulations! You guessed correctly.\n";
+    assert output
+        == "Too high!\nToo low!\nToo high!\nCongratulations! You guessed correctly.\n";
 }
 
 test "printgraph" {
@@ -99,12 +100,14 @@ test "root builtin" {
 
 test "chandra bugs" {
     output = run_jac(os.path.join(FIXTURES, "chandra_bugs.jac"));
-    assert output == "<link href='{'new_val': 3, 'where': 'from_foo'}' rel='stylesheet'>\nTrue\n";
+    assert output
+        == "<link href='{'new_val': 3, 'where': 'from_foo'}' rel='stylesheet'>\nTrue\n";
 }
 
 test "chandra bugs2" {
     output = run_jac(os.path.join(FIXTURES, "chandra_bugs2.jac"));
-    assert output == "{'apple': None, 'pineapple': None}\nThis is a long\n        line of code.\n{'a': 'apple', 'b': 'ball', 'c': 'cat', 'd': 'dog', 'e': 'elephant'}\n";
+    assert output
+        == "{'apple': None, 'pineapple': None}\nThis is a long\n        line of code.\n{'a': 'apple', 'b': 'ball', 'c': 'cat', 'd': 'dog', 'e': 'elephant'}\n";
 }
 
 test "ignore" {
@@ -216,7 +219,8 @@ test "edge walk" {
 
 test "tuple of tuple assign" {
     output = run_jac(os.path.join(FIXTURES, "tuplytuples.jac"));
-    assert "a apple b banana a apple b banana a apple b banana a apple b banana" in output;
+    assert "a apple b banana a apple b banana a apple b banana a apple b banana"
+        in output;
 }
 
 test "deferred field" {
@@ -316,6 +320,21 @@ test "lambda expr" {
     assert lines[1] == "567";
     assert lines[2] == "7";
     assert lines[3] == "None";
+}
+
+test "implicit return" {
+    output = run_jac(os.path.join(FIXTURES, "implicit_return.jac"));
+    lines = output.split("\n");
+    assert lines[0] == "3" , f"def tail expr: {lines[0]}";
+    assert lines[1] == "pos" , f"guarded explicit return: {lines[1]}";
+    assert lines[2] == "non-pos" , f"tail after guard: {lines[2]}";
+    assert lines[3] == "JAC!" , f"tail after statements: {lines[3]}";
+    assert lines[4] == "hello mars" , f"method tail expr: {lines[4]}";
+    assert lines[5] == "bye mars" , f"impl body tail expr: {lines[5]}";
+    assert lines[6] == "{'color': 'red', 'size': 4}" , f"dict literal tail: {lines[6]}";
+    assert lines[7] == "(7, 8)" , f"tuple tail: {lines[7]}";
+    assert lines[8] == "42" , f"single-expr lambda no semi: {lines[8]}";
+    assert lines[9] == "40" , f"multi-stmt lambda tail: {lines[9]}";
 }
 
 test "override walker inherit" {
@@ -802,7 +821,8 @@ test "visit traversal" {
 # ── Tests using micro fixtures ───────────────────────────────────────────────
 test "simple jac red" {
     output = run_module("micro.simple_walk", COMPILER_FIXTURES, as_main=True);
-    assert output == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n";
+    assert output
+        == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n";
 }
 
 test "simple walk by edge" {
@@ -812,7 +832,8 @@ test "simple walk by edge" {
 
 test "typed filter compr" {
     output = run_module("micro.typed_filter_compr", COMPILER_FIXTURES);
-    assert "[MyObj(a=0), MyObj2(a=2), MyObj(a=1), MyObj2(a=3), MyObj(a=2), MyObj(a=3)]\n" in output;
+    assert "[MyObj(a=0), MyObj2(a=2), MyObj(a=1), MyObj2(a=3), MyObj(a=2), MyObj(a=3)]\n"
+        in output;
     assert "[MyObj(a=0), MyObj(a=1), MyObj(a=2)]\n" in output;
 }
 
@@ -838,6 +859,13 @@ test "fstring escape sequences" {
     assert lines[1] == "'tab\\there'";
     assert lines[2] == "'line1\\nline2\\nline3'";
     assert lines[3] == "'world\\tworld\\tworld'";
+}
+
+test "fstring literal segments keep quote characters" {
+    output = run_jac(os.path.join(FIXTURES, "fstring_quote_segments.jac"));
+    lines = output.strip().split("\n");
+    expected = ["'AA' 'BB'", "-o 'AA' 'BB' end", "AAr'q'BB", '"AA" "BB"', "x 'AA' y"];
+    assert lines[-5:] == expected , f"quote characters mangled in f-string segments: {lines}";
 }
 
 test "type aliases and modern generics" {

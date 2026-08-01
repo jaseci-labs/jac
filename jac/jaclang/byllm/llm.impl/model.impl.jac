@@ -6,7 +6,7 @@ impl Model.postinit -> None {
 
     if not self.api_key {
         self.api_key = self.config.get("api_key", "")
-        or _model_config.get("api_key", "");
+            or _model_config.get("api_key", "");
     }
 
     if self.model_name == MODEL_MOCK {
@@ -143,17 +143,17 @@ def _stream_with_telemetry(
 
 impl Model._raise_mapped_provider_error(e: Exception) -> None {
     if isinstance(e, litellm.exceptions.AuthenticationError)
-    or isinstance(e, openai.AuthenticationError) {
+        or isinstance(e, openai.AuthenticationError) {
         logger.error(f"LLM AuthenticationError: {e}");
         raise AuthenticationError(str(e));
     }
     if isinstance(e, litellm.exceptions.RateLimitError)
-    or isinstance(e, openai.RateLimitError) {
+        or isinstance(e, openai.RateLimitError) {
         logger.error(f"LLM RateLimitError: {e}");
         raise RateLimitError(str(e));
     }
     if isinstance(e, litellm.exceptions.NotFoundError)
-    or isinstance(e, openai.NotFoundError) {
+        or isinstance(e, openai.NotFoundError) {
         logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
     }
@@ -176,7 +176,9 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             response = client.chat.completions.create(**params);
         } else {
             require_optional("litellm", "llm");
-            response = litellm.completion(api_key=self.api_key or None, **params);
+            response = litellm.completion(
+                api_key=self.api_key or None, api_base=self.api_base or None, **params
+            );
         }
     } except Exception as e {
         self._raise_mapped_provider_error(e);
@@ -185,9 +187,8 @@ impl Model.model_call_no_stream(params: dict) -> dict {
 }
 
 impl Model.model_call_with_stream(params: dict) {
-    params["stream_options"] = (params.get("stream_options") or {}) | {
-        "include_usage": True
-    };
+    params["stream_options"] = (params.get("stream_options") or {})
+        | {"include_usage": True};
     try {
         if self.proxy {
             require_optional("openai", "llm");
@@ -196,7 +197,10 @@ impl Model.model_call_with_stream(params: dict) {
         } else {
             require_optional("litellm", "llm");
             response = litellm.completion(
-                stream=True, api_key=self.api_key or None, **params
+                stream=True,
+                api_key=self.api_key or None,
+                api_base=self.api_base or None,
+                **params
             );
         }
     } except litellm.exceptions.AuthenticationError as e {
@@ -246,7 +250,7 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
         } else {
             require_optional("litellm", "llm");
             response = await litellm.acompletion(
-                api_key=self.api_key or None, **params
+                api_key=self.api_key or None, api_base=self.api_base or None, **params
             );
         }
     } except Exception as e {
@@ -256,9 +260,8 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
 }
 
 impl Model.model_call_with_stream_async(params: dict) {
-    params["stream_options"] = (params.get("stream_options") or {}) | {
-        "include_usage": True
-    };
+    params["stream_options"] = (params.get("stream_options") or {})
+        | {"include_usage": True};
     try {
         if self.http_client {
             response = await self.model_call_http_async(
@@ -280,7 +283,10 @@ impl Model.model_call_with_stream_async(params: dict) {
         } else {
             require_optional("litellm", "llm");
             response = await litellm.acompletion(
-                stream=True, api_key=self.api_key or None, **params
+                stream=True,
+                api_key=self.api_key or None,
+                api_base=self.api_base or None,
+                **params
             );
         }
     } except Exception as e {

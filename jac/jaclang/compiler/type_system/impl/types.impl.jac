@@ -526,8 +526,8 @@ impl EnumMemberType.__str__ -> str {
 
 impl EnumMemberType.get_value_type -> TypeBase {
     return self.member_info.value_type
-    or self.enum_class.shared.enum_value_type
-    or UnknownType();
+        or self.enum_class.shared.enum_value_type
+        or UnknownType();
 }
 
 impl FunctionType.is_gradual_callable_form -> bool {

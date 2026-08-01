@@ -67,9 +67,13 @@ import type from jaclang.runtimelib.server { ModuleIntrospector, UserManager }
 glob logger = getLogger(__name__),
      T = TypeVar('T'),
      P = ParamSpec('P'),
-     JsonValue: TypeAlias = None | str | int | float | bool | `list['JsonValue'] | `dict[
-         (str, 'JsonValue')
-     ],
+     JsonValue: TypeAlias = None
+         | str
+         | int
+         | float
+         | bool
+         | `list['JsonValue']
+         | `dict[(str, 'JsonValue')],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', default=None
@@ -119,13 +123,13 @@ def _prefetch_edges(origin: list[NodeArchetype]) -> None {
             loaded = ctx.mem.get(anchor.id);
             if loaded {
                 if loaded?.source
-                and loaded.source is not None
-                and not loaded.source.is_populated() {
+                    and loaded.source is not None
+                    and not loaded.source.is_populated() {
                     node_ids.append(loaded.source.id);
                 }
                 if loaded?.target
-                and loaded.target is not None
-                and not loaded.target.is_populated() {
+                    and loaded.target is not None
+                    and not loaded.target.is_populated() {
                     node_ids.append(loaded.target.id);
                 }
             }
@@ -276,9 +280,9 @@ class JacGraph {
         path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
         post_filter: (Callable[([Archetype], bool)] | None) = None,
         slc: (slice | None) = None
-    ) -> list[NodeArchetype] | list[EdgeArchetype] | list[
-        (NodeArchetype | EdgeArchetype)
-    ];
+    ) -> list[NodeArchetype]
+        | list[EdgeArchetype]
+        | list[(NodeArchetype | EdgeArchetype)];
 
     static async def arefs(
         path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
@@ -322,9 +326,12 @@ class JacWalker {
         `walker: WalkerArchetype,
         expr:
             (
-                list[(NodeArchetype | EdgeArchetype)] | list[NodeArchetype] | list[
-                    EdgeArchetype
-                ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
+                list[(NodeArchetype | EdgeArchetype)]
+                | list[NodeArchetype]
+                | list[EdgeArchetype]
+                | NodeArchetype
+                | EdgeArchetype
+                | ObjectSpatialPath
             ),
         insert_loc: int = -1
     ) -> bool;
@@ -534,7 +541,8 @@ class JacRuntime(JacRuntimeInterface) {
 
         strict_permissions: bool = os.environ.get(
             "JAC_STRICT_PERMISSIONS", ""
-        ).strip().lower() in ("1", "true", "yes", "on");
+        ).strip().lower()
+            in ("1", "true", "yes", "on");
     }
 
     @classmethod

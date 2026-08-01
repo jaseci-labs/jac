@@ -682,6 +682,11 @@ impl LayoutPass._is_layout_compatible_type(
         return True;
     }
 
+    if isinstance(type_node, uni.UnaryExpr)
+        and type_node.ownership != OwnershipKind.NONE {
+        return self._is_layout_compatible_type(type_node.operand, arch_map);
+    }
+
     if isinstance(type_node, uni.Name) {
         tname = type_node.value;
         if tname in LAYOUT_COMPATIBLE_PRIMITIVES {

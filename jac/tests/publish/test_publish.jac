@@ -58,7 +58,13 @@ def scaffold_pkg(pkg_dir: Path, name: str = "mypkg") {
 def pkg_config_with_include(
     pkg_dir: Path, name: str = "mypkg", version: str = "1.0.0"
 ) -> JacConfig {
-    toml = '[project]\nname = "' + name + '"\nversion = "' + version + '"\nrequires-python = ">=3.11"\n\n[project.include]\npackages = ["' + name + '"]\n';
+    toml = '[project]\nname = "'
+        + name
+        + '"\nversion = "'
+        + version
+        + '"\nrequires-python = ">=3.11"\n\n[project.include]\npackages = ["'
+        + name
+        + '"]\n';
     cfg = JacConfig.from_toml_str(toml);
     cfg.project_root = pkg_dir;
     return cfg;
@@ -108,12 +114,13 @@ test "generate_metadata emits Classifier headers in order" {
         for l in meta.splitlines()
         if l.startswith("Classifier:")
     ];
-    assert lines == [
-        "Classifier: Programming Language :: Python :: 3",
-        "Classifier: License :: OSI Approved :: MIT License",
-        "Classifier: Framework :: Jac",
+    assert lines
+        == [
+            "Classifier: Programming Language :: Python :: 3",
+            "Classifier: License :: OSI Approved :: MIT License",
+            "Classifier: Framework :: Jac",
 
-    ];
+        ];
 }
 
 test "generate_metadata raises when package section missing" {
@@ -591,7 +598,11 @@ test "rewrite_imports repoints project imports and leaves stdlib alone" {
 
         };
         src = (
-            "from __future__ import annotations\n" + "import os\n" + "import helper\n" + "import helper as h\n" + "from helper import hi\n"
+            "from __future__ import annotations\n"
+            + "import os\n"
+            + "import helper\n"
+            + "import helper as h\n"
+            + "from helper import hi\n"
         );
         out = rewrite_imports(src, proj / "main.jac", module_map);
         assert "import os\n" in out;
@@ -614,7 +625,8 @@ test "WheelBuilder rewrites sibling imports so the installed wheel imports clean
             "def helper_fn() -> int {\n    return 7;\n}\n"
         );
         (proj / "main.jac").write_text(
-            "import helper;\n\ndef use() -> int {\n" + "    return helper.helper_fn();\n}\n"
+            "import helper;\n\ndef use() -> int {\n"
+                + "    return helper.helper_fn();\n}\n"
         );
         cfg = JacConfig.from_toml_str(
             '[project]\nname = "puredemo"\nversion = "0.1.0"\n'
@@ -631,7 +643,8 @@ test "WheelBuilder rewrites sibling imports so the installed wheel imports clean
             [
                 sys.executable,
                 "-c",
-                f"import sys; sys.path.insert(0, {str(site)!r}); " + "import puredemo.main as m; print(m.use())",
+                f"import sys; sys.path.insert(0, {str(site)!r}); "
+                    + "import puredemo.main as m; print(m.use())",
 
             ],
             capture_output=True,
@@ -651,7 +664,8 @@ test "WheelBuilder skips client codespace files with a record" {
         pkg = proj / "mypkg";
         pkg.mkdir();
         (pkg / "core.jac").write_text("def go() -> int {\n    return 1;\n}\n");
-        (pkg / "view.cl.jac").write_text("def View() -> None {}\n");
+        (pkg / "view.jac").write_text("def View() -> None {}\n");
+        (proj / "jac.toml").write_text('[placement.pins]\n"mypkg.view" = "client"\n');
         cfg = pkg_config_with_include(proj, "mypkg");
         builder = WheelBuilder(config=cfg, project_root=proj);
         data = builder.build();
@@ -660,7 +674,7 @@ test "WheelBuilder skips client codespace files with a record" {
             assert "mypkg/core.py" in names;
             assert not any("view" in n for n in names);
         }
-        assert builder.skipped_codespace == ["mypkg/view.cl.jac"];
+        assert builder.skipped_codespace == ["mypkg/view.jac"];
     } finally {
         shutil.rmtree(tmpdir, ignore_errors=True);
     }
@@ -671,7 +685,8 @@ test "WheelBuilder vendors the jac runtime when transpiled code needs it" {
     try {
         proj = Path(tmpdir);
         (proj / "main.jac").write_text(
-            "node Thing {\n    has n: int = 1;\n}\n\n" + "def use() -> int {\n    return Thing().n;\n}\n"
+            "node Thing {\n    has n: int = 1;\n}\n\n"
+                + "def use() -> int {\n    return Thing().n;\n}\n"
         );
         cfg = JacConfig.from_toml_str(
             '[project]\nname = "vendemo"\nversion = "0.1.0"\n'
@@ -739,9 +754,8 @@ test "sdist build backend rebuilds the wheel with stdlib only" {
                 sys.executable,
                 "-I",
                 "-c",
-                "import sys; sys.path.insert(0, '.'); import _jac_build; " + f"print(_jac_build.build_wheel({str(
-                    out_dir
-                )!r}))",
+                "import sys; sys.path.insert(0, '.'); import _jac_build; "
+                    + f"print(_jac_build.build_wheel({str(out_dir)!r}))",
 
             ],
             capture_output=True,

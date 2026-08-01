@@ -295,9 +295,9 @@ impl NaIRGenPass._emit_raw_free_bbs(
         _msz = ir.Constant(i64, 0);
     } else {
         _is_darwin = ("darwin" in _triple)
-        or ("apple" in _triple)
-        or ("macos" in _triple)
-        or ("ios" in _triple);
+            or ("apple" in _triple)
+            or ("macos" in _triple)
+            or ("ios" in _triple);
         _msz_sym = "malloc_size" if _is_darwin else "malloc_usable_size";
         _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
         _msz = b.call(_msz_fn, [_raw_msz], name="msz");
@@ -359,9 +359,9 @@ impl NaIRGenPass._emit_struct_free_log(
         _msz2 = ir.Constant(i64, 0);
     } else {
         _is_darwin = ("darwin" in _triple)
-        or ("apple" in _triple)
-        or ("macos" in _triple)
-        or ("ios" in _triple);
+            or ("apple" in _triple)
+            or ("macos" in _triple)
+            or ("ios" in _triple);
         _msz_sym = "malloc_size" if _is_darwin else "malloc_usable_size";
         _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
         _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");

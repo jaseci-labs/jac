@@ -2052,9 +2052,8 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> uni.Module {
         else elements[0];
     doc_str_list = [elements[0]] if isinstance(elements[0], uni.String) else [];
     valid = (
-        doc_str_list + self.extract_with_entry(
-            elements[1:], (uni.ElementStmt, uni.EmptyToken)
-        )
+        doc_str_list
+        + self.extract_with_entry(elements[1:], (uni.ElementStmt, uni.EmptyToken))
     )
         if doc_str_list
         else self.extract_with_entry(elements[:], (uni.ElementStmt, uni.EmptyToken));

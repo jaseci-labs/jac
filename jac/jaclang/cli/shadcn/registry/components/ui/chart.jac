@@ -3,7 +3,7 @@ import from "recharts" {
     Legend as RechartsLegend,
     ResponsiveContainer
 }
-import from react { createContext, useContext }
+import from "react" { createContext, useContext }
 import from ...lib.utils { cn }
 
 glob ChartContext: any = createContext(None);
@@ -40,20 +40,18 @@ def:pub ChartContainer(props: any) -> JsxElement {
     config = props["config"] or {};
     colorStyle = buildChartStyle(config);
     ctxValue = {"config": config};
-    return
-        <ChartContext.Provider value={ctxValue}>
-            <div
-                {**attrs}
-                data-slot="chart"
-                style={{** (props["style"] or {}), ** colorStyle}}
-                className={cn(
-                    "cn-chart flex aspect-video justify-center text-xs",
-                    props["className"]
-                )}
-            >
-                <ResponsiveContainer>{props["children"]}</ResponsiveContainer>
-            </div>
-        </ChartContext.Provider>;
+    <ChartContext.Provider value={ctxValue}>
+        <div
+            {**attrs}
+            data-slot="chart"
+            style={{** (props["style"] or {}), ** colorStyle}}
+            className={cn(
+                "cn-chart flex aspect-video justify-center text-xs", props["className"]
+            )}
+        >
+            <ResponsiveContainer>{props["children"]}</ResponsiveContainer>
+        </div>
+    </ChartContext.Provider>
 }
 
 def:pub ChartTooltipContent(props: any) -> JsxElement {
@@ -69,25 +67,24 @@ def:pub ChartTooltipContent(props: any) -> JsxElement {
         if item.type != "none"
     ];
     hasItems = active and len(filteredPayload);
-    return
-        <div
-            className={cn(
-                "cn-chart-tooltip grid min-w-32 items-start gap-1.5 px-2.5 py-1.5 text-xs shadow-xl",
-                props["className"]
-            )}
-        >
-            {if hasItems {
-                for item in filteredPayload {
-                    itemKey = props["nameKey"] or item.name or item.dataKey or "value";
-                    itemConfig = getPayloadConfig(config, item, itemKey);
-                    indicatorColor = props["color"]
+    <div
+        className={cn(
+            "cn-chart-tooltip grid min-w-32 items-start gap-1.5 px-2.5 py-1.5 text-xs shadow-xl",
+            props["className"]
+        )}
+    >
+        {if hasItems {
+            for item in filteredPayload {
+                itemKey = props["nameKey"] or item.name or item.dataKey or "value";
+                itemConfig = getPayloadConfig(config, item, itemKey);
+                indicatorColor = props["color"]
                     or (item.payload.fill if item.payload else None)
                     or item.color;
-                    <div
-                        key={item.dataKey}
-                        className="flex w-full flex-wrap items-center gap-2"
-                    >
-                        {not hideIndicator
+                <div
+                    key={item.dataKey}
+                    className="flex w-full flex-wrap items-center gap-2"
+                >
+                    {not hideIndicator
                         and (
                             <div
                                 className={cn(
@@ -97,11 +94,11 @@ def:pub ChartTooltipContent(props: any) -> JsxElement {
                                 style={{"backgroundColor": indicatorColor}}
                             />
                         )}
-                        <div className="flex flex-1 justify-between leading-none">
-                            <span className="text-muted-foreground">
-                                {itemConfig and itemConfig.label or itemKey}
-                            </span>
-                            {item.value is not None
+                    <div className="flex flex-1 justify-between leading-none">
+                        <span className="text-muted-foreground">
+                            {itemConfig and itemConfig.label or itemKey}
+                        </span>
+                        {item.value is not None
                             and (
                                 <span
                                     className="font-mono font-medium tabular-nums text-foreground"
@@ -109,11 +106,11 @@ def:pub ChartTooltipContent(props: any) -> JsxElement {
                                     {item.value.toLocaleString()}
                                 </span>
                             )}
-                        </div>
                     </div>
-                }
-            }}
-        </div>;
+                </div>
+            }
+        }}
+    </div>
 }
 
 def:pub ChartLegendContent(props: any) -> JsxElement {
@@ -124,35 +121,34 @@ def:pub ChartLegendContent(props: any) -> JsxElement {
     config = ctx.config if ctx else {};
     items: any = payload or [];
     topClass = "pb-3" if verticalAlign == "top" else "";
-    return
-        <div
-            className={cn(
-                "flex items-center justify-center gap-4", topClass, props["className"]
-            )}
-        >
-            {for item in items {
-                k = props["nameKey"] or item.dataKey or "value";
-                itemConfig = getPayloadConfig(config, item, k);
-                <div key={item.value} className="flex items-center gap-1.5">
-                    {not hideIcon
+    <div
+        className={cn(
+            "flex items-center justify-center gap-4", topClass, props["className"]
+        )}
+    >
+        {for item in items {
+            k = props["nameKey"] or item.dataKey or "value";
+            itemConfig = getPayloadConfig(config, item, k);
+            <div key={item.value} className="flex items-center gap-1.5">
+                {not hideIcon
                     and (
                         <div
                             className="size-2 shrink-0 rounded-[2px]"
                             style={{"backgroundColor": item.color}}
                         />
                     )}
-                    <span className="text-muted-foreground text-xs">
-                        {itemConfig and itemConfig.label or item.value}
-                    </span>
-                </div>
-            }}
-        </div>;
+                <span className="text-muted-foreground text-xs">
+                    {itemConfig and itemConfig.label or item.value}
+                </span>
+            </div>
+        }}
+    </div>
 }
 
 def:pub ChartTooltip(props: any) -> JsxElement {
-    return <RechartsTooltip {**props}/>;
+    <RechartsTooltip {**props}/>
 }
 
 def:pub ChartLegend(props: any) -> JsxElement {
-    return <RechartsLegend {**props}/>;
+    <RechartsLegend {**props}/>
 }

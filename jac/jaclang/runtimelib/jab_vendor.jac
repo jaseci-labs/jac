@@ -106,7 +106,8 @@ def write_vendor_manifest(
             },
             sort_keys=True,
             indent=1
-        ) + "\n",
+        )
+            + "\n",
         encoding="utf-8"
     );
 }

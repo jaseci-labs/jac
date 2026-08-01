@@ -44,7 +44,7 @@ Call capabilities through the typed `@jac/desktop` SDK rather than hand-writing
 promise that rejects with an `Error` carrying the host's `.code`:
 
 ```jac
-cl import from "@jac/desktop" { notification }
+import from "@jac/desktop" { notification }
 
 notification.send("Test", "Hello!")
     .then(lambda r: any { msg = "Notification sent!"; })

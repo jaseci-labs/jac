@@ -85,9 +85,9 @@ def is_excluded(rel: Path) -> bool {
 
 def _is_secret_path(name: str) -> bool {
     return name == "plugins.scale.secrets"
-    or name.startswith("plugins.scale.secrets.")
-    or name == "scale.secrets"
-    or name.startswith("scale.secrets.");
+        or name.startswith("plugins.scale.secrets.")
+        or name == "scale.secrets"
+        or name.startswith("scale.secrets.");
 }
 
 
@@ -206,13 +206,22 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
         jac_path = stage_root / ".pod-jac";
         jac_path.write_bytes(pod_binary);
         jac_path.chmod(0o755);
-        script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
+        script = Path(str(__file__)).parent.parent.parent
+            / "utils"
+            / "precompile_bytecode.jac";
 
+        seal_env = {
+            k: v
+            for (k, v) in os.environ.items()
+            if k not in ("PYTHONPATH", "PYTHONHOME", "JAC_LLVM_SHIM")
+        };
         result = subprocess.run(
             [str(jac_path), "run", str(script), str(stage_root), "--seal"],
             capture_output=True,
             text=True,
-            timeout=600
+            timeout=600,
+            env=seal_env,
+            cwd=str(stage_root)
         );
         jac_path.unlink();
         if (
@@ -221,7 +230,7 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
         ) {
             raise RuntimeError(
                 f"App seal did not complete, so the deploy cannot produce a "
-                f".jab: {(result.stderr or result.stdout).strip()[-300:]}"
+                f".jab: {(result.stderr or result.stdout).strip()[-2000:]}"
             );
         }
         return stage;

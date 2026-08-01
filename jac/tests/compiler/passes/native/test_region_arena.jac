@@ -19,7 +19,7 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(
     fixture: str, gc_mode: str | None = None
 ) -> tuple[ExecutionEngine, uni.Module] {
@@ -63,7 +63,7 @@ def fn_ir(ir: uni.Module, name: str) -> str {
 test "arena: region interior bump-allocates and bulk-frees, not __rc_alloc" {
     # Stack-eligible objects (like region_arena's Box) may still take the
     # stack path inside an open; droppable types must route to the arena.
-    (eng, ir) = compile_native("region_dtor.na.jac");
+    (eng, ir) = compile_native("region_dtor.jac");
     body = fn_ir(ir, "dtor_order");
     n_arena = body.count('call i8* @"__jac_region_alloc"');
     assert n_arena == 3 , f"expected 3 arena allocs in dtor_order, found {n_arena}";
@@ -74,21 +74,21 @@ test "arena: region interior bump-allocates and bulk-frees, not __rc_alloc" {
 }
 
 test "arena: anonymous open sums correctly through the JIT" {
-    (eng, ir) = compile_native("region_arena.na.jac");
+    (eng, ir) = compile_native("region_arena.jac");
     region_sum = get_func(eng, "region_sum", ctypes.c_int64, ctypes.c_int64);
     result = region_sum(5);
     assert result == 10 , f"region_sum(5) == {result}, expected 10";
 }
 
 test "arena: dtor-log runs drop hooks LIFO at the close of an anonymous open" {
-    (eng, ir) = compile_native("region_dtor.na.jac");
+    (eng, ir) = compile_native("region_dtor.jac");
     dtor_order = get_func(eng, "dtor_order", ctypes.c_int64);
     result = dtor_order();
     assert result == 321 , f"dtor_order() == {result}, expected LIFO 321";
 }
 
 test "arena: named handle drops on reassignment and at scope exit" {
-    (eng, ir) = compile_native("region_dtor.na.jac");
+    (eng, ir) = compile_native("region_dtor.jac");
     named_handle = get_func(eng, "named_handle", ctypes.c_int64);
     result = named_handle();
     # before reassignment nothing dropped (0), reassigning the handle drops
@@ -102,7 +102,7 @@ test "arena: named handle drops on reassignment and at scope exit" {
 }
 
 test "arena: dynamic extent -- made in a helper, grown remotely, dropped here" {
-    (eng, ir) = compile_native("region_extent.na.jac");
+    (eng, ir) = compile_native("region_extent.jac");
     scenario = get_func(eng, "scenario", ctypes.c_int64);
     result = scenario();
     # nothing drops while the handle travels through make/grow/grow
@@ -114,7 +114,7 @@ test "arena: dynamic extent -- made in a helper, grown remotely, dropped here" {
 }
 
 test "arena: early return inside an open still tears the region down" {
-    (eng, ir) = compile_native("region_dtor.na.jac");
+    (eng, ir) = compile_native("region_dtor.jac");
     early_return = get_func(eng, "early_return", ctypes.c_int64, ctypes.c_int64);
     result = early_return(1);
     assert result == 0 , f"early_return(1) == {result}, expected 0";
@@ -126,14 +126,14 @@ test "arena: early return inside an open still tears the region down" {
 }
 
 test "arena: managed values cross an open safely" {
-    (eng, ir) = compile_native("region_dtor.na.jac");
+    (eng, ir) = compile_native("region_dtor.jac");
     mixed_managed = get_func(eng, "mixed_managed", ctypes.c_int64, ctypes.c_int64);
     result = mixed_managed(4);
     assert result == 6 , f"mixed_managed(4) == {result}, expected 6";
 }
 
 test "phase W: walkers reclaim -- spawn-heavy loop fires drop per walker" {
-    (eng, ir) = compile_native("walker_reclaim.na.jac");
+    (eng, ir) = compile_native("walker_reclaim.jac");
     run = get_func(eng, "run", ctypes.c_int64, ctypes.c_int64);
     result = run(4);
     assert result == 12 , f"run(4) == {result}, expected 12";
@@ -143,7 +143,7 @@ test "phase W: walkers reclaim -- spawn-heavy loop fires drop per walker" {
 }
 
 test "R3: region-resident topology traverses live and reclaims at drop" {
-    (eng, ir) = compile_native("region_graph.na.jac");
+    (eng, ir) = compile_native("region_graph.jac");
     scenario = get_func(eng, "scenario", ctypes.c_int64);
     result = scenario();
     assert result == 3 , f"scenario() == {result}, expected traversal sum 3";
@@ -153,7 +153,7 @@ test "R3: region-resident topology traverses live and reclaims at drop" {
 }
 
 test "R3: growth rule -- mid-traversal allocations land in region_of(here)" {
-    (eng, ir) = compile_native("region_growth.na.jac");
+    (eng, ir) = compile_native("region_growth.jac");
     scenario = get_func(eng, "scenario", ctypes.c_int64);
     result = scenario();
     assert result == 2 , f"scenario() == {result}, expected 2 grown nodes";
@@ -163,14 +163,14 @@ test "R3: growth rule -- mid-traversal allocations land in region_of(here)" {
 }
 
 test "R4: own rebox copies a string out of a region" {
-    (eng, ir) = compile_native("region_rebox.na.jac");
+    (eng, ir) = compile_native("region_rebox.jac");
     out = get_func(eng, "out", ctypes.c_char_p);
     result = out();
     assert result == b"hi" , f"out() == {result}, expected b'hi'";
 }
 
 test "a user archetype named Region shadows the builtin cleanly" {
-    (eng, ir) = compile_native("region_shadow.na.jac");
+    (eng, ir) = compile_native("region_shadow.jac");
     body = fn_ir(ir, "shadowed");
     n_new = body.count('call i8* @"__jac_region_new"');
     assert n_new == 0 , f"user Region must not intercept arena setup: {n_new}";

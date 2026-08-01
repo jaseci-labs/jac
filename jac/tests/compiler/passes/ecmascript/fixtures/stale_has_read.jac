@@ -8,17 +8,15 @@ pre-update value, not the just-assigned one. The compiler warns at
 the read site so the bug is caught at compile time, not at runtime.
 """
 
-cl {
-    def:pub stale_demo() -> JsxElement {
-        has logged_in: bool = False;
+def:pub stale_demo() -> JsxElement {
+    has logged_in: bool = False;
 
-        can with entry {
-            logged_in = True;       # write — schedules setLoggedIn(true)
-            if logged_in {           # read — closure-captured pre-update value (False)
-                logged_in = False;   # never reached on first run
-            }
+    can with entry {
+        logged_in = True;  # write — schedules setLoggedIn(true)
+        if logged_in {  # read — closure-captured pre-update value (False)
+            logged_in = False;  # never reached on first run
         }
-
-        return <div>{logged_in}</div>;
     }
+
+    return <div>{logged_in}</div>;
 }

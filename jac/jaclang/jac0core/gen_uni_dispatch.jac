@@ -30,8 +30,8 @@ def node_snake_map -> dict[str, str] {
     for name in dir(ut_mod) {
         attr = getattr(ut_mod, name);
         if isinstance(attr, type)
-        and issubclass(attr, UniNode)
-        and attr is not UniNode {
+            and issubclass(attr, UniNode)
+            and attr is not UniNode {
             out[pascal_to_snake(name)] = name;
         }
     }
@@ -212,9 +212,8 @@ def verify_all -> list {
         }
     }
     up_src = open(abs_path(UNI_PASS_SRC), encoding="utf-8").read();
-    if apply_surface_block(
-        up_src, surface_decls_block(enter, exits, snake_map)
-    ) != up_src {
+    if apply_surface_block(up_src, surface_decls_block(enter, exits, snake_map))
+        != up_src {
         stale.append(UNI_PASS_SRC + " (surface decls)");
     }
     for d in missing_accept_decls(enter, exits) {

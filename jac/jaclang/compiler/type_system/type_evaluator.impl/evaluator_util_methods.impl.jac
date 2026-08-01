@@ -795,13 +795,14 @@ impl TypeEvaluator._is_unbound_method_call(expr: uni.FuncCall) -> bool {
     if isinstance(expr.target, uni.AtomTrailer) and expr.target.is_attr {
         base_type = self.get_type_of_expression(expr.target.target);
         if isinstance(base_type, types.ClassType)
-        and base_type.is_instantiable_class() {
+            and base_type.is_instantiable_class() {
             if isinstance(expr.target.right, uni.Name) {
                 member = self._lookup_class_member(base_type, expr.target.right.value);
                 if member {
                     member_type = self.get_type_of_symbol(member.symbol);
                     if isinstance(member_type, types.FunctionType) {
-                        if member_type.function_flags & types.FunctionTypeFlags.StaticMethod {
+                        if member_type.function_flags
+                            & types.FunctionTypeFlags.StaticMethod {
                             return False;
                         }
                         return True;
@@ -870,8 +871,8 @@ impl TypeEvaluator._extract_type_params(
     generic_base: uni.AtomTrailer | None = None;
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
-        or base_class.is_attr
-        or base_class.is_null_ok {
+            or base_class.is_attr
+            or base_class.is_null_ok {
             continue;
         }
         target_type = self.get_type_of_expression(base_class.target);
@@ -899,8 +900,8 @@ impl TypeEvaluator._extract_type_params(
 
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
-        or base_class.is_attr
-        or base_class.is_null_ok {
+            or base_class.is_attr
+            or base_class.is_null_ok {
             continue;
         }
         if base_class is generic_base {
@@ -1106,7 +1107,7 @@ impl TypeEvaluator.get_property_write_type(
         if isinstance(node_, uni.Ability) {
             func_type = self.get_type_of_ability(node_);
             if isinstance(func_type, types.FunctionType)
-            and func_type.return_type is not None {
+                and func_type.return_type is not None {
                 return PropertyWriteResult(
                     kind=PropertyWriteKind.WRITABLE, write_type=func_type.return_type
                 );
@@ -1204,7 +1205,7 @@ impl TypeEvaluator._create_callable_type(
             if isinstance(resolved_first, types.TypeVarType) {
                 is_gradual = True;
             } elif self.is_paramspec_class(resolved_first)
-            or self.is_type_var_tuple_class(resolved_first) {
+                or self.is_type_var_tuple_class(resolved_first) {
                 is_gradual = True;
             } else {
                 self.emit_diag(E1071, first_arg);
@@ -1246,30 +1247,31 @@ impl TypeEvaluator._get_special_form_type(
         and symbol_type.shared == self.prefetch.callable_class.shared
     );
 
-    is_known_special_form_name = name in (
-        "Self",
-        "Callable",
-        "Protocol",
-        "Final",
-        "LiteralString",
-        "Union",
-        "Optional",
-        "Generic",
-        "Type",
-        "ClassVar",
-        "Annotated",
-        "Concatenate",
-        "TypeGuard",
-        "TypeIs",
-        "Unpack",
-        "Required",
-        "NotRequired",
-        "Never",
-        "NoReturn",
-        "Literal",
-        "TypeForm",
+    is_known_special_form_name = name
+        in (
+            "Self",
+            "Callable",
+            "Protocol",
+            "Final",
+            "LiteralString",
+            "Union",
+            "Optional",
+            "Generic",
+            "Type",
+            "ClassVar",
+            "Annotated",
+            "Concatenate",
+            "TypeGuard",
+            "TypeIs",
+            "Unpack",
+            "Required",
+            "NotRequired",
+            "Never",
+            "NoReturn",
+            "Literal",
+            "TypeForm",
 
-    );
+        );
 
     if not is_special_form and not is_known_special_form_name {
         return None;
@@ -1314,8 +1316,8 @@ impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
 }
 
 impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | None) {
-    spv = node_.string_path_value;
-    if spv is None {
+    spec = node_.string_path_value or node_.dot_path_str;
+    if not spec {
         return None;
     }
     if not node_.in_client_context() {
@@ -1326,7 +1328,35 @@ impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | N
         return None;
     }
     import from jaclang.jac0core.modresolver { resolve_client_npm_package }
-    return resolve_client_npm_package(spv, mod_path);
+    base = self._client_npm_base(spec, mod_path);
+    if base is None {
+        return None;
+    }
+    return resolve_client_npm_package(spec, base);
+}
+
+impl TypeEvaluator._client_npm_base(spec: str, mod_path: str) -> (str | None) {
+    import from jaclang.jac0core.modresolver { has_client_npm_package }
+    if has_client_npm_package(spec, mod_path) {
+        return mod_path;
+    }
+    entry_path = self._client_entry_mod_path();
+    if (
+        entry_path
+        and entry_path != mod_path
+        and has_client_npm_package(spec, entry_path)
+    ) {
+        return entry_path;
+    }
+    return None;
+}
+
+impl TypeEvaluator._client_entry_mod_path -> (str | None) {
+    main_mod = self.program.mod.main;
+    if main_mod and main_mod.loc {
+        return main_mod.loc.mod_path or None;
+    }
+    return None;
 }
 
 impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
@@ -1344,7 +1374,8 @@ impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
                     if isinstance(
                         self.prefetch.literal_string_class, types.ClassType
                     ) {
-                        if part_type.shared == self.prefetch.literal_string_class.shared {
+                        if part_type.shared
+                            == self.prefetch.literal_string_class.shared {
                             continue;
                         }
                     }
@@ -1493,7 +1524,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
         if isinstance(expr, uni.Name) {
             resolved = self.get_type_of_expression(expr);
             if isinstance(resolved, types.TypeVarType)
-            and resolved.name in class_tvars {
+                and resolved.name in class_tvars {
                 tv = class_tvars[resolved.name];
                 if is_return and tv.is_contravariant {
                     self.emit_diag(E1080, expr);
@@ -1527,7 +1558,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
             if ret_stmt.expr and isinstance(ret_stmt.expr, uni.Name) {
                 resolved = self.get_type_of_expression(ret_stmt.expr);
                 if isinstance(resolved, types.TypeVarType)
-                and resolved.name in class_tvars {
+                    and resolved.name in class_tvars {
                     tv = class_tvars[resolved.name];
                     if tv.is_contravariant {
                         self.emit_diag(E1080, ret_stmt);
@@ -1809,11 +1840,11 @@ impl TypeEvaluator._collect_return_types(
         ) {
             self._collect_return_types(list(stmt.body), out);
             _is_infinite_loop = isinstance(stmt, uni.ForeverStmt)
-            or (
-                isinstance(stmt, uni.WhileStmt)
-                and isinstance(stmt.condition, uni.Bool)
-                and stmt.condition.lit_value
-            );
+                or (
+                    isinstance(stmt, uni.WhileStmt)
+                    and isinstance(stmt.condition, uni.Bool)
+                    and stmt.condition.lit_value
+                );
             if _is_infinite_loop {
                 _has_break = False;
                 import from jaclang.jac0core.constant { Tokens as _Tok }

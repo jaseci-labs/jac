@@ -83,12 +83,8 @@ impl NaIRGenPass.post_transform -> None {
 
     ir_str = str(self.llvm_module);
 
-    if os.environ.get("JAC_DEBUG_IR", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on"
-    ) {
+    if os.environ.get("JAC_DEBUG_IR", "").strip().lower()
+        in ("1", "true", "yes", "on") {
         import from jaclang.jac0core.jir { get_native_cache_dir }
         src_path = self.ir_in.loc.mod_path;
         if src_path {

@@ -265,7 +265,7 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
             if user is not None {
                 for ident in user.get('identities', []) {
                     if (ident.get('value_normalized') or '') == identity_value
-                    and ident.get('verified') {
+                        and ident.get('verified') {
                         _audit_emit(
                             'identity_verification.already_verified',
                             user_id=user_id,

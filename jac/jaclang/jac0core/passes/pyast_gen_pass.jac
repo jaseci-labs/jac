@@ -104,6 +104,8 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
     def _gen_native_interop_stubs(nd: uni.UniNode) -> None;
+    def _native_import_registration_map -> dict;
+    def _top_level_bound_names(py_ast: object) -> list[str];
     def _is_native_ext_module -> bool;
     def _native_test_shim_stmts(nd: uni.Test) -> list;
     def _generate_sv_to_sv_stubs(nd: uni.Import) -> bool;
@@ -131,6 +133,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def needs_enum_kind(kind: str) -> None;
     def _next_temp_name(prefix: str) -> str;
     def _py_name(nd: uni.AstSymbolNode) -> str;
+    def py_ctx(nd: uni.AstSymbolNode) -> ast3.expr_context;
     def _emit_jobj_ref(nd: uni.UnaryExpr) -> None;
     def _function_expr_from_def(
         func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
@@ -165,9 +168,6 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_test(nd: uni.Test) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
-    def exit_server_block(nd: uni.ServerBlock) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
     def exit_import(nd: uni.Import) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;

@@ -24,6 +24,8 @@ class ViteClientBundleBuilder(ClientBundleBuilder) {
     def _compile_bundle(
         self: ViteClientBundleBuilder, module: ModuleType, module_path: Path
     ) -> ClientBundle;
+
+    def _emitted_digest(self: ViteClientBundleBuilder) -> str;
 }
 
 def make_client_bundle_builder(

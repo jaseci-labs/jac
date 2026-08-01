@@ -6,7 +6,7 @@ for handler implementations.
 """
 
 import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
-sv import from .social_graph {
+import from .social_graph {
     setup_profile,
     get_profile,
     get_all_profiles,
@@ -25,13 +25,7 @@ sv import from .social_graph {
     get_channel_detail,
     create_channel_tweet
 }
-sv import from .social_graph {
-    Profile,
-    Tweet,
-    TrendingTag,
-    ProfileBundle,
-    ChannelBundle
-}
+import from .social_graph { Profile, Tweet, TrendingTag, ProfileBundle, ChannelBundle }
 import from "lucide-react" { Feather, Sun, Moon, Pencil }
 import from .components.ui.button { Button }
 import from .components.AuthForm { AuthForm }
@@ -176,143 +170,142 @@ def:pub app -> JsxElement {
         if jid(u) not in followingIds and jid(u) != myProfileId
     ];
 
-    return
-        <div
-            className="mx-auto flex min-h-screen w-full max-w-7xl bg-background text-foreground"
+    <div
+        className="mx-auto flex min-h-screen w-full max-w-7xl bg-background text-foreground"
+    >
+        <Sidebar
+            {activeTab}
+            {displayUsername}
+            {profileUsername}
+            {profileAvatar}
+            {notifCount}
+            onNavigate={navigate}
+            onLogout={handleLogout}
+        />
+        <main
+            className="min-h-screen min-w-0 flex-1 border-x border-border pb-20 md:pb-0"
         >
-            <Sidebar
-                {activeTab}
-                {displayUsername}
-                {profileUsername}
-                {profileAvatar}
-                {notifCount}
-                onNavigate={navigate}
-                onLogout={handleLogout}
-            />
-            <main
-                className="min-h-screen min-w-0 flex-1 border-x border-border pb-20 md:pb-0"
+            <header
+                className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-lg"
             >
-                <header
-                    className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-lg"
-                >
-                    <span className="font-display text-xl font-extrabold">
-                        {get_tab_name(activeTab)}
-                    </span>
-                    <div className="flex items-center gap-1">
-                        {if activeTab == "profile" {
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="rounded-full"
-                                onClick={lambda {
-                                    editingBio = not editingBio;
-                                    bioText = (
-                                        myProfile.profile.bio
-                                            if myProfile and myProfile.profile.bio
-                                            else ""
-                                    );
-                                }}
-                            >
-                                <Pencil size={14}/>
-                                {"Cancel" if editingBio else "Edit profile"}
-                            </Button>
-                        }}
+                <span className="font-display text-xl font-extrabold">
+                    {get_tab_name(activeTab)}
+                </span>
+                <div className="flex items-center gap-1">
+                    {if activeTab == "profile" {
                         <Button
-                            variant="ghost"
-                            size="icon"
-                            className="rounded-full text-muted-foreground"
-                            title="Toggle theme"
-                            onClick={lambda { darkMode = not darkMode; }}
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            onClick={lambda {
+                                editingBio = not editingBio;
+                                bioText = (
+                                    myProfile.profile.bio
+                                        if myProfile and myProfile.profile.bio
+                                        else ""
+                                );
+                            }}
                         >
-                            {if darkMode {
-                                <Sun size={18}/>
-                            } else {
-                                <Moon size={18}/>
-                            } }
+                            <Pencil size={14}/>
+                            {"Cancel" if editingBio else "Edit profile"}
                         </Button>
-                    </div>
-                </header>
-                {if activeTab == "feed" {
-                    <FeedTab
-                        {showWelcome}
-                        onDismissWelcome={handleDismissWelcome}
-                        {profileAvatar}
-                        {profileUsername}
-                        {composerText}
-                        onComposerChange={lambda (v: str) { composerText = v; }}
-                        onPost={postTweet}
-                        {feedLoading}
-                        {tweets}
-                        onLike={handleLike}
-                        onComment={handleComment}
-                        onDelete={handleDelete}
-                        onRepost={handleRepost}
-                    />
-                } elif activeTab == "explore" {
-                    <ExploreTab
-                        {allProfiles}
-                        {followingIds}
-                        {myProfileId}
-                        onFollow={handleFollow}
-                        onUnfollow={handleUnfollow}
-                    />
-                } elif activeTab == "channels" {
-                    <ChannelsTab
-                        {channels}
-                        {channelsLoading}
-                        {selectedChannel}
-                        {channelPosts}
-                        {profileAvatar}
-                        {profileUsername}
-                        onCreateChannel={handleCreateChannel}
-                        onJoinChannel={handleJoinChannel}
-                        onLeaveChannel={handleLeaveChannel}
-                        onSelectChannel={handleSelectChannel}
-                        onChannelPost={handleChannelPost}
-                        onBackToChannels={handleBackToChannels}
-                        onLike={handleLike}
-                        onComment={handleComment}
-                        onDelete={handleDelete}
-                        onRepost={handleRepost}
-                    />
-                } elif activeTab == "profile" {
-                    <ProfileTab
-                        {myProfile}
-                        {displayUsername}
-                        {profileAvatar}
-                        {profileUsername}
-                        {editingBio}
-                        {bioText}
-                        onBioChange={lambda (v: str) { bioText = v; }}
-                        onSaveBio={handleSaveBio}
-                        onCancelEditBio={lambda { editingBio = False; }}
-                        onLike={handleLike}
-                        onComment={handleComment}
-                        onDelete={handleDelete}
-                        onRepost={handleRepost}
-                    />
-                }   }
-            </main>
-            <RightSidebar
-                {searchQuery}
-                onSearchChange={lambda (v: str) { searchQuery = v; }}
-                onSearch={handleSearch}
-                onClearSearch={lambda {
-                    searchQuery = "";
-                    handleSearch("");
-                }}
-                {trendingTags}
-                onTrendClick={handleTrendClick}
-                {toFollow}
-                onFollow={handleFollow}
-                onShowMore={lambda { navigate("explore"); }}
-            />
-            <MobileNav {activeTab} {notifCount} onNavigate={navigate}/>
-            <Button
-                className="fixed bottom-20 right-4 z-40 size-14 rounded-full shadow-lg shadow-primary/30 md:hidden"
-                onClick={lambda { navigate("feed"); }}
-            >
-                <Feather size={22}/>
-            </Button>
-        </div>;
+                    }}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-full text-muted-foreground"
+                        title="Toggle theme"
+                        onClick={lambda { darkMode = not darkMode; }}
+                    >
+                        {if darkMode {
+                            <Sun size={18}/>
+                        } else {
+                            <Moon size={18}/>
+                        } }
+                    </Button>
+                </div>
+            </header>
+            {if activeTab == "feed" {
+                <FeedTab
+                    {showWelcome}
+                    onDismissWelcome={handleDismissWelcome}
+                    {profileAvatar}
+                    {profileUsername}
+                    {composerText}
+                    onComposerChange={lambda (v: str) { composerText = v; }}
+                    onPost={postTweet}
+                    {feedLoading}
+                    {tweets}
+                    onLike={handleLike}
+                    onComment={handleComment}
+                    onDelete={handleDelete}
+                    onRepost={handleRepost}
+                />
+            } elif activeTab == "explore" {
+                <ExploreTab
+                    {allProfiles}
+                    {followingIds}
+                    {myProfileId}
+                    onFollow={handleFollow}
+                    onUnfollow={handleUnfollow}
+                />
+            } elif activeTab == "channels" {
+                <ChannelsTab
+                    {channels}
+                    {channelsLoading}
+                    {selectedChannel}
+                    {channelPosts}
+                    {profileAvatar}
+                    {profileUsername}
+                    onCreateChannel={handleCreateChannel}
+                    onJoinChannel={handleJoinChannel}
+                    onLeaveChannel={handleLeaveChannel}
+                    onSelectChannel={handleSelectChannel}
+                    onChannelPost={handleChannelPost}
+                    onBackToChannels={handleBackToChannels}
+                    onLike={handleLike}
+                    onComment={handleComment}
+                    onDelete={handleDelete}
+                    onRepost={handleRepost}
+                />
+            } elif activeTab == "profile" {
+                <ProfileTab
+                    {myProfile}
+                    {displayUsername}
+                    {profileAvatar}
+                    {profileUsername}
+                    {editingBio}
+                    {bioText}
+                    onBioChange={lambda (v: str) { bioText = v; }}
+                    onSaveBio={handleSaveBio}
+                    onCancelEditBio={lambda { editingBio = False; }}
+                    onLike={handleLike}
+                    onComment={handleComment}
+                    onDelete={handleDelete}
+                    onRepost={handleRepost}
+                />
+            }   }
+        </main>
+        <RightSidebar
+            {searchQuery}
+            onSearchChange={lambda (v: str) { searchQuery = v; }}
+            onSearch={handleSearch}
+            onClearSearch={lambda {
+                searchQuery = "";
+                handleSearch("");
+            }}
+            {trendingTags}
+            onTrendClick={handleTrendClick}
+            {toFollow}
+            onFollow={handleFollow}
+            onShowMore={lambda { navigate("explore"); }}
+        />
+        <MobileNav {activeTab} {notifCount} onNavigate={navigate}/>
+        <Button
+            className="fixed bottom-20 right-4 z-40 size-14 rounded-full shadow-lg shadow-primary/30 md:hidden"
+            onClick={lambda { navigate("feed"); }}
+        >
+            <Feather size={22}/>
+        </Button>
+    </div>
 }

@@ -40,18 +40,24 @@ def bytes_search_py() -> dict {
     ew_no: bool = b.endswith(bytes([104]));
 
     return {
-        "decoded": decoded, "hex": hx,
+        "decoded": decoded,
+        "hex": hx,
         "from_hex": from_hx,
-        "count_l": count_l, "count_miss": count_miss,
-        "find_hit": find_hit, "find_miss": find_miss,
+        "count_l": count_l,
+        "count_miss": count_miss,
+        "find_hit": find_hit,
+        "find_miss": find_miss,
         "rfind_hit": rfind_hit,
-        "idx": idx, "ridx": ridx,
-        "sw_yes": sw_yes, "sw_no": sw_no,
-        "ew_yes": ew_yes, "ew_no": ew_no
+        "idx": idx,
+        "ridx": ridx,
+        "sw_yes": sw_yes,
+        "sw_no": sw_no,
+        "ew_yes": ew_yes,
+        "ew_no": ew_no
     };
 }
 
-cl def bytes_search_cl() -> dict {
+def bytes_search_cl() -> dict {
     b = bytes([104, 101, 108, 108, 111]);
     sub = bytes([108, 108]);
 
@@ -71,14 +77,20 @@ cl def bytes_search_cl() -> dict {
     ew_no: bool = b.endswith(bytes([104]));
 
     return {
-        "decoded": decoded, "hex": hx,
+        "decoded": decoded,
+        "hex": hx,
         "from_hex": from_hx,
-        "count_l": count_l, "count_miss": count_miss,
-        "find_hit": find_hit, "find_miss": find_miss,
+        "count_l": count_l,
+        "count_miss": count_miss,
+        "find_hit": find_hit,
+        "find_miss": find_miss,
         "rfind_hit": rfind_hit,
-        "idx": idx, "ridx": ridx,
-        "sw_yes": sw_yes, "sw_no": sw_no,
-        "ew_yes": ew_yes, "ew_no": ew_no
+        "idx": idx,
+        "ridx": ridx,
+        "sw_yes": sw_yes,
+        "sw_no": sw_no,
+        "ew_yes": ew_yes,
+        "ew_no": ew_no
     };
 }
 
@@ -119,16 +131,21 @@ def bytes_modify_py() -> dict {
 
     return {
         "replaced": replaced,
-        "stripped": stripped, "lstripped": lstripped, "rstripped": rstripped,
-        "removeprefix": rp, "removesuffix": rs,
-        "split": split_r, "rsplit": rsplit_r,
+        "stripped": stripped,
+        "lstripped": lstripped,
+        "rstripped": rstripped,
+        "removeprefix": rp,
+        "removesuffix": rs,
+        "split": split_r,
+        "rsplit": rsplit_r,
         "splitlines": splitlines_r,
         "joined": joined,
-        "partition": p, "rpartition": rp2
+        "partition": p,
+        "rpartition": rp2
     };
 }
 
-cl def bytes_modify_cl() -> dict {
+def bytes_modify_cl() -> dict {
     b = bytes([104, 101, 108, 108, 111]);
 
     replaced: list = list(b.replace(bytes([108]), bytes([76])));
@@ -162,12 +179,17 @@ cl def bytes_modify_cl() -> dict {
 
     return {
         "replaced": replaced,
-        "stripped": stripped, "lstripped": lstripped, "rstripped": rstripped,
-        "removeprefix": rp, "removesuffix": rs,
-        "split": split_r, "rsplit": rsplit_r,
+        "stripped": stripped,
+        "lstripped": lstripped,
+        "rstripped": rstripped,
+        "removeprefix": rp,
+        "removesuffix": rs,
+        "split": split_r,
+        "rsplit": rsplit_r,
         "splitlines": splitlines_r,
         "joined": joined,
-        "partition": p, "rpartition": rp2
+        "partition": p,
+        "rpartition": rp2
     };
 }
 
@@ -179,7 +201,9 @@ def bytes_case_py() -> dict {
     cap: list = list(b.capitalize());
     lower: list = list(b.lower());
     upper: list = list(b.upper());
-    title: list = list(bytes([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).title());
+    title: list = list(
+        bytes([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).title()
+    );
     swap: list = list(bytes([72, 101, 76, 76, 79]).swapcase());
 
     # alignment (pad with space=32)
@@ -197,21 +221,29 @@ def bytes_case_py() -> dict {
     tr: list = list(b.translate(tbl));
 
     return {
-        "cap": cap, "lower": lower, "upper": upper,
-        "title": title, "swap": swap,
-        "center": center, "ljust": ljust, "rjust": rjust,
-        "zfill": zfill, "expandtabs": et,
+        "cap": cap,
+        "lower": lower,
+        "upper": upper,
+        "title": title,
+        "swap": swap,
+        "center": center,
+        "ljust": ljust,
+        "rjust": rjust,
+        "zfill": zfill,
+        "expandtabs": et,
         "translate": tr
     };
 }
 
-cl def bytes_case_cl() -> dict {
+def bytes_case_cl() -> dict {
     b = bytes([104, 101, 108, 108, 111]);
 
     cap: list = list(b.capitalize());
     lower: list = list(b.lower());
     upper: list = list(b.upper());
-    title: list = list(bytes([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).title());
+    title: list = list(
+        bytes([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]).title()
+    );
     swap: list = list(bytes([72, 101, 76, 76, 79]).swapcase());
 
     center: list = list(b.center(9));
@@ -226,10 +258,16 @@ cl def bytes_case_cl() -> dict {
     tr: list = list(b.translate(tbl));
 
     return {
-        "cap": cap, "lower": lower, "upper": upper,
-        "title": title, "swap": swap,
-        "center": center, "ljust": ljust, "rjust": rjust,
-        "zfill": zfill, "expandtabs": et,
+        "cap": cap,
+        "lower": lower,
+        "upper": upper,
+        "title": title,
+        "swap": swap,
+        "center": center,
+        "ljust": ljust,
+        "rjust": rjust,
+        "zfill": zfill,
+        "expandtabs": et,
         "translate": tr
     };
 }
@@ -273,19 +311,28 @@ def bytes_test_py() -> dict {
     is_title_no: bool = alpha.istitle();
 
     return {
-        "alnum_alpha": alnum_alpha, "alnum_digit": alnum_digit,
-        "alnum_mixed": alnum_mixed, "alnum_space": alnum_space,
-        "is_alpha": is_alpha, "is_alpha_no": is_alpha_no,
-        "is_ascii": is_ascii, "is_ascii_empty": is_ascii_empty,
-        "is_digit": is_digit, "is_digit_no": is_digit_no,
-        "is_lower": is_lower, "is_lower_no": is_lower_no,
-        "is_upper": is_upper, "is_upper_no": is_upper_no,
-        "is_space": is_space, "is_space_no": is_space_no,
-        "is_title": is_title, "is_title_no": is_title_no
+        "alnum_alpha": alnum_alpha,
+        "alnum_digit": alnum_digit,
+        "alnum_mixed": alnum_mixed,
+        "alnum_space": alnum_space,
+        "is_alpha": is_alpha,
+        "is_alpha_no": is_alpha_no,
+        "is_ascii": is_ascii,
+        "is_ascii_empty": is_ascii_empty,
+        "is_digit": is_digit,
+        "is_digit_no": is_digit_no,
+        "is_lower": is_lower,
+        "is_lower_no": is_lower_no,
+        "is_upper": is_upper,
+        "is_upper_no": is_upper_no,
+        "is_space": is_space,
+        "is_space_no": is_space_no,
+        "is_title": is_title,
+        "is_title_no": is_title_no
     };
 }
 
-cl def bytes_test_cl() -> dict {
+def bytes_test_cl() -> dict {
     alpha = bytes([97, 98, 99]);
     digit = bytes([49, 50, 51]);
     mixed = bytes([97, 49]);
@@ -322,19 +369,36 @@ cl def bytes_test_cl() -> dict {
     is_title_no: bool = alpha.istitle();
 
     return {
-        "alnum_alpha": alnum_alpha, "alnum_digit": alnum_digit,
-        "alnum_mixed": alnum_mixed, "alnum_space": alnum_space,
-        "is_alpha": is_alpha, "is_alpha_no": is_alpha_no,
-        "is_ascii": is_ascii, "is_ascii_empty": is_ascii_empty,
-        "is_digit": is_digit, "is_digit_no": is_digit_no,
-        "is_lower": is_lower, "is_lower_no": is_lower_no,
-        "is_upper": is_upper, "is_upper_no": is_upper_no,
-        "is_space": is_space, "is_space_no": is_space_no,
-        "is_title": is_title, "is_title_no": is_title_no
+        "alnum_alpha": alnum_alpha,
+        "alnum_digit": alnum_digit,
+        "alnum_mixed": alnum_mixed,
+        "alnum_space": alnum_space,
+        "is_alpha": is_alpha,
+        "is_alpha_no": is_alpha_no,
+        "is_ascii": is_ascii,
+        "is_ascii_empty": is_ascii_empty,
+        "is_digit": is_digit,
+        "is_digit_no": is_digit_no,
+        "is_lower": is_lower,
+        "is_lower_no": is_lower_no,
+        "is_upper": is_upper,
+        "is_upper_no": is_upper_no,
+        "is_space": is_space,
+        "is_space_no": is_space_no,
+        "is_title": is_title,
+        "is_title_no": is_title_no
     };
 }
 
-na { def bytes_search_na() -> dict[str, any] { return {}; } }
-na { def bytes_modify_na() -> dict[str, any] { return {}; } }
-na { def bytes_case_na() -> dict[str, any] { return {}; } }
-na { def bytes_test_na() -> dict[str, any] { return {}; } }
+def bytes_search_na() -> dict[str, any] {
+    return {};
+}
+def bytes_modify_na() -> dict[str, any] {
+    return {};
+}
+def bytes_case_na() -> dict[str, any] {
+    return {};
+}
+def bytes_test_na() -> dict[str, any] {
+    return {};
+}

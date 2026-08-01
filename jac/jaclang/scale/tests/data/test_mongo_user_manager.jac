@@ -3,7 +3,7 @@ import from jaclang.scale.identity.user_manager { JacScaleUserManager }
 import from jaclang.scale.config.config_loader { reset_scale_config }
 
 test "mongodb user operations" {
-    import from testcontainers.mongodb { MongoDbContainer }
+    import from testcontainers.community.mongodb { MongoDbContainer }
     import tempfile;
 
     with MongoDbContainer("mongo:7.0") as mongo {

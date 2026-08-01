@@ -108,8 +108,14 @@ def make_crossboundary_client(tmp_path: str) -> JacTestClient {
     dest.mkdir(parents=True, exist_ok=True);
     shutil.copy(fixtures_src / "crossbound_app.jac", dest / f"{module_name}.jac");
     shutil.copy(fixtures_src / "crossbound_server.jac", dest / "crossbound_server.jac");
+    with open(str(dest / "jac.toml"), "w") as tf {
+        tf.write(
+            "[project]\nname = \"crossbound\"\n\n[placement.pins]\n"
+            "\"crossbound_server\" = \"server\"\n"
+        );
+    }
     shutil.copy(
-        fixtures_src / "crossbound_frontend.cl.jac", dest / "crossbound_frontend.cl.jac"
+        fixtures_src / "crossbound_frontend.jac", dest / "crossbound_frontend.jac"
     );
     return JacTestClient.from_file(
         str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
@@ -132,8 +138,17 @@ def make_dualrole_client(tmp_path: str) -> JacTestClient {
     dest = Path(tmp_path) / module_name;
     dest.mkdir(parents=True, exist_ok=True);
     shutil.copy(fixtures_src / "dualrole_app.jac", dest / f"{module_name}.jac");
+    with open(str(dest / "jac.toml"), "w") as tf {
+        tf.write(
+            "[project]\nname = \"dualrole\"\n\n[placement.pins]\n"
+            "\"dualrole_guestbook\" = \"server\"\n"
+            "\"dualrole_analytics\" = \"server\"\n"
+            "\n[scale.microservices.routes]\n"
+            "\"dualrole_analytics\" = \"/analytics\"\n"
+        );
+    }
     for name in [
-        "dualrole_frontend.cl.jac",
+        "dualrole_frontend.jac",
         "dualrole_guestbook.jac",
         "dualrole_analytics.jac"
     ] {
@@ -157,7 +172,13 @@ def make_failload_client(tmp_path: str) -> JacTestClient {
     dest = Path(tmp_path) / module_name;
     dest.mkdir(parents=True, exist_ok=True);
     shutil.copy(fixtures_src / "failload_app.jac", dest / f"{module_name}.jac");
-    for name in ["failload_frontend.cl.jac", "failload_server.jac"] {
+    with open(str(dest / "jac.toml"), "w") as tf {
+        tf.write(
+            "[project]\nname = \"failload\"\n\n[placement.pins]\n"
+            "\"failload_server\" = \"server\"\n"
+        );
+    }
+    for name in ["failload_frontend.jac", "failload_server.jac"] {
         shutil.copy(fixtures_src / name, dest / name);
     }
     return JacTestClient.from_file(
@@ -185,8 +206,14 @@ def make_bundled_crossboundary_client -> tuple {
     dest.mkdir(parents=True, exist_ok=True);
     shutil.copy(fixtures_src / "crossbound_app.jac", dest / f"{module_name}.jac");
     shutil.copy(fixtures_src / "crossbound_server.jac", dest / "crossbound_server.jac");
+    with open(str(dest / "jac.toml"), "w") as tf {
+        tf.write(
+            "[project]\nname = \"crossbound-bundled\"\n\n[placement.pins]\n"
+            "\"crossbound_server\" = \"server\"\n"
+        );
+    }
     shutil.copy(
-        fixtures_src / "crossbound_frontend.cl.jac", dest / "crossbound_frontend.cl.jac"
+        fixtures_src / "crossbound_frontend.jac", dest / "crossbound_frontend.jac"
     );
     client = JacTestClient.from_file(
         str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
@@ -398,7 +425,7 @@ test "serve get user info requires auth" {
             assert "error" in response.data or "message" in response.data;
         } else {
             assert "error" in response.text.lower()
-            or "unauthorized" in response.text.lower();
+                or "unauthorized" in response.text.lower();
         }
         client.close();
     }
@@ -415,7 +442,7 @@ test "serve get user info invalid token" {
             assert "error" in response.data or "message" in response.data;
         } else {
             assert "error" in response.text.lower()
-            or "unauthorized" in response.text.lower();
+                or "unauthorized" in response.text.lower();
         }
         client.close();
     }
@@ -2290,7 +2317,7 @@ def write_routed_pages(dest: Path) {
 }
 
 """The fallback answers 200 only for paths a scanned client route can serve;
-everything else is an honest 404. A stale long-poll client (e.g. an mkdocs
+everything else is an honest 404. A stale long-poll client (e.g. a docs-site
 livereload tab) previously got 200 in ~3ms and busy-looped at ~300 req/s -
 non-200 is what flips such clients into their backoff path."""
 test "spa fallback status is route aware when pages exist" {

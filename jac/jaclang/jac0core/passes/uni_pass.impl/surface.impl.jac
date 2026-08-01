@@ -58,10 +58,6 @@ impl UniPass.enter_cfg_expr(nd: uni.CfgExpr) -> None {
     self.default_enter(nd);
 }
 
-impl UniPass.enter_client_block(nd: uni.ClientBlock) -> None {
-    self.default_enter(nd);
-}
-
 impl UniPass.enter_compare_expr(nd: uni.CompareExpr) -> None {
     self.default_enter(nd);
 }
@@ -338,10 +334,6 @@ impl UniPass.enter_name(nd: uni.Name) -> None {
     self.default_enter(nd);
 }
 
-impl UniPass.enter_native_block(nd: uni.NativeBlock) -> None {
-    self.default_enter(nd);
-}
-
 impl UniPass.enter_open_stmt(nd: uni.OpenStmt) -> None {
     self.default_enter(nd);
 }
@@ -367,10 +359,6 @@ impl UniPass.enter_return_stmt(nd: uni.ReturnStmt) -> None {
 }
 
 impl UniPass.enter_sem_def(nd: uni.SemDef) -> None {
-    self.default_enter(nd);
-}
-
-impl UniPass.enter_server_block(nd: uni.ServerBlock) -> None {
     self.default_enter(nd);
 }
 
@@ -515,10 +503,6 @@ impl UniPass.exit_cast_expr(nd: uni.CastExpr) -> None {
 }
 
 impl UniPass.exit_cfg_expr(nd: uni.CfgExpr) -> None {
-    self.default_exit(nd);
-}
-
-impl UniPass.exit_client_block(nd: uni.ClientBlock) -> None {
     self.default_exit(nd);
 }
 
@@ -814,10 +798,6 @@ impl UniPass.exit_name(nd: uni.Name) -> None {
     self.default_exit(nd);
 }
 
-impl UniPass.exit_native_block(nd: uni.NativeBlock) -> None {
-    self.default_exit(nd);
-}
-
 impl UniPass.exit_null(nd: uni.Null) -> None {
     self.default_exit(nd);
 }
@@ -851,10 +831,6 @@ impl UniPass.exit_sem_def(nd: uni.SemDef) -> None {
 }
 
 impl UniPass.exit_semi(nd: uni.Semi) -> None {
-    self.default_exit(nd);
-}
-
-impl UniPass.exit_server_block(nd: uni.ServerBlock) -> None {
     self.default_exit(nd);
 }
 

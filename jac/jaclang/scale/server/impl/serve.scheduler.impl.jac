@@ -194,7 +194,7 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
 
         introspector = self.introspector;
         target_obj = (introspector._walkers or {}).get(walker_or_function)
-        or (introspector._functions or {}).get(walker_or_function);
+            or (introspector._functions or {}).get(walker_or_function);
 
         if target_obj is None {
             return TransportResponse.fail(

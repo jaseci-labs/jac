@@ -81,7 +81,7 @@ impl build_enum_members(
         sym.decl.parent if isinstance(sym.decl.parent, uni.Assignment) else sym.decl
         for (name, sym) in enum_node.names_in_scope.items()
         if not is_excluded_enum_member_name(name)
-        and not isinstance(sym.decl.name_of, uni.Ability)
+            and not isinstance(sym.decl.name_of, uni.Ability)
     ];
     for stmt in all_stmts {
         if isinstance(stmt, uni.Assignment) {
@@ -92,8 +92,8 @@ impl build_enum_members(
                 }
 
                 if enum_value_type
-                and isinstance(member_info.value_type, types.ClassType)
-                and member_info.value_type.shared != enum_value_type.shared {
+                    and isinstance(member_info.value_type, types.ClassType)
+                    and member_info.value_type.shared != enum_value_type.shared {
                     evaluator.emit_diag(
                         E1001,
                         stmt,
@@ -126,9 +126,9 @@ impl get_special_enum_value_type_from_bases(
     base_classes: list[types.TypeBase], prefetch: "PrefetchedTypes"
 ) -> (types.TypeBase | None) {
     if not prefetch
-    or not prefetch.enum_class
-    or not prefetch.int_class
-    or not prefetch.str_class {
+        or not prefetch.enum_class
+        or not prefetch.int_class
+        or not prefetch.str_class {
         return None;
     }
 

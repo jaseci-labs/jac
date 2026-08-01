@@ -184,9 +184,9 @@ impl _adaptImageProps(props: dict) -> dict {
                 if uri not in _RELATIVE_IMG_SRC_WARNED {
                     _RELATIVE_IMG_SRC_WARNED[uri] = True;
                     console.warn(
-                        "[jac-native-runtime] Missing Metro asset mapping for token " + str(
-                            uri
-                        ) + ". Re-run jac build --client react-native."
+                        "[jac-native-runtime] Missing Metro asset mapping for token "
+                            + str(uri)
+                            + ". Re-run jac build --client react-native."
                     );
                 }
                 out["source"] = {"uri": uri};
@@ -200,7 +200,11 @@ impl _adaptImageProps(props: dict) -> dict {
                 if uri not in _RELATIVE_IMG_SRC_WARNED {
                     _RELATIVE_IMG_SRC_WARNED[uri] = True;
                     console.warn(
-                        "[jac-native-runtime] Relative <img src> path " + str(uri) + " cannot be bundled reliably on React Native. " + "Use imported assets, /static/... URLs, absolute URLs, " + "or pass source={{uri: ...}}."
+                        "[jac-native-runtime] Relative <img src> path "
+                            + str(uri)
+                            + " cannot be bundled reliably on React Native. "
+                            + "Use imported assets, /static/... URLs, absolute URLs, "
+                            + "or pass source={{uri: ...}}."
                     );
                 }
                 out["source"] = {"uri": uri};
@@ -226,9 +230,9 @@ impl _makeNativeLink(link_props: dict, children: list) -> JsxElement {
     }
     if href {
         rest["onPress"] = lambda { if href.startswith("http://")
-        or href.startswith("https://")
-        or href.startswith("mailto:")
-        or href.startswith("tel:") {
+            or href.startswith("https://")
+            or href.startswith("mailto:")
+            or href.startswith("tel:") {
             RNLinking.openURL(href).catch(
                 lambda (e: any) { console.warn("RNLinking.openURL failed", e); }
             );
@@ -1085,7 +1089,7 @@ impl JacForm(props: dict) -> JsxElement {
         field_type = str(config.get("type", None) or config.get("key", None) or "text");
         field_options = _getEnumOptions(schemaShape[fieldName]);
         if field_type == "text"
-        and ("password" in fieldName.lower() or "pass" in fieldName.lower()) {
+            and ("password" in fieldName.lower() or "pass" in fieldName.lower()) {
             field_type = "password";
         }
         current_value = form.watch(fieldName);

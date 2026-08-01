@@ -279,8 +279,8 @@ impl FileTools._js_drift_error(path: str, content: str) -> str {
             return (
                 f"REFUSED: '{base}' is a JavaScript/TypeScript file, but this is a "
                 "Jac project -- all source is Jac. Write a .jac file instead "
-                "(a client UI component goes in a .cl.jac file, e.g. "
-                "components/Calculator.cl.jac), using Jac syntax (def:pub "
+                "(a client UI component goes in its own file, e.g. "
+                "components/Calculator.jac), using Jac syntax (def:pub "
                 "Name() -> JsxElement, has fields, def handlers). Do not create "
                 ".js/.ts files."
             );
@@ -515,7 +515,8 @@ impl ProcessTools.run_command(command: str) -> str {
 
     marker = "__JAC_AI_CWD__";
     wrapped = (
-        command + f"\n__jac_ai_rc=$?\nprintf '\\n{marker}%s\\n' \"$(pwd)\"\n"
+        command
+        + f"\n__jac_ai_rc=$?\nprintf '\\n{marker}%s\\n' \"$(pwd)\"\n"
         "exit $__jac_ai_rc"
     );
     try {
@@ -646,7 +647,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
         return (
             f"ERROR: no such entry file '{entry_path}' (looked in "
             f"{self.ws.cwd or os.getcwd()}). Use list_dir to find the app's "
-            "main .jac file (the one with the `cl`/`sv` mount), then pass its path."
+            "main .jac file (the one that mounts `def:pub app`), then pass its path."
         );
     }
     if not confirm(f"start the dev server with `jac start {entry_path}`") {
@@ -974,7 +975,9 @@ impl system_prompt -> str {
     }
     guide_index = "\n".join(index_lines);
     return (
-        AGENT_RULES + "\n## Reference guides available (open one with read_guide)\n\n" + guide_index
+        AGENT_RULES
+        + "\n## Reference guides available (open one with read_guide)\n\n"
+        + guide_index
     );
 }
 
@@ -1774,7 +1777,13 @@ impl TurnStats.absorb(st: dict) {
 impl Prompt.for_phase(state_ty: type, objective: str, ledger: Ledger) -> str {
     role = str(state_ty?._jac_semstr or "");
     return (
-        system_prompt() + "\n\n## Current state\n\nYou are in " + role + "\n\n## Objective\n\n" + objective + "\n\n## Progress so far (shared across states)\n\n" + ledger.render()
+        system_prompt()
+        + "\n\n## Current state\n\nYou are in "
+        + role
+        + "\n\n## Objective\n\n"
+        + objective
+        + "\n\n## Progress so far (shared across states)\n\n"
+        + ledger.render()
     );
 }
 
@@ -1939,7 +1948,7 @@ impl Build.run with AgentSession entry {
                     "described code, pasted it into your reply, or left notes. That "
                     "is not building. Call write_file NOW with the COMPLETE Jac "
                     "contents of each file the task needs (for a UI, e.g. "
-                    "components/Calculator.cl.jac as a `def:pub Calculator() -> "
+                    "components/Calculator.jac as a `def:pub Calculator() -> "
                     "JsxElement` component, and edit main.jac to render it). Write "
                     "real Jac files this turn -- do not explain, just write them."
                 )
@@ -2147,9 +2156,12 @@ impl verify_and_continue(max_rounds: int = 3) {
             style="yellow"
         );
         msg = (
-            f"The project does not compile yet -- {len(errs)} error(s):\n" + "\n".join(
-                lines
-            ) + more + "\n\nFix these. Read each failing file, correct it, and re-run " + "jac_check until the whole project compiles cleanly. Do not finish " + "while errors remain."
+            f"The project does not compile yet -- {len(errs)} error(s):\n"
+            + "\n".join(lines)
+            + more
+            + "\n\nFix these. Read each failing file, correct it, and re-run "
+            + "jac_check until the whole project compiles cleanly. Do not finish "
+            + "while errors remain."
         );
         run_turn(msg);
     }

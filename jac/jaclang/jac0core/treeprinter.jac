@@ -431,7 +431,8 @@ def get_symtab_tree_str(
                 ('|' + (' ' * (len(marker) - 1))) if draw else (' ' * len(marker))
                 for draw in level_markers[:-1]
             ]
-        ) + marker
+        )
+            + marker
             if level_markers
             else ''
     );
@@ -442,7 +443,8 @@ def get_symtab_tree_str(
         }
     }
     return (
-        line + ''.join(
+        line
+        + ''.join(
             get_symtab_tree_str(
                 child,
                 marker,

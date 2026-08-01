@@ -50,7 +50,14 @@ obj NotificationPlugin(OsPlugin) {
                 if body {
                     cmd.append(body);
                 }
-                subprocess.run(cmd, check=True, capture_output=True, timeout=5);
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5
+                );
             } elif platform == "darwin" {
                 escaped_body = self._escape_applescript(body);
                 escaped_title = self._escape_applescript(title);

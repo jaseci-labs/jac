@@ -5,9 +5,7 @@ import from pathlib { Path }
 import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
-import from jaclang.runtimelib.client.targets.react_native.common {
-    resolve_node_runner
-}
+import from jaclang.runtimelib.client.targets.react_native.common { resolve_node_tool }
 import from jaclang.runtimelib.client.targets.react_native.build {
     lint_native_incompatible_usage,
     lint_unmapped_tags,
@@ -150,13 +148,11 @@ def rn_hmr_on_jac_changed(
     }
 }
 
-def build_expo_start_argv(metro_port: int, clear_cache: bool = True) -> list[str] {
-    argv: list[str] = resolve_node_runner() + [
-        "expo",
-        "start",
-        "--port",
-        str(metro_port)
-    ];
+def build_expo_start_argv(
+    rn_dir: Path, metro_port: int, clear_cache: bool = True
+) -> list[str] {
+    argv: list[str] = resolve_node_tool(rn_dir, "expo")
+        + ["start", "--port", str(metro_port)];
     if clear_cache {
         argv.append("--clear");
     }
@@ -164,7 +160,7 @@ def build_expo_start_argv(metro_port: int, clear_cache: bool = True) -> list[str
 }
 
 def run_expo_start(rn_dir: Path, metro_port: int, clear_cache: bool = True) -> int {
-    argv = build_expo_start_argv(metro_port, clear_cache=clear_cache);
+    argv = build_expo_start_argv(rn_dir, metro_port, clear_cache=clear_cache);
     console.print(f"  Running: {' '.join(argv)}", style="muted");
     console.print("  (Press Ctrl+C to stop)\n", style="muted");
     result = subprocess.run(argv, cwd=str(rn_dir), check=False);

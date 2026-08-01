@@ -27,7 +27,7 @@ jac start main.jac
 Create Jac components in `components/` as `.cl.jac` files and import them:
 
 ```jac
-cl import from .components.Button { Button }
+import from .components.Button { Button }
 ```
 
 ## Adding Dependencies

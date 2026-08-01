@@ -67,11 +67,12 @@ def _traces_chain(p: dict) -> dict {
                 "name": "config tracing.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[scale.microservices.tracing].enabled" + (
-                    " = true"
-                        if p.get("cfg_enabled", False)
-                        else " = false (tracing off)"
-                )
+                "detail": "[scale.microservices.tracing].enabled"
+                    + (
+                        " = true"
+                            if p.get("cfg_enabled", False)
+                            else " = false (tracing off)"
+                    )
             },
             {
                 "name": "install_tracing() active",
@@ -110,9 +111,12 @@ def _logs_chain(p: dict) -> dict {
                 "name": "config logs.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[scale.microservices.logs].enabled" + (
-                    " = true" if p.get("cfg_enabled", False) else " = false (logs off)"
-                )
+                "detail": "[scale.microservices.logs].enabled"
+                    + (
+                        " = true"
+                            if p.get("cfg_enabled", False)
+                            else " = false (logs off)"
+                    )
             },
             {
                 "name": "Loki /ready reachable",
@@ -201,7 +205,8 @@ def _admin_api_chain(registered: bool) -> dict {
                 "ok": registered,
                 "detail": "self.server is set - /admin/* routes are live"
                     if registered
-                    else "self.server is None - _install_admin_api() failed " + "(Mongo unreachable?); /admin/* falls to the SPA catchall"
+                    else "self.server is None - _install_admin_api() failed "
+                        + "(Mongo unreachable?); /admin/* falls to the SPA catchall"
             }
         ]
     );

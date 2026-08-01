@@ -104,7 +104,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     needs_ios = "ios" in platforms;
 
     if (not needs_android or android_dir.exists())
-    and (not needs_ios or ios_dir.exists()) {
+        and (not needs_ios or ios_dir.exists()) {
         return;
     }
 

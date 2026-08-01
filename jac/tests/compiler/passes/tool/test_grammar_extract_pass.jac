@@ -644,6 +644,8 @@ test "grammar matches spec" {
         }
     }
     assert not changed , (
-        f"{len(changed)} rule(s) changed:\n" + "\n".join(changed) + f"\n\nIf intentional: jac grammar -o {SPEC_PATH}"
+        f"{len(changed)} rule(s) changed:\n"
+        + "\n".join(changed)
+        + f"\n\nIf intentional: jac grammar -o {SPEC_PATH}"
     );
 }

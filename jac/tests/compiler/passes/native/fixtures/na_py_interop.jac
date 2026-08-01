@@ -15,13 +15,13 @@ def py_double(x: int) -> int {
     return x * 2;
 }
 
-na {
-    # Native function — compiled to LLVM IR / machine code.
-    # Calls py_double which lives in the Python (non-na) codespace.
-    def native_add_one_to_doubled(x: int) -> int {
-        return py_double(x) + 1;
-    }
+
+# Native function — compiled to LLVM IR / machine code.
+# Calls py_double which lives in the Python (non-na) codespace.
+def native_add_one_to_doubled(x: int) -> int {
+    return py_double(x) + 1;
 }
+
 
 # Python function that calls into the na block.
 def call_native(x: int) -> int {

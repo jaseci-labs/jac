@@ -2,8 +2,8 @@
 
 Server side is the default (imports, archetypes, `def:pub` endpoints stay
 put - client references reach them via auto-RPC, not relocation); the client
-side is inferred from JSX; the native side here uses the explicit `na {}`
-style, which always remains valid alongside inference.
+side is inferred from JSX; the pure helper stays server unless native
+inference or a [placement.pins] entry moves it.
 """
 
 import os;
@@ -28,8 +28,7 @@ def:pub app -> JsxElement {
     return <div>{stats}</div>;
 }
 
-na {
-    def fast_add(a: i64, b: i64) -> i64 {
-        return a + b;
-    }
+
+def fast_add(a: i64, b: i64) -> i64 {
+    return a + b;
 }

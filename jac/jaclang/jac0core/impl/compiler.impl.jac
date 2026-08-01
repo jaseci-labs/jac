@@ -297,6 +297,17 @@ impl JacCompiler.get_bytecode(
                 if interop_dict {
                     sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
                 }
+                try {
+                    import from jaclang.jac0core.placement {
+                        get_module_summary,
+                        summary_to_bytes
+                    }
+                    sections[SEC_PLACEMENT] = summary_to_bytes(
+                        get_module_summary(result, actual_program)
+                    );
+                } except Exception {
+                    ;
+                }
                 writer = JirWriter();
                 jir_bytes = writer.write_module(result, sections=sections);
                 cache_path.parent.mkdir(parents=True, exist_ok=True);
@@ -470,6 +481,19 @@ impl JacCompiler._restore_sections(
         }
     }
 
+    placement_bytes = secs.get(SEC_PLACEMENT);
+    if placement_bytes is not None {
+        try {
+            import from jaclang.jac0core.placement { summary_from_bytes, summary_store }
+            restored = summary_from_bytes(placement_bytes);
+            if restored is not None {
+                summary_store(actual_program)[os.path.abspath(full_target)] = restored;
+            }
+        } except Exception {
+            ;
+        }
+    }
+
     native_obj_bytes = secs.get(SEC_NATIVE_OBJ);
     if native_obj_bytes is not None {
         try {
@@ -549,8 +573,12 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     full_target: str, allow_unsealed: bool = True, module_key: (str | None) = None
 ) -> (bytes | None) {
     import from pathlib { Path as _Path }
-    import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
+    import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL, cache_mode }
     import from jaclang.jac0core { sealed as _sealed }
+    (rebuild_flag, no_precompile) = cache_mode();
+    if rebuild_flag or no_precompile {
+        return None;
+    }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -610,7 +638,8 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
             'ret_type': binding.ret_type,
             'param_types': binding.param_types,
             'param_names': binding.param_names,
-            'source_module': binding.source_module
+            'source_module': binding.source_module,
+            'kind': binding.kind
         };
     }
 
@@ -637,7 +666,8 @@ impl JacCompiler._deserialize_interop_table(
             ret_type=data.get('ret_type', 'int'),
             param_types=data.get('param_types', []),
             param_names=data.get('param_names', []),
-            source_module=data.get('source_module')
+            source_module=data.get('source_module'),
+            kind=data.get('kind', 'function')
         );
         manifest.bindings[name] = binding;
     }
@@ -669,15 +699,68 @@ impl JacCompiler.parse_str(
         mod = py_ast_ret.ir_out;
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
-        import from jaclang.jac0core.ext_registry { codespace_of }
+        import from jaclang.jac0core.ext_registry {
+            is_retired_client_marker,
+            is_retired_native_marker
+        }
+        if is_retired_native_marker(file_path) {
+            raise ValueError(
+                f"{file_path}: the .na.jac marker was retired in 0.35 -- rename "
+                "the file to .jac; native placement is inferred (or forced by "
+                "'jac nacompile' / 'jac build --as native'). See 'jac guide "
+                "reference/language/native-pathway'."
+            );
+        }
+        if is_retired_client_marker(file_path) {
+            raise ValueError(
+                f"{file_path}: the .cl.jac marker was retired -- rename the "
+                "file to .jac; client placement is inferred from JSX/npm "
+                "imports (override via [placement.pins] in jac.toml). Run "
+                "'jac fix placement' to migrate the project."
+            );
+        }
         (mod, had_error) = rd_parse(source_str, file_path, prog=target_program);
-        codespace = codespace_of(file_path);
+        codespace = '';
+        import from jaclang.jac0core.codeinfo {
+            is_client_by_location as _cbl,
+            is_native_by_location as _nbl
+        }
+        if _nbl(file_path) {
+            codespace = 'native';
+        }
+        if not codespace and _cbl(file_path) {
+            codespace = 'client';
+        }
+        if not codespace {
+            import from jaclang.jac0core.placement_pins {
+                config_module_pin as _mod_pin
+            }
+            _pinned_space = _mod_pin(file_path);
+            if _pinned_space in ('client', 'native') {
+                codespace = _pinned_space;
+            }
+        }
+        if not codespace {
+            _p_opts = target_program._compile_options;
+            _forced_pre = _p_opts.force_codespace if _p_opts is not None else '';
+            if (
+                not _forced_pre
+                and _p_opts is not None
+                and _p_opts.aot_mode
+                and target_program is not self._internal_program
+                and _default_codespace_for(target_program) == 'native'
+            ) {
+                _forced_pre = 'native';
+            }
+            if _forced_pre and target_program is not self._internal_program {
+                codespace = _forced_pre;
+            }
+        }
         if (codespace == 'client') {
             _coerce_client_module(mod);
-        } elif (codespace == 'server') {
-            _coerce_server_module(mod);
         } elif (codespace == 'native') {
             _coerce_native_module(mod);
+            na_census_record(mod.loc.mod_path, 'native');
         } else {
             run_codespace_infer = True;
         }
@@ -703,16 +786,14 @@ impl JacCompiler.parse_str(
             and _default_codespace_for(target_program) == 'native'
         );
         if _native_eligible {
-            (_na_ok, _na_why) = _native_default_closure_verdict(mod);
+            import from jaclang.jac0core.placement_solver { native_default_verdict }
+            (_na_ok, _na_why) = native_default_verdict(mod);
             if _na_ok {
                 _coerce_native_module(mod);
                 na_census_record(mod.loc.mod_path, 'native');
             } else {
-                _seed_module_codespace(mod);
                 na_census_record(mod.loc.mod_path, 'server', '', _na_why);
             }
-        } else {
-            _seed_module_codespace(mod);
         }
     }
     return mod;
@@ -725,17 +806,24 @@ impl JacCompiler.compile(
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
     import from pathlib { Path as _WrapPath }
-    import from jaclang.jac0core.ext_registry { codespace_of as _cs_of }
     import from jaclang.jac0core.codeinfo {
         get_effective_default_codespace_override,
         set_effective_default_codespace
     }
     _prev_cs = get_effective_default_codespace_override();
+    _depth_prev = getattr(self, '_reentrant_depth', 0);
+    self._reentrant_depth = _depth_prev + 1;
+    _outer_opts: (CompileOptions | None) = None;
+    _outer_prog: (JacProgram | None) = None;
     try {
         if options.force_target_program {
             _wrap_prog = target_program;
         } else {
             _wrap_prog = self._resolve_program(file_path, target_program);
+        }
+        if _depth_prev > 0 {
+            _outer_prog = _wrap_prog;
+            _outer_opts = _wrap_prog._compile_options;
         }
         _pre_errs = len(_wrap_prog.errors_had);
         _pre_warns = len(_wrap_prog.warnings_had);
@@ -754,8 +842,8 @@ impl JacCompiler.compile(
         _resolved = os.path.realpath(file_path);
         _probe = _mod if _mod is not None else _wrap_prog.mod.hub.get(_resolved);
         _inferred_native = (
-            _cs_of(file_path) is None
-            and not options.aot_mode
+            not options.aot_mode
+            and not options.force_codespace
             and _probe is not None
             and _probe.decided_codespace == 'native'
         );
@@ -805,6 +893,10 @@ impl JacCompiler.compile(
         );
     } finally {
         set_effective_default_codespace(_prev_cs);
+        self._reentrant_depth = _depth_prev;
+        if _outer_prog is not None and _outer_opts is not None {
+            _outer_prog._compile_options = _outer_opts;
+        }
     }
 }
 
@@ -832,11 +924,11 @@ impl JacCompiler._compile_once(
 
     _prev_opts = actual_program._compile_options;
     if _prev_opts is not None
-    and not (
-        options.nogc_enforce_all
-        or options.nogc_cli_target
-        or options.nogc_enforce_modules
-    ) {
+        and not (
+            options.nogc_enforce_all
+            or options.nogc_cli_target
+            or options.nogc_enforce_modules
+        ) {
         options.nogc_enforce_all = _prev_opts.nogc_enforce_all;
         options.nogc_cli_target = _prev_opts.nogc_cli_target;
         options.nogc_enforce_modules = _prev_opts.nogc_enforce_modules;
@@ -885,16 +977,25 @@ impl JacCompiler._compile_once(
     );
     had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
 
+    if not options.symtab_ir_only and not had_blocking_errors {
+        import from jaclang.jac0core.placement_solver { solve_program_placement }
+        try {
+            solve_program_placement(mod_targ, actual_program);
+        } except Exception {
+            ;
+        }
+    }
+
     import from jaclang.jac0core.constant { CodeContext as _CodeCtx }
     is_explicit_native = mod_targ is not None
-    and mod_targ.declares_codespace(_CodeCtx.NATIVE, path_hint=file_path);
+        and mod_targ.declares_codespace(_CodeCtx.NATIVE, path_hint=file_path);
     is_client_mod = mod_targ is not None
-    and mod_targ.declares_codespace(_CodeCtx.CLIENT, path_hint=file_path);
+        and mod_targ.declares_codespace(_CodeCtx.CLIENT, path_hint=file_path);
     is_native_mod = is_explicit_native;
 
     run_inference = options.type_check
-    or is_native_mod
-    or (is_client_mod and not options.no_cgen and not options.symtab_ir_only);
+        or is_native_mod
+        or (is_client_mod and not options.no_cgen and not options.symtab_ir_only);
     if run_inference {
         if options.symtab_ir_only {
             self.run_schedule(
@@ -913,15 +1014,13 @@ impl JacCompiler._compile_once(
         );
         actual_program._inferred_mods.add(id(mod_targ));
 
-        import from jaclang.jac0core.ext_registry { is_native_module as _is_na }
         import from dataclasses { replace as _replace_opts }
         for dep_mod in list(actual_program.mod.hub.values()) {
             if (dep_mod is mod_targ)
-            or (id(dep_mod) in actual_program._inferred_mods) {
+                or (id(dep_mod) in actual_program._inferred_mods) {
                 continue;
             }
-            dep_path = dep_mod.loc.mod_path if dep_mod?.loc else '';
-            if _is_na(dep_path) {
+            if dep_mod.decided_codespace == 'native' {
                 _saved_opts = actual_program._compile_options;
                 actual_program._compile_options = _replace_opts(
                     options, emit_diagnostics=False
@@ -961,8 +1060,8 @@ impl JacCompiler._compile_once(
     }
 
     if is_native_mod
-    and not had_blocking_errors
-    and self._count_module_errors(actual_program, cur_mod_path) > 0 {
+        and not had_blocking_errors
+        and self._count_module_errors(actual_program, cur_mod_path) > 0 {
         had_blocking_errors = True;
     }
 
@@ -1042,15 +1141,9 @@ impl JacCompiler._compile_once(
                 } except Exception {
                     continue;
                 }
-                import from jaclang.jac0core.ext_registry { is_client_module }
                 cb_is_client_dep = isinstance(cb_src, str)
-                and (
-                    is_client_module(cb_src)
-                    or (
-                        cb_imp.code_context == CodeContext.CLIENT
-                        and cb_src.endswith('.jac')
-                    )
-                );
+                    and cb_imp.code_context == CodeContext.CLIENT
+                    and cb_src.endswith('.jac');
                 if not cb_is_client_dep {
                     continue;
                 }
@@ -1087,18 +1180,14 @@ impl JacCompiler._compile_once(
 
         import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
         needs_native = is_native_mod
-        or ModuleCodegenPass.has_native_context_stmts(mod_targ);
+            or ModuleCodegenPass.has_native_context_stmts(mod_targ);
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
             passes=get_py_code_gen(native=needs_native),
             cancel_token=options.cancel_token
         );
-        import from jaclang.jac0core.ext_registry { is_native_module as _is_na_sfx }
-        _mp_scrub = mod_targ.loc.mod_path
-            if (mod_targ?.loc and mod_targ.loc)
-            else file_path;
-        if bool(_mp_scrub) and _is_na_sfx(_mp_scrub) {
+        if mod_targ.decided_codespace == 'native' {
             JacCompiler._scrub_native_artifacts_on_error(actual_program, mod_targ);
         }
     }

@@ -1,9 +1,6 @@
 impl TypeEvaluator._get_ts_declared_item_type(
     from_loc: uni.ModulePath, item_name: str
 ) -> (TypeBase | None) {
-    if from_loc.string_path_value is None {
-        return None;
-    }
     if not from_loc.in_client_context() {
         return None;
     }
@@ -11,7 +8,7 @@ impl TypeEvaluator._get_ts_declared_item_type(
     if not mod_path {
         return None;
     }
-    spec = from_loc.path[0].lit_value;
+    spec = from_loc.string_path_value or from_loc.dot_path_str;
     if not isinstance(spec, str) or not spec {
         return None;
     }
@@ -32,7 +29,10 @@ impl TypeEvaluator._get_ts_declared_item_type(
                     dts_path = sibling_declaration_file(js_path);
                 }
             } else {
-                dts_path = resolve_client_npm_declarations(spec, mod_path);
+                base = self._client_npm_base(spec, mod_path);
+                if base is not None {
+                    dts_path = resolve_client_npm_declarations(spec, base);
+                }
             }
         } except Exception {
             dts_path = None;
@@ -232,7 +232,7 @@ impl TypeEvaluator._map_ts_type(
             return self._map_ts_type(target.ty, decls, seen, shells);
         }
         if target is not None
-        and target.kind in (TsDeclKind.INTERFACE, TsDeclKind.CLASS) {
+            and target.kind in (TsDeclKind.INTERFACE, TsDeclKind.CLASS) {
             if shells is not None and ts.name in shells {
                 return self._convert_to_instance(shells[ts.name]);
             }

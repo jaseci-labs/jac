@@ -49,10 +49,10 @@ def:pub TextInput() -> JsxElement {
     def handle_click(e: MouseEvent) {
         if inputRef.current { inputRef.current.focus(); }
     }
-    return <div>
+    <div>
         <input ref={inputRef} type="text" />
         <button onClick={handle_click}>Focus</button>
-    </div>;
+    </div>
 }
 ```
 
@@ -69,13 +69,13 @@ A component opts into receiving a ref by declaring a **trailing parameter typed 
 
 ```jac
 def:pub FancyInput(placeholder: str, ref: Ref[HTMLInputElement] = Ref()) -> JsxElement {
-    return <input ref={ref} placeholder={placeholder} className="fancy" />;
+    <input ref={ref} placeholder={placeholder} className="fancy" />
 }
 
 # Parent: point a ref at the component, reach the inner <input>
 def:pub ParentForm() -> JsxElement {
     has inputRef: Ref[HTMLInputElement] = Ref();
-    return <FancyInput ref={inputRef} placeholder="Type here" />;
+    <FancyInput ref={inputRef} placeholder="Type here" />
 }
 ```
 
@@ -88,7 +88,7 @@ def:pub ParentForm() -> JsxElement {
 `has` = useState, `can with entry` = useEffect, `Ref[T]` field = useRef. For the rest, import directly:
 
 ```jac
-import from react { useCallback, useMemo, useContext, createContext }
+import from "react" { useCallback, useMemo, useContext, createContext }
 ```
 
 ```jac
@@ -97,10 +97,10 @@ def:pub FileUploader() -> JsxElement {
     triggerPicker: any = useCallback(lambda {
         if fileInputRef.current { fileInputRef.current.click(); }
     }, []);
-    return <div>
+    <div>
         <input ref={fileInputRef} type="file" style={{"display": "none"}} />
         <button onClick={triggerPicker}>Upload</button>
-    </div>;
+    </div>
 }
 ```
 

@@ -610,7 +610,7 @@ impl JacScaleScheduler._execute_task(
         registry: dict[str, Any] = (
             introspector._walkers if is_walker else introspector._functions
         )
-        or {};
+            or {};
         target = registry.get(name);
         if target is None {
             logger.warning(

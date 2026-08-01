@@ -17,7 +17,9 @@ import from jaclang.cli.shadcn.shadcn_handler { resolve_single_component }
 
 # The jac-shadcn template dir, resolved from the installed package (robust to
 # the test file's own location).
-glob _TEMPLATE_DIR: any = Path(str(files("jaclang.cli.shadcn"))) / "templates" / "jac-shadcn";
+glob _TEMPLATE_DIR: any = Path(str(files("jaclang.cli.shadcn")))
+         / "templates"
+         / "jac-shadcn";
 
 
 # Module-level config mocks. A dataclass declared inside a test function can't
@@ -226,17 +228,17 @@ test "remove resolves registry filename mismatch" {
     }
 }
 
-test "remove finds legacy .cl.jac component" {
-    # GUARD: pre-markerless projects hold `button.cl.jac`. The registry now
-    # resolves to `button.jac`, so remove must fall back to the legacy `.cl.jac`
+test "remove finds legacy .jac component" {
+    # GUARD: pre-markerless projects hold `button.jac`. The registry now
+    # resolves to `button.jac`, so remove must fall back to the legacy `.jac`
     # name or it silently leaves the old file installed.
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-        (ui_dir / "button.cl.jac").write_text("// legacy button component");
+        (ui_dir / "button.jac").write_text("// legacy button component");
         result = remove_shadcn_components(MockConfig(project_root=tmpdir), ["button"]);
         assert result == True;
-        assert not (ui_dir / "button.cl.jac").exists();
+        assert not (ui_dir / "button.jac").exists();
     }
 }
 

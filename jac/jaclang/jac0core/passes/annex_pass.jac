@@ -1,5 +1,5 @@
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_files }
+import from jaclang.jac0core.bccache { discover_annex_files }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 

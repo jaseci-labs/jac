@@ -36,6 +36,16 @@ assert len(guides) >= 19, f"expected >= 19 guides, got {len(guides)}"
 assert all("name" in g and "description" in g for g in guides), "a guide entry is missing name/description"
 ' || fail "'jac guide --json' did not emit a valid guide list"
 
+# --- jac guide reference/…: the bundled docs corpus ships too ---
+DOC="$("$JAC" guide reference/diagnostics)"
+[ "${#DOC}" -gt 500 ] || fail "'jac guide reference/diagnostics' body is too short (${#DOC} chars)"
+
+# --- jac guide <corpus>: doc-set listing ---
+"$JAC" guide community | grep -q "community/breaking-changes" || fail "'jac guide community' listing missing breaking-changes"
+
+# --- jac guide --search: grep-style name:line: hits across guides and docs ---
+"$JAC" guide --search walker | grep -Eq '^[A-Za-z0-9_/.-]+:[0-9]+: ' || fail "'jac guide --search' produced no grep-style hits"
+
 # --- jac guide <unknown>: must exit non-zero ---
 if "$JAC" guide does-not-exist >/dev/null 2>&1; then
   fail "'jac guide' on an unknown topic should exit non-zero"

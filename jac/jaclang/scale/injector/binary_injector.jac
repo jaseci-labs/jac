@@ -4,6 +4,7 @@ import from jaclang.scale.injector.binary {
     download_release_binary,
     node_arch,
     pack_binary_bytes,
+    resolve_deploy_version,
     stage_admin_dist,
     toolchain_object_key
 }
@@ -21,9 +22,10 @@ obj BinaryInjector(PvcInjector) {
         _pod_binary_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        stage_admin_dist(project_dir, self.channel.value);
+        version = resolve_deploy_version(project_dir, self.channel.value);
+        stage_admin_dist(project_dir, self.channel.value, version);
 
-        payload = download_release_binary(self.channel.value, node_arch());
+        payload = download_release_binary(self.channel.value, node_arch(), version);
         self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);
         raw = pack_binary_bytes(payload);
@@ -93,7 +95,7 @@ def select_injector(
         logger.warning(f"[{channel.value}] binary prep failed: {exc}");
         raise RuntimeError(
             f"Could not prepare the '{channel.value}' jac runtime: {exc}. Check "
-            "network access to github.com/jaseci-labs/jaseci releases (and "
+            "network access to github.com/jaseci-labs/jac releases (and "
             "JAC_NODE_ARCH for cross-arch nodes)."
         );
     }

@@ -30,16 +30,15 @@ def:pub ButtonGroup(props: any) -> JsxElement {
             None, {"orientation": orientation, "className": props["className"]}
         )
     );
-    return
-        <div
-            role="group"
-            data-slot="button-group"
-            data-orientation={orientation}
-            className={computedClass}
-            {**attrs}
-        >
-            {props["children"]}
-        </div>;
+    <div
+        role="group"
+        data-slot="button-group"
+        data-orientation={orientation}
+        className={computedClass}
+        {**attrs}
+    >
+        {props["children"]}
+    </div>
 }
 
 def:pub ButtonGroupText(props: any) -> JsxElement {
@@ -59,24 +58,22 @@ def:pub ButtonGroupText(props: any) -> JsxElement {
                 {props["children"]}
             </Slot.Root>;
     }
-    return
-        <div data-slot="button-group-text" className={computedClass} {**attrs}>
-            {props["children"]}
-        </div>;
+    <div data-slot="button-group-text" className={computedClass} {**attrs}>
+        {props["children"]}
+    </div>
 }
 
 def:pub ButtonGroupSeparator(props: any) -> JsxElement {
     orientation = props["orientation"] or "vertical";
-    return
-        <Separator
-            data-slot="button-group-separator"
-            orientation={orientation}
-            className={cn(
-                "cn-button-group-separator relative self-stretch data-horizontal:mx-px data-horizontal:w-auto data-vertical:my-px data-vertical:h-auto",
-                props["className"]
-            )}
-            {**props}
-        />;
+    <Separator
+        data-slot="button-group-separator"
+        orientation={orientation}
+        className={cn(
+            "cn-button-group-separator relative self-stretch data-horizontal:mx-px data-horizontal:w-auto data-vertical:my-px data-vertical:h-auto",
+            props["className"]
+        )}
+        {**props}
+    />
 }
 
 def:pub buttonGroupVariants -> any {

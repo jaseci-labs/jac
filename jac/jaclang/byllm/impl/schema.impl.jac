@@ -2,9 +2,8 @@ impl _type_to_schema(
     ty: type, title: str = "", desc: str = "", info: Info | None = None
 ) -> dict {
     title = title.replace("_", " ").title();
-    context = ({"title": title} if title else {}) | (
-        {"description": desc} if desc else {}
-    );
+    context = ({"title": title} if title else {})
+        | ({"description": desc} if desc else {});
     if info?.type_info {
         info_type: str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
         info = info.type_info[1] if isinstance(info.type_info, tuple) else info;
@@ -62,7 +61,8 @@ impl _type_to_schema(
             ],
             "title": title,
 
-        } | context;
+        }
+            | context;
     }
 
     if get_origin(ty) is list {
@@ -73,7 +73,8 @@ impl _type_to_schema(
                 item_type, info=info if info_type == "list" else None
             ),
 
-        } | context;
+        }
+            | context;
     }
 
     if get_origin(ty) in (tuple, set) {
@@ -87,7 +88,8 @@ impl _type_to_schema(
                     item_type, info=info[1] if info[0] == "tuple" else None
                 ),
 
-            } | context;
+            }
+                | context;
         }
         raise ConfigurationError(
             f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
@@ -191,13 +193,14 @@ impl _type_to_schema(
                 if member.semstr
             ];
             if enum_semstr {
-                enum_desc += "\nDetails:\n" + "\n".join(
-                    [
-                        f"- {member.name}: {member.semstr}"
-                        for member in enum_info_to_use.members
-                        if member.semstr
-                    ]
-                );
+                enum_desc += "\nDetails:\n"
+                    + "\n".join(
+                        [
+                            f"- {member.name}: {member.semstr}"
+                            for member in enum_info_to_use.members
+                            if member.semstr
+                        ]
+                    );
             }
             base_desc = enum_info_to_use.semstr or semstr or "";
             full_desc = f"{base_desc}{enum_desc}";

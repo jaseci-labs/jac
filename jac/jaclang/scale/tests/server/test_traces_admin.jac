@@ -17,8 +17,10 @@ import from jaclang.scale.admin.traces {
 
 test "normalize_trace_id: dashed UUID or 32-hex -> 32-hex; garbage -> ''" {
     # A dashed UUID and Tempo's 32-hex are the same 128 bits.
-    assert _normalize_trace_id("0af76519-16cd-43dd-8448-eb211c80319c") == "0af7651916cd43dd8448eb211c80319c";
-    assert _normalize_trace_id("0AF7651916CD43DD8448EB211C80319C") == "0af7651916cd43dd8448eb211c80319c";
+    assert _normalize_trace_id("0af76519-16cd-43dd-8448-eb211c80319c")
+        == "0af7651916cd43dd8448eb211c80319c";
+    assert _normalize_trace_id("0AF7651916CD43DD8448EB211C80319C")
+        == "0af7651916cd43dd8448eb211c80319c";
     assert _normalize_trace_id("") == "";
     assert _normalize_trace_id("not-hex-zzzz") == "";
 }
@@ -26,7 +28,8 @@ test "normalize_trace_id: dashed UUID or 32-hex -> 32-hex; garbage -> ''" {
 
 test "build_traceql composes selectors; empty filters match all" {
     assert _build_traceql("", "", 0) == "{ }";
-    assert _build_traceql("gateway", "", 0) == "{ resource.service.name = \"gateway\" }";
+    assert _build_traceql("gateway", "", 0)
+        == "{ resource.service.name = \"gateway\" }";
     q = _build_traceql("cart", "error", 200);
     assert "resource.service.name = \"cart\"" in q;
     assert "status = error" in q;

@@ -203,7 +203,8 @@ test "build_interceptor_route includes cold_start placeholder only when set" {
     without_cold_start = keda._build_interceptor_route(_spec());
     assert with_cold_start["body"]["spec"]["coldStart"]["placeholder"]["response"][
         "statusCode"
-    ] == 503;
+    ]
+        == 503;
     assert "coldStart" not in without_cold_start["body"]["spec"];
 }
 
@@ -215,7 +216,8 @@ test "build_interceptor_route includes cold_start fallback_service only when set
         )
     );
     m = keda._build_interceptor_route(spec);
-    assert m["body"]["spec"]["coldStart"]["fallback"]["service"]["name"] == "fallback-svc";
+    assert m["body"]["spec"]["coldStart"]["fallback"]["service"]["name"]
+        == "fallback-svc";
     assert "placeholder" not in m["body"]["spec"]["coldStart"];
 }
 
@@ -262,9 +264,8 @@ test "build_http_scaled_object produces a complete external-push ScaledObject" {
     assert body["spec"]["minReplicaCount"] == 0;
     assert body["spec"]["maxReplicaCount"] == 5;
     assert trigger["type"] == "external-push";
-    assert trigger["metadata"]["interceptorRoute"] == keda.interceptor_route_name_for(
-        "preview-deployment"
-    );
+    assert trigger["metadata"]["interceptorRoute"]
+        == keda.interceptor_route_name_for("preview-deployment");
     assert "scalerAddress" in trigger["metadata"];
 }
 

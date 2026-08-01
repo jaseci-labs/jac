@@ -1,7 +1,6 @@
 import os;
 
 import from importlib.metadata { version as pkg_version }
-import from pathlib { Path }
 
 
 obj PluginMetadata {
@@ -21,7 +20,7 @@ obj PluginMetadata {
 
 def desktop_sdk_path -> str {
     this_dir = os.path.dirname(os.path.abspath(__file__));
-    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.cl.jac');
+    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.jac');
 }
 
 
@@ -215,24 +214,6 @@ class JacDesktopPluginConfig {
 }
 
 def _load_desktop_template -> dict[str, object] | None {
-    import from jaclang.project.template_loader { load_template_from_directory }
-    import from jaclang.cli.console { console }
-    import from jaclang.runtimelib.client.plugin_config { _post_create_client }
-
-    module_dir = Path(str(__file__)).parent;
-    template_dir = module_dir / "templates" / "desktop";
-    if not template_dir.exists() or not template_dir.is_dir() {
-        return None;
-    }
-    try {
-        template = load_template_from_directory(
-            template_dir, post_create_hook=_post_create_client
-        );
-        info = template.to_dict();
-        info["post_create"] = _post_create_client;
-        return info;
-    } except Exception as e {
-        console.warning(f"Could not load desktop template: {e}");
-        return None;
-    }
+    import from jaclang.runtimelib.client.plugin_config { _load_template }
+    return _load_template("desktop");
 }

@@ -71,15 +71,15 @@ For a served app, `jac browse` drives a headless Chrome from the CLI (`jac brows
 Renamed or retyped a `def:pub` param, a walker `has` field, or a report shape? Run `jac check` project-wide and read the hits in client `.jac` files as **drift pointers to the stale callers**:
 
 ```
-⚠ warning[W1101]: Cannot import name 'greet' from module '..services.api'
+⚠ warning[W1101]: Cannot import name 'greet' from module '.store'
   --> components/App.jac:1:33
 ```
 
-- `W1101` at a client's `sv import` - the imported endpoint/type no longer exists on the server (rename or removal).
+- `W1101` at a client's server-module import - the imported endpoint/type no longer exists on the server (rename or removal).
 - `W1051` (unresolvable expression) at a client call or spawn site - the caller is still feeding the old contract.
 - A retyped param escalates to a hard `E1053` at the client call line (`Cannot assign Literal["world"] to parameter 'name' of type int`).
 
-Measured on a real fullstack app (47 seeded contract mutations): `jac check` flagged the stale **client** line in 70% of cases at error level, 79% counting warnings - the equivalent TypeScript+Python twin caught 0% across the boundary, because tsc never sees the mutated server and mypy never sees the stale client. Caveat: W1101/W1051 also fire for ordinary typos - the signal is their **location** (client files, right after a server edit). `sv import` wiring rules: `jac-fullstack-patterns`.
+Measured on a real fullstack app (47 seeded contract mutations): `jac check` flagged the stale **client** line in 70% of cases at error level, 79% counting warnings - the equivalent TypeScript+Python twin caught 0% across the boundary, because tsc never sees the mutated server and mypy never sees the stale client. Caveat: W1101/W1051 also fire for ordinary typos - the signal is their **location** (client files, right after a server edit). Cross-boundary import wiring rules: `jac-fullstack-patterns`.
 
 ## Pitfalls
 
@@ -91,5 +91,5 @@ Measured on a real fullstack app (47 seeded contract mutations): `jac check` fla
 
 - `jac-testing` - running tests, the persisted-root gotcha
 - `jac-types` - clearing E1xxx type errors properly
-- `jac-fullstack-patterns` - the `sv import` / endpoint-registry rules behind contract drift
+- `jac-fullstack-patterns` - the import / endpoint-registry rules behind contract drift
 - `jac-config` - `[check.lint]`, `[run] diagnostics`

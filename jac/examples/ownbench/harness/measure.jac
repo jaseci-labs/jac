@@ -120,7 +120,7 @@ def parse_opts(argv: list[str]) -> dict {
             opts["skip_compile"] = True;
             i += 1;
         } elif flag in ("--kernels", "--modes", "--sizes", "--out", "--invocations")
-        and i + 1 < len(argv) {
+            and i + 1 < len(argv) {
             key = flag[2:].replace("-", "_");
             opts[key] = int(argv[i + 1]) if flag == "--invocations" else argv[i + 1];
             i += 2;

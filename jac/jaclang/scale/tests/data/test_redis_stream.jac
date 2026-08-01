@@ -1,7 +1,7 @@
 import contextlib;
 import time;
 import threading;
-import from testcontainers.redis { RedisContainer }
+import from testcontainers.community.redis { RedisContainer }
 import from jaclang.scale.persistence.db { close_all_db_connections, get_redis_client }
 import from jaclang.scale.events.broker { Event, RetryPolicy }
 import from jaclang.scale.events.streams.redis { RedisEventStream }
@@ -34,11 +34,11 @@ def _make_broker(
         "url": REDIS_URI,
         "consumer_group": group,
         "retry": retry
-        or {
-            "max_attempts": 3,
-            "backoff_seconds": [0.01, 0.01, 0.01],
-            "dead_letter_suffix": ".dlq"
-        }
+            or {
+                "max_attempts": 3,
+                "backoff_seconds": [0.01, 0.01, 0.01],
+                "dead_letter_suffix": ".dlq"
+            }
     };
     b = RedisEventStream(config=cfg);
     b.start();

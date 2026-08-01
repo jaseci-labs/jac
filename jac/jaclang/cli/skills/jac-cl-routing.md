@@ -70,7 +70,7 @@ def:pub UserDetail() -> JsxPage {
     params = useParams();
     userId = params["id"];                  # subscript, NOT params.id (E1030)
     if not userId { return <p>Not found</p>; }   # truthy check catches undefined
-    return <div><Link to="/users">← Back</Link><h1>User {userId}</h1></div>;
+    <div><Link to="/users">← Back</Link><h1>User {userId}</h1></div>
 }
 ```
 
@@ -79,10 +79,10 @@ def:pub UserDetail() -> JsxPage {
 import from "@jac/runtime" { Outlet, Link }
 
 def:pub Shell() -> JsxLayout {
-    return <div className="app">
+    <div className="app">
         <nav><Link to="/">Home</Link><Link to="/dashboard">Dashboard</Link></nav>
         <main><Outlet /></main>
-    </div>;
+    </div>
 }
 ```
 
@@ -124,14 +124,14 @@ Wrap `children` to add global providers (theme, query client, auth context, etc.
 import from .providers.ThemeProvider { ThemeProvider }
 
 def:pub app(children: any) -> JsxElement {
-    return <ThemeProvider>{children}</ThemeProvider>;
+    <ThemeProvider>{children}</ThemeProvider>
 }
 ```
 
 ⚠ Two failure modes, both easy to hit:
 
 - **Omitting the export** fails the build: `"app" is not exported by "compiled/main.js"` (in dev, the browser shows `SyntaxError: ... does not provide an export named 'app'`). A JSX-less `app` is just as bad: `def:pub app(children) { return children as JsxElement; }` carries no client signal, so inference places it **server** and it is never exported to the client entry - the same failure. Wrap `children` in JSX (`<>{children}</>` or a provider) so `app` is placed client. A `pages/` directory still needs `main.jac` to export a client `app`; the entry imports it by name.
-- **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { return <Home/>; }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
+- **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { <Home/> }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
 
 Also note `return children;` alone fails `jac check` with `E1002: Cannot return Any, expected JsxElement` - cast it (`children as JsxElement`) or wrap it in JSX.
 
@@ -156,7 +156,7 @@ page = int(searchParams.get("page") or "1");
 
 ## Manual routing (secondary)
 
-Explicit route table in one `.jac` component (e.g. `AppShell.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { return <AppShell/>; }`. With no `pages/` directory the generated entry renders `app` directly (`React.createElement(App, null)`) instead of wrapping a router in it, so the no-argument form is correct and `children` need not be declared. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
+Explicit route table in one `.jac` component (e.g. `AppShell.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { <AppShell/> }`. With no `pages/` directory the generated entry renders `app` directly (`React.createElement(App, null)`) instead of wrapping a router in it, so the no-argument form is correct and `children` need not be declared. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
 
 ```jac
 import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
@@ -168,7 +168,7 @@ import from .routes.UserProfile { UserProfile }
 import from .routes.NotFound { NotFound }
 
 def:pub AppShell() -> JsxElement {
-    return <Router>
+    <Router>
         <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace={True} />} />
             <Route path="/login" element={<LoginPage />} />
@@ -179,7 +179,7 @@ def:pub AppShell() -> JsxElement {
             <Route path="/user/:id" element={<UserProfile />} />
             <Route path="*" element={<NotFound />} />
         </Routes>
-    </Router>;
+    </Router>
 }
 ```
 

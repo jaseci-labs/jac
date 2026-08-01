@@ -14,16 +14,29 @@ import tempfile;
 import from pathlib { Path }
 import from tempfile { NamedTemporaryFile }
 import jaclang;
-import from jaclang.jac0core.parser.parser { parse }
+import from jaclang.jac0core.parser.frontend { parse }
 import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_new_builtin_");
+glob _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_new_builtin_"),
+     _client_tmp_dir: str = os.path.join(_test_tmp_dir, "client");
+
+with entry {
+    os.makedirs(_client_tmp_dir, exist_ok=True);
+    with open(os.path.join(_client_tmp_dir, "jac.toml"), "w") as _pins {
+        _pins.write('[placement.pins]\n"*" = "client"\n');
+    }
+}
 
 """Compile inline Jac source through a fresh JacProgram and return module."""
-def compile_inline(code: str, prog: JacProgram | None = None) -> object {
+def compile_inline(
+    code: str, prog: JacProgram | None = None, client: bool = False
+) -> object {
     with NamedTemporaryFile(
-        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+        mode="w",
+        suffix=".jac",
+        delete=False,
+        dir=_client_tmp_dir if client else _test_tmp_dir
     ) as f {
         f.write(code);
         f.flush();
@@ -120,8 +133,8 @@ test "`f = new;` (first-class reference) does NOT emit E0012" {
 #  Client (cl) backend: `new(...)` → `Reflect.construct(...)`
 # ─────────────────────────────────────────────────────────────────────
 test "cl: new(Cls, args) lowers to Reflect.construct in JS output" {
-    code = "cl def make_date(s: str) -> Any {\n" + "    return new(Date, s);\n" + "}\n";
-    mod = compile_inline(code);
+    code = "def make_date(s: str) -> Any {\n" + "    return new(Date, s);\n" + "}\n";
+    mod = compile_inline(code, client=True);
     js = mod.gen.js;
     assert js.strip() , "Expected JavaScript output for cl code";
     assert "Reflect.construct(Date, [s])" in js , (
@@ -133,8 +146,8 @@ test "cl: new(Cls, args) lowers to Reflect.construct in JS output" {
 }
 
 test "cl: new(Cls) with no args lowers to Reflect.construct(Cls, [])" {
-    code = "cl def make_set() -> Any {\n" + "    return new(Set);\n" + "}\n";
-    mod = compile_inline(code);
+    code = "def make_set() -> Any {\n" + "    return new(Set);\n" + "}\n";
+    mod = compile_inline(code, client=True);
     js = mod.gen.js;
     assert "Reflect.construct(Set, [])" in js , (
         "new(Set) with no args must lower to Reflect.construct(Set, []); got:\n" + js
@@ -142,8 +155,8 @@ test "cl: new(Cls) with no args lowers to Reflect.construct(Cls, [])" {
 }
 
 test "cl: new with multiple args produces a JS array of args" {
-    code = "cl def mk(a: int, b: int) -> Any {\n" + "    return new(Map, a, b);\n" + "}\n";
-    mod = compile_inline(code);
+    code = "def mk(a: int, b: int) -> Any {\n" + "    return new(Map, a, b);\n" + "}\n";
+    mod = compile_inline(code, client=True);
     js = mod.gen.js;
     assert "Reflect.construct(Map, [a, b])" in js , (
         "new(Map, a, b) must lower to Reflect.construct(Map, [a, b]); got:\n" + js

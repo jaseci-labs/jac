@@ -149,7 +149,7 @@ impl class_implements_protocol(
                 proto_func_type = evaluator.get_type_of_ability(proto_method);
                 cls_func_type = evaluator.get_type_of_ability(cls_method);
                 if isinstance(proto_func_type, types.FunctionType)
-                and isinstance(cls_func_type, types.FunctionType) {
+                    and isinstance(cls_func_type, types.FunctionType) {
                     if not evaluator._assign_callable(cls_func_type, proto_func_type) {
                         return False;
                     }
@@ -223,7 +223,7 @@ impl collect_member_syms(
                 continue;
             }
             if isinstance(kid, (uni.ElseStmt, uni.ElseIf))
-            and isinstance(kid.parent, uni.IfStmt) {
+                and isinstance(kid.parent, uni.IfStmt) {
                 continue;
             }
             branches = live_branches(kid) if isinstance(kid, uni.IfStmt) else [kid];
@@ -385,11 +385,8 @@ impl ParamAssignmentTracker.match_named_argument(
 impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
     for param in self.params {
         if (
-            param.param_kind in (
-                types.ParamKind.POSONLY,
-                types.ParamKind.NORMAL,
-                types.ParamKind.VARARG
-            )
+            param.param_kind
+            in (types.ParamKind.POSONLY, types.ParamKind.NORMAL, types.ParamKind.VARARG)
         ) {
             self.spread_filled.add(param);
         }
@@ -400,11 +397,8 @@ impl ParamAssignmentTracker._mark_all_positional_params_as_matched -> None {
 impl ParamAssignmentTracker._mark_all_named_params_as_matched -> None {
     for param in self.params {
         if (
-            param.param_kind in (
-                types.ParamKind.NORMAL,
-                types.ParamKind.KWONLY,
-                types.ParamKind.KWARG
-            )
+            param.param_kind
+            in (types.ParamKind.NORMAL, types.ParamKind.KWONLY, types.ParamKind.KWARG)
         ) {
             self.spread_filled.add(param);
         }
@@ -540,7 +534,7 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
     flags.is_stdlib_stub = "vendor/typeshed/stdlib/" in normalized_path;
 
     if normalized_path.endswith("stdlib/typing.pyi")
-    or normalized_path.endswith("typing_extensions.pyi") {
+        or normalized_path.endswith("typing_extensions.pyi") {
         flags.is_typing_stub = True;
     }
 
@@ -596,7 +590,7 @@ impl apply_solved_type_vars(
                 for tp in class_type.shared.type_params {
                     if tp.name == ty.name {
                         if ty.bound is None
-                        or (tp.bound is not None and ty.bound == tp.bound) {
+                            or (tp.bound is not None and ty.bound == tp.bound) {
                             is_declared_class_param = True;
                         }
                         break;
@@ -605,14 +599,14 @@ impl apply_solved_type_vars(
             }
 
             if not is_declared_class_param
-            and ty.bound is None
-            and ty.name in solution {
+                and ty.bound is None
+                and ty.name in solution {
                 is_declared_class_param = True;
             }
 
             if not is_declared_class_param
-            and class_type is None
-            and ty.name in solution {
+                and class_type is None
+                and ty.name in solution {
                 is_declared_class_param = True;
             }
         }
@@ -672,8 +666,8 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
     solution: dict[str, types.TypeBase] = {};
 
     if class_type.shared.type_params
-    and class_type.private.type_args
-    and len(class_type.private.type_args) > 0 {
+        and class_type.private.type_args
+        and len(class_type.private.type_args) > 0 {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
                 solution[tp.name] = class_type.private.type_args[idx];
@@ -696,7 +690,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
 
                     if not isinstance(resolved, types.TypeVarType) {
                         if tp.name not in solution
-                        or isinstance(solution[tp.name], types.TypeVarType) {
+                            or isinstance(solution[tp.name], types.TypeVarType) {
                             solution[tp.name] = resolved;
                         }
                     }
@@ -716,7 +710,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
                     arg = specialized.private.type_args[idx];
                     if not isinstance(arg, types.TypeVarType) {
                         if tp.name not in solution
-                        or isinstance(solution[tp.name], types.TypeVarType) {
+                            or isinstance(solution[tp.name], types.TypeVarType) {
                             solution[tp.name] = arg;
                         }
                     }

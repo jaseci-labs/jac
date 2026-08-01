@@ -21,14 +21,11 @@ test "build_registry creates entries from routes map" {
     assert registry.entries["cart_app"].file == "cart_app.jac";
 }
 
-test "build_registry file for a discovered subdir service exists on disk" {
+test "build_registry file for a declared subdir service exists on disk" {
     import tempfile;
     import shutil;
     import from pathlib { Path }
-    import from jaclang.scale.runtime.discovery.discovery {
-        resolve_routes,
-        resolve_service_files
-    }
+    import from jaclang.scale.runtime.routing { resolve_routes, resolve_service_files }
 
     tmp = Path(tempfile.mkdtemp());
     (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
@@ -36,12 +33,15 @@ test "build_registry file for a discovered subdir service exists on disk" {
     sub = tmp / "littlex";
     sub.mkdir();
     (sub / "social_graph.jac").write_text(
-        "sv {\ndef:pub setup_profile -> int { return 1; }\n}\n"
+        "def:pub setup_profile -> int { return 1; }\n"
     );
     try {
-        entry_file = str(tmp / "main.jac");
-        routes = resolve_routes(entry_file, {});
-        files = resolve_service_files(entry_file, routes);
+        ms_config = {
+            "routes": {"social_graph": ""},
+            "services": {"social_graph": {"file": "littlex/social_graph.jac"}}
+        };
+        routes = resolve_routes(ms_config);
+        files = resolve_service_files(ms_config, routes);
         registry = build_registry({"routes": routes, "service_files": files});
 
         svc = registry.entries["social_graph"];
@@ -69,7 +69,8 @@ test "build_registry routes work after build" {
     ms_config = {"routes": {"orders_app": "/api/orders", "cart_app": "/api/cart"}};
 
     registry = build_registry(ms_config);
-    assert registry.match_route("/api/orders/function/create_order").name == "orders_app";
+    assert registry.match_route("/api/orders/function/create_order").name
+        == "orders_app";
     assert registry.match_route("/api/cart/function/view_cart").name == "cart_app";
     assert registry.match_route("/api/unknown") is None;
 }
@@ -190,10 +191,12 @@ test "_populate_k8s_urls writes DNS map onto svc_entry.url (regression)" {
     }
 
     assert (
-        registry.entries["products_app"].url == "http://products-app-service.default.svc.cluster.local:8000"
+        registry.entries["products_app"].url
+        == "http://products-app-service.default.svc.cluster.local:8000"
     );
     assert (
-        registry.entries["orders_app"].url == "http://orders-app-service.default.svc.cluster.local:8000"
+        registry.entries["orders_app"].url
+        == "http://orders-app-service.default.svc.cluster.local:8000"
     );
 }
 

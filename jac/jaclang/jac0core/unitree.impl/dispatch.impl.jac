@@ -58,10 +58,6 @@ impl CfgExpr.accept_enter(v: UniPass) -> None {
     v.enter_cfg_expr(self);
 }
 
-impl ClientBlock.accept_enter(v: UniPass) -> None {
-    v.enter_client_block(self);
-}
-
 impl CompareExpr.accept_enter(v: UniPass) -> None {
     v.enter_compare_expr(self);
 }
@@ -338,10 +334,6 @@ impl Name.accept_enter(v: UniPass) -> None {
     v.enter_name(self);
 }
 
-impl NativeBlock.accept_enter(v: UniPass) -> None {
-    v.enter_native_block(self);
-}
-
 impl OpenStmt.accept_enter(v: UniPass) -> None {
     v.enter_open_stmt(self);
 }
@@ -368,10 +360,6 @@ impl ReturnStmt.accept_enter(v: UniPass) -> None {
 
 impl SemDef.accept_enter(v: UniPass) -> None {
     v.enter_sem_def(self);
-}
-
-impl ServerBlock.accept_enter(v: UniPass) -> None {
-    v.enter_server_block(self);
 }
 
 impl SetCompr.accept_enter(v: UniPass) -> None {
@@ -516,10 +504,6 @@ impl CastExpr.accept_exit(v: UniPass) -> None {
 
 impl CfgExpr.accept_exit(v: UniPass) -> None {
     v.exit_cfg_expr(self);
-}
-
-impl ClientBlock.accept_exit(v: UniPass) -> None {
-    v.exit_client_block(self);
 }
 
 impl CommentToken.accept_exit(v: UniPass) -> None {
@@ -814,10 +798,6 @@ impl Name.accept_exit(v: UniPass) -> None {
     v.exit_name(self);
 }
 
-impl NativeBlock.accept_exit(v: UniPass) -> None {
-    v.exit_native_block(self);
-}
-
 impl Null.accept_exit(v: UniPass) -> None {
     v.exit_null(self);
 }
@@ -852,10 +832,6 @@ impl SemDef.accept_exit(v: UniPass) -> None {
 
 impl Semi.accept_exit(v: UniPass) -> None {
     v.exit_semi(self);
-}
-
-impl ServerBlock.accept_exit(v: UniPass) -> None {
-    v.exit_server_block(self);
 }
 
 impl SetCompr.accept_exit(v: UniPass) -> None {

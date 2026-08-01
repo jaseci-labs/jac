@@ -52,7 +52,8 @@ def resolve_url(module_name: str) -> str {
         return os.environ[env_var];
     }
     raise RuntimeError(
-        f"sv-to-sv service '{module_name}' not registered. " + f"Set {env_var} or call sv_client.register()."
+        f"sv-to-sv service '{module_name}' not registered. "
+            + f"Set {env_var} or call sv_client.register()."
     );
 }
 

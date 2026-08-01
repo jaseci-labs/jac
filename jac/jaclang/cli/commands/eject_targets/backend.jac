@@ -131,9 +131,9 @@ def emit_backend(
         return 1;
     }
     console.print(
-        f"  ✔ vendored jaclang runtime ({vendored} modules" + (
-            ", incl. byllm" if uses_llm else ""
-        ) + ")",
+        f"  ✔ vendored jaclang runtime ({vendored} modules"
+            + (", incl. byllm" if uses_llm else "")
+            + ")",
         style="success"
     );
 
@@ -217,10 +217,10 @@ def _uses_llm(codes: list) -> bool {
             line = raw.strip();
             for m in ["byllm", "jaclang.byllm"] {
                 if (line == "import " + m)
-                or line.startswith("import " + m + " ")
-                or line.startswith("import " + m + ".")
-                or line.startswith("from " + m + " ")
-                or line.startswith("from " + m + ".") {
+                    or line.startswith("import " + m + " ")
+                    or line.startswith("import " + m + ".")
+                    or line.startswith("from " + m + " ")
+                    or line.startswith("from " + m + ".") {
                     return True;
                 }
             }
@@ -241,11 +241,12 @@ def _rewrite_imports(py_code: str, remap: dict) -> str {
             orig_s = str(orig);
             new_s = str(new);
             if line.startswith("from " + orig_s + " import ") {
-                line = "from " + new_s + " import " + line[len(
-                    "from " + orig_s + " import "
-                ):];
+                line = "from "
+                    + new_s
+                    + " import "
+                    + line[len("from " + orig_s + " import "):];
             } elif (line == "import " + orig_s)
-            or line.startswith("import " + orig_s + " ") {
+                or line.startswith("import " + orig_s + " ") {
                 line = "import " + new_s + line[len("import " + orig_s):];
             }
         }
@@ -352,7 +353,7 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
     }
     for node in tree.body {
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and (node.name in func_names) {
+            and (node.name in func_names) {
             all_args = node.args.args;
             defaults = node.args.defaults;
 
@@ -446,12 +447,12 @@ def _safe_model_default(default_src: str) -> str {
         return "None";
     }
     if isinstance(expr, ast.Call)
-    and isinstance(expr.func, ast.Name)
-    and (expr.func.id == "field") {
+        and isinstance(expr.func, ast.Name)
+        and (expr.func.id == "field") {
         inner = None;
         for kw in expr.keywords {
             if (kw.arg in ["factory", "default_factory"])
-            and isinstance(kw.value, ast.Lambda) {
+                and isinstance(kw.value, ast.Lambda) {
                 inner = kw.value.body;
             } elif kw.arg == "default" {
                 inner = kw.value;
@@ -560,9 +561,9 @@ def _emit_main_py(
             'from jaclang.runtimelib.storage.sqlalchemy_memory import SqlAlchemyMemory',
             '',
             '_DB_URL = os.environ.get("JAC_DB_URL") or (',
-            '    "sqlite:///" + os.path.join(_BASE, ' + repr(
-                str(db_basename) + ".db"
-            ) + ')',
+            '    "sqlite:///" + os.path.join(_BASE, '
+                + repr(str(db_basename) + ".db")
+                + ')',
             ')',
             '',
             '',
@@ -721,9 +722,12 @@ def _emit_main_py(
                 ftype = _safe_model_type(str(fld["type"]));
                 if fld["has_default"] {
                     lines.append(
-                        "    " + fname + ": " + ftype + " = " + _safe_model_default(
-                            str(fld["default"])
-                        )
+                        "    "
+                            + fname
+                            + ": "
+                            + ftype
+                            + " = "
+                            + _safe_model_default(str(fld["default"]))
                     );
                 } else {
                     lines.append("    " + fname + ": " + ftype);
@@ -737,7 +741,11 @@ def _emit_main_py(
         lines.append('@app.post("/walker/' + wn + '")');
         lines.append('@app.post("/walker/' + wn + '/{node_id}")');
         lines.append(
-            "async def run_" + wn + "(body: " + model + ", node_id: str = \"\", authorization: str = Header(default=None)):"
+            "async def run_"
+                + wn
+                + "(body: "
+                + model
+                + ", node_id: str = \"\", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append("    fields = dict(body.model_dump())");
@@ -785,7 +793,9 @@ def _emit_main_py(
             lines.append("    user = _username(authorization, " + required + ")");
             lines.append("    fields = {" + kw + "}");
             lines.append(
-                "    return _respond_fn(await _em.execute_function(_F_" + fn + ", fields, user))"
+                "    return _respond_fn(await _em.execute_function(_F_"
+                    + fn
+                    + ", fields, user))"
             );
             continue;
         }
@@ -799,9 +809,12 @@ def _emit_main_py(
                 ptype = _safe_model_type(str(p["type"]));
                 if p["has_default"] {
                     lines.append(
-                        "    " + pname + ": " + ptype + " = " + _safe_model_default(
-                            str(p["default"])
-                        )
+                        "    "
+                            + pname
+                            + ": "
+                            + ptype
+                            + " = "
+                            + _safe_model_default(str(p["default"]))
                     );
                 } else {
                     lines.append("    " + pname + ": " + ptype);
@@ -814,11 +827,17 @@ def _emit_main_py(
         lines.append("");
         lines.append('@app.post("/function/' + fn + '")');
         lines.append(
-            "async def call_" + fn + "(body: " + model + ", authorization: str = Header(default=None)):"
+            "async def call_"
+                + fn
+                + "(body: "
+                + model
+                + ", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append(
-            "    return _respond_fn(await _em.execute_function(_F_" + fn + ", dict(body.model_dump()), user))"
+            "    return _respond_fn(await _em.execute_function(_F_"
+                + fn
+                + ", dict(body.model_dump()), user))"
         );
     }
 
@@ -871,7 +890,13 @@ def _emit_main_py(
         '',
         '@app.get("/__health")',
         'def __health() -> dict:',
-        '    return {"project": ' + repr(project_name) + ', "walkers": ' + walker_list_lit + ', "functions": ' + func_list_lit + "}",
+        '    return {"project": '
+            + repr(project_name)
+            + ', "walkers": '
+            + walker_list_lit
+            + ', "functions": '
+            + func_list_lit
+            + "}",
         '',
         '',
         '# Serve the built frontend (../frontend/dist) when present so one',

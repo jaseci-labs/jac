@@ -11,7 +11,7 @@ cyclic modules initialize exactly once without crashing.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
@@ -21,10 +21,12 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -41,12 +43,12 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
 }
 
 test "cyclic import: mandated two-file cycle compiles" {
-    (eng, _) = compile_native("cycle_ping.na.jac");
+    (eng, _) = compile_native("cycle_ping.jac");
     assert eng is not None;
 }
 
 test "cyclic import: mutual recursion computes across modules" {
-    (eng, _) = compile_native("cycle_ping.na.jac");
+    (eng, _) = compile_native("cycle_ping.jac");
     get_func(eng, "jac_entry", None)();
     f = get_func(eng, "ping", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 7 , f"ping(7) expected 7, got {f(7)}";
@@ -54,14 +56,14 @@ test "cyclic import: mutual recursion computes across modules" {
 }
 
 test "glob init: transitive runtime initializer runs dependencies first" {
-    (eng, _) = compile_native("glob_chain_entry.na.jac");
+    (eng, _) = compile_native("glob_chain_entry.jac");
     get_func(eng, "jac_entry", None)();
     got = get_func(eng, "get_b", ctypes.c_int64)();
     assert got == 7 , f"get_b() expected 7 (leaf inits before mid), got {got}";
 }
 
 test "glob init: cyclic modules init once without crashing" {
-    (eng, _) = compile_native("cycle_glob_a.na.jac");
+    (eng, _) = compile_native("cycle_glob_a.jac");
     get_func(eng, "jac_entry", None)();
     av = get_func(eng, "get_av", ctypes.c_int64)();
     bv = get_func(eng, "get_bv", ctypes.c_int64)();

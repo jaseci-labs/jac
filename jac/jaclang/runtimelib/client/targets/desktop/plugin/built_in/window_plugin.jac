@@ -60,7 +60,11 @@ obj WindowPlugin(DesktopPlugin) {
             }
             if not self._host.set_window_size(width, height) {
                 self._host.eval_js(
-                    "try{window.resizeTo(" + str(width) + "," + str(height) + ");}catch(e){}"
+                    "try{window.resizeTo("
+                        + str(width)
+                        + ","
+                        + str(height)
+                        + ");}catch(e){}"
                 );
             }
             return {};

@@ -116,7 +116,7 @@ impl _path_root_anchor(mem: Memory, path: ObjectSpatialPath) -> (NodeAnchor | No
     import from jaclang.jac0core.archetype { Root }
     if origin_anchor.root is None {
         if isinstance(origin_anchor, NodeAnchor)
-        and isinstance(origin_anchor.archetype, Root) {
+            and isinstance(origin_anchor.archetype, Root) {
             return origin_anchor;
         }
         return None;

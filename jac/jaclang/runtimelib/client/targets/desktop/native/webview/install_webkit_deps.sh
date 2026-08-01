@@ -59,4 +59,4 @@ if [[ -z "${RESOLVED}" ]]; then
 fi
 
 echo
-echo "OK. WebKitGTK ready (${RESOLVED}). Next: build libwebview.so + webview.na.jac."
+echo "OK. WebKitGTK ready (${RESOLVED}). Next: build libwebview.so + webview.jac."

@@ -98,7 +98,7 @@ impl OwnershipCheckPass._region_escapee_roots(
             continue;
         }
         if self._borrow_sym_of(root_nm) is None
-        and self._is_region_local(root_nm, region) {
+            and self._is_region_local(root_nm, region) {
             seen.add(sid);
             out.append(root_nm);
         }
@@ -177,7 +177,7 @@ impl OwnershipCheckPass._region_param_count(region: uni.OpenStmt) -> int {
     n = 0;
     for p in self.idx_params {
         if p.find_parent_of_type(uni.Ability) is _ab
-        and self._param_is_region_borrow(p) {
+            and self._param_is_region_borrow(p) {
             n += 1;
         }
     }
@@ -461,7 +461,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             for p in (call.params or []) {
                 _arg = p.value if isinstance(p, uni.KWPair) else p;
                 if not isinstance(_arg, uni.Expr)
-                or self._region_expr_is_scalar(_arg) {
+                    or self._region_expr_is_scalar(_arg) {
                     continue;
                 }
                 for root_nm in self._region_escapee_roots(_arg, region) {
@@ -507,13 +507,13 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
         }
         for call in _ab.get_all_sub_nodes(uni.FuncCall) {
             if self._region_callee_is_safe(call, region)
-            or self._call_borrows_handle(call, _hsid) {
+                or self._call_borrows_handle(call, _hsid) {
                 continue;
             }
             for p in (call.params or []) {
                 _arg = p.value if isinstance(p, uni.KWPair) else p;
                 if not isinstance(_arg, uni.Expr)
-                or self._region_expr_is_scalar(_arg) {
+                    or self._region_expr_is_scalar(_arg) {
                     continue;
                 }
                 _root = self._place_of(_arg);
@@ -522,7 +522,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
                 }
                 _rsid = self._name_sym_id(_root);
                 if _rsid not in self.borrow_meta
-                or self.borrow_meta[_rsid].owner != _hsid {
+                    or self.borrow_meta[_rsid].owner != _hsid {
                     continue;
                 }
                 key = (id(region), _rsid);

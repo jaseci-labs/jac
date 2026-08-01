@@ -150,9 +150,8 @@ test "scale serve defaults to the mongo user-store when no [database] is set" {
     );
     assert "data.redis" in redis_caps;
     assert "data.mongo" not in redis_caps;
-    assert "data.mongo" not in derive_capabilities(
-        {"microservices": {"enabled": True}}, []
-    );
+    assert "data.mongo"
+        not in derive_capabilities({"microservices": {"enabled": True}}, []);
 }
 
 test "scale serve with NO scale section still defaults data.mongo (#7137)" {
@@ -391,11 +390,12 @@ test "missing_capability_dists reports pinned specs for absent distributions" {
     with patch("importlib.metadata.distribution") as mock_dist {
         mock_dist.side_effect = metadata.PackageNotFoundError("gone");
         missing = missing_capability_dists("deploy.k8s");
-        assert missing == [
-            "bcrypt>=4.0.0,<5.0.0",
-            "docker>=7.1.0,<8.0.0",
-            "kubernetes>=34.1.0,<35.0.0"
-        ];
+        assert missing
+            == [
+                "bcrypt>=4.0.0,<5.0.0",
+                "docker>=7.1.0,<8.0.0",
+                "kubernetes>=34.1.0,<35.0.0"
+            ];
     }
     assert missing_capability_dists("bogus") == [];
 }
@@ -420,14 +420,15 @@ test "ensure_global_capability pip-installs only the missing deploy tooling" {
         assert ensure_global_capability("deploy.k8s");
         mock_run.assert_called_once();
         cmd: list = list(mock_run.call_args[0][0]);
-        assert cmd == [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--quiet",
-            "docker>=7.1.0,<8.0.0"
-        ];
+        assert cmd
+            == [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                "docker>=7.1.0,<8.0.0"
+            ];
     }
 }
 
@@ -462,9 +463,10 @@ def make_service_project(scale_toml: str) -> tuple[str, Path] {
     project_dir.mkdir();
     (project_dir / "jac.toml").write_text(
         '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\n'
-        'entry-point = "main.sv.jac"\n\n' + scale_toml
+        'entry-point = "main.jac"\n\n'
+            + scale_toml
     );
-    (project_dir / "main.sv.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
+    (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
     return (tmp, project_dir);
 }
 

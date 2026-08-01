@@ -47,7 +47,7 @@ def compile_to_js(filename: str) -> str {
 
 test "props+ref component lowers to forwardRef with a (props, ref) signature" {
     import re;
-    js = compile_to_js("forward_ref_button.cl.jac");
+    js = compile_to_js("forward_ref_button.jac");
 
     # Wrapped in forwardRef and bound to a const of the component's name, with
     # the React render signature `(props, ref)`.
@@ -56,7 +56,8 @@ test "props+ref component lowers to forwardRef with a (props, ref) signature" {
         js
     ) , (
         "a component with a trailing `ref: Ref` param should lower to "
-        "`const Button = forwardRef(function Button(props, ref) {...})`:\n" + js
+        "`const Button = forwardRef(function Button(props, ref) {...})`:\n"
+        + js
     );
     # `ref` must be the 2nd positional arg, NOT destructured out of `props`
     # (the pre-fix bug produced `const {props, ref} = props;`).
@@ -75,14 +76,15 @@ test "props+ref component lowers to forwardRef with a (props, ref) signature" {
 
 test "named props alongside a ref: props destructure, ref stays positional" {
     import re;
-    js = compile_to_js("forward_ref_named.cl.jac");
+    js = compile_to_js("forward_ref_named.jac");
 
     assert re.search(
         r'const\s+Card\s*=\s*forwardRef\(\s*function\s+Card\s*\(\s*props\s*,\s*ref\s*\)',
         js
     ) , (
         "a named-param component with a trailing `ref: Ref` should still lower "
-        "to `forwardRef(function Card(props, ref) {...})`:\n" + js
+        "to `forwardRef(function Card(props, ref) {...})`:\n"
+        + js
     );
     # The named props destructure from `props` as exactly `{title, body}` --
     # `ref` is not among them (it is the trailing positional arg instead).

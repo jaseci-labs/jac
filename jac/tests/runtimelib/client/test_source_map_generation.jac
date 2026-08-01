@@ -33,7 +33,7 @@ def _compile_then_clear_hub(module_path: any) -> any {
 }
 
 """Build the shared client compile engine (JacClientCompiler) over a fresh
-temp project containing `app.cl.jac`, with `compile_module` wrapped to clear
+temp project containing `app.jac`, with `compile_module` wrapped to clear
 the hub after each compile. Returns the compiler and the compiled-output
 directory."""
 def _make_compiler(proj: Path) -> tuple[any, Path] {
@@ -43,7 +43,7 @@ def _make_compiler(proj: Path) -> tuple[any, Path] {
     # several lines deep in the generated JS (after the runtime-import prefix and
     # the function wrapper) -- so a "report the JS line" bug resolves to a clearly
     # wrong line, while a correct map resolves it back to line 6.
-    (proj / "app.cl.jac").write_text(
+    (proj / "app.jac").write_text(
         'def:pub app() -> any {\n'  # 1
         '    alpha = 1;\n'  # 2
         '    beta = 2;\n'  # 3
@@ -66,7 +66,7 @@ test "client compile writes a per-file source map even when the hub is empty" {
     with TemporaryDirectory() as tmp {
         (compiler, out_dir) = _make_compiler(Path(tmp));
         compiler.compile_dependencies_recursively(
-            Path(tmp) / "app.cl.jac",
+            Path(tmp) / "app.jac",
             visited=set(),
             collected_exports=set(),
             collected_globals={}
@@ -86,7 +86,7 @@ test "per-file source map resolves a deep JS line to the exact .jac line" {
     with TemporaryDirectory() as tmp {
         (compiler, out_dir) = _make_compiler(Path(tmp));
         compiler.compile_dependencies_recursively(
-            Path(tmp) / "app.cl.jac",
+            Path(tmp) / "app.jac",
             visited=set(),
             collected_exports=set(),
             collected_globals={}
@@ -111,7 +111,7 @@ test "per-file source map resolves a deep JS line to the exact .jac line" {
         assert marker_js_line > 0 , "marker statement not found in compiled JS";
         loc = sm.resolve(marker_js_line, 0);
         assert loc is not None , "JS line did not resolve to a source location";
-        assert loc.file.endswith("app.cl.jac");
+        assert loc.file.endswith("app.jac");
         assert loc.line == 6 , f"marker mapped to .jac:{loc.line}, expected 6";
     }
 }

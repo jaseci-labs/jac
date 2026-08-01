@@ -8,7 +8,7 @@ implementations congruent -- for a direct GET and for a redirect both follow:
   - sv (py): CPython's real `urllib.request.urlopen` (via `import urllib.request`),
     returning a rich dict (status/body/length/content-type) that also serves as a
     hard sv-side guard.
-  - na: the bundled `na_stdlib/urllib/request.na.jac` module -- a pure-Jac surface
+  - na: the bundled `na_stdlib/urllib/request.jac` module -- a pure-Jac surface
     over the bundled `socket` + `ssl` modules -- via `import from urllib.request {
     urlopen }`. The native functions return plain `int`s (status, body length),
     the scalar fields the native pathway marshals across a module boundary
@@ -48,30 +48,28 @@ def urllib_redirect_py -> dict {
 }
 
 
-na {
-    import from urllib.request { urlopen }
+import from urllib.request { urlopen }
 
-    def urlopen_status_na -> int {
-        base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
-        resp = urlopen(base + "/hello");
-        return resp.status;
-    }
+def urlopen_status_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    resp = urlopen(base + "/hello");
+    return resp.status;
+}
 
-    def urlopen_body_length_na -> int {
-        base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
-        resp = urlopen(base + "/hello");
-        return resp.body_length;
-    }
+def urlopen_body_length_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    resp = urlopen(base + "/hello");
+    return resp.body_length;
+}
 
-    def urlopen_redirect_status_na -> int {
-        base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
-        resp = urlopen(base + "/redirect");
-        return resp.status;
-    }
+def urlopen_redirect_status_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    resp = urlopen(base + "/redirect");
+    return resp.status;
+}
 
-    def urlopen_redirect_body_length_na -> int {
-        base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
-        resp = urlopen(base + "/redirect");
-        return resp.body_length;
-    }
+def urlopen_redirect_body_length_na -> int {
+    base = "http://127.0.0.1:" + os.getenv("JAC_URLLIB_TEST_PORT", "");
+    resp = urlopen(base + "/redirect");
+    return resp.body_length;
 }

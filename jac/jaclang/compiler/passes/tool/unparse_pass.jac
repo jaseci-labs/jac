@@ -25,9 +25,6 @@ obj UnparsePass(UniPass) {
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_test(nd: uni.Test) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
-    def exit_server_block(nd: uni.ServerBlock) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
     def exit_import(nd: uni.Import) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;

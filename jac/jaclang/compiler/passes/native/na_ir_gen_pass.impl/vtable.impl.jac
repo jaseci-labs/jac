@@ -135,13 +135,13 @@ impl NaIRGenPass._codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None) {
     receiver: (uni.UniNode | None) = None;
 
     if isinstance(inner, uni.AtomTrailer)
-    and inner.is_attr
-    and self._get_name(inner.right) == "__class__" {
+        and inner.is_attr
+        and self._get_name(inner.right) == "__class__" {
         receiver = inner.target;
     } elif isinstance(inner, uni.FuncCall)
-    and self._get_name(inner.target) == "type"
-    and inner.params
-    and len(inner.params) == 1 {
+        and self._get_name(inner.target) == "type"
+        and inner.params
+        and len(inner.params) == 1 {
         receiver = inner.params[0];
     }
     if receiver is None {

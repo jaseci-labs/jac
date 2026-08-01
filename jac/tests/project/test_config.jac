@@ -596,7 +596,8 @@ test "add git dependency" {
         "my-plugin", "https://github.com/user/plugin.git", dep_type="git"
     );
     assert "my-plugin" in cfg.git_dependencies;
-    assert cfg.git_dependencies["my-plugin"]["git"] == "https://github.com/user/plugin.git";
+    assert cfg.git_dependencies["my-plugin"]["git"]
+        == "https://github.com/user/plugin.git";
 }
 
 test "add npm dependency" {
@@ -1782,13 +1783,10 @@ jaclang = ">=0.15.2"
         saved = toml_path.read_text();
         # Must remain a parseable array of inline tables, not a repr string.
         parsed = tomllib.loads(saved);
-        assert parsed["project"]["authors"] == [
-            {"name": "Jason Mars", "email": "jason@mars.ninja"}
-        ] , "authors must survive save() as inline tables";
-        assert parsed["project"]["maintainers"] == [
-            {"name": "A", "email": "a@b.c"},
-            {"name": "D", "email": "d@e.f"}
-        ] , "maintainers must survive save() as inline tables";
+        assert parsed["project"]["authors"]
+            == [{"name": "Jason Mars", "email": "jason@mars.ninja"}] , "authors must survive save() as inline tables";
+        assert parsed["project"]["maintainers"]
+            == [{"name": "A", "email": "a@b.c"}, {"name": "D", "email": "d@e.f"}] , "maintainers must survive save() as inline tables";
         # save() must not leave behind a stray empty [plugins] table.
         assert "plugins" not in parsed , "empty [plugins] table must not be emitted";
         assert parsed["dependencies"]["rich"] == ">=13.0.0";

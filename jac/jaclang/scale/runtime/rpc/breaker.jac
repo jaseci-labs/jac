@@ -34,7 +34,7 @@ def breaker_record_failure(provider: str) {
     import time;
     with _breaker_lock {
         st = _breaker_state.get(provider)
-        or {"state": "CLOSED", "fails": 0, "opened_at": 0.0};
+            or {"state": "CLOSED", "fails": 0, "opened_at": 0.0};
         current = st.get("state", "CLOSED");
         if current == "HALF_OPEN" {
             st["state"] = "OPEN";

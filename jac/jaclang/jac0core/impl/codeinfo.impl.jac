@@ -1,11 +1,3 @@
-impl InteropBinding.is_direct.getter -> bool {
-    return (len(self.route) == 2);
-}
-
-impl InteropBinding.is_composed.getter -> bool {
-    return (len(self.route) > 2);
-}
-
 impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
@@ -40,6 +32,17 @@ impl InteropManifest.native_cross_module_imports.getter -> list[InteropBinding] 
             (b.source_context == InteropContext.NATIVE)
             and (InteropContext.NATIVE in b.callers)
             and (b.source_module is not None)
+        )
+    ];
+}
+
+impl InteropManifest.client_native_imports.getter -> list[InteropBinding] {
+    return [
+        b
+        for b in self.bindings.values()
+        if (
+            (b.source_context == InteropContext.NATIVE)
+            and (InteropContext.CLIENT in b.callers)
         )
     ];
 }

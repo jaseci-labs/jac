@@ -29,8 +29,7 @@ def:pub Toggle(props: any) -> JsxElement {
             None, {"variant": variant, "size": size, "className": props["className"]}
         )
     );
-    return
-        <TogglePrimitive.Root {**props} data-slot="toggle" className={computedClass}/>;
+    <TogglePrimitive.Root {**props} data-slot="toggle" className={computedClass}/>
 }
 
 def:pub toggleVariants -> any {

@@ -359,7 +359,9 @@ obj PythonProvider(EcosystemProvider) {
     def _install_global(specs: list[str], ctx: InstallContext) -> bool {
         import subprocess;
         import sys;
-        cmd: list[str] = [sys.executable, "-m", "pip", "install", "--upgrade"] + ctx.install_flags + specs;
+        cmd: list[str] = [sys.executable, "-m", "pip", "install", "--upgrade"]
+            + ctx.install_flags
+            + specs;
         if ctx.verbose {
             console.print(f"  Running: {' '.join(cmd)}", style="muted");
         }
@@ -367,8 +369,8 @@ obj PythonProvider(EcosystemProvider) {
         if result.returncode != 0 {
             console.error(
                 f"Install failed:\n{result.stderr
-                or result.stdout
-                or '(see output above)'}"
+                    or result.stdout
+                    or '(see output above)'}"
             );
             return False;
         }
@@ -454,8 +456,8 @@ obj PythonProvider(EcosystemProvider) {
         if name in config.git_dependencies {
             dep_type = "git";
         } elif not dev
-        and name not in config.dependencies
-        and name in config.dev_dependencies {
+            and name not in config.dependencies
+            and name in config.dev_dependencies {
             is_dev = True;
         }
         if not config.remove_dependency(name, dev=is_dev, dep_type=dep_type) {
@@ -613,6 +615,7 @@ def get_provider_registry -> ProviderRegistry {
     if _registry is None {
         _registry = ProviderRegistry();
         _registry.register(PythonProvider());
+        initialize_provider_registry();
     }
     return _registry;
 }
@@ -730,8 +733,8 @@ def _declared_constraint(
     for section in sections {
         for (declared, spec) in section.items() {
             if _normalized_name(declared) == wanted
-            and isinstance(spec, str)
-            and spec.strip() {
+                and isinstance(spec, str)
+                and spec.strip() {
                 return (declared, spec.strip());
             }
         }

@@ -310,7 +310,8 @@ def route_visit(candidates: list, model: object) -> list {
         user_parts.append("\n".join([f"{k} = {v}" for (k, v) in incl_info.items()]));
     }
 
-    sys_txt = "You are routing a graph walker. Choose which candidate node(s) the " + "walker should visit next, by handle. Return only valid handles.";
+    sys_txt = "You are routing a graph walker. Choose which candidate node(s) the "
+        + "walker should visit next, by handle. Return only valid handles.";
     if select == 1 {
         sys_txt += " Choose exactly one.";
     } elif isinstance(select, int) and not isinstance(select, bool) {

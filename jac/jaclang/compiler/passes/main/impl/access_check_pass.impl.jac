@@ -87,7 +87,7 @@ impl AccessCheckPass._check_member(
         }
     } else {
         ok = (user is not None)
-        and ((user is owner) or self._is_subclass_of(user, owner));
+            and ((user is owner) or self._is_subclass_of(user, owner));
         if not ok {
             self._emit_pair(
                 W2035, E2035, use_node, name=sym.sym_name, owner=owner.name.value

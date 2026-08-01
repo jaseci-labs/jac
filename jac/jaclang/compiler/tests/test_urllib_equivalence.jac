@@ -2,7 +2,7 @@
 (issue #6978 Phase 1: the network tier; supersedes the original libcurl floor).
 
 `import from urllib.request { urlopen }` binds the bundled
-`na_stdlib/urllib/request.na.jac` module on the na backend -- now a pure-Jac
+`na_stdlib/urllib/request.jac` module on the na backend -- now a pure-Jac
 surface over the bundled `socket` + `ssl` modules (no libcurl), parsing the URL,
 opening the connection (TLS-wrapped for https), sending an HTTP/1.0 GET, draining
 the response, and following redirects. The sv reference is CPython's real
@@ -118,9 +118,8 @@ test "urllib.request.urlopen follows redirects over the libcurl floor (sv<->na)"
         assert _call_na_int(eng, "urlopen_redirect_status_na") == py["status"] , (
             "redirect status"
         );
-        assert _call_na_int(eng, "urlopen_redirect_body_length_na") == (
-            py["body_length"]
-        ) , "redirect body_length";
+        assert _call_na_int(eng, "urlopen_redirect_body_length_na")
+            == (py["body_length"]) , "redirect body_length";
     } finally {
         srv.shutdown();
         os.environ.pop("JAC_URLLIB_TEST_PORT", None);

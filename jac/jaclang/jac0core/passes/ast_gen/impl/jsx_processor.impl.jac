@@ -26,7 +26,7 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         dyn_expr: Expression = cast(
             'Expression',
             nd.dynamic_tag.gen.es_ast
-            or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd)
+                or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd)
         );
         tag = DynamicTag(expr=dyn_expr, jac_node=nd);
     } elif (nd.is_fragment or not nd.name) {
@@ -35,16 +35,16 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         parts = nd.name.parts or [];
         first_val = parts[0].value if parts else None;
         is_host = bool(parts)
-        and (len(parts) == 1)
-        and bool(first_val)
-        and not first_val[0].isupper();
+            and (len(parts) == 1)
+            and bool(first_val)
+            and not first_val[0].isupper();
         if is_host {
             tag = HostTag(name=first_val, jac_node=nd.name);
         } else {
             ref: Expression = cast(
                 'Expression',
                 nd.name.gen.es_ast
-                or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.name)
+                    or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.name)
             );
             tag = ComponentTag(ref=ref, jac_node=nd.name);
         }
@@ -56,9 +56,9 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
             spread_val: Expression = cast(
                 'Expression',
                 attr.gen.es_ast
-                or self.pass_ref.sync_loc(
-                    es.ObjectExpression(properties=[]), jac_node=attr
-                )
+                    or self.pass_ref.sync_loc(
+                        es.ObjectExpression(properties=[]), jac_node=attr
+                    )
             );
             attrs.append(SpreadAttr(value=spread_val, jac_node=attr));
         } elif isinstance(attr, uni.JsxNormalAttribute) {
@@ -340,12 +340,12 @@ impl EsJsxProcessor.normal_attribute(
         return StaticAttr(name=attr_name, value=value_expr, jac_node=nd);
     }
     value_expr = nd.value.gen.es_ast
-    or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.value);
+        or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.value);
     value_expr = cast('Expression', value_expr);
 
     is_event = attr_name.startswith('on')
-    and len(attr_name) > 2
-    and attr_name[2].isupper();
+        and len(attr_name) > 2
+        and attr_name[2].isupper();
     if is_event {
         return EventAttr(name=attr_name, handler=value_expr, jac_node=nd);
     }
@@ -430,7 +430,7 @@ impl PyJsxProcessor.element(
             c
             for c in nd.children
             if not isinstance(c, uni.JsxComment)
-            and not (isinstance(c, uni.JsxText) and not c.get_normalized_text())
+                and not (isinstance(c, uni.JsxText) and not c.get_normalized_text())
         ];
         children_arg = self.pass_ref.sync(
             ast3.List(

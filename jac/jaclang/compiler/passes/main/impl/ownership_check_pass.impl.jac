@@ -20,6 +20,34 @@ glob _MOVE_EXEMPT_CALLS: tuple = (
          "hex",
          "oct",
          "bin"
+     ),
+     _NONRETAINING_METHOD_CALLS: tuple = (
+         "find",
+         "rfind",
+         "index",
+         "count",
+         "startswith",
+         "endswith",
+         "upper",
+         "lower",
+         "strip",
+         "lstrip",
+         "rstrip",
+         "split",
+         "rsplit",
+         "splitlines",
+         "replace",
+         "join",
+         "get",
+         "write"
+     ),
+     _NONRETAINING_STDLIB_MODULES: tuple = (
+         "os",
+         "sys",
+         "time",
+         "math",
+         "random",
+         "struct"
      );
 
 impl OwnershipCheckPass.postinit -> None {
@@ -50,11 +78,11 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._stamp_region_borrows();
     self._nogc_setup();
     if not self.owned_decl
-    and not self.borrow_meta
-    and not self.imm_decl
-    and not self._has_region_blocks()
-    and not self.idx_concurrent
-    and self.nogc_prov is None {
+        and not self.borrow_meta
+        and not self.imm_decl
+        and not self._has_region_blocks()
+        and not self.idx_concurrent
+        and self.nogc_prov is None {
         return ir_in;
     }
 
@@ -245,19 +273,19 @@ impl OwnershipCheckPass._stamp_ownership -> None {
         borrow_target = self._borrow_target(nd);
         owner = self._borrow_source_owner(nd);
         if borrow_target is not None
-        and borrow_target.sym is not None
-        and owner is not None {
+            and borrow_target.sym is not None
+            and owner is not None {
             borrow_id = self._name_sym_id(borrow_target);
             owner_id = self._name_sym_id(owner);
             self.borrow_meta[borrow_id] = BorrowMeta(
                 name=borrow_target.sym_name,
                 owner=owner_id,
                 is_mut=is_mut_kind(borrow_target.sym.ownership)
-                or (
-                    is_mut_kind(nd.value.ownership)
-                        if isinstance(nd.value, uni.UnaryExpr)
-                        else False
-                )
+                    or (
+                        is_mut_kind(nd.value.ownership)
+                            if isinstance(nd.value, uni.UnaryExpr)
+                            else False
+                    )
             );
             self.borrow_created_at[borrow_id] = nd;
         }
@@ -317,7 +345,7 @@ impl OwnershipCheckPass._assign_kill_gen(
     }
     val_owned = self._owned_sym_of_expr(nd.value);
     if val_owned is not None
-    and (isinstance(nd.value, uni.Name) or not self._expr_scalar_typed(nd.value)) {
+        and (isinstance(nd.value, uni.Name) or not self._expr_scalar_typed(nd.value)) {
         gen.add(val_owned);
     }
     return (kill, gen);
@@ -336,6 +364,20 @@ impl OwnershipCheckPass._cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None) 
     return sub.find_parent_of_type(uni.UniCFGNode);
 }
 
+impl _stdlib_attr_call_root(call: uni.FuncCall) -> (str | None) {
+    if not isinstance(call.target, uni.AtomTrailer) {
+        return None;
+    }
+    _t = call.target.target;
+    while isinstance(_t, uni.AtomTrailer) {
+        _t = _t.target;
+    }
+    if isinstance(_t, uni.Name) {
+        return _t.value;
+    }
+    return None;
+}
+
 impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
     gen: set[SymId] = set();
     for call in nd.get_all_sub_nodes(uni.FuncCall) {
@@ -343,8 +385,23 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
             continue;
         }
         if isinstance(call.target, uni.Name)
-        and call.target.sym_name in _MOVE_EXEMPT_CALLS {
+            and call.target.sym_name in _MOVE_EXEMPT_CALLS {
             continue;
+        }
+        if isinstance(call.target, uni.AtomTrailer) {
+            if isinstance(call.target.right, uni.Name)
+                and call.target.right.value in _NONRETAINING_METHOD_CALLS {
+                continue;
+            }
+            _stdlib_root = _stdlib_attr_call_root(call);
+            if _stdlib_root is not None
+                and _stdlib_root in _NONRETAINING_STDLIB_MODULES {
+                continue;
+            }
+
+            if self._nogc_container_grow_method(call) is not None {
+                continue;
+            }
         }
         for param in self._call_params(call) {
             arg: uni.Expr | None = None;
@@ -592,8 +649,8 @@ impl OwnershipCheckPass._is_move_producing_use(nd: uni.Name) -> bool {
     if kind == AccessKind.CALL_ARG {
         _call = nd.find_parent_of_type(uni.FuncCall);
         if _call is not None
-        and isinstance(_call.target, uni.Name)
-        and _call.target.sym_name in _MOVE_EXEMPT_CALLS {
+            and isinstance(_call.target, uni.Name)
+            and _call.target.sym_name in _MOVE_EXEMPT_CALLS {
             return False;
         }
         return True;
@@ -603,8 +660,8 @@ impl OwnershipCheckPass._is_move_producing_use(nd: uni.Name) -> bool {
     }
     parent = nd.parent;
     if isinstance(parent, uni.Assignment)
-    and parent.aug_op is None
-    and parent.value is nd {
+        and parent.aug_op is None
+        and parent.value is nd {
         return True;
     }
     return False;
@@ -630,6 +687,17 @@ impl OwnershipCheckPass._owned_sym_of(nd: uni.UniNode | None) -> (SymId | None) 
 }
 
 impl OwnershipCheckPass._owned_sym_of_expr(nd: uni.Expr | None) -> (SymId | None) {
+    if isinstance(nd, uni.AtomTrailer) and isinstance(nd.right, uni.IndexSlice) {
+        _m = "";
+        try {
+            _m = nd.type.mangle() if nd.type is not None else "";
+        } except Exception {
+            _m = "";
+        }
+        if _m == "str" {
+            return None;
+        }
+    }
     cur = nd;
     while isinstance(cur, uni.AtomTrailer) {
         cur = cur.target;
@@ -844,7 +912,7 @@ impl OwnershipCheckPass._emit_move_while_borrowed(
             }
             for borrow_id in active {
                 if self._borrow_owner_of(borrow_id) == owner_id
-                and borrow_id not in self.e1304_borrow_ids {
+                    and borrow_id not in self.e1304_borrow_ids {
                     borrow_site = self.borrow_created_at.get(borrow_id);
                     borrow_name = self._borrow_display_name(borrow_id, "");
                     e1304_related = [
@@ -881,10 +949,10 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                     continue;
                 }
                 if nd.value
-                and isinstance(nd.value, uni.UnaryExpr)
-                and (
-                    is_mut_kind(nd.value.ownership) or self._borrow_is_mut_of(other)
-                ) {
+                    and isinstance(nd.value, uni.UnaryExpr)
+                    and (
+                        is_mut_kind(nd.value.ownership) or self._borrow_is_mut_of(other)
+                    ) {
                     other_site = self.borrow_created_at.get(other);
                     other_name = self._borrow_display_name(other, "");
                     e1302_related = [
@@ -909,7 +977,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                 borrow_name = self._borrow_display_name(borrow_id, "");
                 for use in self.name_uses_by_sym.get(borrow_id, []) {
                     if self._is_read_name(use)
-                    and not self._is_ancestor(owner_scope, use) {
+                        and not self._is_ancestor(owner_scope, use) {
                         e1304_related = [
                             (f"borrow of '{borrow_name}' created here", borrow_site)
                         ]

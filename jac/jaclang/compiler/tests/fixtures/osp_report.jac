@@ -11,7 +11,9 @@ Backend status: na and py agree. `report` lowers to the kernel's `osp_report`
 cross-backend assert is na vs py.
 """
 
-node N { has val: int; }
+node N {
+    has val: int;
+}
 
 walker Rep {
     can step with N entry {
@@ -21,29 +23,36 @@ walker Rep {
 }
 
 def report_py() -> dict[str, any] {
-    n1 = N(val=10); n2 = N(val=20); n3 = N(val=30);
-    n1 ++> n2; n2 ++> n3;
+    n1 = N(val=10);
+    n2 = N(val=20);
+    n3 = N(val=30);
+    n1 ++> n2;
+    n2 ++> n3;
     w = Rep();
     w spawn n1;
     return {"reports": w.reports};
 }
 
-na {
-    def report_na() -> dict[str, any] {
-        n1 = N(val=10); n2 = N(val=20); n3 = N(val=30);
-        n1 ++> n2; n2 ++> n3;
-        w = Rep();
-        w spawn n1;
-        return {"reports": w.reports};
-    }
+
+def report_na() -> dict[str, any] {
+    n1 = N(val=10);
+    n2 = N(val=20);
+    n3 = N(val=30);
+    n1 ++> n2;
+    n2 ++> n3;
+    w = Rep();
+    w spawn n1;
+    return {"reports": w.reports};
 }
 
-cl {
-    def report_cl() -> dict[str, any] {
-        n1 = N(val=10); n2 = N(val=20); n3 = N(val=30);
-        n1 ++> n2; n2 ++> n3;
-        w = Rep();
-        w spawn n1;
-        return {"reports": w.reports};
-    }
+
+def report_cl() -> dict[str, any] {
+    n1 = N(val=10);
+    n2 = N(val=20);
+    n3 = N(val=30);
+    n1 ++> n2;
+    n2 ++> n3;
+    w = Rep();
+    w spawn n1;
+    return {"reports": w.reports};
 }

@@ -3,7 +3,7 @@ name: jac-cl-styling
 description: Styling patterns in Jac - Tailwind v4 setup from scratch, conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when adding Tailwind to a project or writing dynamic, theme-aware, or component-scoped styles.
 ---
 
-Everything here applies to any client code - plain `.jac` components inferred client from their JSX/npm imports (markers are optional overrides; see `jac-codespaces`).
+Everything here applies to any client code - plain `.jac` components inferred client from their JSX/npm imports (see `jac-codespaces`).
 
 ## Tailwind v4 setup (non-shadcn projects)
 
@@ -45,9 +45,9 @@ class and rewrites the matching `className` literals to agree.
 ```jac
 # Card.jac
 def:pub Card(title: str) -> JsxElement {
-    return <div className="card">
+    <div className="card">
         <h2 className="card-title">{title}</h2>
-    </div>;
+    </div>
 }
 ```
 
@@ -79,7 +79,7 @@ Ternary is Python-style (`A if cond else B`). String concatenation for dynamic c
 ```jac
 def:pub TabButton(active: bool, children: any = None) -> JsxElement {
     tab_cls = "border-primary text-foreground" if active else "border-transparent text-muted-foreground";
-    return <button className={"px-2.5 py-1.5 border-b-2 " + tab_cls}>{children}</button>;
+    <button className={"px-2.5 py-1.5 border-b-2 " + tab_cls}>{children}</button>
 }
 ```
 

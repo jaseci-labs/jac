@@ -19,7 +19,10 @@ import re;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
-import from jaclang.runtimelib.client.route_scanner { RouteScanner }
+import from jaclang.runtimelib.client.route_scanner {
+    RouteScanner,
+    describe_pages_without_routes
+}
 
 
 """Write `body` to `base/rel`, creating parent directories."""
@@ -195,6 +198,129 @@ test "dynamic index and catch-all urls still derive from the filename" {
         paths = _route_paths(scanner);
         assert paths == {"/", "/users", "/users/:id", "/*"} , (
             f"file-derived route paths regressed; got {paths}"
+        );
+    }
+}
+
+
+"""A page and a layout whose paths sanitize to the same JS identifier are a
+build error - caught across routes and layouts, keyed on the return type."""
+test "a page and a layout that sanitize to the same identifier raise ClientBundleError" {
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(
+            proj,
+            "pages/admin-layout.jac",
+            "def:pub View() -> JsxPage { return <div>admin</div>; }",
+        );
+        _write(
+            proj,
+            "pages/admin/layout.jac",
+            "def:pub Shell() -> JsxLayout { return <Outlet />; }",
+        );
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
+        raised = False;
+        try {
+            scanner.scan();
+        } except ClientBundleError as err {
+            raised = True;
+            assert "PagesAdminLayout" in str(err);
+        }
+        assert raised , "expected a ClientBundleError on page/layout identifier collision";
+    }
+}
+
+
+"""A pages/ tree with modules but zero recognized routes is a silent blank
+page unless the compiler says something. The diagnostic names the outcome,
+the rule, and every file that looks like the retired name-based convention
+(a route-named export returning JsxElement instead of JsxPage/JsxLayout)."""
+test "zero-route pages tree yields a diagnostic with a legacy hint" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(
+            proj,
+            "pages/index.jac",
+            "def:pub page() -> JsxElement { return <div>old</div>; }",
+        );
+        _write(
+            proj,
+            "pages/layout.jac",
+            "def:pub layout() -> JsxElement { return <Outlet />; }",
+        );
+        lines = describe_pages_without_routes(proj / "pages");
+        assert lines , "zero routes must not be silent";
+        joined = "\n".join(lines);
+        assert "blank page" in joined , "headline must say what the user will see";
+        assert "JsxPage" in joined , "hint must name the page fix";
+        assert "JsxLayout" in joined , "hint must name the layout fix";
+        assert "index.jac" in joined , "hint must name the offending page file";
+        assert "layout.jac" in joined , "hint must name the offending layout file";
+    }
+}
+
+
+"""No candidates, no noise: an empty pages/ tree stays quiet."""
+test "empty pages tree yields no diagnostic" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        (proj / "pages").mkdir(parents=True);
+        assert describe_pages_without_routes(proj / "pages") == [];
+    }
+}
+
+
+"""Sidecar annexes are module roles, not route candidates, so they neither
+trigger the headline nor appear in the hints."""
+test "sidecar annexes do not trigger the zero-route diagnostic" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(
+            proj, "pages/budget.impl.jac", "impl budget.view { return <div>x</div>; }",
+        );
+        _write(proj, "pages/budget.test.jac", "test \"t\" { assert True; }");
+        assert describe_pages_without_routes(proj / "pages") == [];
+    }
+}
+
+
+"""Modules that are not legacy-shaped still get the headline (the tree has
+candidates and no routes) without per-file hints."""
+test "non-legacy zero-route tree gets the headline only" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(proj, "pages/util.jac", "def helper() -> int { return 1; }",);
+        lines = describe_pages_without_routes(proj / "pages");
+        assert lines , "candidate modules with zero routes must warn";
+        joined = "\n".join(lines);
+        assert "blank page" in joined;
+        assert "util.jac" not in joined , "non-legacy modules are not called out";
+    }
+}
+
+
+"""A dynamic [id] DIRECTORY translates to a `:id` URL segment exactly like a
+dynamic file stem does - react-router treats a literal "[id]" path segment as
+plain text, so an untranslated directory produces a route no URL can ever
+match (the page renders blank with no error)."""
+test "dynamic directory segment translates to a path parameter" {
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        _write(
+            proj,
+            "pages/videos/[id]/index.jac",
+            "def:pub VideoDetail() -> JsxPage { return <div>v</div>; }",
+        );
+        _write(
+            proj,
+            "pages/videos/[id]/edit.jac",
+            "def:pub VideoEdit() -> JsxPage { return <div>e</div>; }",
+        );
+        scanner = RouteScanner(proj, route_exports_of=_route_exports_from_source);
+        paths = _route_paths(scanner);
+        assert paths == {"/videos/:id", "/videos/:id/edit"} , (
+            f"dynamic directory must emit ':id', not a literal '[id]'; got {paths}"
         );
     }
 }

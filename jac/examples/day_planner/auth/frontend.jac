@@ -42,5 +42,5 @@ def:pub app -> JsxElement {
             </div>;
     }
 
-    return <AuthForm onAuth={handleAuth}/>;
+    <AuthForm onAuth={handleAuth}/>
 }

@@ -11,7 +11,7 @@ impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) 
             return current_port;
         } except OSError as e {
             if e.errno in (ERRNO_ADDR_IN_USE_LINUX, ERRNO_ADDR_IN_USE_WINDOWS)
-            or "Address already in use" in str(e) {
+                or "Address already in use" in str(e) {
                 current_port += 1;
             } else {
                 raise;
@@ -64,9 +64,9 @@ impl JacAPIServerCore.postinit -> None {
     config = JacConfig.discover(start_path);
     custom_headers: dict = {};
     if config
-    and config.environments
-    and "response" in config.environments
-    and "headers" in config.environments["response"] {
+        and config.environments
+        and "response" in config.environments
+        and "headers" in config.environments["response"] {
         custom_headers = config.environments["response"]["headers"];
     }
     if custom_headers {
@@ -696,7 +696,7 @@ impl JacAPIServerCore._create_admin_metrics_handler(
                     decoded = base64.b64decode(authorization[6:]).decode('utf-8');
                     parts = decoded.split(':', 1);
                     authed = parts[0] == admin_username
-                    and parts[1] == prometheus_password;
+                        and parts[1] == prometheus_password;
                 } except Exception {
                     authed = False;
                 }

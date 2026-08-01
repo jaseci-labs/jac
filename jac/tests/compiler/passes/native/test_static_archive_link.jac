@@ -82,9 +82,15 @@ def _inject_macho(ir_txt: str) -> str {
     globals_ir = ""
         if "__jac_argc" in ir_txt
         else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    return ir_txt + (
-        "\n; --- injected entry point ---\n" + globals_ir + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n"
-    );
+    return ir_txt
+        + (
+            "\n; --- injected entry point ---\n"
+            + globals_ir
+            + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n"
+            + "    store i32 %argc, ptr @__jac_argc\n"
+            + "    store ptr %argv, ptr @__jac_argv\n"
+            + "    call void @jac_entry()\n    ret i32 0\n}\n"
+        );
 }
 
 
@@ -123,7 +129,7 @@ test "Mach-O: static-link lzma_crc32 from liblzma.a, run, verify (#6978 0.1a)" {
     member_bytes = [m.data for m in members];
 
     relobj = _emit_object(
-        _inject_macho(_compile_ir("static_archive_crc32.na.jac", triple)), triple
+        _inject_macho(_compile_ir("static_archive_crc32.jac", triple)), triple
     );
     d = tempfile.mkdtemp();
     out = os.path.join(d, "crc32_static");
@@ -162,7 +168,7 @@ test "Mach-O: static-link XML_ExpatVersion from libexpat.a (multi-member) (#6978
     member_bytes = [m.data for m in members];
 
     relobj = _emit_object(
-        _inject_macho(_compile_ir("static_archive_expat.na.jac", triple)), triple
+        _inject_macho(_compile_ir("static_archive_expat.jac", triple)), triple
     );
     d = tempfile.mkdtemp();
     out = os.path.join(d, "expat_static");
@@ -192,7 +198,7 @@ test "nacompile CLI: `import from lzma` static-links the floor, no dylib dep (#6
     if _find_bundled("liblzma.a") is None {
         return;
     }
-    fixture = os.path.join(FIXTURES, "static_archive_crc32.na.jac");
+    fixture = os.path.join(FIXTURES, "static_archive_crc32.jac");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "crc32_cli");
     comp = subprocess.run(
@@ -224,14 +230,15 @@ test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 
     # Execution stays gated to a Linux x86_64 host that can run the result.
     triple = "x86_64-unknown-linux-gnu";
     main_obj = _emit_object(
-        _inject_elf(_compile_ir("static_archive_elf_leaf.na.jac", triple)), triple
+        _inject_elf(_compile_ir("static_archive_elf_leaf.jac", triple)), triple
     );
     # The archive member as a raw relocatable object -- the same shape
     # select_ar_members hands back as `.data`: a leaf defining the extern the
     # main object calls. Emitted from IR so the test needs no checked-in binary
     # and no host C toolchain, and stays cross-host (Mach-O `ar` cannot build an
     # ELF member's symbol index, so a real archive can't be assembled on macOS).
-    member_ir = f'target triple = "{triple}"\n\n' + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
+    member_ir = f'target triple = "{triple}"\n\n'
+        + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
     member_obj = _emit_object(member_ir, triple);
 
     d = tempfile.mkdtemp();

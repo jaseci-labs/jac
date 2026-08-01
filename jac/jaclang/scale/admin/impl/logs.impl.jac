@@ -89,9 +89,8 @@ def _service_to_pod_regex(service: str) -> str {
 def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
     try {
         ns = int(ts_nanos);
-        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000)) + f".{(
-            ns % 1_000_000_000
-        ):09d}Z";
+        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000))
+            + f".{(ns % 1_000_000_000):09d}Z";
     } except (ValueError, TypeError) {
         ts_iso = "";
     }

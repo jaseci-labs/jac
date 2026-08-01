@@ -6,7 +6,7 @@ HTTP client stubs so calls to check_stock, reserve_stock, etc.
 go over the network rather than being in-process.
 """
 
-sv import from inventory_service {
+import from inventory_service {
     check_stock,
     reserve_stock,
     get_price,

@@ -17,9 +17,15 @@ impl JacAccessValidation._check_access(
     granted = actual.value > min_level.value;
     if not granted {
         logger.info(
-            "Current root doesn't have " + operation + " access to " + to.__class__.__name__ + " " + to.archetype.__class__.__name__ + "[" + str(
-                to.id
-            ) + "]"
+            "Current root doesn't have "
+                + operation
+                + " access to "
+                + to.__class__.__name__
+                + " "
+                + to.archetype.__class__.__name__
+                + "["
+                + str(to.id)
+                + "]"
         );
         if operation != "read" {
             required = AccessLevel(min_level.value + 1);
@@ -350,9 +356,12 @@ impl JacWalker.`visit(
     `walker: WalkerArchetype,
     expr:
         (
-            list[(NodeArchetype | EdgeArchetype)] | list[NodeArchetype] | list[
-                EdgeArchetype
-            ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
+            list[(NodeArchetype | EdgeArchetype)]
+            | list[NodeArchetype]
+            | list[EdgeArchetype]
+            | NodeArchetype
+            | EdgeArchetype
+            | ObjectSpatialPath
         ),
     insert_loc: int = -1
 ) -> bool {
@@ -530,9 +539,8 @@ impl JacBuiltin.printgraph(
     for (source, target, `edge) in connections {
         edge_label = html.escape(str(`edge.__jac__.archetype));
         dot_content += (
-            f"{visited_nodes.index(source)} -> {visited_nodes.index(target)} " + f' [label="{edge_label
-                if "GenericEdge" not in edge_label
-                else ""}"];\n'
+            f"{visited_nodes.index(source)} -> {visited_nodes.index(target)} "
+            + f'[label="{edge_label if "GenericEdge" not in edge_label else ""}"];\n'
         );
         if (('GenericEdge' in edge_label) or not edge_label.strip()) {
             mermaid_content += (
@@ -712,7 +720,7 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
     cls._jac_entry_funcs_ = [*entries.values()];
     cls._jac_exit_funcs_ = [*exits.values()];
     if issubclass(cls, WalkerArchetype)
-    and 'reports' not in cls.__dict__.get('__annotations__', {}) {
+        and 'reports' not in cls.__dict__.get('__annotations__', {}) {
         if not hasattr(cls, '__annotations__') {
             cls.__annotations__ = {};
         }
@@ -1335,8 +1343,13 @@ impl JacPersistence.destroy(
         if JacRuntimeInterface.check_write_access(anchor, op_hint="delete") {
             match anchor {
                 case NodeAnchor():
+                    import from jaclang.runtimelib.topo_utils { on_edge_destroyed }
                     for `edge in anchor.edges[:] {
-                        JacRuntimeInterface.destroy([`edge]);
+                        if `edge.is_populated() {
+                            on_edge_destroyed(`edge.source, `edge.target, `edge);
+                        }
+                        `edge.detach();
+                        JacRuntimeInterface.get_context().mem.delete(`edge.id);
                     }
 
                 case EdgeAnchor():
@@ -1753,7 +1766,7 @@ impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
 
     lhs_list = lhs if isinstance(lhs, list) else [lhs];
     if all(isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list)
-    and isinstance(rhs, BaseLLM) {
+        and isinstance(rhs, BaseLLM) {
         import from jaclang.byllm.visit_routing { route_visit }
         return route_visit(lhs_list, rhs);
     }

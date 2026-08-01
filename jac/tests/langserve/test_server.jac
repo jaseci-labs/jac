@@ -27,7 +27,7 @@ def _clear_jac_modules {
         k
         for k in list(sys.modules.keys())
         if not k.startswith(("jaclang", "test", "_"))
-        and hasattr(sys.modules.get(k), "__jac_mod__")
+            and hasattr(sys.modules.get(k), "__jac_mod__")
     ];
     for mod_name in jac_modules_to_clear {
         sys.modules.pop(mod_name, None);
@@ -97,18 +97,14 @@ test "test_impl_stay_connected" {
         lsp.type_check_file(circle_file);
         pos = lspt.Position(20, 8);
         assert (
-            "Circle class inherits from Shape." in lsp.get_hover_info(
-                circle_file, pos
-            ).contents.value
+            "Circle class inherits from Shape."
+            in lsp.get_hover_info(circle_file, pos).contents.value
         );
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
         assert (
-            "ability) calculate_area\n( radius : float ) -> float" in lsp.get_hover_info(
-                circle_impl_file, pos
-            ).contents.value.replace(
-                "'", ""
-            )
+            "ability) calculate_area\n( radius : float ) -> float"
+            in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
         );
     } finally {
         teardown_test();
@@ -123,11 +119,8 @@ test "test_impl_auto_discover" {
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
         assert (
-            "(public ability) calculate_area\n( radius : float ) -> float" in lsp.get_hover_info(
-                circle_impl_file, pos
-            ).contents.value.replace(
-                "'", ""
-            )
+            "(public ability) calculate_area\n( radius : float ) -> float"
+            in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
         );
     } finally {
         teardown_test();
@@ -152,33 +145,27 @@ test "test_go_to_definition" {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"));
         lsp.type_check_file(circle_file);
-        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(
-            lsp.get_definition(circle_file, lspt.Position(9, 16))
-        );
-        assert "fixtures/circle_pure.jac:13:9-13:14" in str(
-            lsp.get_definition(circle_file, lspt.Position(20, 16))
-        );
+        assert "fixtures/circle_pure.impl.jac:8:5-8:19"
+            in str(lsp.get_definition(circle_file, lspt.Position(9, 16)));
+        assert "fixtures/circle_pure.jac:13:9-13:14"
+            in str(lsp.get_definition(circle_file, lspt.Position(20, 16)));
 
         goto_defs_file = uris.from_fs_path(fixture_path("goto_def_tests.jac"));
         lsp.type_check_file(goto_defs_file);
 
         # Test if the visitor keyword goes to the walker definition
-        assert "fixtures/goto_def_tests.jac:8:7-8:17" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(4, 14))
-        );
+        assert "fixtures/goto_def_tests.jac:8:7-8:17"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(4, 14)));
         # Test if the here keyword goes to the node definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(10, 14))
-        );
+        assert "fixtures/goto_def_tests.jac:0:5-0:13"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(10, 14)));
         # Test the SomeNode node inside the visit statement goes to its definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(11, 21))
-        );
+        assert "fixtures/goto_def_tests.jac:0:5-0:13"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(11, 21)));
 
         # Test when the left of assignment is a list.
-        assert "fixtures/goto_def_tests.jac:16:5-16:8" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(17, 10))
-        );
+        assert "fixtures/goto_def_tests.jac:16:5-16:8"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(17, 10)));
 
         # Test go-to-definition for self-member assigned in impl file.
         # t2.program (line 25) should go to 'has program' declaration (line 12).
@@ -246,9 +233,8 @@ test "test_go_to_definition_method_manual_impl" {
         );
         lsp.type_check_file(decldef_main_file);
         lsp.type_check_file(decldef_file);
-        assert "decl_defs_main.jac:7:8-7:17" in str(
-            lsp.get_definition(decldef_file, lspt.Position(2, 20))
-        );
+        assert "decl_defs_main.jac:7:8-7:17"
+            in str(lsp.get_definition(decldef_file, lspt.Position(2, 20)));
     } finally {
         teardown_test();
     }
@@ -267,7 +253,10 @@ test "test_go_to_definition_md_path" {
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jaclang/__init__.py:17:"),
+            # jaclang/__init__.py now exposes JacRuntimeInterface lazily via
+            # PEP 562 __getattr__ (no static import binding), so go-to-def
+            # resolves to the module file at 0:0-0:0 instead of a line.
+            (10, 34, "jaclang/__init__.py:0:0-0:0"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
             (11, 47, "jaclang/jac0core/constant.jac:2:5-2:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
@@ -296,14 +285,14 @@ test "test_go_to_definition_jsx_component" {
     setup_test();
     try {
         lsp = create_server();
-        jsx_file = uris.from_fs_path(fixture_path("jsx_goto_def.cl.jac"));
+        jsx_file = uris.from_fs_path(fixture_path("jsx_goto_def.jac"));
         lsp.type_check_file(jsx_file);
-        # Cursor inside the <MyButton ...> tag name on line 11 (0-indexed 10).
+        # Cursor inside the <MyButton ...> tag name on line 12 (0-indexed 11).
         # `        <MyButton ...` -- 'M' is at column 9, so col 12 lands on 'u'.
-        result = str(lsp.get_definition(jsx_file, lspt.Position(10, 12)));
-        # Expect to land on the MyButton function declaration on line 3
-        # (0-indexed 2): `def MyButton(...` -- 'MyButton' spans cols 4-12.
-        assert "jsx_goto_def.cl.jac:2:4-2:12" in result , f"Unexpected go-to-def result for JSX tag: {result}";
+        result = str(lsp.get_definition(jsx_file, lspt.Position(11, 12)));
+        # Expect to land on the MyButton function declaration on line 4
+        # (0-indexed 3): `def MyButton(...` -- 'MyButton' spans cols 4-12.
+        assert "jsx_goto_def.jac:3:4-3:12" in result , f"Unexpected go-to-def result for JSX tag: {result}";
     } finally {
         teardown_test();
     }
@@ -334,9 +323,10 @@ test "test_go_to_definition_connect_filter" {
         ];
 
         for (line, char, expected) in positions {
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
-            );
+            assert expected
+                in str(
+                    lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+                );
         }
     } finally {
         teardown_test();
@@ -356,9 +346,10 @@ test "test_go_to_definition_atom_trailer" {
         ];
 
         for (line, char, expected) in positions {
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
-            );
+            assert expected
+                in str(
+                    lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+                );
         }
     } finally {
         teardown_test();
@@ -614,9 +605,12 @@ test "test_go_to_def_import_star" {
         ];
 
         for (line, char, expected) in positions {
-            assert expected in str(
-                lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
-            );
+            assert expected
+                in str(
+                    lsp.get_definition(
+                        import_star_file, lspt.Position(line - 1, char - 1)
+                    )
+                );
         }
     } finally {
         teardown_test();
@@ -1118,8 +1112,10 @@ test "test_namedtuple_hover" {
         # Run all hover tests
         for (line, col, name, expected_type) in hover_tests {
             hover = lsp.get_hover_info(namedtuple_file, lspt.Position(line, col));
-            assert hover is not None , f"Hover for '{name}' at line {line + 1} should exist";
-            assert expected_type in hover.contents.value , f"'{name}' at line {line + 1}: expected '{expected_type}', got: {hover.contents.value}";
+            assert hover is not None , f"Hover for '{name}' at line {line
+                + 1} should exist";
+            assert expected_type in hover.contents.value , f"'{name}' at line {line
+                + 1}: expected '{expected_type}', got: {hover.contents.value}";
         }
     } finally {
         teardown_test();

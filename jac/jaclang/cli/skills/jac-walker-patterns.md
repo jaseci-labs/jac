@@ -1,6 +1,6 @@
 ---
 name: jac-walker-patterns
-description: Writing walkers that traverse the graph - the core of Object-Spatial Programming (OSP) in Jac. Entry points, visit/report, spawn results, disengage/skip, exit abilities, get-or-create `visit ... else`, lookup-base walker inheritance, walker API responses. Load when creating, editing, or debugging walker traversal or OSP code. Pair with `jac-node-edge-patterns` (the graph shape the walker moves through).
+description: Writing walkers that traverse the graph - the core of Object-Spatial Programming (OSP) in Jac. Entry points, visit/report, spawn results, disengage/skip, exit abilities, get-or-create `visit ... else`, lookup-base walker inheritance, walker API responses, when NOT to use a walker (no visit = def:pub function). Load when creating, editing, or debugging walker traversal or OSP code. Pair with `jac-node-edge-patterns` (the graph shape the walker moves through).
 ---
 
 A walker is a mobile procedure that enters nodes and runs type-matched entry points. Walker state lives on the walker via `has`; traversal is driven by `visit`; results come back via `report`. Entry points can live on **both** sides - the walker reacts to nodes it enters, and nodes can react to arriving walkers.
@@ -83,6 +83,9 @@ walker log_visit {
 Re-running is idempotent: the second run's `visit` finds the existing `Day`, so the `else` never fires (verified: two runs, one `Day` total).
 
 - Default queueing appends, so traversal is breadth-first. `visit :0: [-->];` inserts at the queue front - depth-first.
+- **`visit` snapshots its reference eagerly.** The edge reference is evaluated at the `visit` line; nodes you attach later in the same ability are NOT in that queue. This is a feature: `visit [-->];` then create replacement children, and a `del here` cleanup ability retires only the OLD ones - the fresh nodes, attached after the snapshot, survive (the day_planner regenerate-list pattern). It is also a trap: attach-then-visit needs the `visit` AFTER the connect.
+- **One reference dedups; separate visits don't.** A single multi-hop reference returns each destination once (diamond `[--> -->]` = one arrival), but two nodes each running `visit [-->]` toward a shared child enqueue it twice (verified: diamond with per-node visits arrives twice at the bottom). On graphs with multiple in-paths, guard: `if here.seen { skip; } here.seen = True;` or a `set` of `jid`s on the walker.
+- **To run edge abilities, visit the edges.** `visit [edge -->];` fires each edge's `can ... with W entry` and then continues to the target node automatically; plain `visit [-->]` crosses edges without waking them (see `jac-node-edge-patterns` for the edge side).
 - Typed context blocks dispatch on the runtime node type inside one ability: `->Dog{ print(here.name); }`. Union entries match several node types: `can checkup with Dog | Cat entry { ... }`.
 - Walkers inherit: `walker Sub(Base)` reuses the base's `has` fields and abilities (`override can log with Root entry { ... }` replaces a base ability for the same node type). The high-leverage form is the **lookup-base pattern**: a base walker resolves the target node once (jid string -> `jobj` -> type guard -> `visit`), and each action walker subclasses it with a single entry ability - littleX shares 3 lookup bases across 10 action walkers this way:
 
@@ -116,6 +119,7 @@ walker like_tweet(find_tweet) {       # inherits target_id + locate
 
 ## Pitfalls
 
+- **A walker that never `visit`s should be a `def:pub` function.** If the whole walker is one `can run with Root entry { ... report X; }`, that's RPC in walker costume: convert it - parameters replace the `has` fields, a typed `return` replaces `report`, callers drop the `result.reports[0]` unwrap, and `root` binds the same in both shapes. Walkers earn their keep by walking. Shape rule and trade-offs: `jac-sv-endpoints`.
 - `Root` in type annotations, bare `root` as a value. The call form `root()` was removed - it is a hard error (E0049). Always write `root`, `root ++> node`, `[root -->]`.
 - **`visit` is a statement, not a method.** `visit [-->]` queues the *nodes* reachable over outgoing edges (`[edge -->]` is the form that yields edge objects); `visit (node_expr)` queues one specific node. Variants: `[<--]` incoming, `[->:EdgeType:->]` typed - single arrows; `[-->:EdgeType:]` is a parse error. Do NOT write `self.visit(...)` - a walker has no `visit` attribute (fails E1030).
 - Walkers don't `return` - they `report X;` (appears in `result.reports`) or `disengage;`.
@@ -127,3 +131,5 @@ walker like_tweet(find_tweet) {       # inherits target_id + locate
 - **The node you spawn on - and every node you then visit - runs its matching entry, *including the origin*.** `some_node spawn W()` fires `W`'s `with <Type> entry` on `some_node` itself before any `visit`. This causes a classic **off-by-one** when counting or collecting. Fix: spawn on `root` and `visit [-->]` to reach the children you actually mean, or guard the origin inside the entry.
 
 Related guides: `jac-node-edge-patterns` (graph shape, filtering, deletion), `jac-testing` (per-test root isolation), `jac-debugging` (stale-cache and NodeAnchor triage), `jac-concurrency` (async walkers), `jac-sv-endpoints` (walkers as API endpoints).
+
+Deep dive bundled with the CLI: `jac guide reference/language/osp` (full Object-Spatial semantics).

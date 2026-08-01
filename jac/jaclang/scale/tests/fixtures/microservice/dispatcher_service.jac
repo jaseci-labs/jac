@@ -8,7 +8,7 @@ POST to `/walker/Greet` on the provider, and the rehydrated walker
 flows back with its `reports` populated.
 """
 
-sv import from notify_service { Greet, Notify, NotifyResult }
+import from notify_service { Greet, Notify, NotifyResult }
 
 walker:pub TriggerGreet {
     has who: str;

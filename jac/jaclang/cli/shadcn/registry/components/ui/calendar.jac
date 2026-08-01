@@ -16,13 +16,12 @@ def CalendarChevron(props: any) -> JsxElement {
     } elif ori == "right" {
         icon = ArrowRightIcon;
     }
-    return
-        <HugeiconsIcon
-            icon={icon}
-            {**props}
-            className={cn("cn-rtl-flip size-4", props["className"])}
-            size={16}
-        />;
+    <HugeiconsIcon
+        icon={icon}
+        {**props}
+        className={cn("cn-rtl-flip size-4", props["className"])}
+        size={16}
+    />
 }
 
 def CalendarDayButton(props: any) -> JsxElement {
@@ -35,49 +34,46 @@ def CalendarDayButton(props: any) -> JsxElement {
         dateStr = str(day.date.toISOString().split("T")[0]);
     }
     isSelectedSingle = mm
-    and mm.selected
-    and not mm.range_start
-    and not mm.range_end
-    and not mm.range_middle;
-    return
-        <Button
-            {**props}
-            variant="ghost"
-            size="icon"
-            data-day={dateStr}
-            data-selected-single={isSelectedSingle}
-            data-range-start={mm.range_start if mm else False}
-            data-range-end={mm.range_end if mm else False}
-            data-range-middle={mm.range_middle if mm else False}
-            className={cn(
-                "cn-calendar-day-button data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-muted data-[range-middle=true]:text-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal",
-                defaultClassNames2.day,
-                props["className"]
-            )}
-        />;
+        and mm.selected
+        and not mm.range_start
+        and not mm.range_end
+        and not mm.range_middle;
+    <Button
+        {**props}
+        variant="ghost"
+        size="icon"
+        data-day={dateStr}
+        data-selected-single={isSelectedSingle}
+        data-range-start={mm.range_start if mm else False}
+        data-range-end={mm.range_end if mm else False}
+        data-range-middle={mm.range_middle if mm else False}
+        className={cn(
+            "cn-calendar-day-button data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-muted data-[range-middle=true]:text-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal",
+            defaultClassNames2.day,
+            props["className"]
+        )}
+    />
 }
 
 def CalendarWeekNumber(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <td {**attrs}>
-            <div
-                className="flex size-(--cell-size) items-center justify-center text-center"
-            >
-                {props["children"]}
-            </div>
-        </td>;
+    <td {**attrs}>
+        <div
+            className="flex size-(--cell-size) items-center justify-center text-center"
+        >
+            {props["children"]}
+        </div>
+    </td>
 }
 
 def CalendarRoot(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
-    return
-        <div
-            data-slot="calendar"
-            ref={props["rootRef"]}
-            {**attrs}
-            className={cn(props["className"])}
-        />;
+    <div
+        data-slot="calendar"
+        ref={props["rootRef"]}
+        {**attrs}
+        className={cn(props["className"])}
+    />
 }
 
 def:pub Calendar(props: any) -> JsxElement {
@@ -137,24 +133,22 @@ def:pub Calendar(props: any) -> JsxElement {
         disabled: cn("text-muted-foreground opacity-50", defaultClassNames.disabled),
         hidden: cn("invisible", defaultClassNames.hidden)
     };
-    dayButtonFn = lambda (p: any) -> any { return
-        <CalendarDayButton locale={locale} {**p}/>; };
+    dayButtonFn = lambda (p: any) -> any { <CalendarDayButton locale={locale} {**p}/> };
     calendarComponents = {
         Root: CalendarRoot,
         Chevron: CalendarChevron,
         DayButton: dayButtonFn,
         WeekNumber: CalendarWeekNumber
     };
-    return
-        <DayPicker
-            showOutsideDays={showOutsideDays}
-            {**props}
-            className={cn(
-                "cn-calendar bg-background group/calendar in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
-                props["className"]
-            )}
-            captionLayout={captionLayout}
-            classNames={dayPickerClassNames}
-            components={calendarComponents}
-        />;
+    <DayPicker
+        showOutsideDays={showOutsideDays}
+        {**props}
+        className={cn(
+            "cn-calendar bg-background group/calendar in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+            props["className"]
+        )}
+        captionLayout={captionLayout}
+        classNames={dayPickerClassNames}
+        components={calendarComponents}
+    />
 }

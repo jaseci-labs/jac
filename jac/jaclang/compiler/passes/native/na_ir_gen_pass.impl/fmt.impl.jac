@@ -22,12 +22,24 @@ def _load_native_fmt_kernel_module -> (uni.Module | None) {
     import from jaclang.jac0core.program { JacProgram }
     _core = os.path.join(os.path.dirname(jaclang.__file__), "jac0core");
     tmp_dir = tempfile.mkdtemp();
-    na_copy = os.path.join(tmp_dir, "fmt_kernel.na.jac");
+    na_copy = os.path.join(tmp_dir, "fmt_kernel.jac");
     mod = None;
     try {
+        import from jaclang.jac0core.compile_options { CompileOptions as _KernelOpts }
         _write_native_fmt_source(_core, na_copy);
         prog = JacProgram();
-        mod = prog.compile(na_copy, no_cgen=True, symtab_ir_only=True);
+        mod = prog.compile(
+            na_copy,
+            options=_KernelOpts(
+                no_cgen=True,
+                symtab_ir_only=True,
+                aot_mode=True,
+                type_check=False,
+                default_codespace='native',
+                force_codespace='native',
+                force_target_program=True
+            )
+        );
     } except Exception {
         mod = None;
     } finally {
@@ -52,7 +64,7 @@ impl NaIRGenPass._ensure_fmt_kernel -> bool {
 
     _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
     if (_manifest is not None)
-    and ("fmt_kernel" not in _manifest.native_transitive_sources) {
+        and ("fmt_kernel" not in _manifest.native_transitive_sources) {
         _manifest.native_transitive_sources.append("fmt_kernel");
     }
     return True;

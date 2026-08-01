@@ -5,7 +5,7 @@ These tests require a client-side test framework (e.g., Jest, Vitest) to execute
 
 ## Test Cases
 
-### utils/api.cl.jac - getErrorMessage
+### utils/api.jac - getErrorMessage
 
 **Happy Path:**
 
@@ -37,7 +37,7 @@ These tests require a client-side test framework (e.g., Jest, Vitest) to execute
   - Input: `{}`
   - Expected: `"An error occurred"`
 
-### constants/users.cl.jac - ROLE_OPTIONS
+### constants/users.jac - ROLE_OPTIONS
 
 **Verification:**
 
@@ -45,14 +45,14 @@ These tests require a client-side test framework (e.g., Jest, Vitest) to execute
 - Each role has both `value` and `label` keys
 - Values are lowercase, labels are capitalized
 
-### AlertContext.cl.jac
+### AlertContext.jac
 
 **Verification:**
 
 - ALERT_DISMISS_MS is 3000 (milliseconds)
 - Alert auto-dismisses after ALERT_DISMISS_MS
 
-### ResetPage.cl.jac
+### ResetPage.jac
 
 **Verification:**
 
@@ -60,7 +60,7 @@ These tests require a client-side test framework (e.g., Jest, Vitest) to execute
 - Password validation rejects strings shorter than 8 characters
 - Password validation accepts strings of 8+ characters
 
-### DashboardLayout.cl.jac - PAGE_ROUTES
+### DashboardLayout.jac - PAGE_ROUTES
 
 **Verification:**
 

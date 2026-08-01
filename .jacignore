@@ -1,290 +1,144 @@
-cfg_build_pass.jac
-client_runtime.cl.jac
-codeinfo.jac
-compiler.jac
-config.impl.jac
-jac/jaclang/cli/commands/config.jac
-jac/jaclang/project/config.jac
-console.jac
-constant.jac
-decl_impl_match_pass.jac
-dependencies.jac
-dep_registry.jac
-diagnostics.impl.jac
-doc_ir_gen_pass.jac
-elf_linker.impl.jac
-elf_linker.jac
-engine.jac
-enum_utils.impl.jac
-enum_utils.jac
-esast_gen_pass.jac
-es_unparse.impl.jac
-es_unparse.jac
-execution.impl.jac
-execution.jac
-executor.jac
-grammar_extract_pass.jac
-helpers.jac
-help.jac
-jac_auto_lint_pass.impl.jac
-jac_auto_lint_pass.jac
-jac_formatter_pass.jac
-jfast_api.jac
-kubernetes_utils.impl.jac
-kubernetes_utils.jac
-lang_tools.jac
-llm.jac
-macho_linker.impl.jac
-macho_linker.jac
-memory_hierarchy.jac
-memory.jac
-modresolver.jac
-mtir_gen_pass.impl.jac
-mtir_gen_pass.jac
-mtp.jac
-nacompile.impl.jac
-nacompile.jac
-na_compile_pass.jac
-na_ir_gen_pass.jac
-NonGPT.jac
-normalize_pass.jac
-operations.jac
-parser.impl.jac
-parser.jac
-plugin.jac
-precompile_bytecode.jac
-program.jac
-project.impl.jac
-project.jac
-pyast_gen_pass.impl.jac
-pyast_gen_pass.jac
-pyast_load_pass.impl.jac
-pyast_load_pass.jac
-pyjac_ast_link_pass.jac
-registry.jac
-runtime.jac
-scheduler.jac
-schema.impl.jac
-schema.jac
-sem_manager.impl.jac
-sem_manager.jac
-server.impl.jac
-server.jac
-sym_tab_build_pass.jac
-template_loader.impl.jac
-template_loader.jac
-template_registry.jac
-testing.impl.jac
-testing.jac
-tools.impl.jac
-# tools.jac — test fixture passes, others fail
-jac/jaclang/cli/commands/tools.jac
-jac/jaclang/jac0core/passes/transform.jac
-transport.jac
-treeprinter.jac
-type_checker_pass.jac
-type_evaluator.jac
-types.jac
-type_utils.jac
-uni_pass.jac
-unitree.jac
-unparse_pass.jac
-jac/jaclang/langserve/utils.jac
-jac/jaclang/runtimelib/utils.jac
-vite_bundler.impl.jac
-vite_bundler.jac
-webhook.jac
-web_target.impl.jac
-web_target.jac
-admin_portal.impl.jac
-llm_telemetry.impl.jac
-vite_client_bundle.impl.jac
-static_analysis_pass.impl.jac
-native_marshal.jac
-jir_passes.jac
-imported.impl.jac
-objects.impl.jac
-esast_gen_pass.impl.jac
-mtir.jac
-serve.jac
-serve.core.impl.jac
-api.cl.jac
-compiler_bridge.impl.jac
-jac/jaclang/cli/impl/console.impl.jac
-doc_ir_gen_pass.impl.jac
-MetricsPage.cl.jac
-na_compile_pass.impl.jac
-scheduler.impl.jac
-user_manager.jac
-# Re-enabled "has no attribute" diagnostic and __exit__ context manager check
-# expose false positives from incomplete Python type stubs. These files contain
-# valid code that fails type checking due to missing stub coverage for str,
+
+# (stricter Unknown discipline). These files bind SQLAlchemy, ctypes, llvmlite
+# .linkage etc.), not a new kind of exclusion.
+# Bare name so any zig-pkg path component is skipped by the check step.
+# Built-in shadcn handler + CLI (jac/jaclang/cli/shadcn) — dynamic `config: any` +
+# CLI was renamed from plugin.jac/plugin.impl.jac to cli.jac/cli.impl.jac.
+# External-library glue failing the full-repo jac check since ~2026-07-14
+# Files failing the full-repo jac check as of the #7166 merge. The check
+# Generated zig package fetches (jac ninja pins fetch into jac/zig-pkg/ at
+# Impl annexes of modules already baselined above by bare name (lang_tools.jac,
+# LLVM-IR builder submodules in this same category (ir.GlobalVariable/ir.Constant/
+# Native wasm/LLVM emission + na_ir_gen_pass.impl ctypes-heavy submodules: bind
 # Path, TextIOWrapper, JacProgram, Jac runtime, AST nodes, etc.
+# Path-qualified so fixes/stubs can be shaved off file-by-file.
+# Path/file-IO false positives (e.g. Path(__file__) in template discovery). The
+# Re-enabled "has no attribute" diagnostic and __exit__ context manager check
+# Stricter Unknown discipline -- these files have legitimate type gaps
+# Vendored py2jac llvmlite translation (#6925): ctypes-heavy, intentionally not
+# after ignore filtering runs -- so the annex paths must be listed too.
+# and other untyped third-party APIs whose values the checker sees as
+# build time; the tree-sitter-jac package ships its own examples/sample.jac).
+# class as the passes/native/llvm and na_ir_gen_pass.impl entries above.
+# create_target_machine) whose attrs the checker sees as Unknown, same class as
+# cycle_collector/struct/debug/trace_fn.impl.jac (#7149) are na_ir_gen_pass.impl
+# error in test_prim_equivalence.jac); #7166 fixed formatting, exposing
+# explicitly, and an .impl.jac arg resolves to its (baselined known-bad) module
+# expose false positives from incomplete Python type stubs. These files contain
+# file-by-file.
+# for `jac check`. fnmatch path-pattern -> matches every file under the package.
+# lib.jac — jac-byllm and jac-scale pass, jaclang fails
+# na_ir_gen_pass.jac / na_compile_pass.jac above. Skipped for `jac check`.
+# object/<Unknown>; they can't be made type-clean without upstream stubs, same
+# raw llvmlite/llvm-c handles (is_declaration, linkage, verify, emit_object,
+# step had been masked for weeks by the format step failing first (syntax
+# template_registry.jac, type_utils.jac). Scoped CI passes changed files
+# that were previously silent (Unknown treated as Any). Added 2026-03-08.
+# this accumulated debt. Path-qualified so fixes can be shaved off
+# tools.jac — test fixture passes, others fail
+# type-clean. jac format excludes it via the find in ci.yml; this skips it
+# valid code that fails type checking due to missing stub coverage for str,
+AlertContext.jac
+AuthContext.jac
+CreateUserModal.jac
+EditUserModal.jac
+LoginPage.jac
+MetricsPage.jac
 NonGPT.impl.jac
+NonGPT.jac
+ResetPage.jac
+SSOPage.jac
+UsersPage.jac
+admin_portal.impl.jac
 analysis.impl.jac
 analysis.jac
+api.jac
+arena.impl.jac
+asset_processor.impl.jac
 asset_processor.jac
+base_ast_gen_pass.impl.jac
 base_ast_gen_pass.jac
+basellm.impl.jac
+bccache.jac
 builtin.impl.jac
 builtin.jac
 builtins.impl.jac
+calls.impl.jac
 cfg_build_pass.impl.jac
+cfg_build_pass.jac
+check_report.impl.jac
+check_report.jac
 cli_boot.jac
+client_bundle.impl.jac
 client_bundle.jac
 client_deps.impl.jac
 client_deps.jac
+client_runtime.jac
 client_runtime.impl.jac
-core.impl.jac
-dicts.impl.jac
-engine.impl.jac
-grammar_extract_pass.impl.jac
-help.impl.jac
-hmr.impl.jac
-hmr.jac
-jac_formatter_pass.impl.jac
-jfast_api.impl.jac
-jir.jac
-jir_passes.impl.jac
-jsx_processor.jac
-kubernetes_target.jac
-layout_pass.impl.jac
-layout_pass.jac
-local.impl.jac
-memory.impl.jac
-model.impl.jac
-monitoring.jac
-native_accel.jac
-# Vendored py2jac llvmlite translation (#6925): ctypes-heavy, intentionally not
-# type-clean. jac format excludes it via the find in ci.yml; this skips it
-# for `jac check`. fnmatch path-pattern -> matches every file under the package.
-passes/native/llvm/*
-# Native wasm/LLVM emission + na_ir_gen_pass.impl ctypes-heavy submodules: bind
-# raw llvmlite/llvm-c handles (is_declaration, linkage, verify, emit_object,
-# create_target_machine) whose attrs the checker sees as Unknown, same class as
-# na_ir_gen_pass.jac / na_compile_pass.jac above. Skipped for `jac check`.
-# cycle_collector/struct/debug/trace_fn.impl.jac (#7149) are na_ir_gen_pass.impl
-# LLVM-IR builder submodules in this same category (ir.GlobalVariable/ir.Constant/
-# .linkage etc.), not a new kind of exclusion.
-wasm_build.jac
-cycle_collector.impl.jac
-struct.impl.jac
-debug.impl.jac
-trace_fn.impl.jac
-normalize_pass.impl.jac
-plugin.impl.jac
-primitives_native.jac
-pyjac_ast_link_pass.impl.jac
-resources.impl.jac
-resources.jac
-semantic_analysis_pass.jac
-serializer.impl.jac
-serializer.jac
-test.impl.jac
-test.jac
-unitree.impl.jac
-unparse_pass.impl.jac
-uris.impl.jac
-uris.jac
-user_manager.impl.jac
-validate_docs_code.jac
-vtable.impl.jac
-watcher.impl.jac
-watcher.jac
-type_evaluator.impl.jac
-type_checker_pass.impl.jac
-enums.impl.jac
-func.impl.jac
-generics.impl.jac
-stmt.impl.jac
-utils.impl.jac
-client_bundle.impl.jac
-sym_tab_build_pass.impl.jac
-decl_impl_match_pass.impl.jac
-media.impl.jac
-basellm.impl.jac
-webhook.impl.jac
-serve.endpoints.impl.jac
-serve.static.impl.jac
-# Stricter Unknown discipline -- these files have legitimate type gaps
-# that were previously silent (Unknown treated as Any). Added 2026-03-08.
-AlertContext.cl.jac
-AuthContext.cl.jac
-CreateUserModal.cl.jac
-EditUserModal.cl.jac
-frontend.jac
-genius_lite.jac
-kubernetes_redis.jac
-# lib.jac — jac-byllm and jac-scale pass, jaclang fails
-jac/jaclang/lib.jac
-LoginPage.cl.jac
-memory_hierarchy.main.impl.jac
-memory_hierarchy.mongo.impl.jac
-memory_hierarchy.redis.impl.jac
-prometheus_metrics.jac
-ResetPage.cl.jac
-SSOPage.cl.jac
-UsersPage.cl.jac
-useStorage.cl.jac
-asset_processor.impl.jac
-arena.impl.jac
-base_ast_gen_pass.impl.jac
-bccache.jac
-calls.impl.jac
-check_report.impl.jac
-check_report.jac
+codeinfo.jac
 compiler.impl.jac
+compiler.jac
+compiler_bridge.impl.jac
 comprehensions.impl.jac
+config.impl.jac
+console.jac
+constant.jac
 construct_types.impl.jac
 container_helpers.impl.jac
 context_mgr.impl.jac
+core.impl.jac
+cycle_collector.impl.jac
+debug.impl.jac
+decl_impl_match_pass.impl.jac
+decl_impl_match_pass.jac
 dep_registry.impl.jac
+dep_registry.jac
 dependencies.impl.jac
+dependencies.jac
+diagnostics.impl.jac
+dicts.impl.jac
+doc_ir_gen_pass.impl.jac
+doc_ir_gen_pass.jac
+elf_linker.impl.jac
+elf_linker.jac
+engine.impl.jac
+engine.jac
+enum_utils.impl.jac
+enum_utils.jac
+enums.impl.jac
+es_unparse.impl.jac
+es_unparse.jac
+esast_gen_pass.impl.jac
+esast_gen_pass.jac
 evaluator_util_methods.impl.jac
 exceptions.impl.jac
+execution.impl.jac
+execution.jac
 executor.impl.jac
+executor.jac
 expr.impl.jac
 file_io.impl.jac
+frontend.jac
+func.impl.jac
+generics.impl.jac
+genius_lite.jac
 globals.impl.jac
+grammar_extract_pass.impl.jac
+grammar_extract_pass.jac
+help.impl.jac
+help.jac
+helpers.jac
+hmr.impl.jac
+hmr.jac
 import_processor.impl.jac
 import_processor.jac
+imported.impl.jac
 interop_bridge.jac
-jaccomplete.impl.jac
-jaccomplete.jac
-jir_registry.jac
-jsx_processor.impl.jac
-lists.impl.jac
-mockllm.impl.jac
-module_codegen_pass.jac
-mtir.impl.jac
-parameter_type_check.impl.jac
-refcount.impl.jac
-registry.impl.jac
-semantic_analysis_pass.impl.jac
-sets.impl.jac
-tool.impl.jac
-toolcall.impl.jac
-transport.impl.jac
-tuples.impl.jac
-types.impl.jac
-# Built-in shadcn handler + CLI (jac/jaclang/cli/shadcn) — dynamic `config: any` +
-# Path/file-IO false positives (e.g. Path(__file__) in template discovery). The
-# CLI was renamed from plugin.jac/plugin.impl.jac to cli.jac/cli.impl.jac.
-shadcn_handler.jac
-shadcn_handler.impl.jac
-jac/jaclang/cli/shadcn/cli.jac
-jac/jaclang/cli/shadcn/impl/cli.impl.jac
-theme_handler.jac
-
-# Files failing the full-repo jac check as of the #7166 merge. The check
-# step had been masked for weeks by the format step failing first (syntax
-# error in test_prim_equivalence.jac); #7166 fixed formatting, exposing
-# this accumulated debt. Path-qualified so fixes can be shaved off
-# file-by-file.
 jac/examples/mobui/hello/main.jac
 jac/examples/mobui/littlex/main.jac
-jac/examples/mobui/littlex/theme.cl.jac
+jac/examples/mobui/littlex/theme.jac
 jac/examples/notes-app/main.jac
-jac/examples/raylib_shooter/web/raylib_shim.cl.jac
+jac/examples/raylib_shooter/web/raylib_shim.jac
 jac/examples/todo_app/main.jac
 jac/examples/todo_app/test_todo.jac
 jac/jaclang/byllm/cli.jac
@@ -303,16 +157,17 @@ jac/jaclang/byllm/tool_protocol.jac
 jac/jaclang/byllm/types.impl/message.impl.jac
 jac/jaclang/byllm/visit_routing.jac
 jac/jaclang/cli/ai_agent.jac
-jac/jaclang/cli/ai_ui/components/ActivityFeed.cl.jac
-jac/jaclang/cli/ai_ui/components/LedgerPane.cl.jac
-jac/jaclang/cli/ai_ui/components/PhaseGraph.cl.jac
-jac/jaclang/cli/ai_ui/components/PhaseInspector.cl.jac
-jac/jaclang/cli/ai_ui/components/ResizeHandle.cl.jac
-jac/jaclang/cli/ai_ui/frontend.cl.jac
+jac/jaclang/cli/ai_ui/components/ActivityFeed.jac
+jac/jaclang/cli/ai_ui/components/LedgerPane.jac
+jac/jaclang/cli/ai_ui/components/PhaseGraph.jac
+jac/jaclang/cli/ai_ui/components/PhaseInspector.jac
+jac/jaclang/cli/ai_ui/components/ResizeHandle.jac
+jac/jaclang/cli/ai_ui/frontend.jac
 jac/jaclang/cli/banners.jac
 jac/jaclang/cli/cli.jac
 jac/jaclang/cli/commands/browse.jac
 jac/jaclang/cli/commands/code.jac
+jac/jaclang/cli/commands/config.jac
 jac/jaclang/cli/commands/db.jac
 jac/jaclang/cli/commands/eject.jac
 jac/jaclang/cli/commands/eject_targets/backend.jac
@@ -326,12 +181,16 @@ jac/jaclang/cli/commands/impl/guide.impl.jac
 jac/jaclang/cli/commands/impl/mcp.impl.jac
 jac/jaclang/cli/commands/impl/transform.impl.jac
 jac/jaclang/cli/commands/mcp.jac
+jac/jaclang/cli/commands/tools.jac
 jac/jaclang/cli/commands/transform.jac
 jac/jaclang/cli/impl/ai_agent.impl.jac
 jac/jaclang/cli/impl/browser_engine.impl.jac
 jac/jaclang/cli/impl/cli.impl.jac
+jac/jaclang/cli/impl/console.impl.jac
 jac/jaclang/cli/mcp/impl/protocol.impl.jac
 jac/jaclang/cli/mcp/protocol.jac
+jac/jaclang/cli/shadcn/cli.jac
+jac/jaclang/cli/shadcn/impl/cli.impl.jac
 jac/jaclang/compiler/code_intel.jac
 jac/jaclang/compiler/ownership.jac
 jac/jaclang/compiler/passes/ecmascript/backends/impl/react.impl.jac
@@ -345,8 +204,10 @@ jac/jaclang/compiler/passes/main/impl/capability_check_pass.impl.jac
 jac/jaclang/compiler/passes/main/jsx_intrinsic_guard_pass.jac
 jac/jaclang/compiler/passes/native/impl/pe_linker.impl.jac
 jac/jaclang/compiler/passes/native/impl/primitives_native.impl.jac
+jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/bytearray_na.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/bytes.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_abi.impl.jac
+jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_vtable.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/debug.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/gc_debug.impl.jac
 jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/iterators.impl.jac
@@ -362,6 +223,7 @@ jac/jaclang/compiler/passes/native/wasm_linker.jac
 jac/jaclang/compiler/symbol_utils.jac
 jac/jaclang/compiler/targets/abi.jac
 jac/jaclang/compiler/targets/foreign.jac
+jac/jaclang/compiler/type_system/impl/type_utils.impl.jac
 jac/jaclang/compiler/type_system/type_evaluator.impl/jsx_type_check.impl.jac
 jac/jaclang/compiler/type_system/type_evaluator.impl/ts_declarations.impl.jac
 jac/jaclang/jac0core/archetype.jac
@@ -382,8 +244,13 @@ jac/jaclang/jac0core/passes/impl/ast_validation_pass.impl.jac
 jac/jaclang/jac0core/passes/impl/boundary_analysis_pass.impl.jac
 jac/jaclang/jac0core/passes/impl/transform.impl.jac
 jac/jaclang/jac0core/passes/impl/uni_pass.impl.jac
+jac/jaclang/jac0core/passes/transform.jac
 jac/jaclang/jac0core/unitree.impl/accept.impl.jac
 jac/jaclang/jac0core/unitree.impl/dispatch.impl.jac
+jac/jaclang/langserve/utils.jac
+jac/jaclang/lib.jac
+jac/jaclang/project/config.jac
+jac/jaclang/project/impl/template_registry.impl.jac
 jac/jaclang/publish/dts.jac
 jac/jaclang/publish/impl/dts.impl.jac
 jac/jaclang/publish/impl/jsdoc.impl.jac
@@ -405,24 +272,39 @@ jac/jaclang/publish/sources.jac
 jac/jaclang/runtimelib/changeset.jac
 jac/jaclang/runtimelib/cl_test_runner.jac
 jac/jaclang/runtimelib/client/cli.jac
-jac/jaclang/runtimelib/client/client_runtime_native.cl.jac
+jac/jaclang/runtimelib/client/client_runtime_native.jac
 jac/jaclang/runtimelib/client/config_loader.jac
 jac/jaclang/runtimelib/client/desktop_config.jac
 jac/jaclang/runtimelib/client/impl/client_runtime_core.impl.jac
 jac/jaclang/runtimelib/client/impl/client_runtime_native.impl.jac
 jac/jaclang/runtimelib/client/impl/config_loader.impl.jac
+jac/jaclang/runtimelib/client/impl/jac_client_compiler.impl.jac
 jac/jaclang/runtimelib/client/impl/serving.impl.jac
+jac/jaclang/runtimelib/client/jac_client_compiler.jac
 jac/jaclang/runtimelib/client/mobile_dev_host.jac
 jac/jaclang/runtimelib/client/serving.jac
 jac/jaclang/runtimelib/client/targets/client_dev_common.jac
 jac/jaclang/runtimelib/client/targets/desktop/desktop_build.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_dispatch.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_dispatch.na.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_platform.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_platform.na.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_subprocess.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_subprocess.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/host_boot.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/inprocess_dispatch.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/oauth_broker.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.na.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/clipboard_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/dialog_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/fs_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/notification_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/path_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/shell_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/window_plugin.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/desktop_api.jac
+jac/jaclang/runtimelib/client/targets/desktop/plugin/desktop_plugin.jac
 jac/jaclang/runtimelib/client/targets/desktop/plugin/plugin_host.jac
 jac/jaclang/runtimelib/client/targets/impl/mobile_target.impl.jac
 jac/jaclang/runtimelib/client/targets/impl/pwa_target.impl.jac
@@ -438,7 +320,7 @@ jac/jaclang/runtimelib/client/targets/react_native/dev.jac
 jac/jaclang/runtimelib/client/targets/react_native/scaffold.jac
 jac/jaclang/runtimelib/client/targets/react_native_target.jac
 jac/jaclang/runtimelib/client/targets/static_target.jac
-jac/jaclang/runtimelib/client_runtime_core.cl.jac
+jac/jaclang/runtimelib/client_runtime_core.jac
 jac/jaclang/runtimelib/client_surface.jac
 jac/jaclang/runtimelib/exceptions.jac
 jac/jaclang/runtimelib/impl/cl_test_runner.impl.jac
@@ -452,15 +334,18 @@ jac/jaclang/runtimelib/impl/topology_index.impl.jac
 jac/jaclang/runtimelib/na_stdlib/bz2.na.jac
 jac/jaclang/runtimelib/na_stdlib/zlib.na.jac
 jac/jaclang/runtimelib/planner.jac
-jac/jaclang/runtimelib/pwa_runtime.cl.jac
+jac/jaclang/runtimelib/pwa_runtime.jac
 jac/jaclang/runtimelib/query_utils.jac
 jac/jaclang/runtimelib/resolver.jac
 jac/jaclang/runtimelib/schema_rules.jac
-jac/jaclang/runtimelib/solid_runtime.cl.jac
+jac/jaclang/runtimelib/solid_runtime.jac
 jac/jaclang/runtimelib/source_mapping.jac
+jac/jaclang/runtimelib/storage/impl/sqlalchemy_memory.impl.jac
+jac/jaclang/runtimelib/storage/sqlalchemy_memory.jac
 jac/jaclang/runtimelib/sv_sse.jac
 jac/jaclang/runtimelib/topology_index.jac
-jac/jaclang/runtimelib/wasm_host.cl.jac
+jac/jaclang/runtimelib/utils.jac
+jac/jaclang/runtimelib/wasm_host.jac
 jac/jaclang/scale/admin/deploy_health.jac
 jac/jaclang/scale/admin/impl/deploy_health.impl.jac
 jac/jaclang/scale/admin/impl/logs.impl.jac
@@ -475,22 +360,21 @@ jac/jaclang/scale/admin/network.jac
 jac/jaclang/scale/admin/ops.jac
 jac/jaclang/scale/admin/podenv.jac
 jac/jaclang/scale/admin/traces.jac
-jac/jaclang/scale/admin/ui/components/common/Alert.cl.jac
-jac/jaclang/scale/admin/ui/components/common/Badge.cl.jac
-jac/jaclang/scale/admin/ui/components/common/Button.cl.jac
-jac/jaclang/scale/admin/ui/components/common/Spinner.cl.jac
-jac/jaclang/scale/admin/ui/components/tables/DataTable.cl.jac
+jac/jaclang/scale/admin/ui/components/common/Alert.jac
+jac/jaclang/scale/admin/ui/components/common/Badge.jac
+jac/jaclang/scale/admin/ui/components/common/Button.jac
+jac/jaclang/scale/admin/ui/components/common/Spinner.jac
+jac/jaclang/scale/admin/ui/components/tables/DataTable.jac
 jac/jaclang/scale/admin/ui/main.jac
-jac/jaclang/scale/admin/ui/pages/admin/DashboardLayout.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/logs/LogsPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/GraphsPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/LLMTracesPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/TracesPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/WorkloadsPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/ops/DeployPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/ops/NetworkPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/ops/OpsPage.cl.jac
-jac/jaclang/scale/admin/ui/pages/admin/ops/PodEnvPage.cl.jac
+jac/jaclang/scale/admin/ui/pages/admin/DashboardLayout.jac
+jac/jaclang/scale/admin/ui/pages/admin/logs/LogsPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/monitoring/LLMMetricsPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/monitoring/LLMTracesPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/monitoring/TracesPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/ops/DeployPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/ops/NetworkPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/ops/OpsPage.jac
+jac/jaclang/scale/admin/ui/pages/admin/ops/PodEnvPage.jac
 jac/jaclang/scale/admin/workloads.jac
 jac/jaclang/scale/config/base_config.jac
 jac/jaclang/scale/config/config_loader.jac
@@ -522,6 +406,8 @@ jac/jaclang/scale/identity/impl/identity_storage.impl.jac
 jac/jaclang/scale/identity/impl/identity_storage.mongo.impl.jac
 jac/jaclang/scale/identity/impl/identity_storage.sqlite.impl.jac
 jac/jaclang/scale/injector/pvc_injector.jac
+jac/jaclang/scale/jserver/impl/jserver.impl.jac
+jac/jaclang/scale/jserver/jserver.jac
 jac/jaclang/scale/persistence/db.jac
 jac/jaclang/scale/persistence/firestore_db.jac
 jac/jaclang/scale/persistence/impl/db.impl.jac
@@ -534,7 +420,6 @@ jac/jaclang/scale/runtime/context/auth_ctx.jac
 jac/jaclang/scale/runtime/context/trace_ctx.jac
 jac/jaclang/scale/runtime/context/tracing.jac
 jac/jaclang/scale/runtime/context/util.jac
-jac/jaclang/scale/runtime/discovery/discovery.jac
 jac/jaclang/scale/runtime/gateway/microservice_gateway.impl.jac
 jac/jaclang/scale/runtime/gateway/microservice_gateway.jac
 jac/jaclang/scale/runtime/gateway/openapi_agg.jac
@@ -555,6 +440,7 @@ jac/jaclang/scale/server/impl/serve.auth.impl.jac
 jac/jaclang/scale/server/impl/serve.emailer.impl.jac
 jac/jaclang/scale/server/impl/serve.identity.impl.jac
 jac/jaclang/scale/server/impl/serve.impl.jac
+jac/jaclang/scale/server/impl/serve.scheduler.impl.jac
 jac/jaclang/scale/server/inprocess.jac
 jac/jaclang/scale/shared/utils.jac
 jac/jaclang/scale/sso/firebase.jac
@@ -564,47 +450,161 @@ jac/jaclang/scale/storage/gcs_storage.jac
 jac/jaclang/scale/storage/impl/gcs_storage.impl.jac
 jac/jaclang/scale/storage/impl/s3_storage.impl.jac
 jac/jaclang/scale/storage/s3_storage.jac
+jac/jaclang/utils/impl/lang_tools.impl.jac
+jac_auto_lint_pass.impl.jac
+jac_auto_lint_pass.jac
+jac_formatter_pass.impl.jac
+jac_formatter_pass.jac
+jaccomplete.impl.jac
+jaccomplete.jac
+jfast_api.impl.jac
+jfast_api.jac
+jir.jac
+jir_passes.impl.jac
+jir_passes.jac
+jir_registry.jac
+jsx_processor.impl.jac
+jsx_processor.jac
+kubernetes_redis.jac
+kubernetes_target.jac
+kubernetes_utils.impl.jac
+kubernetes_utils.jac
+lang_tools.jac
+layout_pass.impl.jac
+layout_pass.jac
+lists.impl.jac
+llm.jac
+llm_telemetry.impl.jac
+local.impl.jac
+macho_linker.impl.jac
+macho_linker.jac
+media.impl.jac
+memory.impl.jac
+memory.jac
+memory_hierarchy.jac
+memory_hierarchy.main.impl.jac
+memory_hierarchy.mongo.impl.jac
+memory_hierarchy.redis.impl.jac
+mockllm.impl.jac
+model.impl.jac
+modresolver.jac
+module_codegen_pass.jac
+monitoring.jac
+mtir.impl.jac
+mtir.jac
+mtir_gen_pass.impl.jac
+mtir_gen_pass.jac
+mtp.jac
+na_compile_pass.impl.jac
+na_compile_pass.jac
+na_ir_gen_pass.jac
+nacompile.impl.jac
+nacompile.jac
+native_accel.jac
+native_marshal.jac
+normalize_pass.impl.jac
+normalize_pass.jac
+objects.impl.jac
+operations.jac
+parameter_type_check.impl.jac
+parser.impl.jac
+parser.jac
+passes/native/llvm/*
+plugin.impl.jac
+plugin.jac
+precompile_bytecode.jac
+primitives_native.jac
+program.jac
+project.impl.jac
+project.jac
+prometheus_metrics.jac
+pyast_gen_pass.impl.jac
+pyast_gen_pass.jac
+pyast_load_pass.impl.jac
+pyast_load_pass.jac
+pyjac_ast_link_pass.impl.jac
+pyjac_ast_link_pass.jac
+refcount.impl.jac
+registry.impl.jac
+registry.jac
+resources.impl.jac
+resources.jac
+runtime.jac
+scheduler.impl.jac
+scheduler.jac
+schema.impl.jac
+schema.jac
 scripts/collect_release_notes.jac
+scripts/integration_tests.jac
 scripts/jac-gdb-helper.jac
 scripts/release.jac
 scripts/release_utils.jac
 scripts/validate_release.jac
-
-# External-library glue failing the full-repo jac check since ~2026-07-14
-# (stricter Unknown discipline). These files bind SQLAlchemy, ctypes, llvmlite
-# and other untyped third-party APIs whose values the checker sees as
-# object/<Unknown>; they can't be made type-clean without upstream stubs, same
-# class as the passes/native/llvm and na_ir_gen_pass.impl entries above.
-# Path-qualified so fixes/stubs can be shaved off file-by-file.
-jac/jaclang/runtimelib/storage/sqlalchemy_memory.jac
-jac/jaclang/runtimelib/storage/impl/sqlalchemy_memory.impl.jac
-jac/jaclang/runtimelib/client/jac_client_compiler.jac
-jac/jaclang/runtimelib/client/impl/jac_client_compiler.impl.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/desktop_api.cl.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/desktop_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/window_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/dialog_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/shell_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/notification_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/fs_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/clipboard_plugin.jac
-jac/jaclang/runtimelib/client/targets/desktop/plugin/built_in/path_plugin.jac
-jac/jaclang/scale/jserver/jserver.jac
-jac/jaclang/scale/jserver/impl/jserver.impl.jac
-jac/jaclang/scale/admin/ui/pages/admin/monitoring/LLMMetricsPage.cl.jac
-jac/jaclang/scale/server/impl/serve.scheduler.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_vtable.impl.jac
-scripts/integration_tests.jac
-
-# Generated zig package fetches (jac ninja pins fetch into jac/zig-pkg/ at
-# build time; the tree-sitter-jac package ships its own examples/sample.jac).
-# Bare name so any zig-pkg path component is skipped by the check step.
+sem_manager.impl.jac
+sem_manager.jac
+semantic_analysis_pass.impl.jac
+semantic_analysis_pass.jac
+serializer.impl.jac
+serializer.jac
+serve.core.impl.jac
+serve.endpoints.impl.jac
+serve.jac
+serve.static.impl.jac
+server.impl.jac
+server.jac
+sets.impl.jac
+shadcn_handler.impl.jac
+shadcn_handler.jac
+shared_emit.jac
+static_analysis_pass.impl.jac
+stmt.impl.jac
+struct.impl.jac
+sym_tab_build_pass.impl.jac
+sym_tab_build_pass.jac
+template_loader.impl.jac
+template_loader.jac
+template_registry.jac
+test.impl.jac
+test.jac
+testing.impl.jac
+testing.jac
+theme_handler.jac
+tool.impl.jac
+toolcall.impl.jac
+tools.impl.jac
+trace_fn.impl.jac
+transport.impl.jac
+transport.jac
+treeprinter.jac
+tuples.impl.jac
+type_checker_pass.impl.jac
+type_checker_pass.jac
+type_evaluator.impl.jac
+type_evaluator.jac
+type_utils.jac
+types.impl.jac
+types.jac
+uni_pass.jac
+unitree.impl.jac
+unitree.jac
+unparse_pass.impl.jac
+unparse_pass.jac
+uris.impl.jac
+uris.jac
+useStorage.jac
+user_manager.impl.jac
+user_manager.jac
+utils.impl.jac
+validate_docs_code.jac
+vite_bundler.impl.jac
+vite_bundler.jac
+vite_client_bundle.impl.jac
+vtable.impl.jac
+wasm_build.jac
+watcher.impl.jac
+watcher.jac
+web_target.impl.jac
+web_target.jac
+webhook.impl.jac
+webhook.jac
 zig-pkg
-
-# Impl annexes of modules already baselined above by bare name (lang_tools.jac,
-# template_registry.jac, type_utils.jac). Scoped CI passes changed files
-# explicitly, and an .impl.jac arg resolves to its (baselined known-bad) module
-# after ignore filtering runs -- so the annex paths must be listed too.
-jac/jaclang/utils/impl/lang_tools.impl.jac
-jac/jaclang/project/impl/template_registry.impl.jac
-jac/jaclang/compiler/type_system/impl/type_utils.impl.jac

@@ -36,7 +36,7 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      WASM_TRIPLE = "wasm32-unknown-unknown",
-     FIXTURE = "wasm_objects.na.jac";
+     FIXTURE = "wasm_objects.jac";
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 """Compile a fixture to a relocatable wasm object the way `nacompile` does."""

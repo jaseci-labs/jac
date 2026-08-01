@@ -10,13 +10,13 @@ Matrix (contract §7 / `_planning/reactivity-implementation-plan.md` Phase 4):
 
   # | Fixture                       | Pass criteria
   --+-------------------------------+------------------------------------------------
-  1 | reactive_state.cl.jac         | Solid `count()` read / `setCount` write; React `count`
+  1 | reactive_state_client.jac         | Solid `count()` read / `setCount` write; React `count`
   2 | reactive_effects_deps.jac     | Compiles; React keeps dep array, Solid omits it
-  3 | view_awaiting.cl.jac          | React `JacAwaiting`; Solid `Suspense`
-  4 | reactive_view_audit.cl.jac    | Dynamic `{count}` routes via `lower_view_expr`
-  5 | reactive_shadow.cl.jac        | KNOWN LIMITATION — pins current wrong-on-Solid output
-  6 | reactive_view_audit.cl.jac    | `onClick` handler never view-wrapped
-  7 | slot_extensions/has_ref.cl.jac| React `useRef`; Solid deferred to a `let` binding
+  3 | view_awaiting.jac          | React `JacAwaiting`; Solid `Suspense`
+  4 | reactive_view_audit.jac    | Dynamic `{count}` routes via `lower_view_expr`
+  5 | reactive_shadow.jac        | KNOWN LIMITATION — pins current wrong-on-Solid output
+  6 | reactive_view_audit.jac    | `onClick` handler never view-wrapped
+  7 | slot_extensions/has_ref.jac| React `useRef`; Solid deferred to a `let` binding
 
 Two invariants this matrix protects:
   * React/Preact output is byte-identical to pre-seam (the zero-diff gate). The
@@ -53,7 +53,7 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
 
 # --- #1 Counter read/write -----------------------------------------------------
 test "matrix #1 react: bare identifier read, setCount write" {
-    js = compile_fixture_with_backend("reactive_state.cl.jac", ReactBackend());
+    js = compile_fixture_with_backend("reactive_state_client.jac", ReactBackend());
     assert "const [count, setCount] = useState(0)" in js;
     assert "setCount(42)" in js;
     # React reads are bare identifiers, never accessor calls.
@@ -62,7 +62,7 @@ test "matrix #1 react: bare identifier read, setCount write" {
 }
 
 test "matrix #1 solid: accessor read, setCount write, createSignal state" {
-    js = compile_fixture_with_backend("reactive_state.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("reactive_state_client.jac", SolidBackend());
     assert "const [count, setCount] = createSignal(0)" in js;
     assert "setCount(42)" in js;
     assert 'setName("hello")' in js;
@@ -93,20 +93,20 @@ test "matrix #2 solid: createEffect auto-tracks and omits the dep array" {
 
 # --- #3 awaiting try -----------------------------------------------------------
 test "matrix #3 react: awaiting lowers to the JacAwaiting Suspense shim" {
-    js = compile_fixture_with_backend("view_awaiting.cl.jac", ReactBackend());
+    js = compile_fixture_with_backend("view_awaiting.jac", ReactBackend());
     assert "JacAwaiting" in js;
     assert "Suspense" not in js , "React uses the JacAwaiting shim, not raw Suspense";
 }
 
 test "matrix #3 solid: awaiting lowers to Solid Suspense, never the React shim" {
-    js = compile_fixture_with_backend("view_awaiting.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("view_awaiting.jac", SolidBackend());
     assert "Suspense" in js;
     assert "JacAwaiting" not in js , "Solid must not emit the React Suspense shim";
 }
 
 # --- #4 Dynamic {count} / #6 onClick handler -----------------------------------
 test "matrix #4/#6 react: dynamic positions and handler are plain (seam no-op)" {
-    js = compile_fixture_with_backend("reactive_view_audit.cl.jac", ReactBackend());
+    js = compile_fixture_with_backend("reactive_view_audit.jac", ReactBackend());
     # Read + view seams are identity on React: the dynamic attribute value is a
     # bare identifier, not a Solid-style accessor thunk. (The `onClick` lambda
     # is still an arrow function — that is the handler itself, not a view thunk.)
@@ -117,7 +117,7 @@ test "matrix #4/#6 react: dynamic positions and handler are plain (seam no-op)" 
 }
 
 test "matrix #4/#6 solid: dynamic positions un-thunked, handler never view-wrapped" {
-    js = compile_fixture_with_backend("reactive_view_audit.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("reactive_view_audit.jac", SolidBackend());
     # #4 — dynamic attribute value and dynamic child are bare `{expr}`; the
     # dom-expressions compiler tracks reactivity, so the `() =>` thunk is gone.
     assert "value={count()}" in js , "dynamic attribute value should be un-thunked";
@@ -133,7 +133,7 @@ test "matrix #4/#6 solid: dynamic positions un-thunked, handler never view-wrapp
 
 # --- #5 Block / scope shadowing — KNOWN LIMITATION -----------------------------
 test "matrix #5 react: shadowing param reads as a bare local (correct)" {
-    js = compile_fixture_with_backend("reactive_shadow.cl.jac", ReactBackend());
+    js = compile_fixture_with_backend("reactive_shadow.jac", ReactBackend());
     # The reactive field and the shadowing parameter both read bare on React,
     # which happens to be correct here.
     assert "const [count, setCount] = useState(0)" in js;
@@ -142,7 +142,7 @@ test "matrix #5 react: shadowing param reads as a bare local (correct)" {
 }
 
 test "matrix #5 solid: shadowing param is WRONGLY treated as reactive (pinned bug)" {
-    js = compile_fixture_with_backend("reactive_shadow.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("reactive_shadow.jac", SolidBackend());
     # The outer field read is correctly reactive (un-thunked `{count()}` in JSX).
     assert "const [count, setCount] = createSignal(0)" in js;
     assert '{"Field: "}{count()}' in js , "outer field read is correctly reactive";
@@ -158,14 +158,14 @@ test "matrix #5 solid: shadowing param is WRONGLY treated as reactive (pinned bu
 
 # --- #7 has r: Ref[T] ----------------------------------------------------------
 test "matrix #7 react: Ref[T] field lowers to useRef" {
-    js = compile_fixture_with_backend("slot_extensions/has_ref.cl.jac", ReactBackend());
+    js = compile_fixture_with_backend("slot_extensions/has_ref.jac", ReactBackend());
     assert "useRef" in js;
     assert "buttonRef" in js;
     assert "createSignal" not in js;
 }
 
 test "matrix #7 solid: Ref[T] field is deferred to a plain let binding" {
-    js = compile_fixture_with_backend("slot_extensions/has_ref.cl.jac", SolidBackend());
+    js = compile_fixture_with_backend("slot_extensions/has_ref.jac", SolidBackend());
     # Refs are deferred on Solid (contract §8) — no useRef, no signal.
     assert "let buttonRef = null" in js , "Solid defers refs to a let binding";
     assert "useRef" not in js;
@@ -180,11 +180,9 @@ test "matrix #7 solid: Ref[T] field is deferred to a plain let binding" {
 
 # --- Zero-diff gate: Preact tracks React on the seam-sensitive fixtures ---------
 test "matrix zero-diff: preact view output matches react (seams are no-ops)" {
-    react_js = compile_fixture_with_backend(
-        "reactive_view_audit.cl.jac", ReactBackend()
-    );
+    react_js = compile_fixture_with_backend("reactive_view_audit.jac", ReactBackend());
     preact_js = compile_fixture_with_backend(
-        "reactive_view_audit.cl.jac", PreactBackend()
+        "reactive_view_audit.jac", PreactBackend()
     );
     # Preact differs only in import sources; the read/view seams are identity on
     # both, so the component body (JSX + reads) must be byte-identical.

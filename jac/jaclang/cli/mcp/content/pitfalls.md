@@ -479,9 +479,9 @@ glob config: dict = {};
 
 ## Client-Side & Full-Stack Gotchas
 
-### 26. Client components use `def:pub` inside `cl {}` blocks
+### 26. Client components are `def:pub` functions returning `JsxElement`
 
-Client-side components must be inside `cl { }` blocks (or in `.cl.jac` files). They return `JsxElement`, not Python objects.
+Client-side components are plain Jac functions whose JSX places them client automatically. They return `JsxElement`, not Python objects.
 
 WRONG (Python/React style):
 
@@ -491,26 +491,9 @@ function Greeting(props) {
 }
 ```
 
-WRONG (missing `cl` block -- this creates a SERVER function, not a client component):
-
-```
-def:pub Greeting(props: dict) -> JsxElement {
-    return <h1>Hello, {props.name}!</h1>;
-}
-```
-
-RIGHT:
+RIGHT (the JSX return is what makes it a client component -- no wrapper or marker exists):
 
 ```jac
-def:pub Greeting(props: dict) -> JsxElement {
-    return <h1>Hello, {props.name}!</h1>;
-}
-```
-
-In `.cl.jac` files, the `cl { }` wrapper is not needed -- the entire file is already in client mode:
-
-```jac
-# In a .cl.jac file:
 def:pub Greeting(props: dict) -> JsxElement {
     return <h1>Hello, {props.name}!</h1>;
 }
@@ -523,15 +506,13 @@ In client components, `has` compiles to React's `useState`. Do NOT import or cal
 WRONG (React style):
 
 ```
-import from react { useState }
+import from "react" { useState }
 
-cl {
-    def:pub Counter() -> JsxElement {
-        (count, setCount) = useState(0);
-        return <button onClick={lambda -> None { setCount(count + 1); }}>
-            {count}
-        </button>;
-    }
+def:pub Counter() -> JsxElement {
+    (count, setCount) = useState(0);
+    return <button onClick={lambda -> None { setCount(count + 1); }}>
+        {count}
+    </button>;
 }
 ```
 
@@ -556,13 +537,11 @@ Mutating a list or dict in place (e.g., `.append()`, `.pop()`, `dict[key] = val`
 WRONG (mutation -- UI will not update):
 
 ```
-cl {
-    def:pub TodoApp() -> JsxElement {
-        has todos: list = [];
+def:pub TodoApp() -> JsxElement {
+    has todos: list = [];
 
-        def add_todo() -> None {
-            todos.append({"text": "new item"});  # WRONG: mutates in place, no re-render
-        }
+    def add_todo() -> None {
+        todos.append({"text": "new item"});  # WRONG: mutates in place, no re-render
     }
 }
 ```
@@ -632,7 +611,7 @@ Jac has built-in syntax for React lifecycle effects. Prefer `can with entry` (mo
 NOT IDIOMATIC (manual useEffect -- valid but not preferred):
 
 ```jac
-import from react { useEffect }
+import from "react" { useEffect }
 
 def:pub DataLoader() -> JsxElement {
     has data: list = [];
@@ -742,11 +721,11 @@ RIGHT (Jac list comprehension):
 
 ## Server-Client Communication Gotchas
 
-### 34. Importing server code into client uses `sv import`
+### 34. Importing server code into client is a plain import (mind the dots)
 
-To call server-side walkers or functions from client code, you must use `sv import`. Regular `import` will not work across the server-client boundary.
+To call server-side walkers or functions from client code, use a regular `import` -- the compiler knows the targets are server-placed and generates HTTP stubs. What trips people up is the relative-dot count, which is counted from THIS file's folder.
 
-WRONG (regular import):
+WRONG (dot count off by one for a component two folders deep):
 
 ```
 import from ..main { get_tasks }
@@ -755,10 +734,10 @@ import from ..main { get_tasks }
 RIGHT:
 
 ```jac
-sv import from ...main { get_tasks, add_task }
+import from ...main { get_tasks, add_task }
 ```
 
-The `sv` prefix tells the compiler this is a server-side import to be called over HTTP.
+The compiler recognizes the server-side targets and bridges the calls over HTTP automatically.
 
 ### 35. Calling walkers from client uses `root spawn`, NOT `await func()`
 
@@ -767,17 +746,15 @@ Server walkers are called by spawning them on `root` (bare keyword - `root()` is
 WRONG (function-call style):
 
 ```
-cl {
-    async can with entry {
-        tasks = await get_tasks();
-    }
+async can with entry {
+    tasks = await get_tasks();
 }
 ```
 
 RIGHT:
 
 ```jac
-sv import from ...main { get_tasks }
+import from ...main { get_tasks }
 
 def:pub TaskList() -> JsxElement {
     has tasks: list = [];
@@ -798,7 +775,7 @@ def:pub TaskList() -> JsxElement {
 Walker `has` fields become the request body:
 
 ```jac
-sv import from ...main { add_task }
+import from ...main { add_task }
 
 async def handle_add() -> None {
     result = root spawn add_task(title="New task");
@@ -945,10 +922,8 @@ Do NOT try to implement login/signup manually. Jac provides built-in auth functi
 WRONG (manual auth):
 
 ```
-cl {
-    async def login(user: str, pass: str) -> None {
-        response = await fetch("/api/login", ...);  # WRONG
-    }
+async def login(user: str, pass: str) -> None {
+    response = await fetch("/api/login", ...);  # WRONG
 }
 ```
 
@@ -1039,10 +1014,8 @@ WRONG (accessing params directly):
 
 ```
 # pages/users/[id].jac
-cl {
-    def:pub UserDetail(id: str) -> JsxPage {  # WRONG: params are not function args
-        return <h1>User {id}</h1>;
-    }
+def:pub UserDetail(id: str) -> JsxPage {  # WRONG: params are not function args
+    return <h1>User {id}</h1>;
 }
 ```
 
@@ -1065,13 +1038,11 @@ def:pub UserDetail() -> JsxPage {
 WRONG (trying to pass children manually):
 
 ```
-cl {
-    def:pub Shell(props: dict) -> JsxLayout {
-        return <div>
-            <nav>...</nav>
-            {props.children}
-        </div>;
-    }
+def:pub Shell(props: dict) -> JsxLayout {
+    return <div>
+        <nav>...</nav>
+        {props.children}
+    </div>;
 }
 ```
 

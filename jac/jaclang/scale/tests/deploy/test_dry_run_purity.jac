@@ -156,8 +156,7 @@ test "--dry-run reads no cluster state, downloads nothing, and builds nothing" {
         ), unittest.mock.patch(
             "jaclang.scale.config.config_loader.get_scale_config", return_value=cfg
         ), unittest.mock.patch(
-            "jaclang.scale.runtime.discovery.discovery.resolve_routes",
-            return_value={"svc": "/svc"}
+            "jaclang.scale.runtime.routing.resolve_routes", return_value={"svc": "/svc"}
         ), unittest.mock.patch(
             "jaclang.scale.injector.binary_injector.node_arch"
         ) as mock_cluster, unittest.mock.patch(

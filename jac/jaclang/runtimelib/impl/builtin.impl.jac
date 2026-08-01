@@ -95,7 +95,8 @@ impl __getattr__(name: str) -> object {
     } elif (name in ('schema_was', 'schema_alias', 'schema_drop', 'schema_upgrade')) {
         return _get_schema_builder(name);
     } elif (
-        name in (
+        name
+        in (
             'Region',
             '_jac_region_open',
             '_jac_region_close',

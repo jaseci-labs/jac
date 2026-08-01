@@ -72,9 +72,10 @@ def generate_source_map_json(
         if out_line in line_to_src {
             (src_line, src_col) = line_to_src[out_line];
             segment = (
-                _encode_vlq(0) + _encode_vlq(0) + _encode_vlq(
-                    src_line - 1 - prev_src_line
-                ) + _encode_vlq(src_col - prev_src_col)
+                _encode_vlq(0)
+                + _encode_vlq(0)
+                + _encode_vlq(src_line - 1 - prev_src_line)
+                + _encode_vlq(src_col - prev_src_col)
             );
             prev_src_line = src_line - 1;
             prev_src_col = src_col;

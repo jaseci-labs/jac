@@ -6,7 +6,7 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.runtime.discovery.route_policy { format_route_origin_lines }
+import from jaclang.scale.runtime.routing { format_route_lines, resolve_routes }
 
 
 obj KubernetesRealizer {
@@ -19,44 +19,27 @@ obj KubernetesRealizer {
         dry_run: bool = False,
         show_yaml: bool = False
     ) -> int {
+        import from jaclang.scale.injector.binary { reset_deploy_version_cache }
+
+        reset_deploy_version_cache();
         enabled = self.ms_config.get("enabled", None);
 
-        ms_configured = get_scale_config().microservices_declared();
-
         if target == "kubernetes" and enabled is not False {
-            scale_discovered: dict[str, str] = {};
-            if filename and os.path.exists(filename) {
-                import from jaclang.scale.runtime.discovery.discovery {
-                    discover_sv_services
-                }
-                scale_discovered = discover_sv_services(filename);
-            }
-
-            explicit_routes = dict(self.ms_config.get("routes", {}));
-            merged_routes: dict[str, str] = dict(scale_discovered);
-            merged_routes.update(explicit_routes);
-            if (enabled is True) or merged_routes {
+            routes: dict[str, str] = resolve_routes(self.ms_config);
+            if (enabled is True) or routes {
                 target = "kubernetes-microservice";
-                if merged_routes {
+                if routes {
                     raw_cfg = get_scale_config().load();
                     raw_ms = raw_cfg.setdefault("microservices", {});
-                    raw_ms["routes"] = merged_routes;
-                    self.ms_config["routes"] = merged_routes;
-                    plural = "s" if len(merged_routes) != 1 else "";
-                    hint = (
-                        ""
-                            if ms_configured
-                            else "; set [scale.microservices] in jac.toml to customize"
-                    );
-                    label = "" if ms_configured else " (auto-detected)";
+                    raw_ms["routes"] = routes;
+                    self.ms_config["routes"] = routes;
+                    plural = "s" if len(routes) != 1 else "";
                     console.print(
-                        f"Microservice mode{label}: {len(merged_routes)} "
-                        f"service{plural}. Deploying to kubernetes{hint}.",
+                        f"Microservice mode: {len(routes)} "
+                        f"service{plural}. Deploying to kubernetes.",
                         style="cyan"
                     );
-                    for line in format_route_origin_lines(
-                        merged_routes, explicit_routes
-                    ) {
+                    for line in format_route_lines(routes) {
                         console.print(f"  {line}", style="muted");
                     }
                 }
@@ -117,13 +100,6 @@ obj KubernetesRealizer {
                 "jac at pod startup. Keep secrets in [scale.secrets] "
                 "(synced as a K8s Secret) or in .env, never inline in source."
             );
-
-            if not ms_configured {
-                console.warning(
-                    "Set [scale.microservices] in jac.toml to configure "
-                    "resources, scaling, ingress, and secrets before going to production."
-                );
-            }
         }
         if target == "kubernetes-microservice" {
             console.print("Preparing microservice deployment...");

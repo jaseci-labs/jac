@@ -20,7 +20,8 @@ test "resolve_firebase_project_id prefers subsystem env over shared" {
         },
         clear=True
     ) {
-        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV) == "firestore-project";
+        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV)
+            == "firestore-project";
     }
 }
 
@@ -29,8 +30,10 @@ test "resolve_firebase_project_id falls back to shared env" {
     with patch.dict(
         os.environ, {FIREBASE_PROJECT_ID_ENV: "shared-project"}, clear=True
     ) {
-        assert resolve_firebase_project_id(FIREBASE_AUTH_PROJECT_ID_ENV) == "shared-project";
-        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV) == "shared-project";
+        assert resolve_firebase_project_id(FIREBASE_AUTH_PROJECT_ID_ENV)
+            == "shared-project";
+        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV)
+            == "shared-project";
     }
 }
 
@@ -38,7 +41,8 @@ test "resolve_firebase_project_id falls back to shared env" {
 test "resolve_firebase_project_id falls back to config value" {
     with patch.dict(os.environ, {}, clear=True) {
         assert (
-            resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV, "toml-project") == "toml-project"
+            resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV, "toml-project")
+            == "toml-project"
         );
     }
 }

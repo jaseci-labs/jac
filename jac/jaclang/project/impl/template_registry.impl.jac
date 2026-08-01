@@ -27,8 +27,8 @@ impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
     }
 
     kind = template_info.get("kind")
-    or config.get("project", {}).get("kind", "")
-    or "cli";
+        or config.get("project", {}).get("kind", "")
+        or "cli";
 
     template = ProjectTemplate(
         name=name,
@@ -116,6 +116,7 @@ impl get_template_registry -> TemplateRegistry {
     import from jaclang.project.template_registry { TemplateRegistry }
     if _registry is None {
         _registry = TemplateRegistry();
+        initialize_template_registry();
     }
     return _registry;
 }

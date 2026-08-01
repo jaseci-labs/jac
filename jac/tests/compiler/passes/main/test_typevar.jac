@@ -103,11 +103,11 @@ test "typevar5_unbounded_operations" {
 
     # Binary operator errors
     assert 'Operator "__add__' in all_errors
-    and 'not supported for type' in all_errors , "Expected binary op error for a + 1";
+        and 'not supported for type' in all_errors , "Expected binary op error for a + 1";
 
     # Unary operator errors
     assert 'Operator "__neg__' in all_errors
-    and 'not supported for type' in all_errors , "Expected unary op error for -a";
+        and 'not supported for type' in all_errors , "Expected unary op error for -a";
 
     # Await errors
     assert 'Type "_T1" is not awaitable' in all_errors , "Expected await error for await a";

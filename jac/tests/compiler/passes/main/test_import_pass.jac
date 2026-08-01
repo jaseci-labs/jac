@@ -95,9 +95,8 @@ test "annexable by shared folder" {
     assert shared in annexes , "Expected shared folder impl to be discovered";
     assert discover_base_file(shared) == os.path.join(FIXTURES, "autoimpl.jac");
     # ...and its statements are spliced into the head.
-    assert "autoimpl.shared.impl.jac" in _merged_annex_files(
-        list(prog.mod.hub.values())[0]
-    ) , "Expected shared folder impl to be merged into head";
+    assert "autoimpl.shared.impl.jac"
+        in _merged_annex_files(list(prog.mod.hub.values())[0]) , "Expected shared folder impl to be merged into head";
 }
 
 test "double empty anx" {

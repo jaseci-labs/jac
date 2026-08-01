@@ -490,17 +490,17 @@ impl JacForm(props: dict) -> JsxElement {
                             and field().state.meta.errors
                             and field().state.meta.errors.length
                         )
-                        and (
-                            <p
-                                style={{
-                                    color: "#ef4444",
-                                    fontSize: "0.85rem",
-                                    marginTop: "0.25rem"
-                                }}
-                            >
-                                ⚠️{field().state.meta.errors[0].message}
-                            </p>
-                        )}
+                            and (
+                                <p
+                                    style={{
+                                        color: "#ef4444",
+                                        fontSize: "0.85rem",
+                                        marginTop: "0.25rem"
+                                    }}
+                                >
+                                    ⚠️{field().state.meta.errors[0].message}
+                                </p>
+                            )}
                     </div>
                 ); }}
             </form.Field>
@@ -581,7 +581,7 @@ impl JacForm(props: dict) -> JsxElement {
                             }}
                         >
                             {isSubmittingM() and "Submitting..."}{not isSubmittingM()
-                            and submitLabel}
+                                and submitLabel}
                         </button>
                     );
                 }}

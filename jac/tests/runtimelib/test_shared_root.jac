@@ -112,6 +112,64 @@ test "guest and logged-in users share the shared-root graph" {
 }
 
 
+test "deleting a commons node takes cross-owner edges with it" {
+    # The Bin archetype opens WRITE to all via __jac_access__, so bob may
+    # delete alice's bin - and the connecting edge alice owns must die with
+    # it rather than dangle off the shared root.
+    with TemporaryDirectory() as tmpdir {
+        client = make_shared_client(tmpdir);
+        client.register_user("alice", "secret123");
+        made = client.post("/walker/leave_bin", json={"tag": "junk"});
+        assert made.ok;
+        assert made.data["reports"][0] == 1;
+        client.close();
+        # Reopen so anchors deserialize from L3 with hashes stamped and
+        # access checks are enforced (hash==0 anchors are always writable).
+        client2 = make_shared_client(tmpdir);
+        client2.register_user("bob", "secret123");
+        before = client2.post("/walker/read_bins", json={});
+        assert before.ok;
+        assert before.data["reports"][0] == ["junk"] , "bob cannot see the commons bin";
+        edges_before = before.data["reports"][1];
+        cleared = client2.post("/walker/clear_bins", json={});
+        assert cleared.ok;
+        assert cleared.data["reports"][0] == 1 , "bob's cross-owner delete did not run";
+        assert cleared.data["reports"][1] == edges_before - 1 , "alice's edge dangles off the shared root";
+        after = client2.post("/walker/read_bins", json={});
+        assert after.ok;
+        assert after.data["reports"][0] == [] , "deleted bin still reachable";
+        client2.close();
+        Jac.set_shared_root_resolver(None);
+    }
+}
+
+
+test "a cross-owner delete without a write grant no-ops with a warning" {
+    # Notes are opened ReadPerm only: bob's delete must leave the note in
+    # place, still return 200, and surface a diagnostic in the envelope -
+    # a denied delete may be a no-op but never a silent one.
+    with TemporaryDirectory() as tmpdir {
+        client = make_shared_client(tmpdir);
+        client.register_user("alice", "secret123");
+        note = client.post("/walker/leave_note", json={"text": "keep"});
+        assert note.ok;
+        client.close();
+        client2 = make_shared_client(tmpdir);
+        client2.register_user("bob", "secret123");
+        blocked = client2.post("/walker/clear_notes", json={});
+        assert blocked.ok , "denied delete should still 200";
+        warnings = blocked.data.get("warnings") or [];
+        assert len(warnings) > 0 , "denied delete surfaced no warning";
+        assert any(["delete" in str(w) for w in warnings]) , "warning does not name the delete";
+        readback = client2.post("/walker/read_notes", json={});
+        assert readback.ok;
+        assert readback.data["reports"][0] == ["keep"] , "read-only note was deleted cross-owner";
+        client2.close();
+        Jac.set_shared_root_resolver(None);
+    }
+}
+
+
 test "an explicitly lowered shared-root level is respected" {
     # Apps may lock the commons down to read-only: a non-NO_ACCESS level set
     # explicitly must NOT be re-floored back to CONNECT.

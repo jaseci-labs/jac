@@ -1,6 +1,6 @@
 """Collect release note fragments and assemble them into release notes files.
 
-Reads fragment files from docs/docs/community/release_notes/unreleased/<package>/
+Reads fragment files from release_notes/unreleased/<package>/
 Fragment files follow the flat naming convention: <PR#>.<category>.md
 (e.g. 1234.bugfix.md, 5678.feature.md)
 
@@ -14,7 +14,7 @@ import argparse;
 import re;
 import from pathlib { Path }
 import from release_utils { PACKAGES }
-glob UNRELEASED_DIR: Path = Path("docs/docs/community/release_notes/unreleased");
+glob UNRELEASED_DIR: Path = Path("release_notes/unreleased");
 """Read all fragment files from a package's unreleased directory.
 
     Fragments follow the flat naming convention: <PR#>.<category>.md
@@ -38,12 +38,10 @@ def collect_fragments(package_dir: Path) -> dict[(str, list[str])] {
         }
         category = parts[1];
         content = fragment.read_text(encoding="utf-8").strip();
-        # Fragments live one directory deeper (unreleased/<pkg>/) than the
-        # assembled page (release_notes/<pkg>.md), so a fragment-relative
-        # link like (../../breaking-changes.md) breaks by exactly one level
-        # once hoisted - and fails `mkdocs build --strict` after release.
-        # Normalize to page-relative at assembly time.
-        content = content.replace("(../../", "(../");
+        # Fragment links must be written relative to the assembled page
+        # (jac/jaclang/cli/docs/community/release_notes/<pkg>.md) -- e.g.
+        # (../breaking-changes.md). The corpus link test validates them
+        # after assembly.
         if content {
             categories[category].append(content);
         }
