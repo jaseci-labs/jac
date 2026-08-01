@@ -404,8 +404,8 @@ impl TypeEvaluator._import_module_from_path(
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,
                         is_module_cache_valid,
-                        compute_module_key,
                         compute_input_fingerprints,
+                        compute_module_key_from_fingerprints,
                         module_cache_sections,
                         SEC_BYTECODE
                     }
@@ -419,7 +419,7 @@ impl TypeEvaluator._import_module_from_path(
                         writer = JirWriter();
 
                         sections: dict[int, bytes] = module_cache_sections(
-                            compute_module_key(resolved_path), input_fps
+                            compute_module_key_from_fingerprints(input_fps), input_fps
                         );
                         bc = mod.gen?.py_bytecode;
                         if bc is not None {
@@ -472,13 +472,18 @@ impl TypeEvaluator._resolve_importer_path(ast_node: uni.UniNode) -> (str | None)
 }
 
 impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None) {
-    import from jaclang.jac0core.jir { get_module_cache_path, is_module_cache_valid }
+    import from jaclang.jac0core.jir {
+        get_module_cache_path,
+        is_module_cache_valid,
+        compute_input_fingerprints
+    }
     import from jaclang.jac0core.jir_passes { JirReader }
     import os;
     import traceback;
     try {
         cache_path = get_module_cache_path(resolved_path);
-        if not is_module_cache_valid(resolved_path, cache_path)[0] {
+        input_fps = compute_input_fingerprints(resolved_path);
+        if not is_module_cache_valid(resolved_path, cache_path, input_fps)[0] {
             return None;
         }
         data = cache_path.read_bytes();

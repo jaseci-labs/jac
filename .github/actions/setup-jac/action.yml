@@ -199,15 +199,6 @@ runs:
           SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
         fi
         # zig build intermittently dies from a transient Zig 0.16.0 stdlib panic
-        # in mkpayload's threaded file copy of the jaclang source tree (integer
-        # overflow in std/Io/Threaded.zig::fileWriteFilePositional -> signal
-        # ABRT). It is non-deterministic -- the identical source builds clean on
-        # retry and across sibling jobs in the same run -- and the payload step
-        # is self-cleaning (mkpayload deleteTree's its .work dir up front and
-        # zig's incremental cache stays disabled via use-cache:false above), so
-        # re-running the whole `zig build` is safe. Retry only when the failure
-        # matches that transient signature, so a genuine compile error fails fast
-        # instead of burning build minutes on a known-doomed rebuild.
         build_log="$RUNNER_TEMP/jac-build.log"
         mkdir -p "$RUNNER_TEMP"
         attempts=0

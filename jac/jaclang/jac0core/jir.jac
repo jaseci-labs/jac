@@ -136,54 +136,34 @@ def compute_content_sha256(file_path: str) -> str {
     return h.hexdigest();
 }
 
-def _gather_related_paths(source_path: str) -> list[str] {
+def _find_jac_toml_path(source_path: str) -> (str | None) {
+    import from jaclang.jac0core.modresolver { find_project_root }
+    found = find_project_root(Path(source_path));
+    if found is None {
+        return None;
+    }
+    (_root, toml_path) = found;
+    return str(toml_path);
+}
+
+def _discover_annex_path_groups(
+    source_path: str
+) -> tuple[list[str], list[str], list[str], list[str]] {
     import from jaclang.jac0core.bccache {
         discover_annex_files,
         discover_variant_files,
         discover_style_annex
     }
-    src = Path(source_path).resolve();
-    paths: set = set();
-    paths |= set(discover_annex_files(str(src), '.impl.jac'));
-    paths |= set(discover_annex_files(str(src), '.test.jac'));
-    paths |= set(discover_variant_files(str(src)));
-    style = discover_style_annex(str(src));
-    if style is not None {
-        paths.add(style);
+    src = str(Path(source_path).resolve());
+    impl_paths = discover_annex_files(src, '.impl.jac');
+    test_paths = discover_annex_files(src, '.test.jac');
+    variant_paths = discover_variant_files(src);
+    style_path = discover_style_annex(src);
+    style_paths: list[str] = [];
+    if style_path is not None {
+        style_paths.append(style_path);
     }
-    return sorted(paths);
-}
-
-def _hash_related_paths(
-    source_path: str, related_paths: list[str]
-) -> list[tuple[str, str]] {
-    base_dir = Path(source_path).resolve().parent;
-    result: list[tuple[str, str]] = [];
-    for p in related_paths {
-        rel = os.path.relpath(p, str(base_dir)).replace(os.sep, '/');
-        result.append((rel, compute_content_sha256(p)));
-    }
-    return result;
-}
-
-def _related_files(source_path: str) -> list[tuple[str, str]] {
-    return _hash_related_paths(source_path, _gather_related_paths(source_path));
-}
-
-def _find_jac_toml_path(source_path: str) -> (str | None) {
-    cur = Path(source_path).resolve().parent;
-    for _ in range(32) {
-        candidate = cur / "jac.toml";
-        if candidate.is_file() {
-            return str(candidate);
-        }
-        parent = cur.parent;
-        if parent == cur {
-            break;
-        }
-        cur = parent;
-    }
-    return None;
+    return (impl_paths, test_paths, variant_paths, style_paths);
 }
 
 def _hash_sorted_paths(paths: list[str]) -> str {
@@ -217,20 +197,10 @@ def _config_fingerprint(source_path: str) -> str {
 }
 
 def compute_input_fingerprints(source_path: str) -> dict[str, str] {
-    import from jaclang.jac0core.bccache {
-        discover_annex_files,
-        discover_variant_files,
-        discover_style_annex
-    }
     src = str(Path(source_path).resolve());
-    impl_paths = discover_annex_files(src, '.impl.jac');
-    test_paths = discover_annex_files(src, '.test.jac');
-    variant_paths = discover_variant_files(src);
-    style_path = discover_style_annex(src);
-    style_paths: list[str] = [];
-    if style_path is not None {
-        style_paths.append(style_path);
-    }
+    (impl_paths, test_paths, variant_paths, style_paths) = (
+        _discover_annex_path_groups(source_path)
+    );
     return {
         INPUT_COMPILER: _compiler_fingerprint(),
         INPUT_MAIN: compute_content_sha256(src),
@@ -281,43 +251,17 @@ def bytecode_inputs_match(stored: dict[str, str], current: dict[str, str]) -> bo
     return True;
 }
 
-def module_mtime_paths(source_path: str) -> list[str] {
-    paths: list[str] = [str(Path(source_path).resolve())];
-    paths.extend(_gather_related_paths(source_path));
-    toml = _find_jac_toml_path(source_path);
-    if toml is not None {
-        paths.append(toml);
-    }
-    return paths;
-}
-
 def bytecode_mtime_paths(source_path: str) -> list[str] {
-    import from jaclang.jac0core.bccache {
-        discover_annex_files,
-        discover_variant_files
-    }
     src = str(Path(source_path).resolve());
+    (impl_paths, _, variant_paths, _) = _discover_annex_path_groups(source_path);
     paths: list[str] = [src];
-    paths.extend(discover_annex_files(src, '.impl.jac'));
-    paths.extend(discover_variant_files(src));
+    paths.extend(impl_paths);
+    paths.extend(variant_paths);
     toml = _find_jac_toml_path(source_path);
     if toml is not None {
         paths.append(toml);
     }
     return paths;
-}
-
-def _cache_mtime_paths_fresh(source_path: str, cache_mtime: float) -> bool {
-    for p in module_mtime_paths(source_path) {
-        try {
-            if cache_mtime <= os.path.getmtime(p) {
-                return False;
-            }
-        } except OSError {
-            return False;
-        }
-    }
-    return True;
 }
 
 def _read_jir_sections(data: bytes) -> dict[int, bytes] {
@@ -437,29 +381,10 @@ def schema_digest -> str {
     return _SCHEMA_DIGEST_CACHE[0];
 }
 
-def compute_module_key(
-    source_path: str, related: (list[tuple[str, str]] | None) = None
-) -> str {
-    if related is not None {
-        jac_ver = _get_jaclang_pkg_version();
-        h = hashlib.sha256();
-        h.update(jac_ver.encode());
-        h.update(
-            struct.pack('<H', (sys.version_info.major << 8) | sys.version_info.minor)
-        );
-        h.update(struct.pack('<H', FORMAT_VERSION));
-        h.update(schema_digest().encode());
-        h.update(_module_client_kind(source_path).encode());
-        h.update(_module_codespace_mode(source_path).encode());
-        h.update(compute_content_sha256(source_path).encode());
-        for (rel, digest) in related {
-            h.update(rel.encode());
-            h.update(digest.encode());
-        }
-        return h.hexdigest();
-    }
-    fingerprints = compute_input_fingerprints(source_path);
-    return compute_module_key_from_fingerprints(fingerprints);
+def compute_module_key(source_path: str) -> str {
+    return compute_module_key_from_fingerprints(
+        compute_input_fingerprints(source_path)
+    );
 }
 
 def compute_module_key_from_fingerprints(fingerprints: dict[str, str]) -> str {
