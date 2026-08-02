@@ -56,6 +56,22 @@ test "typevar3_scope_errors" {
     assert 'has no meaning in this context' in all_errors , "Expected error for TypeVar used outside its valid scope";
 }
 
+
+"""Test TypeVar scoping inside detached impl blocks."""
+test "typevar_impl_scope" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typevar_impl_scope.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 TypeVar scope error, got {len(
+        program.errors_had
+    )}";
+
+    error = program.errors_had[0].pretty_print();
+    assert 'has no meaning in this context' in error , f"Expected E1065 for the unbound '_T', got {error}";
+    assert '_T' in error , f"Expected the error to name '_T', got {error}";
+}
+
 """Test TypeVar variance validation (Pyright: covariant/contravariant checks)."""
 test "typevar4_variance_validation" {
     program = JacProgram();
