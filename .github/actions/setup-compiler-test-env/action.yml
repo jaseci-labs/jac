@@ -1,0 +1,39 @@
+name: Set up compiler test environment
+description: >
+  Shared toolchain setup for compiler AND runtime shard jobs: restore the
+  build-jac binary, Node 20, Zig 0.16.0, and vendor the static-musl runtime.
+  Use after actions/checkout. Compiler/type-heavy suites keep typeshed on
+  (default); runtime/language suites pass with-typeshed: "false" and
+  setup-bun: "true".
+inputs:
+  with-typeshed:
+    description: Restore typeshed stdlib stubs (compiler / type-heavy suites)
+    required: false
+    default: "true"
+  setup-bun:
+    description: Install Bun (runtime / language suites)
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/use-jac-binary
+      with:
+        with-typeshed: ${{ inputs.with-typeshed }}
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - uses: oven-sh/setup-bun@v2
+      if: inputs.setup-bun == 'true'
+
+    - uses: mlugg/setup-zig@v2
+      with:
+        version: 0.16.0
+        use-cache: false
+
+    - name: Vendor static-musl runtime
+      shell: bash
+      working-directory: jac
+      run: zig build -Dno-ninja vendor-musl --summary all

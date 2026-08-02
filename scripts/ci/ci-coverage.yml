@@ -1,0 +1,317 @@
+# CI routing manifest: changed paths → expected jobs + full-suite flag.
+# Every job id below must match a job in .github/workflows/ci.yml.
+version: 1
+
+metadata_jobs:
+  - ci-router
+  - build-jac
+  - coverage-audit
+  - everything-passed
+
+always_run_jobs:
+  - build-jac
+  - jac-check
+  - ci-router
+  - coverage-audit
+
+# Conservative allowlist categories. Mixing two or more source categories → full CI.
+# launcher is a leaf build-time dep (Zig trailer codec). native/ is the LLVM
+# shim (ctypes-loaded at runtime); native-only changes route to the cross lanes
+# plus test-compiler-passes-native (Linux x86_64 codegen). build-jac (always-run)
+# catches build breaks. compiler/jac0core/publish are NOT here on purpose --
+# they ripple across every lane and must stay full CI.
+allowlist_categories:
+  - docs
+  - scale
+  - byllm
+  - client
+  - installer
+  - launcher
+  - native
+
+jobs:
+  - jac-check
+  - contribution-checks
+  - test-compiler-root
+  - test-compiler-passes-main
+  - test-compiler-passes-ecmascript
+  - test-compiler-passes-native
+  - test-compiler-passes-tool
+  - test-compiler-equivalence
+  - test-runtime-core
+  - test-runtime-cli-language
+  - test-runtime-project-publish-utils-langserve
+  - test-solid-and-desktop
+  - test-client
+  - test-byllm
+  - test-docs
+  - test-native-macos
+  - test-native-aarch64
+  - test-launcher
+  - test-cef-build
+  - test-scale
+  - test-scale-k8s
+  - test-precompile
+  - test-integration-scripts
+  - test-built-byllm
+  - test-jac-site-smoke
+  - test-fullstack-eject-smoke
+  - k8s-real-e2e
+  - installer-test
+
+# Jobs excluded when full_ci escalates from path globs (e.g. .github/**). They
+# still run when their allowlist category or conditional_jobs path matches.
+full_ci_excluded_jobs:
+  - installer-test
+
+# Jobs that are legitimately ABSENT on a given event because their own `if:`
+# gate in .github/workflows/ci.yml never admits them there, no matter what the
+# router selects. validate-expected-jobs.sh subtracts these in full mode so the
+# aggregate gate stays green on push / merge_group / schedule. check-ci-coverage.sh
+# verifies every job below exists in `jobs` and every event is a real trigger;
+# keep this list minimal and exact. Under-listing re-breaks the gate on that
+# event; over-listing silently masks a job that should have run (router-tests
+# asserts each entry matches the job's `if:` gate in ci.yml).
+event_excluded_jobs:
+  push:        [installer-test, k8s-real-e2e]
+  merge_group: [installer-test]
+  schedule:    [installer-test]
+
+# Any match forces full CI (all jobs selected).
+full_ci_globs:
+  - .github/**
+  - scripts/ci/**
+  - scripts/check-release-notes.sh
+  - scripts/check-guide.sh
+  - scripts/integration_tests.jac
+  - scripts/validate_docs_code.jac
+  - jac/build.zig
+  - jac/build.zig.zon
+  - jac/jac.toml
+  - jac.toml
+  - .jacignore
+  - .pre-commit-config.yaml
+  - docker/**
+  - jac/jaclang/compiler/**
+  - jac/jaclang/jac0core/**
+  - jac/jaclang/runtimelib/**
+  - jac/jaclang/cli/**
+  - jac/jaclang/publish/**
+  - jac/jaclang/project/**
+  - jac/jaclang/lsp/**
+  - jac/jaclang/langserve/**
+  - jac/jaclang/utils/**
+  - jac/jaclang/vendor/**
+  - jac/jaclang/__init__.py
+  - jac/jaclang/meta_importer.py
+  - jac/jaclang/pytest_plugin.py
+  - jac/editor/**
+  - gitsync
+  - pytest.ini
+  - conftest.py
+  - README.md
+  - CONTRIBUTING.md
+  - LICENSE
+
+# Paths under a full_ci_glob that belong to an allowlist category instead.
+full_ci_exceptions:
+  - jac/jaclang/cli/docs/**
+  - jac/jaclang/cli/skills/**
+  - jac/jaclang/runtimelib/client/**
+  - jac/jaclang/scale/**
+  - jac/jaclang/byllm/**
+
+category_globs:
+  docs:
+    - jac/jaclang/cli/docs/**
+    - jac/jaclang/cli/skills/**
+    - release_notes/**
+  scale:
+    - jac/jaclang/scale/**
+  byllm:
+    - jac/jaclang/byllm/**
+  client:
+    - jac/jaclang/runtimelib/client/**
+  installer:
+    - scripts/install.sh
+  launcher:
+    - jac/launcher/**
+  native:
+    - jac/native/**
+
+category_jobs:
+  docs:
+    - contribution-checks
+    - test-docs
+  scale:
+    - test-scale
+    - test-integration-scripts
+    - test-jac-site-smoke
+  byllm:
+    - test-byllm
+    - test-built-byllm
+    - test-fullstack-eject-smoke
+    - test-integration-scripts
+  client:
+    - test-client
+    - test-solid-and-desktop
+  installer:
+    - installer-test
+  launcher:
+    - test-launcher
+  native:
+    - test-native-macos
+    - test-native-aarch64
+    - test-compiler-passes-native
+
+conditional_jobs:
+  test-cef-build:
+    globs:
+      - jac/jaclang/runtimelib/client/targets/desktop/**
+    categories:
+      - client
+  test-scale-k8s:
+    globs:
+      - jac/jaclang/scale/deploy/**
+      - jac/jaclang/scale/tests/deploy/**
+      - jac/jaclang/scale/tests/microservices/**
+      - jac/jaclang/scale/scripts/**
+  k8s-real-e2e:
+    globs:
+      - jac/jaclang/scale/deploy/**
+      - jac/jaclang/scale/tests/deploy/**
+      - jac/jaclang/scale/tests/microservices/**
+      - jac/jaclang/scale/scripts/**
+      # Consumed by the k8s-real-e2e job (k8s_microservice_real_e2e.sh).
+      # Without this glob a fixture-only change routes to test-scale but skips
+      # k8s-real-e2e, which actually runs the fixture.
+      - jac/jaclang/scale/tests/fixtures/k8s_e2e/**
+
+# PR labels that structurally skip jobs (workflow `if:` gates). When present,
+# validate-expected-jobs.sh does not require success for these jobs even if
+# the router selected them. Keep in sync with ci.yml label checks.
+pr_label_skips:
+  skip-k8s:
+    - test-scale-k8s
+    - k8s-real-e2e
+
+# Test-only path → owning shard(s) (also used when source paths are test files).
+# A value may be a single job OR a list: some tests are consumed by more than
+# one CI environment (e.g. a native pass run under the Linux shard AND a macOS
+# or aarch64 lane). File-specific entries outrank their directory glob because
+# the classifier sorts longer (more-specific) patterns first.
+test_shard_globs:
+  jac/tests/compiler/passes/main/**: test-compiler-passes-main
+  jac/tests/compiler/passes/ecmascript/**: test-compiler-passes-ecmascript
+  jac/tests/compiler/passes/native/**: test-compiler-passes-native
+  jac/tests/compiler/passes/native/test_exec_link.jac:
+    - test-compiler-passes-native
+    - test-native-macos
+  jac/tests/compiler/passes/native/test_native_gen_pass.jac:
+    - test-compiler-passes-native
+    - test-native-aarch64
+  jac/tests/compiler/passes/native/test_shared_lib.jac:
+    - test-compiler-passes-native
+    - test-native-macos
+  jac/tests/compiler/passes/native/test_wasm_build.jac:
+    - test-compiler-passes-native
+    - test-native-macos
+  jac/tests/compiler/passes/tool/**: test-compiler-passes-tool
+  jac/jaclang/compiler/tests/test_prim_equivalence.jac:
+    - test-compiler-equivalence
+    - test-native-macos
+  jac/tests/compiler/**: test-compiler-root
+  jac/tests/runtimelib/client/**: test-client
+  jac/tests/runtimelib/client/test_desktop_binding.jac:
+    - test-client
+    - test-solid-and-desktop
+  jac/tests/runtimelib/test_solid_jsdom.jac:
+    - test-runtime-core
+    - test-solid-and-desktop
+  jac/tests/runtimelib/**: test-runtime-core
+  jac/tests/cli/test_docs_content.jac: test-docs
+  jac/tests/cli/test_guide_docs.jac: test-docs
+  jac/tests/cli/**: test-runtime-cli-language
+  jac/tests/language/**: test-runtime-cli-language
+  jac/tests/project/**: test-runtime-project-publish-utils-langserve
+  jac/tests/publish/**: test-runtime-project-publish-utils-langserve
+  jac/tests/utils/**: test-runtime-project-publish-utils-langserve
+  jac/tests/langserve/**: test-runtime-project-publish-utils-langserve
+  jac/jaclang/scale/tests/test_pod_env.jac:
+    - test-scale-k8s
+  jac/jaclang/scale/tests/test_k8s_utils.jac:
+    - test-scale-k8s
+  jac/jaclang/scale/tests/test_deploy_k8s.jac:
+    - test-scale-k8s
+  jac/jaclang/scale/tests/**: test-scale
+  jac/jaclang/byllm/tests/test_byllm.jac:
+    - test-byllm
+    - test-built-byllm
+  jac/jaclang/byllm/tests/**: test-byllm
+  jac/jaclang/cli/docs/**: test-docs
+  jac/jaclang/cli/skills/**: test-docs
+  release_notes/**: contribution-checks
+  scripts/install.sh: installer-test
+
+cross_seam:
+  - paths:
+      - jac/tests/runtimelib/client/test_inprocess_dispatch.jac
+    add_jobs:
+      - test-client
+      - test-scale
+    when_categories:
+      - scale
+      - client
+  - paths:
+      - jac/tests/project/test_eject.jac
+    add_jobs:
+      - test-integration-scripts
+      - test-built-byllm
+      - test-fullstack-eject-smoke
+    when_categories:
+      - byllm
+      - scale
+      - client
+
+# Shards whose top-level test directories must stay inventoried.
+compiler_shards:
+  test-compiler-root:
+    paths:
+      - tests/compiler
+    ignore:
+      - tests/compiler/passes
+  test-compiler-passes-main:
+    paths:
+      - tests/compiler/passes/main
+  test-compiler-passes-ecmascript:
+    paths:
+      - tests/compiler/passes/ecmascript
+  test-compiler-passes-native:
+    paths:
+      - tests/compiler/passes/native
+  test-compiler-passes-tool:
+    paths:
+      - tests/compiler/passes/tool
+  test-compiler-equivalence:
+    paths:
+      - jaclang/compiler/tests
+
+runtime_shards:
+  test-runtime-core:
+    paths:
+      - tests/runtimelib
+    ignore:
+      - tests/runtimelib/client
+  test-runtime-cli-language:
+    paths:
+      - tests/cli
+      - tests/language
+    ignore_cli_docs:
+      - tests/cli/test_docs_content.jac
+      - tests/cli/test_guide_docs.jac
+  test-runtime-project-publish-utils-langserve:
+    paths:
+      - tests/project
+      - tests/publish
+      - tests/utils
+      - tests/langserve

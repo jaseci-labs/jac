@@ -1,0 +1,40 @@
+name: Use jac binary artifact
+description: >
+  Download the jac binary (and optional typeshed stubs) published by build-jac,
+  restore the executable bit, and put jac on PATH. Replaces per-job setup-jac on
+  Linux runners that consume the shared build-jac artifacts.
+inputs:
+  with-typeshed:
+    description: Restore typeshed stdlib stubs (compiler / type-heavy suites)
+    required: false
+    default: "true"
+  binary-path:
+    description: Directory to download the jac-binary artifact into
+    required: false
+    default: bin
+  add-to-path:
+    description: chmod +x and append binary-path to GITHUB_PATH
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Restore typeshed stdlib stubs into the checkout
+      if: inputs.with-typeshed == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: typeshed-stdlib
+        path: jac/jaclang/vendor/typeshed/stdlib
+
+    - name: Download the jac binary
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-binary
+        path: ${{ inputs.binary-path }}
+
+    - name: Put jac on PATH
+      if: inputs.add-to-path == 'true'
+      shell: bash
+      run: |
+        chmod +x "$PWD/${{ inputs.binary-path }}/jac"
+        echo "$PWD/${{ inputs.binary-path }}" >> "$GITHUB_PATH"

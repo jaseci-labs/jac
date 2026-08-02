@@ -77,7 +77,8 @@ Tests run through the binary's bundled test runner (pytest + xdist ship inside i
 ```bash
 cd jac
 JAC_TEST_JOBS=auto jac test tests
-# See ci jobs in github actions for more stuff to run
+# See ci jobs in github actions for more stuff to run.
+# To add or change CI job routing, see scripts/ci/README.md.
 ```
 
 The worker count can also be set persistently in `jac.toml` so you don't have to prefix every run -- the `JAC_TEST_JOBS` env var still overrides it when set:
