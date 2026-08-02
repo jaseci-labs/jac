@@ -69,12 +69,16 @@ glob FORBIDDEN: dict[str, str] = {
              "check-only runs agree"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
-             1,
-             "declaration-surface read: component PascalCase rename "
-             "collision guard checks whether the capitalized name is "
-             "already declared in the module - the declared NAME is the "
-             "consumed fact, not a resolved type. The former sv-import "
-             "stub lookup is deleted (#7760): signatures come from the "
+             3,
+             "declaration-surface reads: (1) component PascalCase "
+             "rename collision guard checks whether the capitalized name "
+             "is already declared in the module - the declared NAME is "
+             "the consumed fact, not a resolved type; (2-3) runtime-import "
+             "injection guard checks ir_in and the main module (when "
+             "different) for a locally declared name before emitting a "
+             "@jac/runtime import - the declared NAME is the consumed "
+             "fact, not a resolved type. The former sv-import stub "
+             "lookup is deleted (#7760): signatures come from the "
              "recorded InteropBinding"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
