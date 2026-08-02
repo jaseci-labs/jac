@@ -492,40 +492,27 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       }
       return false;
     },
-    getitem(c, i) {
-      // Subscript read for a value of unknown static type. This is a faithful
-      // superset of a raw `c[i]`: it only adds Python's negative indexing for
-      // sequences (string/array) and otherwise preserves JS semantics exactly
-      // (mapping/object access, out-of-range -> `undefined`, no new throws).
-      if (typeof i === "number" && i < 0
-          && (typeof c === "string" || Array.isArray(c))) {
-        return c[c.length + i];
+    type_is(x, spec) {
+      // Runtime lowering of `type(x) is <T>`. `spec` is a builtin typename
+      // string, or a class constructor for a user archetype. `x` is evaluated
+      // once by the caller, so this is safe for side-effecting subjects.
+      // These are JS approximations of Python's exact-type `type()` checks:
+      // JS has no int/float distinction (Number.isInteger only separates
+      // whole-valued numbers) and list/tuple both map to Array.
+      if (typeof spec === "function") return x != null && x.constructor === spec;
+      switch (spec) {
+        case "str": return typeof x === "string";
+        case "bool": return typeof x === "boolean";
+        case "int": return typeof x === "number" && Number.isInteger(x);
+        case "float": return typeof x === "number" && !Number.isInteger(x);
+        case "dict": return x !== null && typeof x === "object" && !Array.isArray(x);
+        case "list": case "tuple": return Array.isArray(x);
+        case "set": return x instanceof Set;
+        case "bytes": return x instanceof Uint8Array;
+        case "type": return typeof x === "function";
+        case "any": return true;
+        default: return /^[iuf](8|16|32|64)$/.test(spec) && typeof x === "number";
       }
-      if (c instanceof Map) return c.get(i);
-      return c[i];
-    },
-    setitem(c, i, v) {
-      // Subscript assignment for a value of unknown/list static type. A
-      // negative index writes the array element counted from the end (a raw
-      // JS `c[-1] = v` would instead create a bogus "-1" property); every
-      // other case behaves like a plain `c[i] = v`.
-      if (typeof i === "number" && i < 0 && Array.isArray(c)) {
-        c[c.length + i] = v;
-        return v;
-      }
-      if (c instanceof Map) { c.set(i, v); return v; }
-      c[i] = v;
-      return v;
-    },
-    and_(a, bf) {
-      // Python `a and b`: returns `a` when it is falsy, else evaluates and
-      // returns `b`. `bf` is a thunk so the right operand keeps short-circuit
-      // (lazy) evaluation, and `a` is evaluated exactly once by the caller.
-      return _jac.builtin.bool(a) ? bf() : a;
-    },
-    or_(a, bf) {
-      // Python `a or b`: returns `a` when it is truthy, else `b`.
-      return _jac.builtin.bool(a) ? a : bf();
     }
   },
 
