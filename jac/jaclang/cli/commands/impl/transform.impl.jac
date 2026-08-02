@@ -53,6 +53,7 @@ impl jac2py(filename: str) -> int {
 
 impl jac2js(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
     if filename.endswith('.jac') {
         try {
             prog = JacProgram();
@@ -68,6 +69,7 @@ impl jac2js(filename: str) -> int {
                 console.error('ECMAScript code generation produced no output.');
                 return 1;
             }
+            js_output = prepend_active_runtime_globals(js_output);
             console.print(js_output, markup=False, highlight=False);
             return 0;
         } except Exception as e {

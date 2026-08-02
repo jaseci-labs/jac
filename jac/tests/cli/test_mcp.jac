@@ -1,5 +1,7 @@
 """Tests for the built-in `jac mcp` server (jaclang.cli.mcp)."""
 
+import os;
+import tempfile;
 import from jaclang.cli.mcp.server { JacMcpServer }
 import from jaclang.cli.mcp.plugin_config { JacMcpPluginConfig }
 import from jaclang.cli.mcp.resources { ResourceProvider }
@@ -741,7 +743,9 @@ test "knowledge map guide URIs all resolve" {
 # ── Compiler Bridge — New Tool Tests ──
 glob _VALID_JAC = "obj Foo { has x: int = 5; }",
      _GRAPH_JAC = "node A { has val: int = 1; }\nwith entry { a = A(val=1); root ++> a; }",
-     _CLIENT_JAC = "def:pub greet(name: str) -> str { return name; }";
+     _CLIENT_JAC = "def:pub greet(name: str) -> str { return name; }",
+     _CLIENT_JSX_JAC = "cl def:pub render() -> any { return <div>Hi</div>; }",
+     _NO_JS_JAC = "\"\"\"Server-only module with no client JS emission.\"\"\"\n";
 
 test "lint snippet clean code" {
     result = CompilerBridge.lint_snippet(_VALID_JAC);
@@ -775,6 +779,65 @@ test "jac to js client code shape" {
     assert "js_code" in result;
     assert "warnings" in result;
     assert isinstance(result["js_code"], str);
+}
+
+test "jac to js prepends @jac/runtime globals for jsx" {
+    # Regression for #7541: CompilerBridge.jac_to_js must wrap emission with
+    # prepend_active_runtime_globals() so JSX modules are loadable as ESM.
+    import from jaclang.jac0core.program { JacProgram }
+    # Cold client JSX compilation can exceed the bridge timeout on xdist workers;
+    # warm codegen in-process so the threaded bridge call stays under the cap.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cl.jac", delete=False) as tmp {
+        tmp.write(_CLIENT_JSX_JAC);
+        warm_path = tmp.name;
+    }
+    try {
+        JacProgram().compile(file_path=warm_path);
+    } finally {
+        os.unlink(warm_path);
+    }
+    result = CompilerBridge.jac_to_js(_CLIENT_JSX_JAC);
+    assert "js_code" in result;
+    assert "warnings" in result;
+    js_code = result["js_code"];
+    assert "__jacJsx(" in js_code , ("JSX snippet should lower to __jacJsx(...) calls");
+    has_runtime_import = False;
+    for line in js_code.splitlines() {
+        if line.startswith("import {")
+        and "__jacJsx" in line
+        and 'from "@jac/runtime";' in line {
+            has_runtime_import = True;
+        }
+    }
+    assert has_runtime_import , (
+        "MCP jac_to_js must prepend the @jac/runtime import for __jacJsx;\ngot:\n" + js_code
+    );
+}
+
+test "jac to js empty output stays empty" {
+    # When codegen produces no JS, the bridge must not call
+    # prepend_active_runtime_globals() on the empty string — that would inject a
+    # standalone import line and make js_code truthy despite the warning.
+    import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
+    assert prepend_active_runtime_globals("") != "" , (
+        "prepend_active_runtime_globals must not be called on empty emission"
+    );
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cl.jac", delete=False) as tmp {
+        tmp.write(_NO_JS_JAC);
+        warm_path = tmp.name;
+    }
+    try {
+        import from jaclang.jac0core.program { JacProgram }
+        JacProgram().compile(file_path=warm_path);
+    } finally {
+        os.unlink(warm_path);
+    }
+    result = CompilerBridge.jac_to_js(_NO_JS_JAC);
+    assert result["js_code"] == "";
+    assert any(
+        "ECMAScript code generation produced no output." in w
+        for w in result["warnings"]
+    );
 }
 
 test "run snippet prints hello" {
