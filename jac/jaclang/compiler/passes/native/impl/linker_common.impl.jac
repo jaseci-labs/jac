@@ -374,12 +374,27 @@ def _elf_obj_undefs(mem: bytes) -> list[str] {
 }
 
 
+glob _AR_PARSE_CACHE:
+         dict[
+             bytes,
+             tuple[dict[str, int], dict[int, ArMember], dict[int, list[str]]]
+         ] = {};
+
 impl select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember] {
-    index = parse_ar_symbol_index(data);
-    by_off: dict[int, ArMember] = {};
-    for m in parse_ar_archive(data) {
-        by_off[m.header_offset] = m;
+    cached = _AR_PARSE_CACHE.get(data);
+    if cached is None {
+        fresh_index = parse_ar_symbol_index(data);
+        fresh_by_off: dict[int, ArMember] = {};
+        for m in parse_ar_archive(data) {
+            fresh_by_off[m.header_offset] = m;
+        }
+        fresh_undefs: dict[int, list[str]] = {};
+        cached = (fresh_index, fresh_by_off, fresh_undefs);
+        _AR_PARSE_CACHE[data] = cached;
     }
+    index: dict[str, int] = cached[0];
+    by_off: dict[int, ArMember] = cached[1];
+    undefs_by_off: dict[int, list[str]] = cached[2];
     selected: dict[int, ArMember] = {};
     seen_syms: set[str] = set();
     worklist: list[str] = list(root_undef);
@@ -398,7 +413,12 @@ impl select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember] {
             continue;
         }
         selected[off] = m;
-        for u in _ar_member_undefs(m.data) {
+        m_undefs = undefs_by_off.get(off);
+        if m_undefs is None {
+            m_undefs = _ar_member_undefs(m.data);
+            undefs_by_off[off] = m_undefs;
+        }
+        for u in m_undefs {
             if u not in seen_syms {
                 worklist.append(u);
             }

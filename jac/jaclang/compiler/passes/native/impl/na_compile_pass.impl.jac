@@ -799,21 +799,30 @@ impl NativeCompilePass._references_undefined_osp_kernel(main_mod: object) -> boo
     return False;
 }
 
-impl NativeCompilePass._link_osp_kernel(main_mod: object) -> None {
-    ir_str = _compile_osp_kernel_ir();
-    if ir_str is None {
-        return;
-    }
+glob _OSP_KERNEL_MOD_CACHE: list = [];
 
-    ir_str = ir_str.replace('@"__jac_glob_init"', '@"__jac_glob_init_osp_kernel"');
-    ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_osp_kernel");
-    ir_str = ir_str.replace(
-        'name: "__jac_glob_init"', 'name: "__jac_glob_init_osp_kernel"'
-    );
+impl NativeCompilePass._link_osp_kernel(main_mod: object) -> None {
+    if not _OSP_KERNEL_MOD_CACHE {
+        ir_str = _compile_osp_kernel_ir();
+        if ir_str is None {
+            return;
+        }
+
+        ir_str = ir_str.replace('@"__jac_glob_init"', '@"__jac_glob_init_osp_kernel"');
+        ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_osp_kernel");
+        ir_str = ir_str.replace(
+            'name: "__jac_glob_init"', 'name: "__jac_glob_init_osp_kernel"'
+        );
+        try {
+            kmod = llvm.parse_assembly(ir_str);
+            kmod.verify();
+        } except Exception as _e {
+            return;
+        }
+        _OSP_KERNEL_MOD_CACHE.append(kmod);
+    }
     try {
-        kmod = llvm.parse_assembly(ir_str);
-        kmod.verify();
-        main_mod.link_in(kmod);
+        main_mod.link_in(_OSP_KERNEL_MOD_CACHE[0], preserve=True);
     } except Exception as _e {
         ;
     }
@@ -880,21 +889,30 @@ impl NativeCompilePass._references_undefined_fmt_kernel(main_mod: object) -> boo
     return False;
 }
 
-impl NativeCompilePass._link_fmt_kernel(main_mod: object) -> None {
-    ir_str = _compile_fmt_kernel_ir();
-    if ir_str is None {
-        return;
-    }
+glob _FMT_KERNEL_MOD_CACHE: list = [];
 
-    ir_str = ir_str.replace('@"__jac_glob_init"', '@"__jac_glob_init_fmt_kernel"');
-    ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_fmt_kernel");
-    ir_str = ir_str.replace(
-        'name: "__jac_glob_init"', 'name: "__jac_glob_init_fmt_kernel"'
-    );
+impl NativeCompilePass._link_fmt_kernel(main_mod: object) -> None {
+    if not _FMT_KERNEL_MOD_CACHE {
+        ir_str = _compile_fmt_kernel_ir();
+        if ir_str is None {
+            return;
+        }
+
+        ir_str = ir_str.replace('@"__jac_glob_init"', '@"__jac_glob_init_fmt_kernel"');
+        ir_str = ir_str.replace("@__jac_glob_init", "@__jac_glob_init_fmt_kernel");
+        ir_str = ir_str.replace(
+            'name: "__jac_glob_init"', 'name: "__jac_glob_init_fmt_kernel"'
+        );
+        try {
+            kmod = llvm.parse_assembly(ir_str);
+            kmod.verify();
+        } except Exception as _e {
+            return;
+        }
+        _FMT_KERNEL_MOD_CACHE.append(kmod);
+    }
     try {
-        kmod = llvm.parse_assembly(ir_str);
-        kmod.verify();
-        main_mod.link_in(kmod);
+        main_mod.link_in(_FMT_KERNEL_MOD_CACHE[0], preserve=True);
     } except Exception as _e {
         ;
     }
