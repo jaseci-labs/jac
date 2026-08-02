@@ -1357,3 +1357,7 @@ impl get_config_for_path(start_path: Path) -> JacConfig | None {
     }
     return _config_by_root[key];
 }
+
+impl invalidate_config_for_root(project_root: str | Path) -> None {
+    _config_by_root.pop(str(project_root), None);
+}

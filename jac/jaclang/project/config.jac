@@ -256,3 +256,5 @@ def set_config(config: JacConfig) -> None;
 def get_explicit_config -> JacConfig | None;
 
 def get_config_for_path(start_path: Path) -> JacConfig | None;
+
+def invalidate_config_for_root(project_root: str | Path) -> None;

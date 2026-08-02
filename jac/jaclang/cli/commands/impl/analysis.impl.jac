@@ -1192,7 +1192,7 @@ def _write_git_hook(hook_path: str, body: str, force: bool) -> int {
 }
 
 impl `test(
-    paths: list = [],
+    paths: (list | None) = None,
     test_name: str = "",
     filter: str = "",
     xit: bool = False,
@@ -1207,6 +1207,7 @@ impl `test(
     if isinstance(paths, str) {
         paths = [paths];
     }
+    paths = paths or [];
 
     if (not paths and not directory) {
         import from jaclang.project.config { get_config }
