@@ -177,6 +177,13 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+def typeshed_stubs_available -> bool {
+    stub_path = os.path.join(
+        os.path.dirname(__file__), '..', 'vendor', 'typeshed', 'stdlib', 'builtins.pyi'
+    );
+    return os.path.exists(stub_path);
+}
+
 def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     if _typecheck_sched_loading.get() {
         return [];
@@ -187,15 +194,7 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 
         import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
 
-        stub_path = os.path.join(
-            os.path.dirname(__file__),
-            '..',
-            'vendor',
-            'typeshed',
-            'stdlib',
-            'builtins.pyi'
-        );
-        if not os.path.exists(stub_path) {
+        if not typeshed_stubs_available() {
             return [];
         }
         return [TypeInferencePass];
