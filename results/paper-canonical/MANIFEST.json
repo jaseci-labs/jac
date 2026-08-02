@@ -1,0 +1,13 @@
+{
+  "git_sha": "3039fed9659e4df872f5b7b9f8399b8b44e7d6c7",
+  "captured_utc": "2026-07-29T16:50:08Z",
+  "fast_smoke": 0,
+  "governor": "performance", "no_turbo": "1",
+  "files": {
+    "env.json": "7e20147c720878e8eb720a53f6fcbb50a37294335b8d5b9f4e4529aaa75eda89",
+    "aggregate/payload.json": "2709c70b2d41f930e96b9c96755e4e229dc5f1ef21cd729f5acfa2a3e591e3dd",
+    "aggregate/sweep.json": "8b5b8361b83847591a5a3353931dbc3eeae0e14904d870981b1d6b58eb8d9384",
+    "aggregate/xtool_ffi.json": "f58ccde3815232cea3cb2e9dab7bff36748161f5f27be060a63fd3b8f81bba35",
+    "aggregate/xtool_rpc.json": "237ec837b5ba2ff5ddbed0a62696118956356247d6822f94dc9183a7c47164b6"
+  }
+}

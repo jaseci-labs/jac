@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "logical_name": "xruntime-base",
+  "source_file": "xruntime_results.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/xruntime_results.json",
+  "captured_utc": "2026-07-22T18:43:52.701594+00:00",
+  "captured_utc_source": "provenance.captured_utc",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "751ea8b4bf3e8f968508b360909116b40465c9dd",
+      "date": "2026-07-21T20:44:19-04:00",
+      "subject": "fix(interopbench): pin scalar-cell reference side to server with sv {} blocks"
+    },
+    "next_commit_after": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": null,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "partial (missing: cc, git_sha, jac, llvm, node)",
+  "feeds_paper_claims": [
+    "historical baseline cross-runtime table (pre-n7 / pre-n30)"
+  ],
+  "analysis": "Earliest cross-runtime capture. Superseded by the n7 and n30 captures which directly contradict each other on the headline 135x/213x ratios (STEPS.md item 30). No full provenance (missing git_sha, jac/node/llvm versions, machine-control status).",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "xruntime_results.json",
+  "raw_file_sha256": "0d9ec48ffaf2f0cd247add70e673ce2b3d126bf008cd34c65e000e7e9f31f51f"
+}

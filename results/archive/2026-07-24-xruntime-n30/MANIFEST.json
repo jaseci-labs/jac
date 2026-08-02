@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "logical_name": "xruntime-n30",
+  "source_file": "xruntime_results_n30.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/xruntime_results_n30.json",
+  "captured_utc": "2026-07-24T00:21:32.035120+00:00",
+  "captured_utc_source": "provenance.captured_utc",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "next_commit_after": null,
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": 30,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "partial (missing: cc, git_sha, jac, llvm, node)",
+  "feeds_paper_claims": [
+    "(not currently cited in paper.tex; contradicts the cited n7 table)"
+  ],
+  "analysis": "CONTRADICTS the paper's selected n7 table. Gives 515x (svc_split) and 329x (feed) vs the n7's 135x/213x. Captured ~17 min after commit 367a786cc landed (the payload-sweep + paper commit), making that commit / the uncommitted tree at capture time the prime suspect for the RPC-path inflation. Retained as the evidence that the n7 numbers do not reproduce.",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "xruntime_results_n30.json",
+  "raw_file_sha256": "7c68ba4b3f86e8cd51a3ebd135f910c65ab76c9f764c553289c2168e1cf11f99"
+}

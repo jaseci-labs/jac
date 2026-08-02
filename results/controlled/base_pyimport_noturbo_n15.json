@@ -1,0 +1,48 @@
+{
+  "kernel": "base_pyimport",
+  "args": [
+    "200",
+    "20"
+  ],
+  "metric": "per_call_ns",
+  "reps": 15,
+  "samples_per_call_ns": [
+    3428,
+    3402,
+    3231,
+    3435,
+    3457,
+    3413,
+    3328,
+    3289,
+    3378,
+    3449,
+    3896,
+    3398,
+    3381,
+    3438,
+    3417
+  ],
+  "median_per_call_ns": 3413,
+  "min_per_call_ns": 3231,
+  "max_per_call_ns": 3896,
+  "mean_per_call_ns": 3422.7,
+  "stdev_per_call_ns": 145.1,
+  "sanity_reps_per_call_ns": [
+    3358,
+    3331
+  ],
+  "canonical_digest": "pyimport:398210",
+  "digest": "a9cc757674beddf7",
+  "clock": {
+    "governor": "performance",
+    "no_turbo": 1
+  },
+  "env": {
+    "jac_version": "0.34.1",
+    "runtime_python": "3.14.6 bundled (/home/jac/.cache/jac/rt/1ef285c001050f4c-c152554fd6e7fdad/python)",
+    "numpy_install": "jac install numpy --no-save --global",
+    "platform": "Linux-6.18.39-1-lts-x86_64-with-glibc2.43"
+  },
+  "captured_utc": "2026-07-25T16:58:22.022202+00:00"
+}

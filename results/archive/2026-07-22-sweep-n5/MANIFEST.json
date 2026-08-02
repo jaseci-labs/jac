@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "logical_name": "sweep-n5",
+  "source_file": "sweep_results.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/sweep_results.json",
+  "captured_utc": "2026-07-22T22:20:32Z",
+  "captured_utc_source": "file_mtime",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "751ea8b4bf3e8f968508b360909116b40465c9dd",
+      "date": "2026-07-21T20:44:19-04:00",
+      "subject": "fix(interopbench): pin scalar-cell reference side to server with sv {} blocks"
+    },
+    "next_commit_after": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": 5,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "none (no provenance block)",
+  "feeds_paper_claims": [
+    "paper.tex L664-670: iop_cb free intercept=-901 slope=182.2, bridge intercept=4471 slope=183.5",
+    "paper.tex L626: 'slopes statistically identical (182.2 vs 183.5)'",
+    "the ~5.4 us fixed-callback-cost claim (intercept=4471 ns)"
+  ],
+  "analysis": "CONTRADICTED on TWO axes. (1) Slope: this n5 capture gives iop_cb slope ~183 ns/work; the n30 capture gives ~88 ns/work -- the per-work cost HALVED across commit 367a786cc (STEPS.md item 21). (2) Callback fixed cost: bridge intercept is 4471 ns here (~5.4 us claim) but 9 ns in n30 -- i.e. unresolvable above noise there (STEPS.md items 15,18,19). The paper's slope/intercept numbers and the 5.4 us claim are sourced from THIS file and do not reproduce.",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "sweep_results.json",
+  "raw_file_sha256": "4a3b14ae6b72ba1c82913f31966971c1f1c7011b3efa36aadee51eef79ed06f3"
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "logical_name": "ffi-baseline",
+  "source_file": "ffi_baseline.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/ffi_baseline.json",
+  "captured_utc": "2026-07-22T22:53:21Z",
+  "captured_utc_source": "file_mtime",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "751ea8b4bf3e8f968508b360909116b40465c9dd",
+      "date": "2026-07-21T20:44:19-04:00",
+      "subject": "fix(interopbench): pin scalar-cell reference side to server with sv {} blocks"
+    },
+    "next_commit_after": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": 5,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "none (no provenance block)",
+  "feeds_paper_claims": [
+    "paper.tex L539-560: jac FFI 3.1 ns, 102x vs cffi, 153x vs ctypes"
+  ],
+  "analysis": "FFI baseline (5 timed). No provenance block. The 102x/153x result compiles a jac-native loop vs interpreted Python+ctypes/cffi -- different execution placement, so it is NOT a general interop-overhead result (STEPS.md items 35,40). Needs matched no-op/identity controls before the headline is defensible.",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "ffi_baseline.json",
+  "raw_file_sha256": "8b745249e517e96986c90256e7c7d1044d49ba17865e9ac7f32fb23906fbbbe3"
+}

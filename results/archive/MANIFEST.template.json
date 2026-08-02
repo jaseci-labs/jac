@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "capture_timestamp_utc": "2026-07-23T00:00:00Z",
+  "git_sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+  "git_worktree_clean": false,
+  "jac_version": "jac 0.34.1 (Linux x86_64)",
+  "invocation_command": "jac run jac/examples/interopbench/kernels/iop_cb.jac -- --sizes 5000,500 --invocations 30",
+  "environment": {
+    "host": "zaitop",
+    "cpu_model": "Intel(R) Core(TM) Ultra 7 255H",
+    "python": "3.14.6",
+    "node": "v26.4.0",
+    "llvm": "22.1.8",
+    "cc": "GCC 16.1.1"
+  },
+  "sample_count": 30,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no pinning; NOT a controlled run",
+  "code_changes_since_previous_capture": "none recorded",
+  "publication_status": "excluded",
+  "publication_reason": "Contradicts the 2026-07-22-n5 capture (~2x absolute slope). Cannot interpret as variance until produced from the same frozen revision and controlled environment (STEPS.md item 15). Retained for audit, not cited.",
+  "raw_results_path": "raw/",
+  "checksums": {
+    "raw_results_sha256": "REPLACE_WITH_DIR_HASH"
+  }
+}

@@ -1,0 +1,308 @@
+{
+  "libm": "/usr/lib/libm.so.6",
+  "calls": 20,
+  "works": [
+    25,
+    50,
+    100,
+    200,
+    400,
+    800,
+    1600,
+    3200
+  ],
+  "timed": 5,
+  "variants": {
+    "jac_na_ffi": {
+      "per_work": {
+        "25": {
+          "median_per_ffi_ns": 3.236,
+          "min": 3.138,
+          "max": 3.334,
+          "digest": "sqrt:6500"
+        },
+        "50": {
+          "median_per_ffi_ns": 3.222,
+          "min": 3.156,
+          "max": 3.265,
+          "digest": "sqrt:25500"
+        },
+        "100": {
+          "median_per_ffi_ns": 3.1015,
+          "min": 3.0505,
+          "max": 3.1275,
+          "digest": "sqrt:101000"
+        },
+        "200": {
+          "median_per_ffi_ns": 3.07575,
+          "min": 3.06,
+          "max": 3.08925,
+          "digest": "sqrt:402000"
+        },
+        "400": {
+          "median_per_ffi_ns": 3.059125,
+          "min": 3.0385,
+          "max": 3.065125,
+          "digest": "sqrt:1604000"
+        },
+        "800": {
+          "median_per_ffi_ns": 3.0425625,
+          "min": 3.03275,
+          "max": 3.0465625,
+          "digest": "sqrt:6408000"
+        },
+        "1600": {
+          "median_per_ffi_ns": 3.04028125,
+          "min": 3.0291875,
+          "max": 3.40915625,
+          "digest": "sqrt:25616000"
+        },
+        "3200": {
+          "median_per_ffi_ns": 3.02925,
+          "min": 3.024203125,
+          "max": 3.4559375,
+          "digest": "sqrt:102432000"
+        }
+      },
+      "fit": {
+        "fixed_ns": 3.1365580702943454,
+        "slope_ns_per_call": -4.486208821251205e-05,
+        "r2": 0.3631937277572278
+      },
+      "digest_at_200_20": "sqrt:402000"
+    },
+    "jac_na_ref": {
+      "per_work": {
+        "25": {
+          "median_per_ffi_ns": 1.936,
+          "min": 1.888,
+          "max": 1.974,
+          "digest": "sqrt:6500"
+        },
+        "50": {
+          "median_per_ffi_ns": 2.248,
+          "min": 2.235,
+          "max": 2.309,
+          "digest": "sqrt:25500"
+        },
+        "100": {
+          "median_per_ffi_ns": 2.4785,
+          "min": 2.4705,
+          "max": 2.5065,
+          "digest": "sqrt:101000"
+        },
+        "200": {
+          "median_per_ffi_ns": 2.52475,
+          "min": 2.51925,
+          "max": 2.5285,
+          "digest": "sqrt:402000"
+        },
+        "400": {
+          "median_per_ffi_ns": 2.547875,
+          "min": 2.545125,
+          "max": 2.551375,
+          "digest": "sqrt:1604000"
+        },
+        "800": {
+          "median_per_ffi_ns": 2.5620625,
+          "min": 2.5593125,
+          "max": 2.5636875,
+          "digest": "sqrt:6408000"
+        },
+        "1600": {
+          "median_per_ffi_ns": 2.5669375,
+          "min": 2.56496875,
+          "max": 2.56809375,
+          "digest": "sqrt:25616000"
+        },
+        "3200": {
+          "median_per_ffi_ns": 2.570953125,
+          "min": 2.565328125,
+          "max": 2.5715,
+          "digest": "sqrt:102432000"
+        }
+      },
+      "fit": {
+        "fixed_ns": 2.352307574070488,
+        "slope_ns_per_call": 9.672431881350518e-05,
+        "r2": 0.22376301897154138
+      },
+      "digest_at_200_20": "sqrt:402000"
+    },
+    "py_ctypes": {
+      "per_work": {
+        "25": {
+          "median_per_ffi_ns": 468.936,
+          "min": 464.694,
+          "max": 477.47,
+          "digest": "sqrt:6500"
+        },
+        "50": {
+          "median_per_ffi_ns": 472.49,
+          "min": 467.897,
+          "max": 501.341,
+          "digest": "sqrt:25500"
+        },
+        "100": {
+          "median_per_ffi_ns": 461.7215,
+          "min": 459.736,
+          "max": 474.8475,
+          "digest": "sqrt:101000"
+        },
+        "200": {
+          "median_per_ffi_ns": 475.37625,
+          "min": 456.09025,
+          "max": 478.8455,
+          "digest": "sqrt:402000"
+        },
+        "400": {
+          "median_per_ffi_ns": 474.558125,
+          "min": 469.96475,
+          "max": 477.976125,
+          "digest": "sqrt:1604000"
+        },
+        "800": {
+          "median_per_ffi_ns": 483.6476875,
+          "min": 481.1825625,
+          "max": 491.8811875,
+          "digest": "sqrt:6408000"
+        },
+        "1600": {
+          "median_per_ffi_ns": 483.8495,
+          "min": 482.12740625,
+          "max": 487.3789375,
+          "digest": "sqrt:25616000"
+        },
+        "3200": {
+          "median_per_ffi_ns": 482.10984375,
+          "min": 480.465828125,
+          "max": 488.3403125,
+          "digest": "sqrt:102432000"
+        }
+      },
+      "fit": {
+        "fixed_ns": 471.6199542263749,
+        "slope_ns_per_call": 0.0046634152845491305,
+        "r2": 0.44131398055168203
+      },
+      "digest_at_200_20": "sqrt:402000"
+    },
+    "py_cffi": {
+      "per_work": {
+        "25": {
+          "median_per_ffi_ns": 306.196,
+          "min": 302.768,
+          "max": 317.782,
+          "digest": "sqrt:6500"
+        },
+        "50": {
+          "median_per_ffi_ns": 324.659,
+          "min": 323.393,
+          "max": 329.331,
+          "digest": "sqrt:25500"
+        },
+        "100": {
+          "median_per_ffi_ns": 319.2165,
+          "min": 306.2505,
+          "max": 322.4505,
+          "digest": "sqrt:101000"
+        },
+        "200": {
+          "median_per_ffi_ns": 314.48775,
+          "min": 303.70975,
+          "max": 330.0425,
+          "digest": "sqrt:402000"
+        },
+        "400": {
+          "median_per_ffi_ns": 316.57925,
+          "min": 311.79725,
+          "max": 337.70025,
+          "digest": "sqrt:1604000"
+        },
+        "800": {
+          "median_per_ffi_ns": 318.34725,
+          "min": 316.42675,
+          "max": 320.529,
+          "digest": "sqrt:6408000"
+        },
+        "1600": {
+          "median_per_ffi_ns": 320.41209375,
+          "min": 319.36134375,
+          "max": 338.40146875,
+          "digest": "sqrt:25616000"
+        },
+        "3200": {
+          "median_per_ffi_ns": 323.5379375,
+          "min": 321.122578125,
+          "max": 327.195015625,
+          "digest": "sqrt:102432000"
+        }
+      },
+      "fit": {
+        "fixed_ns": 315.9591942534857,
+        "slope_ns_per_call": 0.002472506230919922,
+        "r2": 0.22200007114161302
+      },
+      "digest_at_200_20": "sqrt:402000"
+    },
+    "py_ref": {
+      "per_work": {
+        "25": {
+          "median_per_ffi_ns": 32.684,
+          "min": 32.318,
+          "max": 32.904,
+          "digest": "sqrt:6500"
+        },
+        "50": {
+          "median_per_ffi_ns": 37.676,
+          "min": 37.4,
+          "max": 37.871,
+          "digest": "sqrt:25500"
+        },
+        "100": {
+          "median_per_ffi_ns": 34.6975,
+          "min": 34.6225,
+          "max": 37.1325,
+          "digest": "sqrt:101000"
+        },
+        "200": {
+          "median_per_ffi_ns": 39.13125,
+          "min": 39.023,
+          "max": 39.714,
+          "digest": "sqrt:402000"
+        },
+        "400": {
+          "median_per_ffi_ns": 37.68525,
+          "min": 37.524,
+          "max": 38.27675,
+          "digest": "sqrt:1604000"
+        },
+        "800": {
+          "median_per_ffi_ns": 41.7306875,
+          "min": 40.9343125,
+          "max": 42.048125,
+          "digest": "sqrt:6408000"
+        },
+        "1600": {
+          "median_per_ffi_ns": 46.03784375,
+          "min": 43.1913125,
+          "max": 54.67853125,
+          "digest": "sqrt:25616000"
+        },
+        "3200": {
+          "median_per_ffi_ns": 45.34334375,
+          "min": 44.491375,
+          "max": 59.988203125,
+          "digest": "sqrt:102432000"
+        }
+      },
+      "fit": {
+        "fixed_ns": 36.56513855538343,
+        "slope_ns_per_call": 0.003523884950107078,
+        "r2": 0.673727298866833
+      },
+      "digest_at_200_20": "sqrt:402000"
+    }
+  },
+  "wall_s": 373.5
+}
