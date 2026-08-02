@@ -46,7 +46,8 @@ obj IdentityStorage {
     def create_user(
         identities: list[dict[str, any]],
         credential: dict[str, any],
-        profile: dict[str, any] | None = None
+        profile: dict[str, any] | None = None,
+        root_id: str | None = None
     ) -> dict[str, any];
 
     def user_exists_by_id(user_id: str) -> bool;

@@ -281,11 +281,14 @@ impl JacAPIServerCore.start(
             return await call_next(request);
         }
     }
-    self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+    import from jaclang.scale.identity.guest_root { compute_guest_root_id }
+    self.user_manager.create_internal_user(
+        Con.GUEST.value, '__no_password__', root_id=compute_guest_root_id()
+    );
 
     _um = self.user_manager;
     def _shared_root_id -> (str | None) {
-        return _um.get_root_id(Con.GUEST.value);
+        return _um.resolve_shared_root_id();
     }
     Jac.set_shared_root_resolver(_shared_root_id);
     self.setup_emailer();
