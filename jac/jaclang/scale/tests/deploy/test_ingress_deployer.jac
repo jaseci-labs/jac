@@ -8,10 +8,17 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 
-def _render_rules(domain: str) -> list {
+def _render_rules(domain: str, live_annotations: dict | None = None) -> list {
     config = KubernetesConfig(app_name="myapp", namespace="test-ns", domain=domain);
     deployer = IngressDeployer(k8s_config=config, logger=None);
     networking_v1 = unittest.mock.MagicMock();
+    if live_annotations is None {
+        networking_v1.read_namespaced_ingress.side_effect = ApiException(status=404);
+    } else {
+        networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
+            metadata=SimpleNamespace(annotations=live_annotations)
+        );
+    }
     core_v1 = unittest.mock.MagicMock();
     deployer._deploy_ingress_resource(
         app_name="myapp",
@@ -44,6 +51,103 @@ test "per-app ingress without a domain renders a single catch-all rule" {
     rules = _render_rules("");
     assert len(rules) == 1 , f"expected one catch-all rule, got {rules}";
     assert "host" not in rules[0];
+}
+
+test "redeploy without config domain falls back to the jac-scale/domain annotation" {
+    # A redeploy may be driven without the domain in config (it may only ever
+    # have been supplied at enable_tls time); the annotation enable_tls
+    # maintains must keep the host binding alive.
+    rules = _render_rules("", live_annotations={"jac-scale/domain": "example.com"});
+    assert len(rules) == 2 , f"expected host rule + catch-all, got {rules}";
+    assert rules[0].get("host") == "example.com";
+    assert "host" not in rules[1];
+}
+
+test "redeploy with no domain anywhere stays a single catch-all" {
+    rules = _render_rules("", live_annotations={});
+    assert len(rules) == 1 , f"expected one catch-all rule, got {rules}";
+    assert "host" not in rules[0];
+}
+
+test "config domain wins without consulting the live ingress" {
+    config = KubernetesConfig(
+        app_name="myapp", namespace="test-ns", domain="new.example.com"
+    );
+    deployer = IngressDeployer(k8s_config=config, logger=None);
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="test-ns",
+        ingress_class="test-ns-myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=networking_v1,
+        core_v1=core_v1
+    );
+    assert not networking_v1.read_namespaced_ingress.called , "an explicitly configured domain must not trigger a live-state read";
+    rules = networking_v1.patch_namespaced_ingress.call_args.kwargs["body"]["spec"]["rules"];
+    assert rules[0].get("host") == "new.example.com";
+}
+
+test "non-404 error from the annotation fallback read propagates" {
+    config = KubernetesConfig(app_name="myapp", namespace="test-ns", domain="");
+    deployer = IngressDeployer(k8s_config=config, logger=None);
+    networking_v1 = unittest.mock.MagicMock();
+    networking_v1.read_namespaced_ingress.side_effect = ApiException(status=500);
+    core_v1 = unittest.mock.MagicMock();
+    raised = False;
+    try {
+        deployer._deploy_ingress_resource(
+            app_name="myapp",
+            namespace="test-ns",
+            ingress_class="test-ns-myapp-nginx",
+            service_port=8000,
+            grafana_enabled=False,
+            redis_dashboard=False,
+            mongo_dashboard=False,
+            networking_v1=networking_v1,
+            core_v1=core_v1
+        );
+    } except ApiException as e {
+        raised = e.status == 500;
+    }
+    assert raised , "Non-404 ApiException from read_namespaced_ingress must propagate";
+}
+
+test "redis ingress follows the annotation fallback domain" {
+    config = KubernetesConfig(
+        app_name="myapp",
+        namespace="test-ns",
+        domain="",
+        redis_insight_username="admin",
+        redis_insight_password="secret"
+    );
+    deployer = IngressDeployer(k8s_config=config, logger=None);
+    networking_v1 = unittest.mock.MagicMock();
+    networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(annotations={"jac-scale/domain": "example.com"})
+    );
+    core_v1 = unittest.mock.MagicMock();
+    deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="test-ns",
+        ingress_class="test-ns-myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=True,
+        mongo_dashboard=False,
+        networking_v1=networking_v1,
+        core_v1=core_v1
+    );
+    all_calls = networking_v1.patch_namespaced_ingress.call_args_list;
+    assert len(all_calls) == 2 , "Expected two patch_namespaced_ingress calls";
+    redis_rules = all_calls[1].kwargs["body"]["spec"]["rules"];
+    assert len(redis_rules) == 2 , f"expected host rule + catch-all, got {redis_rules}";
+    assert redis_rules[0].get("host") == "example.com";
+    assert "host" not in redis_rules[1];
 }
 
 def _run_enable_tls(shared: bool) -> list {

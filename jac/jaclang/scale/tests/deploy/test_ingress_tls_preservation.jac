@@ -93,6 +93,7 @@ test "patch body contains jac-scale-owned annotations" {
 test "first deploy creates ingress when patch returns 404" {
     networking_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
+    networking_v1.read_namespaced_ingress.side_effect = ApiException(status=404);
     networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     deployer = _make_deployer();
@@ -108,6 +109,7 @@ test "first deploy creates ingress when patch returns 404" {
 test "non-404 patch error propagates" {
     networking_v1 = unittest.mock.MagicMock();
     core_v1 = unittest.mock.MagicMock();
+    networking_v1.read_namespaced_ingress.side_effect = ApiException(status=404);
     networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=500);
 
     deployer = _make_deployer();
