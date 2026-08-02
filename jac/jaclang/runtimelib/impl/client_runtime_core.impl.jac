@@ -147,7 +147,85 @@ async def __nativeInvoke(kind: str, name: str, `node: str, fields: dict) -> any 
         "fields": fields,
         "token": token
     };
-    return await globalThis.__jac_invoke(JSON.stringify(payload));
+    raw = await globalThis.__jac_invoke(JSON.stringify(payload));
+    if raw and raw.__jac_stream {
+        if raw.response {
+            return {
+                "__jac_stream_iter": True,
+                "iter": __consumeNativeSse(raw.response)
+            };
+        }
+
+        if raw.stream_id {
+            return {
+                "__jac_stream_iter": True,
+                "iter": __consumeNativePush(str(raw.stream_id))
+            };
+        }
+    }
+    if isinstance(raw, str) {
+        return JSON.parse(raw);
+    }
+    return raw;
+}
+
+async def __consumeNativeSse(response: any) -> any {
+    reader = response.body.getReader();
+    decoder = new(TextDecoder);
+    nl = chr(10);
+    buf = "";
+    feeding = True;
+    while feeding {
+        part = await reader.read();
+        if part.done {
+            feeding = False;
+            continue;
+        }
+        buf = buf + decoder.decode(part.value, {"stream": True});
+        frames = buf.split(nl + nl);
+        buf = frames.pop();
+        for frame in frames {
+            lines = frame.split(nl);
+            is_event = False;
+            for line in lines {
+                if line.startsWith("event:") {
+                    is_event = True;
+                }
+            }
+            if is_event {
+                continue;
+            }
+            for line in lines {
+                if line.startsWith("data: ") {
+                    yield JSON.parse(line.slice(6));
+                }
+            }
+        }
+    }
+}
+
+async def __consumeNativePush(stream_id: str) -> any {
+    jac = globalThis.__jac;
+    if not jac or not jac.__stream_next__ {
+        raise Exception("native push streaming requires window.__jac.__stream_next__");
+    }
+    feeding = True;
+    while feeding {
+        frame = await jac.__stream_next__(stream_id);
+        kind = frame.type if frame else "";
+        if kind == "end" {
+            feeding = False;
+            continue;
+        }
+        if kind == "error" {
+            err = frame.error or {};
+            msg = err.message or "native stream error";
+            raise Exception(msg);
+        }
+        if kind == "data" {
+            yield frame.data;
+        }
+    }
 }
 
 def __nativeErrorMsg(response: any) -> str {
@@ -158,8 +236,11 @@ def __nativeErrorMsg(response: any) -> str {
 }
 
 impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
-    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+    if __jacRoute("walker", False)["channel"] == "native" {
         response = await __nativeInvoke("walker", `walker, nodeId, fields);
+        if response and response["__jac_stream_iter"] {
+            return response["iter"];
+        }
         if not response["ok"] {
             if response["status"] == 401 {
                 __removeLocalStorage("jac_token");
@@ -198,8 +279,11 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
 }
 
 impl __doFuncFetch(function_name: str, args: dict) -> any {
-    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+    if __jacRoute("function", False)["channel"] == "native" {
         response = await __nativeInvoke("function", function_name, "", args);
+        if response and response["__jac_stream_iter"] {
+            return response["iter"];
+        }
         if not response["ok"] {
             if response["status"] == 401 {
                 __removeLocalStorage("jac_token");
@@ -476,6 +560,107 @@ impl __jacDesktopBroker -> str {
         return window.__JAC_BROKER__;
     }
     return "";
+}
+
+# --- Centralized client routing ------------------------------------------------
+# ONE place implements the decision tree from the desktop portal architecture:
+#   standard walker/function -> __jac_invoke (native) else fetch(api_base) (web)
+#   file upload              -> sidecar HTTP if [desktop.http] present else error
+#   OAuth / session          -> broker (handled in jacSsoLogin / jacLogout)
+#   @jac/desktop plugins     -> broker POST /__jac/invoke (handled in desktop_api)
+# __doWalkerFetch / __doFuncFetch consult __jacRoute so the native-vs-web choice
+# lives here instead of being duplicated inline at each call site.
+
+impl __jacHttpSidecar -> dict {
+    h = globalThis.__JAC_HTTP__;
+    if h and h["base"] {
+        return h;
+    }
+    return None;
+}
+
+impl __jacHttpHasCapability(cap: str) -> bool {
+    h = __jacHttpSidecar();
+    if not h {
+        return False;
+    }
+    caps = h["capabilities"] or [];
+    return caps.includes(cap);
+}
+
+impl __jacCapabilityError(cap: str) -> dict {
+    # Mirror the sv-side runtimelib.http_surface.capability_error envelope so both
+    # front doors fail identically when an HTTP-only feature is used in lean mode.
+    status = 415 if cap == "multipart" else 501;
+    return {
+        "ok": False,
+        "http_status": status,
+        "error": {
+            "code": "CAPABILITY_NOT_AVAILABLE",
+            "capability": cap,
+            "message": f"the '{cap}' feature requires the opt-in desktop HTTP sidecar, which is not enabled for this app",
+            "hint": f"enable it in jac.toml: [desktop.http] enabled = true, capabilities = [\"{cap}\"]"
+        }
+    };
+}
+
+impl __jacRoute(kind: str, upload: bool = False) -> dict {
+    if upload {
+        if __jacHttpHasCapability("multipart") {
+            return {"channel": "sidecar", "capability": "multipart"};
+        }
+        return {"channel": "error", "capability": "multipart"};
+    }
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        return {"channel": "native", "capability": ""};
+    }
+    return {"channel": "http", "capability": ""};
+}
+
+impl jacUploadFile(
+    `walker: str, fields: dict = {}, files: dict = {}, nodeId: str = ""
+) -> any {
+    route = __jacRoute("walker", True);
+    if route["channel"] == "error" {
+        err = __jacCapabilityError(route["capability"]);
+        raise Exception(f"{err['error']['message']} -- {err['error']['hint']}");
+    }
+    sidecar = __jacHttpSidecar();
+    base = sidecar["base"];
+    sidecar_token = sidecar["token"] or "";
+    user_token = __getLocalStorage("jac_token") or "";
+
+    form = new(FormData);
+    for key in Object.keys(fields) {
+        form.append(key, fields[key]);
+    }
+    for key in Object.keys(files) {
+        form.append(key, files[key]);
+    }
+
+    url = f"{base}/walker/{`walker}";
+    if nodeId != "" {
+        url = f"{base}/walker/{`walker}/{nodeId}";
+    }
+    headers = {};
+    if sidecar_token {
+        headers["X-Jac-Sidecar-Token"] = sidecar_token;
+    }
+    if user_token {
+        headers["Authorization"] = f"Bearer {user_token}";
+    }
+    response = await fetch(url, {"method": "POST", "headers": headers, "body": form});
+    if not response.ok {
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+            window.location.reload();
+            return {};
+        }
+        error_text = await response.text();
+        raise Exception(f"Upload {`walker} failed: {error_text}");
+    }
+    payload = await response.json();
+    return payload["data"] if payload["data"] else {};
 }
 
 impl __jacSleep(ms: int) -> None {

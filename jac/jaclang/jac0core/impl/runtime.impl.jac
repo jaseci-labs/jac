@@ -2139,8 +2139,25 @@ impl JacRuntime.get_shared_root -> Root {
         }
         _shared_root_resolver[1] = root_id;
     }
-    shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
-    shared = shared_anchor.archetype if shared_anchor else None;
+
+    shared: (Root | None) = None;
+    for attempt in range(2) {
+        shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
+        shared = shared_anchor.archetype if shared_anchor else None;
+        if isinstance(shared, Root) {
+            _shared_root_resolver[1] = root_id;
+            break;
+        }
+        if attempt == 0 and _shared_root_resolver[1] == root_id {
+            _shared_root_resolver[1] = None;
+            root_id = resolver();
+            if not isinstance(root_id, str) {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
     if not isinstance(shared, Root) {
         raise RuntimeError(
             f"Shared root unavailable: id {root_id} did not resolve to a Root node."

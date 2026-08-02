@@ -8,6 +8,12 @@ import from jaclang.runtimelib.auth_models {
     LoginRequest,
     RegisterRequest
 }
+import contextvars;
+import from jaclang.runtimelib.streaming {
+    context_bound_stream,
+    context_bound_async_stream,
+    drain_sse
+}
 
 impl UserManager.postinit -> None {
     import sqlite3;
@@ -354,13 +360,28 @@ impl ExecutionManager._finalize_call_response(
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
-    await Jac.acommit();
+
+    stream: any = None;
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
-        return result;
+        stream = result;
+    } elif isgenerator(reports) or isinstance(reports, AsyncGenerator) {
+        stream = reports;
     }
-    if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
-        return reports;
+    if stream is not None {
+        captured = contextvars.copy_context();
+        def _teardown {
+            Jac.commit();
+            drain_ctx = Jac.get_context();
+            if drain_ctx.diagnostics {
+                drain_ctx.diagnostics.clear();
+            }
+        }
+        if isinstance(stream, AsyncGenerator) {
+            return context_bound_async_stream(stream, captured, _teardown);
+        }
+        return context_bound_stream(stream, captured, _teardown);
     }
+    await Jac.acommit();
 
     envelope: dict[str, JsonValue] = {
         'result': Serializer.serialize(result, api_mode=True),
@@ -1655,6 +1676,12 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
+    import from jaclang.runtimelib.invocation { InvocationDispatcher }
+    self.invocation_dispatcher = InvocationDispatcher(
+        introspector=self.introspector,
+        execution_manager=self.execution_manager,
+        user_manager=self.user_manager
+    );
     self.scheduler = Scheduler.instance();
 
     if self.port > 0 {
@@ -1717,12 +1744,23 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         def _send_response(self: JacRequestHandler, response: TransportResponse) {
-            if isinstance(response, TransportResponse)
-                and (
-                    isgenerator(response.data)
-                    or isinstance(response.data, AsyncGenerator)
-                ) {
-                self._send_sse_response(response.data);
+            stream = None;
+            if response.meta and response.meta.extra {
+                if response.meta.extra.get("streaming") {
+                    stream = response.meta.extra.get("stream");
+                }
+            }
+            if stream is None {
+                if isinstance(response, TransportResponse)
+                    and (
+                        isgenerator(response.data)
+                        or isinstance(response.data, AsyncGenerator)
+                    ) {
+                    stream = response.data;
+                }
+            }
+            if stream is not None {
+                self._send_sse_response(stream);
             } else {
                 transport = HTTPTransport(handler=self);
                 transport.send(response);
@@ -1734,63 +1772,16 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             self.send_header('Content-Type', 'text/event-stream');
             self.send_header('Cache-Control', 'no-cache');
             self.send_header('Connection', 'keep-alive');
-
             self.send_header('X-Accel-Buffering', 'no');
             ResponseBuilder._add_cors_headers(self);
             self.end_headers();
             wfile = self.wfile;
-            try {
-                if isgenerator(gen) {
-                    for item in gen {
-                        wfile.write(
-                            f"data: {json.dumps(item, default=str)}\n\n".encode()
-                        );
-                        wfile.flush();
-                    }
-                } else {
-                    loop = asyncio.new_event_loop();
-                    try {
-                        while True {
-                            try {
-                                item = loop.run_until_complete(gen.__anext__());
-                            } except StopAsyncIteration {
-                                break;
-                            }
-                            wfile.write(
-                                f"data: {json.dumps(item, default=str)}\n\n".encode()
-                            );
-                            wfile.flush();
-                        }
-                    } finally {
-                        loop.close();
-                    }
-                }
-                wfile.write(b"event: end\ndata: {}\n\n");
+            def _write_frame(frame: bytes) {
+                wfile.write(frame);
                 wfile.flush();
-            } except (BrokenPipeError, ConnectionResetError) {
-                pass;
-            } except Exception as e {
-                err_payload = {'error_type': type(e).__name__, 'message': str(e)};
-                try {
-                    wfile.write(
-                        f"event: error\ndata: {json.dumps(
-                            err_payload, default=str
-                        )}\n\n".encode()
-                    );
-                    wfile.flush();
-                } except Exception {
-                    pass;
-                }
-            } finally {
-                close_fn = gen?.close;
-                if close_fn {
-                    try {
-                        close_fn();
-                    } except Exception {
-                        pass;
-                    }
-                }
             }
+
+            drain_sse(gen, _write_frame);
         }
 
         def _render_page(
@@ -2261,55 +2252,43 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
             if path.startswith('/function/') {
                 name = path.split('/')[-1];
-                server.introspector.load();
-                if server.introspector.is_auth_required_for_function(name) {
-                    username = self._authenticate();
-                    if not username {
-                        Jac.send_json(self, 401, {'error': 'Unauthorized'});
-                        return;
-                    }
-                } else {
-                    username = self._authenticate();
-                    if not username {
-                        username = Con.GUEST.value;
-                        if not server.user_manager.user_exists(username) {
-                            server.user_manager.create_user(
-                                username, '__no_password__'
-                            );
-                        }
-                    }
+                import from jaclang.runtimelib.invocation {
+                    InvocationKind,
+                    InvocationRequest
                 }
-                response = asyncio.run(
-                    server.execution_handler.call_function(name, data, username)
+                token = self._get_auth_token() or "";
+                result = asyncio.run(
+                    server.invocation_dispatcher.invoke(
+                        InvocationRequest(
+                            kind=InvocationKind.FUNCTION,
+                            name=name,
+                            fields=data,
+                            token=token
+                        )
+                    )
                 );
-                self._send_response(response);
+                self._send_response(result.to_transport());
             } elif path.startswith('/walker/') {
                 name_parts = path.split('/');
                 name = name_parts[-2] if (len(name_parts) > 3) else name_parts[-1];
-                node_id = name_parts[-1] if (len(name_parts) > 3) else '';
-                server.introspector.load();
-                if server.introspector.is_auth_required_for_walker(name) {
-                    username = self._authenticate();
-                    if not username {
-                        Jac.send_json(self, 401, {'error': 'Unauthorized'});
-                        return;
-                    }
-                } else {
-                    username = self._authenticate();
-                    if not username {
-                        username = Con.GUEST.value;
-                        if not server.user_manager.user_exists(username) {
-                            server.user_manager.create_user(
-                                username, '__no_password__'
-                            );
-                        }
-                    }
+                node_id = name_parts[-1] if (len(name_parts) > 3) else None;
+                import from jaclang.runtimelib.invocation {
+                    InvocationKind,
+                    InvocationRequest
                 }
-                fields = data | {'_jac_spawn_node': node_id};
-                response = asyncio.run(
-                    server.execution_handler.spawn_walker(name, fields, username)
+                token = self._get_auth_token() or "";
+                result = asyncio.run(
+                    server.invocation_dispatcher.invoke(
+                        InvocationRequest(
+                            kind=InvocationKind.WALKER,
+                            name=name,
+                            fields=data,
+                            node_id=node_id,
+                            token=token
+                        )
+                    )
                 );
-                self._send_response(response);
+                self._send_response(result.to_transport());
             } elif (path == '/cl/__error__') {
                 message = data.get('message', '');
                 if not message {

@@ -1058,9 +1058,9 @@ test "serve protected function requires auth" {
         ac = make_access_client(tmpdir);
         response = ac.post("/function/protected_function", json={"message": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         ac.close();
     }
 }
@@ -1083,9 +1083,9 @@ test "serve private function requires auth" {
         ac = make_access_client(tmpdir);
         response = ac.post("/function/private_function", json={"secret": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         ac.close();
     }
 }
@@ -1119,9 +1119,9 @@ test "serve protected walker requires auth" {
         ac = make_access_client(tmpdir);
         response = ac.post("/walker/ProtectedWalker", json={"data": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         ac.close();
     }
 }
@@ -1143,9 +1143,9 @@ test "serve private walker requires auth" {
         ac = make_access_client(tmpdir);
         response = ac.post("/walker/PrivateWalker", json={"secret": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         ac.close();
     }
 }
@@ -1188,8 +1188,9 @@ test "serve mixed access levels" {
         assert data1["result"] == 15;
         # Protected function without auth - should fail
         result2 = ac.post("/function/protected_function", json={"message": "test"});
-        data2 = result2.data;
-        assert "error" in data2;
+        err2 = result2.json()["error"];
+        assert err2 is not None;
+        assert "Unauthorized" in err2["message"];
         # Protected function with auth - should work
         ac.set_auth_token(token);
         result3 = ac.post("/function/protected_function", json={"message": "test"});
@@ -1405,9 +1406,9 @@ test "serve imported protected walker requires auth" {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/walker/ProtectedImportedWalker", json={"data": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         iac.close();
     }
 }
@@ -1431,9 +1432,9 @@ test "serve imported default walker requires auth" {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/walker/DefaultImportedWalker", json={"value": 100});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         iac.close();
     }
 }
@@ -1454,9 +1455,9 @@ test "serve local default walker requires auth" {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/walker/LocalDefaultWalker", json={"msg": "test"});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         iac.close();
     }
 }
@@ -1518,9 +1519,9 @@ test "serve imported protected function requires auth" {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/function/protectedImportedFunc", json={});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         iac.close();
     }
 }
@@ -1543,9 +1544,9 @@ test "serve imported default function requires auth" {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/function/defaultImportedFunc", json={});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         iac.close();
     }
 }
@@ -1566,9 +1567,9 @@ test "serve local default function requires auth" {
         iac = make_imported_access_client(tmpdir);
         response = iac.post("/function/localDefaultFunc", json={});
         assert not response.ok;
-        data = response.data;
-        assert "error" in data;
-        assert "Unauthorized" in data["error"];
+        err = response.json()["error"];
+        assert err is not None;
+        assert "Unauthorized" in err["message"];
         iac.close();
     }
 }

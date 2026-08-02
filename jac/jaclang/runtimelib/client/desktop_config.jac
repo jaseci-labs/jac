@@ -44,6 +44,40 @@ obj DispatchConfig {
     }
 }
 
+# Capabilities the opt-in [desktop.http] FastAPI sidecar can expose. Kept in sync
+# with the sidecar registration in
+# runtimelib/client/targets/desktop/native/http_sidecar.jac.
+glob HTTP_CAPABILITIES: tuple = ("multipart", "webhooks", "websockets", "openapi");
+
+obj HttpConfig {
+    has enabled: bool = False,
+        capabilities: list[str] = [],
+        port: int = 0;
+
+    static def from_dict(data: dict[str, any]) -> HttpConfig {
+        raw_caps = data.get("capabilities", []);
+        caps: list[str] = [];
+        if isinstance(raw_caps, list) {
+            for c in raw_caps {
+                caps.append(str(c));
+            }
+        }
+        return HttpConfig(
+            enabled=bool(data.get("enabled", False)),
+            capabilities=caps,
+            port=int(data.get("port", 0))
+        );
+    }
+
+    def to_dict -> dict[str, any] {
+        return {
+            "enabled": self.enabled,
+            "capabilities": list(self.capabilities),
+            "port": self.port
+        };
+    }
+}
+
 obj DesktopDefaultConfig {
     has name: str,
         identifier: str,
@@ -74,6 +108,7 @@ class JacDesktopConfig(PluginConfigBase) {
     def get_identity(self: JacDesktopConfig) -> DesktopIdentity;
     def get_window_config(self: JacDesktopConfig) -> WindowConfig;
     def get_dispatch_config(self: JacDesktopConfig) -> DispatchConfig;
+    def get_http_config(self: JacDesktopConfig) -> HttpConfig;
     def get_engine(self: JacDesktopConfig) -> str;
     def get_plugin_configs(self: JacDesktopConfig) -> dict[str, any];
     def validate(self: JacDesktopConfig) -> None;

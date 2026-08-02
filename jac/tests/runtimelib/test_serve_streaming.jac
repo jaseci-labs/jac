@@ -40,3 +40,36 @@ test "function returning an iterator streams as SSE instead of crashing" {
         }
     }
 }
+
+
+test "function returning an async iterator streams as SSE (Phase 3)" {
+    with TemporaryDirectory() as tmp {
+        app = Path(tmp) / "astream_app.jac";
+        # An async generator is drained by `sse_frame_stream`'s `async for` under
+        # the ASGI event loop. Each `__anext__` is stepped inside the captured
+        # request context by `context_bound_async_stream`, so `root` resolves in
+        # the async body and the writes/reads commit exactly once at drain.
+        app.write_text(
+            'import from typing { AsyncIterator }\n'
+            'async def:pub astream_numbers -> AsyncIterator[dict] {\n'
+            '    for i in range(3) {\n'
+            '        _ = root;\n'
+            '        yield {"n": i};\n'
+            '    }\n'
+            '}\n'
+        );
+        client = JacTestClient.from_file(str(app), base_path=tmp);
+        try {
+            resp = client.post("/function/astream_numbers", json={});
+            assert resp.status_code == 200 , f"status {resp.status_code}: {resp.text}";
+            assert "text/event-stream" in resp.headers.get("Content-Type", "");
+            assert 'data: {"n": 0}' in resp.text;
+            assert 'data: {"n": 1}' in resp.text;
+            assert 'data: {"n": 2}' in resp.text;
+            assert "event: end" in resp.text;
+            assert "not JSON serializable" not in resp.text;
+        } finally {
+            client.close();
+        }
+    }
+}

@@ -2266,14 +2266,14 @@ test "jwt middleware: per-user isolation and token rejection" {
 
         for (hdrs, label) in bad_token_cases {
             r = client.post("/walker/PublicInfo", json={}, headers=hdrs);
-            assert r.status_code == 200 , f"{label} on pub walker: expected 200 (guest), got {r.status_code}";
+            assert r.status_code == 401 , f"{label} on pub walker: expected 401, got {r.status_code}";
         }
 
         assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "pub walker broken for anonymous requests";
 
         for (hdrs, label) in bad_token_cases {
             r = client.post("/function/public_status", json={}, headers=hdrs);
-            assert r.status_code == 200 , f"{label} on pub function: expected 200 (guest), got {r.status_code}";
+            assert r.status_code == 401 , f"{label} on pub function: expected 401, got {r.status_code}";
         }
         assert client.post("/function/public_status", json={}).status_code == 200 , "pub function broken for anonymous requests";
     } finally {

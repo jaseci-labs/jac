@@ -13,6 +13,7 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _jac_subprocess_env,
     _stage_pyembed_shim,
     _bundle_runtime,
+    _bundle_pydeps,
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
     _generate_host_source
@@ -60,6 +61,7 @@ def _assemble_native_host(
     win = cfg.get_window_config();
     dispatch = cfg.get_dispatch_config();
     plugin_configs = cfg.get_plugin_configs();
+    http_config = cfg.get_http_config().to_dict();
     app_name = ident.name or "app";
 
     if output_dir.exists() {
@@ -99,6 +101,7 @@ def _assemble_native_host(
     shutil.copytree(sv_root, sv_stage, ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
+    _bundle_pydeps(project_dir, output_dir);
     _stage_pyembed_shim(output_dir);
     host_src = _generate_host_source(
         win.title or app_name,
@@ -109,7 +112,8 @@ def _assemble_native_host(
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,
-        plugin_configs
+        plugin_configs,
+        http_config
     );
     (output_dir / "host.jac").write_text(host_src);
 

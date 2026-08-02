@@ -505,3 +505,118 @@ test "broker 404s walker POSTs when no sv bridge is wired" {
         srv.server_close();
     }
 }
+
+
+"""When the sv bridge tags a streaming result (mode "sse"), the broker drains the
+carried generator as text/event-stream -- the CEF `sv_bridge` streaming path."""
+test "broker streams SSE when the sv bridge tags a streaming outcome" {
+    root_dir = tempfile.mkdtemp();
+    web_dir = os.path.join(root_dir, "web");
+    os.makedirs(web_dir, exist_ok=True);
+    store = SessionStore(os.path.join(root_dir, "data", "session.json"));
+    def fake_sv(method: str, path: str, body: bytes, token: str) -> dict {
+        def gen {
+            yield {"n": 0};
+            yield {"n": 1};
+            yield {"n": 2};
+        }
+        return {"mode": "sse", "status": 200, "stream": gen()};
+    }
+    handler = make_handler(web_dir, store, sv_bridge=fake_sv);
+    srv = socketserver.TCPServer(("127.0.0.1", 0), handler);
+    port = srv.server_address[1];
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    try {
+        url = f"http://127.0.0.1:{port}/walker/stream_it";
+        req = Request(
+            url,
+            data=json.dumps({}).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"}
+        );
+        with urlopen(req) as r {
+            assert r.status == 200;
+            assert "text/event-stream" in r.headers.get("Content-Type", "");
+            text = r.read().decode();
+        }
+        assert 'data: {"n": 0}' in text;
+        assert 'data: {"n": 2}' in text;
+        assert "event: end" in text;
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+
+"""A non-streaming dict outcome (mode "json") is rendered verbatim, preserving the
+sv status code -- the broker echoes it like the legacy tuple bridge does."""
+test "broker renders a json-mode sv outcome verbatim" {
+    root_dir = tempfile.mkdtemp();
+    web_dir = os.path.join(root_dir, "web");
+    os.makedirs(web_dir, exist_ok=True);
+    store = SessionStore(os.path.join(root_dir, "data", "session.json"));
+    def fake_sv(method: str, path: str, body: bytes, token: str) -> dict {
+        return {
+            "mode": "json",
+            "status": 418,
+            "body": json.dumps({"ok": True, "data": {"echo": path}}),
+            "content_type": "application/json"
+        };
+    }
+    handler = make_handler(web_dir, store, sv_bridge=fake_sv);
+    srv = socketserver.TCPServer(("127.0.0.1", 0), handler);
+    port = srv.server_address[1];
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    try {
+        (s, b) = _req(port, "/function/add", "POST", {"a": 1});
+        assert s == 418 , b;
+        assert json.loads(b)["data"]["echo"] == "/function/add";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+
+"""CEF `/__jac/invoke` projects `dispatch_outcome` SSE mode as text/event-stream."""
+test "broker invoke streams SSE when dispatch returns sse mode" {
+    root_dir = tempfile.mkdtemp();
+    web_dir = os.path.join(root_dir, "web");
+    os.makedirs(web_dir, exist_ok=True);
+    store = SessionStore(os.path.join(root_dir, "data", "session.json"));
+    def fake_dispatch(body: str) -> dict {
+        def gen {
+            yield {"n": 0};
+            yield {"n": 1};
+        }
+        return {"mode": "sse", "status": 200, "body": "", "stream": gen()};
+    }
+    handler = make_handler(web_dir, store, dispatch=fake_dispatch);
+    srv = socketserver.TCPServer(("127.0.0.1", 0), handler);
+    port = srv.server_address[1];
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    try {
+        url = f"http://127.0.0.1:{port}/__jac/invoke";
+        req = Request(
+            url,
+            data=json.dumps(
+                {"kind": "function", "name": "stream_numbers", "fields": {}}
+            ).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"}
+        );
+        with urlopen(req) as r {
+            assert r.status == 200;
+            ctype = r.headers.get("Content-Type", "");
+            assert "text/event-stream" in ctype;
+            text = r.read().decode();
+        }
+        assert 'data: {"n": 0}' in text;
+        assert 'data: {"n": 1}' in text;
+        assert "event: end" in text;
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}

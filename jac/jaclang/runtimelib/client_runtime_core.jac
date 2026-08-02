@@ -33,6 +33,15 @@ def:pub __jacClearCache -> None;
 
 def:pub __jacDesktopBroker -> str;
 
+# --- Centralized client routing (docs/desktop-portal-architecture.md §7) -------
+def:pub __jacHttpSidecar -> dict;
+def:pub __jacHttpHasCapability(cap: str) -> bool;
+def:pub __jacCapabilityError(cap: str) -> dict;
+def:pub __jacRoute(kind: str, upload: bool = False) -> dict;
+async def:pub jacUploadFile(
+    `walker: str, fields: dict = {}, files: dict = {}, nodeId: str = ""
+) -> any;
+
 async def:pub __jacPollBrokerSession(
     broker: str, timeout_ms: int, interval_ms: int
 ) -> str;

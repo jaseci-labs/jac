@@ -24,6 +24,7 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
 import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
 import from jaclang { JacRuntime as Jac }
+import type from jaclang.runtimelib.invocation { InvocationDispatcher }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
 import from jaclang.jac0core.constant { Constants as Con }
@@ -211,6 +212,7 @@ obj JacAPIServer {
         auth_handler: AuthHandler postinit,
         introspection_handler: IntrospectionHandler postinit,
         execution_handler: ExecutionHandler postinit,
+        invocation_dispatcher: InvocationDispatcher postinit,
         server: (HTTPServer | None) postinit,
         scheduler: Scheduler postinit;
 

@@ -531,3 +531,83 @@ def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
     console.print(f"  Staged CEF {version} in {dist_dir}", style="muted");
     return dist_dir;
 }
+
+glob DESKTOP_PYDEPS_DIR: str = "pydeps";
+
+
+def _resolve_desktop_py_specs(project_dir: Path) -> list[str] {
+    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.capabilities {
+        RUNTIME,
+        byllm_intent_capabilities,
+        derive_capabilities,
+        resolve_closure,
+        scale_intent_from_config
+    }
+    import from jaclang.project.providers { get_python_provider }
+    import from jaclang.project.pyvenv { make_pip_spec }
+
+    config = get_config_for_path(project_dir);
+    if config is None {
+        return [];
+    }
+    caps = derive_capabilities(scale_intent_from_config(config));
+    caps |= byllm_intent_capabilities(config);
+    if not caps {
+        return [];
+    }
+    closure = resolve_closure(caps, RUNTIME);
+    return [
+        make_pip_spec(name, version) for (name, version) in sorted(closure.deps.items())
+    ];
+}
+
+
+def _bundle_pydeps(project_dir: Path, output_dir: Path) {
+    specs = _resolve_desktop_py_specs(project_dir);
+    if not specs {
+        return;
+    }
+    pydeps_dir = output_dir / DESKTOP_PYDEPS_DIR;
+    if pydeps_dir.exists() {
+        shutil.rmtree(pydeps_dir);
+    }
+    pydeps_dir.mkdir(parents=True, exist_ok=True);
+    console.print(
+        f"  Bundling {len(specs)} Python dep(s) into {DESKTOP_PYDEPS_DIR}/...",
+        style="muted"
+    );
+    cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--disable-pip-version-check",
+        "--no-warn-script-location",
+        "--target",
+        str(pydeps_dir),
+
+    ]
+        + specs;
+    res = subprocess.run(cmd, capture_output=True, text=True);
+    if res.returncode != 0 {
+        detail = (res.stderr or res.stdout or "").strip();
+        raise RuntimeError(
+            "jac-desktop: failed to bundle Python deps into "
+                + DESKTOP_PYDEPS_DIR
+                + "/"
+                + (": " + detail if detail else "")
+        );
+    }
+    if not any(pydeps_dir.glob("*.dist-info")) {
+        raise RuntimeError(
+            "jac-desktop: pip reported success but "
+                + DESKTOP_PYDEPS_DIR
+                + "/ has no installed packages"
+        );
+    }
+    (pydeps_dir / ".jac_desktop_pydeps").write_text(
+        "\n".join(specs) + "\n", encoding="utf-8"
+    );
+}

@@ -7,8 +7,14 @@ import socketserver;
 import threading;
 import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
     boot as inprocess_boot,
+    runtime as inprocess_runtime,
     dispatch_sync as inprocess_dispatch_sync,
-    forward as inprocess_forward
+    dispatch_outcome as inprocess_dispatch_outcome,
+    forward_outcome as inprocess_forward_outcome,
+    route_exists as inprocess_route_exists,
+    set_stream_emit as inprocess_set_stream_emit,
+    cancel_stream as inprocess_cancel_stream,
+    stream_ack as inprocess_stream_ack
 }
 import from jaclang.runtimelib.client.targets.desktop.native.oauth_broker {
     SessionStore,
@@ -29,9 +35,40 @@ obj HostContext {
     has port: int = 0,
         dev_port: int = 0,
         host: any = None,
-        server: any = None;
+        server: any = None,
+        http: any = None;
+
+    def http_bootstrap_js -> str {
+        # JS the host injects (via wv.on_load) so the renderer discovers the opt-in
+        # sidecar as window.__JAC_HTTP__ = {base, token, capabilities}. Empty when
+        # no sidecar is running, matching how __JAC_NATIVE__/__JAC_BROKER__ are set.
+        if self.http is None {
+            return "";
+        }
+        info = self.http.bootstrap_info();
+        return "window.__JAC_HTTP__=" + json.dumps(info) + ";";
+    }
+
+    def close_http {
+        # Stop the opt-in FastAPI sidecar on host close (best-effort; swallows all
+        # errors so it can never block the rest of the shutdown sequence).
+        h = self.http;
+        if h is None {
+            return;
+        }
+        self.http = None;
+        try {
+            h.stop();
+        } except Exception as e {
+            sys.stderr.write("host_boot: HTTP sidecar stop failed: " + str(e) + "\n");
+        }
+    }
 
     def dispatch(req_json: str) -> str {
+        ctl = stream_control(req_json);
+        if ctl is not None {
+            return json.dumps(ctl);
+        }
         payload = runtime_payload(req_json);
         if payload is not None {
             return inprocess_dispatch_sync(payload);
@@ -39,8 +76,37 @@ obj HostContext {
         return self.host.dispatch(req_json) as str;
     }
 
+    def dispatch_http(req_json: str) -> dict {
+        ctl = stream_control(req_json);
+        if ctl is not None {
+            return {
+                "mode": "json",
+                "status": 200,
+                "body": json.dumps(ctl),
+                "stream": None
+            };
+        }
+        payload = runtime_payload(req_json);
+        if payload is not None {
+            return inprocess_dispatch_outcome(payload);
+        }
+        return {
+            "mode": "json",
+            "status": 200,
+            "body": self.host.dispatch(req_json) as str,
+            "stream": None
+        };
+    }
+
     def setup_webview(wv_handle: int) {
         self.host.setup(wv_handle);
+
+        def _emit_stream(stream_id: str, frame: dict) {
+            payload = dict(frame);
+            payload["stream_id"] = stream_id;
+            self.host.emit("__jac_stream", payload);
+        }
+        inprocess_set_stream_emit(_emit_stream);
     }
 }
 
@@ -72,6 +138,53 @@ def runtime_payload(req_json: str) -> (str | None) {
 }
 
 
+def stream_control(req_json: str) -> (dict | None) {
+    try {
+        wire = json.loads(req_json);
+    } except Exception {
+        return None;
+    }
+    msg = wire;
+    if isinstance(wire, list) and len(wire) == 1 and isinstance(wire[0], str) {
+        try {
+            msg = json.loads(wire[0]);
+        } except Exception {
+            return None;
+        }
+    }
+    if not isinstance(msg, dict) {
+        return None;
+    }
+    ctl = msg.get("__jac_stream_ctl");
+    if ctl is None {
+        return None;
+    }
+    stream_id = str(msg.get("stream_id") or "");
+    if not stream_id {
+        return {
+            "ok": False,
+            "error": {"code": "STREAM_CTL_ERROR", "message": "missing stream_id"}
+        };
+    }
+    if ctl == "cancel" {
+        inprocess_cancel_stream(stream_id);
+        return {"ok": True, "__jac_stream_ctl": "cancel", "stream_id": stream_id};
+    }
+    if ctl == "ack" {
+        n = int(msg.get("n") or 1);
+        inprocess_stream_ack(stream_id, n);
+        return {"ok": True, "__jac_stream_ctl": "ack", "stream_id": stream_id, "n": n};
+    }
+    return {
+        "ok": False,
+        "error": {
+            "code": "STREAM_CTL_ERROR",
+            "message": "unknown stream control: " + str(ctl)
+        }
+    };
+}
+
+
 def preferred_port(app_name: str) -> int {
     return 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
 }
@@ -85,7 +198,35 @@ def _app_root -> str {
 }
 
 
-def _apply_extra_deps {
+def _is_pydeps_dir(path: str) -> bool {
+    if not os.path.isdir(path) {
+        return False;
+    }
+    try {
+        for name in os.listdir(path) {
+            if name.endswith(".dist-info") {
+                return True;
+            }
+        }
+    } except OSError {
+        return False;
+    }
+    return False;
+}
+
+
+def _prepend_sys_path(path: str) {
+    if path and path not in sys.path {
+        sys.path.insert(0, path);
+    }
+}
+
+
+def _apply_extra_deps(app_dir: str) {
+    bundled = os.path.join(app_dir, "pydeps");
+    if _is_pydeps_dir(bundled) {
+        _prepend_sys_path(bundled);
+    }
     extra = os.environ.get("JAC_DESKTOP_DEPS", "");
     if not extra {
         return;
@@ -130,9 +271,10 @@ def _start_loopback(
         handler = make_handler(
             dist,
             store,
-            dispatch=ctx.dispatch,
+            dispatch=ctx.dispatch_http,
             events=ctx.host as object,
-            sv_bridge=inprocess_forward
+            sv_bridge=inprocess_forward_outcome,
+            sv_router=inprocess_route_exists
         );
     } else {
         handler = make_handler(dist, store, dispatch=ctx.dispatch);
@@ -186,6 +328,39 @@ def _start_loopback(
 }
 
 
+def _start_http_sidecar(ctx: HostContext, http_cfg: dict) {
+    # Opt-in [desktop.http] sidecar. Lazy-imports http_sidecar (which itself lazy-
+    # imports FastAPI/uvicorn), so a disabled app never loads the scale HTTP stack.
+    if not http_cfg.get("enabled") {
+        return;
+    }
+    import from jaclang.runtimelib.client.targets.desktop.native.http_sidecar {
+        start as sidecar_start
+    }
+    rt = inprocess_runtime();
+    if rt is None {
+        sys.stderr.write(
+            "host_boot: [desktop.http] enabled but the in-process runtime is not "
+            "booted; sidecar not started\n"
+        );
+        return;
+    }
+    caps = list(http_cfg.get("capabilities") or []);
+    port = int(http_cfg.get("port") or 0);
+    try {
+        ctx.http = sidecar_start(rt.dispatcher, rt.introspector, caps, port);
+        sys.stdout.write(
+            "JAC_DESKTOP_HTTP_SIDECAR " + str(ctx.http.base) + " caps="
+                + ",".join(ctx.http.capabilities)
+                + "\n"
+        );
+        sys.stdout.flush();
+    } except Exception as e {
+        sys.stderr.write("host_boot: HTTP sidecar failed to start: " + str(e) + "\n");
+    }
+}
+
+
 def boot(config_json: str) -> HostContext {
     cfg = json.loads(config_json);
     app_name = str(cfg.get("app_name") or "app");
@@ -193,11 +368,12 @@ def boot(config_json: str) -> HostContext {
     entry_rel = str(cfg.get("entry_rel") or "");
     dispatch_cfg = (cfg.get("dispatch") or {}) as dict;
     plugin_configs = (cfg.get("plugins") or {}) as dict;
+    http_cfg = (cfg.get("http") or {}) as dict;
 
     app_dir = _app_root();
     data_dir = str(os.environ.get("JAC_DATA_PATH", app_dir));
 
-    _apply_extra_deps();
+    _apply_extra_deps(app_dir);
 
     host = _bootstrap_plugin_host(plugin_configs);
     if mode == "cef" {
@@ -218,6 +394,7 @@ def boot(config_json: str) -> HostContext {
     } except (TypeError, ValueError) {
         ctx.dev_port = 0;
     }
+    _start_http_sidecar(ctx, http_cfg);
     _start_loopback(ctx, app_dir, data_dir, app_name, mode);
     return ctx;
 }

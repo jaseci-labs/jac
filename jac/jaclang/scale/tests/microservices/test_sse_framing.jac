@@ -87,12 +87,18 @@ test "sse_frame_stream emits event: error and no end frame when the producer rai
 }
 
 
-test "sse_frame_stream rejects a non-generator argument with TypeError" {
-    raised: bool = False;
-    try {
-        _run(_collect(sse_frame_stream([1, 2, 3])));
-    } except TypeError {
-        raised = True;
+test "sse_frame_stream emits an event: error frame for a non-generator argument" {
+    frames = _run(_collect(sse_frame_stream([1, 2, 3])));
+
+    assert len(frames) == 1;
+    err = frames[0];
+    assert err.startswith("event: error\ndata: ");
+    assert err.endswith("\n\n");
+    assert "\"error_type\": \"TypeError\"" in err;
+    assert "got list" in err;
+
+    # the success terminator must NOT be emitted on the error path
+    for f in frames {
+        assert not f.startswith("event: end");
     }
-    assert raised;
 }
