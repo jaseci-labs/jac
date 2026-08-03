@@ -518,6 +518,7 @@ test "destroy collection also sweeps competing HPAs" {
 
 test "destroy calls delete with the correct plural and resource name" {
     mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {"spec": {"triggers": []}};
     keda = KEDAAutoscaler(_custom_api=mock_api);
     keda.destroy("my-svc-scaledobject", "staging");
     mock_api.delete_namespaced_custom_object.assert_called_once_with(
@@ -531,9 +532,70 @@ test "destroy calls delete with the correct plural and resource name" {
 
 test "destroy is a no-op when the ScaledObject is already gone" {
     mock_api = unittest.mock.MagicMock();
-    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
     keda = KEDAAutoscaler(_custom_api=mock_api);
     keda.destroy("my-svc-scaledobject", "staging");
+    mock_api.delete_namespaced_custom_object.assert_not_called();
+}
+
+test "destroy deletes TriggerAuthentications referenced by ScaledObject before deleting ScaledObject" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "spec": {
+            "triggers": [
+                {
+                    "type": "prometheus",
+                    "authenticationRef": {"name": "myapp-aaaaaaaa-ta"}
+                },
+                {"type": "redis", "authenticationRef": {"name": "myapp-bbbbbbbb-ta"}}
+            ]
+        }
+    };
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc-scaledobject", "staging");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 3;
+    assert delete_calls[0][1]["plural"] == "triggerauthentications";
+    assert delete_calls[0][1]["name"] == "myapp-aaaaaaaa-ta";
+    assert delete_calls[1][1]["plural"] == "triggerauthentications";
+    assert delete_calls[1][1]["name"] == "myapp-bbbbbbbb-ta";
+    assert delete_calls[2][1]["plural"] == "scaledobjects";
+    assert delete_calls[2][1]["name"] == "my-svc-scaledobject";
+}
+
+test "destroy skips TA cleanup for triggers without authenticationRef" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "spec": {"triggers": [{"type": "cpu", "metadata": {"value": "80"}}]}
+    };
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc-scaledobject", "staging");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 1;
+    assert delete_calls[0][1]["plural"] == "scaledobjects";
+}
+
+test "destroy handles already-deleted TriggerAuthentication gracefully" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "spec": {
+            "triggers": [
+                {
+                    "type": "prometheus",
+                    "authenticationRef": {"name": "myapp-aaaaaaaa-ta"}
+                }
+            ]
+        }
+    };
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=404),
+        None
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc-scaledobject", "staging");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 2;
+    assert delete_calls[1][1]["plural"] == "scaledobjects";
 }
 
 

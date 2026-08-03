@@ -292,6 +292,41 @@ impl KEDAAutoscaler.apply{
 impl KEDAAutoscaler.destroy{
     api = self._custom_api or client.CustomObjectsApi();
     try {
+        scaled_object = api.get_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            name=autoscaler_name
+        );
+    } except ApiException as e {
+        if e.status in [404, 422] {
+            return;
+        }
+        raise;
+    }
+
+    for trigger in scaled_object.get("spec", {}).get("triggers", []) {
+        auth_name = (trigger.get("authenticationRef") or {}).get("name");
+        if not auth_name {
+            continue;
+        }
+        try {
+            api.delete_namespaced_custom_object(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="triggerauthentications",
+                name=auth_name
+            );
+        } except ApiException as e {
+            if e.status not in [404, 422] {
+                raise;
+            }
+        }
+    }
+
+    try {
         api.delete_namespaced_custom_object(
             group="keda.sh",
             version="v1alpha1",
