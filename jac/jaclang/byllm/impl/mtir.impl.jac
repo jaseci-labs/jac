@@ -1,13 +1,13 @@
-glob SYSTEM_PERSONA = """\
-    This is a task you must complete by returning only the output.
-    Do not include explanations, code, or extra text—only the result.
-    """,
-     INSTRUCTION_TOOL = """
-    Use the tools provided to reach the goal. Call one tool at a time with \
-    proper args—no explanations, no narration. Think step by step, invoking tools \
-    as needed. When done, always call finish_tool(output) to return the final
-    output. Only use tools.
-    """;
+glob SYSTEM_PERSONA = (
+    "This is a task you must complete by returning only the output.\n"
+    "Do not include explanations, code, or extra text—only the result."
+),
+     INSTRUCTION_TOOL = (
+    "Use the tools provided to reach the goal. Call one tool at a time with "
+    "proper args—no explanations, no narration. Think step by step, invoking tools "
+    "as needed. When done, always call finish_tool(output) to return the final "
+    "output. Only use tools."
+);
 
 impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     caller = mtir.caller;
@@ -162,7 +162,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
 
     sys_msg = Message(
         role=MessageRole.SYSTEM,
-        content=system_content + (INSTRUCTION_TOOL if tools else ""),
+        content=system_content + ("\n\n" + INSTRUCTION_TOOL if tools else ""),
     );
     user_msg = Message(
         role=MessageRole.USER,
