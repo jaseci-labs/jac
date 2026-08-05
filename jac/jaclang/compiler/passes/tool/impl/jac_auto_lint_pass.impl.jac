@@ -3090,16 +3090,13 @@ impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
     if nd.decorators {
         drop_ids: set[int] = set();
         for dec in nd.decorators {
-            is_prop = (
-                isinstance(dec, uni.Name)
-                and dec.value in ["property", "cached_property"]
-            )
-                or (
-                    isinstance(dec, uni.AtomTrailer)
-                    and dec.is_attr
-                    and isinstance(dec.right, uni.Name)
-                    and dec.right.value in ["setter", "deleter"]
-                );
+        is_prop = (isinstance(dec, uni.Name) and dec.value == "property")
+            or (
+                isinstance(dec, uni.AtomTrailer)
+                and dec.is_attr
+                and isinstance(dec.right, uni.Name)
+                and dec.right.value in ["setter", "deleter"]
+            );
             if is_prop {
                 drop_ids.add(id(dec));
             }
