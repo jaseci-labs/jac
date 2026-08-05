@@ -20,6 +20,7 @@ obj CompileOptions {
         default_codespace: str = "",
         project_kind: str = "web",
         project_root: (str | None) = None,
+        client_framework: str = "",
         cancel_token: any = None;
 
     def nogc_enforced_for(mod_name: str) -> bool {

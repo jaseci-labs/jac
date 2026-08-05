@@ -33,7 +33,10 @@ obj SolidBackend(ReactBackend) {
     def _jsx_for(child: any, sync_loc: any) -> es.JsxElement;
     def _jsx_show(child: any, sync_loc: any) -> es.JsxElement;
     def _view_children_as_expr(children: list, sync_loc: any) -> es.Expression;
-    def view_runtime_symbols(view: ViewElement) -> list[str];
+    def runtime_symbols(
+        intent: StateField | RefField | Effect | AsyncBoundary | ViewElement
+    ) -> list[str];
+
     def _jsx_element(
         name_node: any, attrs: list, children: list, jac_node: any, sync_loc: any
     ) -> es.JsxElement;
@@ -47,10 +50,6 @@ obj SolidBackend(ReactBackend) {
     ) -> es.JsxElement;
 
     def _noloc(es_node: any, jac_node: any = None) -> any;
-    def state_field_symbols(s: StateField) -> list[str];
-    def ref_field_symbols(r: RefField) -> list[str];
-    def effect_symbols(e: Effect) -> list[str];
-    def async_boundary_symbols(a: AsyncBoundary) -> list[str];
     def import_source(symbol: str) -> str;
     def required_globals -> list[str];
     def runtime_source_basename -> str;

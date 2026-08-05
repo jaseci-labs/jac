@@ -52,6 +52,7 @@ import from jaclang.runtimelib.client.targets.react_native.dev {
 }
 import from jaclang.runtimelib.client.mobile_dev_host { detect_lan_ipv4 }
 import from jaclang.runtimelib.client.targets.client_dev_common {
+    adb_install_and_launch,
     ensure_watchdog_common,
     install_dev_signal_handlers,
     resolve_port_or_next_available,
@@ -402,17 +403,8 @@ impl _RNHmrHandler.on_event(evt: FileChangeEvent) -> None {
     );
 }
 
-def _start_android(apk_path: Path, project_dir: Path) -> None {
+def _start_android(apk_path: Path, project_dir: Path) {
     import json;
-    adb = shutil.which("adb");
-    if not adb {
-        console.warning(
-            "  adb not found on PATH. APK built successfully but "
-            "auto-install skipped.\n"
-            f"  Install manually: adb install -r {apk_path}"
-        );
-        return;
-    }
 
     rn_dir = resolve_rn_project_dir(project_dir);
     pkg_name: str | None = None;
@@ -426,27 +418,15 @@ def _start_android(apk_path: Path, project_dir: Path) -> None {
         );
     }
 
-    console.print(
-        f"  Installing APK on device: adb install -r {apk_path}", style="muted"
+    adb_install_and_launch(
+        apk_path,
+        str(pkg_name) if pkg_name else "",
+        missing_adb_message=(
+            "  adb not found on PATH. APK built successfully but "
+            "auto-install skipped.\n"
+            f"  Install manually: adb install -r {apk_path}"
+        )
     );
-    subprocess.run([adb, "install", "-r", str(apk_path)], check=True);
-
-    if pkg_name {
-        pkg_str: str = str(pkg_name);
-        console.print(f"  Launching: {pkg_str}", style="muted");
-        launch_cmd: list[str] = [
-            adb,
-            "shell",
-            "monkey",
-            "-p",
-            pkg_str,
-            "-c",
-            "android.intent.category.LAUNCHER",
-            "1"
-        ];
-        subprocess.run(launch_cmd, check=False, capture_output=True);
-    }
-    console.success("App installed and launched.");
 }
 
 def _start_ios(artifact_path: Path, project_dir: Path) {

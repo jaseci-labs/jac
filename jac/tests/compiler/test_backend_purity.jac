@@ -78,10 +78,18 @@ glob FORBIDDEN: dict[str, str] = {
              "recorded InteropBinding"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
-             9,
+             8,
              "declaration-surface name reads: param/field type-name maps "
              "for interop payloads, Ref[...] head detection, and the W6005 "
              "Callable-over-RPC guard on endpoint params - the declared "
+             "annotation is the consumed fact, not a resolved type. The "
+             "has-var Ref-typed field detection moved to the shared intent "
+             "pipeline (intent/impl/detection.impl.jac)"
+         ),
+         ("ecmascript/intent/impl/detection.impl.jac", "type_tag.tag"): (
+             1,
+             "declaration-surface name read: is_ref_field tests whether a "
+             "has-var's declared annotation head is Ref[...] - the declared "
              "annotation is the consumed fact, not a resolved type"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "symbol_utils"): (

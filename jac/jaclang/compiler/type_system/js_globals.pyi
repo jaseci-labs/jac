@@ -706,3 +706,66 @@ def fetch(*args: object) -> Promise[Response]: ...
 def alert(message: object = ...) -> None: ...
 def confirm(message: object = ...) -> bool: ...
 def prompt(message: object = ..., default: object = ...) -> str | None: ...
+
+
+# ── Jetpack Compose typed surface (P0 #3) ───────────────────────────────────
+# Client-context value globals for the Android native Compose target. These
+# typed globals for compose type-checking (ingested widget/modifier surface).
+# ComposeGenPass lowers
+# JSX near-identity to Kotlin and never calls these; they exist so a project
+# opting into `[client.android] type_check = true` catches typo'd modifier
+# names / non-existent Typography styles before Gradle. `Modifier` and
+# `Typography` are Kotlin singletons (values you chain from / read members of),
+# so they are exposed as typed globals, not classes. `Composable` (the @Composable
+# return type) lives in jac_builtins.pyi since it is used as a type annotation.
+
+class Dp:
+    value: float
+
+class ModifierChain:
+    # The chainable Modifier surface. Methods are NOT hand-declared here — they
+    # are ingested from compose_modifiers.txt at TypeEvaluator init
+    # (_install_compose_modifiers), so `Modifier.padding(..).fillMaxWidth()`
+    # tracks the upstream AndroidX signatures instead of this curated subset.
+    ...
+
+class TypographyStyles:
+    displayLarge: object
+    displayMedium: object
+    displaySmall: object
+    headlineLarge: object
+    headlineMedium: object
+    headlineSmall: object
+    titleLarge: object
+    titleMedium: object
+    titleSmall: object
+    bodyLarge: object
+    bodyMedium: object
+    bodySmall: object
+    labelLarge: object
+    labelMedium: object
+    labelSmall: object
+
+class ArrangementNamespace:
+    # Constants (Center/Start/SpaceBetween/…) are NOT hand-declared — they are
+    # ingested from compose_consts.txt at TypeEvaluator init
+    # (_install_compose_consts), so `Arrangement.Center` type-checks and a typo
+    # is flagged, tracking the upstream AndroidX signatures.
+    ...
+
+class AlignmentNamespace:
+    # Constants (Center/CenterVertically/TopStart/…) ingested from
+    # compose_consts.txt at init (see ArrangementNamespace).
+    ...
+
+class ColorNamespace:
+    # Named colors (Red/Blue/White/…) ingested from compose_consts.txt at init.
+    # `Color(0xFF..)` — the ULong constructor — stays callable via __call__ so the
+    # numeric form keeps type-checking; a real value class is a later (A2) upgrade.
+    def __call__(self, argb: int) -> object: ...
+
+Modifier: ModifierChain
+Typography: TypographyStyles
+Arrangement: ArrangementNamespace
+Alignment: AlignmentNamespace
+Color: ColorNamespace

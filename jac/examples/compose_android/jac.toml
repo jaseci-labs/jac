@@ -1,0 +1,22 @@
+[project]
+name = "compose-android"
+version = "0.1.0"
+description = "Jac Jetpack Compose Android demo (counter + greeting)"
+entry-point = "main.jac"
+kind = "client"
+
+[client]
+framework = "compose"
+
+[client.android]
+package = "dev.jac.myapp"
+app_name = "My App"
+avd = "Small_Phone"
+# Emulator → host machine API. Uncomment when testing typed RPC against jac serve.
+backend_url = "http://10.0.2.2:8000"
+
+[serve]
+base_route_app = "app"
+
+[dev]
+jaclang_source = "../.."

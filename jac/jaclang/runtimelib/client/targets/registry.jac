@@ -8,7 +8,8 @@ enum TargetType {
     PWA = "pwa",
     STATIC = "static",
     MOBILE = "mobile",
-    REACT_NATIVE = "react-native"
+    REACT_NATIVE = "react-native",
+    ANDROID = "android"
 }
 
 def get_target_type(name: str) -> TargetType {
@@ -34,6 +35,9 @@ def get_target_type(name: str) -> TargetType {
 
     if name_lower in ("react-native", "react_native", "rn") {
         return TargetType.REACT_NATIVE;
+    }
+    if name_lower == "android" {
+        return TargetType.ANDROID;
     }
     raise ValueError(
         f"Unknown target: {name}. Available: {', '.join([t.value for t in TargetType])}"

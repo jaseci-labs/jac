@@ -1,0 +1,82 @@
+// AndroidX Compose Modifier extension signatures (metalava shape), bundled for
+// the Jac type-checker. Ingested at TypeEvaluator init via compose_signatures
+// (parse_modifier_text) -> _install_compose_modifiers, which installs each
+// Modifier extension as a chainable method on `ModifierChain`, so
+// `Modifier.padding(8.dp).fillMaxWidth().clickable(onClick=..)` type-checks and
+// chains. Regenerate/extend from the upstream signature files:
+//   compose/ui/ui/api/current.txt
+//   compose/foundation/foundation-layout/api/current.txt
+//   compose/foundation/foundation/api/current.txt
+// Only `public static` methods whose return type is androidx.compose.ui.Modifier
+// (and that are NOT @Composable) are parsed; the unnamed leading `Modifier`
+// receiver is dropped, leaving the addressable arguments. Since Jac has no
+// overloading, a few methods that ship as several upstream overloads (padding,
+// offset, size) are authored here as one convenience signature carrying the
+// union of keyword arguments — matching how the hand-written stub modeled them.
+
+package androidx.compose.foundation.layout {
+  public final class SizeKt {
+    method public static androidx.compose.ui.Modifier fillMaxSize(androidx.compose.ui.Modifier, optional float fraction);
+    method public static androidx.compose.ui.Modifier fillMaxWidth(androidx.compose.ui.Modifier, optional float fraction);
+    method public static androidx.compose.ui.Modifier fillMaxHeight(androidx.compose.ui.Modifier, optional float fraction);
+    method public static androidx.compose.ui.Modifier wrapContentSize(androidx.compose.ui.Modifier, optional androidx.compose.ui.Alignment align, optional boolean unbounded);
+    method public static androidx.compose.ui.Modifier wrapContentWidth(androidx.compose.ui.Modifier, optional androidx.compose.ui.Alignment.Horizontal align, optional boolean unbounded);
+    method public static androidx.compose.ui.Modifier wrapContentHeight(androidx.compose.ui.Modifier, optional androidx.compose.ui.Alignment.Vertical align, optional boolean unbounded);
+    method public static androidx.compose.ui.Modifier width(androidx.compose.ui.Modifier, androidx.compose.ui.unit.Dp width);
+    method public static androidx.compose.ui.Modifier height(androidx.compose.ui.Modifier, androidx.compose.ui.unit.Dp height);
+    method public static androidx.compose.ui.Modifier size(androidx.compose.ui.Modifier, androidx.compose.ui.unit.Dp size);
+    method public static androidx.compose.ui.Modifier widthIn(androidx.compose.ui.Modifier, optional androidx.compose.ui.unit.Dp min, optional androidx.compose.ui.unit.Dp max);
+    method public static androidx.compose.ui.Modifier heightIn(androidx.compose.ui.Modifier, optional androidx.compose.ui.unit.Dp min, optional androidx.compose.ui.unit.Dp max);
+    method public static androidx.compose.ui.Modifier sizeIn(androidx.compose.ui.Modifier, optional androidx.compose.ui.unit.Dp minWidth, optional androidx.compose.ui.unit.Dp minHeight, optional androidx.compose.ui.unit.Dp maxWidth, optional androidx.compose.ui.unit.Dp maxHeight);
+    method public static androidx.compose.ui.Modifier defaultMinSize(androidx.compose.ui.Modifier, optional androidx.compose.ui.unit.Dp minWidth, optional androidx.compose.ui.unit.Dp minHeight);
+    method public static androidx.compose.ui.Modifier aspectRatio(androidx.compose.ui.Modifier, float ratio, optional boolean matchHeightConstraintsFirst);
+    method public static androidx.compose.ui.Modifier padding(androidx.compose.ui.Modifier, optional androidx.compose.ui.unit.Dp all, optional androidx.compose.ui.unit.Dp horizontal, optional androidx.compose.ui.unit.Dp vertical, optional androidx.compose.ui.unit.Dp start, optional androidx.compose.ui.unit.Dp top, optional androidx.compose.ui.unit.Dp end, optional androidx.compose.ui.unit.Dp bottom);
+    method public static androidx.compose.ui.Modifier offset(androidx.compose.ui.Modifier, optional androidx.compose.ui.unit.Dp x, optional androidx.compose.ui.unit.Dp y);
+  }
+  public final class RowScopeInstance {
+    method public static androidx.compose.ui.Modifier weight(androidx.compose.ui.Modifier, float weight, optional boolean fill);
+    method public static androidx.compose.ui.Modifier align(androidx.compose.ui.Modifier, androidx.compose.ui.Alignment.Vertical alignment);
+  }
+}
+package androidx.compose.foundation {
+  public final class BackgroundKt {
+    method public static androidx.compose.ui.Modifier background(androidx.compose.ui.Modifier, long color, optional androidx.compose.ui.graphics.Shape shape);
+    method public static androidx.compose.ui.Modifier border(androidx.compose.ui.Modifier, androidx.compose.ui.unit.Dp width, long color, optional androidx.compose.ui.graphics.Shape shape);
+  }
+  public final class ClickableKt {
+    method public static androidx.compose.ui.Modifier clickable(androidx.compose.ui.Modifier, optional boolean enabled, optional String onClickLabel, kotlin.jvm.functions.Function0<kotlin.Unit> onClick);
+    method public static androidx.compose.ui.Modifier selectable(androidx.compose.ui.Modifier, boolean selected, optional boolean enabled, kotlin.jvm.functions.Function0<kotlin.Unit> onClick);
+  }
+  public final class ScrollKt {
+    method public static androidx.compose.ui.Modifier verticalScroll(androidx.compose.ui.Modifier, androidx.compose.foundation.ScrollState state, optional boolean enabled, optional boolean reverseScrolling);
+    method public static androidx.compose.ui.Modifier horizontalScroll(androidx.compose.ui.Modifier, androidx.compose.foundation.ScrollState state, optional boolean enabled, optional boolean reverseScrolling);
+  }
+}
+package androidx.compose.ui.draw {
+  public final class ClipKt {
+    method public static androidx.compose.ui.Modifier clip(androidx.compose.ui.Modifier, androidx.compose.ui.graphics.Shape shape);
+    method public static androidx.compose.ui.Modifier clipToBounds(androidx.compose.ui.Modifier);
+  }
+  public final class AlphaKt {
+    method public static androidx.compose.ui.Modifier alpha(androidx.compose.ui.Modifier, float alpha);
+  }
+  public final class RotateKt {
+    method public static androidx.compose.ui.Modifier rotate(androidx.compose.ui.Modifier, float degrees);
+  }
+  public final class ScaleKt {
+    method public static androidx.compose.ui.Modifier scale(androidx.compose.ui.Modifier, float scale);
+  }
+  public final class ShadowKt {
+    method public static androidx.compose.ui.Modifier shadow(androidx.compose.ui.Modifier, androidx.compose.ui.unit.Dp elevation, optional androidx.compose.ui.graphics.Shape shape, optional boolean clip);
+  }
+}
+package androidx.compose.ui {
+  public final class ZIndexModifierKt {
+    method public static androidx.compose.ui.Modifier zIndex(androidx.compose.ui.Modifier, float zIndex);
+  }
+}
+package androidx.compose.ui.platform {
+  public final class TestTagKt {
+    method public static androidx.compose.ui.Modifier testTag(androidx.compose.ui.Modifier, String tag);
+  }
+}

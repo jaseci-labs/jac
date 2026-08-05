@@ -6,6 +6,7 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
+import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
 
 impl ReactBackend.name -> str {
     return "react";
@@ -94,27 +95,26 @@ impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpress
     );
 }
 
-impl ReactBackend.state_field_symbols(s: StateField) -> list[str] {
-    return ["useState"];
-}
-
-impl ReactBackend.ref_field_symbols(r: RefField) -> list[str] {
-    return ["useRef"];
-}
-
-impl ReactBackend.effect_symbols(e: Effect) -> list[str] {
-    return ["useEffect"];
-}
-
-impl ReactBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {
-    syms = ["JacAwaiting"];
-    if a.except_exprs {
-        syms.append("JacClientErrorBoundary");
+impl ReactBackend.runtime_symbols(
+    intent: StateField | RefField | Effect | AsyncBoundary | ViewElement
+) -> list[str] {
+    if isinstance(intent, StateField) {
+        return ["useState"];
     }
-    return syms;
-}
+    if isinstance(intent, RefField) {
+        return ["useRef"];
+    }
+    if isinstance(intent, Effect) {
+        return ["useEffect"];
+    }
+    if isinstance(intent, AsyncBoundary) {
+        syms = ["JacAwaiting"];
+        if intent.except_exprs {
+            syms.append("JacClientErrorBoundary");
+        }
+        return syms;
+    }
 
-impl ReactBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
     return [];
 }
 

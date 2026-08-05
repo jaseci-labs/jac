@@ -6,6 +6,7 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
+import from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
 
 impl SolidBackend.name -> str {
     return "solid";
@@ -308,32 +309,6 @@ impl SolidBackend._jsx_show(child: any, sync_loc: any) -> es.JsxElement {
     );
 }
 
-impl SolidBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
-    import from jaclang.compiler.passes.ecmascript.view_ir {
-        ElementChild,
-        IfChild,
-        EachChild
-    }
-    syms = [];
-    stack = list(view.children);
-    while stack {
-        child = stack.pop();
-        if isinstance(child, EachChild) {
-            syms.append("For");
-            stack.extend(child.body);
-        } elif isinstance(child, IfChild) {
-            syms.append("Show");
-            stack.extend(child.consequent);
-            if child.alternate is not None {
-                stack.extend(child.alternate);
-            }
-        } elif isinstance(child, ElementChild) {
-            stack.extend(child.element.children);
-        }
-    }
-    return syms;
-}
-
 impl SolidBackend._jsx_element(
     name_node: any, attrs: list, children: list, jac_node: any, sync_loc: any
 ) -> es.JsxElement {
@@ -509,25 +484,52 @@ impl SolidBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
     return self.lower_view(error_view, self._noloc);
 }
 
-impl SolidBackend.state_field_symbols(s: StateField) -> list[str] {
-    return ["createSignal"];
-}
-
-impl SolidBackend.ref_field_symbols(r: RefField) -> list[str] {
+impl SolidBackend.runtime_symbols(
+    intent: StateField | RefField | Effect | AsyncBoundary | ViewElement
+) -> list[str] {
+    if isinstance(intent, StateField) {
+        return ["createSignal"];
+    }
+    if isinstance(intent, RefField) {
+        return [];
+    }
+    if isinstance(intent, Effect) {
+        if not intent.is_entry {
+            return ["onCleanup"];
+        }
+        return ["createEffect"];
+    }
+    if isinstance(intent, AsyncBoundary) {
+        syms = ["Suspense"];
+        if intent.except_exprs {
+            syms.append("ErrorBoundary");
+        }
+        return syms;
+    }
+    if isinstance(intent, ViewElement) {
+        import from jaclang.compiler.passes.ecmascript.view_ir {
+            ElementChild,
+            IfChild,
+            EachChild
+        }
+        syms = [];
+        stack = list(intent.children);
+        while stack {
+            child = stack.pop();
+            if isinstance(child, EachChild) {
+                syms.append("For");
+                stack.extend(child.body);
+            } elif isinstance(child, IfChild) {
+                syms.append("Show");
+                stack.extend(child.consequent);
+                if child.alternate is not None {
+                    stack.extend(child.alternate);
+                }
+            } elif isinstance(child, ElementChild) {
+                stack.extend(child.element.children);
+            }
+        }
+        return syms;
+    }
     return [];
-}
-
-impl SolidBackend.effect_symbols(e: Effect) -> list[str] {
-    if not e.is_entry {
-        return ["onCleanup"];
-    }
-    return ["createEffect"];
-}
-
-impl SolidBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {
-    syms = ["Suspense"];
-    if a.except_exprs {
-        syms.append("ErrorBoundary");
-    }
-    return syms;
 }

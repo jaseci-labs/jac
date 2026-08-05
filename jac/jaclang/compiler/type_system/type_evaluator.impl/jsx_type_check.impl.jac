@@ -7,13 +7,39 @@ impl TypeEvaluator._is_mobui_module(nd: uni.UniNode) -> bool {
         return False;
     }
     if mod_path not in self._mobui_module_cache {
-        import from jaclang.project.client_kind { mobui_enforced_for }
+        import from jaclang.project.client_kind { resolve_client_surface }
         opts = self.program._compile_options;
-        self._mobui_module_cache[mod_path] = mobui_enforced_for(
-            mod_path, opts.project_kind, opts.project_root
+        surface = resolve_client_surface(
+            mod_path,
+            getattr(opts, "client_framework", "") or "",
+            opts.project_kind,
+            opts.project_root,
         );
+        self._mobui_module_cache[mod_path] = surface.is_mobui;
     }
     return self._mobui_module_cache[mod_path];
+}
+
+impl TypeEvaluator._is_compose_module(nd: uni.UniNode) -> bool {
+    opts = self.program._compile_options;
+    if getattr(opts, "client_framework", "") == "compose" {
+        return True;
+    }
+    mod_path = nd.loc.mod_path if nd.loc else "";
+    if not mod_path {
+        return False;
+    }
+    if mod_path not in self._compose_module_cache {
+        import from jaclang.project.client_kind { resolve_client_surface }
+        surface = resolve_client_surface(
+            mod_path,
+            getattr(opts, "client_framework", "") or "",
+            opts.project_kind,
+            opts.project_root,
+        );
+        self._compose_module_cache[mod_path] = surface.is_compose;
+    }
+    return self._compose_module_cache[mod_path];
 }
 
 impl TypeEvaluator._resolve_jsx_component_type(
@@ -88,7 +114,19 @@ impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> 
 impl TypeEvaluator._validate_jsx_props(
     expr: uni.JsxElement, expected_type: TypeBase | None = None
 ) -> None {
-    if not expr.name or not expr.attributes {
+    if not expr.name {
+        return;
+    }
+
+    parent = expr.parent;
+    if isinstance(parent, uni.JsxElement) {
+        siblings = parent.children or [];
+        if not any([sib is expr for sib in siblings]) {
+            return;
+        }
+    }
+
+    if not expr.attributes and not expr.children {
         return;
     }
     first_part = expr.name.parts[0] if expr.name.parts else None;
@@ -247,11 +285,70 @@ impl TypeEvaluator._validate_component_jsx_props(
         }
     }
 
+    children_target = self._compose_children_target(expr, component_name, param_map)
+        if self._returns_composable(func_type)
+        else None;
+
     for (pname, p) in param_map.items() {
+        if pname == children_target {
+            continue;
+        }
         if pname not in matched_params and not p.is_optional {
             self.emit_diag(E1102, expr, component=component_name, name=pname);
         }
     }
+}
+
+impl TypeEvaluator._compose_children_target(
+    expr: uni.JsxElement, component_name: str, param_map: dict[str, types.Parameter]
+) -> (str | None) {
+    if not self._jsx_has_content_children(expr) {
+        return None;
+    }
+    if component_name == "Text" {
+        return "text" if "text" in param_map else None;
+    }
+    target: (str | None) = None;
+    for (pname, p) in param_map.items() {
+        if self._is_compose_slot_param(p) {
+            target = pname;
+        }
+    }
+    return target;
+}
+
+impl TypeEvaluator._returns_composable(func_type: types.FunctionType) -> bool {
+    rt = func_type.return_type;
+    if not isinstance(rt, types.ClassType) {
+        return False;
+    }
+    comp = self._get_type_from_module(self.jac_builtins_module, "Composable");
+    return isinstance(comp, types.ClassType) and rt.shared == comp.shared;
+}
+
+impl TypeEvaluator._is_compose_slot_param(p: types.Parameter) -> bool {
+    if not isinstance(p.param_type, types.FunctionType) {
+        return False;
+    }
+    ret = p.param_type.return_type;
+    return ret is not None and not self.is_none_type(ret);
+}
+
+impl TypeEvaluator._jsx_has_content_children(expr: uni.JsxElement) -> bool {
+    for child in (expr.children or []) {
+        if isinstance(child, uni.JsxElement) or isinstance(child, uni.JsxExpression) {
+            return True;
+        }
+        if isinstance(child, uni.JsxText) {
+            val = child.value.value
+                if isinstance(child.value, uni.Token)
+                else child.value;
+            if isinstance(val, str) and val.strip() {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 impl TypeEvaluator._validate_intrinsic_jsx_props(

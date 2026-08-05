@@ -65,6 +65,9 @@ test "mobile_dev_host helper module exists" {
     assert "def resolve_mobile_dev_host" in d;
     assert "def resolve_mobile_vite_port" in d;
     assert "def is_android_emulator_adb" in d;
+    assert "def ensure_adb_device" in d;
+    assert "def list_adb_devices" in d;
+    assert "JAC_ANDROID_AVD" in d;
     assert "def is_ios_simulator" in d;
     assert "10.0.2.2" in d;
     assert "JAC_MOBILE_VITE_PORT" in d;

@@ -72,6 +72,10 @@ zig-out/
 
 # Agent / IDE working notes (not repo artifacts)
 AGENTS.md
+.pi-subagents/
+
+# Local reference checkouts (large, not part of the repo)
+references/
 PLAN.md
 IMPLEMENTATION.md
 RUNTIME_SPLIT_PROGRESS.md
@@ -92,3 +96,6 @@ jactastic/**
 
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
+
+# Gradle wrapper/cache (scaffolded Android projects emit this locally)
+.gradle/

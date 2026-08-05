@@ -22,11 +22,10 @@ obj ReactBackend(FrameworkBackend) {
     def lower_view_expr(expr: es.Expression) -> es.Expression;
     def lower_view(view: ViewElement, sync_loc: any) -> es.Expression;
     def _view_attr_property(attr: any, sync_loc: any) -> es.Property;
-    def state_field_symbols(s: StateField) -> list[str];
-    def ref_field_symbols(r: RefField) -> list[str];
-    def effect_symbols(e: Effect) -> list[str];
-    def async_boundary_symbols(a: AsyncBoundary) -> list[str];
-    def view_runtime_symbols(view: ViewElement) -> list[str];
+    def runtime_symbols(
+        intent: StateField | RefField | Effect | AsyncBoundary | ViewElement
+    ) -> list[str];
+
     def jsx_factory_name -> str;
     def import_source(symbol: str) -> str;
     def required_globals -> list[str];

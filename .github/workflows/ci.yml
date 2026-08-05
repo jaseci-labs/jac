@@ -622,6 +622,165 @@ jobs:
           --global
         jac test -vv jac/tests/runtimelib/client/test_inprocess_dispatch.jac
 
+  # P0 #4 — first real quality gate for the Android Compose target: emit the
+  # Gradle project from the compose_android example and assemble a debug APK.
+  # `jac build --client android` delegates straight to AndroidTarget.build()
+  # (skipping the whole-program type-check gate), so this catches codegen +
+  # scaffold regressions that only surface under Gradle / on a device. The
+  # optional headless-emulator RPC round-trip (M4) is tracked separately.
+  test-android-compose:
+    needs: [changes, build-jac]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 35
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Provides `gradle` on PATH (AndroidTarget generates the wrapper on first
+      # run if gradlew is absent) and caches ~/.gradle across runs.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Scaffold emits compileSdk/targetSdk = 36, minSdk = 26.
+      # setup-android@v3 misdetects the runner image's preinstalled
+      # cmdline-tools/latest as "wrong version" and falls back to a
+      # cmdline-tools/16.0 copy whose package repository is empty, so every
+      # `platforms;android-*` install fails with "Failed to find package".
+      # Drive the working preinstalled sdkmanager directly instead.
+      - name: Set up Android SDK
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Emit + assemble the compose_android APK
+        working-directory: jac/examples/compose_android
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          jac build --client android --platform android
+          # Fail unless Gradle actually produced a debug APK.
+          test -n "$(find apps/android/app/build/outputs/apk/debug -name '*.apk' -print -quit)"
+
+  # M4 — first on-device gate: JacDevHostActivity polls the dev server, DexClassLoader-
+  # swaps classes.dex, mount() renders Compose, and a source edit hot-reloads without
+  # reinstall. Runs inside a headless emulator (KVM); see scripts/android_compose_device_e2e.sh.
+  #
+  # Blocking: the on-CI ANRs that once forced this job non-blocking were a silent
+  # KVM-permission gap (runner user not in the kvm group) that dropped the emulator
+  # to ~100x slower software CPU emulation until system_server ANR'd - not an app
+  # or image problem. The "Enable KVM acceleration" step now grants + verifies
+  # /dev/kvm each run, so a KVM regression fails loudly instead of silently hanging.
+  # The e2e asserts on app-process logcat render markers; the APK build itself is
+  # still gated separately by test-android-compose.
+  test-android-compose-device:
+    needs: [changes, build-jac]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    # 8 vCPU: the emulator + Gradle + the jac dev server contend on one runner;
+    # the extra cores keep system_server alive through the DexClassLoader + Compose
+    # startup so the logcat render markers can fire.
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # A healthy run is ~4 min; 20 min is ~5x headroom and catches a KVM-regression
+    # hang (software-emulation crawl) far faster than the prior 45.
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # setup-android@v3 misdetects the runner image's preinstalled
+      # cmdline-tools/latest as "wrong version" and falls back to a
+      # cmdline-tools/16.0 copy whose package repository is empty, so every
+      # `platforms;android-*` install fails with "Failed to find package".
+      # Drive the working preinstalled sdkmanager directly instead.
+      - name: Set up Android SDK
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      # KVM must be engaged or the emulator falls back to ~100x slower software
+      # CPU emulation, which alone causes the SystemUI ANRs. The runner user is
+      # not in the kvm group (/dev/kvm is root:kvm, mode 660), so grant it
+      # read/write access for this job, then confirm hardware acceleration
+      # actually engages (never fatal; a warning surfaces a regression).
+      - name: Enable KVM acceleration
+        run: |
+          if [ -e /dev/kvm ] && [ ! -w /dev/kvm ]; then
+            sudo chmod 0666 /dev/kvm || echo "::warning::chmod /dev/kvm failed (no passwordless sudo?)"
+          fi
+          if [ -w /dev/kvm ]; then
+            echo "KVM present and writable (hardware acceleration engaged)"
+          else
+            echo "::warning::No usable /dev/kvm - emulator falls back to slow software CPU emulation, a prime SystemUI-ANR cause"
+            ls -l /dev/kvm 2>&1 || true
+          fi
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          [ -x "$sdk_root/emulator/emulator" ] && "$sdk_root/emulator/emulator" -accel-check || true
+
+      # Pre-build the host APK BEFORE booting the emulator so the heavy Gradle
+      # work (dependency resolution + first compile) does not contend with the
+      # running emulator's system_server. jac start --dev later reuses the warm
+      # Gradle cache for only an incremental rebuild during the emulator run.
+      - name: Pre-build host APK (warm Gradle before emulator boots)
+        working-directory: jac/examples/compose_android
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          jac build --client android --platform android
+          test -n "$(find apps/android/app/build/outputs/apk/debug -name '*.apk' -print -quit)"
+
+      - name: On-device DexClassLoader + HMR e2e
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # google_atd (Automated Test Device) image: Google's CI-stripped system
+          # image with no launcher / minimal SystemUI, which stops system_server
+          # from ANR-ing ("System UI isn't responding") under CI load. A
+          # targetSdk-36 app runs fine on the api-35 image, and the app launches
+          # JacDevHostActivity directly so it does not need the launcher. If
+          # google_atd is ever unavailable for api-35, fall back to api-34 google_atd.
+          api-level: 35
+          target: google_atd
+          arch: x86_64
+          ram-size: 4096M
+          cores: 4
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            export GRADLE_OPTS=-Dorg.gradle.daemon=false
+            bash scripts/android_compose_device_e2e.sh
+
   test-packages-and-docs:
     needs: [changes, build-jac]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
@@ -1478,6 +1637,8 @@ jobs:
       - contribution-checks
       - test-solid-and-desktop
       - test-client
+      - test-android-compose
+      - test-android-compose-device
       - test-packages-and-docs
       - test-native-macos
       - test-launcher

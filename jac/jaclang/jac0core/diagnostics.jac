@@ -1428,17 +1428,23 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
      ),
      E5081 = _err("E5081", Category.CODEGEN, "Unknown client framework '{framework}'"),
+     E5082 = _err(
+         "E5082",
+         Category.CODEGEN,
+         "Client code imports '{name}' from '{module}', but '{name}' has no client-side presence",
+         help="A plain import into client code can only reference client declarations; server `def:pub` endpoints bridge automatically over RPC. Make '{name}' a `def:pub` endpoint, mark it (or its module) client, or move it into client code."
+     ),
      E5083 = _err(
          "E5083",
          Category.CODEGEN,
          "na import targets collide on wasm artifact '{stem}.wasm': '{path}' vs '{other}'",
          help="Every `na import` target emits /static/<stem>.wasm named by its file stem, and set_na_env / __na_bind address the module by that stem, so two different native modules with the same basename would overwrite each other's artifact and bind to the wrong exports. Rename one of the files."
      ),
-     E5082 = _err(
-         "E5082",
+     E5085 = _err(
+         "E5085",
          Category.CODEGEN,
-         "Client code imports '{name}' from '{module}', but '{name}' has no client-side presence",
-         help="A plain import into client code can only reference client declarations; server `def:pub` endpoints bridge automatically over RPC. Make '{name}' a `def:pub` endpoint, mark it (or its module) client, or move it into client code."
+         "Client framework 'compose' is the Android (Jetpack Compose) surface and cannot be lowered through the web/ES client",
+         help="Compose codegen only runs under the Android target. To build for the web, remove `[client] framework = \"compose\"` (or the --client-framework compose override); to build the Compose app, use `jac start --client android`."
      ),
      E5084 = _err(
          "E5084",
