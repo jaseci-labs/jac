@@ -1,4 +1,5 @@
 import jaclang.compiler.passes.ecmascript.estree as es;
+import type from jaclang.compiler.passes.ecmascript.view_ir { ViewChild }
 import from jaclang.compiler.passes.ecmascript.reactive_intent {
     StateField,
     RefField,
@@ -90,7 +91,7 @@ impl SolidBackend._noloc(es_node: any, jac_node: any = None) -> any {
 }
 
 impl SolidBackend._jsx_tag_name(
-    expr: es.Expression
+    expr: (es.Expression | None)
 ) -> (es.JsxIdentifier | es.JsxMemberExpression | None) {
     if isinstance(expr, es.Identifier) {
         return es.JsxIdentifier(name=expr.name);
@@ -167,7 +168,7 @@ impl SolidBackend._jsx_attr(
     );
 }
 
-impl SolidBackend._jsx_child_nodes(children: list, sync_loc: any) -> list {
+impl SolidBackend._jsx_child_nodes(children: list[ViewChild], sync_loc: any) -> list {
     import from jaclang.compiler.passes.ecmascript.view_ir {
         TextChild,
         DynamicChild,
@@ -222,7 +223,7 @@ impl SolidBackend._jsx_child_nodes(children: list, sync_loc: any) -> list {
 }
 
 impl SolidBackend._view_children_as_expr(
-    children: list, sync_loc: any
+    children: list[ViewChild], sync_loc: any
 ) -> es.Expression {
     import from jaclang.compiler.passes.ecmascript.view_ir { ElementChild, FragmentTag }
     if (

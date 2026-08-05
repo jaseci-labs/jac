@@ -50,7 +50,7 @@ obj ExpressionStatement(Node) {
 }
 
 obj BlockStatement(Node) {
-    has body: List[Statement] = [],
+    has body: list[Statement] = [],
         `type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
