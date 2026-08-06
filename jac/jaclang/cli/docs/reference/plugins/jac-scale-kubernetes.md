@@ -512,6 +512,8 @@ The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of th
 - The target's Deployment or StatefulSet, and its Service, already exist. This feature manages the `InterceptorRoute` and `ScaledObject` around an existing workload; it does not create the workload or the Service.
 - Exactly one of `target_port` or `target_port_name` is set, and at least one of `concurrency_target` or `request_rate_target` is set. Both are validated up front with an error that names the offending `jac.toml` key.
 
+**Interaction with the base autoscaler:** a target with `http_activation.enabled = true` is scaled entirely by its `ScaledObject` (min/max replicas, scale-to-zero). `jac start --scale` skips creating the base HPA/KEDA autoscaler for that same target automatically -- KEDA's admission webhook rejects a `ScaledObject` for a workload already managed by an HPA (or another `ScaledObject`), so both can't coexist on one target. This also means the deploy's usual post-deploy HTTP reachability check is skipped for that target (it may legitimately be sitting at 0 replicas with nothing to reach); a crash-loop check on the pods runs instead.
+
 **HTTP activation configuration (`[scale.kubernetes.http_activation]`):**
 
 | TOML Key | Default | Description |
@@ -525,7 +527,7 @@ The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of th
 | `concurrency_target` | `null` | In-flight-request concurrency target. Set this or `request_rate_target`. |
 | `request_rate_target` | `null` | Requests-per-window target, as an alternative to `concurrency_target`. |
 | `request_rate_window` / `request_rate_granularity` | `"1m"` / `"1s"` | Window and sampling granularity for `request_rate_target`. |
-| `[[rules]]` | `[]` | Routing rules: `hosts` (list), `paths` (list), `headers` (list of `{name, value}`, `value` omitted matches any). Fields within one rule are AND'd; separate rules are OR'd. Empty matches all traffic. |
+| `[[rules]]` | `[]` | Routing rules: `hosts` (list), `paths` (list), `headers` (list of `{name, value}`, `value` omitted matches any). Fields within one rule are AND'd; separate rules are OR'd. **Leaving this empty means no traffic matches** -- the interceptor never forwards anything and the target never wakes. At least one rule is required; use `hosts = ["*"]` for an explicit catch-all. |
 | `cold_start_status_code` / `cold_start_body` / `cold_start_headers` | `503` / `null` / `{}` | Static placeholder response served while the target cold-starts. |
 | `cold_start_fallback_service` / `cold_start_fallback_port` | `null` | Service to forward to while cold-starting, as an alternative to a static placeholder. |
 | `timeout_readiness` / `timeout_request` / `timeout_response_header` | `null` | Duration strings (e.g. `"30s"`) the interceptor waits at each stage. |
