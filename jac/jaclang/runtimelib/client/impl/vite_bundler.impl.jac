@@ -13,6 +13,31 @@ def _require_bun -> str {
 }
 
 
+def _package_fingerprint(package_json: Path, npmrc: Path) -> str {
+    import hashlib;
+    digest = hashlib.sha256();
+    if package_json.exists() {
+        digest.update(package_json.read_bytes());
+    }
+    if npmrc.exists() {
+        digest.update(npmrc.read_bytes());
+    }
+    return digest.hexdigest();
+}
+
+
+def _read_stamp(stamp_file: Path) -> str {
+    if not stamp_file.exists() {
+        return "";
+    }
+    try {
+        return stamp_file.read_text(encoding='utf-8').strip();
+    } except OSError {
+        return "";
+    }
+}
+
+
 def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
     import from jaclang.runtimelib.client.targets.node_tooling_common {
         resolve_node_tool_entry
@@ -182,9 +207,16 @@ impl ViteBundler.install_packages(
     import time;
     import shutil;
     import subprocess;
-    bun = _require_bun();
     build_dir = install_dir if install_dir is not None else self._get_client_dir();
     node_modules = build_dir / 'node_modules';
+
+    configs_package_json = build_dir / 'configs' / 'package.json';
+    if not configs_package_json.exists() {
+        self.create_package_json();
+    }
+    configs_npmrc = build_dir / 'configs' / '.npmrc';
+    fingerprint = _package_fingerprint(configs_package_json, configs_npmrc);
+    stamp_file = node_modules / '.jac-package-hash';
 
     if not force {
         if clean_stale {
@@ -193,20 +225,16 @@ impl ViteBundler.install_packages(
                 shutil.rmtree(node_modules);
             }
         }
-        if node_modules.exists() {
+        if node_modules.exists() and _read_stamp(stamp_file) == fingerprint {
             return;
         }
     }
 
-    configs_package_json = build_dir / 'configs' / 'package.json';
-    if not configs_package_json.exists() {
-        self.create_package_json();
-    }
+    bun = _require_bun();
     build_package_json = build_dir / 'package.json';
     if configs_package_json.exists() and not build_package_json.exists() {
         shutil.copy2(configs_package_json, build_package_json);
     }
-    configs_npmrc = build_dir / 'configs' / '.npmrc';
     build_npmrc = build_dir / '.npmrc';
     if configs_npmrc.exists() and not build_npmrc.exists() {
         shutil.copy2(configs_npmrc, build_npmrc);
@@ -234,6 +262,9 @@ impl ViteBundler.install_packages(
             raise ClientBundleError("Failed to install dependencies") from None;
         }
         console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
+        if node_modules.exists() {
+            stamp_file.write_text(fingerprint, encoding='utf-8');
+        }
     } finally {
         if build_package_json.exists() {
             build_package_json.unlink();
@@ -250,6 +281,71 @@ impl ViteBundler.install_packages(
             }
             shutil.move(str(build_bun_lockb), str(configs_bun_lockb));
         }
+    }
+}
+
+impl ViteBundler._preflight_runtime_imports(
+    self: ViteBundler, build_dir: Path
+) -> None {
+    import os;
+    import re;
+    compiled_dir = build_dir / 'compiled';
+    runtime_files = [
+        compiled_dir / 'client_runtime.js',
+        compiled_dir / 'client_runtime_core.js'
+    ];
+    present = [
+        f
+        for f in runtime_files
+        if f.exists()
+    ];
+    if not present {
+        return;
+    }
+    node_modules = build_dir / 'node_modules';
+    if not node_modules.exists() {
+        hint = "";
+        if os.environ.get('JAC_CLIENT_SKIP_NPM_INSTALL') {
+            hint = (
+                " (JAC_CLIENT_SKIP_NPM_INSTALL is set, so dependencies "
+                "were not installed)"
+            );
+        }
+        raise ClientBundleError(
+            f"No node_modules at {node_modules} to resolve client runtime "
+            f"imports{hint}. Run 'jac install' to provision client dependencies."
+        ) from None;
+    }
+    missing: set = set();
+    for runtime_file in present {
+        src = runtime_file.read_text(encoding='utf-8', errors='ignore');
+        specs = re.findall(r'(?:import|export)\s[^;]*?from\s*[\'"]([^\'"]+)[\'"]', src);
+        specs.extend(re.findall(r'import\s*[\'"]([^\'"]+)[\'"]', src));
+        for spec in specs {
+            if spec.startswith('.') or spec.startswith('/') or (':' in spec) {
+                continue;
+            }
+            if spec.startswith('@') {
+                parts = spec.split('/');
+                pkg = '/'.join(parts[:2]) if len(parts) > 1 else spec;
+            } else {
+                pkg = spec.split('/')[0];
+            }
+            if pkg.startswith('@jac/') {
+                continue;
+            }
+            if not (node_modules / pkg).exists() {
+                missing.add(pkg);
+            }
+        }
+    }
+    if missing {
+        pkgs = ', '.join(sorted(missing));
+        raise ClientBundleError(
+            f"Client runtime imports npm package(s) that are not installed: "
+            f"{pkgs}. Run 'jac install', or add them to [dependencies.npm] "
+            f"in jac.toml with 'jac add --npm <package>'."
+        ) from None;
     }
 }
 
@@ -1085,6 +1181,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     build_dir = self._get_client_dir();
 
     self.install_packages(install_dir=build_dir, capture_output=True, clean_stale=True);
+    self._preflight_runtime_imports(build_dir);
     if self.config_path {
         try {
             config_arg = str(self.config_path.relative_to(build_dir));

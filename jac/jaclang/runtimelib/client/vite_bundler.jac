@@ -63,6 +63,7 @@ class ViteBundler {
         clean_stale: bool = False
     ) -> None;
 
+    def _preflight_runtime_imports(self: ViteBundler, build_dir: Path) -> None;
     def add_packages(
         self: ViteBundler,
         packages: list[str],
