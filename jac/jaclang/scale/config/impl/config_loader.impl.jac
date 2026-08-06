@@ -601,6 +601,11 @@ impl normalize_microservices_config(
             'expose_headers': list(cors_config.get('expose_headers', [])),
             'max_age': int(cors_config.get('max_age', 600))
         },
+        'identity': {
+            'gateway_owned': bool(
+                dict(ms_config.get('identity', {})).get('gateway_owned', True)
+            )
+        },
         'client': {
             'entry': resolved_client_entry,
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),

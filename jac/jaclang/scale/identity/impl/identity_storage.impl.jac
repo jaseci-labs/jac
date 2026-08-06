@@ -103,7 +103,8 @@ impl IdentityStorage.create_user(
 }
 
 impl IdentityStorage.user_exists_by_id(user_id: str) -> bool {
-    return self.get_user_by_id(user_id) is not None;
+    existing = self.get_user_by_id(user_id);
+    return existing is not None and existing.get('status') == 'active';
 }
 
 impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
@@ -112,6 +113,9 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
 
     existing = self.get_user_by_id(user_id);
     if existing {
+        if existing.get('status') != 'active' {
+            return None;
+        }
         return existing.get('root_id');
     }
 
@@ -135,9 +139,13 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
             }
         );
     } except Exception {
+        Jac.destroy(user_root);
+        Jac.commit(user_root);
         winner = self.get_user_by_id(user_id);
-        if winner {
+        if winner and winner.get('status') == 'active' {
             return winner.get('root_id');
+        } elif winner {
+            return None;
         }
         raise;
     }

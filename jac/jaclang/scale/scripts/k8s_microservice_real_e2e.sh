@@ -317,6 +317,44 @@ fi
 echo "  order ${ORDER_ID} survived the restart (served from Mongo by a fresh pod)"
 
 _t "identity + pod-restart persistence OK"
+
+echo "=== gateway-owned identity: gateway token authenticates a non-pub function on a service ==="
+# The journey above only exercises :pub functions; whoami has no :pub, so a 200
+# proves the products service JIT-provisioned the gateway user's root.
+PRODUCTS_PREFIX=$(jac -c "
+import tomllib
+from jaclang.scale.runtime.routing import resolve_routes
+with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
+    cfg = tomllib.load(f)
+ms = cfg.get('scale', {}).get('microservices', {}) \
+    or cfg.get('plugins', {}).get('scale', {}).get('microservices', {})
+for name, prefix in resolve_routes(dict(ms)).items():
+    if 'products' in name:
+        print(prefix)
+        break
+")
+if [ -z "${PRODUCTS_PREFIX}" ]; then
+    echo "FAIL: could not resolve the products service route prefix" >&2
+    exit 1
+fi
+ANON_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "${GW_URL}${PRODUCTS_PREFIX}/function/whoami" \
+    -H 'content-type: application/json' -d '{}')
+if [ "${ANON_CODE}" != "401" ] && [ "${ANON_CODE}" != "403" ]; then
+    echo "FAIL: whoami without a token must be rejected, got ${ANON_CODE}" >&2
+    exit 1
+fi
+AUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "${GW_URL}${PRODUCTS_PREFIX}/function/whoami" \
+    -H "${AUTH}" \
+    -H 'content-type: application/json' -d '{}')
+if [ "${AUTH_CODE}" != "200" ]; then
+    echo "FAIL: gateway-issued token rejected by the service (${AUTH_CODE}) - cross-service identity broken" >&2
+    exit 1
+fi
+echo "  service accepted the gateway token on a non-pub function (whoami 200, anon ${ANON_CODE})"
+
+_t "identity OK"
 echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
 # The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
 HPA_JSON="$(mktemp)"

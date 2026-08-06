@@ -147,7 +147,11 @@ impl SqliteIdentityStorage.delete_user(user_id: str) -> bool {
         conn.execute(
             delete(self._sso_lookups).where(self._sso_lookups.c.user_id == user_id)
         );
-        result = conn.execute(delete(t).where(t.c.user_id == user_id));
+        result = conn.execute(
+            update(t).where(t.c.user_id == user_id).values(
+                status='deleted', identities='[]', credentials='[]'
+            )
+        );
         return result.rowcount > 0;
     }
 }
@@ -360,7 +364,9 @@ impl SqliteIdentityStorage.list_all_users(
             lk.c.value_normalized == Con.GUEST.value
         );
         rows = conn.execute(
-            select(t).where(t.c.user_id.not_in(guest_subq)).order_by(
+            select(t).where(
+                t.c.user_id.not_in(guest_subq), t.c.status != 'deleted'
+            ).order_by(
                 t.c.created_at.desc()
             ).limit(
                 limit

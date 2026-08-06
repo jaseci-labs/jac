@@ -63,6 +63,11 @@ def _get_or_seed_anchor -> Products {
     return anchor;
 }
 
+# No :pub - requires a valid session, so a gateway-issued token proves
+# cross-service identity (the service JIT-provisions the user root).
+def whoami -> dict {
+    return {"authenticated": True};
+}
 
 def:pub list_products -> list[dict] {
     anchor = _get_or_seed_anchor();
