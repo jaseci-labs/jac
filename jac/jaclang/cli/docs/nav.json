@@ -132,6 +132,7 @@
                 { "title": "Overview", "page": "reference/plugins/jac-scale.md" },
                 { "title": "HTTP API & Walkers", "page": "reference/plugins/jac-scale-http.md" },
                 { "title": "Data & Storage", "page": "reference/plugins/jac-scale-persistence.md" },
+                { "title": "Scheduler & Background Jobs", "page": "reference/plugins/jac-scale-scheduler.md" },
                 { "title": "Kubernetes & Operations", "page": "reference/plugins/jac-scale-kubernetes.md" }
               ]
             },
