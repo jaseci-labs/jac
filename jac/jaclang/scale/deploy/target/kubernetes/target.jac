@@ -357,10 +357,11 @@ obj KubernetesTarget(KubernetesTargetBase) {
         import sys;
         import from kubernetes { client }
         import from jaclang.cli.console { console }
+
+        http_activation_svc_names: set = set(bundle.get("http_activations", {}).keys());
         names: list[str] = [];
         app_labels: list[str] = [];
-        for dep in bundle.get("deployments", {}).values() {
-            names.append(dep["metadata"]["name"]);
+        for (svc_name, dep) in bundle.get("deployments", {}).items() {
             app: str = "";
             try {
                 app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
@@ -373,8 +374,29 @@ obj KubernetesTarget(KubernetesTargetBase) {
             if app {
                 app_labels.append(app);
             }
+            if svc_name not in http_activation_svc_names {
+                names.append(dep["metadata"]["name"]);
+            }
         }
         if not names {
+            self._load_kube_config();
+            core_v1 = client.CoreV1Api();
+            ns = self.k8s_config.namespace;
+            crash = self._scan_for_crash_loop(core_v1, ns, set(), set(app_labels))[
+                "crash"
+            ];
+            if crash {
+                raise Exception(
+                    "Deployment failed: application pods are restarting "
+                    "(crash loop / bad image); not marking the fleet ready."
+                );
+            }
+            if self.logger {
+                self.logger.info(
+                    "Fleet ready: all services use HTTP activation "
+                    "(scale to zero until first request); pods healthy."
+                );
+            }
             return;
         }
         self._load_cluster_config();

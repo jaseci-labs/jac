@@ -805,6 +805,10 @@ obj ManifestBuilder {
     }
 
     def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
+        if self._get_http_activation_config(svc_name) is not None {
+            return None;
+        }
+
         svc: dict[str, any] = self._service_config(svc_name);
 
         hpa: dict[str, any] = svc.get("hpa", {});
