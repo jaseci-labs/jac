@@ -282,6 +282,50 @@ test "a pinned no-console release clears a previously staged console" {
 }
 
 
+test "two pinned versions on one channel+arch cache to distinct files" {
+    import os;
+    d = tempfile.mkdtemp();
+    with unittest.mock.patch.dict(os.environ, {"JAC_SCALE_CACHE_DIR": d}) {
+        a = binary_mod._binary_cache_path("stable", "x86_64", "0.34.2");
+        b = binary_mod._binary_cache_path("stable", "x86_64", "0.35.0");
+        # Same channel and arch: a channel-keyed path would serve 0.34.2's bytes
+        # for a 0.35.0 deploy, or force a redownload on every version flip.
+        assert a != b;
+        assert "0.34.2" in a.name and "0.35.0" in b.name;
+        # An unpinned deploy keeps the channel-keyed path it always had.
+        assert binary_mod._binary_cache_path("dev", "x86_64").name
+            == "jac-dev-linux-x86_64";
+    }
+}
+
+
+test "download_host_toolchain refuses a spec that resolves to no release" {
+    with unittest.mock.patch.object(
+        binary_mod, "_list_release_versions", return_value=["0.34.3"]
+    ) {
+        raised = "";
+        try {
+            binary_mod.download_host_toolchain(">=99.0");
+        } except RuntimeError as e {
+            raised = str(e);
+        }
+        assert "matches no published" in raised , raised;
+    }
+}
+
+
+test "resolve_pin_target names the release a spec lands on" {
+    with unittest.mock.patch.object(
+        binary_mod,
+        "_list_release_versions",
+        return_value=["0.34.2", "0.34.9", "0.35.0"]
+    ) {
+        assert binary_mod.resolve_pin_target(">=0.34,<0.35") == "0.34.9";
+        assert binary_mod.resolve_pin_target(">=99.0") == "";
+    }
+}
+
+
 test "config round-trips the stamped jac-version pin" {
     toml = '[project]\nname = "x"\nversion = "0.1.0"\njac-version = "==0.34.3"\n';
     cfg = JacConfig.from_toml_str(toml);

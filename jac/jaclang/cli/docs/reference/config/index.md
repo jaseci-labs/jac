@@ -89,7 +89,7 @@ repository = "https://github.com/user/repo"
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
 | `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile` |
-| `jac-version` | string | Jac toolchain version the project targets, as a PEP 440-style specifier. `jac create` stamps `==<current>`; at `jac start --scale` the pod runtime binary, admin console, and base image are all taken from the release that satisfies it, and the deploy aborts if none does. See [jac-version](#jac-version). |
+| `jac-version` | string | Jac toolchain version the project targets, as a PEP 440-style specifier. `jac create` stamps `==<current>`; at `jac start --scale` the pod runtime binary, admin console, and base image are all taken from the release that satisfies it, and the deploy aborts if none does. `jac build --as jab`/`sealed`/`binary` fetches the pinned toolchain and seals with it when the running jac is outside the pin. See [jac-version](#jac-version). |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
 | `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
@@ -118,6 +118,8 @@ At deploy time (`jac start --scale`), the pin selects the **pod runtime**: the d
 - **No published release satisfies the pin** (or the matching release lacks the pod's CPU arch or a `jac-*` asset) -> the deploy **aborts** with an error naming the pin; a pinned deploy never silently ships a different version. Fix or remove `jac-version` to proceed.
 
 The pin is honored only on the default (stable) channel; the `[dev]`, `[experimental]`, and `JAC_SCALE_BINARY_PATH` (local) channels select the pod binary by their own rules and ignore it.
+
+At build time, the seal-producing projections (`jac build --as jab`, `--as sealed`, `--as binary`) require the seal to come from a jac **inside** the pin: a sealed bundle is locked to the toolchain that builds it, so an artifact built by a jac outside the pin is not guaranteed to load (or behave identically) on the pinned runtime. When the running jac does not satisfy the pin, the build downloads the release binary that does (for the host platform, checksum-verified, cached under `~/.cache/jac/toolchains/`) and re-runs itself under it -- the same fail-closed resolution deploy uses, applied to the host. The build errors only when the pin matches no published release, or the matching release publishes no binary for the host OS/arch; set `JAC_NO_TOOLCHAIN_FETCH=1` to disable the automatic fetch and make any mismatch a plain error that names the release the pin resolves to. Fetched toolchains are cached per version, so several pinned toolchains coexist on one machine. Source distributions (`wheel`, `npm`) carry no seal and are not gated.
 
 ---
 

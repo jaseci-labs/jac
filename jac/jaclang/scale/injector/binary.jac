@@ -151,6 +151,101 @@ def _satisfies(version: str, spec: str) -> bool {
 }
 
 
+def version_satisfies(version: str, spec: str) -> bool {
+    return _satisfies(version, spec);
+}
+
+
+def resolve_pin_target(spec: str) -> str {
+    # The concrete release a jac-version spec resolves to, or "" when none
+    # satisfies it. Public so callers can name the target version (in an error,
+    # a staged toolchain alias, a pod's runtime choice) without re-deriving
+    # what a spec means.
+    return _resolve_target_version(GH_REPO, spec);
+}
+
+
+def host_release_suffix -> str {
+    import platform;
+    sysname = platform.system();
+    if sysname == "Linux" {
+        os_name = "linux";
+    } elif sysname == "Darwin" {
+        os_name = "macos";
+    } else {
+        return "";
+    }
+    return f"-{os_name}-{host_arch()}";
+}
+
+
+def _toolchain_cache_dir -> Path {
+    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
+    if base {
+        return Path(base) / "toolchains";
+    }
+    return Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache"))
+        / "jac"
+        / "toolchains";
+}
+
+
+def download_host_toolchain(spec: str) -> tuple[str, Path] {
+    version = resolve_pin_target(spec);
+    if not version {
+        raise RuntimeError(
+            f"jac-version {spec!r} matches no published {GH_REPO} release. Fix "
+            f"[project] jac-version, or remove it to build with this jac."
+        );
+    }
+    suffix = host_release_suffix();
+    if not suffix {
+        raise RuntimeError(
+            f"No released jac binaries exist for this platform, so the pinned "
+            f"jac {version} cannot be fetched here. Install a matching jac "
+            f"yourself, or edit [project] jac-version."
+        );
+    }
+    cache = _toolchain_cache_dir() / f"jac-{version}{suffix}";
+    if cache.is_file() {
+        cache.chmod(0o755);
+        return (version, cache);
+    }
+
+    api = f"https://api.github.com/repos/{GH_REPO}/releases/tags/v{version}";
+    try {
+        meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+    } except HTTPError as e {
+        if e.code == 404 {
+            raise RuntimeError(
+                f"Pinned jac-version v{version} is not a published {GH_REPO} "
+                f"release; fix [project] jac-version or remove it."
+            );
+        }
+        raise;
+    }
+    (binary_url, checksum_url) = _pick_stable_assets(meta, suffix);
+    if not binary_url {
+        raise RuntimeError(
+            f"Release v{version} publishes no `jac-*{suffix}` asset for this "
+            f"host, so the pinned toolchain cannot be fetched here. Install a "
+            f"matching jac yourself, or edit [project] jac-version."
+        );
+    }
+    payload = _fetch_verified_asset(
+        binary_url, checksum_url, cache, f"pinned jac {version}"
+    );
+    if not cache.is_file() {
+        cache.parent.mkdir(parents=True, exist_ok=True);
+        tmp = cache.with_suffix(f".{os.getpid()}.tmp");
+        tmp.write_bytes(payload);
+        tmp.rename(cache);
+    }
+    cache.chmod(0o755);
+    return (version, cache);
+}
+
+
 def _exact_of(spec: str) -> str {
     clauses = [
         c.strip()
@@ -350,7 +445,7 @@ def download_release_binary(channel: str, arch: str, version: str = "") -> bytes
         return _fetch_verified_asset(
             binary_url,
             checksum_url,
-            _binary_cache_path(channel, arch),
+            _binary_cache_path(channel, arch, version),
             f"{channel} jac binary"
         );
     } except HTTPError as e {
@@ -498,8 +593,11 @@ def _scale_cache_root -> Path {
 }
 
 
-def _binary_cache_path(channel: str, arch: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-linux-{arch}";
+def _binary_cache_path(channel: str, arch: str, version: str = "") -> Path {
+    # Version-keyed when the deploy resolved a pin, so several pinned
+    # toolchains coexist and a re-resolved version cannot serve stale bytes
+    # from a channel-keyed file. Unpinned deploys stay channel-keyed.
+    return _scale_cache_root() / f"jac-{version or channel}-linux-{arch}";
 }
 
 
