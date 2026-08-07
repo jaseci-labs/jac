@@ -20,7 +20,8 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     ManifestBuilder,
     GATEWAY_NAME,
-    k8s_safe_name
+    k8s_safe_name,
+    ScalingMode
 }
 import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
     DatabaseProvisioner
@@ -33,10 +34,33 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jaclang.scale.deploy.autoscale.http_activation_config {
+    apply_http_activation_for_target
+}
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
+
+def apply_http_activations_for_bundle(
+    bundle: dict[str, any], namespace: str, keda: KEDAAutoscaler
+) {
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        if plan.get("mode") != ScalingMode.HTTP_ACTIVATION {
+            continue;
+        }
+        apply_http_activation_for_target(
+            dict(plan.get("http_activation", {})),
+            str(plan.get("scale_target_name", "")),
+            namespace,
+            str(plan.get("service_name", "")),
+            keda
+        );
+    }
+}
 
 
 obj KubernetesTarget(KubernetesTargetBase) {
@@ -341,10 +365,17 @@ obj KubernetesTarget(KubernetesTargetBase) {
         import sys;
         import from kubernetes { client }
         import from jaclang.cli.console { console }
+
+        scaling: dict[str, any] = bundle.get("scaling", {});
+        http_activation_svc_names: set = {
+            str(svc_name)
+            for svc_name in scaling.keys()
+            if dict(scaling.get(svc_name, {})).get("mode")
+                == ScalingMode.HTTP_ACTIVATION
+        };
         names: list[str] = [];
         app_labels: list[str] = [];
-        for dep in bundle.get("deployments", {}).values() {
-            names.append(dep["metadata"]["name"]);
+        for (svc_name, dep) in bundle.get("deployments", {}).items() {
             app: str = "";
             try {
                 app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
@@ -357,8 +388,29 @@ obj KubernetesTarget(KubernetesTargetBase) {
             if app {
                 app_labels.append(app);
             }
+            if svc_name not in http_activation_svc_names {
+                names.append(dep["metadata"]["name"]);
+            }
         }
         if not names {
+            self._load_kube_config();
+            core_v1 = client.CoreV1Api();
+            ns = self.k8s_config.namespace;
+            crash = self._scan_for_crash_loop(core_v1, ns, set(), set(app_labels))[
+                "crash"
+            ];
+            if crash {
+                raise Exception(
+                    "Deployment failed: application pods are restarting "
+                    "(crash loop / bad image); not marking the fleet ready."
+                );
+            }
+            if self.logger {
+                self.logger.info(
+                    "Fleet ready: all services use HTTP activation "
+                    "(scale to zero until first request); pods healthy."
+                );
+            }
             return;
         }
         self._load_cluster_config();
@@ -926,9 +978,14 @@ obj KubernetesTarget(KubernetesTargetBase) {
 
         self.reap_superseded_deployments(apps_v1, namespace, bundle);
 
-        for svc_name in bundle.get("autoscalers", {}).keys() {
+        scaling: dict[str, any] = bundle.get("scaling", {});
+        for svc_name in scaling.keys() {
+            plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+            if plan.get("mode") != ScalingMode.METRIC {
+                continue;
+            }
             k8s_name = k8s_safe_name(svc_name);
-            cfg = dict(bundle.get("autoscalers", {}).get(svc_name, {}));
+            cfg = dict(plan.get("autoscaler", {}));
             autoscaler = AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine,
                 self.k8s_config.to_dict(),
@@ -938,7 +995,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             autoscaler_name = autoscaler.resource_name_for(k8s_name);
             autoscaler_applied = autoscaler.apply(
                 AutoscalerSpec(
-                    scale_target_name=f"{k8s_name}-deployment",
+                    scale_target_name=str(plan.get("scale_target_name", "")),
                     autoscaler_name=autoscaler_name,
                     app_name=k8s_name,
                     namespace=namespace,
@@ -961,6 +1018,10 @@ obj KubernetesTarget(KubernetesTargetBase) {
                 );
             }
         }
+
+        apply_http_activations_for_bundle(
+            bundle, namespace, KEDAAutoscaler(logger=self.logger)
+        );
 
         for (svc_name, pdb_manifest) in bundle.get("pdbs", {}).items() {
             self._apply_or_replace(
@@ -1201,6 +1262,18 @@ obj KubernetesTarget(KubernetesTargetBase) {
         } except ApiException as e {
             if e.status != 404 {
                 raise;
+            }
+        }
+
+        if self.k8s_config.autoscaler_engine != "keda" {
+            try {
+                KEDAAutoscaler(logger=self.logger).destroy_collection(
+                    namespace, ms_selector, best_effort=True
+                );
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
         }
 

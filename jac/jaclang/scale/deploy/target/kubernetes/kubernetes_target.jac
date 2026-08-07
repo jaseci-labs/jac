@@ -30,6 +30,10 @@ import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jaclang.scale.deploy.autoscale.http_activation_config {
+    destroy_http_activation_for_target
+}
 import time;
 
 obj KubernetesTargetBase(DeploymentTarget) {
@@ -659,6 +663,9 @@ obj KubernetesTargetBase(DeploymentTarget) {
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
         );
         autoscaler.destroy(autoscaler.resource_name_for(app_name), namespace);
+        destroy_http_activation_for_target(
+            app_name, namespace, KEDAAutoscaler(logger=self.logger)
+        );
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );
