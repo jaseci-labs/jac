@@ -72,7 +72,7 @@ def mocked_keda_autoscaler(
     apps_api: any = None,
     core_api: any = None
 ) -> tuple[KEDAAutoscaler, any, any, any] {
-    KEDAAutoscaler._http_preflight_cache.clear();
+    KEDAAutoscaler._preflight_cache.clear();
     custom_api = custom_api or unittest.mock.MagicMock();
     if http_addon_installed {
         custom_api.list_cluster_custom_object.return_value = {};

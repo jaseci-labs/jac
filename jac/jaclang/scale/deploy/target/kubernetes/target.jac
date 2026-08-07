@@ -20,7 +20,8 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
     ManifestBuilder,
     GATEWAY_NAME,
-    k8s_safe_name
+    k8s_safe_name,
+    ScalingMode
 }
 import from jaclang.scale.deploy.target.kubernetes.database_provisioner {
     DatabaseProvisioner
@@ -45,11 +46,18 @@ glob logger = logging.getLogger(__name__);
 def apply_http_activations_for_bundle(
     bundle: dict[str, any], namespace: str, keda: KEDAAutoscaler
 ) {
-    for svc_name in bundle.get("http_activations", {}).keys() {
-        k8s_name = k8s_safe_name(svc_name);
-        cfg = dict(bundle.get("http_activations", {}).get(svc_name, {}));
+    scaling: dict[str, any] = bundle.get("scaling", {});
+    for svc_name in scaling.keys() {
+        plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+        if plan.get("mode") != ScalingMode.HTTP_ACTIVATION {
+            continue;
+        }
         apply_http_activation_for_target(
-            cfg, k8s_name, namespace, f"{k8s_name}-service", keda
+            dict(plan.get("http_activation", {})),
+            str(plan.get("scale_target_name", "")),
+            namespace,
+            str(plan.get("service_name", "")),
+            keda
         );
     }
 }
@@ -358,7 +366,13 @@ obj KubernetesTarget(KubernetesTargetBase) {
         import from kubernetes { client }
         import from jaclang.cli.console { console }
 
-        http_activation_svc_names: set = set(bundle.get("http_activations", {}).keys());
+        scaling: dict[str, any] = bundle.get("scaling", {});
+        http_activation_svc_names: set = {
+            str(svc_name)
+            for svc_name in scaling.keys()
+            if dict(scaling.get(svc_name, {})).get("mode")
+                == ScalingMode.HTTP_ACTIVATION
+        };
         names: list[str] = [];
         app_labels: list[str] = [];
         for (svc_name, dep) in bundle.get("deployments", {}).items() {
@@ -964,9 +978,14 @@ obj KubernetesTarget(KubernetesTargetBase) {
 
         self.reap_superseded_deployments(apps_v1, namespace, bundle);
 
-        for svc_name in bundle.get("autoscalers", {}).keys() {
+        scaling: dict[str, any] = bundle.get("scaling", {});
+        for svc_name in scaling.keys() {
+            plan: dict[str, any] = dict(scaling.get(svc_name, {}));
+            if plan.get("mode") != ScalingMode.METRIC {
+                continue;
+            }
             k8s_name = k8s_safe_name(svc_name);
-            cfg = dict(bundle.get("autoscalers", {}).get(svc_name, {}));
+            cfg = dict(plan.get("autoscaler", {}));
             autoscaler = AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine,
                 self.k8s_config.to_dict(),
@@ -976,7 +995,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             autoscaler_name = autoscaler.resource_name_for(k8s_name);
             autoscaler_applied = autoscaler.apply(
                 AutoscalerSpec(
-                    scale_target_name=f"{k8s_name}-deployment",
+                    scale_target_name=str(plan.get("scale_target_name", "")),
                     autoscaler_name=autoscaler_name,
                     app_name=k8s_name,
                     namespace=namespace,

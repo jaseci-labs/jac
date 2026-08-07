@@ -576,6 +576,9 @@ graph TD
 
 jac-scale always reconciles the `InterceptorRoute` before the `ScaledObject`, because the external scaler resolves the target Service and scaling metric from the route when KEDA evaluates the trigger. Reconciling in the other order would leave the `ScaledObject` unable to find its metric source.
 
+!!! warning "Route inbound traffic through the interceptor yourself"
+    jac-scale creates the `InterceptorRoute` and `ScaledObject`, but does **not** rewire the gateway or Ingress to the interceptor proxy -- they still resolve the app's own Service directly. With `min_replicas = 0`, a request that reaches the Service instead of the interceptor is refused and never wakes the pod. Only enable `http_activation` on a service whose inbound traffic you have already pointed at the KEDA HTTP interceptor proxy. The gateway is exempt and never inherits a shared `enabled = true` default.
+
 !!! note "Programmatic API for dynamic activation"
     A control-plane process that creates and tears down workloads on demand (for example, an IDE-preview orchestrator spinning up a per-session preview) has no fixed target to put in `jac.toml`. For that case, `HTTPActivationSpec` (`jaclang.scale.deploy.autoscale.http_activation`) and `KEDAAutoscaler.apply_http_activation` / `destroy_http_activation` (`jaclang.scale.deploy.autoscale.keda_autoscaler`) remain available as a direct API, unchanged by the `jac.toml` surface above. Use whichever entry point matches your workload's lifecycle: `jac.toml` for a known, standing service; the programmatic API for one created and destroyed at runtime.
 
