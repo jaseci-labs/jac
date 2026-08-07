@@ -9,11 +9,13 @@ build runs the actual `jac build` subprocess); no mocks."""
 
 import os;
 import shutil;
+import subprocess;
 import tempfile;
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
+import from jaclang.scale.runtime.context.util { jac_executable }
 
 
 def _builder(project_dir: str) -> ManifestBuilder {
@@ -35,6 +37,57 @@ def _project(entry_source: str) -> str {
         f.write(entry_source);
     }
     return tmp;
+}
+
+
+"""A counting `jac` stand-in: fails with a canned install-failure message for
+the first `fail_first` invocations, then hands off to the real binary. Uses
+the codebase's own JAC_EXECUTABLE substitution seam, not a mock."""
+def _counting_jac(tmp: str, fail_first: int, failure_text: str) -> tuple {
+    counter = os.path.join(tmp, "attempts");
+    real_jac = jac_executable();
+    script = os.path.join(tmp, "counting-jac.sh");
+    with open(script, "w", encoding="utf-8") as f {
+        f.write(
+            "#!/bin/sh\n"
+                + f'count_file="{counter}"\n'
+                + 'n=$(cat "$count_file" 2>/dev/null || echo 0)\n'
+                + "n=$((n+1))\n"
+                + 'printf %s "$n" > "$count_file"\n'
+                + f'if [ "$n" -le {fail_first} ]; then\n'
+                + f'  echo "{failure_text}" >&2\n'
+                + "  exit 1\n"
+                + "fi\n"
+                + f'exec "{real_jac}" "$@"\n'
+        );
+    }
+    os.chmod(script, 0o755);
+    return (script, counter);
+}
+
+
+def _attempts(counter: str) -> int {
+    if not os.path.isfile(counter) {
+        return 0;
+    }
+    with open(counter, encoding="utf-8") as f {
+        return int(f.read().strip() or "0");
+    }
+}
+
+
+def _web_app_project(tmp: str) -> str {
+    created = subprocess.run(
+        [jac_executable(), "create", "app", "--kind", "web-app"],
+        cwd=tmp,
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    assert created.returncode == 0 , (
+        f"jac create failed: {created.stdout}\n{created.stderr}"
+    );
+    return os.path.join(tmp, "app");
 }
 
 
@@ -85,5 +138,95 @@ test "an app without a client entry skips the build untouched" {
         mb._build_client_bundle(project_dir);
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
+    }
+}
+
+
+test "a transient install failure is retried and the deploy succeeds" {
+    tmp = tempfile.mkdtemp(prefix="client-retry-");
+    saved = os.environ.get("JAC_EXECUTABLE");
+    try {
+        project_dir = _web_app_project(tmp);
+        (script, counter) = _counting_jac(tmp, 1, "bun install failed after 12.0s");
+        os.environ["JAC_EXECUTABLE"] = script;
+        _builder(project_dir)._build_client_bundle(project_dir);
+
+        assert _attempts(counter) == 2 , (
+            f"expected a retry after the transient failure, "
+            f"saw {_attempts(counter)} attempt(s)"
+        );
+        index_html = os.path.join(project_dir, ".jac", "client", "dist", "index.html");
+        assert os.path.isfile(index_html) , "retry did not produce a bundle";
+    } finally {
+        if saved is None {
+            os.environ.pop("JAC_EXECUTABLE", None);
+        } else {
+            os.environ["JAC_EXECUTABLE"] = saved;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "a persistent transient failure still fails after a bounded retry" {
+    tmp = tempfile.mkdtemp(prefix="client-retry-");
+    saved = os.environ.get("JAC_EXECUTABLE");
+    raised = None;
+    try {
+        project_dir = _project("with entry {}\n");
+        (script, counter) = _counting_jac(
+            tmp, 99, "Dependency installation failed after 30.0s"
+        );
+        os.environ["JAC_EXECUTABLE"] = script;
+        try {
+            _builder(project_dir)._build_client_bundle(project_dir);
+        } except Exception as e {
+            raised = e;
+        }
+
+        assert raised is not None , "an always-failing build must still fail";
+        assert "client build failed" in str(raised);
+        assert _attempts(counter) == 3 , (
+            f"retry must be bounded at 3 attempts, saw {_attempts(counter)}"
+        );
+        shutil.rmtree(project_dir, ignore_errors=True);
+    } finally {
+        if saved is None {
+            os.environ.pop("JAC_EXECUTABLE", None);
+        } else {
+            os.environ["JAC_EXECUTABLE"] = saved;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "a genuine compile error fails on the first attempt with no retry" {
+    tmp = tempfile.mkdtemp(prefix="client-retry-");
+    saved = os.environ.get("JAC_EXECUTABLE");
+    raised = None;
+    try {
+        project_dir = _project("with entry { this does not parse ((( }\n");
+        (script, counter) = _counting_jac(tmp, 0, "");
+        os.environ["JAC_EXECUTABLE"] = script;
+        try {
+            _builder(project_dir)._build_client_bundle(project_dir);
+        } except Exception as e {
+            raised = e;
+        }
+
+        assert raised is not None , "a compile error must fail the deploy";
+        assert _attempts(counter) == 1 , (
+            f"a compile error must not be retried, saw {_attempts(counter)} "
+            f"attempt(s)"
+        );
+        shutil.rmtree(project_dir, ignore_errors=True);
+    } finally {
+        if saved is None {
+            os.environ.pop("JAC_EXECUTABLE", None);
+        } else {
+            os.environ["JAC_EXECUTABLE"] = saved;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }
