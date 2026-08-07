@@ -659,8 +659,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                 full_narrowed: TypeBase | None = None;
 
                 assert isinstance(expr.right, uni.Name);
-                if isinstance(base_type, types.AnyType) and base_type.is_foreign {
-                    expr.right.type = types.AnyType(is_foreign=True);
+                if isinstance(base_type, types.AnyType) {
+                    expr.right.type = types.AnyType(is_foreign=base_type.is_foreign);
                     return expr.right.type;
                 }
                 if isinstance(base_type, types.ModuleType) {
@@ -1376,11 +1376,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return types.UnknownType();
                     }
                 }
-                if (
-                    isinstance(base_type, types.ClassType)
-                    and self.prefetch.any_class is not None
-                    and base_type.shared == self.prefetch.any_class.shared
-                ) {
+                if base_type.is_any_instance()
+                    and self.prefetch.any_class is not None {
                     return self.prefetch.any_class;
                 }
                 if isinstance(base_type, types.ClassType)
@@ -2732,10 +2729,11 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
         return True;
     }
 
+    if ty.is_any_instance() {
+        return True;
+    }
+
     if isinstance(ty, types.ClassType) {
-        if (self.prefetch.any_class and ty.shared == self.prefetch.any_class.shared) {
-            return True;
-        }
         if (
             self.prefetch.type_var_class
             and ty.shared == self.prefetch.type_var_class.shared
@@ -2747,17 +2745,7 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
 }
 
 impl TypeEvaluator.is_explicit_any(ty: TypeBase) -> bool {
-    if isinstance(ty, types.AnyType) {
-        return True;
-    }
-    if isinstance(ty, types.ClassType) {
-        if self.prefetch
-            and self.prefetch.any_class
-            and ty.shared == self.prefetch.any_class.shared {
-            return True;
-        }
-    }
-    return False;
+    return ty.is_any_instance();
 }
 
 impl TypeEvaluator.is_none_type(ty: TypeBase) -> bool {

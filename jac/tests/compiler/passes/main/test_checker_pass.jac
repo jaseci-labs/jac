@@ -4355,6 +4355,22 @@ test "bare_generic_iteration_yields_any" {
         + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
 
+test "bare_generic_any_propagates_through_operations" {
+    # A bare generic's value type is any, so subscripting, attribute access,
+    # binary ops and iteration on it must yield any rather than Unknown.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_any_propagation.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
 test "bare_generic_in_signatures_emits_w1036" {
     # Bare generics in function/method return types and parameter types should
     # also produce W1036 — same as in `has` fields and assignments.

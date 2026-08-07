@@ -50,6 +50,7 @@ obj TypeBase(ABC) {
     def is_instance -> bool;
     def is_instantiable_class -> bool;
     def is_class_instance -> bool;
+    def is_any_instance -> bool;
     def is_any_type -> bool;
 }
 
