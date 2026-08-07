@@ -64,7 +64,17 @@ test "_get_class returns None for truly unregistered class names" {
 }
 
 
-test "unregistered-class warnings are emitted once per class, not once per anchor" {
+test "_is_report_threshold fires only on the power-of-10 ladder" {
+    for good in [1, 10, 100, 1000, 10000, 1000000] {
+        assert Serializer._is_report_threshold(good) , good;
+    }
+    for bad in [0, 2, 5, 9, 11, 50, 99, 101, 999, 1024] {
+        assert not Serializer._is_report_threshold(bad) , bad;
+    }
+}
+
+
+test "unregistered-class warnings re-emit on the ladder, not once per anchor" {
     unique_name = f"Ghost_{uuid4().hex}";
     module_name = "definitely.not.registered";
     key = f"{module_name}.{unique_name}";
@@ -96,10 +106,11 @@ test "unregistered-class warnings are emitted once per class, not once per ancho
         Serializer._reset_warn_cache();
     }
     out = buf.getvalue();
-    # The two failure modes are namespaced separately, so each fires exactly
-    # once across all 50 reads rather than once per read.
-    assert out.count(f"Refused to deserialize unregistered class: {key}") == 1 , out;
-    assert out.count(f"archetype reconstruction failed for {key}") == 1 , out;
+    # Namespaced per failure mode and re-emitted only on the power-of-10 ladder,
+    # so across 50 reads each line appears at occurrence #1 and #10 (twice), not 50x.
+    assert out.count(f"Refused to deserialize unregistered class: {key}") == 2 , out;
+    assert out.count(f"archetype reconstruction failed for {key}") == 2 , out;
+    assert "(occurrence #10)" in out , out;
 }
 
 
@@ -214,7 +225,7 @@ test "_deserialize_archetype coerces str to int when stored type changed" {
 }
 
 
-test "per-field coercion-fallback warning is emitted once per field, not once per anchor" {
+test "per-field coercion-fallback warning re-emits on the ladder, not once per anchor" {
     # Class is registered, so _get_class succeeds and the dedup on the
     # unregistered path never runs; the per-field warnings must dedup on their own.
     original = _Typed(count=42, ratio=3.14, label="seven");
@@ -240,12 +251,14 @@ test "per-field coercion-fallback warning is emitted once per field, not once pe
         logger.setLevel(prev_level);
         Serializer._reset_warn_cache();
     }
-    count = buf.getvalue().count("coercion fallback");
-    assert count == 1 , f"expected one coercion-fallback warning, got {count}";
+    out = buf.getvalue();
+    count = out.count("coercion fallback");
+    assert count == 2 , f"expected ladder re-emit (#1, #10) across 50 reads, got {count}";
+    assert "(occurrence #10)" in out , out;
 }
 
 
-test "aliased-class resolution info is logged once per class, not once per lookup" {
+test "aliased-class resolution info re-emits on the ladder, not once per lookup" {
     buf = io.StringIO();
     capture = logging.StreamHandler(buf);
     logger = logging.getLogger("jaclang.runtimelib.serializer");
@@ -262,12 +275,14 @@ test "aliased-class resolution info is logged once per class, not once per looku
         logger.setLevel(prev_level);
         Serializer._reset_warn_cache();
     }
-    count = buf.getvalue().count("resolving aliased class");
-    assert count == 1 , f"expected one alias-resolution line, got {count}";
+    out = buf.getvalue();
+    count = out.count("resolving aliased class");
+    assert count == 2 , f"expected ladder re-emit (#1, #10) across 50 lookups, got {count}";
+    assert "(occurrence #10)" in out , out;
 }
 
 
-test "non-dict archetype warning is logged once, not once per anchor" {
+test "non-dict archetype warning re-emits on the ladder, not once per anchor" {
     blob = {
         '__type__': 'NodeAnchor',
         '__module__': 'jaclang.jac0core.archetype',
@@ -295,8 +310,10 @@ test "non-dict archetype warning is logged once, not once per anchor" {
         logger.setLevel(prev_level);
         Serializer._reset_warn_cache();
     }
-    count = buf.getvalue().count("archetype field is not a dict");
-    assert count == 1 , f"expected one non-dict warning, got {count}";
+    out = buf.getvalue();
+    count = out.count("archetype field is not a dict");
+    assert count == 2 , f"expected ladder re-emit (#1, #10) across 50 reads, got {count}";
+    assert "(occurrence #10)" in out , out;
 }
 
 

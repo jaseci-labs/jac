@@ -36,7 +36,7 @@ glob logger = logging.getLogger(__name__),
 obj Serializer {
     static has _registry: dict[str, type] = {},
         _aliases: dict[str, str] = {},
-        _warned_class_keys: set[str] = set(),
+        _warn_counts: dict[str, int] = {},
         _warn_dedup_saturated: bool = False,
         _warn_lock: any = threading.Lock();
 
@@ -73,7 +73,9 @@ obj Serializer {
     static def _deserialize_value(val: object) -> object;
     static def _deserialize_jac_ref(data: dict[str, object]) -> (object | None);
     static def _get_class(module_name: str, class_name: str) -> (type | None);
-    static def _should_warn_once(scope: str, key: str) -> bool;
+    static def _warn_occurrence(scope: str, key: str) -> int;
+    static def _is_report_threshold(n: int) -> bool;
+    static def _occurrence_note(n: int) -> str;
     static def _reset_warn_cache -> None;
     static def _id_to_stub(anchor_cls: type, id_str: str) -> (object | None);
     static def _deserialize_anchor(data: dict[str, object]) -> (object | None);
