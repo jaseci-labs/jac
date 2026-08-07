@@ -10,6 +10,7 @@ import from jaclang.scale.deploy.target.kubernetes.target {
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.observability.standard_logger { StandardLogger }
 import from jaclang.scale.tests.deploy.http_activation_test_support {
     default_http_activation_config as _cfg,
     mocked_keda_autoscaler as _mocked_keda
@@ -156,6 +157,10 @@ test "_resolve_scaling: the gateway never inherits http_activation even when the
             }
         )
     );
+    # A real logger (not None, not a MagicMock) so the gateway-exclusion branch
+    # actually calls logger.warn - this is what catches a wrong method name like
+    # .warning, which only surfaces on a live deploy otherwise.
+    b.logger = StandardLogger();
     plan = b._resolve_scaling(
         GATEWAY_NAME, _dep("gateway-deployment"), _svc("gateway-service")
     );

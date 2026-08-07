@@ -822,7 +822,7 @@ obj ManifestBuilder {
         http: dict[str, any] | None = self._get_http_activation_config(svc_name);
         if http is not None and svc_name == GATEWAY_NAME {
             if self.logger {
-                self.logger.warning(
+                self.logger.warn(
                     "Ignoring http_activation for the gateway: it is the ingress "
                     "entry point and must stay warm. Set http_activation "
                     "per-service instead of relying on the shared default."
