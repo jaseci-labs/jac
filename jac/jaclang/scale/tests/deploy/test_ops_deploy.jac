@@ -58,6 +58,50 @@ test "rollout status: complete vs stuck vs progressing" {
     assert stuck["rollout"]["status"] == "stuck";
 }
 
+test "rollout status agrees with the deploy gate on stale and draining states" {
+    draining = summarize_deployment(
+        {
+            "metadata": {"name": "gw", "generation": 5},
+            "spec": {"replicas": 2},
+            "status": {
+                "observed_generation": 5,
+                "replicas": 3,
+                "updated_replicas": 2,
+                "available_replicas": 2,
+                "ready_replicas": 2
+            }
+        }
+    );
+    assert draining["rollout"]["status"] == "progressing" , (
+        f"an old replica is still serving: {draining['rollout']}"
+    );
+
+    unobserved = summarize_deployment(
+        {
+            "metadata": {"name": "gw", "generation": 6},
+            "spec": {"replicas": 2},
+            "status": {
+                "observed_generation": 5,
+                "replicas": 2,
+                "updated_replicas": 2,
+                "available_replicas": 2,
+                "ready_replicas": 2,
+                "conditions": [
+                    {
+                        "type": "Progressing",
+                        "reason": "ProgressDeadlineExceeded",
+                        "message": "stuck"
+                    }
+                ]
+            }
+        }
+    );
+    assert unobserved["rollout"]["status"] == "progressing" , (
+        "a status describing the previous spec is neither complete nor "
+        f"stuck: {unobserved['rollout']}"
+    );
+}
+
 
 test "pod summary sums restarts + counts ready containers" {
     pod = summarize_pod(

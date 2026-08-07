@@ -7,6 +7,7 @@ import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.runtime.routing { format_route_lines, resolve_routes }
+import from jaclang.scale.deploy.target.kubernetes.rollout { normalize_rollout_wait }
 
 
 obj KubernetesRealizer {
@@ -17,7 +18,8 @@ obj KubernetesRealizer {
         target: str = "kubernetes",
         enable_tls: bool = False,
         dry_run: bool = False,
-        show_yaml: bool = False
+        show_yaml: bool = False,
+        rollout_wait: str = ""
     ) -> int {
         import from jaclang.scale.injector.binary { reset_deploy_version_cache }
 
@@ -59,6 +61,9 @@ obj KubernetesRealizer {
             target_config = scale_config.get_kubernetes_config();
         } else {
             target_config = scale_config.get_section(target);
+        }
+        if rollout_wait {
+            target_config['rollout_wait'] = normalize_rollout_wait(rollout_wait);
         }
         deployment_target = DeploymentTargetFactory.create(
             target, target_config, logger, dry_run=dry_run

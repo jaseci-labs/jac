@@ -369,6 +369,42 @@ liveness_failure_threshold = 5
 
 ---
 
+### Rollout Wait
+
+`jac start --scale` blocks until the fleet is ready, then exits non-zero if it never gets there. How far it waits is controlled by `rollout_wait`.
+
+Both modes only ever count replicas from the revision this deploy applied, so a re-deploy is never reported ready on the strength of the pods it is about to replace.
+
+| Mode | Returns when |
+|------|--------------|
+| `ready` (default) | every service has at least one new-revision replica available - fast feedback, the app is serving |
+| `full` | every service reports all replicas updated and available, and no old replicas remain - the same bar as `kubectl rollout status` |
+
+**Defaults:**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `rollout_wait` | `"ready"` | Rollout completion bar: `"ready"` or `"full"` |
+| `rollout_timeout` | `1200` | Seconds to wait before the deploy fails with a per-pod diagnosis. Must be a positive whole number |
+
+**To change in `jac.toml`:**
+
+```toml
+[scale.kubernetes]
+rollout_wait = "full"
+rollout_timeout = 2400
+```
+
+Or per invocation, which overrides the config:
+
+```bash
+jac start main.jac --scale --wait full
+```
+
+Use `full` in CI pipelines that cut traffic over once the deploy returns; the default is the better fit for iterating locally. Either way a rollout that exceeds its `progressDeadlineSeconds` fails with the stall reason rather than waiting out the timeout, once the stall has held across several polls - Kubernetes keeps re-asserting a `ProgressDeadlineExceeded` condition until the new ReplicaSet makes progress, so the deploy that fixes a previously timed-out rollout is not failed by its predecessor's verdict.
+
+---
+
 ### Autoscaling
 
 jac-scale supports two autoscaler engines selected via `autoscaler_engine`. Both engines share `min_replicas`, `max_replicas`, and `cpu_utilization_target`; they differ in what additional triggers and behaviours they support.

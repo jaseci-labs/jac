@@ -255,7 +255,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. Use `--scale` to deploy to Kubernetes (handled by the built-in `scale` subsystem; the first `--scale` run resolves its deploy deps via `jac install`). Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no-client] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-t TARGET] [--enable-tls] [--no-enable-tls] [--dry-run] [--no-dry-run] [--show-yaml] [--no-show-yaml] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no-client] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-t TARGET] [--wait {ready,full}] [--enable-tls] [--no-enable-tls] [--dry-run] [--no-dry-run] [--show-yaml] [--no-show-yaml] [filename]
 ```
 
 | Option | Description | Default |
@@ -273,6 +273,7 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
 | `--scale` | Deploy to Kubernetes (built-in scale subsystem) | `False` |
 | `--target` | Deployment target (with `--scale`) | `kubernetes` |
+| `--wait` | How far to wait for the rollout: `ready` (a new-revision replica per service) or `full` (every replica available) | `ready` |
 | `--enable-tls` | Enable HTTPS via Let's Encrypt (with `--scale`) | `False` |
 | `--dry-run` | Print the manifests that would be applied; change nothing (with `--scale`) | `False` |
 | `--show-yaml` | With `--dry-run`: dump the raw YAML stream | `False` |

@@ -267,6 +267,20 @@ def enter(
             help="Deployment target (kubernetes, aws, gcp, etc.)"
         ),
         Arg.create(
+            "wait",
+            typ=str,
+            default="",
+            help=(
+                "With --scale: how far to wait for the rollout. 'ready' returns "
+                "once every service has a new-revision replica serving; 'full' "
+                "returns only once every replica of every service is available. "
+                "Overrides [scale.kubernetes] rollout_wait."
+            ),
+            choices=["ready", "full"],
+            short="",
+            dest="rollout_wait"
+        ),
+        Arg.create(
             "enable-tls",
             typ=bool,
             default=False,
@@ -299,6 +313,10 @@ def enter(
         ("jac start --profile prod", "Start with production profile"),
         ("jac start --client mobile", "Run the mobile client dev server"),
         ("jac start --scale", "Deploy to a platform target instead of serving locally"),
+        (
+            "jac start --scale --wait full",
+            "Deploy and return only once every replica is available"
+        ),
 
     ],
     group="execution"
@@ -316,6 +334,7 @@ def start(
     platform: str = "auto",
     scale: bool = False,
     target: str = "kubernetes",
+    rollout_wait: str = "",
     enable_tls: bool = False,
     dry_run: bool = False,
     show_yaml: bool = False

@@ -11,6 +11,10 @@ import from jaclang.scale.admin.k8s_ops {
     api_error_detail,
     unavailable_detail
 }
+import from jaclang.scale.deploy.target.kubernetes.rollout {
+    ROLLOUT_WAIT_FULL,
+    read_rollout_status
+}
 
 glob logger = logging.getLogger(__name__);
 
@@ -24,31 +28,22 @@ def _s(v: any) -> str {
 
 
 def _rollout_status(dep: dict) -> dict {
-    spec = dep.get("spec", {}) or {};
-    status = dep.get("status", {}) or {};
-    desired = int(spec.get("replicas", 0) or 0);
-    updated = int(status.get("updated_replicas", 0) or 0);
-    available = int(status.get("available_replicas", 0) or 0);
-    conditions = status.get("conditions", []) or [];
-
-    for c in conditions {
-        if c.get("type") == "Progressing"
-            and str(c.get("reason", "")) == "ProgressDeadlineExceeded" {
-            return {
-                "status": "stuck",
-                "reason": "ProgressDeadlineExceeded",
-                "message": _s(c.get("message"))
-            };
-        }
+    rollout = read_rollout_status(dep);
+    if rollout.stall() {
+        return {
+            "status": "stuck",
+            "reason": rollout.stall_reason,
+            "message": rollout.stall_message
+        };
     }
-
-    if updated == desired and available == desired {
+    if rollout.satisfies(ROLLOUT_WAIT_FULL) {
         return {"status": "complete", "reason": "", "message": ""};
     }
     return {
         "status": "progressing",
         "reason": "",
-        "message": f"{available}/{desired} available, {updated} updated"
+        "message": f"{rollout.available}/{rollout.desired} available, "
+        f"{rollout.updated} updated"
     };
 }
 

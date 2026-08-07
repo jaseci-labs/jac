@@ -52,9 +52,13 @@ def scale_start(
     target: str,
     enable_tls: bool,
     dry_run: bool,
-    show_yaml: bool
+    show_yaml: bool,
+    rollout_wait: str = ""
 ) -> int | None {
     os.environ["JAC_SCALE_RUNTIME"] = "1";
+    if rollout_wait and not scale {
+        console.warning("--wait applies to `--scale` deploys only; ignoring it.");
+    }
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
@@ -95,7 +99,7 @@ def scale_start(
         }
         try {
             return KubernetesRealizer(ms_config=ms_config).realize(
-                filename, target, enable_tls, dry_run, show_yaml
+                filename, target, enable_tls, dry_run, show_yaml, rollout_wait
             );
         } except Exception as e {
             console.error(f"Deploy failed: {e}", emoji=False);
