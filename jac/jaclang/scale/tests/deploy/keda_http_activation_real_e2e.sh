@@ -35,6 +35,10 @@ print(act.get('polling_interval', 30))
 print(act.get('cooldown_period', 300))
 ")
 APP_NAME=$(echo "${CFG}" | sed -n '1p')
+# The unified deploy path names every workload "<app>-deployment" (even a solo
+# app behind its gateway), and the KEDA InterceptorRoute/ScaledObject are named
+# after that scale target, so they are "<app>-deployment-http-{route,scaledobject}".
+SCALE_TARGET="${APP_NAME}-deployment"
 NAMESPACE=$(echo "${CFG}" | sed -n '2p')
 ROUTE_HOST=$(echo "${CFG}" | sed -n '3p')
 POLLING_INTERVAL=$(echo "${CFG}" | sed -n '4p')
@@ -72,8 +76,8 @@ dump_state() {
     kubectl describe pods -n "${NAMESPACE}" || true
     kubectl get events -n "${NAMESPACE}" --sort-by=.lastTimestamp || true
     kubectl logs -n "${NAMESPACE}" -l "app=${APP_NAME}" --tail=200 --all-containers=true || true
-    kubectl describe interceptorroute "${APP_NAME}-http-route" -n "${NAMESPACE}" || true
-    kubectl describe scaledobject "${APP_NAME}-http-scaledobject" -n "${NAMESPACE}" || true
+    kubectl describe interceptorroute "${SCALE_TARGET}-http-route" -n "${NAMESPACE}" || true
+    kubectl describe scaledobject "${SCALE_TARGET}-http-scaledobject" -n "${NAMESPACE}" || true
     echo "--- HTTP Add-on component logs (namespace=keda) ---"
     kubectl logs -n keda -l app=keda-add-ons-http-interceptor --tail=100 || true
     kubectl logs -n keda -l app=keda-add-ons-http-external-scaler --tail=100 || true
@@ -148,11 +152,11 @@ fi
 
 _t "wait for InterceptorRoute + ScaledObject Ready"
 echo "=== confirm InterceptorRoute and ScaledObject reconciled to Ready ==="
-if ! wait_for_ready interceptorroute "${APP_NAME}-http-route"; then
+if ! wait_for_ready interceptorroute "${SCALE_TARGET}-http-route"; then
     dump_state
     exit 1
 fi
-if ! wait_for_ready scaledobject "${APP_NAME}-http-scaledobject"; then
+if ! wait_for_ready scaledobject "${SCALE_TARGET}-http-scaledobject"; then
     dump_state
     exit 1
 fi
@@ -191,13 +195,13 @@ rm -f "${RESP_BODY_FILE}"
 
 _t "wait for readiness"
 echo "=== confirm the target scaled 0 -> 1 and became Ready ==="
-if ! kubectl wait --for=condition=Available "deployment/${APP_NAME}" \
+if ! kubectl wait --for=condition=Available "deployment/${SCALE_TARGET}" \
         -n "${NAMESPACE}" --timeout="${READY_TIMEOUT}s"; then
     echo "FAIL: ${APP_NAME} did not become Available within ${READY_TIMEOUT}s" >&2
     dump_state
     exit 1
 fi
-READY_REPLICAS=$(kubectl get deployment "${APP_NAME}" -n "${NAMESPACE}" \
+READY_REPLICAS=$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" \
     -o jsonpath='{.status.readyReplicas}')
 echo "  ${APP_NAME} readyReplicas=${READY_REPLICAS}"
 
@@ -211,7 +215,7 @@ ELAPSED=0
 while [ "${ELAPSED}" -lt "${SCALE_DOWN_TIMEOUT}" ]; do
     sleep "${POLLING_INTERVAL}"
     ELAPSED=$(( ELAPSED + POLLING_INTERVAL ))
-    CURRENT_REPLICAS=$(kubectl get deployment "${APP_NAME}" -n "${NAMESPACE}" \
+    CURRENT_REPLICAS=$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" \
         -o jsonpath='{.spec.replicas}')
     echo "  +${ELAPSED}s replicas=${CURRENT_REPLICAS}"
     if [ "${CURRENT_REPLICAS}" = "0" ]; then
