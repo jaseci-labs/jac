@@ -16,10 +16,12 @@ import from jaclang.scale.tests.deploy.http_activation_test_support {
 test "disabled or missing enabled key returns None instead of a spec" {
     assert build_http_activation_spec(
         _cfg(enabled=False), "preview-deployment", "staging", "preview-svc"
-    ) is None;
+    )
+        is None;
     assert build_http_activation_spec(
         {}, "preview-deployment", "staging", "preview-svc"
-    ) is None;
+    )
+        is None;
 }
 
 
@@ -160,19 +162,20 @@ test "apply_http_activation_for_target calls apply_http_activation with a correc
     route_body = create_calls[0][1]["body"];
     assert route_body["spec"]["target"]["service"] == "preview-svc";
     scaled_obj_body = create_calls[1][1]["body"];
-    assert scaled_obj_body["metadata"]["name"] == keda.http_scaled_object_name_for(
-        "preview-deployment"
-    );
+    assert scaled_obj_body["metadata"]["name"]
+        == keda.http_scaled_object_name_for("preview-deployment");
 }
 
 test "apply_http_activation_for_target is a no-op when disabled or unset" {
     (keda, custom_api, _, _) = _mocked_keda();
     assert apply_http_activation_for_target(
         _cfg(enabled=False), "preview-deployment", "staging", "preview-svc", keda
-    ) is None;
+    )
+        is None;
     assert apply_http_activation_for_target(
         {}, "preview-deployment", "staging", "preview-svc", keda
-    ) is None;
+    )
+        is None;
     custom_api.create_namespaced_custom_object.assert_not_called();
 }
 
