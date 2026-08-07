@@ -448,6 +448,10 @@ impl StaticAnalysisPass._check_redundant_imports(mod: uni.Module) -> None {
     if not self.prog.type_evaluator {
         return;
     }
+    mod_path_norm = mod.loc.mod_path.replace('\\', '/');
+    if mod_path_norm.endswith('jaclang/runtimelib/prelude.jac') {
+        return;
+    }
     registry = self.prog.type_evaluator.ambient_typing_names_by_module;
     if not registry {
         return;

@@ -15,15 +15,7 @@ import from http.server { HTTPServer }
 import from inspect { getfile }
 import from logging { getLogger }
 import from pathlib { Path }
-import from typing {
-    TYPE_CHECKING,
-    Any,
-    Literal,
-    ParamSpec,
-    Protocol,
-    TypeAlias,
-    TypeVar
-}
+import from typing { TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, TypeVar }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
     GenericEdge,
@@ -65,7 +57,6 @@ import type from jaclang.runtimelib.server { ModuleIntrospector, UserManager }
 
 glob logger = getLogger(__name__),
      T = TypeVar('T'),
-     P = ParamSpec('P'),
      JsonValue: TypeAlias = None
          | str
          | int
@@ -307,10 +298,7 @@ class JacArchetype {
 }
 
 class JacModule {
-    static def impl_patch_filename(
-        file_loc: str
-    ) -> Callable[([Callable[(P, T)]], Callable[(P, T)])];
-
+    static def impl_patch_filename(file_loc: str) -> Callable[([Callable], Callable)];
     static def jac_import(
         target: str,
         base_path: str,

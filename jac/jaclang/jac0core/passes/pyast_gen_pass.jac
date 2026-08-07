@@ -92,11 +92,15 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
 
     with entry {
         _builtin_names: ClassVar[(set[str] | None)] = None;
+        _ambient_groups: ClassVar[(dict[str, set[str]] | None)] = None;
         _ambient_typing_names: ClassVar[(set[str] | None)] = None;
     }
 
     @classmethod
     def _get_builtin_names(cls: any) -> set[str];
+
+    @classmethod
+    def _get_ambient_groups(cls: any) -> dict[str, set[str]];
 
     @classmethod
     def _get_ambient_typing_names(cls: any) -> set[str];

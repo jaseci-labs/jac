@@ -12,46 +12,32 @@ impl PyastGenPass._get_builtin_names(cls: any) -> set[str] {
 }
 
 @classmethod
-impl PyastGenPass._get_ambient_typing_names(cls: any) -> set[str] {
-    if (cls._ambient_typing_names is not None) {
-        return cls._ambient_typing_names;
+impl PyastGenPass._get_ambient_groups(cls: any) -> dict[str, set[str]] {
+    if (cls._ambient_groups is not None) {
+        return cls._ambient_groups;
     }
-    import os;
-    import ast as py_ast;
-    stub_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "compiler",
-        "type_system",
-        "typing_ambient.pyi"
-    );
     try {
-        with open(stub_path, encoding="utf-8") as f {
-            tree = py_ast.parse(f.read());
-        }
-        for node in tree.body {
-            if (
-                isinstance(node, py_ast.Assign)
-                and len(node.targets) == 1
-                and isinstance(node.targets[0], py_ast.Name)
-                and node.targets[0].id == "__all__"
-                and isinstance(node.value, (py_ast.List, py_ast.Tuple))
-            ) {
-                names: set[str] = `set();
-                for elt in node.value.elts {
-                    if (
-                        isinstance(elt, py_ast.Constant) and isinstance(elt.value, str)
-                    ) {
-                        names.add(elt.value);
-                    }
-                }
-                cls._ambient_typing_names = names;
-                return names;
-            }
-        }
-    } except (OSError, SyntaxError) {
-        pass;
+        import from jaclang.jac0core.ambient { ambient_imports_by_module }
+
+        cls._ambient_groups = {
+            mod_name: `set(names)
+            for (mod_name, names) in ambient_imports_by_module().items()
+        };
+    } except ImportError {
+        cls._ambient_groups = {};
     }
-    cls._ambient_typing_names = `set();
+    return cls._ambient_groups;
+}
+
+@classmethod
+impl PyastGenPass._get_ambient_typing_names(cls: any) -> set[str] {
+    if (cls._ambient_typing_names is None) {
+        flat: set[str] = `set();
+        for names in cls._get_ambient_groups().values() {
+            flat = flat | names;
+        }
+        cls._ambient_typing_names = flat;
+    }
     return cls._ambient_typing_names;
 }
 
@@ -864,19 +850,47 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
         );
     }
     if self.typing_imports {
-        self.preamble.append(
-            self.sync(
-                ast3.ImportFrom(
-                    module='typing',
-                    names=[
-                        self.sync(ast3.alias(name=name, asname=None))
-                        for name in sorted(self.typing_imports)
-                    ],
-                    level=0
-                ),
-                jac_node=self.ir_out
-            )
+        abc_names = self._get_ambient_groups().get('collections.abc', `set());
+        typing_emit = sorted(
+            n
+            for n in self.typing_imports
+            if n not in abc_names
         );
+        abc_emit = sorted(
+            n
+            for n in self.typing_imports
+            if n in abc_names
+        );
+        if typing_emit {
+            self.preamble.append(
+                self.sync(
+                    ast3.ImportFrom(
+                        module='typing',
+                        names=[
+                            self.sync(ast3.alias(name=name, asname=None))
+                            for name in typing_emit
+                        ],
+                        level=0
+                    ),
+                    jac_node=self.ir_out
+                )
+            );
+        }
+        if abc_emit {
+            self.preamble.append(
+                self.sync(
+                    ast3.ImportFrom(
+                        module='collections.abc',
+                        names=[
+                            self.sync(ast3.alias(name=name, asname=None))
+                            for name in abc_emit
+                        ],
+                        level=0
+                    ),
+                    jac_node=self.ir_out
+                )
+            );
+        }
     }
     mod_path_norm = nd.loc.mod_path.replace('\\', '/');
     is_jaclib_module = mod_path_norm.endswith(('/jaclang/lib.jac', '/jaclang/lib.py'));
