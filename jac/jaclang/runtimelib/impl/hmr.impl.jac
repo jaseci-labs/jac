@@ -329,13 +329,10 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     }
 
     try {
-        if file_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[file_path];
-        }
-
         resolved_path = str(Path(file_path).resolve());
-        if resolved_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[resolved_path];
+        for key in (file_path, resolved_path) {
+            Jac.program.invalidate_module(key);
+            Jac.program.drop_module_alerts(key);
         }
     } except Exception as e {
         console.warning(f"Could not clear module hub: {e}");

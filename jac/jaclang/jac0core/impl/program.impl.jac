@@ -13,6 +13,8 @@ impl JacProgram.init(
 
     self._hub_cache_times: dict[str, float] = {};
 
+    self._failed_parses: set[str] = set();
+
     self._dependents: dict[str, set[str]] = {};
 
     self._track_dependencies: bool = False;
@@ -129,6 +131,8 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
         del (self._hub_cache_times[resolved_path], );
     }
 
+    self._failed_parses.discard(resolved_path);
+
     if resolved_path in self._native_cache {
         del (self._native_cache[resolved_path], );
     }
@@ -149,6 +153,45 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
     for bucket in self._dependents.values() {
         bucket.discard(resolved_path);
     }
+}
+
+impl JacProgram.hub_key(path: str) -> str {
+    import from pathlib { Path }
+    return str(Path(path).resolve());
+}
+
+impl JacProgram.has_failed_parse(self: JacProgram, path: str) -> bool {
+    return JacProgram.hub_key(path) in self._failed_parses;
+}
+
+impl JacProgram.drop_module_alerts(self: JacProgram, resolved_path: str) -> None {
+    import os;
+    try {
+        norm = os.path.realpath(resolved_path);
+    } except OSError {
+        return;
+    }
+    stem = norm[:-4] if norm.endswith(".jac") else norm;
+    prefix = stem + ".";
+
+    def owned(alert: Alert) -> bool {
+        try {
+            alert_path = os.path.realpath(alert.loc.mod_path);
+        } except Exception {
+            return False;
+        }
+        return alert_path == norm or alert_path.startswith(prefix);
+    }
+    self.errors_had = [
+        a
+        for a in self.errors_had
+        if not owned(a)
+    ];
+    self.warnings_had = [
+        a
+        for a in self.warnings_had
+        if not owned(a)
+    ];
 }
 
 impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
@@ -172,6 +215,8 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     self.type_evaluator = None;
     if clear_hub {
         self.mod.hub.clear();
+
+        self._failed_parses.clear();
     } else {
         for mod in self.mod.hub.values() {
             for nd in mod.get_all_sub_nodes(uni.Expr) {
@@ -205,6 +250,7 @@ impl JacProgram.release_compile_closure(
     self.mod.hub.update(retained_stubs);
     self._hub_cache_times.clear();
     self._hub_cache_times.update(retained_times);
+    self._failed_parses.clear();
     self._dependents.clear();
     self.type_evaluator = None;
     self.errors_had.clear();
