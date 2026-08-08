@@ -339,30 +339,7 @@ impl TypeEvaluator._import_module_from_path(
 ) -> uni.Module {
     resolved_path = str(Path(path).resolve());
 
-    compiler = self.program._get_compiler();
-    target_program = compiler._resolve_program(resolved_path, self.program);
-    target_hub = target_program.mod.hub;
-
-    if (
-        resolved_path in self.program.mod.hub
-        and not self.program.is_hub_entry_fresh(resolved_path)
-    ) {
-        self.program.invalidate_module(resolved_path);
-    }
-    if (
-        resolved_path in target_hub
-        and target_program is not self.program
-        and not target_program.is_hub_entry_fresh(resolved_path)
-    ) {
-        target_program.invalidate_module(resolved_path);
-    }
-
-    mod: uni.Module;
-    if resolved_path in self.program.mod.hub {
-        mod = self.program.mod.hub[resolved_path];
-    } elif resolved_path in target_hub {
-        mod = target_hub[resolved_path];
-    } elif resolved_path in self._modules_in_compile {
+    if resolved_path in self._modules_in_compile {
         _pending = self.program.find_module(resolved_path);
         if _pending is not None {
             mod = _pending;
@@ -370,76 +347,18 @@ impl TypeEvaluator._import_module_from_path(
             return uni.Module.make_stub(inject_name=Path(resolved_path).stem);
         }
     } else {
-        jir_mod: (uni.Module | None) = None;
-        if resolved_path.endswith('.jac') and not resolved_path.endswith('.na.jac') {
-            jir_mod = self._try_read_jir_cache(resolved_path);
-        }
-        if jir_mod is not None {
-            mod = jir_mod;
-            if mod.parent_scope is None and mod is not self.builtins_module {
-                mod.parent_scope = self.builtins_module;
-            }
-            target_hub[resolved_path] = mod;
-            target_program.hub_cache_stamp(resolved_path);
-        } else {
-            self._modules_in_compile.add(resolved_path);
-            try {
-                mod = self.program.compile(
-                    path, no_cgen=True, type_check=False, symtab_ir_only=True
-                );
-            } finally {
-                self._modules_in_compile.discard(resolved_path);
-            }
-            if mod.parent_scope is None and mod is not self.builtins_module {
-                mod.parent_scope = self.builtins_module;
-            }
-            target_hub[resolved_path] = mod;
-            target_program.hub_cache_stamp(resolved_path);
-            if resolved_path.endswith('.jac')
-                and not resolved_path.endswith('.na.jac') {
-                try {
-                    import from jaclang.jac0core.jir {
-                        get_module_cache_path,
-                        is_module_cache_valid,
-                        compute_module_key,
-                        SEC_BYTECODE,
-                        SEC_MODKEY
-                    }
-                    import from jaclang.jac0core.jir_passes { JirWriter }
-                    cache_path = get_module_cache_path(resolved_path);
-                    if not is_module_cache_valid(resolved_path, cache_path) {
-                        cache_path.parent.mkdir(parents=True, exist_ok=True);
-                        writer = JirWriter();
-
-                        sections: dict[int, bytes] = {
-                            SEC_MODKEY: compute_module_key(resolved_path).encode(
-                                'utf-8'
-                            )
-                        };
-                        bc = mod.gen?.py_bytecode;
-                        if bc is not None {
-                            sections[SEC_BYTECODE] = bc;
-                        }
-                        jir_bytes = writer.write_module(mod, sections=sections);
-
-                        import os as _os;
-                        tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
-                        try {
-                            tmp_path.write_bytes(jir_bytes);
-                            tmp_path.rename(cache_path);
-                        } finally {
-                            tmp_path.unlink(missing_ok=True);
-                        }
-                    }
-                } except Exception {
-                    ;
-                }
-            }
+        self._modules_in_compile.add(resolved_path);
+        try {
+            mod = self.program.load_dependency_module(
+                path, importer_path=importer_path
+            );
+        } finally {
+            self._modules_in_compile.discard(resolved_path);
         }
     }
 
-    if importer_path is not None {
-        self.program.record_dependency(importer_path, resolved_path);
+    if mod.parent_scope is None and mod is not self.builtins_module {
+        mod.parent_scope = self.builtins_module;
     }
     return mod;
 }
@@ -451,48 +370,8 @@ impl TypeEvaluator.forget_module(resolved_path: str) -> None {
 }
 
 impl TypeEvaluator._resolve_importer_path(ast_node: uni.UniNode) -> (str | None) {
-    mod = ast_node.find_parent_of_type(uni.Module);
-    if mod is None or mod.source is None {
-        return None;
-    }
-    file_path = mod.source.file_path;
-    if not file_path {
-        return None;
-    }
-    try {
-        return str(Path(file_path).resolve());
-    } except OSError {
-        return None;
-    }
-}
-
-impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None) {
-    import from jaclang.jac0core.jir { get_module_cache_path, is_module_cache_valid }
-    import from jaclang.jac0core.jir_passes { JirReader }
-    import os;
-    import traceback;
-    try {
-        cache_path = get_module_cache_path(resolved_path);
-        if not is_module_cache_valid(resolved_path, cache_path) {
-            return None;
-        }
-        data = cache_path.read_bytes();
-        reader = JirReader(_source_path=resolved_path);
-        mod = reader.read_module(data);
-
-        return mod;
-    } except Exception {
-        if os.environ.get("JAC_JIR_DEBUG") {
-            traceback.print_exc();
-        }
-
-        try {
-            get_module_cache_path(resolved_path).unlink(missing_ok=True);
-        } except Exception {
-            ;
-        }
-        return None;
-    }
+    import from jaclang.compiler.symbol_utils { resolve_importer_path_from_node }
+    return resolve_importer_path_from_node(ast_node);
 }
 
 impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {

@@ -15,6 +15,7 @@ import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
+import from jaclang.jac0core.jir { compute_content_sha256 }
 import type from jaclang.jac0core.program { JacProgram }
 
 import from jaclang.compiler.type_system { operations }
@@ -158,7 +159,7 @@ obj ConditionInfo {
         attr_name: str | None = None;
 }
 
-glob _stub_module_memo: dict[str, tuple[float, uni.Module]] = {};
+glob _stub_module_memo: dict[str, tuple[str, uni.Module]] = {};
 
 obj TypeEvaluator {
     has program: "JacProgram",
@@ -217,7 +218,6 @@ obj TypeEvaluator {
     ) -> uni.Module;
 
     def _resolve_importer_path(ast_node: uni.UniNode) -> (str | None);
-    def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _resolve_client_npm_module(node_: uni.ModulePath) -> (str | None);
