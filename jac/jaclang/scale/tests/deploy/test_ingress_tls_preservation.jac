@@ -21,22 +21,9 @@ def _make_shared_deployer(annotations: dict) -> IngressDeployer {
     return IngressDeployer(k8s_config=cfg);
 }
 
-def _call_deploy(
-    deployer: IngressDeployer,
-    networking_v1: any,
-    core_v1: any,
-    redis_dashboard: bool = False
-) {
+def _call_deploy(deployer: IngressDeployer, networking_v1: any, core_v1: any) {
     deployer._deploy_ingress_resource(
-        'myapp',
-        'test-ns',
-        'test-ns-myapp-nginx',
-        8000,
-        False,
-        redis_dashboard,
-        False,
-        networking_v1,
-        core_v1
+        'myapp', 'test-ns', 'test-ns-myapp-nginx', 8000, False, networking_v1, core_v1
     );
 }
 
@@ -145,27 +132,4 @@ test "shared ingress without a cert-manager annotation adds no cert tls block" {
 
     body = networking_v1.patch_namespaced_ingress.call_args[1]['body'];
     assert body.get('spec', {}).get('tls') is None , "no issuer annotation must not add a cert tls block";
-}
-
-test "redis ingress patch body never contains spec.tls or host" {
-    networking_v1 = unittest.mock.MagicMock();
-    core_v1 = unittest.mock.MagicMock();
-
-    cfg = KubernetesConfig(
-        domain='example.com',
-        cert_manager_email='a@b.com',
-        redis_insight_username='admin',
-        redis_insight_password='secret'
-    );
-    deployer = IngressDeployer(k8s_config=cfg);
-    _call_deploy(deployer, networking_v1, core_v1, redis_dashboard=True);
-
-    all_calls = networking_v1.patch_namespaced_ingress.call_args_list;
-    assert len(all_calls) == 2 , "Expected two patch_namespaced_ingress calls";
-    redis_body = all_calls[1][1]['body'];
-    assert 'tls' not in redis_body.get('spec', {}) , "RedisInsight Ingress spec.tls must not appear in patch body";
-    redis_rules = redis_body.get('spec', {}).get('rules', []);
-    assert len(redis_rules) == 2 , "domain app must render a host rule plus a catch-all";
-    assert redis_rules[0].get('host') == 'example.com' , "first RedisInsight rule must bind the domain host";
-    assert 'host' not in redis_rules[1] , "second RedisInsight rule must stay a catch-all";
 }

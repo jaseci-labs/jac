@@ -372,9 +372,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         fleet_apps: set = set(app_labels);
 
         app_name = str(self.k8s_config.app_name or "");
-        companion_apps: set = (
-            {f"{app_name}-redis", f"{app_name}-mongodb"} if app_name else set()
-        );
+        companion_apps: set = {f"{app_name}-postgres"} if app_name else set();
         pod_selector = "app in ({})".format(", ".join(app_labels))
             if app_labels
             else None;

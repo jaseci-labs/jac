@@ -15,7 +15,8 @@ glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent / "fixtures" / "k8s_e2e",
      _DISCOVERED_ROUTES: dict[str, str] = {
          "cart_app": "/cart",
          "orders_app": "/orders",
-         "products_app": "/products"
+         "products_app": "/products",
+         "main": "/__main__"
      };
 
 
@@ -39,7 +40,7 @@ test "generate_service_pod_specs builds one pod per declared route" {
     specs = builder.generate_service_pod_specs(app_cfg, "img");
 
     assert set(specs.keys())
-        == {"products_app", "orders_app", "cart_app", GATEWAY_NAME};
+        == {"products_app", "orders_app", "cart_app", "main", GATEWAY_NAME};
     orders_env = {
         e["name"]: e["value"] for e in specs["orders_app"]["containers"][0]["env"]
     };

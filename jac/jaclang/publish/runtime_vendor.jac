@@ -7,9 +7,9 @@ glob _SEEDS: list[str] = [
          "jaclang.jac0core.runtime",
          "jaclang.jac0core.archetype",
          "jaclang.runtimelib.server",
-         "jaclang.runtimelib.memory",
+         "jaclang.runtimelib.session",
+         "jaclang.runtimelib.store",
          "jaclang.runtimelib.serializer",
-         "jaclang.runtimelib.changeset",
          "jaclang.runtimelib.builtin"
      ],
      _BYLLM_SEEDS: list[str] = [

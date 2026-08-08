@@ -18,7 +18,7 @@ import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.runtimelib.context { ExecutionContext }
-import from jaclang.runtimelib.memory { TieredMemory }
+import from jaclang.runtimelib.session { Session }
 import from jaclang.jac0core.runtime { JacRuntime }
 
 
@@ -42,15 +42,13 @@ test "ExecutionContext uses explicit per-context target_path, ignoring stale see
             # target — this is the contract a multi-client process needs.
             ctx = ExecutionContext(base_path_dir=proj_b, full_target_path=b_target);
 
-            assert isinstance(ctx.mem, TieredMemory);
-            l3 = ctx.mem.l3;
-            assert l3 is not None , "L3 not initialized";
-            l3_path = l3.path;
+            assert isinstance(ctx.mem, Session);
+            loc = ctx.mem.data_location();
+            assert loc is not None , "store not initialized";
 
-            # The L3 file must live under proj_b and use beta's identity.
-            assert proj_b in l3_path , f"L3 path {l3_path} not under proj_b";
-            assert "beta_app" in os.path.basename(l3_path) , f"L3 filename {l3_path} should reflect 'beta_app'";
-            assert "alpha_app" not in l3_path , f"L3 path {l3_path} leaked stale seed 'alpha_app'";
+            # The store identity must reflect beta, not the stale alpha seed.
+            assert "beta_app" in loc , f"data location {loc} should reflect 'beta_app'";
+            assert "alpha_app" not in loc , f"data location {loc} leaked stale seed 'alpha_app'";
 
             ctx.close();
         } finally {
@@ -73,12 +71,12 @@ test "two ExecutionContexts in one process keep independent persistence paths" {
             ctx_a = ExecutionContext(base_path_dir=proj_a, full_target_path=a_target);
             ctx_b = ExecutionContext(base_path_dir=proj_b, full_target_path=b_target);
 
-            a_path = ctx_a.mem.l3.path;
-            b_path = ctx_b.mem.l3.path;
+            a_path = ctx_a.mem.data_location();
+            b_path = ctx_b.mem.data_location();
 
-            assert a_path != b_path , "two contexts collapsed onto the same L3 file";
-            assert proj_a in a_path and "alpha_app" in os.path.basename(a_path);
-            assert proj_b in b_path and "beta_app" in os.path.basename(b_path);
+            assert a_path != b_path , "two contexts collapsed onto the same store";
+            assert "alpha_app" in a_path;
+            assert "beta_app" in b_path;
 
             ctx_a.close();
             ctx_b.close();
@@ -105,12 +103,11 @@ test "ExecutionContext without explicit base/target falls back to JacRuntime see
             JacRuntime.set_full_target_path(str(Path(tmpdir) / "standalone.jac"));
 
             ctx = ExecutionContext();
-            assert isinstance(ctx.mem, TieredMemory);
-            l3_path = ctx.mem.l3.path;
-            assert tmpdir in l3_path , f"expected {tmpdir} in {l3_path}";
+            assert isinstance(ctx.mem, Session);
+            loc = ctx.mem.data_location();
             # Standalone file (no jac.toml in tmpdir) — get_name() falls back
             # to the filename stem.
-            assert "standalone" in os.path.basename(l3_path) , f"expected 'standalone' in basename of {l3_path}";
+            assert "standalone" in loc , f"expected 'standalone' in {loc}";
 
             ctx.close();
         } finally {

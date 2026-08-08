@@ -184,6 +184,12 @@ impl EdgeAnchor.detach -> None {
     self.target.remove_edge(self);
     import from jaclang.jac0core.osp_graph_sv { sv_forget_edge }
     sv_forget_edge(self);
+
+    import from jaclang.jac0core.runtime { JacRuntime }
+    ctx = JacRuntime.exec_ctx;
+    if ctx is not None {
+        ctx.mem.delete(self.id);
+    }
 }
 
 @cached_property

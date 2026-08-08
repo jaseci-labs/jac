@@ -12,6 +12,14 @@ def _jac_client_plugin_dir -> Path {
     return Path(paths[0]);
 }
 
+def _atomic_write_text(path: Any, text: str) {
+    import os;
+    tmp = path.with_name(path.name + '.tmp');
+    tmp.write_text(text, encoding='utf-8');
+    os.replace(str(tmp), str(path));
+}
+
+
 impl JacClientCompiler._get_client_dir(self: JacClientCompiler) -> Path {
     try {
         import from jaclang.project.config { get_config }
@@ -146,7 +154,7 @@ impl JacClientCompiler._copy_ts_file(
             output_path = self.compiled_dir / ts_path.name;
         }
         output_path.parent.mkdir(parents=True, exist_ok=True);
-        output_path.write_text(ts_code, encoding='utf-8');
+        _atomic_write_text(output_path, ts_code);
     } except (FileNotFoundError, OSError) as e {
         console.warning(f"Failed to copy TS dependency '{ts_path}': {e}");
     }
@@ -164,7 +172,7 @@ impl JacClientCompiler._copy_js_file(
             output_path = self.compiled_dir / js_path.name;
         }
         output_path.parent.mkdir(parents=True, exist_ok=True);
-        output_path.write_text(js_code, encoding='utf-8');
+        _atomic_write_text(output_path, js_code);
     } except (FileNotFoundError, OSError) as e {
         console.warning(f"Failed to copy JS dependency '{js_path}': {e}");
     }
@@ -233,7 +241,7 @@ impl JacClientCompiler.compile_dependencies_recursively(
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
     source_header = f"/* Source: {module_path} */\n";
-    output_path.write_text(source_header + combined_js, encoding='utf-8');
+    _atomic_write_text(output_path, source_header + combined_js);
     self._write_source_map(
         mod, str(module_path), output_path, source_header + combined_js
     );
@@ -451,7 +459,7 @@ impl JacClientCompiler.compile_runtime_utils(
         }
         dep_out = self.compiled_dir / rel;
         dep_out.parent.mkdir(parents=True, exist_ok=True);
-        dep_out.write_text(dep_js, encoding='utf-8');
+        _atomic_write_text(dep_out, dep_js);
     }
 
     self.compile_mobui_utils();

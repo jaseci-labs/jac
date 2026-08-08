@@ -80,7 +80,7 @@ test "cold engine query: preds, slice, and fetches == |result|" {
         try {
             ranch = ctx2.mem.get(root_id);
             assert isinstance(ranch, NodeAnchor) and ranch.archetype is not None;
-            ctx2.mem.reset_l3_fetch_count();
+            ctx2.mem.reset_fetch_count();
 
             q = GraphQuery(
                 ranch.archetype,
@@ -89,7 +89,7 @@ test "cold engine query: preds, slice, and fetches == |result|" {
             hits = resolve_query(ctx2.mem, q);
             assert len(hits) == 1;
             assert hits[0].archetype.val == 2;
-            fetches = ctx2.mem.get_l3_fetch_count();
+            fetches = ctx2.mem.get_fetch_count();
             assert fetches == 1 , (
                 f"cost invariant: expected 1 L3 fetch (the winner), got {fetches}"
             );

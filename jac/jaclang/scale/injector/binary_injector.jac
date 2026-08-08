@@ -55,7 +55,8 @@ def select_injector(
     namespace: str,
     project_dir: str,
     provisioned_database: str = "",
-    dry_run: bool = False
+    dry_run: bool = False,
+    access_mode: str = "ReadWriteMany"
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     import from jaclang.scale.config.dev_config { resolve_dev_channel }
@@ -71,6 +72,7 @@ def select_injector(
         injector = BinaryInjector(
             channel=channel,
             storage_class=storage_class,
+            access_mode=access_mode,
             provisioned_database=provisioned_database
         );
         injector._object_key = bundle_object_key(app_name, DRY_RUN_DIGEST);
@@ -86,6 +88,7 @@ def select_injector(
         injector = BinaryInjector(
             channel=channel,
             storage_class=storage_class,
+            access_mode=access_mode,
             provisioned_database=provisioned_database
         );
         injector.prepare(app_name, namespace, project_dir);

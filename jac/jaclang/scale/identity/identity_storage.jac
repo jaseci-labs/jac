@@ -1,6 +1,8 @@
 import bcrypt;
+import json;
 import uuid;
 import from datetime { datetime, UTC }
+import from typing { Any }
 import from sqlalchemy {
     create_engine,
     Engine,
@@ -17,8 +19,6 @@ import from sqlalchemy {
     update
 }
 import from sqlalchemy.exc { IntegrityError, OperationalError }
-import from jaclang.scale._optdeps.pymongo { DuplicateKeyError }
-import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.scale.config.config_loader { get_scale_config }
 
@@ -51,6 +51,7 @@ obj IdentityStorage {
 
     def user_exists_by_id(user_id: str) -> bool;
     def ensure_user_by_id(user_id: str) -> str | None;
+    def reset_root(user_id: str) -> str | None;
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def set_user_role(user_id: str, role: str) -> bool;
     def get_user_role(user_id: str) -> str | None;
@@ -70,9 +71,14 @@ obj IdentityStorage {
     def get_sso_accounts(user_id: str) -> list[dict[str, str]];
 }
 
-obj MongoIdentityStorage(IdentityStorage) {
-    has users_col: Collection[dict[str, any]];
+obj SqliteIdentityStorage(IdentityStorage) {
+    has db_path: str,
+        _engine: Engine postinit,
+        _table: Table postinit,
+        _identity_lookups: Table postinit,
+        _sso_lookups: Table postinit;
 
+    def postinit -> None;
     def _store_user(user_doc: dict[str, any]) -> None;
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
@@ -91,12 +97,8 @@ obj MongoIdentityStorage(IdentityStorage) {
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
 }
 
-obj SqliteIdentityStorage(IdentityStorage) {
-    has db_path: str,
-        _engine: Engine postinit,
-        _table: Table postinit,
-        _identity_lookups: Table postinit,
-        _sso_lookups: Table postinit;
+obj PgIdentityStorage(IdentityStorage) {
+    has store: Any;
 
     def postinit -> None;
     def _store_user(user_doc: dict[str, any]) -> None;

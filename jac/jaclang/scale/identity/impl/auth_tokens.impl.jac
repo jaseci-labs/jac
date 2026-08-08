@@ -2,41 +2,22 @@ impl AuthTokenStore.postinit -> None {
     auth_cfg = get_scale_config().get_auth_config();
     self._collection = auth_cfg.get('token_collection', 'auth_tokens');
     self._in_memory = {};
-    db_cfg = get_scale_config().get_database_config();
-    if db_cfg.get('mongodb_uri') {
-        try {
-            self._db = MongoDb(client=get_mongo_client(), db_name='jac_db');
-
-            if mongo_recently_down() {
-                logger.warning(
-                    "Could not create auth_tokens indexes: MongoDB recently unreachable"
-                );
-            } else {
-                try {
-                    col = self._db._get_mongo_collection(self._collection);
-                    col.create_index('expires_at', expireAfterSeconds=0);
-                    col.create_index('token_hash', unique=True);
-                } except Exception as e {
-                    logger.warning(f"Could not create auth_tokens indexes: {e}");
-                }
-            }
-        } except Exception as e {
-            logger.warning(
-                f"MongoDB unavailable for auth tokens, using in-memory: {e}"
-            );
-            self._db = None;
-        }
+    try {
+        import from jaclang.scale.persistence.pg { shared_store }
+        self._db = shared_store();
+    } except Exception as e {
+        logger.warning(f"database unavailable for auth tokens: {e}");
+        self._db = None;
     }
     if self._db is None {
         logger.warning(
-            "AuthTokenStore is using in-memory storage because no "
-            "MongoDB URI is configured. This will cause intermittent "
-            "INVALID_TOKEN failures under multiple workers because tokens "
-            "issued by one worker are not visible to the others. Set "
-            "[scale.database] mongodb_uri in jac.toml to fix."
+            "AuthTokenStore is using in-memory storage because no database "
+            "is reachable. Tokens issued by one worker will not be visible "
+            "to the others; set JAC_DB_URL or [plugins.scale.database] url."
         );
     }
 }
+
 
 impl AuthTokenStore.instance -> AuthTokenStore {
     if _auth_token_store is not None {
@@ -103,11 +84,25 @@ impl AuthTokenStore.revoke_user_tokens(user_id: str, purpose: str) -> int {
 impl AuthTokenStore._persist(record: dict[str, Any]) -> None {
     if self._db is not None {
         try {
-            self._db.insert_one(self._collection, dict(record));
+            import json;
+            ttl = record['expires_at'] - datetime.now(UTC);
+            self._db.rows(
+                """
+                INSERT INTO kv_state (key, value, expires_at)
+                VALUES (:k, :v, now() + make_interval(secs => CAST(:ttl AS float8)))
+                ON CONFLICT (key) DO UPDATE SET
+                    value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
+                """,
+                {
+                    'k': f"authtok:{record['token_hash']}",
+                    'v': json.dumps(dict(record), default=str),
+                    'ttl': max(1.0, ttl.total_seconds())
+                }
+            );
             return;
         } except Exception as e {
             logger.error(
-                f"MongoDB persist failed for auth token, falling back to "
+                f"database persist failed for auth token, falling back to "
                 f"in-memory (not visible across workers, not durable): {e}"
             );
         }
@@ -118,12 +113,17 @@ impl AuthTokenStore._persist(record: dict[str, Any]) -> None {
 impl AuthTokenStore._find(token_hash: str, purpose: str) -> (dict[str, Any] | None) {
     if self._db is not None {
         try {
-            doc = self._db.find_one(
-                self._collection, {'token_hash': token_hash, 'purpose': purpose}
-            );
-            return doc;
+            import json;
+            got = self._db.kv_get(f"authtok:{token_hash}");
+            if got is None {
+                return None;
+            }
+            doc = json.loads(got);
+            return doc if doc.get('purpose') == purpose else None;
         } except Exception as e {
-            logger.warning(f"MongoDB find failed for auth token, using in-memory: {e}");
+            logger.warning(
+                f"database find failed for auth token, using in-memory: {e}"
+            );
         }
     }
     record = self._in_memory.get(token_hash);
@@ -136,11 +136,14 @@ impl AuthTokenStore._find(token_hash: str, purpose: str) -> (dict[str, Any] | No
 impl AuthTokenStore._delete(token_hash: str) -> bool {
     if self._db is not None {
         try {
-            result = self._db.delete_one(self._collection, {'token_hash': token_hash});
-            return result.deleted_count > 0;
+            rows = self._db.rows(
+                'DELETE FROM kv_state WHERE key = :k RETURNING key',
+                {'k': f"authtok:{token_hash}"}
+            );
+            return bool(rows);
         } except Exception as e {
             logger.warning(
-                f"MongoDB delete failed for auth token, using in-memory: {e}"
+                f"database delete failed for auth token, using in-memory: {e}"
             );
         }
     }
@@ -150,13 +153,20 @@ impl AuthTokenStore._delete(token_hash: str) -> bool {
 impl AuthTokenStore._delete_user(user_id: str, purpose: str) -> int {
     if self._db is not None {
         try {
-            result = self._db.delete_many(
-                self._collection, {'user_id': user_id, 'purpose': purpose}
+            rows = self._db.rows(
+                """
+                DELETE FROM kv_state
+                WHERE key LIKE 'authtok:%'
+                      AND value::jsonb->>'user_id' = :u
+                      AND value::jsonb->>'purpose' = :p
+                RETURNING key
+                """,
+                {'u': user_id, 'p': purpose}
             );
-            return result.deleted_count;
+            return len(rows);
         } except Exception as e {
             logger.warning(
-                f"MongoDB delete_many failed for auth token, using in-memory: {e}"
+                f"database delete_many failed for auth token, using in-memory: {e}"
             );
         }
     }

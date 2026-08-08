@@ -2011,6 +2011,26 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
     }
     value_expr = nd.value.gen.es_ast if (nd.value and nd.value.gen.es_ast) else None;
 
+    if (
+        len(nd.target) == 1
+        and isinstance(nd.target[0], uni.Name)
+        and nd.target[0].sym_name == '_'
+        and not nd.aug_op
+        and '_' not in self.reactive_vars
+    ) {
+        discard_value = cast(
+            es.Expression, value_expr or es.Identifier(name='undefined')
+        );
+        void_expr = self.sync_loc(
+            es.UnaryExpression(operator='void', prefix=True, argument=discard_value),
+            jac_node=nd
+        );
+        nd.gen.es_ast = self.sync_loc(
+            es.ExpressionStatement(expression=void_expr), jac_node=nd
+        );
+        return;
+    }
+
     if len(nd.target) == 1 and isinstance(nd.target[0], uni.Name) {
         target_name = nd.target[0].sym_name;
         if target_name in self.reactive_vars {

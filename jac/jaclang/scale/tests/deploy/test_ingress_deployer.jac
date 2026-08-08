@@ -19,8 +19,6 @@ def _render_rules(domain: str) -> list {
         ingress_class="test-ns-myapp-nginx",
         service_port=8000,
         grafana_enabled=False,
-        redis_dashboard=False,
-        mongo_dashboard=False,
         networking_v1=networking_v1,
         core_v1=core_v1
     );

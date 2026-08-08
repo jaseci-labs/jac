@@ -1,3 +1,5 @@
+import os;
+
 glob _RESERVED_SEGMENTS: set[str] = {
          "api",
          "walker",
@@ -47,6 +49,31 @@ def guard_route_name(module_name: str) {
                 + f"route does not shadow a builtin path."
         );
     }
+}
+
+
+def ensure_main_service(
+    routes: dict[str, str], service_files: dict[str, str], entry_file: str = ''
+) -> None {
+    if 'main' in routes {
+        return;
+    }
+    for prefix in routes.values() {
+        if prefix in ('/', '/__main__') {
+            return;
+        }
+    }
+    if not entry_file {
+        try {
+            import from jaclang.project.config { get_config }
+            cfg = get_config();
+            entry_file = str(getattr(cfg, 'entry_point', None) or 'main.jac');
+        } except Exception {
+            entry_file = 'main.jac';
+        }
+    }
+    routes['main'] = '/__main__';
+    service_files['main'] = os.path.basename(entry_file);
 }
 
 

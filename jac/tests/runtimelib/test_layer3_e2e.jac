@@ -100,21 +100,27 @@ test "rename without alias quarantines the stored anchors (control)" {
         # matters is that the data IS quarantined, not silently deleted).
         app.write_text(V2_RENAME_WITHOUT_ALIAS);
         _jac_enter(tmpdir, str(app), "dump");
-        # Without alias: old data must NOT silently disappear; it lands
-        # in the quarantine table instead. This is the core invariant.
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        total_q = 0;
-        for db in sorted(data_dir.glob("*.db")) {
-            conn = sqlite3.connect(str(db));
-            total_q += conn.execute(
-                "SELECT count(*) FROM anchors_quarantine"
-            ).fetchone()[0];
-            conn.close();
-        }
+        # Without alias: old data must NOT silently disappear; the failed
+        # loads are filed in the store's quarantine table (the rows
+        # themselves also survive untouched). This is the core invariant.
+        import from jaclang.runtimelib.pgembed { PgRuntime }
+        import from jaclang.runtimelib.session { project_db_name, shared_pg_data_dir }
+        import from jaclang.runtimelib.store { PgStore }
+        rt = PgRuntime(
+            data_dir=shared_pg_data_dir(), database=project_db_name(tmpdir, str(app))
+        );
+        st = PgStore(conninfo=rt.ensure());
+        total_q = st.rows('SELECT count(*) FROM quarantine', {})[0][0];
+        surviving = st.rows(
+            "SELECT count(*) FROM anchors WHERE arch_type = 'LegacyPerson'", {}
+        )[0][0];
+        st.close();
         assert total_q >= 2 , (
             "expected at least 2 quarantined anchors (alice, bob) after "
             f"un-aliased rename; got {total_q}"
+        );
+        assert surviving == 2 , (
+            f"the stored rows themselves must survive, got {surviving}"
         );
     }
 }

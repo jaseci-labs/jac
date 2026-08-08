@@ -135,6 +135,7 @@ obj ModuleIntrospector {
     ) -> dict[str, any];
 
     def spa_fallback_status(url_path: str) -> int;
+    def has_client_route(url_path: str) -> bool;
     def _load_spa_routes -> (list[str] | None);
     def _spa_route_matches(pattern: str, segments: list[str]) -> bool;
     def is_auth_required_for_function(func_name: str) -> bool;
@@ -215,6 +216,8 @@ obj JacAPIServer {
         execution_handler: ExecutionHandler postinit,
         server: (HTTPServer | None) postinit,
         scheduler: Scheduler postinit;
+
+    def _make_user_manager -> UserManager;
 
     obj RestSpecs {
         has method: str = "",

@@ -73,22 +73,17 @@ impl WebhookUtils.extract_signature(header_value: str) -> str {
 
 impl ApiKeyManager.postinit -> None {
     if self._db is not None {
-        if mongo_recently_down() {
-            logger.warning(
-                "webhook_api_keys index setup skipped: MongoDB recently unreachable"
-            );
-        } else {
-            try {
-                self._ensure_indexes();
-            } except Exception as e {
-                logger.warning(f"webhook_api_keys index setup skipped: {e}");
-            }
+        try {
+            self._ensure_indexes();
+        } except Exception as e {
+            logger.warning(f"webhook_api_keys index setup skipped: {e}");
         }
     } else {
         logger.warning(
-            "Webhook API keys are stored in memory (no MongoDB configured). "
+            "Webhook API keys are stored in memory (no database available). "
             "Keys and revocations are NOT durable: every restart invalidates "
-            "all keys. Configure MongoDB for production webhook use."
+            "all keys. Ensure the shared database is reachable for "
+            "production webhook use."
         );
     }
 }

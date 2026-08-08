@@ -144,6 +144,23 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
     return root_id;
 }
 
+impl IdentityStorage.reset_root(user_id: str) -> str | None {
+    import from jaclang.jac0core.constructs { Root }
+    import from jaclang { JacRuntime as Jac }
+
+    existing = self.get_user_by_id(user_id);
+    if not existing {
+        return None;
+    }
+    user_root = Root();
+    Jac.save(user_root);
+    Jac.commit(user_root);
+    root_id = user_root.__jac__.id.hex;
+    now = datetime.now(UTC).isoformat();
+    self._update_fields(user_id, {'root_id': root_id, 'updated_at': now});
+    return root_id;
+}
+
 impl IdentityStorage.authenticate(
     identifier: str, password: str
 ) -> dict[str, any] | None {

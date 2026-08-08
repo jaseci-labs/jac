@@ -10,8 +10,7 @@ import from jaclang.scale._optdeps.apscheduler {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.runtimelib.scheduler { Scheduler, ScheduleTrigger }
-import from jaclang.scale.persistence.db { get_mongo_client }
-import from jaclang.scale.persistence.mongo_db { MongoDb }
+import from jaclang.scale.persistence.docdb { open_doc_db }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      logger = logging.getLogger(__name__);

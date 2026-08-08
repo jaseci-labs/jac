@@ -6,7 +6,7 @@ import from uuid { UUID }
 import from jaclang.jac0core.archetype { NodeAnchor, Root }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.exceptions { MissingAnchorError }
-import from jaclang.runtimelib.memory { TieredMemory }
+import from jaclang.runtimelib.session { Session }
 
 impl ExecutionContext.postinit -> None {
     import from jaclang.jac0core.runtime { JacRuntime }
@@ -27,9 +27,7 @@ impl ExecutionContext.postinit -> None {
         self.full_target_path = JacRuntime.get_full_target_path();
     }
 
-    self.mem = TieredMemory(
-        base_path=self.base_path_dir, target_path=self.full_target_path
-    );
+    self.mem = Session(base_path=self.base_path_dir, target_path=self.full_target_path);
 
     system_root = cast((NodeAnchor | None), self.mem.get(UUID(Con.SUPER_ROOT_UUID)));
 

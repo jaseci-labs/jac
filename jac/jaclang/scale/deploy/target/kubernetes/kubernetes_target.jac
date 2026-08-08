@@ -18,8 +18,6 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     get_cluster_provider,
     resize_pvc_if_needed
 }
-import from jaclang.scale.deploy.database.kubernetes_mongo { KubernetesMongoProvider }
-import from jaclang.scale.deploy.database.kubernetes_redis { KubernetesRedisProvider }
 import from jaclang.scale._optdeps.kubernetes {
     client,
     config as k8s_cluster_config,
@@ -102,21 +100,11 @@ obj KubernetesTargetBase(DeploymentTarget) {
         init_containers = [];
         wait_image = self.k8s_config.wait_image;
 
-        if self.k8s_config.mongodb_enabled {
-            mongo_provider = DatabaseProviderFactory.create(
-                'kubernetes_mongo', self, {'app_name': app_name}
+        if self.k8s_config.postgres_enabled {
+            pg_provider = DatabaseProviderFactory.create(
+                'kubernetes_postgres', self, {'app_name': app_name}
             );
-            init_container = mongo_provider.get_init_container(app_name, wait_image);
-            if init_container {
-                init_containers.append(init_container);
-            }
-        }
-
-        if self.k8s_config.redis_enabled {
-            redis_provider = DatabaseProviderFactory.create(
-                'kubernetes_redis', self, {'app_name': app_name}
-            );
-            init_container = redis_provider.get_init_container(app_name, wait_image);
+            init_container = pg_provider.get_init_container(app_name, wait_image);
             if init_container {
                 init_containers.append(init_container);
             }
@@ -126,328 +114,72 @@ obj KubernetesTargetBase(DeploymentTarget) {
     }
 
     def _deploy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
-        if self.k8s_config.mongodb_enabled {
-            mongodb_name = f"{app_name}-mongodb";
-            mongodb_service_name = f"{mongodb_name}-service";
-            mongo_provider = DatabaseProviderFactory.create(
-                'kubernetes_mongo', self, {'app_name': app_name}
-            );
-            mongo_result = mongo_provider.deploy({});
-            self._apply_provider_service_account(
-                mongo_result['service_account'], namespace, core_v1
-            );
+        if not self.k8s_config.postgres_enabled {
+            return;
+        }
+        pg_name = f"{app_name}-postgres";
+        pg_service_name = f"{pg_name}-service";
+        pg_provider = DatabaseProviderFactory.create(
+            'kubernetes_postgres', self, {'app_name': app_name}
+        );
+        pg_result = pg_provider.deploy({});
+        if pg_result['mode'] == 'external' {
             self.env_list.append(
-                {
-                    'name': 'MONGODB_URI',
-                    'valueFrom': {
-                        'secretKeyRef': {
-                            'name': mongo_result['secret_name'],
-                            'key': 'connection-string'
-                        }
-                    }
-                }
+                {'name': 'JAC_DB_URL', 'value': pg_result['connection_string']}
             );
-            try {
-                core_v1.read_namespaced_secret(
-                    name=mongo_result['secret']['metadata']['name'], namespace=namespace
-                );
-            } except ApiException as e {
-                if e.status == 404 {
-                    core_v1.create_namespaced_secret(
-                        namespace=namespace, body=mongo_result['secret']
-                    );
-                } else {
-                    raise;
+            return;
+        }
+        self._apply_provider_service_account(
+            pg_result['service_account'], namespace, core_v1
+        );
+        self.env_list.append(
+            {
+                'name': 'JAC_DB_URL',
+                'valueFrom': {
+                    'secretKeyRef': {
+                        'name': pg_result['secret']['metadata']['name'],
+                        'key': 'connection-string'
+                    }
                 }
             }
-            try {
-                apps_v1.read_namespaced_stateful_set(
-                    name=mongodb_name, namespace=namespace
-                );
-            } except ApiException as e {
-                if (e.status == 404) {
-                    apps_v1.create_namespaced_stateful_set(
-                        namespace=namespace, body=mongo_result['deployment']
-                    );
-                } else {
-                    raise;
-                }
-            }
-            mongodb_volume_name = f"{app_name}-mongo-data";
-            mongodb_pvc_name = f"{mongodb_volume_name}-{mongodb_name}-0";
-            resize_pvc_if_needed(
-                core_v1,
-                namespace,
-                mongodb_pvc_name,
-                self.k8s_config.mongodb_storage_size
+        );
+        try {
+            core_v1.read_namespaced_secret(
+                name=pg_result['secret']['metadata']['name'], namespace=namespace
             );
-            try {
-                core_v1.read_namespaced_service(
-                    name=mongodb_service_name, namespace=namespace
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_secret(
+                    namespace=namespace, body=pg_result['secret']
                 );
-            } except ApiException as e {
-                if (e.status == 404) {
-                    core_v1.create_namespaced_service(
-                        namespace=namespace, body=mongo_result['service']
-                    );
-                } else {
-                    raise;
-                }
-            }
-            if self.k8s_config.mongodb_dashboard {
-                express_result = mongo_provider.deploy_dashboard(
-                    username=self.k8s_config.mongo_express_username,
-                    password=self.k8s_config.mongo_express_password
-                );
-                self._apply_provider_service_account(
-                    express_result['service_account'], namespace, core_v1
-                );
-                try {
-                    apps_v1.patch_namespaced_deployment(
-                        name=express_result['deployment_name'],
-                        namespace=namespace,
-                        body=express_result['deployment']
-                    );
-                } except ApiException as e {
-                    if e.status == 404 {
-                        apps_v1.create_namespaced_deployment(
-                            namespace=namespace, body=express_result['deployment']
-                        );
-                    } else {
-                        raise;
-                    }
-                }
-                try {
-                    core_v1.patch_namespaced_service(
-                        name=express_result['service_name'],
-                        namespace=namespace,
-                        body=express_result['service']
-                    );
-                } except ApiException as e {
-                    if e.status == 404 {
-                        core_v1.create_namespaced_service(
-                            namespace=namespace, body=express_result['service']
-                        );
-                    } else {
-                        raise;
-                    }
-                }
-                if self.logger {
-                    self.logger.info(
-                        f"mongo-express dashboard deployed for '{app_name}' (accessible via ingress at /db-dashboard)"
-                    );
-                }
+            } else {
+                raise;
             }
         }
-
-        if self.k8s_config.redis_enabled {
-            redis_name = f"{app_name}-redis";
-            redis_service_name = f"{redis_name}-service";
-            redis_config_name = f"{redis_name}-config";
-            redis_provider = DatabaseProviderFactory.create(
-                'kubernetes_redis', self, {'app_name': app_name}
-            );
-            redis_result = redis_provider.deploy({});
-            self._apply_provider_service_account(
-                redis_result['service_account'], namespace, core_v1
-            );
-            self.env_list.append(
-                {
-                    'name': 'REDIS_URL',
-                    'valueFrom': {
-                        'secretKeyRef': {
-                            'name': redis_result['secret_name'],
-                            'key': 'connection-string'
-                        }
-                    }
-                }
-            );
-            try {
-                core_v1.read_namespaced_secret(
-                    name=redis_result['secret']['metadata']['name'], namespace=namespace
+        try {
+            apps_v1.read_namespaced_stateful_set(name=pg_name, namespace=namespace);
+        } except ApiException as e {
+            if (e.status == 404) {
+                apps_v1.create_namespaced_stateful_set(
+                    namespace=namespace, body=pg_result['statefulset']
                 );
-            } except ApiException as e {
-                if e.status == 404 {
-                    core_v1.create_namespaced_secret(
-                        namespace=namespace, body=redis_result['secret']
-                    );
-                } else {
-                    raise;
-                }
+            } else {
+                raise;
             }
-            config_updated = False;
-            try {
-                existing_cm = core_v1.read_namespaced_config_map(
-                    name=redis_config_name, namespace=namespace
+        }
+        pg_pvc_name = f"{pg_name}-data-{pg_name}-0";
+        resize_pvc_if_needed(
+            core_v1, namespace, pg_pvc_name, self.k8s_config.postgres_storage_size
+        );
+        try {
+            core_v1.read_namespaced_service(name=pg_service_name, namespace=namespace);
+        } except ApiException as e {
+            if (e.status == 404) {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=pg_result['service']
                 );
-                existing_content = existing_cm.data.get('redis.conf', '');
-                new_content = redis_result['configmap']['data']['redis.conf'];
-
-                if existing_content != new_content {
-                    if self.logger {
-                        self.logger.info(
-                            f"Redis configuration changed (hash: {redis_result[
-                                'config_hash'
-                            ]}). "
-                            "Updating ConfigMap..."
-                        );
-                    }
-                    core_v1.replace_namespaced_config_map(
-                        name=redis_config_name,
-                        namespace=namespace,
-                        body=redis_result['configmap']
-                    );
-                    config_updated = True;
-                    if self.logger {
-                        self.logger.info("Redis ConfigMap updated successfully");
-                    }
-                } else {
-                    if self.logger {
-                        self.logger.debug(
-                            "Redis configuration unchanged, skipping ConfigMap update"
-                        );
-                    }
-                }
-            } except ApiException as e {
-                if (e.status == 404) {
-                    if self.logger {
-                        self.logger.info("Creating new Redis ConfigMap");
-                    }
-                    core_v1.create_namespaced_config_map(
-                        namespace=namespace, body=redis_result['configmap']
-                    );
-                    if self.logger {
-                        self.logger.info("Redis ConfigMap created successfully");
-                    }
-                } else {
-                    if self.logger {
-                        self.logger.error(f"Failed to manage Redis ConfigMap: {e}");
-                    }
-                    raise;
-                }
-            }
-
-            try {
-                existing_deploy = apps_v1.read_namespaced_deployment(
-                    name=redis_name, namespace=namespace
-                );
-
-                annotations = existing_deploy.spec.template.metadata.annotations;
-                existing_hash = annotations.get('redis-config-hash', '')
-                    if annotations
-                    else '';
-                new_hash = redis_result['config_hash'];
-
-                if existing_hash != new_hash or config_updated {
-                    if self.logger {
-                        self.logger.info(
-                            f"Redis deployment needs update. "
-                            f"Old hash: {existing_hash}, New hash: {new_hash}"
-                        );
-                    }
-
-                    apps_v1.replace_namespaced_deployment(
-                        name=redis_name,
-                        namespace=namespace,
-                        body=redis_result['deployment']
-                    );
-                    if self.logger {
-                        self.logger.info(
-                            "Redis deployment updated. Pods will restart with new configuration."
-                        );
-                    }
-                } else {
-                    if self.logger {
-                        self.logger.debug(
-                            "Redis deployment unchanged, skipping update"
-                        );
-                    }
-                }
-            } except ApiException as e {
-                if (e.status == 404) {
-                    if self.logger {
-                        self.logger.info("Creating new Redis deployment");
-                    }
-                    apps_v1.create_namespaced_deployment(
-                        namespace=namespace, body=redis_result['deployment']
-                    );
-                    if self.logger {
-                        self.logger.info("Redis deployment created successfully");
-                    }
-                } else {
-                    if self.logger {
-                        self.logger.error(f"Failed to manage Redis deployment: {e}");
-                    }
-                    raise;
-                }
-            }
-
-            try {
-                core_v1.read_namespaced_service(
-                    name=redis_service_name, namespace=namespace
-                );
-
-                core_v1.patch_namespaced_service(
-                    name=redis_service_name,
-                    namespace=namespace,
-                    body={
-                        'metadata': {
-                            'labels': {
-                                ** redis_result['service']['metadata']['labels'],
-                                'managed-by': None
-                            }
-                        }
-                    }
-                );
-            } except ApiException as e {
-                if (e.status == 404) {
-                    core_v1.create_namespaced_service(
-                        namespace=namespace, body=redis_result['service']
-                    );
-                } else {
-                    raise;
-                }
-            }
-            if self.k8s_config.redis_dashboard {
-                insight_result = redis_provider.deploy_dashboard();
-                self._apply_provider_service_account(
-                    insight_result['service_account'], namespace, core_v1
-                );
-                try {
-                    apps_v1.patch_namespaced_deployment(
-                        name=insight_result['deployment_name'],
-                        namespace=namespace,
-                        body=insight_result['deployment']
-                    );
-                } except ApiException as e {
-                    if e.status == 404 {
-                        apps_v1.create_namespaced_deployment(
-                            namespace=namespace, body=insight_result['deployment']
-                        );
-                    } else {
-                        raise;
-                    }
-                }
-                try {
-                    core_v1.patch_namespaced_service(
-                        name=insight_result['service_name'],
-                        namespace=namespace,
-                        body=insight_result['service']
-                    );
-                } except ApiException as e {
-                    if e.status == 404 {
-                        core_v1.create_namespaced_service(
-                            namespace=namespace, body=insight_result['service']
-                        );
-                    } else {
-                        raise;
-                    }
-                }
-                if self.logger {
-                    self.logger.info(
-                        f"RedisInsight dashboard deployed for '{app_name}' (accessible via ingress at /cache-dashboard)"
-                    );
-                }
+            } else {
+                raise;
             }
         }
     }
@@ -507,11 +239,11 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 }
             }
 
-            if self.k8s_config.mongodb_enabled {
-                mongodb_name = f"{app_name}-mongodb";
+            if self.k8s_config.postgres_enabled {
+                pg_name = f"{app_name}-postgres";
                 try {
                     apps_v1.read_namespaced_stateful_set(
-                        name=mongodb_name, namespace=namespace
+                        name=pg_name, namespace=namespace
                     );
                     resources_exist = True;
                 } except ApiException as e {
@@ -521,31 +253,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 }
                 try {
                     core_v1.read_namespaced_service(
-                        name=f"{mongodb_name}-service", namespace=namespace
-                    );
-                    resources_exist = True;
-                } except ApiException as e {
-                    if e.status != 404 {
-                        raise;
-                    }
-                }
-            }
-
-            if self.k8s_config.redis_enabled {
-                redis_name = f"{app_name}-redis";
-                try {
-                    apps_v1.read_namespaced_deployment(
-                        name=redis_name, namespace=namespace
-                    );
-                    resources_exist = True;
-                } except ApiException as e {
-                    if e.status != 404 {
-                        raise;
-                    }
-                }
-                try {
-                    core_v1.read_namespaced_service(
-                        name=f"{redis_name}-service", namespace=namespace
+                        name=f"{pg_name}-service", namespace=namespace
                     );
                     resources_exist = True;
                 } except ApiException as e {
@@ -648,8 +356,6 @@ obj KubernetesTargetBase(DeploymentTarget) {
 
     def _destroy_databases(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         self._destroy_database(app_name, namespace, apps_v1, core_v1);
-        self._destroy_cache(app_name, namespace, apps_v1, core_v1);
-        self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
     }
 
     def _destroy_application(
@@ -689,14 +395,11 @@ obj KubernetesTargetBase(DeploymentTarget) {
 
         network_policy_names = [
             f"{app_name}-network-policy",
-            f"{app_name}-mongodb-network-policy",
-            f"{app_name}-redis-network-policy",
+            f"{app_name}-postgres-network-policy",
             f"{app_name}-prometheus-network-policy",
             f"{app_name}-grafana-network-policy",
             f"{app_name}-kube-state-metrics-network-policy",
-            f"{app_name}-node-exporter-network-policy",
-            f"{app_name}-mongo-express-network-policy",
-            f"{app_name}-redis-insight-network-policy"
+            f"{app_name}-node-exporter-network-policy"
         ];
         for policy_name in network_policy_names {
             delete_if_exists(
@@ -709,96 +412,20 @@ obj KubernetesTargetBase(DeploymentTarget) {
     }
 
     def _destroy_database(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
-        mongodb_name = f"{app_name}-mongodb";
+        pg_name = f"{app_name}-postgres";
         delete_if_exists(
-            apps_v1.delete_namespaced_stateful_set,
-            mongodb_name,
-            namespace,
-            'StatefulSet'
+            apps_v1.delete_namespaced_stateful_set, pg_name, namespace, 'StatefulSet'
         );
         delete_if_exists(
             core_v1.delete_namespaced_service,
-            f"{mongodb_name}-service",
+            f"{pg_name}-service",
             namespace,
             'Service'
         );
-        delete_k8s_secret(core_v1, namespace, f"{app_name}-mongodb-secret");
+        delete_k8s_secret(core_v1, namespace, f"{pg_name}-secret");
         delete_if_exists(
             core_v1.delete_namespaced_service_account,
-            f"{app_name}-mongodb-sa",
-            namespace,
-            'ServiceAccount'
-        );
-    }
-
-    def _destroy_cache(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
-        redis_name = f"{app_name}-redis";
-        delete_if_exists(
-            apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service,
-            f"{redis_name}-service",
-            namespace,
-            'Service'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_config_map,
-            f"{redis_name}-config",
-            namespace,
-            'ConfigMap'
-        );
-        delete_k8s_secret(core_v1, namespace, f"{app_name}-redis-secret");
-        delete_if_exists(
-            core_v1.delete_namespaced_service_account,
-            f"{app_name}-redis-sa",
-            namespace,
-            'ServiceAccount'
-        );
-    }
-
-    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
-        express_name = f"{app_name}-mongo-express";
-        delete_if_exists(
-            apps_v1.delete_namespaced_deployment, express_name, namespace, 'Deployment'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service,
-            f"{express_name}-service",
-            namespace,
-            'Service'
-        );
-        insight_name = f"{app_name}-redis-insight";
-        delete_if_exists(
-            apps_v1.delete_namespaced_deployment, insight_name, namespace, 'Deployment'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service,
-            f"{insight_name}-service",
-            namespace,
-            'Service'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_config_map,
-            f"{insight_name}-nginx-config",
-            namespace,
-            'ConfigMap'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_secret,
-            f"{insight_name}-auth",
-            namespace,
-            'Secret'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service_account,
-            f"{app_name}-mongo-express-sa",
-            namespace,
-            'ServiceAccount'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service_account,
-            f"{app_name}-redis-insight-sa",
+            f"{pg_name}-sa",
             namespace,
             'ServiceAccount'
         );
@@ -811,16 +438,12 @@ obj KubernetesTargetBase(DeploymentTarget) {
             self._destroy_application(app_name, namespace, apps_v1, core_v1);
         } elif component == 'database' {
             self._destroy_database(app_name, namespace, apps_v1, core_v1);
-        } elif component == 'cache' {
-            self._destroy_cache(app_name, namespace, apps_v1, core_v1);
         } elif component == 'monitoring' {
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.destroy(app_name, namespace, apps_v1, core_v1);
-        } elif component == 'dashboard' {
-            self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
         } else {
             raise ValueError(
-                f"Unknown component: '{component}'. Valid choices: application, database, cache, monitoring, dashboard"
+                f"Unknown component: '{component}'. Valid choices: application, database, monitoring"
             );
         }
         if self.logger {
@@ -1155,8 +778,6 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 self.logger.info(f"\nTLS enabled. App is now live at:");
                 self.logger.info(f"  App URL:        https://{domain}");
                 self.logger.info(f"  Grafana:        https://{domain}/grafana");
-                self.logger.info(f"  Mongo Express:  https://{domain}/db-dashboard");
-                self.logger.info(f"  RedisInsight:   https://{domain}/cache-dashboard");
                 self.logger.info(
                     f"\nCertificate renewal is automatic (cert-manager renews ~30 days before expiry).\n"
                 );
@@ -1244,8 +865,6 @@ obj KubernetesTargetBase(DeploymentTarget) {
         ];
 
         grafana_running = False;
-        redis_insight_running = False;
-        mongo_express_running = False;
         for cdef in component_defs {
             k8s_name = cdef['k8s_name'];
             display_name = cdef['display'];
@@ -1277,10 +896,6 @@ obj KubernetesTargetBase(DeploymentTarget) {
                 );
                 if display_name == 'Grafana' {
                     grafana_running = True;
-                } elif display_name == 'RedisInsight' {
-                    redis_insight_running = True;
-                } elif display_name == 'Mongo Express' {
-                    mongo_express_running = True;
                 }
             } else {
                 components.append(
@@ -1312,14 +927,6 @@ obj KubernetesTargetBase(DeploymentTarget) {
 
         if grafana_running {
             urls['grafana'] = f"{base_url}/grafana";
-        }
-
-        if redis_insight_running {
-            urls['redis_insight'] = f"{base_url}/cache-dashboard";
-        }
-
-        if mongo_express_running {
-            urls['mongo_express'] = f"{base_url}/db-dashboard";
         }
 
         return {

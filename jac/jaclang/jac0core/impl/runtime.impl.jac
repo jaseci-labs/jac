@@ -428,23 +428,23 @@ impl JacPersistence.on_commit(callback: Callable) -> None {
 }
 
 impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
-    import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
     ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
-    persistence = mem.l3;
-    conn = persistence?.__conn__ if persistence else None;
-    if (conn and isinstance(conn, sqlite3.Connection)) {
-        cursor = conn.execute("SELECT id, json_extract(data, '$.root') FROM anchors");
-        candidates = [(UUID(row[0]), row[1]) for row in cursor.fetchall()];
-    } else {
-        candidates = [
-            (anchor.id, str(anchor.root) if anchor.root else None)
-            for anchor in mem.get_mem().values()
-        ];
+    cand_map: dict = {};
+    store = mem?.store;
+    if store is not None {
+        mem.read_barrier();
+        for row in store.rows("SELECT id, root_id FROM anchors", {}) {
+            cand_map[UUID(str(row[0]))] = str(row[1]) if row[1] else None;
+        }
     }
+    for anchor in mem.get_mem().values() {
+        cand_map[anchor.id] = str(anchor.root) if anchor.root else None;
+    }
+    candidates = list(cand_map.items());
     import from jaclang.jac0core.osp_graph_sv { sv_forget_by_id }
     for (aid, aroot) in candidates {
         if ((aid == ranchor.id) or (aroot != str(ranchor.id))) {

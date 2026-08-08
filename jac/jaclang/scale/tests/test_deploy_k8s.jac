@@ -2,7 +2,7 @@ import os;
 import time;
 import importlib.resources;
 import from pathlib { Path }
-import from typing { Any }
+import from typing { Any, cast }
 
 import from kubernetes { client, config }
 import from kubernetes.client.exceptions { ApiException }
@@ -22,7 +22,6 @@ import from tempfile { mkdtemp }
 import shutil;
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
-import from jaclang.scale.deploy.database { kubernetes_redis as redis_module }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -267,28 +266,30 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
     healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
     healthy_pod.status.phase = "Running";
 
-    # Redis is provisioned separately from the fleet's own microservice
-    # Deployments (bundle["deployments"]), so "svc-a-redis" is never in
-    # fleet_app_names and its pod-template-hash was never resolved into
-    # current_hashes - it must still be checked for crashes. This is the
-    # test that actually guards the fleet_app_names bypass in
+    # The database is provisioned separately from the fleet's own
+    # microservice Deployments (bundle["deployments"]), so "svc-a-postgres"
+    # is never in fleet_app_names and its pod-template-hash was never
+    # resolved into current_hashes - it must still be checked for crashes.
+    # This is the test that actually guards the fleet_app_names bypass in
     # _scan_for_crash_loop.
-    redis_pod = unittest.mock.MagicMock();
-    redis_pod.metadata.labels = {
-        "app": "svc-a-redis",
-        "pod-template-hash": "redis-hash-not-in-current-hashes"
+    companion_pod = unittest.mock.MagicMock();
+    companion_pod.metadata.labels = {
+        "app": "svc-a-postgres",
+        "pod-template-hash": "companion-hash-not-in-current-hashes"
     };
-    redis_pod.metadata.name = "svc-a-redis-789";
-    redis_pod.metadata.deletion_timestamp = None;
-    redis_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
-    redis_pod.status.phase = "Running";
+    companion_pod.metadata.name = "svc-a-postgres-789";
+    companion_pod.metadata.deletion_timestamp = None;
+    companion_pod.status.container_statuses = [
+        unittest.mock.MagicMock(restart_count=5)
+    ];
+    companion_pod.status.phase = "Running";
 
     fake_core_v1 = unittest.mock.MagicMock();
-    fake_core_v1.list_namespaced_pod.return_value.items = [healthy_pod, redis_pod];
+    fake_core_v1.list_namespaced_pod.return_value.items = [healthy_pod, companion_pod];
 
     caught = _run_fleet_rollout(deployment_target, bundle, fake_apps_v1, fake_core_v1);
 
-    assert caught is not None and "crash-looping" in str(caught) , "a crash-looping companion Deployment pod (e.g. Redis) outside the fleet's own Deployments must still fail the rollout wait";
+    assert caught is not None and "crash-looping" in str(caught) , "a crash-looping companion database pod outside the fleet's own Deployments must still fail the rollout wait";
 }
 
 # Exercises the `except Exception` fallback in _wait_for_fleet_rollout, not
@@ -321,158 +322,21 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     assert caught is not None , "crash must still be detected via broad scan when RS lookup fails";
 }
 
-test "redis template file in package" {
-    try {
-        import jaclang.scale;
-        import from pathlib { Path }
-        # jaclang.scale is a .jac package (custom loader) that importlib.resources
-        # can't traverse; resolve bundled data via the package __file__ instead.
-        ref = Path(jaclang.scale.__file__).parent
-            / "deploy"
-            / "database"
-            / "redis.conf.template";
-        assert ref.is_file() , (
-            "redis.conf.template not discoverable as package data. "
-            "Ensure it ships next to the jaclang.scale package."
-        );
-
-        content = ref.read_text(encoding='utf-8');
-        assert len(content) > 0 , "redis.conf.template should not be empty";
-        assert 'maxmemory-policy' in content , (
-            "redis.conf.template should contain Redis configuration directives"
-        );
-    } except (FileNotFoundError, ModuleNotFoundError) as e {
-        raise AssertionError(
-            f"redis.conf.template not found via importlib.resources: {e}. "
-            "Ensure it's included via pyproject.toml package-data"
-        );
-    }
-}
-
 
 test "kubernetes database provider security context" {
-    mongo_provider = DatabaseProviderFactory.create(
-        'kubernetes_mongo', None, {'app_name': 'test-app'}
+    pg_provider = DatabaseProviderFactory.create(
+        'kubernetes_postgres', None, {'app_name': 'test-app'}
     );
-    mongo_deploy = mongo_provider.deploy();
-    mongo_container = mongo_deploy['deployment']['spec']['template']['spec'][
-        'containers'
-    ][0];
-    mongo_sc = mongo_container['securityContext'];
-    assert mongo_sc['runAsNonRoot'] is True;
-    assert mongo_sc['readOnlyRootFilesystem'] is True;
-    assert mongo_sc['allowPrivilegeEscalation'] is False;
-    assert mongo_sc['capabilities']['drop'] == ['ALL'];
-    assert mongo_sc['seccompProfile']['type'] == 'RuntimeDefault';
-
-    redis_provider = DatabaseProviderFactory.create(
-        'kubernetes_redis', None, {'app_name': 'test-app'}
-    );
-    redis_deploy = redis_provider.deploy();
-    redis_container = redis_deploy['deployment']['spec']['template']['spec'][
-        'containers'
-    ][0];
-    redis_sc = redis_container['securityContext'];
-    assert redis_sc['runAsNonRoot'] is True;
-    assert redis_sc['readOnlyRootFilesystem'] is True;
-    assert redis_sc['allowPrivilegeEscalation'] is False;
-    assert redis_sc['capabilities']['drop'] == ['ALL'];
-    assert redis_sc['seccompProfile']['type'] == 'RuntimeDefault';
-
-    assert mongo_deploy['service_account']['automountServiceAccountToken'] is False;
-    assert redis_deploy['service_account']['automountServiceAccountToken'] is False;
-}
-
-test "redis pod resources default to configured values" {
-    redis_provider = DatabaseProviderFactory.create(
-        'kubernetes_redis', None, {'app_name': 'test-app'}
-    );
-    redis_deploy = redis_provider.deploy();
-    resources = redis_deploy['deployment']['spec']['template']['spec']['containers'][0][
-        'resources'
+    pg_deploy = pg_provider.deploy({});
+    pg_container = pg_deploy['statefulset']['spec']['template']['spec']['containers'][
+        0
     ];
-
-    assert resources['requests']['cpu'] == '100m';
-    assert resources['requests']['memory'] == '128Mi';
-    assert resources['limits']['cpu'] == '500m';
-    assert resources['limits']['memory'] == '1Gi';
-}
-
-test "default redis memory limit does not emit a headroom warning" {
-    mock_logger = unittest.mock.MagicMock();
-
-    with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
-        redis_provider = DatabaseProviderFactory.create(
-            'kubernetes_redis', None, {'app_name': 'test-app'}
-        );
-        redis_provider.deploy();
-    }
-
-    warned = any(
-        'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
-    );
-    assert not warned , "default 1Gi limit over 200mb maxmemory must not warn";
-}
-
-test "redis pod resources propagate from [scale.database] config" {
-    fake_config = SimpleNamespace(
-        get_database_config=lambda { {
-            'redis_max_memory': '200mb',
-            'redis_cpu_request': '500m',
-            'redis_cpu_limit': '2000m',
-            'redis_memory_request': '1Gi',
-            'redis_memory_limit': '4Gi'
-        }; },
-        get_kubernetes_config=lambda { {}; }
-    );
-
-    with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda { fake_config; }
-    ) {
-        redis_provider = DatabaseProviderFactory.create(
-            'kubernetes_redis', None, {'app_name': 'test-app'}
-        );
-        redis_deploy = redis_provider.deploy();
-    }
-
-    resources = redis_deploy['deployment']['spec']['template']['spec']['containers'][0][
-        'resources'
-    ];
-
-    assert resources['requests']['cpu'] == '500m';
-    assert resources['requests']['memory'] == '1Gi';
-    assert resources['limits']['cpu'] == '2000m';
-    assert resources['limits']['memory'] == '4Gi';
-}
-
-test "redis warns when memory limit lacks headroom over maxmemory" {
-    fake_config = SimpleNamespace(
-        get_database_config=lambda { {
-            'redis_max_memory': '200mb',
-            'redis_cpu_request': '250m',
-            'redis_cpu_limit': '1000m',
-            'redis_memory_request': '128Mi',
-            'redis_memory_limit': '256Mi'
-        }; },
-        get_kubernetes_config=lambda { {}; }
-    );
-    mock_logger = unittest.mock.MagicMock();
-
-    with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda { fake_config; }
-    ) {
-        with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
-            redis_provider = DatabaseProviderFactory.create(
-                'kubernetes_redis', None, {'app_name': 'test-app'}
-            );
-            redis_provider.deploy();
-        }
-    }
-
-    warned = any(
-        'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
-    );
-    assert warned , "expected a headroom warning when limit <= 2x maxmemory";
+    pg_sc = pg_container['securityContext'];
+    assert pg_sc['runAsNonRoot'] is True;
+    assert pg_sc['allowPrivilegeEscalation'] is False;
+    assert pg_sc['capabilities']['drop'] == ['ALL'];
+    assert pg_sc['seccompProfile']['type'] == 'RuntimeDefault';
+    assert pg_deploy['service_account']['automountServiceAccountToken'] is False;
 }
 
 test "get service url switches between http and https based on tls state" {
@@ -482,7 +346,7 @@ test "get service url switches between http and https based on tls state" {
     target_config["namespace"] = "default";
     target_config["domain"] = "app.example.com";
     logger = UtilityFactory.create_logger("standard");
-    deployment_target = DeploymentTargetFactory.create(
+    deployment_target: Any = DeploymentTargetFactory.create(
         "kubernetes", target_config, logger
     );
 
@@ -527,7 +391,7 @@ test "enable tls raises when no domain configured" {
     target_config["namespace"] = "default";
     target_config["domain"] = "";
     logger = UtilityFactory.create_logger("standard");
-    deployment_target = DeploymentTargetFactory.create(
+    deployment_target: Any = DeploymentTargetFactory.create(
         "kubernetes", target_config, logger
     );
 
@@ -586,8 +450,6 @@ test "deploy with domain set renders host plus catch-all rules and stores domain
         ingress_class="myapp-nginx",
         service_port=8000,
         grafana_enabled=False,
-        redis_dashboard=False,
-        mongo_dashboard=False,
         networking_v1=mock_networking_v1,
         core_v1=mock_core_v1
     );
@@ -595,7 +457,7 @@ test "deploy with domain set renders host plus catch-all rules and stores domain
     assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
     created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
 
-    rules = created_body["spec"]["rules"];
+    rules: list = created_body["spec"]["rules"];
     assert len(rules) == 2 , "domain app must render a host rule plus a catch-all";
     assert rules[0].get("host") == "app.example.com" , "first rule must bind the domain host so redeploys keep the TLS cert served (#7707)";
     assert "host" not in rules[1] , "catch-all rule must keep the raw load-balancer hostname serving before DNS/TLS";
@@ -605,131 +467,6 @@ test "deploy with domain set renders host plus catch-all rules and stores domain
     assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
 }
 
-test "redis ingress with domain renders host plus catch-all rules" {
-    k8s_config = KubernetesConfig(
-        domain="app.example.com", cert_manager_email="user@example.com"
-    );
-    ingress_deployer = IngressDeployer(k8s_config, None);
-
-    mock_networking_v1 = unittest.mock.MagicMock();
-
-    mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
-
-    mock_core_v1 = unittest.mock.MagicMock();
-
-    mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
-
-    ingress_deployer._deploy_ingress_resource(
-        app_name="myapp",
-        namespace="default",
-        ingress_class="myapp-nginx",
-        service_port=8000,
-        grafana_enabled=False,
-        redis_dashboard=True,
-        mongo_dashboard=False,
-        networking_v1=mock_networking_v1,
-        core_v1=mock_core_v1
-    );
-
-    assert mock_networking_v1.create_namespaced_ingress.call_count == 2 , "both main and Redis ingresses should be created on first deploy";
-    redis_created_body = mock_networking_v1.create_namespaced_ingress.call_args_list[1][
-        1
-    ]["body"];
-
-    redis_rules = redis_created_body["spec"]["rules"];
-    assert len(redis_rules) == 2 , "domain app must render a host rule plus a catch-all";
-    assert redis_rules[0].get("host") == "app.example.com" , "first Redis rule must bind the domain host (#7707)";
-    assert "host" not in redis_rules[1] , "catch-all Redis rule must keep raw load-balancer access";
-}
-
-test "redis insight cache dashboard spec is correctly built" {
-    provider = DatabaseProviderFactory.create(
-        'kubernetes_redis', None, {'app_name': 'test-app'}
-    );
-    dash = provider.deploy_dashboard();
-    assert dash['deployment_name'] == 'test-app-redis-insight';
-    assert dash['service_name'] == 'test-app-redis-insight-service';
-
-    container = dash['deployment']['spec']['template']['spec']['containers'][0];
-    assert container['image'] == 'redis/redisinsight:3.2.0';
-    assert container['ports'][0]['containerPort'] == 5540;
-    sc = container['securityContext'];
-    assert sc['runAsNonRoot'] is True;
-    assert sc['readOnlyRootFilesystem'] is True;
-    assert sc['allowPrivilegeEscalation'] is False;
-    assert sc['capabilities']['drop'] == ['ALL'];
-
-    env = {e['name']: e for e in container['env']};
-
-    assert env['RI_ACCEPT_TERMS_AND_CONDITIONS']['value'] == 'true';
-    assert env['RI_ENCRYPTION_KEY']['value'] , "RI_ENCRYPTION_KEY must be set";
-
-    assert env['RI_REDIS_HOST']['value'] == 'test-app-redis-service';
-    assert env['RI_REDIS_PORT']['value'] == '6379';
-    assert env['RIPROXYPATH']['value'] == '/cache-dashboard';
-
-    u = env['RI_REDIS_USERNAME']['valueFrom']['secretKeyRef'];
-    p = env['RI_REDIS_PASSWORD']['valueFrom']['secretKeyRef'];
-    assert u['name'] == 'test-app-redis-secret' and u['key'] == 'username';
-    assert p['name'] == 'test-app-redis-secret' and p['key'] == 'password';
-    assert 'value' not in env['RI_REDIS_PASSWORD'] , "password must not be inlined";
-
-    assert dash['service']['spec']['ports'][0]['port'] == 5540;
-    assert dash['service_account']['automountServiceAccountToken'] is False;
-}
-
-test "redis ACL is secret mounted not in configmap and creds validated" {
-    provider = DatabaseProviderFactory.create(
-        'kubernetes_redis', None, {'app_name': 'test-app'}
-    );
-    dep = provider.deploy();
-
-    conf = dep['configmap']['data']['redis.conf'];
-    assert 'aclfile /etc/redis-acl/users.acl' in conf;
-    assert 'user default on >' not in conf , "ACL (with password) inlined into ConfigMap";
-    secret_sd = dep['secret']['stringData'];
-    assert 'users.acl' in secret_sd , "ACL file must be in the Secret";
-    assert secret_sd['users.acl'].startswith('user default on >password');
-
-    pod = dep['deployment']['spec']['template']['spec'];
-    acl_vol = next(
-        (
-            v
-            for v in pod['volumes']
-            if v['name'] == 'redis-acl'
-        ),
-        None
-    );
-    assert acl_vol is not None , "redis-acl volume missing";
-    assert acl_vol['secret']['secretName'] == dep['secret_name'];
-    assert acl_vol['secret']['items'][0]['key'] == 'users.acl';
-    assert any(
-        m['name'] == 'redis-acl'
-            and m['mountPath'] == '/etc/redis-acl'
-            and m.get('readOnly') is True for m in pod['containers'][0]['volumeMounts']
-    ) , "redis-acl must be mounted read-only at /etc/redis-acl";
-
-    raised = False;
-    try {
-        provider._build_acl_file('admin', "pw\nuser eve on nopass ~* +@all");
-    } except ValueError {
-        raised = True;
-    }
-    assert raised , "newline in password must be rejected";
-    raised2 = False;
-    try {
-        provider._build_acl_file("ad min", 'password');
-    } except ValueError {
-        raised2 = True;
-    }
-    assert raised2 , "ACL-significant chars in username must be rejected";
-
-    assert provider._build_connection_string('default', 'pw', 'h')
-        == 'redis://default:pw@h:6379/0';
-    assert provider._build_connection_string('admin', 'pw', 'h')
-        == 'redis://admin:pw@h:6379/0';
-    assert secret_sd['connection-string'] == provider.get_connection_string();
-}
 
 test "shared ingress skips deploying dedicated nginx controller" {
     k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
@@ -742,7 +479,7 @@ test "shared ingress skips deploying dedicated nginx controller" {
         ingress_deployer.start_controller(
             app_name="myapp",
             namespace="default",
-            provider=unittest.mock.MagicMock(),
+            provider=cast(Any, unittest.mock.MagicMock()),
             apps_v1=unittest.mock.MagicMock(),
             core_v1=unittest.mock.MagicMock(),
             rbac_v1=unittest.mock.MagicMock(),
@@ -767,8 +504,6 @@ test "shared ingress rule sets host immediately without waiting for tls" {
         ingress_class="nginx",
         service_port=8000,
         grafana_enabled=False,
-        redis_dashboard=False,
-        mongo_dashboard=False,
         networking_v1=mock_networking_v1,
         core_v1=mock_core_v1
     );
@@ -799,7 +534,8 @@ test "shared ingress destroy skips controller resource teardown" {
 
     with unittest.mock.patch(
         "jaclang.scale.deploy.target.kubernetes.ingress.client"
-    ) as mock_client {
+    ) as raw_mock_client {
+        mock_client: Any = raw_mock_client;
         mock_client.CustomObjectsApi.return_value = mock_custom_api;
         ingress_deployer.destroy(
             app_name="myapp",
@@ -838,7 +574,7 @@ test "shared ingress deploy fails fast when domain is not set" {
     result = deployment_target.deploy(app_config);
 
     assert result.success is False , "deploy must fail when shared_ingress=True but domain is empty";
-    assert "domain" in result.message.lower() , "error message must mention domain requirement";
+    assert "domain" in (result.message or "").lower() , "error message must mention domain requirement";
 }
 
 test "shared ingress merges caller-supplied annotations for non-nginx controllers" {
@@ -866,8 +602,6 @@ test "shared ingress merges caller-supplied annotations for non-nginx controller
         ingress_class="alb",
         service_port=8000,
         grafana_enabled=False,
-        redis_dashboard=False,
-        mongo_dashboard=False,
         networking_v1=mock_networking_v1,
         core_v1=mock_core_v1
     );

@@ -57,7 +57,10 @@ test "the host's config really loads, so the leak tests are meaningful" {
     project_dir = _load_host_config();
     try {
         host_cfg = get_scale_config().get_microservices_config();
-        assert host_cfg.get("routes", {}) == {"builder_sv": "/builder"};
+        # Normalization injects the implicit main service alongside the
+        # declared routes; both belong to the host's own serving topology.
+        assert host_cfg.get("routes", {})
+            == {"builder_sv": "/builder", "main": "/__main__"};
         assert len(host_cfg.get("shared_volumes", [])) == 1;
     } finally {
         _unload_host_config(project_dir);
@@ -102,7 +105,8 @@ test "an omitted microservices config still falls back to the loaded one" {
         _unload_host_config(project_dir);
     }
 
-    assert resolved.get("routes", {}) == {"builder_sv": "/builder"} , "the CLI path must keep reading the app's own loaded config";
+    assert resolved.get("routes", {})
+        == {"builder_sv": "/builder", "main": "/__main__"} , "the CLI path must keep reading the app's own loaded config";
 }
 
 

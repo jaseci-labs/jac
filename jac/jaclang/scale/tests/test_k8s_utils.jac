@@ -183,12 +183,9 @@ test "check pods restarted selector and return values" {
     current_hash = "abc123";
     expected_labels = [
         app_name,
-        f"{app_name}-redis",
-        f"{app_name}-mongodb",
+        f"{app_name}-postgres",
         f"{app_name}-grafana",
-        f"{app_name}-prometheus",
-        f"{app_name}-mongo-express",
-        f"{app_name}-redis-insight"
+        f"{app_name}-prometheus"
     ];
 
     fake_rs = unittest.mock.MagicMock();

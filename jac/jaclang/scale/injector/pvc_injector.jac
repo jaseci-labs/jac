@@ -30,10 +30,14 @@ def bundle_pvc_path(object_key: str) -> str {
 
 
 def build_bundle_pvc(
-    app_name: str, namespace: str, size: str, storage_class: str
+    app_name: str,
+    namespace: str,
+    size: str,
+    storage_class: str,
+    access_mode: str = "ReadWriteMany"
 ) -> dict[str, any] {
-    access_modes = ["ReadWriteMany"];
-    if not storage_class {
+    access_modes = [access_mode];
+    if access_mode == "ReadWriteMany" and not storage_class {
         raise ValueError(
             f"Bundle PVC '{bundle_pvc_name(app_name)}' requests accessModes "
             "[ReadWriteMany] but no bundle_storage_class is set, so it would use "
@@ -175,6 +179,7 @@ def _ensure_volume(pod_spec: dict[str, any], volume: dict[str, any]) -> None {
 obj PvcInjector(Injector) {
     has size: str = "1Gi",
         storage_class: str = "",
+        access_mode: str = "ReadWriteMany",
         loader_image: str = "busybox:1.36",
         provisioned_database: str = "",
         _object_key: str = "",
@@ -361,6 +366,10 @@ obj PvcInjector(Injector) {
     }
 
     def extra_manifests(app_name: str, namespace: str) -> list[dict[str, any]] {
-        return [build_bundle_pvc(app_name, namespace, self.size, self.storage_class)];
+        return [
+            build_bundle_pvc(
+                app_name, namespace, self.size, self.storage_class, self.access_mode
+            )
+        ];
     }
 }

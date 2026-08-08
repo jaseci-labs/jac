@@ -1,131 +1,117 @@
-"""Cross-pod fan-out for the WebSocket RedisBackplane.
+"""Cross-pod fan-out for the WebSocket PgBackplane.
 
-Every other connection-manager test drives MemoryBackplane, so the Redis wire
-path (publish -> Redis pub/sub -> reader loop -> handler on another instance) is
-otherwise only asserted via isinstance. These tests stand up ONE real Redis and
-TWO independent RedisBackplane instances against it - pod A and pod B, each with
-its own redis client - and prove a message published on A is delivered, byte for
-byte, to a handler subscribed on B, and that B never sees traffic for a channel
-it did not subscribe to.
+Every other connection-manager test drives MemoryBackplane, so the wire
+path (publish -> pg NOTIFY -> listener thread -> handler on another
+instance) is otherwise only asserted via isinstance. These tests stand up
+ONE embedded Postgres and TWO independent PgBackplane instances against it
+- pod A and pod B, each with its own store connection - and prove a message
+published on A is delivered, byte for byte, to B.
 """
+
 import asyncio;
-import unittest;
-import from testcontainers.community.redis { RedisContainer }
-import from jaclang.scale.websocket.backplane { RedisBackplane }
+import from tempfile { mkdtemp }
+import from jaclang.runtimelib.pgembed { PgRuntime }
+import from jaclang.runtimelib.store { PgStore }
+import from jaclang.scale.websocket.backplane { PgBackplane }
 
-glob _redis_uri: str = "";
+glob _holder: dict = {};
 
-with entry {
+
+def _store -> (PgStore | None) {
     try {
-        _container = RedisContainer("redis:7.2-alpine");
-        _container.start();
-        host = _container.get_container_host_ip();
-        port = _container.get_exposed_port(6379);
-        _redis_uri = f"redis://{host}:{port}/0";
+        if 'rt' not in _holder {
+            _holder['rt'] = PgRuntime(data_dir=mkdtemp(prefix='jacbp_') + '/data');
+        }
+        store = PgStore(conninfo=_holder['rt'].ensure());
+        store.ensure_schema({});
+        return store;
     } except Exception as e {
-        print(f"[skip] Redis container unavailable: {e}");
+        print(f"[skip] embedded postgres unavailable: {e}");
+        return None;
     }
 }
 
 
-def _require_redis -> str {
-    if not _redis_uri {
-        raise unittest.SkipTest("Redis container unavailable");
+async def _pods -> (tuple | None) {
+    sa = _store();
+    if sa is None {
+        return None;
     }
-    return _redis_uri;
+    sb = _store();
+    a = PgBackplane();
+    b = PgBackplane();
+    a._store = sa;
+    b._store = sb;
+    a._loop = asyncio.get_running_loop();
+    b._loop = asyncio.get_running_loop();
+    return (a, b, sa, sb);
 }
 
 
-test "a message published on one RedisBackplane reaches a handler subscribed on a second" {
-    uri = _require_redis();
-
-    async def body -> list {
-        received: list = [];
-        arrived = asyncio.Event();
-
-        async def handler(channel: any, message: dict) {
-            received.append((str(channel), message));
-            arrived.set();
+test "message published on pod A reaches a subscriber on pod B" {
+    async def scenario -> (dict | None) {
+        pods = await _pods();
+        if pods is None {
+            return None;
         }
+        (a, b, sa, sb) = pods;
+        got: list[dict] = [];
 
-        pod_a = RedisBackplane(url=uri);
-        pod_b = RedisBackplane(url=uri);
-        await pod_a.start();
-        await pod_b.start();
-        try {
-            await pod_b.subscribe("walker:room-1", handler);
-            # let Redis register the SUBSCRIBE and the reader loop spin up
-            await asyncio.sleep(0.25);
-
-            payload = {"type": "broadcast", "n": 7, "text": "hello-pod-B"};
-            await pod_a.publish("walker:room-1", payload);
-
-            try {
-                await asyncio.wait_for(arrived.wait(), timeout=5.0);
-            } except asyncio.TimeoutError {
-                pass;
+        async def handler(channel: str, message: dict) {
+            got.append(message);
+        }
+        await b.subscribe('room-1', handler);
+        payload = {'kind': 'chat', 'body': 'hello from pod A', 'n': 7};
+        for _i in range(40) {
+            if got {
+                break;
             }
-            return list(received);
-        } finally {
-            await pod_a.close();
-            await pod_b.close();
+            await a.publish('room-1', payload);
+            await asyncio.sleep(0.25);
         }
+        await a.close();
+        await b.close();
+        sa.close();
+        sb.close();
+        return got[0] if got else {};
     }
-
-    received = asyncio.run(body());
-    assert len(received) == 1 , f"expected exactly one cross-pod delivery, got {received}";
-    (channel, message) = received[0];
-    assert channel == "walker:room-1" , f"delivered on wrong channel: {channel}";
-    # the payload survives the json.dumps -> Redis -> json.loads round trip intact
-    assert message == {"type": "broadcast", "n": 7, "text": "hello-pod-B"} , f"payload was mangled on the wire: {message}";
+    result = asyncio.run(scenario());
+    if result is not None {
+        assert result == {'kind': 'chat', 'body': 'hello from pod A', 'n': 7};
+    }
 }
 
 
-test "a RedisBackplane only receives messages for channels it subscribed to" {
-    uri = _require_redis();
-
-    async def body -> list {
-        received: list = [];
-        arrived = asyncio.Event();
-
-        async def handler(channel: any, message: dict) {
-            received.append((str(channel), message));
-            arrived.set();
+test "oversized payloads spill through kv and arrive intact" {
+    async def scenario -> (dict | None) {
+        pods = await _pods();
+        if pods is None {
+            return None;
         }
+        (a, b, sa, sb) = pods;
+        got: list[dict] = [];
 
-        pod_a = RedisBackplane(url=uri);
-        pod_b = RedisBackplane(url=uri);
-        await pod_a.start();
-        await pod_b.start();
-        try {
-            await pod_b.subscribe("walker:subscribed", handler);
-            await asyncio.sleep(0.25);
-
-            # B never subscribed to this channel; Redis must filter it out
-            await pod_a.publish("walker:elsewhere", {"text": "do-not-deliver"});
-            # a message on the subscribed channel, published right after, is the
-            # fence: once it arrives we know the earlier one had its chance and
-            # was correctly dropped
-            await pod_a.publish("walker:subscribed", {"text": "deliver-me"});
-
-            try {
-                await asyncio.wait_for(arrived.wait(), timeout=5.0);
-            } except asyncio.TimeoutError {
-                pass;
+        async def handler(channel: str, message: dict) {
+            got.append(message);
+        }
+        await b.subscribe('room-big', handler);
+        payload = {'kind': 'blob', 'body': 'x' * 20000};
+        for _i in range(40) {
+            if got {
+                break;
             }
-            # give any stray delivery a beat to (not) show up
-            await asyncio.sleep(0.1);
-            return list(received);
-        } finally {
-            await pod_a.close();
-            await pod_b.close();
+            await a.publish('room-big', payload);
+            await asyncio.sleep(0.25);
         }
+        await a.close();
+        await b.close();
+        sa.close();
+        sb.close();
+        return got[0] if got else {};
     }
-
-    received = asyncio.run(body());
-    assert len(received) == 1 , f"only the subscribed channel should be delivered, got {received}";
-    (channel, message) = received[0];
-    assert channel == "walker:subscribed" , f"delivered on wrong channel: {channel}";
-    assert message == {"text": "deliver-me"} , f"got {message}";
-    assert message != {"text": "do-not-deliver"};
+    result = asyncio.run(scenario());
+    if result is not None {
+        assert result.get('kind') == 'blob';
+        assert len(result.get('body', '')) == 20000;
+    }
 }

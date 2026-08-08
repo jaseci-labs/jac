@@ -23,31 +23,18 @@ impl JacScaleUserManager.postinit -> None {
         }
     }
 
-    db_config = get_scale_config().get_database_config();
-    mongodb_uri = db_config.get('mongodb_uri');
+    import os;
 
-    use_mongo = False;
-    if mongodb_uri is not None {
-        import from jaclang.scale.persistence.db { get_mongo_client }
-        import from jaclang.scale.persistence.mongo_health {
-            mongo_reachable,
-            warn_mongo_unreachable
-        }
-        client = get_mongo_client();
-
-        if mongo_reachable(client) {
-            use_mongo = True;
-            db = client['jac_db'];
-            self._identity_storage = MongoIdentityStorage(users_col=db['users']);
-            self._identity_storage.ensure_indexes();
-        } else {
-            warn_mongo_unreachable(
-                mongodb_uri, db_config['mongodb_timeout_ms'], "local identity storage"
-            );
-        }
+    store: Any = None;
+    try {
+        import from jaclang.scale.persistence.pg { shared_store }
+        store = shared_store();
+    } except Exception {
+        store = None;
     }
-    if not use_mongo {
-        import os;
+    if store is not None {
+        self._identity_storage = PgIdentityStorage(store=store);
+    } else {
         base_for_data = os.environ.get('JAC_DATA_PATH', self.base_path);
         data_dir = os.path.join(base_for_data, '.jac', 'data');
         os.makedirs(data_dir, exist_ok=True);
@@ -131,6 +118,21 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
         _root_id_request_cache.set(new_cache);
     }
     return result;
+}
+
+impl JacScaleUserManager.reset_root(identifier: str) -> str | None {
+    user = self.get_user(identifier);
+    if not user {
+        return None;
+    }
+    new_root = self._identity_storage.reset_root(str(user.get('user_id') or ''));
+    if new_root {
+        cache = _root_id_request_cache.get();
+        if cache is not None {
+            _root_id_request_cache.set(None);
+        }
+    }
+    return new_root;
 }
 
 impl JacScaleUserManager.ensure_user_root(user_id: str) -> str | None {

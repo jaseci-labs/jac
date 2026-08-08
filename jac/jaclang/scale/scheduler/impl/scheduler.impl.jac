@@ -304,16 +304,10 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
 
     scheduler_cfg = get_scale_config().get_scheduler_config();
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
-    db_cfg = get_scale_config().get_database_config();
-    if db_cfg.get('mongodb_uri') {
-        try {
-            mongo_db = MongoDb(client=get_mongo_client());
-            self._store = MongoJobStore(_db=mongo_db, _collection=collection);
-            logger.debug("MongoDB configured — jobs will be persisted");
-        } except Exception as e {
-            logger.warning(f"MongoDB connection failed, using in-memory: {e}");
-            self._store = MemoryJobStore();
-        }
+    doc_db = open_doc_db();
+    if doc_db is not None {
+        self._store = MongoJobStore(_db=doc_db, _collection=collection);
+        logger.debug("database configured — jobs will be persisted");
     } else {
         self._store = MemoryJobStore();
     }

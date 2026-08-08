@@ -48,35 +48,22 @@ glob SCAN_ROOTS: list[str] = ["jac0core", "runtimelib", "scale", "byllm"],
              "persistence record into the store is the one sanctioned live "
              "read"
          ),
-         "runtimelib/changeset.jac": (
-             1,
-             "record_delete derives delete-ordering dependencies from the "
-             "persistence record of the node being deleted"
-         ),
-         "runtimelib/impl/memory.impl.jac": (
-             16,
-             "the OCC/commit boundary: sqlite quarantine SQL over the "
-             "persisted $.edges field, the three-way edge-list merge in "
-             "_apply_one, empty-edges row deletion, _collect_into's "
-             "commit-scan, _post_apply re-baselining, and quarantine_ref's "
-             "dangling-stub prune (heal of the persisted record)"
-         ),
          "runtimelib/impl/query_planner.impl.jac": (
              1,
-             "_heal_sweep probes persisted stubs for orphaned suspects -- a "
-             "read of the stored record for repair, not live topology "
-             "(live enumeration in this file goes through sv_live_edges)"
+             "_walk_memory's volatile arm enumerates live anchor objects "
+             "directly; detach keeps node.edges and the sv store in step, "
+             "and the persistent arm is pure SQL (epic #7945)"
          ),
          "runtimelib/impl/serializer.impl.jac": (
              3,
              "serialization proper: writing data.edges on save and "
              "rebuilding the stub list plus _initial_edge_ids on load"
          ),
-         "scale/memory/impl/memory_hierarchy.mongo.impl.jac": (
-             11,
-             "the mongo persistence arm: $concatArrays merge, quarantine "
-             "cascade, fsck prune, recover re-link, and post-write "
-             "read-back all operate on the stored data.edges field"
+         "runtimelib/impl/session.impl.jac": (
+             1,
+             "hydration: _materialize rebuilds the stub list from the "
+             "store's src/dst adjacency (ordered by seq) since node rows "
+             "no longer rewrite on edge changes (epic #7945)"
          ),
 
      };

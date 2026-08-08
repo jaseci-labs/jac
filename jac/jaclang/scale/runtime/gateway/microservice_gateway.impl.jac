@@ -863,11 +863,11 @@ impl MicroserviceGateway.start -> None {
 
 impl MicroserviceGateway._install_admin_api -> None {
     import from jaclang.scale.jserver.jfast_api { JFastApiServer }
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.scale.identity.user_manager { JacScaleUserManager }
 
     self.server = JFastApiServer(app=self.app);
 
-    self.user_manager = Jac.get_user_manager(base_path=self.base_path);
+    self.user_manager = JacScaleUserManager(base_path=self.base_path);
     self.server.set_user_manager(self.user_manager);
 
     self.register_admin_endpoints();

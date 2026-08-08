@@ -112,8 +112,7 @@ test "kubernetes config from dict" {
         "namespace": "test-ns",
         "container_port": 9000,
         "ingress_node_port": 30082,
-        "mongodb_enabled": False,
-        "redis_enabled": False
+        "postgres_enabled": False
     };
 
     config = KubernetesConfig.from_dict(KubernetesConfig, config_dict);
@@ -122,8 +121,7 @@ test "kubernetes config from dict" {
     assert config.namespace == "test-ns";
     assert config.container_port == 9000;
     assert config.ingress_node_port == 30082;
-    assert config.mongodb_enabled is False;
-    assert config.redis_enabled is False;
+    assert config.postgres_enabled is False;
 }
 
 test "app config creation" {

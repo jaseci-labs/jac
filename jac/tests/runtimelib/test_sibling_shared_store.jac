@@ -18,8 +18,6 @@ import unittest.mock;
 import from tempfile { mkdtemp }
 import from uuid { UUID, uuid4 }
 
-import from jaclang.runtimelib.memory { SqliteMemory }
-
 
 """Insert a raw anchor row whose archetype class only a peer service has."""
 def _seed_foreign_anchor(db: str) -> str {
@@ -60,27 +58,6 @@ def _table_ids(db: str, table: str) -> list {
     return rows;
 }
 
-
-test "sibling read skips a peer's unresolvable anchor without quarantining" {
-    tmp = mkdtemp();
-    db = os.path.join(tmp, "anchor_store.db");
-    be: any = SqliteMemory(path=db);
-    be._ensure_connection();
-    anchor_id = _seed_foreign_anchor(db);
-
-    with unittest.mock.patch.dict(os.environ, {"JAC_SV_SIBLING": "1"}) {
-        got = be.get(UUID(anchor_id));
-    }
-
-    assert got is None;
-    assert _table_ids(db, "anchors") == [anchor_id] , (
-        "the anchor must remain in the shared store for the owning service"
-    );
-    assert _table_ids(db, "anchors_quarantine") == [] , (
-        "a sibling's inability to resolve a peer's class is expected, "
-        "not corruption; it must never quarantine the shared anchor"
-    );
-}
 
 test "sibling resolve_ref skips a peer's ref without heal-pruning" {
     import from uuid { uuid4 as _uuid4 }
@@ -131,22 +108,4 @@ test "non-sibling resolve_ref still heals a genuine dangler" {
 
     assert got is None;
     fake_ctx.mem.quarantine_ref.assert_called_once();
-}
-
-test "non-sibling read still quarantines an unresolvable class (rename workflow)" {
-    tmp = mkdtemp();
-    db = os.path.join(tmp, "anchor_store.db");
-    be: any = SqliteMemory(path=db);
-    be._ensure_connection();
-    anchor_id = _seed_foreign_anchor(db);
-
-    os.environ.pop("JAC_SV_SIBLING", None);
-    got = be.get(UUID(anchor_id));
-
-    assert got is None;
-    assert _table_ids(db, "anchors") == [];
-    assert _table_ids(db, "anchors_quarantine") == [anchor_id] , (
-        "outside sibling mode the quarantine + `jac db recover-all` "
-        "rename workflow must keep working"
-    );
 }

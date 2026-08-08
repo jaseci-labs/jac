@@ -600,19 +600,13 @@ test "webhook warning absent at boot without webhook walkers" {
     }
 }
 
-test "webhook warning present at boot with webhook walkers" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
-    try {
-        warnings = _boot_and_capture_webhook_warnings("test_api.jac");
-        assert warnings , (
-            "Expected webhook durability warning at boot for an app with "
-            "webhook walkers and no MongoDB"
-        );
-    } finally {
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
-    }
+test "webhook durability warning absent when the shared database is available" {
+    # Keys persist in the shared Postgres database by default now, so a
+    # normal boot with webhook walkers must NOT warn about in-memory keys.
+    warnings = _boot_and_capture_webhook_warnings("test_api.jac");
+    assert not warnings , (
+        f"Webhook durability warning fired despite a database: {warnings}"
+    );
 }
 
 test "webhook without mongo - endpoint exists" {

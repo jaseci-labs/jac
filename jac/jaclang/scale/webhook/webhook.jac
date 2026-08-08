@@ -7,9 +7,7 @@ import from datetime { UTC, datetime, timedelta }
 import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.persistence.db { Db, get_mongo_client }
-import from jaclang.scale.persistence.mongo_db { MongoDb }
-import from jaclang.scale.persistence.mongo_health { mongo_recently_down }
+import from jaclang.scale.persistence.docdb { PgDocDb, open_doc_db }
 
 glob logger = logging.getLogger(__name__);
 
@@ -25,16 +23,12 @@ obj WebhookUtils {
     static def extract_signature(header_value: str) -> str;
 }
 
-def _create_api_key_db -> Db | None {
-    db_config = get_scale_config().get_database_config();
-    if db_config.get('mongodb_uri') is not None {
-        return MongoDb(client=get_mongo_client(), db_name='jac_db');
-    }
-    return None;
+def _create_api_key_db -> PgDocDb | None {
+    return open_doc_db();
 }
 
 obj ApiKeyManager {
-    has _db: Db | None = _create_api_key_db(),
+    has _db: PgDocDb | None = _create_api_key_db(),
         _inmemory_store: dict = {},
         _collection: str = 'webhook_api_keys',
         _rate_window: dict = {};

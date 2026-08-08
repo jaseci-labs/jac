@@ -32,6 +32,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       desktop: ${{ steps.filter.outputs.desktop }}
       installer: ${{ steps.filter.outputs.installer }}
+      native: ${{ steps.filter.outputs.native }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -55,6 +56,23 @@ jobs:
               - 'jac/jaclang/runtimelib/client/targets/desktop/**'
             installer:
               - 'scripts/install.sh'
+            # NARROWING filter (like `installer`, unlike `scale`/`byllm`, which
+            # only ever widen `core`). The macOS and aarch64 native lanes cost a
+            # macOS runner and a qemu-user cross build, and `core: jac/**` fired
+            # them on every runtimelib/scale PR that could not possibly move
+            # Mach-O linking, the na->wasm floor, or MOVW_UABS relocations.
+            # Deliberately excludes ci.yml (matching every other narrow filter
+            # here) and jac0core/** -- payload-compiler regressions surface in
+            # test-compiler/test-runtime, which are not path-filtered off. To
+            # exercise these lanes on a PR that touches none of these paths, use
+            # workflow_dispatch; push-to-main always runs them.
+            native:
+              - 'jac/jaclang/compiler/passes/native/**'
+              - 'jac/tests/compiler/passes/native/**'
+              - 'jac/jaclang/compiler/tests/test_prim_equivalence.jac'
+              - 'jac/native/**'
+              - 'jac/build.zig'
+              - 'jac/build.zig.zon'
 
   # Build (or cache-restore) the jac binary ONCE per run, smoke it hermetically,
   # and publish it (plus the gitignored typeshed stubs) as artifacts. Every
@@ -769,7 +787,7 @@ jobs:
 
   test-native-macos:
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: macos-latest
     # Dev lane: run THIS checkout's compiler (see test-compiler).
     env:
@@ -833,7 +851,7 @@ jobs:
   # skip: without qemu + cross libc the #6366 runtime tests never execute.
   test-native-aarch64:
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: ubuntu-latest
     # Dev lane: run THIS checkout's compiler (see test-compiler).
     env:
@@ -1020,7 +1038,6 @@ jobs:
         JAC_TEST_JOBS: "0"
       run: |
         jac test jac/jaclang/scale/tests/test_gcs_storage.jac -x
-        jac test jac/jaclang/scale/tests/test_firestore_db.jac -x
         jac test jac/jaclang/scale/tests/test_firebase_auth_sso.jac -x
 
   # One job, not a two-leg matrix: the deploy-core and failure-path phases
@@ -1303,6 +1320,15 @@ jobs:
         echo "--- client console output (informational) ---"
         jac browse console
 
+    - name: Dump server thread stacks on failure
+      if: failure()
+      run: |
+        pip install py-spy >/dev/null 2>&1 || true
+        for p in $(pgrep -f "jac start main.jac"); do
+          echo "=== py-spy dump pid $p ==="
+          sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
+        done
+
     - name: Screenshot browse state on failure
       if: failure()
       env:
@@ -1529,6 +1555,11 @@ jobs:
           kubectl -n kube-system patch deployment metrics-server --type=json \
             -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' \
             || echo "WARN: metrics-server patch failed"
+
+          # The provisioner deploys postgres:18; preload it so the DB pod
+          # never depends on runner egress.
+          docker pull postgres:18
+          kind load docker-image postgres:18 --name jac
 
       - name: Show cluster info
         run: |

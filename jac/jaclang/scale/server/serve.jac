@@ -20,6 +20,7 @@ import from jaclang.scale.jserver.jserver {
 }
 import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
+import from jaclang.runtimelib.server { UserManager as CoreUserManager }
 import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jaclang.scale.shared.utils { _extract_path_param_names }
@@ -149,6 +150,7 @@ obj JacAPIServerEmailer {
 
 obj JacAPIServerCore {
     def postinit -> None;
+    def _make_user_manager -> CoreUserManager;
     def start(
         dev: bool = False,
         no_client: bool = False,

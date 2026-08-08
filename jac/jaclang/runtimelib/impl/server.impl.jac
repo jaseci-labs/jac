@@ -9,6 +9,10 @@ import from jaclang.runtimelib.auth_models {
     RegisterRequest
 }
 
+impl JacAPIServer._make_user_manager -> UserManager {
+    return UserManager(base_path=self.base_path);
+}
+
 impl UserManager.postinit -> None {
     import sqlite3;
     import threading;
@@ -1247,6 +1251,29 @@ impl ModuleIntrospector.render_page(
     return Jac.render_page(self, function_name, args, username);
 }
 
+impl ModuleIntrospector.has_client_route(url_path: str) -> bool {
+    if not self._spa_routes_loaded {
+        self._spa_route_patterns = self._load_spa_routes();
+        self._spa_routes_loaded = True;
+    }
+    patterns = self._spa_route_patterns;
+    if patterns is None {
+        return False;
+    }
+    segments = [
+        seg
+        for seg in url_path.split('/')
+        if seg
+    ];
+    for pattern in patterns {
+        if self._spa_route_matches(pattern, segments) {
+            return True;
+        }
+    }
+    return False;
+}
+
+
 impl ModuleIntrospector.spa_fallback_status(url_path: str) -> int {
     if not self._spa_routes_loaded {
         self._spa_route_patterns = self._load_spa_routes();
@@ -1642,7 +1669,7 @@ impl ExecutionHandler.spawn_walker(
 
 impl JacAPIServer.postinit -> None {
     import from jaclang.runtimelib.scheduler { Scheduler }
-    self.user_manager = Jac.get_user_manager(base_path=self.base_path);
+    self.user_manager = self._make_user_manager();
 
     _um = self.user_manager;
     def _shared_root_id -> (str | None) {
@@ -1938,7 +1965,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 Jac.send_json(self, 200, {'status': 'ok'});
                 return;
             }
-            if (path == '/graph') {
+            if (path == '/graph')
+                and not server.introspector.has_client_route('/graph') {
                 self._serve_graph_page();
                 return;
             }
@@ -1946,7 +1974,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 self._serve_graph_data();
                 return;
             }
-            if (path == '/docs') {
+            if (path == '/docs')
+                and not server.introspector.has_client_route('/docs') {
                 Jac.send_html(self, 200, _docs_html(server));
                 return;
             }

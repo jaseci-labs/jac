@@ -40,6 +40,11 @@ impl _get_network_ips -> list[str] {
     return ips;
 }
 
+impl JacAPIServerCore._make_user_manager -> CoreUserManager {
+    import from jaclang.scale.identity.user_manager { JacScaleUserManager }
+    return JacScaleUserManager(base_path=self.base_path);
+}
+
 impl JacAPIServerCore.postinit -> None {
     super.postinit();
 
@@ -144,7 +149,6 @@ impl JacAPIServerCore.postinit -> None {
 impl JacAPIServerCore._setup_events -> None {
     import from jaclang.scale.events.publisher { set_broker }
     import from jaclang.scale.events.subscriber { get_subscriptions }
-    import from jaclang.scale._optdeps.optional_deps { is_optional_available }
     import atexit;
 
     cfg = get_scale_config().get_events_config();
@@ -152,31 +156,24 @@ impl JacAPIServerCore._setup_events -> None {
         return;
     }
 
-    db_cfg = get_scale_config().get_database_config();
-    url = cfg.get('url') or db_cfg.get('redis_url');
+    import from jaclang.scale.persistence.pg { scale_db_url }
+    url = cfg.get('url') or scale_db_url();
 
-    if url and is_optional_available('redis') {
-        import from jaclang.scale.events.streams.redis { RedisEventStream }
+    if url {
+        import from jaclang.scale.events.streams.postgres { PgEventStream }
         broker_cfg = dict(cfg);
         broker_cfg['url'] = url;
-        self._broker = RedisEventStream(config=broker_cfg);
-        broker_kind = "redis";
+        self._broker = PgEventStream(config=broker_cfg);
+        broker_kind = "postgres";
     } else {
         import from jaclang.scale.events.streams.local { LocalEventStream }
         self._broker = LocalEventStream(config=cfg);
         broker_kind = "local";
-        if url is None {
-            logger.warning(
-                "events enabled with no redis url; using LocalEventStream "
-                "(in-memory, single-pod). Set events.url or database.redis_url "
-                "for cross-pod streaming via Redis."
-            );
-        } else {
-            logger.warning(
-                "events enabled and url set, but `redis` extra is not installed; "
-                "using LocalEventStream. Enable the 'data.redis' capability to use Redis."
-            );
-        }
+        logger.warning(
+            "events enabled with no database url; using LocalEventStream "
+            "(in-memory, single-pod). Set events.url or JAC_DB_URL for "
+            "cross-pod streaming via Postgres."
+        );
     }
 
     set_broker(self._broker);
@@ -209,6 +206,17 @@ impl JacAPIServerCore.start(
     on_ready: Callable[..., None] | None = None
 ) -> None {
     self.introspector.load();
+    if self.introspector.has_client_route('/docs') {
+        try {
+            self.server.app.router.routes = [
+                r
+                for r in self.server.app.router.routes
+                if getattr(r, 'path', '') not in ('/docs', '/redoc')
+            ];
+        } except Exception as e {
+            logger.debug(f"could not unmount built-in /docs: {e}");
+        }
+    }
     self._ensure_sv_siblings();
 
     if not dev and not no_client {
