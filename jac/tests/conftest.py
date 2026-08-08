@@ -20,6 +20,15 @@ def disable_rich_console_formatting(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NO_EMOJI", "1")
 
 
+@pytest.fixture(autouse=True)
+def disable_auto_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the suite hermetic: fixture projects declare fake dependencies,
+    and execution commands would otherwise auto-install them (network).
+    Sync-specific tests opt back in by setting JAC_AUTO_INSTALL themselves.
+    """
+    monkeypatch.setenv("JAC_AUTO_INSTALL", "0")
+
+
 # =============================================================================
 # Test Utilities
 # =============================================================================

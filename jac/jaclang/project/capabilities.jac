@@ -368,8 +368,8 @@ def missing_capability_error(capability: str) -> str {
     provides = ", ".join(sorted(cap.deps.keys()));
     return (
         f"Capability '{capability}' is required but not installed (provides: {provides}). "
-        f"Declare the matching intent in jac.toml, then run 'jac install' to sync the "
-        f"'{cap.context}' closure into the {where}'s .jac/venv."
+        "Declare the matching intent in jac.toml — the next run syncs the "
+        f"'{cap.context}' closure into the {where}'s .jac/venv (or run 'jac install')."
     );
 }
 

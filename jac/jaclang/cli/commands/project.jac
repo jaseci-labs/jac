@@ -53,12 +53,6 @@ glob registry = get_registry();
             help="With --pack: output .jacpack file path"
         ),
         Arg.create(
-            "skip",
-            typ=bool,
-            default=False,
-            help="Skip dependency installation (Python + npm); run 'jac install' later"
-        ),
-        Arg.create(
             "style",
             typ=str,
             default=None,
@@ -141,7 +135,6 @@ def create(
     `list: bool = False,
     pack: str = "",
     pack_output: str = "",
-    `skip: bool = False,
     style: str | None = None,
     baseColor: str | None = None,
     theme: str | None = None,

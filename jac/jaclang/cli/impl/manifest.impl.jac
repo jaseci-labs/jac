@@ -600,13 +600,6 @@ def _command_routes -> list[CommandMeta] {
                     short=''
                 ),
                 ArgMeta(
-                    name='skip',
-                    typ='bool',
-                    default=False,
-                    help="Skip dependency installation (Python + npm); run 'jac install' later",
-                    short='s'
-                ),
-                ArgMeta(
                     name='style',
                     help='shadcn style preset (nova|vega|maia|lyra|mira)',
                     short=''

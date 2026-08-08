@@ -1203,10 +1203,13 @@ impl `test(
 ) -> int {
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.project.sync { ensure_project_env }
 
     if isinstance(paths, str) {
         paths = [paths];
     }
+
+    ensure_project_env(include_dev=True);
 
     if (not paths and not directory) {
         import from jaclang.project.config { get_config }

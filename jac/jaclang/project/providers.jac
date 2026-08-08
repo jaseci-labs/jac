@@ -6,6 +6,8 @@ import from jaclang.project.pyvenv {
     get_venv_site_packages,
     make_git_spec,
     make_pip_spec,
+    prune_synced_specs,
+    record_synced_specs,
     run_pip,
     summarize_pip_failure
 }
@@ -322,6 +324,7 @@ obj PythonProvider(EcosystemProvider) {
                 }
                 return True;
             }
+            record_synced_specs(venv_dir, specs);
             newly_installed: list[tuple] = [];
             (after_ok, after_set) = self._snapshot_installed(config);
             if after_ok and before_snapshot_ok {
@@ -422,6 +425,7 @@ obj PythonProvider(EcosystemProvider) {
             return None;
         }
         recorded: list[str] = [];
+        final_specs: list[str] = [];
         for (name, version) in plan {
             version_str = version;
             if not version_str {
@@ -444,7 +448,11 @@ obj PythonProvider(EcosystemProvider) {
             }
             config.add_dependency(name, version_str, dev=dev, dep_type="python");
             recorded.append(version_str);
+            final_specs.append(make_pip_spec(name, version_str));
         }
+        # Record the constrained specs (what jac.toml now declares), not just the
+        # bare names pip was given, so the sync marker matches the manifest.
+        record_synced_specs(self._project_venv(config), final_specs);
         return recorded;
     }
 
@@ -483,6 +491,7 @@ obj PythonProvider(EcosystemProvider) {
             config, ["uninstall", "-y", name]
         );
         if returncode == 0 {
+            prune_synced_specs(venv_dir, name);
             console.print(f"  {name} uninstalled successfully");
             return True;
         }

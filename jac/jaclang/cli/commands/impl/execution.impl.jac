@@ -7,10 +7,11 @@ import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.project.kinds { RunPlan }
 
-def _discover_config_from_file(filename: str) -> None {
+def _discover_config_from_file(filename: str, include_dev: bool = False) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { JacConfig, get_config, set_config }
     import from jaclang.project.pyvenv { add_venv_to_path }
+    import from jaclang.project.sync { ensure_project_env }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
@@ -33,6 +34,7 @@ def _discover_config_from_file(filename: str) -> None {
         if active_profile {
             config.apply_profile_overlay(active_profile);
         }
+        ensure_project_env(config, include_dev=include_dev);
         add_venv_to_path(config);
     }
 }
@@ -408,7 +410,8 @@ impl run(
                 }
             } else {
                 import from jaclang.jac0core.helpers { dump_traceback }
-                console.error(dump_traceback(e));
+                import from jaclang.project.sync { module_not_found_hint }
+                console.error(dump_traceback(e), hint=module_not_found_hint(e));
             }
         }
         sys.argv = original_argv;
@@ -566,7 +569,7 @@ impl start(
         return 1;
     }
 
-    _discover_config_from_file(filename);
+    _discover_config_from_file(filename, include_dev=dev);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
 
@@ -586,7 +589,10 @@ impl start(
             }
         } else {
             import from jaclang.jac0core.helpers { dump_traceback }
-            console.error(f"Error loading {filename}: {e}");
+            import from jaclang.project.sync { module_not_found_hint }
+            console.error(
+                f"Error loading {filename}: {e}", hint=module_not_found_hint(e)
+            );
             console.error(dump_traceback(e));
         }
         mach.close();
@@ -757,11 +763,23 @@ def _ensure_watchdog_installed -> bool {
         return False;
     }
 
+    # Auto-sync already installed the declared dev deps, so reaching here means
+    # watchdog is not declared. Record it as a dev dependency (the equivalent of
+    # 'jac install watchdog --dev') so jac.toml stays the single source of truth.
     console.print(
-        "\n  Installing watchdog (required for --dev mode)...\n", style="info"
+        "\n  Recording watchdog as a dev dependency (required for --dev mode)...\n",
+        style="info"
     );
     python = get_python_provider();
-    if python.install_specs(config, ["watchdog>=3.0.0"], InstallContext()) {
+    recorded = python.add_packages(
+        config, [("watchdog", ">=3.0.0")], True, InstallContext()
+    );
+    if recorded is not None {
+        try {
+            config.save();
+        } except Exception as e {
+            console.warning(f"watchdog installed but jac.toml not updated: {e}");
+        }
         add_venv_to_path(config);
         if _watchdog_importable() {
             console.success("watchdog installed");

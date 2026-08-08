@@ -436,3 +436,81 @@ def is_venv_in_path(config: JacConfig | None = None) -> bool {
     site_packages = get_venv_site_packages(config.get_venv_dir());
     return str(site_packages) in sys.path;
 }
+
+
+glob SYNC_MARKER_NAME: str = "jac-sync.json";
+
+
+def _runtime_python_tag -> str {
+    import sys;
+    return f"{sys.version_info.major}.{sys.version_info.minor}";
+}
+
+
+def read_sync_marker(venv_dir: Path) -> dict[str, str | list[str]] {
+    import json;
+    try {
+        data = json.loads((venv_dir / SYNC_MARKER_NAME).read_text(encoding="utf-8"));
+        if isinstance(data, dict) and isinstance(data.get("specs"), list) {
+            return data;
+        }
+    } except (OSError, ValueError) { }
+    return {};
+}
+
+
+def _write_sync_marker(venv_dir: Path, specs: list[str]) {
+    import json;
+    try {
+        (venv_dir / SYNC_MARKER_NAME).write_text(
+            json.dumps({"python": _runtime_python_tag(), "specs": sorted(set(specs))})
+                + "\n",
+            encoding="utf-8"
+        );
+    } except OSError { }
+}
+
+
+def record_synced_specs(venv_dir: Path, specs: list[str]) {
+    if not specs or not venv_dir.is_dir() {
+        return;
+    }
+    marker = read_sync_marker(venv_dir);
+    known: list[str] = (
+        [str(s) for s in marker.get("specs", [])]
+            if marker.get("python") == _runtime_python_tag()
+            else []
+    );
+    _write_sync_marker(venv_dir, known + [str(s) for s in specs]);
+}
+
+
+def prune_synced_specs(venv_dir: Path, name: str) {
+    marker = read_sync_marker(venv_dir);
+    specs = [str(s) for s in marker.get("specs", [])];
+    if not specs {
+        return;
+    }
+    wanted = name.strip().lower().replace("_", "-");
+    kept = [
+        s
+        for s in specs
+        if _spec_base_name(s).replace("_", "-") != wanted
+    ];
+    if len(kept) == len(specs) {
+        # Spec couldn't be attributed by name (e.g. a git+ spec): wipe the
+        # marker so the next execution re-syncs instead of trusting stale state.
+        kept = [];
+    }
+    _write_sync_marker(venv_dir, kept);
+}
+
+
+def sync_marker_satisfies(venv_dir: Path, specs: list[str]) -> bool {
+    marker = read_sync_marker(venv_dir);
+    if marker.get("python") != _runtime_python_tag() {
+        return False;
+    }
+    known = {str(s) for s in marker.get("specs", [])};
+    return all(s in known for s in specs);
+}
