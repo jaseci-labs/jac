@@ -447,31 +447,39 @@ def collect_method_names(arch: uni.Archetype) -> set[str] {
     return names;
 }
 
+def resolve_importer_path_from_node(nd: uni.UniNode) -> (str | None) {
+    importer_mod = nd.find_parent_of_type(uni.Module);
+    if (
+        importer_mod is None
+        or importer_mod.source is None
+        or not importer_mod.source.file_path
+    ) {
+        return None;
+    }
+    try {
+        return str(Path(importer_mod.source.file_path).resolve());
+    } except OSError {
+        return None;
+    }
+}
+
 def resolve_import_source_module(prog: any, nd: uni.Import) -> (uni.Module | None) {
     if not nd.from_loc {
         return None;
     }
     resolved_path = nd.from_loc.resolve_relative_path();
-    abs_path = str(Path(resolved_path).resolve());
-    source_mod = prog.mod.hub.get(resolved_path) or prog.mod.hub.get(abs_path);
-    if source_mod {
-        return source_mod;
+    if not Path(resolved_path).exists() {
+        return None;
     }
-    if Path(resolved_path).exists() {
-        saved_opts = prog?._compile_options;
-        try {
-            source_mod = prog.compile(
-                resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
-            );
-        } finally {
-            if saved_opts is not None {
-                prog._compile_options = saved_opts;
-            }
+    importer_path = resolve_importer_path_from_node(nd);
+    saved_opts = prog?._compile_options;
+    try {
+        return prog.load_dependency_module(resolved_path, importer_path=importer_path);
+    } finally {
+        if saved_opts is not None {
+            prog._compile_options = saved_opts;
         }
-        prog.mod.hub[abs_path] = source_mod;
-        return source_mod;
     }
-    return None;
 }
 
 def import_target_pinned_server(nd: uni.Import) -> bool {

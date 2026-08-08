@@ -39,6 +39,7 @@ obj UniNode {
         loc: CodeLocInfo postinit;
 
     def postinit -> None;
+    def __getattr__(name: str) -> object;
     def accept_enter(v: UniPass) -> None;
     def accept_exit(v: UniPass) -> None;
 
