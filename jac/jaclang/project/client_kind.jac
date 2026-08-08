@@ -50,3 +50,59 @@ def mobui_enforced_for(
     }
     return not mobui_module_exempt(mod_path, proj_root);
 }
+
+obj ClientSurface {
+    has framework: str = "react",
+        kind: str = "web",
+        project_root: (str | None) = None,
+        is_compose: bool = False,
+        is_mobui: bool = False;
+}
+
+def resolve_client_surface(
+    mod_path: str,
+    framework_override: str = "",
+    explicit_kind: str = "web",
+    explicit_root: (str | None) = None,
+) -> ClientSurface {
+    (kind, proj_root) = resolve_client_kind_context(
+        mod_path, explicit_kind, explicit_root
+    );
+    override = framework_override or "";
+    if override == "compose" {
+        framework = "compose";
+        is_compose = True;
+    } elif override {
+        framework = override;
+        is_compose = False;
+    } else {
+        cfg = _config_for(mod_path);
+        framework = (cfg.client.framework if (cfg and cfg.client) else "") or "react";
+        is_compose = compose_enforced_for(mod_path);
+    }
+    is_mobui = mobui_enforced_for(mod_path, explicit_kind, explicit_root);
+    return ClientSurface(
+        framework=framework,
+        kind=kind,
+        project_root=proj_root,
+        is_compose=is_compose,
+        is_mobui=is_mobui,
+    );
+}
+
+def compose_enforced_for(mod_path: str) -> bool {
+    cfg = _config_for(mod_path);
+    if not cfg or cfg.project_root is None {
+        return False;
+    }
+    framework = (cfg.client.framework if cfg.client else "") or "";
+    if framework != "compose" {
+        return False;
+    }
+    if not mod_path {
+        return False;
+    }
+    real_mod = os.path.normcase(os.path.realpath(mod_path));
+    real_root = os.path.normcase(os.path.realpath(str(cfg.project_root)));
+    return real_mod == real_root or real_mod.startswith(real_root + os.sep);
+}

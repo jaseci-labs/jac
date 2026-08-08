@@ -176,8 +176,10 @@ def native_stdlib_root -> (str | None) {
     if not jaclang?.__file__ {
         return None;
     }
-    root = os.path.join(os.path.dirname(jaclang.__file__), "runtimelib", "na_stdlib");
-    return root if os.path.isdir(root) else None;
+    stdlib_root = os.path.join(
+        os.path.dirname(jaclang.__file__), "runtimelib", "na_stdlib"
+    );
+    return stdlib_root if os.path.isdir(stdlib_root) else None;
 }
 
 def is_native_by_location(file_path: str) -> bool {
@@ -223,12 +225,12 @@ def is_client_by_location(file_path: str) -> bool {
 
 def is_bundled_native_module(module_name: str) -> bool {
     import os;
-    root = native_stdlib_root();
-    if root is None or not module_name {
+    stdlib_root = native_stdlib_root();
+    if stdlib_root is None or not module_name {
         return False;
     }
     path_name = module_name.lstrip('.').replace('.', os.sep);
-    return _native_variant_path(os.path.join(root, path_name)) is not None;
+    return _native_variant_path(os.path.join(stdlib_root, path_name)) is not None;
 }
 
 def native_target_os -> str {

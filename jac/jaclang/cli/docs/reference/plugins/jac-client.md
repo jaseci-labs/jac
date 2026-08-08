@@ -1630,10 +1630,12 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac start --client desktop` | Start desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac start --client mobile` | Start mobile app on device/simulator |
 | `jac start --client react-native --dev` | Start React Native app with Fast Refresh |
+| `jac start --client android --dev` | Start Android Compose app with dex hot-swap HMR |
 | `jac build` | Build for production (web) |
 | `jac build --client desktop` | Build desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client react-native` | Build React Native app (Android/iOS, native views) |
+| `jac build --client android` | Build Android Compose app (Jetpack Compose APK) |
 | `jac setup react-native` | One-time React Native scaffold (`.jac/mobile-rn/`) |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
@@ -1667,7 +1669,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `pwa`, `static`, `desktop`, `mobile`, `react-native`) | `web` |
+| `--client` | Build target (`web`, `pwa`, `static`, `desktop`, `mobile`, `react-native`, `android`) | `web` |
 | `-p, --platform` | Platform for **mobile** / **react-native** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
 
 A project whose `jac.toml` declares `kind = "web-static"` is built with the
@@ -2019,6 +2021,51 @@ eas_update_branch = "production"   # or leave "" for the release/debug default
 ```
 
 Every subsequent `jac build --client react-native` publishes an OTA update to the configured branch after the native artifact is produced. `eas_update_message` lets you pin a fixed message; leave it empty to let EAS derive one (`--auto`).
+
+### Android Compose Target
+
+Native Android applications using [Jetpack Compose](https://developer.android.com/jetpack/compose). Unlike the [Capacitor mobile target](#mobile-target-capacitor) (webview) or [React Native target](#react-native-target-beta) (mobUI + RN views), the Android target compiles a **Compose-faithful Jac surface** (`<Column>`, `<Text>`, `<Button>`, `Modifier`, …) directly to Kotlin/Compose.
+
+**Prerequisites:**
+
+- JDK 17+
+- Android SDK (`ANDROID_HOME` or `ANDROID_SDK_ROOT`)
+- `adb` on PATH for device install/dev
+- Gradle (or let the emitter scaffold `gradlew`)
+
+**Setup & Build:**
+
+```bash
+# 1. One-time setup (creates apps/android/ scaffold + [client.android] defaults)
+jac setup android
+
+# 2. Development: base host APK + HTTP dex hot-swap
+jac start main.jac --client android --dev
+
+# 3. Production APK
+jac build --client android
+```
+
+The Android target requires `[client] framework = "compose"` in `jac.toml`. If absent, `jac build --client android` writes it automatically on first run.
+
+**Configuration** via `[client]` and `[client.android]` in `jac.toml`:
+
+```toml
+[client]
+framework = "compose"
+
+[client.android]
+package = "dev.jac.generated"   # Android applicationId
+app_name = "Jac App"
+backend_url = ""                # optional RPC backend URL
+type_check = true               # Compose widget type-checking (default on)
+release = false                 # true → assembleRelease
+avd = ""                        # emulator AVD name (or set JAC_ANDROID_AVD)
+```
+
+**Dev loop:** `jac start --client android --dev` builds a base `:app` host APK, installs it via `adb`, serves `classes.dex` over HTTP, and watches client `.jac` files. Saving a file recompiles the `:hot` module and swaps dex without reinstalling.
+
+**Output:** APK under `apps/android/app/build/outputs/apk/` (debug or release per `[client.android].release`).
 
 #### Capacitor vs React Native
 

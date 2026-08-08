@@ -1,0 +1,68 @@
+// AndroidX Compose constant namespaces (metalava shape), bundled for the Jac
+// type-checker. Ingested at TypeEvaluator init via compose_signatures
+// (parse_const_text) -> _install_compose_consts, which installs each named
+// constant as a member on the matching `<Name>Namespace` class in js_globals.pyi,
+// so `Arrangement.Center`, `Alignment.CenterVertically`, `Color.Red` type-check
+// (and a typo like `Arrangement.Centre` is flagged) under
+// `[client.android] type_check = true`. Regenerate/extend from the upstream
+// signature files:
+//   compose/foundation/foundation-layout/api/current.txt   (Arrangement)
+//   compose/ui/ui/api/current.txt                          (Alignment)
+//   compose/ui/ui-graphics/api/current.txt                 (Color)
+// Only `property`/`field` lines (not getter methods) are parsed; the enclosing
+// class name — with a trailing `.Companion` stripped, since Compose keeps these
+// on the companion object but Kotlin/Jac address them straight off the type —
+// keys the namespace. Constant value classes (Color as a callable, TextStyle,
+// Shape) are a separate concern; these entries only make the named members
+// resolve, with their Kotlin type mapped where it is a scalar.
+
+package androidx.compose.foundation.layout {
+  public final class Arrangement {
+    property public final androidx.compose.foundation.layout.Arrangement.HorizontalOrVertical Center;
+    property public final androidx.compose.foundation.layout.Arrangement.Horizontal Start;
+    property public final androidx.compose.foundation.layout.Arrangement.Horizontal End;
+    property public final androidx.compose.foundation.layout.Arrangement.Vertical Top;
+    property public final androidx.compose.foundation.layout.Arrangement.Vertical Bottom;
+    property public final androidx.compose.foundation.layout.Arrangement.HorizontalOrVertical SpaceBetween;
+    property public final androidx.compose.foundation.layout.Arrangement.HorizontalOrVertical SpaceEvenly;
+    property public final androidx.compose.foundation.layout.Arrangement.HorizontalOrVertical SpaceAround;
+  }
+}
+
+package androidx.compose.ui {
+  public static final class Alignment.Companion {
+    property public final androidx.compose.ui.Alignment TopStart;
+    property public final androidx.compose.ui.Alignment TopCenter;
+    property public final androidx.compose.ui.Alignment TopEnd;
+    property public final androidx.compose.ui.Alignment CenterStart;
+    property public final androidx.compose.ui.Alignment Center;
+    property public final androidx.compose.ui.Alignment CenterEnd;
+    property public final androidx.compose.ui.Alignment BottomStart;
+    property public final androidx.compose.ui.Alignment BottomCenter;
+    property public final androidx.compose.ui.Alignment BottomEnd;
+    property public final androidx.compose.ui.Alignment.Vertical Top;
+    property public final androidx.compose.ui.Alignment.Vertical CenterVertically;
+    property public final androidx.compose.ui.Alignment.Vertical Bottom;
+    property public final androidx.compose.ui.Alignment.Horizontal Start;
+    property public final androidx.compose.ui.Alignment.Horizontal CenterHorizontally;
+    property public final androidx.compose.ui.Alignment.Horizontal End;
+  }
+}
+
+package androidx.compose.ui.graphics {
+  public static final class Color.Companion {
+    property public final long Black;
+    property public final long DarkGray;
+    property public final long Gray;
+    property public final long LightGray;
+    property public final long White;
+    property public final long Red;
+    property public final long Green;
+    property public final long Blue;
+    property public final long Yellow;
+    property public final long Cyan;
+    property public final long Magenta;
+    property public final long Transparent;
+    property public final long Unspecified;
+  }
+}

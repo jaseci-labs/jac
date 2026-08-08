@@ -31,6 +31,14 @@ import from jaclang.compiler.type_system.ts_decl_parser {
     TsAccess,
     TsMember
 }
+import from jaclang.compiler.type_system.compose_signatures {
+    ComposeSig,
+    ComposeParamKind,
+    SigParam,
+    parse_signature_text,
+    parse_modifier_text,
+    parse_const_text
+}
 
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
@@ -170,6 +178,9 @@ obj TypeEvaluator {
         _DOM_TYPES_STUB_FILE_PATH: str postinit,
         _NA_BUILTINS_STUB_FILE_PATH: str postinit,
         _JS_GLOBALS_STUB_FILE_PATH: str postinit,
+        _COMPOSE_WIDGETS_FILE_PATH: str postinit,
+        _COMPOSE_MODIFIERS_FILE_PATH: str postinit,
+        _COMPOSE_CONSTS_FILE_PATH: str postinit,
         _TYPING_AMBIENT_STUB_FILE_PATH: str postinit,
         ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str postinit,
@@ -183,6 +194,9 @@ obj TypeEvaluator {
         _module_type_cache: dict[str, types.ModuleType] = {},
         _modules_in_compile: set[str] postinit,
         _mobui_module_cache: dict[str, bool] = {},
+        _compose_module_cache: dict[str, bool] = {},
+        _compose_global_names: set[str] = {},
+        _compose_layout_inst_cache: dict[str, (TypeBase | None)] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
@@ -254,6 +268,22 @@ obj TypeEvaluator {
         member_type: TypeBase
     ) -> None;
 
+    def _install_compose_extensions -> None;
+    def _install_compose_widgets -> None;
+    def _install_compose_modifiers -> None;
+    def _install_compose_consts -> None;
+    def _compose_modifier_functype(
+        sig: ComposeSig, chain_inst: TypeBase
+    ) -> types.FunctionType;
+
+    def _is_compose_gated_member(sym: uni.Symbol) -> bool;
+    def _compose_composable_instance -> TypeBase;
+    def _map_compose_param(p: SigParam) -> TypeBase;
+    def _compose_layout_type_for(ktype: str) -> (TypeBase | None);
+    def _map_kotlin_type(ktype: str) -> TypeBase;
+    def _map_kotlin_lambda(ktype: str) -> TypeBase;
+    def _compose_sig_to_functype(sig: ComposeSig) -> types.FunctionType;
+    def _kotlin_synth_surface(sigs: list[ComposeSig], scope: uni.UniScopeNode) -> None;
     def _ts_synth_class_types(
         decls: dict[str, TsDecl]
     ) -> (dict[str, types.ClassType] | None);
@@ -539,6 +569,7 @@ obj TypeEvaluator {
     ) -> types.FunctionType | None;
 
     def _is_mobui_module(nd: uni.UniNode) -> bool;
+    def _is_compose_module(nd: uni.UniNode) -> bool;
     def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
     def _validate_component_jsx_props(
         expr: uni.JsxElement,
@@ -547,6 +578,13 @@ obj TypeEvaluator {
     ) -> None;
 
     def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;
+    def _compose_children_target(
+        expr: uni.JsxElement, component_name: str, param_map: dict[str, types.Parameter]
+    ) -> str | None;
+
+    def _is_compose_slot_param(p: types.Parameter) -> bool;
+    def _returns_composable(func_type: types.FunctionType) -> bool;
+    def _jsx_has_content_children(expr: uni.JsxElement) -> bool;
     def _resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None;
     def validate_typevar_in_type_expr(expr: uni.Expr) -> None;
     def validate_typevar_scope(expr: uni.Expr, type_var: types.TypeVarType) -> None;

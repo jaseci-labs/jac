@@ -210,12 +210,13 @@ def _command_routes -> list[CommandMeta] {
                     short='',
                     choices=[
                         'web',
+                        'desktop',
+                        'cef',
                         'pwa',
                         'static',
                         'mobile',
-                        'desktop',
-                        'cef',
-                        'react-native'
+                        'react-native',
+                        'android'
                     ]
                 ),
                 ArgMeta(
@@ -1911,12 +1912,13 @@ def _command_routes -> list[CommandMeta] {
                     short='',
                     choices=[
                         'web',
+                        'desktop',
+                        'cef',
                         'pwa',
                         'static',
                         'mobile',
-                        'desktop',
-                        'cef',
-                        'react-native'
+                        'react-native',
+                        'android'
                     ]
                 ),
                 ArgMeta(

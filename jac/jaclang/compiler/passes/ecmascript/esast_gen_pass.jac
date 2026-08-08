@@ -15,6 +15,13 @@ import from jaclang.compiler.passes.ecmascript.scoped_styles {
     load_style_annex
 }
 import from jaclang.compiler.passes.ecmascript.framework_backend { FrameworkBackend }
+import from jaclang.compiler.passes.ecmascript.intent.collector { IntentCollector }
+import from jaclang.compiler.passes.ecmascript.intent.leaf_converter {
+    LeafConverter,
+    EsastLeafConverter
+}
+import from jaclang.compiler.passes.ecmascript.intent.detection { JSX_COMPONENT_TYPES }
+import from jaclang.compiler.passes.ecmascript.intent.session { IntentSession }
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     relative_js_specifier,
@@ -179,12 +186,17 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
         backend: (FrameworkBackend | None) = None,
+        intent_session: (IntentSession | None) = None,
+        collector: (IntentCollector | None) = None,
+        converter: (EsastLeafConverter | None) = None,
+        reactive_vars: set[str] = set(),
+        _reactive_vars_stack: list[set[str]] = [],
+        strict_arch_has: bool = True,
+        use_arch_has_dedup: bool = False,
         client_manifest: (ClientManifest | None) = None,
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
-        reactive_vars: set[str] = set(),
         component_export_names: set[str] = set(),
-        reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         match_seq: int = 0,
         _view_stack: list[(str | None)] = [],
@@ -334,6 +346,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_enum(nd: uni.Enum) -> None;
     def enter_ability(nd: uni.Ability) -> None;
+    def effect_deps(nd: uni.Ability) -> list;
     def exit_ability(nd: uni.Ability) -> None;
     def exit_visit_stmt(nd: uni.VisitStmt) -> None;
     def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;

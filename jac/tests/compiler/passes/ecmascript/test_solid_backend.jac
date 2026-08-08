@@ -74,15 +74,15 @@ test "resolve_active_backend reads solid from project config" {
 test "solid reports signals runtime symbols for reactive lowering" {
     backend = SolidBackend();
     init = es.Literal(value=0, raw="0");
-    assert backend.state_field_symbols(StateField(name="count", init_expr=init))
+    assert backend.runtime_symbols(StateField(name="count", init_expr=init))
         == ["createSignal"];
     # Refs are deferred on Solid — a `let` binding needs no import.
-    assert backend.ref_field_symbols(RefField(name="node", init_expr=init)) == [];
-    assert backend.effect_symbols(
+    assert backend.runtime_symbols(RefField(name="node", init_expr=init)) == [];
+    assert backend.runtime_symbols(
         Effect(body=[], deps=[], is_entry=True, is_async=False)
     )
         == ["createEffect"];
-    assert backend.effect_symbols(
+    assert backend.runtime_symbols(
         Effect(body=[], deps=[], is_entry=False, is_async=False)
     )
         == ["onCleanup"];
@@ -90,13 +90,13 @@ test "solid reports signals runtime symbols for reactive lowering" {
     awaiting_only = AsyncBoundary(
         try_expr=try_expr, awaiting_expr=None, except_exprs=[]
     );
-    assert backend.async_boundary_symbols(awaiting_only) == ["Suspense"];
+    assert backend.runtime_symbols(awaiting_only) == ["Suspense"];
     with_except = AsyncBoundary(
         try_expr=try_expr,
         awaiting_expr=None,
         except_exprs=[es.Identifier(name="onErr")]
     );
-    assert backend.async_boundary_symbols(with_except) == ["Suspense", "ErrorBoundary"];
+    assert backend.runtime_symbols(with_except) == ["Suspense", "ErrorBoundary"];
 }
 
 test "solid read seam lowers a reactive read to an accessor call" {

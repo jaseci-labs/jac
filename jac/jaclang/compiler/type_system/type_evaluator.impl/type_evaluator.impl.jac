@@ -867,8 +867,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                             return value;
                         }
                     }
-                    if member
-                        := self._lookup_object_member(base_type, expr.right.value) {
+                    member = self._lookup_object_member(base_type, expr.right.value);
+                    if member is not None
+                        and self._is_compose_gated_member(member.symbol)
+                        and not (
+                            self._is_compose_module(expr) and expr.in_client_context()
+                        ) {
+                        member = None;
+                    }
+                    if member {
                         if (
                             expr.right.value in ('init', '__init__')
                             and base_type.is_data_class()
@@ -1897,8 +1904,15 @@ impl TypeEvaluator._get_type_of_expression_core(
 
                 if symbol is None or symbol.parent_tab is self.builtins_module {
                     js_sym = self.js_globals_module.names_in_scope.get(expr.value);
-                    if js_sym is not None and expr.in_client_context() {
-                        symbol = js_sym;
+                    if js_sym is not None {
+                        if expr.value in self._compose_global_names {
+                            if self._is_compose_module(expr)
+                                and expr.in_client_context() {
+                                symbol = js_sym;
+                            }
+                        } elif expr.in_client_context() {
+                            symbol = js_sym;
+                        }
                     }
                 }
                 if symbol {
@@ -3549,6 +3563,15 @@ impl TypeEvaluator.postinit -> None {
     self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "js_globals.pyi"
     );
+    self._COMPOSE_WIDGETS_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "compose_widgets.txt"
+    );
+    self._COMPOSE_MODIFIERS_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "compose_modifiers.txt"
+    );
+    self._COMPOSE_CONSTS_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "compose_consts.txt"
+    );
     self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "typing_ambient.pyi"
     );
@@ -3683,6 +3706,10 @@ impl TypeEvaluator.postinit -> None {
         }
     }
     self._prefetch_types();
+    self._install_compose_extensions();
+    self._install_compose_widgets();
+    self._install_compose_modifiers();
+    self._install_compose_consts();
 }
 
 def _find_cfg_node_for(at_node: uni.UniNode) -> uni.UniCFGNode | None {

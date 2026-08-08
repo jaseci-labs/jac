@@ -73,6 +73,10 @@ __all__ = [
     "unsafe_html",
     # Ambient values and constants
     "llm",
+    "NoPerm",
+    "ReadPerm",
+    "ConnectPerm",
+    "WritePerm",
     # Builtin enums
     "AccessLevel",
     "ScheduleTrigger",
@@ -126,6 +130,10 @@ class JsxElement(JsxPage, JsxLayout):
     tag: object
     props: dict[str, object]
     children: list[object]
+
+class Composable:
+    """Return type for Jetpack Compose client components (Android native surface)."""
+    ...
 
 class OPath: ...
 class DSFunc: ...
@@ -213,6 +221,12 @@ def unsafe_html(html: object) -> object: ...
 # Codegen emits `from jaclang.jac0core.jaclib import <name>`.
 
 def destroy(objs: object) -> None: ...
+
+# ── Permission constants ───────────────────────────────────────────
+NoPerm: int
+ReadPerm: int
+ConnectPerm: int
+WritePerm: int
 
 # ── Builtin enums ──────────────────────────────────────────────────
 class AccessLevel:

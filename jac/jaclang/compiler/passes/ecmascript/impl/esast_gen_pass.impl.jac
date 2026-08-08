@@ -1,29 +1,75 @@
-import from jaclang.compiler.passes.ecmascript.reactive_intent {
+import from jaclang.compiler.passes.ecmascript.intent.semantics {
     StateField,
     RefField,
     StateUpdate,
     Effect,
     AsyncBoundary
 }
+import from jaclang.compiler.passes.ecmascript.intent.leaf_converter {
+    EsastLeafConverter
+}
+import from jaclang.compiler.passes.ecmascript.intent.es_adapter { EsIntentAdapter }
+import from jaclang.compiler.passes.ecmascript.intent.session {
+    IntentSession,
+    SkipExistingPolicy
+}
+import from jaclang.compiler.passes.ecmascript.intent.detection {
+    JSX_COMPONENT_TYPES,
+    arch_has_applicable,
+    ref_head_name,
+    return_type_includes,
+    return_type_route_role
+}
 
 impl EsastGenPass._ensure_backend -> None {
-    if self.backend is None {
-        import from jaclang.compiler.passes.ecmascript.backends.registry {
-            resolve_active_backend
-        }
-        try {
+    if self.backend is not None {
+        return;
+    }
+
+    opts = self.prog._compile_options if self.prog else None;
+    override = (getattr(opts, "client_framework", "") or "") if opts else "";
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend,
+        resolve_framework_backend
+    }
+
+    if override {
+        effective_fw = override;
+    } else {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        effective_fw = (cfg.client.framework if (cfg and cfg.client) else "")
+            or "react";
+    }
+    if effective_fw == "compose" {
+        import from jaclang.jac0core.diagnostics { E5086 }
+        import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
+        self.emit(E5086);
+        self.backend = ReactBackend();
+        return;
+    }
+
+    try {
+        if override {
+            import from jaclang.project.client_kind { resolve_client_surface }
+            mod_path = self.ir_in.loc.mod_path
+                if (self.ir_in and self.ir_in.loc)
+                else "";
+            surface = resolve_client_surface(
+                mod_path,
+                override,
+                getattr(opts, "project_kind", "web") or "web",
+                opts?.project_root,
+            );
+            self.backend = resolve_framework_backend(surface.framework);
+        } else {
             self.backend = resolve_active_backend();
-        } except ValueError {
-            import from jaclang.project.config { get_config }
-            import from jaclang.jac0core.diagnostics { E5081 }
-            import from jaclang.compiler.passes.ecmascript.backends.react {
-                ReactBackend
-            }
-            cfg = get_config();
-            fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
-            self.emit(E5081, framework=fw);
-            self.backend = ReactBackend();
         }
+    } except ValueError {
+        import from jaclang.jac0core.diagnostics { E5081 }
+        import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
+        self.emit(E5081, framework=effective_fw);
+        self.backend = ReactBackend();
     }
 }
 
@@ -174,9 +220,8 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 
 impl EsastGenPass.exit_name(nd: uni.Name) -> None {
     if nd.sym_name in self.reactive_vars {
-        self._ensure_backend();
         nd.gen.es_ast = self.sync_loc(
-            self.backend.lower_state_read(nd.sym_name), jac_node=nd
+            self.intent_session.adapter.lower_state_read(nd.sym_name), jac_node=nd
         );
         return;
     }
@@ -1009,38 +1054,11 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
 }
 
 impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
-    if (
-        isinstance(rt, uni.BinaryExpr)
-        and isinstance(rt.op, uni.Token)
-        and rt.op.name == Tok.BW_OR
-    ) {
-        return (
-            self._return_type_includes_jsx_element(rt.left)
-            or self._return_type_includes_jsx_element(rt.right)
-        );
-    }
-    return isinstance(rt, uni.Name)
-        and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
+    return return_type_includes(rt, JSX_COMPONENT_TYPES);
 }
 
 impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
-    if (
-        isinstance(rt, uni.BinaryExpr)
-        and isinstance(rt.op, uni.Token)
-        and rt.op.name == Tok.BW_OR
-    ) {
-        left_role = self._return_type_route_role(rt.left);
-        return left_role or self._return_type_route_role(rt.right);
-    }
-    if isinstance(rt, uni.Name) {
-        if rt.value == 'JsxPage' {
-            return 'page';
-        }
-        if rt.value == 'JsxLayout' {
-            return 'layout';
-        }
-    }
-    return None;
+    return return_type_route_role(rt);
 }
 
 impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
@@ -2014,40 +2032,18 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
     if len(nd.target) == 1 and isinstance(nd.target[0], uni.Name) {
         target_name = nd.target[0].sym_name;
         if target_name in self.reactive_vars {
-            setter_arg: es.Expression;
-            aug_op: (str | None) = None;
-            if nd.aug_op {
-                aug_tok = Tok(nd.aug_op.name)
-                    if (nd.aug_op.name in Tok.__members__)
-                    else None;
-                aug_to_binary: dict[Tok, str] = {
-                    Tok.ADD_EQ: '+',
-                    Tok.SUB_EQ: '-',
-                    Tok.MUL_EQ: '*',
-                    Tok.DIV_EQ: '/',
-                    Tok.MOD_EQ: '%'
-                };
-                binary_op = aug_to_binary.get(aug_tok, '+') if aug_tok else '+';
-                aug_op = binary_op;
-
-                setter_arg = cast(es.Expression, value_expr or es.Literal(value=0));
-            } else {
-                setter_arg = cast(
-                    es.Expression, value_expr or es.Identifier(name='undefined')
+            self.converter.reactive_vars = self.reactive_vars;
+            update = self.intent_session.scan_state_update(nd);
+            if update is not None {
+                setter_call = self.sync_loc(
+                    self.intent_session.lower_state_update(nd, update), jac_node=nd
                 );
+                expr_stmt = self.sync_loc(
+                    es.ExpressionStatement(expression=setter_call), jac_node=nd
+                );
+                nd.gen.es_ast = expr_stmt;
+                return;
             }
-            state_update = StateUpdate(
-                name=target_name, value=setter_arg, aug_op=aug_op
-            );
-            self._ensure_backend();
-            setter_call = self.sync_loc(
-                self.backend.lower_state_update(state_update), jac_node=nd
-            );
-            expr_stmt = self.sync_loc(
-                es.ExpressionStatement(expression=setter_call), jac_node=nd
-            );
-            nd.gen.es_ast = expr_stmt;
-            return;
         }
     }
     if nd.aug_op {
@@ -3698,12 +3694,9 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
         async_boundary = AsyncBoundary(
             try_expr=try_iife, awaiting_expr=awaiting_iife, except_exprs=except_iifes
         );
-        self._ensure_backend();
-        for sym in self.backend.async_boundary_symbols(async_boundary) {
-            self._inject_runtime_import(sym, nd);
-        }
         wrapper = self.sync_loc(
-            self.backend.lower_async_boundary(async_boundary), jac_node=nd
+            self.intent_session.adapter.lower_async_boundary(nd, async_boundary),
+            jac_node=nd
         );
         outer = self._cur_view_acc();
         if outer is not None {
@@ -4377,18 +4370,17 @@ impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
 
     if nd.dynamic_tag is not None {
         self._ensure_backend();
-        if self.backend.import_source("Dynamic") != self.backend.runtime_module() {
+        if self.backend is not None
+            and self.backend.import_source("Dynamic")
+                != self.backend.runtime_module() {
             self._inject_runtime_import("Dynamic", nd);
         }
     }
     nd.gen.es_ast = self.jsx_processor.element(nd);
 
-    self._ensure_backend();
     view = self.jsx_processor._view_by_node.get(id(nd));
     if view is not None {
-        for sym in self.backend.view_runtime_symbols(view) {
-            self._inject_runtime_import(sym, nd);
-        }
+        self.intent_session.adapter.lower_view_symbols(nd, view);
     }
 }
 
@@ -4446,17 +4438,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
 }
 
 impl EsastGenPass._ref_head_name(expr: (uni.UniNode | None)) -> (str | None) {
-    cur = expr;
-    while True {
-        if isinstance(cur, uni.FuncCall) {
-            cur = cur.target;
-        } elif isinstance(cur, uni.AtomTrailer) {
-            cur = cur.target;
-        } else {
-            break;
-        }
-    }
-    return cur.value if isinstance(cur, uni.Name) else None;
+    return ref_head_name(expr);
 }
 
 impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
@@ -4477,13 +4459,13 @@ impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
 }
 
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
-    inner = self.unwrap_body(nd);
-    body_stmts = self._collect_stmt_body(inner);
-    body_stmts = self._prepend_hoisted(nd, body_stmts);
+    lowered = self.intent_session.record_and_lower_effect(nd);
+    if lowered {
+        nd.gen.es_ast = self.sync_loc(lowered[0], jac_node=nd);
+    }
+}
 
-    is_entry = nd.signature.event.name == Tok.KW_ENTRY;
-    is_async = nd.is_async;
-
+impl EsastGenPass.effect_deps(nd: uni.Ability) -> list {
     deps_elements: list[es.Expression | es.SpreadElement | None] = [];
     arch_tag = nd.signature.arch_tag_info;
     if arch_tag {
@@ -4497,85 +4479,41 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
             deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
         }
     }
-    effect = Effect(
-        body=body_stmts, deps=deps_elements, is_entry=is_entry, is_async=is_async
-    );
-    self._ensure_backend();
-    for sym in self.backend.effect_symbols(effect) {
-        self._inject_runtime_import(sym, nd);
-    }
-    lowered = self.backend.lower_effect(effect);
-    if lowered {
-        nd.gen.es_ast = self.sync_loc(lowered[0], jac_node=nd);
-    }
+    return deps_elements;
 }
 
 impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
-    owner: (uni.UniNode | None) = nd.parent;
-    while (owner is not None and not isinstance(owner, (uni.Ability, uni.Archetype))) {
-        owner = owner.parent;
-    }
-    if isinstance(owner, uni.Archetype) or not nd.in_client_context() {
+    if not arch_has_applicable(nd, strict_client=True) {
         nd.gen.es_ast = None;
         return;
     }
 
+    null_expr = self.sync_loc(es.Literal(value=None, raw='null'), jac_node=nd);
+    undefined_expr = es.Identifier(name='undefined');
+    self.converter.null_expr = null_expr;
+    self.converter.fallback_expr = undefined_expr;
+    self.converter.reactive_vars = self.reactive_vars;
+
+    scan = self.intent_session.scan_arch_has(nd);
+    if scan is None {
+        nd.gen.es_ast = None;
+        return;
+    }
+
+    for has_var in scan.typed_ref_only {
+        self.emit(E2025, node_override=has_var);
+    }
+
     statements: list[es.Statement] = [];
-    for has_var in nd.vars {
-        var_name = has_var.name.sym_name;
-
-        ref_ctor = (
-            isinstance(has_var.value, uni.FuncCall)
-            and self._ref_head_name(has_var.value) == 'Ref'
-        );
-        ref_typed = (
-            has_var.type_tag is not None
-            and self._ref_head_name(has_var.type_tag.tag) == 'Ref'
-        );
-        if ref_ctor or ref_typed {
-            if ref_typed and not ref_ctor {
-                self.emit(E2025, node_override=has_var);
-            }
-            ref_init: es.Expression = self.sync_loc(
-                es.Literal(value=None, raw='null'), jac_node=has_var
-            );
-            if isinstance(has_var.value, uni.FuncCall) and has_var.value.params {
-                seed = has_var.value.params[0];
-                seed_expr = seed.value if isinstance(seed, uni.KWPair) else seed;
-                if seed_expr.gen.es_ast {
-                    ref_init = cast(es.Expression, seed_expr.gen.es_ast);
-                }
-            }
-            ref_field = RefField(name=var_name, init_expr=ref_init);
-            self._ensure_backend();
-            for sym in self.backend.ref_field_symbols(ref_field) {
-                self._inject_runtime_import(sym, nd);
-            }
-            for stmt in self.backend.lower_ref_field(ref_field) {
-                statements.append(self.sync_loc(stmt, jac_node=has_var));
-            }
-            self._register_declaration(var_name);
-            continue;
-        }
-
-        init_value: es.Expression;
-        if has_var.value and has_var.value.gen.es_ast {
-            init_value = cast(es.Expression, has_var.value.gen.es_ast);
-        } else {
-            init_value = es.Identifier(name='undefined');
-        }
-
-        state_field = StateField(name=var_name, init_expr=init_value);
-        self._ensure_backend();
-        for sym in self.backend.state_field_symbols(state_field) {
-            self._inject_runtime_import(sym, nd);
-        }
-        for stmt in self.backend.lower_state_field(state_field) {
-            statements.append(self.sync_loc(stmt, jac_node=has_var));
-        }
-
-        self.reactive_vars.add(var_name);
-        self._register_declaration(var_name);
+    for stmt in self.intent_session.adapter.apply_arch_has_scan(nd, scan) {
+        statements.append(self.sync_loc(stmt, jac_node=nd));
+    }
+    for r in scan.ref_fields {
+        self._register_declaration(r.name);
+    }
+    for s in scan.state_fields {
+        self.reactive_vars.add(s.name);
+        self._register_declaration(s.name);
     }
     if len(statements) == 1 {
         nd.gen.es_ast = statements[0];
@@ -4612,8 +4550,9 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         self._view_stack.pop();
     }
 
-    if self.reactive_vars_stack {
-        self.reactive_vars = self.reactive_vars_stack.pop();
+    self.intent_session.pop_ability_scope();
+    if self._reactive_vars_stack {
+        self.reactive_vars = self._reactive_vars_stack.pop();
     }
 
     osp_info = self._osp_ability_info(nd);
@@ -5672,7 +5611,9 @@ impl EsastGenPass.enter_ability(nd: uni.Ability) -> None {
     }
 
     self._view_stack.append(None);
-    self.reactive_vars_stack.append(self.reactive_vars);
+    self.intent_session.enter_ability(nd);
+
+    self._reactive_vars_stack.append(self.reactive_vars);
     self.reactive_vars = set(self.reactive_vars);
 }
 
@@ -7760,6 +7701,24 @@ impl EsastGenPass.before_pass -> None {
         if a.name is not None
     };
     self.jsx_processor = EsJsxProcessor(self);
+    self.collector = IntentCollector();
+    self.converter = EsastLeafConverter(
+        pass_inst=self,
+        null_expr=es.Identifier(name='undefined'),
+        fallback_expr=es.Identifier(name='undefined'),
+        reactive_vars=self.reactive_vars
+    );
+    self.intent_session = IntentSession(
+        collector=self.collector,
+        adapter=EsIntentAdapter(pass_ref=self, collector=self.collector),
+        converter=self.converter,
+        pass_ref=self,
+        component_types=JSX_COMPONENT_TYPES,
+        strict_arch_has=True,
+        use_arch_has_dedup=False,
+        skip_existing_policy=SkipExistingPolicy.NONE,
+        reactive_vars=self.reactive_vars
+    );
 
     self.scoped_styles = load_style_annex(
         self.ir_in.annexable_by or self.ir_in.loc.mod_path

@@ -45,6 +45,7 @@ obj CompileOptions {
         default_codespace: str = "",
         project_kind: str = "web",
         project_root: (str | None) = None,
+        client_framework: str = "",
         native_module_walk_order: (str | None) = None,
         cancel_token: any = None;
 

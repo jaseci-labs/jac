@@ -410,6 +410,361 @@ impl TypeEvaluator._install_synth_member(
     );
 }
 
+impl TypeEvaluator._install_compose_extensions -> None {
+    if self.prefetch is None {
+        return;
+    }
+    synth_src = uni.Source('', '<compose-synth>');
+    foreign_any = types.AnyType(is_foreign=True);
+
+    dp_type: TypeBase = foreign_any;
+    dp_cls = self._get_type_from_module(self.js_globals_module, "Dp");
+    if isinstance(dp_cls, types.ClassType) {
+        dp_type = self._convert_to_instance(dp_cls);
+    }
+
+    for num_cls in (self.prefetch.int_class, self.prefetch.float_class) {
+        if num_cls is None {
+            continue;
+        }
+        scope = num_cls.shared.symbol_table;
+        self._install_synth_member(scope, synth_src, "dp", dp_type);
+        self._install_synth_member(scope, synth_src, "sp", foreign_any);
+    }
+
+    if self.prefetch.int_class and self.prefetch.list_class {
+        self._install_synth_member(
+            self.prefetch.list_class.shared.symbol_table,
+            synth_src,
+            "len",
+            self._convert_to_instance(self.prefetch.int_class)
+        );
+    }
+}
+
+impl TypeEvaluator._install_compose_widgets -> None {
+    if self.js_globals_module is None {
+        return;
+    }
+
+    self._compose_global_names = {
+        "Modifier",
+        "Typography",
+        "Arrangement",
+        "Alignment",
+        "Color",
+        "Dp",
+        "ModifierChain",
+        "TypographyStyles",
+        "ArrangementNamespace",
+        "AlignmentNamespace",
+        "ColorNamespace"
+    };
+    path = self._COMPOSE_WIDGETS_FILE_PATH;
+    if not os.path.exists(path) {
+        return;
+    }
+    try {
+        with open(path, 'r', encoding='utf-8', errors='replace') as f {
+            text = f.read();
+        }
+    } except OSError {
+        return;
+    }
+    sigs = parse_signature_text(text);
+    self._kotlin_synth_surface(sigs, self.js_globals_module);
+
+    for sig in sigs {
+        self._compose_global_names.add(sig.name);
+    }
+}
+
+impl TypeEvaluator._install_compose_modifiers -> None {
+    if self.js_globals_module is None {
+        return;
+    }
+    mc = self._get_type_from_module(self.js_globals_module, "ModifierChain");
+    if not isinstance(mc, types.ClassType) {
+        return;
+    }
+    path = self._COMPOSE_MODIFIERS_FILE_PATH;
+    if not os.path.exists(path) {
+        return;
+    }
+    try {
+        with open(path, 'r', encoding='utf-8', errors='replace') as f {
+            text = f.read();
+        }
+    } except OSError {
+        return;
+    }
+    chain_inst = self._convert_to_instance(mc);
+    synth_src = uni.Source('', '<compose-modifiers>');
+    scope = mc.shared.symbol_table;
+    for sig in parse_modifier_text(text) {
+        self._install_synth_member(
+            scope, synth_src, sig.name, self._compose_modifier_functype(sig, chain_inst)
+        );
+    }
+}
+
+impl TypeEvaluator._install_compose_consts -> None {
+    if self.js_globals_module is None {
+        return;
+    }
+    path = self._COMPOSE_CONSTS_FILE_PATH;
+    if not os.path.exists(path) {
+        return;
+    }
+    try {
+        with open(path, 'r', encoding='utf-8', errors='replace') as f {
+            text = f.read();
+        }
+    } except OSError {
+        return;
+    }
+    synth_src = uni.Source('', '<compose-consts>');
+    for (ns, members) in parse_const_text(text).items() {
+        cls = self._get_type_from_module(self.js_globals_module, f"{ns}Namespace");
+        if not isinstance(cls, types.ClassType) {
+            continue;
+        }
+        scope = cls.shared.symbol_table;
+        for m in members {
+            self._install_synth_member(
+                scope, synth_src, m.name, self._map_kotlin_type(m.ptype)
+            );
+        }
+    }
+}
+
+impl TypeEvaluator._compose_modifier_functype(
+    sig: ComposeSig, chain_inst: TypeBase
+) -> types.FunctionType {
+    parameters: list[types.Parameter] = [
+        types.Parameter(
+            name="self",
+            category=types.ParameterCategory.Positional,
+            param_type=None,
+            is_self=True,
+            param_kind=types.ParamKind.NORMAL
+        )
+    ];
+    for p in sig.params {
+        parameters.append(
+            types.Parameter(
+                name=p.name,
+                category=types.ParameterCategory.Positional,
+                param_type=self._map_compose_param(p),
+                has_default=True
+            )
+        );
+    }
+    return types.FunctionType(
+        func_name=sig.name, return_type=chain_inst, parameters=parameters
+    );
+}
+
+impl TypeEvaluator._is_compose_gated_member(sym: uni.Symbol) -> bool {
+    if not sym.defn {
+        return False;
+    }
+    src = sym.defn[0].orig_src;
+    return src is not None and src.file_path == '<compose-synth>';
+}
+
+impl TypeEvaluator._compose_composable_instance -> TypeBase {
+    c = self._get_type_from_module(self.jac_builtins_module, "Composable");
+    if isinstance(c, types.ClassType) {
+        return self._convert_to_instance(c);
+    }
+    return types.AnyType(is_foreign=True);
+}
+
+impl TypeEvaluator._map_compose_param(p: SigParam) -> TypeBase {
+    foreign_any = types.AnyType(is_foreign=True);
+    if p.kind == ComposeParamKind.MODIFIER {
+        mc = self._get_type_from_module(self.js_globals_module, "ModifierChain");
+        if isinstance(mc, types.ClassType) {
+            return self._convert_to_instance(mc);
+        }
+        return foreign_any;
+    }
+    if p.kind == ComposeParamKind.SLOT {
+        return types.FunctionType(
+            func_name='', return_type=self._compose_composable_instance(), parameters=[]
+        );
+    }
+    if p.kind == ComposeParamKind.EVENT {
+        return self._map_kotlin_lambda(p.ptype);
+    }
+    return self._map_kotlin_type(p.ptype);
+}
+
+impl TypeEvaluator._map_kotlin_lambda(ktype: str) -> TypeBase {
+    none_ret = self._convert_to_instance(self.get_none_type());
+    empty = types.FunctionType(func_name='', return_type=none_ret, parameters=[]);
+    t = ktype.strip();
+    lt = t.find("<");
+    if lt < 0 or not t.endswith(">") {
+        return empty;
+    }
+    inner = t[lt + 1:len(t) - 1];
+
+    args: list[str] = [];
+    depth = 0;
+    cur = "";
+    for ch in inner {
+        if ch == '<' {
+            depth += 1;
+            cur += ch;
+        } elif ch == '>' {
+            depth -= 1;
+            cur += ch;
+        } elif ch == ',' and depth == 0 {
+            args.append(cur);
+            cur = "";
+        } else {
+            cur += ch;
+        }
+    }
+    if cur.strip() {
+        args.append(cur);
+    }
+    if len(args) <= 1 {
+        return empty;
+    }
+    parameters: list[types.Parameter] = [];
+    i = 0;
+    for a in args[:len(args) - 1] {
+        at = a.strip();
+
+        if at.startswith("? super ") {
+            at = at[8:].strip();
+        } elif at.startswith("? extends ") {
+            at = at[10:].strip();
+        }
+        parameters.append(
+            types.Parameter(
+                name=f"arg{i}",
+                category=types.ParameterCategory.Positional,
+                param_type=self._map_kotlin_type(at),
+                has_default=False
+            )
+        );
+        i += 1;
+    }
+    return types.FunctionType(
+        func_name='', return_type=none_ret, parameters=parameters
+    );
+}
+
+impl TypeEvaluator._compose_layout_type_for(ktype: str) -> (TypeBase | None) {
+    lower = ktype.strip().lower();
+    ns = "";
+    if "compose.foundation.layout.arrangement" in lower {
+        ns = "ArrangementNamespace";
+    } elif "compose.ui.alignment" in lower {
+        ns = "AlignmentNamespace";
+    }
+    if not ns {
+        return None;
+    }
+    if ns in self._compose_layout_inst_cache {
+        return self._compose_layout_inst_cache[ns];
+    }
+    inst: (TypeBase | None) = None;
+    if self.js_globals_module is not None {
+        cls = self._get_type_from_module(self.js_globals_module, ns);
+        if isinstance(cls, types.ClassType) {
+            inst = self._convert_to_instance(cls);
+        }
+    }
+    self._compose_layout_inst_cache[ns] = inst;
+    return inst;
+}
+
+impl TypeEvaluator._map_kotlin_type(ktype: str) -> TypeBase {
+    foreign_any = types.AnyType(is_foreign=True);
+    layout = self._compose_layout_type_for(ktype);
+    if layout is not None {
+        return layout;
+    }
+    if self.prefetch is None {
+        return foreign_any;
+    }
+    t = ktype.strip();
+
+    lt = t.find("<");
+    if lt >= 0 {
+        t = t[:lt];
+    }
+    if " " in t {
+        t = t.rsplit(" ", 1)[-1];
+    }
+
+    if "." in t {
+        t = t.rsplit(".", 1)[-1];
+    }
+    t = t.strip();
+
+    prim = {
+        'boolean': self.prefetch.bool_class,
+        'Boolean': self.prefetch.bool_class,
+        'int': self.prefetch.int_class,
+        'Int': self.prefetch.int_class,
+        'long': self.prefetch.int_class,
+        'Long': self.prefetch.int_class,
+        'short': self.prefetch.int_class,
+        'byte': self.prefetch.int_class,
+        'float': self.prefetch.float_class,
+        'Float': self.prefetch.float_class,
+        'double': self.prefetch.float_class,
+        'Double': self.prefetch.float_class,
+        'String': self.prefetch.str_class,
+        'CharSequence': self.prefetch.str_class,
+        'char': self.prefetch.str_class,
+        'Char': self.prefetch.str_class,
+
+    }.get(
+        t
+    );
+    if prim is None {
+        return foreign_any;
+    }
+    return self._convert_to_instance(prim);
+}
+
+impl TypeEvaluator._compose_sig_to_functype(sig: ComposeSig) -> types.FunctionType {
+    parameters: list[types.Parameter] = [];
+    for p in sig.params {
+        parameters.append(
+            types.Parameter(
+                name=p.name,
+                category=types.ParameterCategory.Positional,
+                param_type=self._map_compose_param(p),
+                has_default=p.has_default
+            )
+        );
+    }
+    return types.FunctionType(
+        func_name=sig.name,
+        return_type=self._compose_composable_instance(),
+        parameters=parameters
+    );
+}
+
+impl TypeEvaluator._kotlin_synth_surface(
+    sigs: list[ComposeSig], scope: uni.UniScopeNode
+) -> None {
+    synth_src = uni.Source('', '<compose-surface>');
+    for sig in sigs {
+        self._install_synth_member(
+            scope, synth_src, sig.name, self._compose_sig_to_functype(sig)
+        );
+    }
+}
+
 impl TypeEvaluator._synthesize_ts_decl_class(
     decls: dict[str, TsDecl], item_name: str
 ) -> (TypeBase | None) {

@@ -21,17 +21,23 @@ def register_targets {
 
     registry.register(CefDesktopTarget());
     registry.register(ReactNativeTarget());
+    try {
+        import from jaclang.runtimelib.client.targets.android_target { AndroidTarget }
+        registry.register(AndroidTarget());
+    } except ImportError as e {
+        import from jaclang.cli.console { console }
+        console.warning(
+            f"  Android (Compose) target unavailable ({e}). "
+            "Install optional Android deps or fix the import error."
+        );
+    }
 }
 
-def sync_client_target_choices -> None {
+def sync_client_target_choices {
     import from jaclang.cli.registry { get_registry }
-    import from jaclang.runtimelib.client.targets.registry { get_target_factory }
+    import from jaclang.runtimelib.client.targets.registry { TargetType }
     registry = get_registry();
-    factory = get_target_factory();
-    names = factory.get_available_target_names();
-    if not names {
-        return;
-    }
+    names = [t.value for t in TargetType];
     for cmd_name in ["build", "start"] {
         spec = registry.get(cmd_name);
         if spec is None {

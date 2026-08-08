@@ -105,6 +105,73 @@ def setup_android_port_reverse_common(ports: list[int], timeout: int = 5) -> Non
     }
 }
 
+def resolve_adb_path -> str {
+    return shutil.which("adb") or "";
+}
+
+def adb_install_apk(adb: str, apk_path: Path) {
+    console.print(f"  adb install -r {apk_path}", style="muted");
+    subprocess.run([adb, "install", "-r", str(apk_path)], check=True);
+}
+
+def adb_launch_package(adb: str, package_name: str) {
+    console.print(f"  Launching {package_name}", style="muted");
+    subprocess.run(
+        [
+            adb,
+            "shell",
+            "monkey",
+            "-p",
+            package_name,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1"
+        ],
+        check=False,
+        capture_output=True
+    );
+}
+
+def adb_launch_activity(
+    adb: str, package_name: str, activity: str, extras: (dict[str, str] | None) = None
+) {
+    extras = extras or {};
+    console.print(f"  Launching {package_name}/{activity}", style="muted");
+    cmd: list[str] = [adb, "shell", "am", "start", "-n", f"{package_name}/{activity}"];
+    for (key, value) in extras.items() {
+        cmd.extend(["--es", key, value]);
+    }
+    subprocess.run(cmd, check=False, capture_output=True);
+}
+
+def adb_install_and_launch(
+    apk_path: Path,
+    package_name: str,
+    adb: str = "",
+    activity: str = "",
+    extras: (dict[str, str] | None) = None,
+    missing_adb_message: str = ""
+) -> bool {
+    extras = extras or {};
+    if not adb {
+        adb = resolve_adb_path();
+    }
+    if not adb {
+        if missing_adb_message {
+            console.warning(missing_adb_message);
+        }
+        return False;
+    }
+    adb_install_apk(adb, apk_path);
+    if activity {
+        adb_launch_activity(adb, package_name, activity, extras);
+    } elif package_name {
+        adb_launch_package(adb, package_name);
+    }
+    console.success("App installed and launched.");
+    return True;
+}
+
 def ensure_watchdog_common(target_name: str) -> bool {
     try {
         import watchdog;

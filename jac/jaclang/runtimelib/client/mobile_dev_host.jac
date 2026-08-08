@@ -3,13 +3,19 @@ import platform as platform_mod;
 import shutil;
 import socket;
 import subprocess;
+import time;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
 glob JAC_MOBILE_VITE_PORT_ENV: str = "JAC_MOBILE_VITE_PORT";
+glob JAC_ANDROID_AVD_ENV: str = "JAC_ANDROID_AVD";
 
 glob ADB_STATE_TIMEOUT_SEC: int = 2,
      ADB_PROPS_TIMEOUT_SEC: int = 2,
+     ADB_DEVICES_TIMEOUT_SEC: int = 5,
+     ADB_BOOT_TIMEOUT_SEC: int = 120,
+     EMULATOR_LIST_TIMEOUT_SEC: int = 10,
      XCRUN_SIMCTL_TIMEOUT_SEC: int = 3;
 
 glob ANDROID_EMULATOR_HOST_ALIAS: str = "10.0.2.2";
@@ -60,6 +66,150 @@ def resolve_mobile_vite_port(project_dir: Path, cli_vite_port: int = 8000) -> in
         return int(p);
     }
     return cli_vite_port;
+}
+
+def list_adb_devices(adb: str = "") -> list[str] {
+    if not adb {
+        found = shutil.which("adb");
+        if not found {
+            return [];
+        }
+        adb = found;
+    }
+    try {
+        r = subprocess.run(
+            [adb, "devices"],
+            capture_output=True,
+            text=True,
+            timeout=ADB_DEVICES_TIMEOUT_SEC,
+            check=False
+        );
+    } except Exception {
+        return [];
+    }
+    devices: list[str] = [];
+    for line in (r.stdout or "").splitlines() {
+        line = line.strip();
+        if not line or line.startswith("List of devices") {
+            continue;
+        }
+        parts = line.split();
+        if len(parts) >= 2 and parts[1] == "device" {
+            devices.append(parts[0]);
+        }
+    }
+    return devices;
+}
+
+def locate_android_emulator -> str | None {
+    sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT");
+    if sdk {
+        emu = Path(sdk) / "emulator" / "emulator";
+        if emu.is_file() {
+            return str(emu);
+        }
+    }
+    return shutil.which("emulator");
+}
+
+def list_android_avds(emulator_bin: str = "") -> list[str] {
+    if not emulator_bin {
+        emulator_bin = locate_android_emulator() or "";
+    }
+    if not emulator_bin {
+        return [];
+    }
+    try {
+        r = subprocess.run(
+            [emulator_bin, "-list-avds"],
+            capture_output=True,
+            text=True,
+            timeout=EMULATOR_LIST_TIMEOUT_SEC,
+            check=False
+        );
+    } except Exception {
+        return [];
+    }
+    if r.returncode != 0 {
+        return [];
+    }
+    return [
+        line.strip()
+        for line in (r.stdout or "").splitlines()
+        if line.strip()
+    ];
+}
+
+def wait_for_adb_device_boot(
+    adb: str, timeout_sec: int = ADB_BOOT_TIMEOUT_SEC
+) -> None {
+    deadline = time.time() + timeout_sec;
+    while time.time() < deadline {
+        try {
+            r = subprocess.run(
+                [adb, "shell", "getprop", "sys.boot_completed"],
+                capture_output=True,
+                text=True,
+                timeout=ADB_PROPS_TIMEOUT_SEC,
+                check=False
+            );
+            if r.returncode == 0 and (r.stdout or "").strip() == "1" {
+                return;
+            }
+        } except Exception { }
+        time.sleep(2);
+    }
+    raise RuntimeError(
+        f"Timed out after {timeout_sec}s waiting for the Android device to finish booting."
+    );
+}
+
+def ensure_adb_device(avd: str = "") -> str {
+    adb = shutil.which("adb");
+    if not adb {
+        raise RuntimeError("adb not found on PATH (install Android platform-tools).");
+    }
+    if list_adb_devices(adb) {
+        return adb;
+    }
+    emulator = locate_android_emulator();
+    if not emulator {
+        raise RuntimeError(
+            "No Android device/emulator connected and the emulator binary was not found. "
+            "Set ANDROID_HOME or start a device manually."
+        );
+    }
+    avds = list_android_avds(emulator);
+    if not avds {
+        raise RuntimeError(
+            "No Android device/emulator connected and no AVDs are configured. "
+            "Create one in Android Studio → Device Manager."
+        );
+    }
+    chosen = "";
+    want = (avd or os.environ.get(JAC_ANDROID_AVD_ENV, "") or "").strip();
+    if want {
+        if want in avds {
+            chosen = want;
+        } else {
+            console.warning(f"  AVD '{want}' not found; using '{avds[0]}'.");
+            chosen = avds[0];
+        }
+    } else {
+        chosen = avds[0];
+    }
+    console.print(
+        f"  No device connected — starting emulator '{chosen}'...", style="muted"
+    );
+    subprocess.Popen(
+        [emulator, "-avd", chosen, "-no-snapshot-load"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    );
+    subprocess.run([adb, "wait-for-device"], check=True, timeout=ADB_BOOT_TIMEOUT_SEC);
+    wait_for_adb_device_boot(adb);
+    console.success(f"  Emulator '{chosen}' ready.");
+    return adb;
 }
 
 def is_android_emulator_adb -> bool {
