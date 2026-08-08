@@ -882,6 +882,38 @@ impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
     }
 }
 
+impl JacBuiltin.tensor_eq_assert(a: any, b: any, msg: str) -> None {
+    import torch;
+    meta_ok = (a.shape == b.shape) and (a.dtype == b.dtype);
+    cond = (a == b).all() if meta_ok else torch.tensor(False, device=a.device);
+    torch._assert_async(cond, msg);
+}
+
+impl JacBuiltin.trap_guard(fn: any) -> any {
+    import functools;
+    import builtins;
+    @functools.wraps(fn)
+    def _gm_trap_wrapper(*args: any, **kwargs: any) -> any {
+        try {
+            return fn(*args, **kwargs);
+        } except RuntimeError as err {
+            text = str(err);
+            if "[[GM-TRAP " not in text {
+                raise err;
+            }
+            after = text.split("[[GM-TRAP ", 1)[1];
+            type_name = after.split("]]", 1)[0];
+            msg = after.split("]]", 1)[1].split("[[/GM-TRAP]]", 1)[0];
+            exc_cls = getattr(builtins, type_name, RuntimeError);
+            if not (isinstance(exc_cls, type) and issubclass(exc_cls, BaseException)) {
+                exc_cls = RuntimeError;
+            }
+            raise exc_cls(msg) from None;
+        }
+    }
+    return _gm_trap_wrapper;
+}
+
 impl JacGraph.refs(
     path: GraphQuery | NodeArchetype | list[NodeArchetype], slc: (slice | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {

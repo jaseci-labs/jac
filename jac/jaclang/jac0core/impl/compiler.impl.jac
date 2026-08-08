@@ -127,6 +127,10 @@ impl JacCompiler.get_bytecode(
     full_target: str, target_program: JacProgram
 ) -> (types.CodeType | None) {
     actual_program = self._resolve_program(full_target, target_program);
+    gm_active = (
+        actual_program is not self._internal_program
+        and target_program.graphmend_enabled
+    );
     (rebuild, no_precompile) = cache_mode();
 
     if (
@@ -145,7 +149,7 @@ impl JacCompiler.get_bytecode(
         return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
     }
 
-    if not rebuild {
+    if (not gm_active) and (not rebuild) {
         sealed = self._sealed_jir_data(full_target);
         if sealed is not None {
             import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
@@ -169,7 +173,9 @@ impl JacCompiler.get_bytecode(
     }
 
     cache_path = get_module_cache_path(full_target);
-    if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
+    if (not gm_active)
+        and (not rebuild)
+        and is_module_cache_valid(full_target, cache_path) {
         try {
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
@@ -204,7 +210,11 @@ impl JacCompiler.get_bytecode(
     }
 
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled_bc = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    precompiled_bc = (
+        None
+            if gm_active
+            else self._get_precompiled_jir_bytecode(full_target, allow_unsealed)
+    );
     if precompiled_bc is not None {
         try {
             import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
@@ -244,7 +254,7 @@ impl JacCompiler.get_bytecode(
             sys.modules['jaclang.compiler.type_system.type_evaluator'], 'TypeEvaluator'
         )
     );
-    options = CompileOptions(type_check=can_typecheck);
+    options = CompileOptions(type_check=can_typecheck, graphmend=gm_active);
     result: (uni.Module | None) = None;
     try {
         result = self.compile(
@@ -252,6 +262,9 @@ impl JacCompiler.get_bytecode(
         );
         if result.gen.py_bytecode {
             actual_program.hub_cache_stamp(full_target);
+            if gm_active {
+                return marshal.loads(result.gen.py_bytecode);
+            }
             try {
                 import from jaclang.jac0core.jir_passes { JirWriter }
                 import pickle;
