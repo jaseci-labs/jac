@@ -10,6 +10,8 @@ import inspect;
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { UniPass }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.helpers { pascal_to_snake }
 import from jaclang.jac0core.program { JacProgram }
@@ -159,6 +161,34 @@ test "py2jac line continuation string concat" {
     formatted = prog.mod.main.gen.jac;
     assert '"abc" "def"' in formatted , f"Expected folded concat in:\n{formatted}";
     assert "line two\\n" in formatted , f"Expected preserved \\n escape in:\n{formatted}";
+}
+
+"""Adjacent .py literals land in one String token spanning them all, so
+`lit_value` (what codegen lowers to a constant) must yield the joined
+string. The token's source form stays folded for py2jac (asserted above).
+The last case pins the negative: a lone literal is left exactly as-is.
+"""
+test "py implicit string concat lit value joins the literals" {
+    file_source = (
+        'MULTI = (\n    "first part "\n    "second part"\n)\n'
+        + 'SINGLE = "abc" "def"\nPREFIXED = r"\\d" "x"\n'
+        + 'PLAIN = "he said \\"hi\\""\n'
+    );
+    values = [
+        s.lit_value
+        for s in UniPass.get_all_sub_nodes(
+            PyastBuildPass(
+                ir_in=PythonModuleAst(
+                    py_ast.parse(file_source), orig_src=Source(file_source, "concat.py")
+                ),
+                prog=JacProgram()
+            ).ir_out,
+            uni.String
+        )
+    ];
+    for want in ["first part second part", "abcdef", "\\dx", 'he said "hi"'] {
+        assert want in values , f"{want!r} missing from {values}";
+    }
 }
 
 """Test BinOp chain flattening and mixed-precedence grouping."""

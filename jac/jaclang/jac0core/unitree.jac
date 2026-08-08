@@ -1,4 +1,5 @@
 import os;
+import re;
 import from collections.abc { Sequence }
 import from enum { IntEnum }
 import from hashlib { md5 }
@@ -1725,6 +1726,45 @@ glob _HEX_DIGITS: str = '0123456789abcdefABCDEF',
          't': '\t',
          'v': '\x0b'
      };
+
+glob _STR_LIT_PAT = r'[rRbBuUfF]{0,2}(?:[\x22]{3}(?:\\[\s\S]|(?![\x22]{3})[\s\S])*[\x22]{3}|[\x27]{3}(?:\\[\s\S]|(?![\x27]{3})[\s\S])*[\x27]{3}|\x22(?:\\[\s\S]|[^\x22\\])*\x22|\x27(?:\\[\s\S]|[^\x27\\])*\x27)';
+
+glob _STR_LIT_RE = re.compile(_STR_LIT_PAT);
+
+glob _STR_RUN_RE = re.compile(r'(?:[\s\\]*' + _STR_LIT_PAT + r')+[\s\\]*');
+
+def _split_adjacent_literals(text: str) -> list[str] {
+    if ((text.count('"') + text.count("'")) <= 2 or not _STR_RUN_RE.fullmatch(text)) {
+        return [];
+    }
+    parts = _STR_LIT_RE.findall(text);
+    return parts if (len(parts) > 1) else [];
+}
+
+def _decode_one_literal(seg: str) -> str | bytes {
+    if `any(
+        (seg.startswith(prefix) and seg[len(prefix):].startswith(("'", '"')))
+        for prefix in ['r', 'b', 'br', 'rb']
+    ) {
+        return eval(seg);
+    } elif seg.startswith(("'", '"')) {
+        inner = seg;
+        if (
+            (len(inner) >= 6)
+            and (
+                (inner.startswith('"""') and inner.endswith('"""'))
+                or (inner.startswith("'''") and inner.endswith("'''"))
+            )
+        ) {
+            inner = inner[3:-3];
+        } else {
+            inner = inner[1:-1];
+        }
+        return _decode_str_escapes(inner);
+    } else {
+        return seg;
+    }
+}
 
 def _decode_str_escapes(text: str) -> str {
     if ('\\' not in text) {
