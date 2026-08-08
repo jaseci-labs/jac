@@ -1,4 +1,5 @@
 import hashlib;
+import _hashlib;
 import os;
 import struct;
 import sys;
@@ -6,7 +7,7 @@ import zlib;
 import from pathlib { Path }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 17,
+     FORMAT_VERSION: int = 19,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
@@ -20,6 +21,9 @@ glob MAGIC = b"JIR\x00",
      SEC_MODKEY: int = 0x08,
      SEC_DEBUG_SRC: int = 0x09,
      SEC_PLACEMENT: int = 0x0A,
+     SEC_DECL_INDEX: int = 0x0B,
+     SEC_DECL_BODIES: int = 0x0C,
+     SEC_DECL_ENTRIES: int = 0x0D,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
@@ -178,18 +182,26 @@ def schema_digest -> str {
     return _SCHEMA_DIGEST_CACHE[0];
 }
 
-def compute_module_key(source_path: str) -> str {
+# Update `h` with the compiler-identity digest prefix shared by every module key:
+# jaclang version, Python version, JIR FORMAT_VERSION, and the IR schema digest.
+# IR shape changes per compiler version, so this prefix is the cache-key
+# correctness contract; both stub and full module keys start from it.
+def _update_compiler_identity(h: _hashlib.HASH) -> None {
     import from importlib.metadata { version as pkg_version }
     try {
         jac_ver = pkg_version('jaclang');
     } except Exception {
         jac_ver = "0.0.0";
     }
-    h = hashlib.sha256();
     h.update(jac_ver.encode());
     h.update(struct.pack('<H', (sys.version_info.major << 8) | sys.version_info.minor));
     h.update(struct.pack('<H', FORMAT_VERSION));
     h.update(schema_digest().encode());
+}
+
+def compute_module_key(source_path: str) -> str {
+    h = hashlib.sha256();
+    _update_compiler_identity(h);
     h.update(_module_client_kind(source_path).encode());
     h.update(_module_codespace_mode(source_path).encode());
     import from jaclang.jac0core.placement_pins { pins_digest }
@@ -221,12 +233,35 @@ def read_modkey(data: bytes) -> (str | None) {
     }
 }
 
+def compute_stub_module_key(source_path: str) -> str {
+    h = hashlib.sha256();
+    _update_compiler_identity(h);
+    h.update(compute_content_sha256(source_path).encode());
+    return h.hexdigest();
+}
+
+def is_stub_path(source_path: str) -> bool {
+    return source_path.endswith('.pyi');
+}
+
+def module_cache_key(source_path: str) -> str {
+    if is_stub_path(source_path) {
+        return compute_stub_module_key(source_path);
+    }
+    return compute_module_key(source_path);
+}
+
 def jir_matches_source(jir_data: bytes, source_path: str) -> bool {
     stored = read_modkey(jir_data);
     if stored is None {
         return False;
     }
-    return stored == compute_module_key(source_path);
+    return stored == module_cache_key(source_path);
+}
+
+def jir_cacheable_source_path(source_path: str) -> bool {
+    return is_stub_path(source_path)
+        or (source_path.endswith('.jac') and not source_path.endswith('.na.jac'));
 }
 
 def cache_mode -> tuple[bool, bool] {
@@ -441,12 +476,101 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
                 }
             }
         }
+        # Perf tradeoff: a still-fresh mtime short-circuits to True without
+        # recomputing the module key. This avoids hashing large stubs on every
+        # LSP keystroke, at the cost of a schema-drift window: a schema change
+        # shipped without a FORMAT_VERSION bump (and with preserved mtimes) can
+        # serve stale IR until the cache file is regenerated. FORMAT_VERSION
+        # bumps and the content-hash fallback below cover normal invalidation.
         if fresh {
             return True;
         }
 
         return jir_matches_source(data, source_path);
     } except OSError {
+        return False;
+    }
+}
+
+# Runtime value is uni.Module | None (the result of JirReader.read_module).
+# Typed `object` because jir.jac keeps a stdlib-only top-level import set to
+# stay bootstrap-safe, so it cannot import uni.Module for the signature.
+def read_module_jir_cache(source_path: str) -> (object | None) {
+    import from jaclang.jac0core.jir_passes { JirReader }
+    import traceback;
+
+    resolved_path = str(Path(source_path).resolve());
+    if not jir_cacheable_source_path(resolved_path) {
+        return None;
+    }
+    (rebuild, _) = cache_mode();
+    if rebuild {
+        return None;
+    }
+    try {
+        cache_path = get_module_cache_path(resolved_path);
+        if not is_module_cache_valid(resolved_path, cache_path) {
+            return None;
+        }
+        data = cache_path.read_bytes();
+        reader = JirReader(_source_path=resolved_path);
+        return reader.read_module(data);
+    } except Exception {
+        if os.environ.get("JAC_JIR_DEBUG") {
+            traceback.print_exc();
+        }
+        try {
+            get_module_cache_path(resolved_path).unlink(missing_ok=True);
+        } except Exception {
+            ;
+        }
+        return None;
+    }
+}
+
+# `mod` is uni.Module; typed `object` for the same bootstrap-safe, stdlib-only
+# reason as read_module_jir_cache above. Callers in jac0core always pass a Module.
+def write_module_jir_cache(
+    source_path: str, mod: object, extra_sections: (dict[int, bytes] | None) = None
+) -> bool {
+    import from jaclang.jac0core.jir_passes { JirWriter }
+
+    resolved_path = str(Path(source_path).resolve());
+    if not jir_cacheable_source_path(resolved_path) {
+        return False;
+    }
+    if is_stub_path(resolved_path) and not mod.stub_only {
+        mod.stub_only = True;
+    }
+    try {
+        cache_path = get_module_cache_path(resolved_path);
+        if is_module_cache_valid(resolved_path, cache_path) {
+            return False;
+        }
+        cache_path.parent.mkdir(parents=True, exist_ok=True);
+        writer = JirWriter();
+        sections: dict[int, bytes] = {
+            SEC_MODKEY: module_cache_key(resolved_path).encode('utf-8')
+        };
+        if extra_sections is not None {
+            for (k, v) in extra_sections.items() {
+                sections[k] = v;
+            }
+        }
+        bc = mod.gen?.py_bytecode;
+        if bc is not None and SEC_BYTECODE not in sections {
+            sections[SEC_BYTECODE] = bc;
+        }
+        jir_bytes = writer.write_module(mod, sections=sections);
+        tmp_path = cache_path.with_suffix(f'.{os.getpid()}.tmp');
+        try {
+            tmp_path.write_bytes(jir_bytes);
+            tmp_path.rename(cache_path);
+        } finally {
+            tmp_path.unlink(missing_ok=True);
+        }
+        return True;
+    } except Exception {
         return False;
     }
 }

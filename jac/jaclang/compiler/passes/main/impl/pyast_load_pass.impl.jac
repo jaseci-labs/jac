@@ -1912,6 +1912,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     if valid_decorators {
         kid.extend(valid_decorators);
     }
+    kid.append(arch_type);
     kid.append(name);
     kid.extend(base_classes);
     kid.extend(valid_body);
