@@ -137,6 +137,11 @@ def resolve_ref(
     return None;
 }
 
+glob _gm_log_registry: list = [];
+glob _gm_log_buffer: list = [];
+glob _gm_se_buffer: list = [];
+glob _gm_se_depth: list = [0];
+
 class JacClassReferences {
     with entry {
         TYPE_CHECKING: bool = TYPE_CHECKING;
@@ -458,6 +463,17 @@ class JacBuiltin {
     ) -> JsxElement;
 
     static def log_report(expr: any, custom: bool = False) -> None;
+    static def tensor_eq_assert(a: any, b: any, msg: str) -> None;
+    static def trap_guard(fn: any) -> any;
+    static def se_emit(callee: any, args: tuple, kwargs: dict) -> None;
+    static def se_flush -> None;
+    static def se_region_enter -> None;
+    static def se_region_exit -> None;
+    static def se_region_open(module: any, inputs: any) -> any;
+    static def se_guard(fn: any) -> any;
+    static def log_register(fn: any) -> int;
+    static def log_emit(slot: int, args: tuple, kwargs: dict) -> None;
+    static def log_flush_hook(module: any, inputs: any, output: any) -> any;
     static def safe_subscript(`obj: any, key: any) -> any;
     static def get_console -> ConsoleImpl;
 }

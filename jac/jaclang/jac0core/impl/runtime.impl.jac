@@ -882,6 +882,105 @@ impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
     }
 }
 
+impl JacBuiltin.se_emit(callee: any, args: tuple, kwargs: dict) -> None {
+    if _gm_se_depth[0] > 0 {
+        _gm_se_buffer.append((callee, args, kwargs));
+    } else {
+        callee(*args, **kwargs);
+    }
+}
+
+impl JacBuiltin.se_region_enter -> None {
+    _gm_se_depth[0] += 1;
+}
+
+impl JacBuiltin.se_region_open(module: any, inputs: any) -> any {
+    JacBuiltin.se_region_enter();
+    return None;
+}
+
+impl JacBuiltin.se_region_exit -> None {
+    if _gm_se_depth[0] > 0 {
+        _gm_se_depth[0] -= 1;
+    }
+}
+
+impl JacBuiltin.se_flush -> None {
+    pending = list(_gm_se_buffer);
+    _gm_se_buffer.clear();
+    for entry in pending {
+        (fn, args, kwargs) = entry;
+        fn(*args, **kwargs);
+    }
+}
+
+impl JacBuiltin.se_guard(fn: any) -> any {
+    import functools;
+    @functools.wraps(fn)
+    def _gm_se_wrapper(*args: any, **kwargs: any) -> any {
+        JacBuiltin.se_region_enter();
+        try {
+            return fn(*args, **kwargs);
+        } finally {
+            JacBuiltin.se_region_exit();
+            JacBuiltin.se_flush();
+        }
+    }
+    return _gm_se_wrapper;
+}
+
+impl JacBuiltin.log_register(fn: any) -> int {
+    _gm_log_registry.append(fn);
+    return len(_gm_log_registry) - 1;
+}
+
+impl JacBuiltin.log_emit(slot: int, args: tuple, kwargs: dict) -> None {
+    _gm_log_buffer.append((slot, args, kwargs));
+}
+
+impl JacBuiltin.log_flush_hook(module: any, inputs: any, output: any) -> any {
+    JacBuiltin.se_region_exit();
+    JacBuiltin.se_flush();
+    for entry in _gm_log_buffer {
+        (slot, args, kwargs) = entry;
+        _gm_log_registry[slot](*args, **kwargs);
+    }
+    _gm_log_buffer.clear();
+    return output;
+}
+
+impl JacBuiltin.tensor_eq_assert(a: any, b: any, msg: str) -> None {
+    import torch;
+    meta_ok = (a.shape == b.shape) and (a.dtype == b.dtype);
+    cond = (a == b).all() if meta_ok else torch.tensor(False, device=a.device);
+    torch._assert_async(cond, msg);
+}
+
+impl JacBuiltin.trap_guard(fn: any) -> any {
+    import functools;
+    import builtins;
+    @functools.wraps(fn)
+    def _gm_trap_wrapper(*args: any, **kwargs: any) -> any {
+        try {
+            return fn(*args, **kwargs);
+        } except RuntimeError as err {
+            text = str(err);
+            if "[[GM-TRAP " not in text {
+                raise err;
+            }
+            after = text.split("[[GM-TRAP ", 1)[1];
+            type_name = after.split("]]", 1)[0];
+            msg = after.split("]]", 1)[1].split("[[/GM-TRAP]]", 1)[0];
+            exc_cls = getattr(builtins, type_name, RuntimeError);
+            if not (isinstance(exc_cls, type) and issubclass(exc_cls, BaseException)) {
+                exc_cls = RuntimeError;
+            }
+            raise exc_cls(msg) from None;
+        }
+    }
+    return _gm_trap_wrapper;
+}
+
 impl JacGraph.refs(
     path: GraphQuery | NodeArchetype | list[NodeArchetype], slc: (slice | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {

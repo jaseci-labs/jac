@@ -3,6 +3,7 @@ import types;
 import from threading { Event }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.compile_options { CompileOptions }
+import from jaclang.jac0core.constant { GraphBreakKind, GraphMendHelper }
 import from jaclang.jac0core.mtp { Info }
 import from jaclang.jac0core.passes { Alert }
 import type from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
@@ -24,6 +25,11 @@ class JacProgram {
         type_evaluator: TypeEvaluator | None,
         _compiler: JacCompiler | None,
         _compile_options: CompileOptions,
+        graphmend_enabled: bool,
+        graphmend_scope: list[str],
+        graphmend_scoped_compile: bool,
+        graphmend_breaks: dict[int, GraphBreakKind],
+        graphmend_helpers: dict[int, set[GraphMendHelper]],
         _native_cache: dict[(str, any)],
         _hub_cache_times: dict[str, float],
         _dependents: dict[str, set[str]],

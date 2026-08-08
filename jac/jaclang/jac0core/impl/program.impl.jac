@@ -9,6 +9,11 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
+    self.graphmend_enabled: bool = False;
+    self.graphmend_scope: list[str] = [];
+    self.graphmend_scoped_compile: bool = False;
+    self.graphmend_breaks: dict[int, GraphBreakKind] = {};
+    self.graphmend_helpers: dict[int, set[GraphMendHelper]] = {};
     self._native_cache: dict = {};
 
     self._hub_cache_times: dict[str, float] = {};

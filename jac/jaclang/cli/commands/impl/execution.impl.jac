@@ -264,6 +264,8 @@ impl run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
+    graphmend: bool = False,
+    graphmend_scope: str = "",
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
@@ -323,6 +325,15 @@ impl run(
     sys.argv = [filename] + list(args);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
+    gm_scope: list[str] = [];
+    for part in graphmend_scope.split(',') {
+        stripped = part.strip();
+        if stripped {
+            gm_scope.append(stripped);
+        }
+    }
+    Jac.get_program().graphmend_enabled = graphmend or bool(gm_scope);
+    Jac.get_program().graphmend_scope = gm_scope;
     try {
         if filename.endswith('.jac') {
             native_executed = False;

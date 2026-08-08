@@ -357,6 +357,18 @@ def get_py_code_gen(
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
+        import from jaclang.compiler.passes.main.graphmend.graph_break_detect_pass {
+            GraphBreakDetectPass
+        }
+        import from jaclang.compiler.passes.main.graphmend.trap_lowering_pass {
+            TrapLoweringPass
+        }
+        import from jaclang.compiler.passes.main.graphmend.predicate_ctrl_flow_pass {
+            PredicateCtrlFlowPass
+        }
+        import from jaclang.compiler.passes.main.graphmend.defer_side_effect_pass {
+            DeferSideEffectPass
+        }
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
         if native {
@@ -389,7 +401,17 @@ def get_py_code_gen(
                 )
             );
         }
-        passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
+        passes.extend(
+            [
+                GraphBreakDetectPass,
+                TrapLoweringPass,
+                PredicateCtrlFlowPass,
+                DeferSideEffectPass,
+                PyastGenPass,
+                PyJacAstLinkPass,
+                PyBytecodeGenPass
+            ]
+        );
         return passes;
     } except ImportError {
         return [PyastGenPass, PyBytecodeGenPass];
