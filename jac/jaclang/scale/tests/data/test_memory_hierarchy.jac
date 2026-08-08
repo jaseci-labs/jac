@@ -169,20 +169,37 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     );
 
     base_url = f"http://localhost:{port}";
+    last_status = "no response";
     for _ in range(30) {
+        if server.poll() is not None {
+            break;
+        }
         try {
             r = requests.get(f"{base_url}/healthz", timeout=1);
             if r.status_code == 200 {
                 return server;
             }
-        } except Exception {
-            time.sleep(1);
+            last_status = f"HTTP {r.status_code}: {r.text[:200]}";
+        } except Exception as e {
+            last_status = f"{type(e).__name__}: {e}";
         }
+        time.sleep(1);
     }
 
-    (stdout, stderr) = server.communicate(timeout=2);
+    # The server never exits on its own, so communicate() on a live process can
+    # only ever raise TimeoutExpired and bury the real cause. Stop it first.
+    with contextlib.suppress(Exception) {
+        server.terminate();
+    }
+    try {
+        (stdout, stderr) = server.communicate(timeout=10);
+    } except Exception {
+        server.kill();
+        (stdout, stderr) = server.communicate();
+    }
     raise RuntimeError(
-        f"jac start failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+        f"jac start failed to start (last probe: {last_status})\n"
+        f"STDOUT:\n{stdout}\nSTDERR:\n{stderr}"
     );
 }
 

@@ -20,7 +20,6 @@ glob _APP: str = str(Path(__file__).parent / "main.jac"),
 
 def _backend_available -> bool {
     try {
-        import starlette.testclient;
         import jaclang.scale.server.serve;
         return True;
     } except ImportError {

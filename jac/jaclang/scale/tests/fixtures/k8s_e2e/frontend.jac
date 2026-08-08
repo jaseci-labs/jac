@@ -1,6 +1,5 @@
 """Jac Shop - Client-Side UI."""
 
-
 import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 import from .components.AuthForm { AuthForm }

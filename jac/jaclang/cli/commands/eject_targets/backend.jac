@@ -934,7 +934,7 @@ def _req_key(req: str) -> str {
 
 
 def _emit_requirements(backend_dir: Path, extra_reqs: list) {
-    lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    lines: list[str] = ["fastapi>=0.121", "uvicorn[standard]>=0.38"];
     seen: set = {_req_key(r) for r in lines};
     for req in extra_reqs {
         key = _req_key(str(req));

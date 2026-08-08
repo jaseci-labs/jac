@@ -1,7 +1,12 @@
-import jwt;
+import from jaclang.runtimelib.serving.authcrypt {
+    JWTError,
+    JWTExpiredError,
+    jwt_decode,
+    jwt_encode
+}
 import logging;
 import from datetime { UTC, datetime, timedelta }
-import from fastapi { Request, Response }
+import from jaclang.runtimelib.serving.datatypes { Request, Response }
 import from contextvars { ContextVar }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }

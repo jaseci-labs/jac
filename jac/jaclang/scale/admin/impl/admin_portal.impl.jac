@@ -1,19 +1,19 @@
 import logging;
 import from collections.abc { Callable }
-import from fastapi { Request }
-import from fastapi.responses {
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes {
+    FileResponse,
     HTMLResponse,
     JSONResponse,
-    Response,
-    FileResponse,
-    RedirectResponse
+    RedirectResponse,
+    Response
 }
 import mimetypes;
 import subprocess;
 import from pathlib { Path }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jaclang.runtimelib.server { JsonValue }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -45,17 +45,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Admin username',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Admin password',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -65,7 +65,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
         )
     );
 
-    import from fastapi { Request }
+    import from jaclang.runtimelib.serving.datatypes { Request }
     async def reset_password_handler(
         request: Request, current_password: str, new_password: str
     ) -> TransportResponse {
@@ -82,17 +82,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='current_password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Current password',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='new_password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='New password',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -118,17 +118,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='limit',
                     data_type='integer',
                     required=False,
-                    default=100,
+                    default_value=100,
                     description='Max users to return',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 ),
                 APIParameter(
                     name='offset',
                     data_type='integer',
                     required=False,
-                    default=0,
+                    default_value=0,
                     description='Offset for pagination',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -151,9 +151,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username to get',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -178,25 +178,25 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username for new user',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Password for new user',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='role',
                     data_type='string',
                     required=False,
-                    default='user',
+                    default_value='user',
                     description='Role for new user (admin, user)',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -226,25 +226,25 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username to update',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 ),
                 APIParameter(
                     name='role',
                     data_type='string',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='New role (admin, user)',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='requires_password_reset',
                     data_type='boolean',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Force password reset on next login',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -269,9 +269,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username to delete',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -313,9 +313,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -341,9 +341,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='profile',
                     data_type='string',
                     required=False,
-                    default='default',
+                    default_value='default',
                     description='Config profile (default, development, production)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -368,17 +368,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='content',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='TOML configuration content',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='profile',
                     data_type='string',
                     required=False,
-                    default='default',
+                    default_value='default',
                     description='Config profile (default, development, production)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -404,9 +404,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Username to view graph for (defaults to all users)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -472,9 +472,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='path',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Asset path',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

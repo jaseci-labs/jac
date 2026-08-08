@@ -49,7 +49,7 @@ glob _SEEDS: list[str] = [
      _ALLOW_EXACT: list[str] = [
          "jaclang.cli.console",
          "jaclang.cli.banners",
-         "jaclang.scale.jserver.jserver"
+         "jaclang.runtimelib.serving.endpoint"
      ],
      _VENDORED_INIT: str = '''"""Vendored jaclang runtime.
 

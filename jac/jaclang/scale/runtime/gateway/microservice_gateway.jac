@@ -1,9 +1,13 @@
 import logging;
 import mimetypes;
-import uvicorn;
 import from pathlib { Path }
-import from fastapi { FastAPI, Request }
-import from fastapi.responses { HTMLResponse, JSONResponse, Response }
+import from jaclang.runtimelib.serving.app { ServingApp }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes {
+    HTMLResponse,
+    JSONResponse,
+    Response
+}
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
@@ -38,7 +42,7 @@ glob logger = logging.getLogger(__name__),
 
 obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
-        app: FastAPI | None = None,
+        app: any = None,
         port: int = DEFAULT_GATEWAY_PORT,
         host: str = DEFAULT_GATEWAY_HOST,
         client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
@@ -54,7 +58,7 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerAuth, JacAPIServerWorkloa
         route_table: ServiceRouteTable = ServiceRouteTable(),
         _routes_refreshed_at: float = 0.0;
 
-    def setup -> FastAPI;
+    def setup -> ServingApp;
     def resolve_target_url(service_entry: ServiceEntry, path: str, query: str) -> str;
     def handle_health -> Response;
     def handle_health_live -> Response;

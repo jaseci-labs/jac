@@ -1,8 +1,8 @@
 import asyncio;
 import logging;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
-import from jaclang.scale.jserver.jserver { HTTPMethod, JEndPoint }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
+import from jaclang.runtimelib.serving.endpoint { HTTPMethod, JEndPoint }
 import from jaclang.scale.admin.k8s_ops {
     apps_api,
     core_api,

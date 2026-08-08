@@ -1197,13 +1197,11 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         return;
     }
     import os;
-    import socket;
     import time;
-    import threading;
     import urllib.request;
-    import from http.server { ThreadingHTTPServer }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.server { JacAPIServer as CoreJacAPIServer }
+    import from jaclang.runtimelib.serving.server { ServingServer }
     if module_name in sv_client._registry {
         return;
     }
@@ -1211,36 +1209,16 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         return;
     }
     base_port = 18000 + (hash(module_name) % 1000);
-    port = base_port;
-    bind_ok = False;
-    for _ in range(100) {
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
-        try {
-            s.bind(('127.0.0.1', port));
-            s.close();
-            bind_ok = True;
-            break;
-        } except OSError {
-            s.close();
-            port = port + 1;
-        }
-    }
-    if not bind_ok {
-        raise RuntimeError(f"Could not find free port near {base_port}");
-    }
 
     srv = CoreJacAPIServer(
         module_name=module_name, port=0, base_path=base_path, is_sv_sibling=True
     );
-    srv.port = port;
     srv.load_module();
-    handler_class = srv.create_handler();
-    httpd = ThreadingHTTPServer(('127.0.0.1', port), handler_class);
-    srv.server = httpd;
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True);
-    thread.start();
-    time.sleep(0.05);
+    serving = ServingServer(app=srv.build_app(), host='127.0.0.1', port=base_port);
+    serving.serve_background(port_retries=100);
+    port = serving.bound_port;
+    srv.port = port;
+    srv.server = serving;
     base_url = f"http://127.0.0.1:{port}";
     deadline = time.time() + 10.0;
     healthy = False;
@@ -1270,45 +1248,28 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
         return _sp.sv_service_call(module_name, func_name, args);
     }
     import from jaclang.runtimelib { sv_client }
-
-    import from jaclang.runtimelib.sv_sse {
-        sv_http_post,
-        wrap_sse_keepalive,
-        wrap_sse_keepalive_conn
-    }
+    import from jaclang.runtimelib.serving.client { post_stream_aware_sync }
+    import from jaclang.runtimelib.serving.sse { consume_sse_events }
 
     func_label = f"{module_name}.{func_name}";
 
     if module_name in sv_client._test_clients {
         client = sv_client._test_clients[module_name];
-        stream_cm = client.stream("POST", f"/function/{func_name}", json=args);
-        resp = stream_cm.__enter__();
-        ct = resp.headers.get("content-type", "");
+        resp = client.post(f"/function/{func_name}", json=args);
+        ct = str(resp.headers.get("Content-Type") or "");
         if ct.startswith("text/event-stream") {
-            return wrap_sse_keepalive(stream_cm, resp, None, func_label);
+            return consume_sse_events(str(resp.text).splitlines(), func_label);
         }
-        try {
-            resp.read();
-            data = resp.json();
-        } finally {
-            stream_cm.__exit__(None, None, None);
-        }
+        data = resp.json();
     } else {
-        import json;
         url = sv_client.resolve_url(module_name);
-        (resp, conn) = sv_http_post(url, f"/function/{func_name}", args);
-        ct = resp.headers.get("Content-Type", "") or "";
-        if ct.startswith("text/event-stream") {
-            if conn.sock is not None {
-                conn.sock.settimeout(None);
-            }
-            return wrap_sse_keepalive_conn(resp, conn, func_label);
+        (kind, payload) = post_stream_aware_sync(
+            f"{url}/function/{func_name}", json_body=args, label=func_label
+        );
+        if kind == 'sse' {
+            return payload;
         }
-        try {
-            data = json.loads(resp.read().decode('utf-8'));
-        } finally {
-            conn.close();
-        }
+        data = payload;
     }
 
     if isinstance(data, dict) and data.get("ok") {
@@ -1334,7 +1295,7 @@ impl JacServe.sv_walker_call(
         return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
     }
     import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.sv_sse { sv_http_post }
+    import from jaclang.runtimelib.serving.client { request_sync }
 
     label = f"{module_name}.{walker_name}";
 
@@ -1343,14 +1304,10 @@ impl JacServe.sv_walker_call(
         resp = client.post(f"/walker/{walker_name}", json=args);
         data = resp.json();
     } else {
-        import json;
         url = sv_client.resolve_url(module_name);
-        (resp, conn) = sv_http_post(url, f"/walker/{walker_name}", args);
-        try {
-            data = json.loads(resp.read().decode('utf-8'));
-        } finally {
-            conn.close();
-        }
+        data = request_sync(
+            'POST', f"{url}/walker/{walker_name}", json_body=args
+        ).json();
     }
 
     if isinstance(data, dict) and data.get("ok") {
@@ -1389,7 +1346,7 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
-) -> HTTPServer {
+) -> any {
     _sp = _scale_provider();
     if _sp is not None {
         _scaled = _sp.create_server(jac_server, host, port);
@@ -1397,31 +1354,9 @@ impl JacServe.create_server(
             return _scaled;
         }
     }
-    import from http.server { ThreadingHTTPServer }
-    handler_class = jac_server.create_handler();
-    current_port = port;
-    for _ in range(max_retries) {
-        try {
-            server = ThreadingHTTPServer((host, current_port), handler_class);
-            if current_port != port {
-                import from jaclang.cli.console { console }
-                console.print(
-                    f"  Port {port} is in use, using port {current_port} instead",
-                    style="warning"
-                );
-                jac_server.port = current_port;
-            }
-            return server;
-        } except OSError as e {
-            if e.errno in (98, 10048) or "Address already in use" in str(e) {
-                current_port += 1;
-            } else {
-                raise;
-            }
-        }
-    }
-    raise OSError(
-        f"Could not find an available port after trying {port}-{current_port}"
+    raise RuntimeError(
+        "create_server is retired: JacAPIServer.start binds the Jac-native "
+        "serving core directly"
     );
 }
 
@@ -1438,37 +1373,6 @@ impl JacServe.render_page(
 impl JacServe.get_client_js(introspector: ModuleIntrospector) -> str {
     import from jaclang.runtimelib.client.serving { JacClient }
     return JacClient.get_client_js(introspector);
-}
-
-impl JacServe.send_json(
-    handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[(str, JsonValue)]
-) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_json(handler, status, data);
-}
-
-impl JacServe.send_html(
-    handler: BaseHTTPRequestHandler, status: StatusCode, body: str
-) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_html(handler, status, body);
-}
-
-impl JacServe.send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_javascript(handler, code);
-}
-
-impl JacServe.send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_css(handler, css_code);
-}
-
-impl JacServe.send_static_file(
-    handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
-) -> None {
-    import from jaclang.runtimelib.client.serving { JacClient }
-    JacClient.send_static_file(handler, file_path, content_type);
 }
 
 impl JacLLM.get_mtir(

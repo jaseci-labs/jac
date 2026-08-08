@@ -1,12 +1,13 @@
 import os;
 import tempfile;
-import from starlette.requests { Request }
+import from jaclang.runtimelib.serving.datatypes { Request }
 import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
 
 
 def _get_request -> Request {
-    return Request({"type": "http", "method": "GET", "headers": []});
+    import from jaclang.runtimelib.serving.datatypes { URL }
+    return Request(method="GET", url=URL(path="/static/assets/logo.svg"));
 }
 
 

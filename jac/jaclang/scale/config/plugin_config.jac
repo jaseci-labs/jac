@@ -257,7 +257,7 @@ class JacScalePluginConfig {
                         "drain_timeout_seconds": {
                             "type": "float",
                             "default": 10.0,
-                            "description": "Graceful shutdown window (seconds). On SIGTERM, gateway + services flip a drain flag (503s on new requests) and wait up to this many seconds for in-flight requests to finish before uvicorn force-closes. Mirrors K8s `terminationGracePeriodSeconds`."
+                            "description": "Graceful shutdown window (seconds). On SIGTERM, gateway + services flip a drain flag (503s on new requests) and wait up to this many seconds for in-flight requests to finish before the server force-closes; the serving core mirrors K8s `terminationGracePeriodSeconds`."
                         },
                         "http_forward_timeout": {
                             "type": "float",

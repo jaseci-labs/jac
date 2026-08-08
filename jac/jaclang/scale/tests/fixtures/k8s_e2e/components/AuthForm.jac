@@ -1,6 +1,5 @@
 """Authentication form component for login/signup."""
 
-
 def:pub AuthForm(
     isSignup: bool,
     username: str,

@@ -1,4 +1,7 @@
-import bcrypt;
+import from jaclang.runtimelib.serving.authcrypt {
+    hash_password as _scrypt_hash,
+    verify_password as _scrypt_verify
+}
 import uuid;
 import from datetime { datetime, UTC }
 import from sqlalchemy {

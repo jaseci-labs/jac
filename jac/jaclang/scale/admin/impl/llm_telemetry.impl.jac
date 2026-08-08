@@ -3,10 +3,10 @@ import threading;
 import time;
 import uuid;
 import from collections { OrderedDict }
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -738,9 +738,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                     name="invocation_id",
                     data_type="string",
                     required=True,
-                    default=None,
+                    default_value=None,
                     description="The invocation ID of the trace",
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

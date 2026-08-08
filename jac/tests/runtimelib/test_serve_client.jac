@@ -2292,8 +2292,12 @@ test "stdlib server serves graph visualizer and docs" {
         assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
         docs = client.get("/docs");
         assert docs.status_code == 200 , f"/docs: {docs.status_code}";
-        assert "/walker/leave_note" in docs.text , "docs page should list the module's walkers";
-        assert "/user/login" in docs.text , "docs page should list auth endpoints";
+        assert "swagger-ui" in docs.text.lower() , "/docs should serve the API explorer";
+        spec = client.get("/openapi.json");
+        assert spec.status_code == 200 , f"/openapi.json: {spec.status_code}";
+        paths = spec.json()["paths"];
+        assert "/walker/leave_note" in paths , "openapi should list the module's walkers";
+        assert "/user/login" in paths , "openapi should list auth endpoints";
         client.close();
     }
 }

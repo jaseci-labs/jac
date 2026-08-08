@@ -2,9 +2,9 @@ import os;
 import asyncio;
 import logging;
 import time;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -248,15 +248,11 @@ def _mask_uri(uri: str) -> str {
 
 
 async def _http_ready(base: str, path: str) -> bool {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { arequest }
     url = base.rstrip("/") + path;
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_PROBE_TIMEOUT_S, connect=_PROBE_TIMEOUT_S)
-        ) as cl {
-            resp = await cl.get(url);
-            return resp.status_code < 500;
-        }
+        resp = await arequest("GET", url, timeout=_PROBE_TIMEOUT_S);
+        return resp.status_code < 500;
     } except Exception as e {
         logger.debug(f"ready probe {url} failed: {e}");
         return False;
@@ -265,18 +261,21 @@ async def _http_ready(base: str, path: str) -> bool {
 
 
 async def _tempo_recent_count -> int {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { arequest }
     base = _tempo_base_url();
     now_s = int(time.time());
     params = {"q": "{ }", "limit": "1", "start": str(now_s - 300), "end": str(now_s)};
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_PROBE_TIMEOUT_S, connect=_PROBE_TIMEOUT_S)
-        ) as cl {
-            resp = await cl.get(base.rstrip("/") + "/api/search", params=params);
-            resp.raise_for_status();
-            return len(resp.json().get("traces", []) or []);
+        resp = await arequest(
+            "GET",
+            base.rstrip("/") + "/api/search",
+            params=params,
+            timeout=_PROBE_TIMEOUT_S
+        );
+        if not resp.ok() {
+            raise ConnectionError(f"tempo returned {resp.status_code}");
         }
+        return len(resp.json().get("traces", []) or []);
     } except Exception as e {
         logger.debug(f"tempo recent-count probe failed: {e}");
         return 0;
@@ -285,7 +284,7 @@ async def _tempo_recent_count -> int {
 
 
 async def _loki_recent_count -> int {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { arequest }
     base = _loki_base_url();
     ns = _app_namespace();
     selector = f'{{namespace="{ns}"}}' if ns else '{namespace=~".+"}';
@@ -298,20 +297,21 @@ async def _loki_recent_count -> int {
         "direction": "backward"
     };
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_PROBE_TIMEOUT_S, connect=_PROBE_TIMEOUT_S)
-        ) as cl {
-            resp = await cl.get(
-                base.rstrip("/") + "/loki/api/v1/query_range", params=params
-            );
-            resp.raise_for_status();
-            data = resp.json().get("data", {}) or {};
-            total = 0;
-            for stream in (data.get("result", []) or []) {
-                total += len(stream.get("values", []) or []);
-            }
-            return total;
+        resp = await arequest(
+            "GET",
+            base.rstrip("/") + "/loki/api/v1/query_range",
+            params=params,
+            timeout=_PROBE_TIMEOUT_S
+        );
+        if not resp.ok() {
+            raise ConnectionError(f"loki returned {resp.status_code}");
         }
+        data = resp.json().get("data", {}) or {};
+        total = 0;
+        for stream in (data.get("result", []) or []) {
+            total += len(stream.get("values", []) or []);
+        }
+        return total;
     } except Exception as e {
         logger.debug(f"loki recent-count probe failed: {e}");
         return 0;

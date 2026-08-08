@@ -117,9 +117,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -139,9 +139,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             request_model=UpdateJobRequest,
@@ -162,9 +162,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

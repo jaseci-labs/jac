@@ -11,7 +11,6 @@ import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
-import from http.server { HTTPServer }
 import from inspect { getfile }
 import from logging { getLogger }
 import from pathlib { Path }
@@ -54,7 +53,6 @@ import from jaclang.jac0core.modresolver {
     pop_import_base
 }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
-import type from http.server { BaseHTTPRequestHandler }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.jac0core.compiler { JacCompiler }
 import type from jaclang.jac0core.program { JacProgram }
@@ -396,7 +394,7 @@ class JacServe {
     static def get_sv_registry -> dict[str, str];
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
-    ) -> HTTPServer;
+    ) -> any;
 
     static def render_page(
         introspector: ModuleIntrospector,
@@ -406,23 +404,6 @@ class JacServe {
     ) -> dict[(str, Any)];
 
     static def get_client_js(introspector: ModuleIntrospector) -> str;
-    static def send_json(
-        handler: BaseHTTPRequestHandler,
-        status: StatusCode,
-        data: dict[(str, JsonValue)]
-    ) -> None;
-
-    static def send_html(
-        handler: BaseHTTPRequestHandler, status: StatusCode, body: str
-    ) -> None;
-
-    static def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None;
-    static def send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None;
-    static def send_static_file(
-        handler: BaseHTTPRequestHandler,
-        file_path: Path,
-        content_type: (str | None) = None
-    ) -> None;
 }
 
 class JacTest {

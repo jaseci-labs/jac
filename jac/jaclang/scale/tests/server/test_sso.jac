@@ -8,8 +8,8 @@ import from types { TracebackType }
 import unittest.mock;
 
 import pytest;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse, RedirectResponse }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse, RedirectResponse }
 
 import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
@@ -78,6 +78,47 @@ obj MockUserInfo {
         return fields;
     }
 }
+
+"""Build a Request carrying an OAuth callback code, as the provider sees it."""
+def _callback_request(code: str = "auth-code-123") -> Request {
+    import from jaclang.runtimelib.serving.datatypes { QueryParams, URL }
+    return Request(
+        method="GET",
+        url=URL(path="/sso/callback", query=f"code={code}"),
+        query_params=QueryParams(raw={"code": [code]})
+    );
+}
+
+"""Stand in for a JSON response from a provider's token or userinfo endpoint."""
+obj _OAuthResp {
+    has payload: dict,
+        status_code: int = 200;
+
+    def json -> any {
+        return self.payload;
+    }
+
+    def ok -> bool {
+        return 200 <= self.status_code < 400;
+    }
+
+    def text -> str {
+        return json.dumps(self.payload);
+    }
+}
+
+"""Serve canned JSON per request, in call order."""
+def _oauth_responder(payloads: list) -> any {
+    seen: dict = {"n": 0};
+
+    async def _fake_arequest(method: str, url: str, **kwargs: any) -> _OAuthResp {
+        i = seen["n"];
+        seen["n"] = i + 1;
+        return _OAuthResp(payload=payloads[min(i, len(payloads) - 1)]);
+    }
+    return _fake_arequest;
+}
+
 
 obj MockGoogleSSO {
     has client_id: str,
@@ -965,44 +1006,43 @@ test "is safe loopback redirect truth table" {
 }
 
 test "google sso provider initiate auth" {
-    with unittest.mock.patch("jaclang.scale.sso.google.GoogleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GoogleSSOProvider("id", "secret", "uri");
-        assert provider._sso == mock_inner_sso;
-        expected_response = unittest.mock.Mock();
-        mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
-            return_value=expected_response
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        response = asyncio.run(provider.initiate_auth());
-        mock_inner_sso.get_login_redirect.assert_called_once();
-        assert response == expected_response;
-    }
+    provider = GoogleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    response = asyncio.run(provider.initiate_auth(state="st-1"));
+    assert response.status_code == 303;
+    location = response.headers.get("Location");
+    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth");
+    assert "client_id=id" in location;
+    assert "response_type=code" in location;
+    assert "state=st-1" in location;
+    assert "scope=openid" in location;
 }
 
 test "google sso provider handle callback" {
-    with unittest.mock.patch("jaclang.scale.sso.google.GoogleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GoogleSSOProvider("id", "secret", "uri");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_user = unittest.mock.Mock();
-        mock_user.email = "test@example.com";
-        mock_user.id = "12345";
-        mock_user.display_name = "Test User";
-        mock_inner_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        result = asyncio.run(provider.handle_callback(mock_request));
-        mock_inner_sso.verify_and_process.assert_called_once_with(mock_request);
-        assert result.email == "test@example.com";
-        assert result.external_id == "12345";
-        assert result.display_name == "Test User";
+    provider = GoogleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    responder = _oauth_responder(
+        [
+            {"access_token": "tok-abc"},
+            {
+                "sub": "12345",
+                "email": "test@example.com",
+                "name": "Test User",
+                "given_name": "Test",
+                "family_name": "User"
+            }
+        ]
+    );
+    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder), unittest.mock.patch(
+        "jaclang.scale.sso.google.arequest", responder
+    ) {
+        result = asyncio.run(provider.handle_callback(_callback_request()));
     }
+    assert result.email == "test@example.com";
+    assert result.external_id == "12345";
+    assert result.display_name == "Test User";
 }
 
 test "get sso with apple platform" {
@@ -1125,44 +1165,32 @@ test "apple sso callback auto register new user" {
 }
 
 test "apple sso provider initiate auth" {
-    with unittest.mock.patch("jaclang.scale.sso.apple.AppleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = AppleSSOProvider("id", "secret", "uri");
-        assert provider._sso == mock_inner_sso;
-        expected_response = unittest.mock.Mock();
-        mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
-            return_value=expected_response
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        response = asyncio.run(provider.initiate_auth());
-        mock_inner_sso.get_login_redirect.assert_called_once();
-        assert response == expected_response;
-    }
+    provider = AppleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    response = asyncio.run(provider.initiate_auth());
+    assert response.status_code == 303;
+    location = response.headers.get("Location");
+    assert location.startswith("https://appleid.apple.com/auth/authorize");
+    # Apple posts the callback as a form, so the mode is requested up front.
+    assert "response_mode=form_post" in location;
 }
 
 test "apple sso provider handle callback" {
-    with unittest.mock.patch("jaclang.scale.sso.apple.AppleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = AppleSSOProvider("id", "secret", "uri");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_user = unittest.mock.Mock();
-        mock_user.email = "test@privaterelay.appleid.com";
-        mock_user.id = "apple_12345";
-        mock_user.display_name = "Apple User";
-        mock_inner_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        result = asyncio.run(provider.handle_callback(mock_request));
-        mock_inner_sso.verify_and_process.assert_called_once_with(mock_request);
-        assert result.email == "test@privaterelay.appleid.com";
-        assert result.external_id == "apple_12345";
-        assert result.display_name == "Apple User";
+    import from jaclang.runtimelib.serving.authcrypt { jwt_encode }
+    provider = AppleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    # Apple carries identity in the id_token rather than a userinfo endpoint.
+    id_token = jwt_encode(
+        {"sub": "apple_12345", "email": "test@privaterelay.appleid.com"}, "unused"
+    );
+    responder = _oauth_responder([{"access_token": "tok", "id_token": id_token}]);
+    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder) {
+        result = asyncio.run(provider.handle_callback(_callback_request()));
     }
+    assert result.email == "test@privaterelay.appleid.com";
+    assert result.external_id == "apple_12345";
 }
 
 test "supported platforms initialization with apple credentials" {
@@ -1319,44 +1347,39 @@ test "github sso callback auto register new user" {
 }
 
 test "github sso provider initiate auth" {
-    with unittest.mock.patch("jaclang.scale.sso.github.GithubSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GithubSSOProvider("id", "secret", "uri");
-        assert provider._sso == mock_inner_sso;
-        expected_response = unittest.mock.Mock();
-        mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
-            return_value=expected_response
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        response = asyncio.run(provider.initiate_auth());
-        mock_inner_sso.get_login_redirect.assert_called_once();
-        assert response == expected_response;
-    }
+    provider = GithubSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    response = asyncio.run(provider.initiate_auth());
+    assert response.status_code == 303;
+    location = response.headers.get("Location");
+    assert location.startswith("https://github.com/login/oauth/authorize");
+    assert "scope=user" in location;
 }
 
 test "github sso provider handle callback" {
-    with unittest.mock.patch("jaclang.scale.sso.github.GithubSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GithubSSOProvider("id", "secret", "uri");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_user = unittest.mock.Mock();
-        mock_user.email = "test@github.com";
-        mock_user.id = "github_12345";
-        mock_user.display_name = "GitHub User";
-        mock_inner_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        result = asyncio.run(provider.handle_callback(mock_request));
-        mock_inner_sso.verify_and_process.assert_called_once_with(mock_request);
-        assert result.email == "test@github.com";
-        assert result.external_id == "github_12345";
-        assert result.display_name == "GitHub User";
+    provider = GithubSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    responder = _oauth_responder(
+        [
+            {"access_token": "tok-abc"},
+            {
+                "id": "github_12345",
+                "email": "test@github.com",
+                "name": "GitHub User",
+                "avatar_url": "https://avatars/1"
+            }
+        ]
+    );
+    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder), unittest.mock.patch(
+        "jaclang.scale.sso.github.arequest", responder
+    ) {
+        result = asyncio.run(provider.handle_callback(_callback_request()));
     }
+    assert result.email == "test@github.com";
+    assert result.external_id == "github_12345";
+    assert result.display_name == "GitHub User";
 }
 
 test "supported platforms initialization with github credentials" {

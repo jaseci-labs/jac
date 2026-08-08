@@ -86,7 +86,8 @@ impl JacTestClient._ensure_initialized -> None {
 
     self._server.load_module();
 
-    self._handler_class = self._server.create_handler();
+    server_ref: any = self._server;
+    self._app = server_ref.build_app();
 }
 
 impl JacTestClient.get(
@@ -192,82 +193,42 @@ impl JacTestClient._execute_request(
     body: (bytes | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
-    import from email.parser { Parser }
-
-    wfile = io.BytesIO();
-
-    header_lines = [];
-    if headers {
-        for (name, value) in headers.items() {
-            header_lines.append(f"{name}: {value}");
-        }
-    }
-    headers_str = "\r\n".join(header_lines);
-
-    if headers_str {
-        parsed_headers = Parser().parsestr(headers_str);
-    } else {
-        parsed_headers = Parser().parsestr("");
-    }
-
-    server_ref = self._server;
-    handler_class = self._handler_class;
-    class MockHandler(handler_class) {
-        def init(mock_self: MockHandler) {
-            mock_self.rfile = io.BytesIO(body or b"");
-            mock_self.wfile = wfile;
-            mock_self.client_address = ("127.0.0.1", 0);
-            mock_self.server = type(
-                "MockServer", (), {"server_address": ("localhost", 0)}
-            )();
-            mock_self.request_version = "HTTP/1.1";
-            mock_self.command = method;
-            mock_self.path = path;
-            mock_self.headers = parsed_headers;
-            mock_self.requestline = f"{method} {path} HTTP/1.1";
-        }
-
-        def log_message(mock_self: MockHandler, format: str, *args: any) {
-            ;
-        }
-    }
-    handler = MockHandler();
-
-    if method == "GET" {
-        handler.do_GET();
-    } elif method == "POST" {
-        handler.do_POST();
-    } elif method == "PUT" {
-        handler.do_PUT();
-    } elif method == "OPTIONS" {
-        handler.do_OPTIONS();
-    } else {
+    if method not in ("GET", "POST", "PUT", "OPTIONS") {
         raise ValueError(f"Unsupported method: {method}");
     }
-
-    return self._parse_response(wfile.getvalue());
-}
-
-impl JacTestClient._parse_response(raw_response: bytes) -> TestResponse {
-    response_str = raw_response.decode("utf-8", errors="replace");
-
-    parts = response_str.split("\r\n\r\n", 1);
-    header_section = parts[0];
-    body = parts[1] if len(parts) > 1 else "";
-
-    lines = header_section.split("\r\n");
-    status_line = lines[0] if lines else "HTTP/1.1 500 Internal Server Error";
-    status_match = re.match(r"HTTP/\d\.\d (\d+)", status_line);
-    status_code = int(status_match.group(1)) if status_match else 500;
-
-    headers: dict[(str, str)] = {};
-    for line in lines[1:] {
-        if ": " in line {
-            (name, value) = line.split(": ", 1);
-            headers[name] = value;
+    header_obj = Headers();
+    if headers {
+        for (name, value) in headers.items() {
+            header_obj.append(str(name), str(value));
         }
     }
-    return TestResponse(status_code=status_code, headers=headers, text=body);
+    split_path = path.split('?', 1);
+    query = split_path[1] if len(split_path) > 1 else '';
+    request = Request(
+        method=method,
+        url=URL(path=split_path[0], query=query),
+        headers=header_obj,
+        query_params=QueryParams(raw=parse_query_string(query)),
+        body=body or b"",
+        client_host="127.0.0.1"
+    );
+    outcome: tuple[Response, bytes] = run_blocking(
+        dispatch_and_collect(self._app, request)
+    );
+    response = outcome[0];
+    content = outcome[1];
+    response_headers: dict[(str, str)] = {};
+    for (name, value) in response.headers.items() {
+        response_headers[name] = value;
+    }
+    if "Content-Type" not in response_headers {
+        response_headers["Content-Type"] = response.content_type_header();
+    }
+    return TestResponse(
+        status_code=response.status_code,
+        headers=response_headers,
+        text=content.decode("utf-8", errors="replace")
+    );
 }
 
 impl JacTestClient.server.getter -> JacAPIServer {
@@ -315,7 +276,8 @@ impl JacTestClient.reload -> None {
         self._server.introspector._walkers = self._server.introspector._collect_walkers();
     }
 
-    self._handler_class = self._server.create_handler();
+    server_ref: any = self._server;
+    self._app = server_ref.build_app();
 }
 
 impl JacTestClient.close -> None {
@@ -327,7 +289,7 @@ impl JacTestClient.close -> None {
 
         if self._server.server {
             with suppress(Exception) {
-                self._server.server.server_close();
+                self._server.server.request_stop();
             }
         }
     }
@@ -340,7 +302,7 @@ impl JacTestClient.close -> None {
         }
     }
     self._server = None;
-    self._handler_class = None;
+    self._app = None;
     self._auth_token = None;
     self._hot_reloader = None;
 }

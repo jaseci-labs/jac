@@ -1,6 +1,7 @@
 import shutil;
 
-import from fastapi { WebSocket }
+import from jaclang.runtimelib.serving.ws { WebSocket }
+import from jaclang.runtimelib.serving.endpoint { WSEndPoint }
 
 
 def _install_ws_catchall(gw: MicroserviceGateway) {
@@ -8,8 +9,8 @@ def _install_ws_catchall(gw: MicroserviceGateway) {
     import from jaclang.scale.runtime.lifecycle.drain { is_draining }
     import from jaclang.scale.runtime.gateway.service_registry { ServiceStatus }
 
-    @gw.app.websocket("/{ws_path:path}")
-    async def ws_proxy(websocket: WebSocket, ws_path: str) -> None {
+    async def ws_proxy(websocket: WebSocket) -> None {
+        ws_path: str = websocket.path_params.get('ws_path', '');
         if is_draining() {
             await websocket.close(code=1012);
             return;
@@ -44,6 +45,7 @@ def _install_ws_catchall(gw: MicroserviceGateway) {
         logger.info(f"ws proxy: {full_path} -> {target_http}");
         await websocket_forward(websocket, target_http, req_headers);
     }
+    gw.app.add_ws_endpoint(WSEndPoint(path="/{ws_path:path}", handler=ws_proxy));
 }
 
 impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
@@ -379,7 +381,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
     }
 
     fwd_headers = self.build_forward_headers(request);
-    body: bytes = await request.body();
+    body: bytes = request.body;
     query: str = str(request.url.query);
 
     for (svc_name, svc_entry) in self.registry.entries.items() {
@@ -416,7 +418,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
 
 impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
     if path == "/admin" {
-        import from fastapi.responses { RedirectResponse }
+        import from jaclang.runtimelib.serving.datatypes { RedirectResponse }
         return RedirectResponse(url="/admin/", status_code=302);
     }
     if path.startswith("/admin/") {
@@ -444,7 +446,7 @@ impl MicroserviceGateway.forward_to(
     client_addr: str = getattr(request?.client, "host", "unknown");
     fwd_headers["X-Forwarded-For"] = client_addr;
 
-    body: bytes = await request.body();
+    body: bytes = request.body;
 
     timeout = http_forward_timeout(service_entry.name);
     fr = await stream_forward(
@@ -524,9 +526,9 @@ impl MicroserviceGateway.handle_openapi -> Response {
 }
 
 impl MicroserviceGateway.handle_docs -> Response {
-    import from fastapi.openapi.docs { get_swagger_ui_html }
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json", title="Jac Microservice Gateway - API"
+    import from jaclang.runtimelib.serving.openapi { swagger_ui_html }
+    return HTMLResponse(
+        content=swagger_ui_html("/openapi.json", "Jac Microservice Gateway - API")
     );
 }
 
@@ -600,9 +602,9 @@ impl MicroserviceGateway.handle_spa_fallback(
     return None;
 }
 
-impl MicroserviceGateway.setup -> FastAPI {
+impl MicroserviceGateway.setup -> ServingApp {
     import time;
-    self.app = FastAPI(title="Jac Microservice Gateway");
+    self.app = ServingApp(title="Jac Microservice Gateway");
     gw = self;
 
     self.bootstrap_admin_ui();
@@ -650,8 +652,8 @@ impl MicroserviceGateway.setup -> FastAPI {
         sample_ratio=float(trc_cfg.get("sample_ratio", 1.0))
     );
 
-    @self.app.middleware("http")
     async def dispatcher(request: Request, call_next: object) -> Response {
+        next_fn: any = call_next;
         path: str = request.url.path;
 
         trace_id = ensure_trace_id(request.headers.get("X-Trace-Id"));
@@ -703,7 +705,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 svc_label = "__admin__";
                 admin_resp: Response | None = None;
                 if gw.server is not None {
-                    admin_resp = await call_next(request);
+                    admin_resp = await next_fn(request);
                 } else {
                     admin_resp = gw.handle_admin(path);
                 }
@@ -714,7 +716,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 resp = admin_resp;
             } elif decision.kind == ROUTE_IDENTITY {
                 if gw.server is not None {
-                    ident_resp = await call_next(request);
+                    ident_resp = await next_fn(request);
                     if ident_resp.status_code not in (404, 405) {
                         svc_label = "__identity__";
                         resp = ident_resp;
@@ -794,7 +796,7 @@ impl MicroserviceGateway.setup -> FastAPI {
         }
     }
 
-    _install_ws_catchall(self);
+    self.app.add_middleware(dispatcher);
 
     import from jaclang.scale.runtime.middleware.middleware {
         Middleware,
@@ -822,17 +824,19 @@ impl MicroserviceGateway.setup -> FastAPI {
 
     cors_cfg = ms_cfg.get("cors", {});
     if cors_cfg.get("allow_origins") {
-        import from fastapi.middleware.cors { CORSMiddleware }
+        import from jaclang.runtimelib.serving.middleware { cors_middleware }
         self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_cfg["allow_origins"],
-            allow_methods=cors_cfg.get("allow_methods", ["*"]),
-            allow_headers=cors_cfg.get("allow_headers", ["*"]),
-            allow_credentials=cors_cfg.get("allow_credentials", False),
-            expose_headers=cors_cfg.get("expose_headers", []),
-            max_age=cors_cfg.get("max_age", 600)
+            cors_middleware(
+                allow_origins=cors_cfg["allow_origins"],
+                allow_methods=cors_cfg.get("allow_methods", ["*"]),
+                allow_headers=cors_cfg.get("allow_headers", ["*"]),
+                allow_credentials=cors_cfg.get("allow_credentials", False),
+                expose_headers=cors_cfg.get("expose_headers", []),
+                max_age=cors_cfg.get("max_age", 600)
+            )
         );
     }
+    _install_ws_catchall(self);
 
     return self.app;
 }
@@ -849,23 +853,20 @@ impl MicroserviceGateway.start -> None {
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
-    config = uvicorn.Config(
-        getattr(self, "app"),
-        host=self.host,
-        port=self.port,
-        timeout_graceful_shutdown=int(drain_timeout)
+    import from jaclang.runtimelib.serving.server { ServingServer }
+    serving = ServingServer(
+        app=self.app, host=self.host, port=self.port, drain_timeout=drain_timeout
     );
-    server = uvicorn.Server(config);
-    install_signal_drain(server, timeout_s=drain_timeout);
-    server.run();
+    install_signal_drain(serving, timeout_s=drain_timeout);
+    serving.run();
 }
 
 
 impl MicroserviceGateway._install_admin_api -> None {
-    import from jaclang.scale.jserver.jfast_api { JFastApiServer }
+    import from jaclang.scale.server.native_server { NativeJServer }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
-    self.server = JFastApiServer(app=self.app);
+    self.server = NativeJServer(app=self.app, install_drain=False);
 
     self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.server.set_user_manager(self.user_manager);
@@ -887,8 +888,6 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_update_password_endpoint();
     self.register_me_endpoint();
     self.register_update_me_endpoint();
-
-    self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "

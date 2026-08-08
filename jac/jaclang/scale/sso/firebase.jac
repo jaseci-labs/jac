@@ -1,5 +1,5 @@
 import json;
-import from fastapi { Request, Response }
+import from jaclang.runtimelib.serving.datatypes { Request, Response }
 import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
 import from jaclang.scale.config.firebase_env { firebase_project_id_env_hint }
 import from jaclang.scale._optdeps.optional_deps { require_optional }
@@ -84,7 +84,7 @@ obj FirebaseSSOProvider(SSOProvider) {
     }
 
     async def handle_callback(request: Request) -> SSOUserInfo {
-        body_bytes = await request.body();
+        body_bytes = request.body;
         try {
             body = json.loads(body_bytes);
         } except ValueError {

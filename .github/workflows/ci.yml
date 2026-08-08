@@ -389,11 +389,8 @@ jobs:
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
           jac install \
-            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
-            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
-            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
-            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
-            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "sqlalchemy>=2.0.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "bcrypt>=4.0.0,<5.0.0" \
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
             "prometheus-client>=0.21.0,<1.0.0" \
             "opentelemetry-sdk>=1.27.0,<2.0.0" \
@@ -716,11 +713,8 @@ jobs:
       # Pins mirror jac/jaclang/project/capabilities.jac.
       run: |
         jac install \
-          "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
-          "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
-          "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
-          "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
-          "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "sqlalchemy>=2.0.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "bcrypt>=4.0.0,<5.0.0" \
           --global
         jac test -vv jac/tests/runtimelib/client/test_inprocess_dispatch.jac
 
@@ -970,11 +964,8 @@ jobs:
       # Pins mirror jac/jaclang/project/capabilities.jac.
       run: |
         jac install \
-          "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
-          "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
-          "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
-          "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
-          "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "sqlalchemy>=2.0.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "bcrypt>=4.0.0,<5.0.0" \
           "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
           "prometheus-client>=0.21.0,<1.0.0" \
           "opentelemetry-sdk>=1.27.0,<2.0.0" \
@@ -1058,11 +1049,8 @@ jobs:
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
           jac install \
-            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
-            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
-            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
-            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
-            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "sqlalchemy>=2.0.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "bcrypt>=4.0.0,<5.0.0" \
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
             "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
             --global
@@ -1164,11 +1152,8 @@ jobs:
       # Pins mirror jac/jaclang/project/capabilities.jac.
       run: |
         jac install \
-          "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
-          "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
-          "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
-          "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
-          "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "sqlalchemy>=2.0.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "bcrypt>=4.0.0,<5.0.0" \
           "requests>=2.32.0,<3.0.0" \
           --global
 
@@ -1454,11 +1439,8 @@ jobs:
         # Pins mirror jac/jaclang/project/capabilities.jac.
         run: |
           jac install \
-            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
-            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
-            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
-            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
-            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "sqlalchemy>=2.0.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "bcrypt>=4.0.0,<5.0.0" \
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
             "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" "humanize>=4.0.0" \
             --global

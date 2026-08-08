@@ -3,7 +3,7 @@ import json;
 import logging;
 import time;
 import from typing { Any }
-import from fastapi { WebSocket }
+import from jaclang.runtimelib.serving.ws { WebSocket }
 import from jaclang.scale.websocket.websocket { ConnectionContext, consume_rate_token }
 
 glob logger = logging.getLogger(__name__),

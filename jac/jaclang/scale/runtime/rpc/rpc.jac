@@ -9,7 +9,6 @@ import from .breaker {
 def service_call(module_name: str, func_name: str, args: dict) -> any {
     import time;
     import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
     import from jaclang.scale.runtime.context.auth_ctx { get_current_auth }
     import from jaclang.scale.runtime.context.trace_ctx { get_current_trace }
 
@@ -17,18 +16,12 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
 
     if module_name in sv_client._test_clients {
         tc = sv_client._test_clients[module_name];
-        stream_cm = tc.stream("POST", f"/function/{func_name}", json=args);
-        resp = stream_cm.__enter__();
-        ct = resp.headers.get("content-type", "");
+        resp = tc.post(f"/function/{func_name}", json=args);
+        ct = str(resp.headers.get("Content-Type") or "");
         if ct.startswith("text/event-stream") {
-            return _wrap_sse_keepalive_scale(stream_cm, resp, None, func_label);
+            return _iter_sse_text(str(resp.text), func_label);
         }
-        try {
-            resp.read();
-            data = resp.json();
-        } finally {
-            stream_cm.__exit__(None, None, None);
-        }
+        data = resp.json();
         return _unwrap_sv_envelope(data, module_name, func_name);
     }
 
@@ -45,13 +38,9 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
     if not url {
         url = sv_client.resolve_url(module_name);
     }
-    try {
-        import httpx;
-    } except ImportError {
-        raise RuntimeError(
-            "httpx is required for sv-to-sv RPC calls. "
-                + "Install it via `pip install httpx`."
-        );
+    import from jaclang.runtimelib.serving.client {
+        ClientConnectionError,
+        post_stream_aware_sync
     }
 
     headers: dict[str, str] = {};
@@ -79,27 +68,21 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
 
     for attempt in range(max_attempts) {
         try {
-            client = httpx.Client(timeout=rpc_timeout);
-            stream_cm = client.stream(
-                "POST", f"{url}/function/{func_name}", json=args, headers=headers
+            (kind, payload) = post_stream_aware_sync(
+                f"{url}/function/{func_name}",
+                json_body=args,
+                headers=headers,
+                timeout=rpc_timeout,
+                label=func_label
             );
-            resp = stream_cm.__enter__();
-            ct = resp.headers.get("content-type", "");
-            if ct.startswith("text/event-stream") {
-                breaker_record_success(module_name);
-                return _wrap_sse_keepalive_scale(stream_cm, resp, client, func_label);
-            }
-            try {
-                resp.read();
-                data = resp.json();
-            } finally {
-                stream_cm.__exit__(None, None, None);
-                client.close();
-            }
             breaker_record_success(module_name);
-            return _unwrap_sv_envelope(data, module_name, func_name);
-        } except (httpx.RequestError, httpx.TimeoutException) as e {
-            last_err = e;
+            if kind == 'sse' {
+                return payload;
+            }
+            return _unwrap_sv_envelope(payload, module_name, func_name);
+        } except (ClientConnectionError, OSError) as e {
+            err_ref: any = e;
+            last_err = err_ref;
             if attempt < max_attempts - 1 {
                 time.sleep(backoff);
                 backoff = backoff * 2.0;
@@ -141,13 +124,9 @@ def walker_call(
     }
 
     url = sv_client.resolve_url(module_name);
-    try {
-        import httpx;
-    } except ImportError {
-        raise RuntimeError(
-            "httpx is required for sv-to-sv RPC calls. "
-                + "Install it via `pip install httpx`."
-        );
+    import from jaclang.runtimelib.serving.client {
+        ClientConnectionError,
+        request_sync
     }
 
     headers: dict[str, str] = {};
@@ -174,19 +153,19 @@ def walker_call(
 
     for attempt in range(max_attempts) {
         try {
-            client = httpx.Client(timeout=rpc_timeout);
-            try {
-                resp = client.post(
-                    f"{url}/walker/{walker_name}", json=args, headers=headers
-                );
-                data = resp.json();
-            } finally {
-                client.close();
-            }
+            resp = request_sync(
+                'POST',
+                f"{url}/walker/{walker_name}",
+                json_body=args,
+                headers=headers,
+                timeout=rpc_timeout
+            );
+            data = resp.json();
             breaker_record_success(module_name);
             return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
-        } except (httpx.RequestError, httpx.TimeoutException) as e {
-            last_err = e;
+        } except (ClientConnectionError, OSError) as e {
+            err_ref: any = e;
+            last_err = err_ref;
             if attempt < max_attempts - 1 {
                 time.sleep(backoff);
                 backoff = backoff * 2.0;
@@ -203,27 +182,10 @@ def walker_call(
 }
 
 
-def _wrap_sse_keepalive_scale(
-    stream_cm: any, resp: any, client: any, func_label: str
-) -> any {
-    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-    try {
-        for ev in consume_sse_stream(resp, func_label) {
-            yield ev;
-        }
-    } finally {
-        try {
-            stream_cm.__exit__(None, None, None);
-        } except Exception {
-            ;
-        }
-        if client {
-            try {
-                client.close();
-            } except Exception {
-                ;
-            }
-        }
+def _iter_sse_text(text: str, func_label: str) -> any {
+    import from jaclang.runtimelib.serving.sse { consume_sse_events }
+    for ev in consume_sse_events(text.splitlines(), func_label) {
+        yield ev;
     }
 }
 

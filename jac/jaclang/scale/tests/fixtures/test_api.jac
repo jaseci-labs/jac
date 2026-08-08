@@ -158,7 +158,7 @@ async walker AsyncCreateTask {
 # ============================================================================
 # File Upload Walkers
 # ============================================================================
-import from fastapi { UploadFile }
+import from jaclang.runtimelib.serving.datatypes { UploadFile }
 
 """Walker that handles single file upload."""
 walker UploadSingleFile {

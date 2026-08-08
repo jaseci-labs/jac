@@ -220,12 +220,12 @@ impl JacScaleUserManager.create_jwt_token(
             payload['role'] = role;
         }
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM);
+    return jwt_encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM);
 }
 
 impl JacScaleUserManager.get_jwt_claims(token: str) -> dict | None {
     try {
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
+        return jwt_decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
     } except Exception as e {
         logger.debug(f"Failed to decode JWT token: {str(e)}");
         return None;
@@ -249,10 +249,10 @@ impl JacScaleUserManager.validate_jwt_token_detail(
         };
     }
     try {
-        decoded = jwt.decode(
-            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
+        decoded = jwt_decode(
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], verify_exp=True
         );
-    } except jwt.ExpiredSignatureError {
+    } except JWTExpiredError {
         return {
             'status': 'expired',
             'user_id': None,
@@ -303,8 +303,8 @@ impl JacScaleUserManager.validate_jwt_token_detail(
 
 impl JacScaleUserManager.refresh_jwt_token(token: str) -> str | None {
     try {
-        decoded = jwt.decode(
-            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
+        decoded = jwt_decode(
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], verify_exp=True
         );
         if decoded.get('type') == 'api_key' {
             return None;

@@ -33,10 +33,9 @@ glob _FIXTURE: str = str(Path(__file__).parent / "fixtures" / "inprocess_app.jac
      _BOOTED: bool = False;
 
 
-"""True when the in-process backend (starlette + jaclang.scale) is importable."""
+"""True when the in-process backend (jaclang.scale) is importable."""
 def _backend_available -> bool {
     try {
-        import starlette.testclient;
         import jaclang.scale.server.serve;
         return True;
     } except ImportError {
@@ -836,7 +835,7 @@ test "dispatch() routes a walker to /walker/{name}/{node_id} when node is set" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 200;
-        mock_resp.is_success = True;
+        mock_resp.ok = True;
         mock_resp.json.return_value = {"ok": True, "data": {}};
         mock_client = MagicMock();
         mock_client.post.return_value = mock_resp;
@@ -877,7 +876,7 @@ test "dispatch() sends Authorization: Bearer header when token is set" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 200;
-        mock_resp.is_success = True;
+        mock_resp.ok = True;
         mock_resp.json.return_value = {"ok": True, "data": {}};
         mock_client = MagicMock();
         mock_client.post.return_value = mock_resp;
@@ -920,7 +919,7 @@ test "dispatch() wraps a non-JSON backend response in an error envelope" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 404;
-        mock_resp.is_success = False;
+        mock_resp.ok = False;
         mock_resp.text = "Not Found";
         mock_resp.json.side_effect = ValueError("not JSON");
         mock_client = MagicMock();
@@ -1177,7 +1176,7 @@ test "dispatch_sync() returns the result for a fast call" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 200;
-        mock_resp.is_success = True;
+        mock_resp.ok = True;
         mock_resp.json.return_value = {"ok": True, "data": {"result": 42}};
         mock_client = MagicMock();
         mock_client.post.return_value = mock_resp;

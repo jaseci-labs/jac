@@ -15,7 +15,7 @@ test "require_optional does not raise for installed stdlib package" {
 }
 
 test "require_optional does not raise for installed package" {
-    require_optional("fastapi", "serve");
+    require_optional("sqlalchemy", "serve");
 }
 
 test "require_optional raises ImportError for missing package" {
@@ -48,7 +48,7 @@ test "require_optional error names the capability, not a pip extra" {
 
 test "is_optional_available returns True for installed package" {
     assert is_optional_available("json") is True;
-    assert is_optional_available("fastapi") is True;
+    assert is_optional_available("sqlalchemy") is True;
 }
 
 test "is_optional_available returns False for missing package" {
