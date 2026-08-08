@@ -389,6 +389,76 @@ test "TriggerAuthentication name written to cluster matches authenticationRef na
     assert ta_name == ref_name;
 }
 
+test "TriggerAuthentication is stamped with app and owner labels for reconciliation" {
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.list_namespaced_custom_object.return_value = {"items": []};
+    mock_api.get_namespaced_custom_object.side_effect = [
+        ApiException(status=404),
+        ApiException(status=404)
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="svc",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={"address": "redis:6379"},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    keda.apply(spec);
+    ta_body = mock_api.create_namespaced_custom_object.call_args_list[0][1]["body"];
+    labels = ta_body["metadata"]["labels"];
+    assert labels["app"] == "svc";
+    assert labels["managed"] == "jac-scale";
+    assert labels["jac-scale/owner"] == "svc-deployment-scaledobject";
+}
+
+test "apply prunes managed auths the redeployed trigger set no longer references" {
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = [
+        ApiException(status=404),  # TriggerAuthentication absent -> create
+        ApiException(status=404)  # ScaledObject absent -> create
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    trigger = Trigger(
+        type="redis",
+        metadata={"address": "redis:6379"},
+        name="cache",
+        auth=TriggerAuth(
+            secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+        )
+    );
+    current_auth = keda._trigger_auth_name("svc", trigger, 0);
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [
+            {"metadata": {"name": current_auth}},
+            {"metadata": {"name": "svc-deadbeef-ta"}}
+        ]
+    };
+    spec = AutoscalerSpec(
+        scale_target_name="svc", app_name="svc", namespace="default", triggers=[trigger]
+    );
+    keda.apply(spec);
+    ta_deletes = [
+        c
+        for c in mock_api.delete_namespaced_custom_object.call_args_list
+        if c[1]["plural"] == "triggerauthentications"
+    ];
+    assert len(ta_deletes) == 1;
+    assert ta_deletes[0][1]["name"] == "svc-deadbeef-ta";
+}
+
 test "apply creates TriggerAuthentication before ScaledObject" {
     KEDAAutoscaler._preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
@@ -516,8 +586,9 @@ test "destroy collection also sweeps competing HPAs" {
     );
 }
 
-test "destroy calls delete with the correct plural and resource name" {
+test "destroy deletes only the ScaledObject when no managed auths exist" {
     mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {"items": []};
     keda = KEDAAutoscaler(_custom_api=mock_api);
     keda.destroy("my-svc-scaledobject", "staging");
     mock_api.delete_namespaced_custom_object.assert_called_once_with(
@@ -529,11 +600,78 @@ test "destroy calls delete with the correct plural and resource name" {
     );
 }
 
-test "destroy is a no-op when the ScaledObject is already gone" {
+test "destroy finds TriggerAuthentications by the owner label, not the ScaledObject spec" {
     mock_api = unittest.mock.MagicMock();
-    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [
+            {"metadata": {"name": "myapp-aaaaaaaa-ta"}},
+            {"metadata": {"name": "myapp-bbbbbbbb-ta"}}
+        ]
+    };
     keda = KEDAAutoscaler(_custom_api=mock_api);
     keda.destroy("my-svc-scaledobject", "staging");
+    list_kwargs = mock_api.list_namespaced_custom_object.call_args[1];
+    assert list_kwargs["plural"] == "triggerauthentications";
+    assert list_kwargs["label_selector"]
+        == "jac-scale/owner=my-svc-scaledobject,managed=jac-scale";
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 3;
+    assert delete_calls[0][1]["plural"] == "triggerauthentications";
+    assert delete_calls[0][1]["name"] == "myapp-aaaaaaaa-ta";
+    assert delete_calls[1][1]["plural"] == "triggerauthentications";
+    assert delete_calls[1][1]["name"] == "myapp-bbbbbbbb-ta";
+    assert delete_calls[2][1]["plural"] == "scaledobjects";
+    assert delete_calls[2][1]["name"] == "my-svc-scaledobject";
+}
+
+test "destroy cleans up orphaned auths even when the ScaledObject is already gone" {
+    # The hole the earlier patch could not close: ScaledObject deleted out of band,
+    # so reading authenticationRefs off it finds nothing and the auths stay stranded.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [{"metadata": {"name": "myapp-aaaaaaaa-ta"}}]
+    };
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        None,  # TriggerAuthentication delete succeeds
+        ApiException(status=404)  # ScaledObject already gone
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc-scaledobject", "staging");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 2;
+    assert delete_calls[0][1]["plural"] == "triggerauthentications";
+    assert delete_calls[0][1]["name"] == "myapp-aaaaaaaa-ta";
+    assert delete_calls[1][1]["plural"] == "scaledobjects";
+}
+
+test "destroy tolerates a TriggerAuthentication that is already deleted (404)" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [{"metadata": {"name": "myapp-aaaaaaaa-ta"}}]
+    };
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=404),  # TriggerAuthentication already gone
+        None  # ScaledObject delete succeeds
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc-scaledobject", "staging");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 2;
+    assert delete_calls[1][1]["plural"] == "scaledobjects";
+}
+
+test "destroy still deletes the ScaledObject when the auth CRD is absent (404 on list)" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.side_effect = ApiException(status=404);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc-scaledobject", "staging");
+    mock_api.delete_namespaced_custom_object.assert_called_once_with(
+        group="keda.sh",
+        version="v1alpha1",
+        namespace="staging",
+        plural="scaledobjects",
+        name="my-svc-scaledobject"
+    );
 }
 
 

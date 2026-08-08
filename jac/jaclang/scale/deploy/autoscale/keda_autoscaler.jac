@@ -38,8 +38,18 @@ obj KEDAAutoscaler(Autoscaler) {
         trigger: Trigger, app_name: str, trigger_index: int
     ) -> dict[str, any];
 
+    static def _owner_label_value(name: str) -> str;
     def _apply_trigger_auth(
-        api: any, trigger: Trigger, namespace: str, app_name: str, trigger_index: int
+        api: any,
+        trigger: Trigger,
+        namespace: str,
+        app_name: str,
+        trigger_index: int,
+        owner: str
+    ) -> (str | None);
+
+    def _prune_orphan_trigger_auths(
+        api: any, namespace: str, owner: str, desired_auth_names: set[str]
     ) -> None;
 
     def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
