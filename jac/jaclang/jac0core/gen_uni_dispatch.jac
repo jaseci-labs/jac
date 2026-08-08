@@ -63,42 +63,42 @@ def accept_annex_src(
     enter: list[str], exits: list[str], snake_map: dict[str, str]
 ) -> str {
     n2s = {v: k for (k, v) in snake_map.items()};
-    lines: list = [];
-    lines.append('"""Auto-generated visitor accept overrides (#6942 A.1).');
-    lines.append('');
-    lines.append('DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.');
-    lines.append('"""');
-    lines.append('');
+    blocks: list[str] = [
+        '# Auto-generated visitor accept overrides (#6942 A.1).\n'
+            + '# DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.'
+    ];
     for entry in [("enter", enter), ("exit", exits)] {
         (verb, kinds) = entry;
         for node in kinds {
-            lines.append(f'impl {node}.accept_{verb}(v: UniPass) -> None {{');
-            lines.append(f'    v.{verb}_{n2s[node]}(self);');
-            lines.append('}');
+            blocks.append(
+                f'impl {node}.accept_{verb}(v: UniPass) -> None {{\n'
+                    + f'    v.{verb}_{n2s[node]}(self);\n'
+                    + '}'
+            );
         }
     }
-    return "\n".join(lines) + "\n";
+    return "\n\n".join(blocks) + "\n";
 }
 
 def surface_annex_src(
     enter: list[str], exits: list[str], snake_map: dict[str, str]
 ) -> str {
     n2s = {v: k for (k, v) in snake_map.items()};
-    lines: list = [];
-    lines.append('"""Auto-generated UniPass visitor base surface (#6942 A.1).');
-    lines.append('');
-    lines.append('DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.');
-    lines.append('"""');
-    lines.append('');
+    blocks: list[str] = [
+        '# Auto-generated UniPass visitor base surface (#6942 A.1).\n'
+            + '# DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.'
+    ];
     for entry in [("enter", enter), ("exit", exits)] {
         (verb, kinds) = entry;
         for node in kinds {
-            lines.append(f'impl UniPass.{verb}_{n2s[node]}(nd: uni.{node}) -> None {{');
-            lines.append(f'    self.default_{verb}(nd);');
-            lines.append('}');
+            blocks.append(
+                f'impl UniPass.{verb}_{n2s[node]}(nd: uni.{node}) -> None {{\n'
+                    + f'    self.default_{verb}(nd);\n'
+                    + '}'
+            );
         }
     }
-    return "\n".join(lines) + "\n";
+    return "\n\n".join(blocks) + "\n";
 }
 
 def surface_decls_block(

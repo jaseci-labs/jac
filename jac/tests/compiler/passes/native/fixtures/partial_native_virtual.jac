@@ -1,9 +1,10 @@
-# Workstream A4 (#6930): an un-lowerable *virtual* method is NOT demoted.
+# Workstream A4/W4 (#6930): an un-lowerable *virtual* method demotes to an
+# abort-stub vtable slot.
 #
 # `render` is virtual (Base defines it, Derived overrides it -> vtable slot).
-# Native polymorphic dispatch cannot fall back to Python, so a virtual method
-# the backend cannot lower must remain a hard error (E5090) instead of being
-# demoted — which would leave a dangling vtable index / abort-stub slot.
+# The stub keeps the slot valid: native dispatch that reaches it aborts
+# loudly instead of dispatching to garbage, the method is excluded from the
+# exported native layout, and the rest of the class stays native.
 obj Base {
     has raw: str;
 

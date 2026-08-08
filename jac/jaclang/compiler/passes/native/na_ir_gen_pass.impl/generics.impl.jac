@@ -10,6 +10,9 @@ impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
             m = re.sub(rf"\b{re.escape(tv)}\b", repl, m);
         }
     }
+    if m == "Sequence" or m.startswith("Sequence[") {
+        m = "list" + m[len("Sequence"):];
+    }
     return m;
 }
 

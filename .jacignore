@@ -201,6 +201,13 @@ jac/jaclang/compiler/type_system/type_evaluator.impl/jsx_type_check.impl.jac
 jac/jaclang/compiler/type_system/type_evaluator.impl/ts_declarations.impl.jac
 jac/jaclang/jac0core/archetype.jac
 jac/jaclang/jac0core/gen_uni_dispatch.jac
+# Arena surface (#7970): gen_unitree is runtime-introspection like
+# gen_uni_dispatch above; arena_materialize is the reflection bridge
+# (getattr-resolved classes, cls(**kwargs)); linker_common carries the
+# floor-archive file-IO glue moved out of (baselined) nacompile.impl.jac.
+jac/jaclang/jac0core/gen_unitree.jac
+jac/jaclang/jac0core/arena_materialize.jac
+jac/jaclang/compiler/passes/native/linker_common.jac
 jac/jaclang/jac0core/impl/archetype.impl.jac
 jac/jaclang/jac0core/impl/helpers.impl.jac
 jac/jaclang/jac0core/impl/native_marshal.impl.jac

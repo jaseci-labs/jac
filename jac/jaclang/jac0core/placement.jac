@@ -570,6 +570,13 @@ def scan_native_blockers(
         if imp.has_clib_decls {
             continue;
         }
+        if imp.is_typed {
+            continue;
+        }
+        if imp.find_parent_of_type(uni.Ability) is not None
+            or imp.find_parent_of_type(uni.ImplDef) is not None {
+            continue;
+        }
         if imp.is_virtual_jac or imp.has_string_path {
             return ("virtual/string-path import", deps);
         }

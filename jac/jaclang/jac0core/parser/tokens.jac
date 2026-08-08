@@ -224,7 +224,7 @@ obj SourceLoc {
     def span_to(other: SourceLoc) -> SourceLoc;
 }
 
-obj Token {
+obj LexToken {
     has kind: TokenKind,
         value: str,
         loc: SourceLoc;
@@ -232,11 +232,12 @@ obj Token {
     def __str__ -> str;
 }
 
-obj LexDiag {
+obj SrcDiag {
     has message: str,
         code_str: str,
         loc: SourceLoc,
-        is_error: bool = True;
+        is_error: bool = True,
+        help: str = "";
 }
 
 obj CommentData {

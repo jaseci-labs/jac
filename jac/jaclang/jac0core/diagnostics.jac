@@ -269,7 +269,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W0063",
          Category.SYNTAX,
          "JSX spread '{{...expr}}' is JS-idiomatic. Prefer '{{**expr}}' in Jac.",
-         "Jac uses ** for dict unpacking — use {**expr} instead of {...expr} in JSX attributes."
+         "Jac uses ** for dict unpacking -- use {**expr} instead of {...expr} in JSX attributes."
      ),
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
@@ -1007,7 +1007,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2023 = _err(
          "E2023",
          Category.SEMANTIC,
-         "Redundant '{{...}}' slot wrapping inside a JSX slot body — slot "
+         "Redundant '{{...}}' slot wrapping inside a JSX slot body -- slot "
          "bodies are already in slot mode. Drop the outer braces: write "
          "'{stmt_kw} ... {{ ... }}' directly instead of "
          "'{{{stmt_kw} ... {{ ... }}}}'."
@@ -1025,7 +1025,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2028",
          Category.SEMANTIC,
          "Redundant '{{...}}' around a single expression inside a JSX slot "
-         "body — slot bodies are already in slot mode, so the value renders "
+         "body -- slot bodies are already in slot mode, so the value renders "
          "without the extra braces. Drop them: write the expression directly, "
          "terminated with ';' (e.g. 'name;' instead of '{{name}}')."
      ),

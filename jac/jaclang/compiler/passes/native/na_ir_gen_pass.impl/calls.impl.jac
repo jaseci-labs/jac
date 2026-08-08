@@ -1175,6 +1175,44 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 "ascii"
             ) {
             params_l = nd.params or [];
+            if not params_l
+                and func_name in ("list", "set")
+                and self._empty_ctor_args_of(nd) {
+                _ez_args = self._empty_ctor_args_of(nd);
+                _ez_elem: ir.Type = ir.IntType(8).as_pointer();
+                _ez_spec = "ptr";
+                if _ez_args {
+                    _ez_low = self._elem_storage_llvm(_ez_args[0]);
+                    if _ez_low is not None {
+                        if self._str_desc_ty is not None
+                            and _ez_low == self._str_desc_ty {
+                            _ez_low = ir.IntType(8).as_pointer();
+                        }
+                        _ez_elem = _ez_low;
+                        if isinstance(_ez_low, ir.DoubleType) {
+                            _ez_spec = "f64";
+                        } elif isinstance(_ez_low, ir.PointerType) {
+                            _ez_spec = "ptr";
+                        } else {
+                            _ez_spec = "i64";
+                        }
+                    }
+                }
+                if func_name == "set" {
+                    self._emit_set_helpers(_ez_spec, _ez_elem);
+                    _ez_h = self.set_helpers.get(_ez_spec);
+                } else {
+                    self._emit_list_helpers(_ez_spec, _ez_elem);
+                    _ez_h = self.list_helpers.get(_ez_spec);
+                }
+                if _ez_h is not None {
+                    return self.builder.call(
+                        _ez_h["new"], [], name=f"{func_name}.empty"
+                    );
+                }
+                self._emit_unsupported_builtin_call(nd, func_name);
+                return None;
+            }
             if params_l {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
@@ -2185,4 +2223,12 @@ impl NaIRGenPass._try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None) {
         return self.builder.bitcast(_fut8, _res_ty, name="fut.h.p");
     }
     return _hraw;
+}
+
+impl NaIRGenPass._empty_ctor_args_of(nd: uni.FuncCall) -> list {
+    _t = nd?.type;
+    if _t is None or not _t?.private {
+        return [];
+    }
+    return list(_t.private.type_args or []);
 }

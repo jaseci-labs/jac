@@ -449,11 +449,11 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     param_types: list[ir.Type] = [] if _is_static else [struct_type.as_pointer()];
     for p in _m_params {
         param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
+            self._resolve_sig_type(p) if p.type_tag is not None else ir.IntType(64)
         );
     }
 
-    ret_type = self._resolve_jac_type(sig.return_type);
+    ret_type = self._resolve_sig_type(sig.return_type);
     if isinstance(ret_type, ir.VoidType) {
         ;
     }
@@ -553,8 +553,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         }
     }
 
-    _isolate = method_name not in ("init", "__init__", "postinit", "__post_init__")
-        and method_name not in self.vtable_method_indices.get(arch_name, {});
+    _isolate = method_name not in ("init", "__init__", "postinit", "__post_init__");
+    _is_virtual = method_name in self.vtable_method_indices.get(arch_name, {});
     _err_mark = len(self.prog.errors_had) if _isolate else 0;
     _local_mark = len(self.errors_had) if _isolate else 0;
 
@@ -583,7 +583,18 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
 
         self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     } except Exception as _codegen_exc {
+        import os as _dbg_os;
+        if _dbg_os.environ.get("JAC_NA_DEBUG") {
+            import traceback as _dbg_tb;
+            import sys as _dbg_sys;
+            _dbg_sys.stderr.write(f"NA_DEBUG {full_name}:\n");
+            _dbg_tb.print_exc();
+        }
         if not _isolate {
+            import sys;
+            sys.stderr.write(
+                f"error: native codegen raised in non-demotable {full_name}\n"
+            );
             raise;
         }
 
@@ -607,12 +618,18 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.closure_cell_handles = saved_cell_handles;
 
     if _isolate {
-        self._demote_method_if_unlowerable(full_name, func, _err_mark, _local_mark);
+        self._demote_method_if_unlowerable(
+            full_name, func, _err_mark, _local_mark, keep_func=_is_virtual
+        );
     }
 }
 
 impl NaIRGenPass._demote_method_if_unlowerable(
-    full_name: str, func: ir.Function, err_mark: int, local_mark: int
+    full_name: str,
+    func: ir.Function,
+    err_mark: int,
+    local_mark: int,
+    keep_func: bool = False
 ) -> bool {
     if len(self.prog.errors_had) <= err_mark {
         return False;
@@ -653,7 +670,9 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     self._get_or_declare_extern("abort", ir.VoidType(), []);
     b.call(self.extern_funcs["abort"], []);
     b.unreachable();
-    self.method_funcs.pop(full_name, None);
+    if not keep_func {
+        self.method_funcs.pop(full_name, None);
+    }
     self.func_symtab.pop(full_name, None);
     self._native_skipped_methods.add(full_name);
     return True;
@@ -782,8 +801,21 @@ impl NaIRGenPass._arch_has_vtable(arch_name: str) -> bool {
         return False;
     }
     import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
-    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
-    return lay is not None and lay.has_vtable;
+    _owner = None;
+    _arch_nd = self.arch_ast_map.get(arch_name);
+    if _arch_nd is not None {
+        _owner = _arch_nd.find_parent_of_type(uni.Module);
+    }
+    for _cand in [_owner, self.ir_in] {
+        if _cand is None {
+            continue;
+        }
+        lay = get_layout_registry(_cand, self.prog).get_layout(arch_name);
+        if lay is not None {
+            return lay.has_vtable;
+        }
+    }
+    return False;
 }
 
 impl NaIRGenPass._union_layout_conflict(members: list[str]) -> (str | None) {
@@ -1384,12 +1416,7 @@ impl NaIRGenPass._codegen_instantiation(
     for (fname, idx) in field_indices.items() {
         if fname not in set_fields {
             ftype = field_types[fname];
-            if isinstance(ftype, ir.PointerType)
-                or fname in self.struct_field_inline.get(type_name, set()) {
-                zero_val = ir.Constant(ftype, None);
-            } else {
-                zero_val = ir.Constant(ftype, 0);
-            }
+            zero_val = ir.Constant(ftype, None);
             field_ptr = self.builder.gep(
                 obj_ptr,
                 [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
@@ -1575,6 +1602,9 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     _pv = self._coerce_type(_pv, _sfunc.args[_i].type);
                 }
                 _sargs.append(_pv);
+            }
+            for _fill in range(len(_sargs), len(_sfunc.args)) {
+                _sargs.append(self._default_arg_fallback(_sfunc.args[_fill].type));
             }
             _sr = self.builder.call(_sfunc, _sargs, name=f"scall.{method_name}");
             if isinstance(_sfunc.return_value.type, ir.VoidType) {
@@ -2346,6 +2376,29 @@ impl NaIRGenPass._codegen_field_assign(
 ) -> None {
     _fa_errs = len(self.errors_had);
     field_name = self._get_name(target.right);
+    _sa_target = self._get_name(target.target);
+    if _sa_target is None {
+        _sa_tk = self._type_key_of(target.target);
+        if _sa_tk is not None {
+            _sa_tkn = _sa_tk.replace(" ", "");
+            if _sa_tkn.startswith("type[") and _sa_tkn.endswith("]") {
+                _sa_target = _sa_tkn[5:-1];
+            }
+        }
+    }
+    if _sa_target is not None
+        and field_name is not None
+        and _sa_target in self.struct_types
+        and _sa_target not in self.local_vars {
+        for _sa_cn in self._mro_of(_sa_target) {
+            _sa_sf = f"{_sa_cn}.{field_name}";
+            if _sa_sf in self.static_fields {
+                _sa_val = self._coerce_type(value, self.static_field_types[_sa_sf]);
+                self.builder.store(_sa_val, self.static_fields[_sa_sf]);
+                return;
+            }
+        }
+    }
     obj_val = self._codegen_expr(target.target);
     if obj_val is not None {
         obj_val = self._opt_unwrap_attr(obj_val);

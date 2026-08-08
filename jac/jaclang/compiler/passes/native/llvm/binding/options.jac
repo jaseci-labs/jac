@@ -14,4 +14,3 @@ def set_option(name: Any, option: Any) -> object {
 with entry {
     ffi.lib.LLVMPY_SetCommandLine.argtypes = [c_char_p, c_char_p];
 }
-

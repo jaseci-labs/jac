@@ -14,6 +14,7 @@ class Module(object) {
         self.namedmetadata = {};
         self._metadatacache = {};
     }
+
     def _fix_metadata_operands(self: Module, operands: Any) -> object {
         fixed_ops = [];
         for op in operands {
@@ -28,6 +29,7 @@ class Module(object) {
         }
         return fixed_ops;
     }
+
     def _fix_di_operands(self: Module, operands: Any) -> object {
         fixed_ops = [];
         for (name, op) in operands {
@@ -38,6 +40,7 @@ class Module(object) {
         }
         return fixed_ops;
     }
+
     def str_ditok_operands(self: Module, operands: Any) -> object {
         str_ops = [];
         for (name, op) in operands {
@@ -48,6 +51,7 @@ class Module(object) {
         }
         return str_ops;
     }
+
     """
         Add an unnamed metadata to the module with the given *operands*
         (a sequence of values) or return a previous equivalent metadata.
@@ -58,10 +62,8 @@ class Module(object) {
         if not isinstance(operands, (`list, `tuple)) {
             raise TypeError(
                 (
-                    "expected a list or tuple of metadata values, " "got %r" % (
-                        operands,
-
-                    )
+                    "expected a list or tuple of metadata values, " "got %r"
+                    % (operands, )
                 )
             );
         }
@@ -171,11 +173,13 @@ class Module(object) {
     def get_identified_types(self: Module) -> object {
         return self.context.identified_types;
     }
+
     def _get_body_lines(self: Module) -> object {
         lines = [it.get_declaration() for it in self.get_identified_types().values()];
         lines += [str(v) for v in self.globals.values()];
         return lines;
     }
+
     def _get_metadata_lines(self: Module) -> object {
         mdbuf = [];
         for (k, v) in self.namedmetadata.items() {
@@ -190,12 +194,15 @@ class Module(object) {
         }
         return mdbuf;
     }
+
     def _stringify_body(self: Module) -> object {
         return "\n".join(self._get_body_lines());
     }
+
     def _stringify_metadata(self: Module) -> object {
         return "\n".join(self._get_metadata_lines());
     }
+
     def __repr__(self: Module) -> object {
         lines = [];
         lines += [
@@ -209,4 +216,3 @@ class Module(object) {
         return "\n".join(lines);
     }
 }
-

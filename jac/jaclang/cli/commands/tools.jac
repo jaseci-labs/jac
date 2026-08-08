@@ -152,6 +152,29 @@ def completions(shell: str = "bash", install: bool = False) -> int;
 def gen_jir_registry(verify: bool = False) -> int;
 
 @registry.command(
+    name="gen-unitree",
+    hidden=True,
+    help="Regenerate the unitree arena surface (kind ids, mk_* builders, specs)",
+    args=[
+        Arg.create(
+            "verify",
+            typ=bool,
+            default=False,
+            help="Check that arena artifacts are up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-unitree", "Regenerate arena schema, builders, and specs"),
+        ("jac gen-unitree --verify", "Check arena artifacts are up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_unitree(verify: bool = False) -> int;
+
+@registry.command(
     name="gen-uni-dispatch",
     hidden=True,
     help="Regenerate static enter_node/exit_node dispatch for UniPass subclasses",

@@ -9,25 +9,50 @@ impl NaIRGenPass._ensure_enum_lowered(t: any) -> bool {
     _decl = enum_decl_of(t);
     if _decl is not None {
         self._codegen_enum(_decl);
+    } else {
+        _shared = t?.shared;
+        _enm = _shared.class_name if _shared is not None else None;
+        if _enm is not None {
+            self._codegen_enum_layout(_enm, None);
+        }
     }
     return True;
 }
 
 impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
     enum_name = (nd).name.value if (nd).name else "unknown_enum";
+    _owner_mod = nd.find_parent_of_type(uni.Module) or self.ir_in;
+    self._codegen_enum_layout(enum_name, _owner_mod);
+}
 
+impl NaIRGenPass._codegen_enum_layout(
+    enum_name: str, owner: (uni.Module | None)
+) -> None {
     if enum_name in self.enum_types {
+        return;
+    }
+
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    candidates: list = [];
+    if owner is not None {
+        candidates.append(owner);
+    }
+    candidates.append(self.ir_in);
+    for _fm in (self?._foreign_modules or []) {
+        candidates.append(_fm);
+    }
+    lay = None;
+    for _cand in candidates {
+        lay = get_layout_registry(_cand, self.prog).get_enum_layout(enum_name);
+        if lay is not None and lay.members {
+            break;
+        }
+    }
+    if lay is None or not lay.members {
         return;
     }
     self.enum_types[enum_name] = ir.IntType(64);
     self.has_native_code = True;
-
-    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
-    _owner_mod = nd.find_parent_of_type(uni.Module) or self.ir_in;
-    lay = get_layout_registry(_owner_mod, self.prog).get_enum_layout(enum_name);
-    if lay is None or not lay.members {
-        return;
-    }
 
     i64 = ir.IntType(64);
     if lay.is_string_enum {
@@ -133,4 +158,99 @@ impl NaIRGenPass._codegen_enum_value_lookup(
         arr_global, [ir.Constant(i32, 0), idx], name=f"enum.{enum_name}.ptr"
     );
     return self.builder.load(ptr_ptr, name=f"enum.{enum_name}.str");
+}
+
+impl NaIRGenPass._wrap_enum_str(raw: (ir.Value | None)) -> (ir.Value | None) {
+    if raw is None or self.str_wrap_raw_fn is None {
+        return raw;
+    }
+    return self.builder.call(self.str_wrap_raw_fn, [raw], name="enum.s.desc");
+}
+
+impl NaIRGenPass._class_enum_member_str(cls_name: str, member: str) -> (str | None) {
+    _cache = self?._class_enum_str_cache;
+    if _cache is None {
+        _cache = {};
+        self._class_enum_str_cache = _cache;
+    }
+    _key = f"{cls_name}.{member}";
+    if _key in _cache {
+        return _cache[_key];
+    }
+    _mods: list = [self.ir_in];
+    for _fm in (self?._foreign_modules or []) {
+        _mods.append(_fm);
+    }
+    _found: (str | None) = None;
+    for _m in _mods {
+        for _arch in _m.get_all_sub_nodes(uni.Archetype) {
+            if (_arch.name.value if _arch.name else None) != cls_name {
+                continue;
+            }
+            for _asgn in _arch.get_all_sub_nodes(uni.Assignment) {
+                _tgt0 = _asgn.target[0]
+                    if _asgn.target and len(_asgn.target) > 0
+                    else None;
+                if isinstance(_tgt0, uni.Name)
+                    and _tgt0.value == member
+                    and isinstance(_asgn.value, (uni.String, uni.MultiString)) {
+                    _sv = _asgn.value.lit_value;
+                    if isinstance(_sv, str) {
+                        _found = _sv;
+                    }
+                }
+            }
+        }
+        if _found is not None {
+            break;
+        }
+    }
+    _cache[_key] = _found;
+    return _found;
+}
+
+impl NaIRGenPass._class_enum_member_int(cls_name: str, member: str) -> (int | None) {
+    _cache = self?._class_enum_int_cache;
+    if _cache is None {
+        _cache = {};
+        self._class_enum_int_cache = _cache;
+    }
+    _key = f"{cls_name}.{member}";
+    if _key in _cache {
+        return _cache[_key];
+    }
+    _mods: list = [self.ir_in];
+    for _fm in (self?._foreign_modules or []) {
+        _mods.append(_fm);
+    }
+    _found: (int | None) = None;
+    for _m in _mods {
+        for _arch in _m.get_all_sub_nodes(uni.Archetype) {
+            if (_arch.name.value if _arch.name else None) != cls_name {
+                continue;
+            }
+            for _asgn in _arch.get_all_sub_nodes(uni.Assignment) {
+                _tgt0 = _asgn.target[0]
+                    if _asgn.target and len(_asgn.target) > 0
+                    else None;
+                if not (isinstance(_tgt0, uni.Name) and _tgt0.value == member) {
+                    continue;
+                }
+                _v = _asgn.value;
+                if isinstance(_v, uni.Int) {
+                    _found = int(_v.lit_value);
+                } elif isinstance(_v, uni.BinaryExpr)
+                    and isinstance(_v.left, uni.Int)
+                    and isinstance(_v.right, uni.Int)
+                    and _v.op.name == "LSHIFT" {
+                    _found = int(_v.left.lit_value) << int(_v.right.lit_value);
+                }
+            }
+        }
+        if _found is not None {
+            break;
+        }
+    }
+    _cache[_key] = _found;
+    return _found;
 }

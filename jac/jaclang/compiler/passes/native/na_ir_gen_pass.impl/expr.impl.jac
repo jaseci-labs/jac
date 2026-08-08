@@ -1454,6 +1454,21 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
                         then_val, else_val.type, name="ternary.widen"
                     );
                 }
+            } elif self._opt_payload_of(then_val.type) is not None {
+                self.builder.position_before(else_end_bb.terminator);
+                else_val = self._coerce_type(else_val, then_val.type);
+                else_end_bb = self.builder.block;
+            } elif self._opt_payload_of(else_val.type) is not None {
+                self.builder.position_before(then_end_bb.terminator);
+                then_val = self._coerce_type(then_val, else_val.type);
+                then_end_bb = self.builder.block;
+            } elif isinstance(then_val.type, ir.PointerType)
+                and isinstance(else_val.type, ir.PointerType) {
+                self.builder.position_before(else_end_bb.terminator);
+                else_val = self.builder.bitcast(
+                    else_val, then_val.type, name="ternary.ptr"
+                );
+                else_end_bb = self.builder.block;
             }
         }
         self.builder.position_at_end(merge_bb);
@@ -1488,8 +1503,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 and f"{mem_enum}.{mem_name}" in self.enum_values {
                 member_val = self.enum_values[f"{mem_enum}.{mem_name}"];
                 if mem_enum in self.enum_string_values {
-                    return self._codegen_enum_value_lookup(
-                        mem_enum, member_val, use_name=(right_name == "name")
+                    return self._wrap_enum_str(
+                        self._codegen_enum_value_lookup(
+                            mem_enum, member_val, use_name=(right_name == "name")
+                        )
                     );
                 }
 
@@ -1499,9 +1516,48 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
 
                 ordinal = self.enum_member_ordinal.get(f"{mem_enum}.{mem_name}");
                 if ordinal is not None {
-                    return self._codegen_enum_value_lookup(
-                        mem_enum, ir.Constant(ir.IntType(64), ordinal), use_name=True
+                    return self._wrap_enum_str(
+                        self._codegen_enum_value_lookup(
+                            mem_enum,
+                            ir.Constant(ir.IntType(64), ordinal),
+                            use_name=True
+                        )
                     );
+                }
+            }
+        }
+        if right_name is not None and (right_name == "value" or right_name == "name") {
+            _re_tk = self._type_key_of(nd.target);
+            if _re_tk is not None {
+                _re_tk = _re_tk.replace(" ", "").split(".")[-1];
+                if _re_tk in self.enum_string_values {
+                    _re_ord = self._codegen_expr(nd.target);
+                    if _re_ord is not None {
+                        return self._wrap_enum_str(
+                            self._codegen_enum_value_lookup(
+                                _re_tk, _re_ord, use_name=(right_name == "name")
+                            )
+                        );
+                    }
+                } elif right_name == "value" and _re_tk in self.enum_name_arrays {
+                    return self._codegen_expr(nd.target);
+                }
+            }
+        }
+        if right_name is not None and (right_name == "value" or right_name == "name") {
+            _mt_tk = self._type_key_of(nd.target);
+            if _mt_tk is not None {
+                _mt_tk = _mt_tk.replace(" ", "");
+            }
+            if _mt_tk is not None and _mt_tk.startswith("type[") and "]." in _mt_tk {
+                _mt_cls = _mt_tk[5:_mt_tk.index("]")];
+                _mt_mem = _mt_tk.split("].", 1)[1];
+                if right_name == "name" {
+                    return self._make_global_string(_mt_mem);
+                }
+                _mt_val = self._class_enum_member_str(_mt_cls, _mt_mem);
+                if _mt_val is not None {
+                    return self._make_global_string(_mt_val);
                 }
             }
         }
@@ -1556,6 +1612,41 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             full_name = f"{target_name}.{right_name}";
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
+            }
+            _tk_alias = self._type_key_of(nd.target);
+            if _tk_alias is not None {
+                _tk_alias = _tk_alias.replace(" ", "");
+            }
+            if _tk_alias is not None
+                and _tk_alias.startswith("type[")
+                and _tk_alias.endswith("]") {
+                _real_cls = _tk_alias[5:-1];
+                _real_full = f"{_real_cls}.{right_name}";
+                if _real_full not in self.enum_values {
+                    self._codegen_enum_layout(_real_cls, None);
+                }
+                if _real_full in self.enum_values {
+                    return self.enum_values[_real_full];
+                }
+                _cem = self._class_enum_member_str(_real_cls, right_name);
+                if _cem is not None {
+                    return self._make_global_string(_cem);
+                }
+                _cei = self._class_enum_member_int(_real_cls, right_name);
+                if _cei is not None {
+                    return ir.Constant(ir.IntType(64), _cei);
+                }
+                if _real_cls in self.struct_types
+                    and _real_cls not in self.local_vars {
+                    for _rcn in self._mro_of(_real_cls) {
+                        _rsf = f"{_rcn}.{right_name}";
+                        if _rsf in self.static_fields {
+                            return self.builder.load(
+                                self.static_fields[_rsf], name=f"sfld.{right_name}"
+                            );
+                        }
+                    }
+                }
             }
 
             if (

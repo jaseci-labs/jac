@@ -179,6 +179,49 @@ obj NativeListView {
 }
 
 
+def bulk_int_list(view: any) -> list[int] {
+    if isinstance(view, list) {
+        return view;
+    }
+    n = len(view);
+    if n == 0 {
+        return [];
+    }
+    import array as _array;
+    nl = NativeList.from_address(view.list_ptr);
+    buf = ctypes.string_at(nl.data, n * 8);
+    return list(_array.array("q", buf));
+}
+
+
+def bulk_str_list(view: any) -> list[str] {
+    if isinstance(view, list) {
+        return view;
+    }
+    out: list[str] = [];
+    for i in range(len(view)) {
+        p = view[i];
+        if isinstance(p, str) {
+            out.append(p);
+        } elif isinstance(p, int) and p {
+            desc = JacStrRet2.from_address(p);
+            if desc.data and desc.slen >= 0 {
+                out.append(
+                    ctypes.string_at(desc.data, int(desc.slen)).decode(
+                        "utf-8", errors="replace"
+                    )
+                );
+            } else {
+                out.append("");
+            }
+        } else {
+            out.append("");
+        }
+    }
+    return out;
+}
+
+
 def get_struct_view(
     addr: int,
     ct_cls: any,

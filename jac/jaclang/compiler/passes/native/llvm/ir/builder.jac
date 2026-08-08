@@ -32,10 +32,8 @@ def _binop(opname: Any, cls: Any = instructions.Instruction) -> object {
             if (lhs.type != rhs.type) {
                 raise ValueError(
                     (
-                        "Operands must be the same type, got (%s, %s)" % (
-                            lhs.type,
-                            rhs.type
-                        )
+                        "Operands must be the same type, got (%s, %s)"
+                        % (lhs.type, rhs.type)
                     )
                 );
             }

@@ -81,6 +81,15 @@ impl NaIRGenPass.post_transform -> None {
         } except Exception { }
     }
 
+    for _fn in self.llvm_module.functions {
+        for _blk in _fn.blocks {
+            if not _blk.is_terminated {
+                _ob = ir.IRBuilder(_blk);
+                _ob.unreachable();
+            }
+        }
+    }
+
     ir_str = str(self.llvm_module);
 
     if self.prog._compile_options.debug_ir {

@@ -10,6 +10,6 @@ impl SourceLoc.span_to(other: SourceLoc) -> SourceLoc {
     );
 }
 
-impl Token.__str__ -> str {
-    return f"Token({self.kind}, '{self.value}', line={self.loc.line})";
+impl LexToken.__str__ -> str {
+    return f"LexToken({self.kind}, '{self.value}', line={self.loc.line})";
 }

@@ -275,6 +275,22 @@ impl GrammarExtractPass._returns_none(nd: uni.ImplDef) -> bool {
     if spec.return_type is None {
         return False;
     }
+    rt: uni.UniNode = spec.return_type;
+    while True {
+        if isinstance(rt, uni.CfgExpr) {
+            rt = rt.expr;
+            continue;
+        }
+        if isinstance(rt, uni.AtomUnit) and rt.value is not None {
+            rt = rt.value;
+            continue;
+        }
+        break;
+    }
+
+    if isinstance(rt, uni.Name) and rt.value == "int" {
+        return True;
+    }
     stack: list = [spec.return_type];
     while len(stack) > 0 {
         cur = stack.pop();
@@ -1067,6 +1083,7 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
     parts: list = [];
     alt_branches: list = [];
     alt_exhaustive = False;
+    alt_all_try_parse = True;
     i = 0;
     while i < len(stmts) {
         stmt = stmts[i];
@@ -1079,6 +1096,7 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
                     alt_branches.append(branch);
                 }
                 alt_exhaustive = self._chain_is_exhaustive(stmt);
+                alt_all_try_parse = False;
                 i += 1;
                 continue;
             }
@@ -1091,6 +1109,7 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
                     alt_branches.append(body_expr);
                 }
                 alt_exhaustive = False;
+                alt_all_try_parse = False;
                 i += 1;
                 continue;
             }
@@ -1149,9 +1168,9 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
                         if isinstance(tp_rhs, uni.CfgExpr) {
                             tp_rhs = tp_rhs.expr;
                         }
-                        if isinstance(tp_rhs, uni.Null) {
+                        if is_nil_expr(tp_rhs) {
                             for op in tp_cond.ops {
-                                if op?.value and op.value == "is not" {
+                                if op?.value and op.value in ("is not", "!=") {
                                     is_not_none = True;
                                 }
                             }
@@ -1208,7 +1227,7 @@ impl GrammarExtractPass.interpret_stmts(stmts: list) -> GExpr | None {
             if len(alt_branches) == 1
             else GAlt(choices=alt_branches);
 
-        if alt_exhaustive {
+        if alt_exhaustive or alt_all_try_parse {
             parts.append(flushed);
         } else {
             parts.append(GOpt(inner=flushed));
@@ -1336,8 +1355,7 @@ impl GrammarExtractPass.interpret_stmt(stmt: uni.UniNode) -> GExpr | None {
                         else_node = else_node.expr;
                     }
 
-                    if isinstance(val_node, uni.Null)
-                        or isinstance(else_node, uni.Null) {
+                    if is_nil_expr(val_node) or is_nil_expr(else_node) {
                         return GOpt(inner=ternary_parts[0]);
                     }
                     return ternary_parts[0];
@@ -1424,6 +1442,18 @@ impl GrammarExtractPass.interpret_call(call: uni.FuncCall) -> GExpr | None {
 
         if method.startswith("parse_") {
             return GRef(name=method[6:]);
+        }
+
+        if method.startswith("_") {
+            for param in call.params {
+                inner_call = self.get_call_from_expr(param);
+                if inner_call is not None {
+                    result = self.interpret_call(inner_call);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
         }
         return None;
     }
@@ -1642,9 +1672,18 @@ impl GrammarExtractPass.collect_dispatch_chain(stmt: uni.IfStmt) -> list {
                             )
                             and not (
                                 isinstance(s, uni.Assignment)
-                                and isinstance(
-                                    s.value,
-                                    (uni.Bool, uni.Int, uni.Float, uni.String, uni.Null)
+                                and (
+                                    isinstance(
+                                        s.value,
+                                        (
+                                            uni.Bool,
+                                            uni.Int,
+                                            uni.Float,
+                                            uni.String,
+                                            uni.Null
+                                        )
+                                    )
+                                    or is_nil_expr(s.value)
                                 )
                             ) {
                             is_guard = False;
@@ -1916,13 +1955,19 @@ impl GrammarExtractPass.find_break_none_check(stmts: list) -> tuple | None {
         return None;
     }
     cond = second.condition;
+    if isinstance(cond, uni.CfgExpr) {
+        cond = cond.expr;
+    }
     if not isinstance(cond, uni.CompareExpr) {
         return None;
     }
     is_none_check = False;
+    nil_rhs = (
+        cond.rights is not None and len(cond.rights) > 0 and is_nil_expr(cond.rights[0])
+    );
     if cond.ops is not None and len(cond.ops) > 0 {
         for op in cond.ops {
-            if op.value == "is" {
+            if op.value == "is" or (op.value == "==" and nil_rhs) {
                 is_none_check = True;
             }
         }

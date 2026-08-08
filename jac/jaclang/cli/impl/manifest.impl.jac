@@ -1004,6 +1004,32 @@ def _command_routes -> list[CommandMeta] {
             ]
         ),
         CommandMeta(
+            name='gen-unitree',
+            help='Regenerate the unitree arena surface (kind ids, mk_* builders, specs)',
+            group='tools',
+            tier='',
+            hidden=True,
+            handler_module='jaclang.cli.commands.tools',
+            handler_name='gen_unitree',
+            examples=[
+                ('jac gen-unitree', 'Regenerate arena schema, builders, and specs'),
+                (
+                    'jac gen-unitree --verify',
+                    'Check arena artifacts are up to date (for CI)'
+                )
+            ],
+            args=[
+                ArgMeta(
+                    name='verify',
+                    typ='bool',
+                    default=False,
+                    help='Check that arena artifacts are up to date; exit 1 if not',
+                    short='v'
+                ),
+
+            ]
+        ),
+        CommandMeta(
             name='gen_parser',
             help='Generate Jac parser (internal use)',
             group='analysis',

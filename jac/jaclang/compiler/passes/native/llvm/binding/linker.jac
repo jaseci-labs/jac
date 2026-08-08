@@ -9,6 +9,7 @@ def link_modules(dst: Any, src: Any) -> object {
         }
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_LinkModules.argtypes = [
         ffi.LLVMModuleRef,
@@ -17,4 +18,3 @@ with entry {
     ];
     ffi.lib.LLVMPY_LinkModules.restype = c_int;
 }
-

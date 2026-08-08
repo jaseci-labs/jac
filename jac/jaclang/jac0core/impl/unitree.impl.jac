@@ -4,7 +4,8 @@ impl UniNode.postinit -> None {
     self.__sub_node_tab = None;
     self._in_mod_nodes = [];
     self._gen = None;
-    self.loc = CodeLocInfo(*self.resolve_tok_range());
+    (first_tok, last_tok) = self.resolve_tok_range();
+    self.loc = CodeLocInfo(first_tok, last_tok);
 }
 
 
@@ -65,7 +66,10 @@ impl UniNode.sym_tab.getter -> UniScopeNode {
 impl UniNode.add_kids_left(
     nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
 ) -> UniNode {
-    self.kid = [*nodes, *self.kid];
+    new_kid: list[UniNode] = [];
+    new_kid.extend(nodes);
+    new_kid.extend(self.kid);
+    self.kid = new_kid;
     if pos_update {
         for i in nodes {
             i.parent = self;
@@ -83,7 +87,10 @@ impl UniNode.add_kids_left(
 impl UniNode.add_kids_right(
     nodes: Sequence[UniNode], pos_update: bool = True, parent_update: bool = False
 ) -> UniNode {
-    self.kid = [*self.kid, *nodes];
+    new_kid: list[UniNode] = [];
+    new_kid.extend(self.kid);
+    new_kid.extend(nodes);
+    self.kid = new_kid;
     if pos_update {
         for i in nodes {
             i.parent = self;
@@ -139,12 +146,11 @@ impl UniNode.resolve_tok_range -> tuple[(Token, Token)] {
 
 impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
     import from jaclang.jac0core.constant { TOKEN_MAP }
-    value = value
-        or (
-            DELIM_MAP[name]
-                if (name in DELIM_MAP)
-                else TOKEN_MAP.get(name.value, name.value)
-        );
+    if value is None {
+        value = DELIM_MAP[name]
+            if (name in DELIM_MAP)
+            else TOKEN_MAP.get(name.value, name.value);
+    }
     return Token(
         name=name,
         value=value,
@@ -158,24 +164,6 @@ impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
     );
 }
 
-impl UniNode.get_all_sub_nodes(typ: type[T]) -> list[T] {
-    import from jaclang.jac0core.passes { UniPass }
-    return UniPass.get_all_sub_nodes(nd=self, typ=typ);
-}
-
-impl UniNode.find_parent_of_type(typ: type[T]) -> (T | None) {
-    import from jaclang.jac0core.passes { UniPass }
-    return UniPass.find_parent_of_type(nd=self, typ=typ);
-}
-
-impl UniNode.parent_of_type(typ: type[T]) -> T {
-    ret = self.find_parent_of_type(typ);
-    if isinstance(ret, typ) {
-        return ret;
-    } else {
-        raise ValueError(f"Parent of type {typ} not found from{type(self)}.");
-    }
-}
 
 impl UniNode.codespace -> CodeContext {
     if isinstance(self, ContextAwareNode) {
@@ -256,10 +244,12 @@ impl UniNode.to_dict -> dict[(str, str)] {
 }
 
 impl UniNode.pp(depth: (int | None) = None) -> str {
+    import from jaclang.jac0core.treeprinter { print_ast_tree }
     return print_ast_tree(self, max_depth=depth);
 }
 
 impl UniNode.printgraph -> str {
+    import from jaclang.jac0core.treeprinter { printgraph_ast_tree }
     return printgraph_ast_tree(self);
 }
 
@@ -571,8 +561,10 @@ impl UniScopeNode.use_lookup(
         sym_table = nd.sym_tab;
     }
     if sym_table {
-        lookup = sym_table.lookup(name=nd.sym_name, deep=True);
-        lookup.add_use(nd.name_spec) if lookup else None;
+        found = sym_table.lookup(name=nd.sym_name, deep=True);
+        if found {
+            found.add_use(nd.name_spec);
+        }
     }
     return nd.sym;
 }
@@ -586,11 +578,12 @@ impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
         if (cur_sym_tab is None) {
             break;
         }
-        lookup = self.use_lookup(i, sym_table=cur_sym_tab);
-        if lookup {
-            cur_sym_tab = lookup.decl.sym_tab;
-            if (cur_sym_tab.scope_name != i.sym_name) {
-                t = cur_sym_tab.find_scope(i.sym_name);
+        found = self.use_lookup(i, sym_table=cur_sym_tab);
+        if found {
+            decl_tab = found.decl.sym_tab;
+            cur_sym_tab = decl_tab;
+            if decl_tab is not None and (decl_tab.scope_name != i.sym_name) {
+                t = decl_tab.find_scope(i.sym_name);
                 if t {
                     cur_sym_tab = t;
                 }
@@ -627,10 +620,12 @@ impl UniScopeNode.update_expr_ctx_for_def(nd: AstSymbolNode) -> None {
 }
 
 impl UniScopeNode.sym_pp(depth: (int | None) = None) -> str {
+    import from jaclang.jac0core.treeprinter { print_symtab_tree }
     return print_symtab_tree(root_node=self, depth=depth);
 }
 
 impl UniScopeNode.sym_printgraph -> str {
+    import from jaclang.jac0core.treeprinter { printgraph_symtab_tree }
     return printgraph_symtab_tree(self);
 }
 
@@ -708,8 +703,8 @@ impl WalkerStmtOnlyNode.postinit -> None {
 impl UniCFGNode.postinit -> None {
     self.bb_in = [];
     self.bb_out = [];
-
-    self.affected_symbols = set();
+    _syms: set[str] = set();
+    self.affected_symbols = _syms;
 }
 
 impl ConditionalNode.postinit -> None {
@@ -913,16 +908,13 @@ impl Module.annexable_by.getter -> (str | None) {
     if self.stub_only {
         return None;
     }
+    import from jaclang.jac0core.bccache { discover_base_file }
     return discover_base_file(self.loc.mod_path);
 }
 
 impl Module.format -> str {
-    import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
-    import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
-    import from jaclang.jac0core.program { JacProgram }
-    return JacFormatPass(
-        ir_in=DocIRGenPass(ir_in=self, prog=JacProgram()).ir_out, prog=JacProgram()
-    ).ir_out.gen.jac;
+    import from jaclang.compiler.passes.tool.jac_formatter_pass { format_module }
+    return format_module(self);
 }
 
 impl Module.unparse(requires_format: bool = True) -> str {
@@ -982,7 +974,12 @@ impl TypeParam.postinit -> None {
 
 
 impl TypeAlias.postinit -> None {
-    self.type_params = `list(self.type_params) if self.type_params else [];
+    _tp = self.type_params;
+    if _tp is not None {
+        self.type_params = `list(_tp);
+    } else {
+        self.type_params = [];
+    }
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
         self,
@@ -1002,34 +999,40 @@ impl GlobalVars.postinit -> None {
 
 
 impl Test.postinit -> None {
-    Test.TEST_COUNT += 1 if isinstance(self.name, Token) else 0;
-    self.name: Name = self.name
-        if isinstance(self.name, Name)
-        else Name(
-            orig_src=self.name.orig_src,
+    if isinstance(self.name, Token) {
+        Test.TEST_COUNT = Test.TEST_COUNT + 1;
+    }
+    raw_name = self.name;
+    if isinstance(raw_name, Name) {
+        name_node = raw_name;
+    } else {
+        name_node = Name(
+            orig_src=raw_name.orig_src,
             name=Tok.NAME.value,
             value=f"_jac_gen_{Test.TEST_COUNT}",
-            col_start=self.name.loc.col_start,
-            col_end=self.name.loc.col_end,
-            line=self.name.loc.first_line,
-            end_line=self.name.loc.last_line,
-            pos_start=self.name.pos_start,
-            pos_end=self.name.pos_end
+            col_start=raw_name.loc.col_start,
+            col_end=raw_name.loc.col_end,
+            line=raw_name.loc.first_line,
+            end_line=raw_name.loc.last_line,
+            pos_start=raw_name.pos_start,
+            pos_end=raw_name.pos_end
         );
-    self.name.parent = self;
-    self.name._sym_name = f"test_{self.name.value}"
-        if not self.name.value.startswith('test_')
-        else self.name.value;
+    }
+    self.name = name_node;
+    name_node.parent = self;
+    name_node._sym_name = f"test_{name_node.value}"
+        if not name_node.value.startswith('test_')
+        else name_node.value;
     self.body = `list(self.body);
     UniNode.postinit(self);
 
-    if (self.description is None and self.name not in self.kid) {
-        self.insert_kids_at_pos([self.name], pos=1, pos_update=False);
+    if (self.description is None and name_node not in self.kid) {
+        self.insert_kids_at_pos([name_node], pos=1, pos_update=False);
     }
     AstSymbolNode._init_symbol(
         self,
-        sym_name=self.name.sym_name,
-        name_spec=self.name,
+        sym_name=name_node.sym_name,
+        name_spec=name_node,
         sym_category=SymbolType.TEST
     );
     UniScopeNode._init_scope(self, name=self.sym_name);
@@ -1180,7 +1183,8 @@ impl ModulePath.is_import_from.getter -> bool {
 
 impl ModulePath.string_path_value.getter -> (str | None) {
     if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
-        return self.path[0].lit_value;
+        lv = self.path[0].lit_value;
+        return lv if isinstance(lv, str) else None;
     }
     return None;
 }
@@ -1204,6 +1208,7 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
+    import from jaclang.jac0core.modresolver { resolve_relative_path }
     bundled = self.native_bundled_path();
     if bundled is not None {
         return bundled;
@@ -1306,8 +1311,18 @@ impl ModuleItem.resolve_relative_path -> str {
 }
 
 impl Archetype.postinit -> None {
-    self.base_classes = `list(self.base_classes) if self.base_classes else [];
-    self.type_params = `list(self.type_params) if self.type_params else [];
+    _bc = self.base_classes;
+    if _bc is not None {
+        self.base_classes = `list(_bc);
+    } else {
+        self.base_classes = [];
+    }
+    _tp = self.type_params;
+    if _tp is not None {
+        self.type_params = `list(_tp);
+    } else {
+        self.type_params = [];
+    }
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
         self,
@@ -1331,9 +1346,9 @@ impl Archetype.postinit -> None {
 
 impl Archetype._get_impl_resolved_body -> list {
     return `list(self.body)
-        if isinstance(self.body, Sequence)
+        if isinstance(self.body, list)
         else `list(self.body.body)
-            if (isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence))
+            if (isinstance(self.body, ImplDef) and isinstance(self.body.body, list))
             else [];
 }
 
@@ -1343,13 +1358,12 @@ impl Archetype.is_abstract.getter -> bool {
 }
 
 impl Archetype.arch_kind.getter -> (str | None) {
-    return {
+    kind_map: dict[SymbolType, str] = {
         SymbolType.NODE_ARCH: "node",
         SymbolType.EDGE_ARCH: "edge",
         SymbolType.WALKER_ARCH: "walker"
-    }.get(
-        self.sym_category
-    );
+    };
+    return kind_map.get(self.sym_category);
 }
 
 impl Archetype.get_has_vars -> list[HasVar] {
@@ -1380,7 +1394,7 @@ impl Archetype.get_methods -> list[Ability] {
 }
 
 impl ImplDef.postinit -> None {
-    self.spec = `list(self.spec) if isinstance(self.spec, Sequence) else self.spec;
+    self.spec = `list(self.spec) if isinstance(self.spec, list) else self.spec;
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
         self,
@@ -1439,7 +1453,12 @@ impl SemDef.create_sem_name_node -> Name {
 }
 
 impl Enum.postinit -> None {
-    self.base_classes = `list(self.base_classes) if self.base_classes else [];
+    _bc = self.base_classes;
+    if _bc is not None {
+        self.base_classes = `list(_bc);
+    } else {
+        self.base_classes = [];
+    }
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
         self,
@@ -1462,12 +1481,12 @@ impl Ability.postinit -> None {
         if (first_tok is None) {
             raise ValueError('Cannot create synthetic name_ref without location info.');
         }
-        event_type = 'entry'
-            if (
-                isinstance(self.signature, EventSignature)
-                and (self.signature.event.name == Tok.KW_ENTRY)
-            )
-            else 'exit';
+        if isinstance(self.signature, EventSignature)
+            and (self.signature.event.name == Tok.KW_ENTRY) {
+            event_type = "entry";
+        } else {
+            event_type = "exit";
+        }
         synthetic_name = f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__";
         synthetic_name_ref: NameAtom = Name(
             orig_src=first_tok.orig_src,
@@ -1552,12 +1571,12 @@ impl Ability.is_genai_ability.getter -> bool {
 
 impl Ability.py_resolve_name -> str {
     if (self.name_ref is None) {
-        event_type = 'entry'
-            if (
-                isinstance(self.signature, EventSignature)
-                and (self.signature.event.name == Tok.KW_ENTRY)
-            )
-            else 'exit';
+        if isinstance(self.signature, EventSignature)
+            and (self.signature.event.name == Tok.KW_ENTRY) {
+            event_type = "entry";
+        } else {
+            event_type = "exit";
+        }
         return f"__ability_{event_type}_{self.loc.first_line}_{self.loc.col_start}__";
     } elif isinstance(self.name_ref, Name) {
         return self.name_ref.value;
@@ -1589,19 +1608,28 @@ impl Ability.event_trigger_type_names -> (list[str] | None) {
 
 impl FuncSignature.postinit -> None {
     self.posonly_params = `list(self.posonly_params);
-    self.params = `list(self.params) if self.params else [];
+    _ps = self.params;
+    if _ps is not None {
+        self.params = `list(_ps);
+    } else {
+        self.params = [];
+    }
     self.kwonlyargs = `list(self.kwonlyargs);
     UniNode.postinit(self);
 }
 
 
 impl FuncSignature.get_parameters -> list[ParamVar] {
-    params = self.posonly_params + self.params;
-    if self.varargs {
+    params: list[ParamVar] = [];
+    params.extend(self.posonly_params);
+    if self.params is not None {
+        params.extend(self.params);
+    }
+    if self.varargs is not None {
         params.append(self.varargs);
     }
-    params += self.kwonlyargs;
-    if self.kwargs {
+    params.extend(self.kwonlyargs);
+    if self.kwargs is not None {
         params.append(self.kwargs);
     }
     return params;
@@ -1891,8 +1919,9 @@ impl BoolExpr.postinit -> None {
 
 
 impl LambdaExpr.postinit -> None {
-    if (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
-        self.body = `list(self.body);
+    lam_body = self.body;
+    if isinstance(lam_body, list) {
+        self.body = `list(lam_body);
     }
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -1907,7 +1936,7 @@ impl LambdaExpr.tail_return_expr -> Expr | None {
     """Implicit return: a braced body consisting of a single expression
     statement returns that expression's value. Any other body (multiple
     statements, or a non-expression statement) uses an explicit `return`.""";
-    if not (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
+    if not (isinstance(self.body, list) and not isinstance(self.body, Expr)) {
         return None;
     }
     stmts = [
@@ -1985,7 +2014,12 @@ impl ListVal.postinit -> None {
 
 
 impl SetVal.postinit -> None {
-    self.values = `list(self.values) if self.values else [];
+    _vals = self.values;
+    if _vals is not None {
+        self.values = `list(_vals);
+    } else {
+        self.values = [];
+    }
     UniNode.postinit(self);
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
@@ -2051,9 +2085,10 @@ impl AtomTrailer.postinit -> None {
 impl AtomTrailer.as_attr_list.getter -> list[AstSymbolNode] {
     left = self.right if isinstance(self.right, AtomTrailer) else self.target;
     right = self.target if isinstance(self.right, AtomTrailer) else self.right;
-    trag_list: list[AstSymbolNode] = [right]
-        if isinstance(right, AstSymbolNode)
-        else [];
+    trag_list: list[AstSymbolNode] = [];
+    if isinstance(right, AstSymbolNode) {
+        trag_list.append(right);
+    }
     while (isinstance(left, AtomTrailer) and left.is_attr) {
         if isinstance(left.right, AstSymbolNode) {
             trag_list.insert(0, left.right);
@@ -2079,7 +2114,12 @@ impl YieldExpr.postinit -> None {
 
 
 impl FuncCall.postinit -> None {
-    self.params = `list(self.params) if self.params else [];
+    _ps = self.params;
+    if _ps is not None {
+        self.params = `list(_ps);
+    } else {
+        self.params = [];
+    }
     self.callee_decl = None;
     UniNode.postinit(self);
     Expr.postinit(self);
@@ -2140,8 +2180,18 @@ impl AssignCompr.postinit -> None {
 
 
 impl JsxElement.postinit -> None {
-    self.attributes = `list(self.attributes) if self.attributes else [];
-    self.children = `list(self.children) if self.children else [];
+    _attrs = self.attributes;
+    if _attrs is not None {
+        self.attributes = `list(_attrs);
+    } else {
+        self.attributes = [];
+    }
+    _ch = self.children;
+    if _ch is not None {
+        self.children = `list(_ch);
+    } else {
+        self.children = [];
+    }
     UniNode.postinit(self);
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.OBJECT_ARCH);
@@ -2210,16 +2260,15 @@ impl JsxText.postinit -> None {
 
 
 impl JsxText.get_normalized_text -> str {
-    import re;
     raw = self.value.value if isinstance(self.value, Token) else str(self.value);
     if not raw {
         return "";
     }
-    lines = re.split(r'\r\n|\n|\r', raw);
+    lines = raw.replace('\r\n', '\n').replace('\r', '\n').split('\n');
 
     last_non_empty = -1;
     for i in range(len(lines)) {
-        if re.search(r'[^ \t]', lines[i]) {
+        if lines[i].strip(' \t') != '' {
             last_non_empty = i;
         }
     }
@@ -2229,10 +2278,10 @@ impl JsxText.get_normalized_text -> str {
         is_first = i == 0;
         is_last = i == len(lines) - 1;
         if not is_first {
-            line = re.sub(r'^[ ]+', '', line);
+            line = line.lstrip(' ');
         }
         if not is_last {
-            line = re.sub(r'[ ]+$', '', line);
+            line = line.rstrip(' ');
         }
         if line {
             if last_non_empty >= 0 and i != last_non_empty {
@@ -2326,8 +2375,18 @@ impl MatchStar.postinit -> None {
 
 
 impl MatchArch.postinit -> None {
-    self.arg_patterns = `list(self.arg_patterns) if self.arg_patterns else None;
-    self.kw_patterns = `list(self.kw_patterns) if self.kw_patterns else None;
+    _ap = self.arg_patterns;
+    if _ap is not None {
+        self.arg_patterns = `list(_ap);
+    } else {
+        self.arg_patterns = None;
+    }
+    _kp = self.kw_patterns;
+    if _kp is not None {
+        self.kw_patterns = `list(_kp);
+    } else {
+        self.kw_patterns = None;
+    }
     UniNode.postinit(self);
 }
 
@@ -2487,7 +2546,11 @@ impl BuiltinType.lit_value.getter -> type {
     if (self.value not in Literal.type_map) {
         raise TypeError(f"ICE: {self.value} is not a callable builtin");
     }
-    return Literal.type_map[self.value];
+    tval = Literal.type_map[self.value];
+    if isinstance(tval, type) {
+        return tval;
+    }
+    raise TypeError(f"ICE: {self.value} is not a callable builtin");
 }
 
 impl Float.lit_value.getter -> float {
@@ -2553,9 +2616,13 @@ impl Ellipsis.lit_value.getter -> object {
 }
 
 impl EmptyToken.init(orig_src: (Source | None) = None) -> None {
+    _src = orig_src;
+    if _src is None {
+        _src = Source('', '');
+    }
     super.init(
         name='EmptyToken',
-        orig_src=(orig_src or Source('', '')),
+        orig_src=_src,
         value='',
         line=0,
         end_line=0,
@@ -2617,16 +2684,28 @@ impl CommentToken.init(
         pos_end=pos_end
     );
     self.kid = [x.set_parent(self) for x in kid];
-    self.loc = CodeLocInfo(*self.resolve_tok_range());
+    (first_tok, last_tok) = self.resolve_tok_range();
+    self.loc = CodeLocInfo(first_tok, last_tok);
 }
 
 impl Source.init(source: str, mod_path: str) -> None {
-    super.init(self);
+    super.init(orig_src=self);
     self.value = source;
-    self.hash = md5(source.encode()).hexdigest();
+    self._hash = "";
     self.file_path = mod_path;
     self.comments = [];
     self.inline_suppressions = {};
+}
+
+impl Source.hash.getter -> str {
+    if not self._hash {
+        h = 0xCBF29CE484222325;
+        for b in self.value.encode() {
+            h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF;
+        }
+        self._hash = f"{h:016x}";
+    }
+    return self._hash;
 }
 
 impl Source.code.getter -> str {
@@ -2642,7 +2721,8 @@ impl PythonModuleAst.init(ast: object, orig_src: Source) -> None {
 
 impl UniNode.gen.getter -> CodeGenTarget {
     if (self._gen is None) {
-        self._gen = CodeGenTarget();
+        import from jaclang.jac0core.codeinfo { CodeGenTarget as _CGT }
+        self._gen = _CGT();
     }
     return self._gen;
 }

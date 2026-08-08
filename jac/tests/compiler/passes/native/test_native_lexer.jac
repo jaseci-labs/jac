@@ -16,7 +16,7 @@ import jaclang;
 import from jaclang.jac0core.codeinfo { NativeFunctionInfo }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.parser.tokens { Token, TokenKind, SourceLoc }
+import from jaclang.jac0core.parser.tokens { LexToken, TokenKind, SourceLoc }
 import from jaclang.jac0core.parser.lexer { Lexer }
 import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 import jaclang.jac0core.unitree as uni;
@@ -329,11 +329,11 @@ test "native layout tuple metadata for tokenize" {
     assert len(tl.element_types) == 2 , f"Expected 2 tuple elements, got {len(
         tl.element_types
     )}";
-    # First element: list of Token structs, second element: i64 (error count)
+    # First element: list of LexToken structs, second element: i64 (error count)
     assert tl.element_types[0] == "List.ptr*" , f"Element 0: {tl.element_types[0]}";
     assert tl.element_types[1] == "i64" , f"Element 1: {tl.element_types[1]}";
-    # Struct hint for first element should identify Token
-    assert tl.element_struct_hints[0] == "Token" , f"Hint 0: {tl.element_struct_hints[
+    # Struct hint for first element should identify LexToken
+    assert tl.element_struct_hints[0] == "LexToken" , f"Hint 0: {tl.element_struct_hints[
         0
     ]}";
 }
@@ -492,14 +492,14 @@ test "native tokenize matches python lexer" {
     py_tokens = py_lexer.tokenize();
 
     assert len(na_tokens) == len(py_tokens) , (
-        f"Token count mismatch: native={len(na_tokens)}, python={len(py_tokens)}"
+        f"LexToken count mismatch: native={len(na_tokens)}, python={len(py_tokens)}"
     );
     for i in range(len(py_tokens)) {
         na_tok = na_tokens[i];
         py_tok = py_tokens[i];
         na_val = na_tok["value"] if isinstance(na_tok, dict) else na_tok.value;
         assert na_val == py_tok.value , (
-            f"Token {i} value mismatch: native='{na_val}', python='{py_tok.value}'"
+            f"LexToken {i} value mismatch: native='{na_val}', python='{py_tok.value}'"
         );
     }
 }
@@ -537,7 +537,7 @@ test "native tokenize matches python lexer for fstrings" {
         py_tokens = Lexer(source, "test.jac").tokenize();
         assert na_errors == 0 , f"native lex errors for {source!r}: {na_errors}";
         assert len(na_tokens) == len(py_tokens) , (
-            f"Token count mismatch for {source!r}: "
+            f"LexToken count mismatch for {source!r}: "
             f"native={len(na_tokens)}, python={len(py_tokens)}"
         );
         for i in range(len(py_tokens)) {
@@ -550,7 +550,7 @@ test "native tokenize matches python lexer for fstrings" {
     }
 }
 
-# Non-ASCII source exercises the rune-aware byte path. Token VALUES and
+# Non-ASCII source exercises the rune-aware byte path. LexToken VALUES and
 # BYTE-OFFSET positions (pos_start/pos_end/col) must match the Python lexer
 # exactly: a multi-byte code point advances `pos` by its UTF-8 width, so every
 # token after it carries the same byte offset in both backends (Rust/Go/Zig

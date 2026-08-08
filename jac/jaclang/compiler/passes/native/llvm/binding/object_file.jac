@@ -4,33 +4,42 @@ class SectionIteratorRef(ffi.ObjectRef) {
     def name(self: SectionIteratorRef) -> object {
         return ffi.lib.LLVMPY_GetSectionName(self);
     }
+
     def is_text(self: SectionIteratorRef) -> object {
         return ffi.lib.LLVMPY_IsSectionText(self);
     }
+
     def size(self: SectionIteratorRef) -> object {
         return ffi.lib.LLVMPY_GetSectionSize(self);
     }
+
     def address(self: SectionIteratorRef) -> object {
         return ffi.lib.LLVMPY_GetSectionAddress(self);
     }
+
     def data(self: SectionIteratorRef) -> object {
         return string_at(ffi.lib.LLVMPY_GetSectionContents(self), self.size());
     }
+
     def is_end(self: SectionIteratorRef, object_file: Any) -> object {
         return ffi.lib.LLVMPY_IsSectionIteratorAtEnd(object_file, self);
     }
+
     def next(self: SectionIteratorRef) -> object {
         ffi.lib.LLVMPY_MoveToNextSection(self);
     }
+
     def _dispose(self: SectionIteratorRef) -> object {
         ffi.lib.LLVMPY_DisposeSectionIterator(self);
     }
 }
+
 class ObjectFileRef(ffi.ObjectRef) {
     @classmethod
     def from_data(cls: Any, data: Any) -> object {
         return cls(ffi.lib.LLVMPY_CreateObjectFile(data, len(data)));
     }
+
     @classmethod
     def from_path(cls: Any, path: Any) -> object {
         with open(path, 'rb') as f {
@@ -38,6 +47,7 @@ class ObjectFileRef(ffi.ObjectRef) {
         }
         return cls(ffi.lib.LLVMPY_CreateObjectFile(data, len(data)));
     }
+
     def sections(self: ObjectFileRef) -> object {
         it = SectionIteratorRef(ffi.lib.LLVMPY_GetSections(self));
         while not it.is_end(self) {
@@ -45,10 +55,12 @@ class ObjectFileRef(ffi.ObjectRef) {
             it.next();
         }
     }
+
     def _dispose(self: ObjectFileRef) -> object {
         ffi.lib.LLVMPY_DisposeObjectFile(self);
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_CreateObjectFile.argtypes = [c_char_p, c_size_t];
     ffi.lib.LLVMPY_CreateObjectFile.restype = ffi.LLVMObjectFileRef;
@@ -73,4 +85,3 @@ with entry {
     ffi.lib.LLVMPY_IsSectionText.argtypes = [ffi.LLVMSectionIteratorRef];
     ffi.lib.LLVMPY_IsSectionText.restype = c_bool;
 }
-

@@ -9,7 +9,10 @@ import from ctypes {
 }
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
 import from jaclang.compiler.passes.native.llvm.binding.linker { link_modules }
-import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _encode_string }
+import from jaclang.compiler.passes.native.llvm.binding.common {
+    _decode_string,
+    _encode_string
+}
 import from jaclang.compiler.passes.native.llvm.binding.value { ValueRef }
 import from jaclang.compiler.passes.native.llvm.binding.context { get_global_context }
 """
@@ -60,12 +63,14 @@ class ModuleRef(ffi.ObjectRef) {
         super.init(module_ptr);
         self._context = context;
     }
+
     def __str__(self: ModuleRef) -> object {
         with ffi.OutputString() as outstr {
             ffi.lib.LLVMPY_PrintModuleToString(self, outstr);
             return str(outstr);
         }
     }
+
     """
         Return the module's LLVM bitcode, as a bytes object.
         """
@@ -87,6 +92,7 @@ class ModuleRef(ffi.ObjectRef) {
     def _dispose(self: ModuleRef) -> object {
         self._capi.LLVMPY_DisposeModule(self);
     }
+
     """
         Get a ValueRef pointing to the function named *name*.
         NameError is raised if the symbol isn't found.
@@ -134,6 +140,7 @@ class ModuleRef(ffi.ObjectRef) {
     def name(self: ModuleRef, value: Any) -> object {
         ffi.lib.LLVMPY_SetModuleName(self, _encode_string(value));
     }
+
     """
         The module's original source file name
         """
@@ -157,6 +164,7 @@ class ModuleRef(ffi.ObjectRef) {
     def data_layout(self: ModuleRef, strrep: Any) -> object {
         ffi.lib.LLVMPY_SetDataLayout(self, create_string_buffer(strrep.encode('utf8')));
     }
+
     """
         This module's target "triple" specification, as a string.
         """
@@ -172,6 +180,7 @@ class ModuleRef(ffi.ObjectRef) {
     def triple(self: ModuleRef, strrep: Any) -> object {
         ffi.lib.LLVMPY_SetTarget(self, create_string_buffer(strrep.encode('utf8')));
     }
+
     """
         Link the *other* module into this one.  The *other* module will
         be destroyed unless *preserve* is true.
@@ -222,6 +231,7 @@ class _Iterator(ffi.ObjectRef) {
         self._parents = parents;
         assert (self.kind is not None);
     }
+
     def __next__(self: _Iterator) -> object {
         vp = self._next();
         if vp {
@@ -239,6 +249,7 @@ class _Iterator(ffi.ObjectRef) {
         return self;
     }
 }
+
 class _GlobalsIterator(_Iterator) {
     with entry {
         kind = 'global';
@@ -247,10 +258,12 @@ class _GlobalsIterator(_Iterator) {
     def _dispose(self: _GlobalsIterator) -> object {
         self._capi.LLVMPY_DisposeGlobalsIter(self);
     }
+
     def _next(self: _GlobalsIterator) -> object {
         return ffi.lib.LLVMPY_GlobalsIterNext(self);
     }
 }
+
 class _FunctionsIterator(_Iterator) {
     with entry {
         kind = 'function';
@@ -259,10 +272,12 @@ class _FunctionsIterator(_Iterator) {
     def _dispose(self: _FunctionsIterator) -> object {
         self._capi.LLVMPY_DisposeFunctionsIter(self);
     }
+
     def _next(self: _FunctionsIterator) -> object {
         return ffi.lib.LLVMPY_FunctionsIterNext(self);
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_ParseAssembly.argtypes = [
         ffi.LLVMContextRef,
@@ -315,4 +330,3 @@ with entry {
     ffi.lib.LLVMPY_GetModuleSourceFileName.argtypes = [ffi.LLVMModuleRef];
     ffi.lib.LLVMPY_GetModuleSourceFileName.restype = c_char_p;
 }
-

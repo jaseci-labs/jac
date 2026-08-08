@@ -35,4 +35,3 @@ with entry {
     ffi.lib.LLVMPY_LoadLibraryPermanently.argtypes = [c_char_p, POINTER(c_char_p)];
     ffi.lib.LLVMPY_LoadLibraryPermanently.restype = c_bool;
 }
-

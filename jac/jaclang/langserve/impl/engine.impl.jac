@@ -117,6 +117,29 @@ impl JacLangServer.type_check_file(
 
         import from jaclang.jac0core.compile_options { CompileOptions }
         main_doc = self.workspace.get_text_document(uris.from_fs_path(main_path));
+
+        import from jaclang.jac0core.parser.frontend { parse_diags, _replay_diags }
+        import from jaclang.jac0core.parser.lexer { Lexer as _Lexer }
+        import from jaclang.jac0core.parser.parser { Parser as _SyntaxParser }
+        import from jaclang.jac0core.unitree { Source as _Src }
+        (_syn_had, _pd, _ld) = parse_diags(main_doc.source, main_path);
+        if _pd or _ld {
+            _dsrc = _Src(main_doc.source, mod_path=main_path);
+            _replay_diags(_ld, _Lexer, self, _dsrc);
+            _replay_diags(_pd, _SyntaxParser, self, _dsrc);
+            _syn_errors = list(self.errors_had);
+            _syn_warnings = list(self.warnings_had);
+            self.publish_diagnostics(
+                uris.from_fs_path(main_path),
+                utils.gen_diagnostics(main_path, _syn_errors, _syn_warnings)
+            );
+            for f in files_to_check {
+                self._clear_alerts_for_file(f);
+            }
+        }
+        if cancel_token and cancel_token.is_set() {
+            return False;
+        }
         build = self.compile(
             file_path=main_path,
             use_str=main_doc.source,

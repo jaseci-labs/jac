@@ -5,9 +5,11 @@ class NameScope(object) {
         self._useset = `set(['']);
         self._basenamemap = defaultdict(int);
     }
+
     def is_used(self: NameScope, name: Any) -> object {
         return (name in self._useset);
     }
+
     def register(self: NameScope, name: Any, deduplicate: Any = False) -> object {
         if deduplicate {
             name = self.deduplicate(name);
@@ -17,6 +19,7 @@ class NameScope(object) {
         self._useset.add(name);
         return name;
     }
+
     def deduplicate(self: NameScope, name: Any) -> object {
         basename = name;
         while self.is_used(name) {
@@ -27,6 +30,7 @@ class NameScope(object) {
         return name;
     }
 }
+
 class _StrCaching(object) {
     def _clear_string_cache(self: _StrCaching) -> object {
         try {
@@ -35,6 +39,7 @@ class _StrCaching(object) {
             ;
         }
     }
+
     def __str__(self: _StrCaching) -> object {
         try {
             return self.__cached_str;
@@ -44,6 +49,7 @@ class _StrCaching(object) {
         }
     }
 }
+
 class _StringReferenceCaching(object) {
     def get_reference(self: _StringReferenceCaching) -> object {
         try {
@@ -54,6 +60,7 @@ class _StringReferenceCaching(object) {
         }
     }
 }
+
 class _HasMetadata(object) {
     """
         Attach unnamed metadata *node* to the metadata slot *name* of this
@@ -79,4 +86,3 @@ class _HasMetadata(object) {
         }
     }
 }
-

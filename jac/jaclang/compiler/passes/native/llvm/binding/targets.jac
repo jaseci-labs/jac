@@ -10,21 +10,26 @@ import from ctypes {
 }
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
 import from jaclang.compiler.passes.native.llvm.binding.initfini { llvm_version_info }
-import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _encode_string }
+import from jaclang.compiler.passes.native.llvm.binding.common {
+    _decode_string,
+    _encode_string
+}
 import from collections { namedtuple }
 import from jaclang.compiler.passes.native.llvm.binding.config { _has_svml as has_svml }
+
 with entry {
     Triple = namedtuple(
         'Triple', ['Arch', 'SubArch', 'Vendor', 'OS', 'Env', 'ObjectFormat']
     );
 }
+
 """
     Return a target triple suitable for generating code for the current process.
     An example when the default triple from ``get_default_triple()`` is not be
     suitable is when LLVM is compiled for 32-bit but the process is executing
     in 64-bit mode.
     """
-def get_process_triple() -> object {
+def get_process_triple -> object {
     with ffi.OutputString() as out {
         ffi.lib.LLVMPY_GetProcessTriple(out);
         return str(out);
@@ -86,7 +91,7 @@ class FeatureMap(`dict) {
     If LLVM has not implemented this feature or it fails to get the information,
     this function will raise a RuntimeError exception.
     """
-def get_host_cpu_features() -> object {
+def get_host_cpu_features -> object {
     with ffi.OutputString() as out {
         outdict = FeatureMap();
         if not ffi.lib.LLVMPY_GetHostCPUFeatures(out) {
@@ -108,7 +113,7 @@ def get_host_cpu_features() -> object {
 """
     Return the default target triple LLVM is configured to produce code for.
     """
-def get_default_triple() -> object {
+def get_default_triple -> object {
     with ffi.OutputString() as out {
         ffi.lib.LLVMPY_GetDefaultTargetTriple(out);
         return str(out);
@@ -119,27 +124,26 @@ def get_default_triple() -> object {
     Get the name of the host's CPU, suitable for using with
     :meth:`Target.create_target_machine()`.
     """
-def get_host_cpu_name() -> object {
+def get_host_cpu_name -> object {
     with ffi.OutputString() as out {
         ffi.lib.LLVMPY_GetHostCPUName(out);
         return str(out);
     }
 }
 
-with entry {
-    llvm_version_major = llvm_version_info[0];
-    _object_formats = {
-        0: "Unknown",
-        1: "COFF",
-        2: "DXContainer",
-        3: "ELF",
-        4: "GOFF",
-        5: "MachO",
-        6: "SPIRV",
-        7: "Wasm",
-        8: "XCOFF"
-    };
-}
+glob llvm_version_major = llvm_version_info[0],
+     _object_formats = {
+         0: "Unknown",
+         1: "COFF",
+         2: "DXContainer",
+         3: "ELF",
+         4: "GOFF",
+         5: "MachO",
+         6: "SPIRV",
+         7: "Wasm",
+         8: "XCOFF"
+     };
+
 """
     Get the object format for the given *triple* string (or the default
     triple if omitted).
@@ -174,9 +178,11 @@ class TargetData(ffi.ObjectRef) {
             return str(out);
         }
     }
+
     def _dispose(self: TargetData) -> object {
         self._capi.LLVMPY_DisposeTargetData(self);
     }
+
     """
         Get ABI size of LLVM type *ty*.
         """
@@ -215,6 +221,7 @@ with entry {
         ['default', 'jitdefault', 'small', 'kernel', 'medium', 'large']
     );
 }
+
 class Target(ffi.ObjectRef) {
     with entry {
         _triple = '';
@@ -250,18 +257,22 @@ class Target(ffi.ObjectRef) {
         s = ffi.lib.LLVMPY_GetTargetName(self);
         return _decode_string(s);
     }
+
     @property
     def description(self: Target) -> object {
         s = ffi.lib.LLVMPY_GetTargetDescription(self);
         return _decode_string(s);
     }
+
     @property
     def triple(self: Target) -> object {
         return self._triple;
     }
+
     def __str__(self: Target) -> object {
         return "<Target {0} ({1})>".format(self.name, self.description);
     }
+
     """
         Create a new TargetMachine for this target and the given options.
 
@@ -319,6 +330,7 @@ class TargetMachine(ffi.ObjectRef) {
     def _dispose(self: TargetMachine) -> object {
         self._capi.LLVMPY_DisposeTargetMachine(self);
     }
+
     """
         Register analysis passes for this target machine with a pass manager.
         """
@@ -382,6 +394,7 @@ class TargetMachine(ffi.ObjectRef) {
     def target_data(self: TargetMachine) -> object {
         return TargetData(ffi.lib.LLVMPY_CreateTargetMachineData(self));
     }
+
     @property
     def triple(self: TargetMachine) -> object {
         with ffi.OutputString() as out {
@@ -473,4 +486,3 @@ with entry {
     ffi.lib.LLVMPY_CreateTargetMachineData.argtypes = [ffi.LLVMTargetMachineRef];
     ffi.lib.LLVMPY_CreateTargetMachineData.restype = ffi.LLVMTargetDataRef;
 }
-

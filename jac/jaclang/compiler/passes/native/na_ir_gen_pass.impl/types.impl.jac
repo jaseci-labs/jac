@@ -43,20 +43,38 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
             _members.append(m);
         }
         _had_none = len(_members) < len(t.types or []);
-        if _members {
+        if len(_members) == 1 {
             _mlow = self._lower_type(_members[0]);
             if self._str_desc_ty is not None and _mlow == self._str_desc_ty {
                 _mlow = ir.IntType(8).as_pointer();
             }
             if (
-                _had_none
-                and len(_members) == 1
-                and _mlow is not None
-                and not isinstance(_mlow, ir.VoidType)
+                _had_none and _mlow is not None and not isinstance(_mlow, ir.VoidType)
             ) {
                 lowered = self._jac_optional_type(_mlow);
             } else {
                 lowered = _mlow;
+            }
+        } elif _members {
+            _mlows: list = [];
+            for _m in _members {
+                _ml = self._lower_type(_m);
+                if self._str_desc_ty is not None and _ml == self._str_desc_ty {
+                    _ml = ir.IntType(8).as_pointer();
+                }
+                if _ml is None or isinstance(_ml, ir.VoidType) {
+                    _mlows = [];
+                    break;
+                }
+                _mlows.append(_ml);
+            }
+            if not _mlows {
+                lowered = self.jacval_type;
+            } elif all(_ml == _mlows[0] for _ml in _mlows)
+                or all(isinstance(_ml, ir.PointerType) for _ml in _mlows) {
+                lowered = _mlows[0];
+            } else {
+                lowered = self.jacval_type;
             }
         }
     } elif isinstance(t, _FunctionType) {
@@ -126,7 +144,7 @@ impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
-    return self._spec_of(expr, ("list", "bytearray"), self.list_types);
+    return self._spec_of(expr, ("list", "bytearray", "Sequence"), self.list_types);
 }
 
 impl NaIRGenPass._spec_of(
@@ -143,6 +161,12 @@ impl NaIRGenPass._spec_of(
         }
     }
     if not matched {
+        import os as _so_os;
+        if _so_os.environ.get("JAC_NA_SPEC_DEBUG")
+            and ("Sequence" in tk or "UniNode" in tk) {
+            import sys as _so_sys;
+            _so_sys.stderr.write(f"SPECMISS {tk}\n");
+        }
         return None;
     }
     lowered = self._lower_type(expr.type);
@@ -342,7 +366,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         return self._jac_iter_type.as_pointer();
     }
 
-    if cname == "list" {
+    if cname in ("list", "Sequence") {
         elem_llvm: ir.Type = ir.IntType(64);
         if type_args {
             _e = self._elem_storage_llvm(type_args[0]);
@@ -522,6 +546,38 @@ impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
     return _tn;
 }
 
+impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
+    _ptb = type_expr?.type;
+    if _ptb is not None {
+        lowered = self._lower_type(_ptb);
+        if lowered is not None {
+            if self._str_desc_ty is not None and lowered == self._str_desc_ty {
+                lowered = ir.IntType(8).as_pointer();
+            }
+            return lowered;
+        }
+        if self._foreign_optional_field(_ptb) {
+            return ir.IntType(8).as_pointer();
+        }
+        if not self._type_base_is_unknown(_ptb) {
+            _sig_shared = _ptb?.shared;
+            _sig_cn = _sig_shared.class_name if _sig_shared is not None else None;
+            if _sig_cn in ("tuple", "list", "dict", "set", "type") {
+                _sig_mark = len(self.prog.errors_had);
+                _sig_lmark = len(self.errors_had);
+                _sig_res = self._resolve_jac_type(type_expr);
+                if len(self.prog.errors_had) == _sig_mark {
+                    return _sig_res;
+                }
+                del self.prog.errors_had[_sig_mark:];
+                del self.errors_had[_sig_lmark:];
+            }
+            return ir.IntType(8).as_pointer();
+        }
+    }
+    return self._resolve_jac_type(type_expr);
+}
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
@@ -581,6 +637,17 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
         if self._foreign_optional_field(_ptb) {
             return ir.IntType(8).as_pointer();
         }
+        if var?.accessors is not None {
+            return ir.IntType(8).as_pointer();
+        }
+        try {
+            import from jaclang.compiler.type_system.types {
+                TypeVarType as _RfTypeVarType
+            }
+            if isinstance(_ptb, _RfTypeVarType) {
+                return ir.IntType(8).as_pointer();
+            }
+        } except ImportError { }
         if not self._type_base_is_unknown(_ptb) {
             return self._emit_unlowerable_type(var, _ptb);
         }
@@ -614,7 +681,26 @@ impl NaIRGenPass._foreign_optional_field(tb: any) -> bool {
     if len(_non_none) == len(_members) or not _non_none {
         return False;
     }
-    return all(isinstance(m, _FofUnknownType) for m in _non_none);
+    try {
+        import from jaclang.compiler.type_system.types {
+            TypeVarType as _FofTypeVarType
+        }
+    } except ImportError {
+        return False;
+    }
+    for m in _non_none {
+        if isinstance(m, _FofUnknownType) {
+            continue;
+        }
+        if isinstance(m, _FofTypeVarType) and self._lower_type(m) is None {
+            continue;
+        }
+        if isinstance(m, _FofClassType) and self._lower_type(m) is None {
+            continue;
+        }
+        return False;
+    }
+    return True;
 }
 
 impl NaIRGenPass._type_base_is_unknown(tb: any) -> bool {
@@ -996,6 +1082,17 @@ impl NaIRGenPass._opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None) {
 impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value {
     if val.type == target_type {
         return val;
+    }
+
+    if isinstance(val.type, ir.PointerType)
+        and isinstance(target_type, ir.PointerType) {
+        _src_nm = getattr(val.type.pointee, "name", "") or "";
+        _tgt_nm = getattr(target_type.pointee, "name", "") or "";
+        if _src_nm in self.struct_types and _tgt_nm in self.struct_types {
+            if _tgt_nm in self._mro_of(_src_nm) or _src_nm in self._mro_of(_tgt_nm) {
+                return self.builder.bitcast(val, target_type, name="hier.cast");
+            }
+        }
     }
 
     _sd = self._str_desc_ty;

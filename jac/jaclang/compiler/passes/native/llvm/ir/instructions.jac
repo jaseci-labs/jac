@@ -66,7 +66,8 @@ class Instruction(NamedValue, _HasMetadata) {
 
     def __repr__(self: Instruction) -> object {
         return (
-            "<ir.%s %r of type '%s', opname %r, operands %r>" % (
+            "<ir.%s %r of type '%s', opname %r, operands %r>"
+            % (
                 self.__class__.__name__,
                 self.name,
                 self.type,
@@ -788,12 +789,8 @@ class InsertValue(Instruction) {
         if (elem.type != typ) {
             raise TypeError(
                 (
-                    "Can only insert %s at %r in %s: got %s" % (
-                        typ,
-                        `list(indices),
-                        agg.type,
-                        elem.type
-                    )
+                    "Can only insert %s at %r in %s: got %s"
+                    % (typ, `list(indices), agg.type, elem.type)
                 )
             );
         }

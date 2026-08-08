@@ -1,10 +1,9 @@
 import os;
-import from collections.abc { Sequence }
+import type from collections.abc { Sequence }
 import from enum { IntEnum }
-import from hashlib { md5 }
-import from jaclang.jac0core.bccache { discover_base_file }
 import type from jaclang.jac0core.passes.uni_pass { UniPass }
-import from jaclang.jac0core.codeinfo { CodeGenTarget, CodeLocInfo }
+import type from jaclang.jac0core.codeinfo { CodeGenTarget }
+import from jaclang.jac0core.srcloc { CodeLocInfo }
 import from jaclang.jac0core.constant {
     BUILTIN_CALLABLE_NAMES,
     DELIM_MAP,
@@ -20,15 +19,9 @@ import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { JacSemTokenModifier as SemTokMod }
 import from jaclang.jac0core.constant { JacSemTokenType as SemTokType }
 import from jaclang.jac0core.constant { Tokens as Tok }
-import from jaclang.jac0core.modresolver { resolve_relative_path }
+import from jaclang.jac0core.constant { ParamKind }
 import type from jaclang.compiler.type_system.types { TypeBase }
 
-import from jaclang.jac0core.treeprinter {
-    print_ast_tree,
-    print_symtab_tree,
-    printgraph_ast_tree,
-    printgraph_symtab_tree
-}
 
 obj UniNode {
     has kid: Sequence[UniNode] = [],
@@ -66,9 +59,24 @@ obj UniNode {
     def set_parent(parent: UniNode) -> UniNode;
     def resolve_tok_range -> tuple[(Token, Token)];
     def gen_token(name: Tok, value: (str | None) = None) -> Token;
-    def get_all_sub_nodes[T](typ: type[T]) -> list[T];
-    def find_parent_of_type[T](typ: type[T]) -> (T | None);
-    def parent_of_type[T](typ: type[T]) -> T;
+    def get_all_sub_nodes[T](typ: type[T]) -> list[T] {
+        import from jaclang.jac0core.passes { UniPass }
+        return UniPass.get_all_sub_nodes(nd=self, typ=typ);
+    }
+
+    def find_parent_of_type[T](typ: type[T]) -> (T | None) {
+        import from jaclang.jac0core.passes { UniPass }
+        return UniPass.find_parent_of_type(nd=self, typ=typ);
+    }
+
+    def parent_of_type[T](typ: type[T]) -> T {
+        ret = self.find_parent_of_type(typ);
+        if isinstance(ret, typ) {
+            return ret;
+        }
+        raise ValueError(f"Parent of type {typ} not found from{type(self)}.");
+    }
+
     def codespace -> CodeContext;
     def in_client_context -> bool;
     def in_native_context -> bool;
@@ -400,14 +408,12 @@ obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, CodeBlockStmt, UniScopeNo
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    with entry {
-        TEST_COUNT = 0;
-    }
-
     has name: (Name | Token),
         body: Sequence[CodeBlockStmt],
         description: (String | None) = None,
         decorators: (Sequence[Expr] | None) = None;
+
+    static has TEST_COUNT: int = 0;
 
     def postinit -> None;
 }
@@ -601,16 +607,6 @@ obj EventSignature(WalkerStmtOnlyNode) {
         arch_tag_info: (Expr | None);
 
     def postinit -> None;
-}
-
-class ParamKind(IntEnum) {
-    with entry {
-        POSONLY = 0;
-        NORMAL = 1;
-        VARARG = 2;
-        KWONLY = 3;
-        KWARG = 4;
-    }
 }
 
 obj ParamVar(AstSymbolNode, AstTypedVarNode) {
@@ -1484,6 +1480,8 @@ obj Token(UniNode) {
     def accept_enter(v: UniPass) -> None;
 
     has orig_src: Source postinit,
+        name: str postinit,
+        value: str postinit,
         line_no: int postinit,
         end_line: int postinit,
         c_start: int postinit,
@@ -1511,6 +1509,10 @@ obj Token(UniNode) {
 obj Name(Token, NameAtom) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
+
+    has is_kwesc: bool postinit,
+        is_enum_stmt: bool postinit;
+
     def init(
         orig_src: Source,
         name: str,
@@ -1697,15 +1699,18 @@ obj CommentToken(Token) {
 obj Source(EmptyToken) {
     has comments: list[CommentToken] postinit,
         inline_suppressions: dict[int, set[str]] postinit,
-        file_path: str postinit;
+        file_path: str postinit,
+        _hash: str postinit;
 
     def init(source: str, mod_path: str) -> None;
 
     has code: str { getter; }
+    has hash: str { getter; }
 }
 
 obj PythonModuleAst(EmptyToken) {
-    has orig_src: Source postinit,
+    has ast: object postinit,
+        orig_src: Source postinit,
         file_path: str postinit;
 
     def init(ast: object, orig_src: Source) -> None;

@@ -102,13 +102,18 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
     try {
         import ctypes as _ct;
         import ctypes.util;
-        libc_name = ctypes.util.find_library("c");
+        libc_name = ctypes.util.find_library("c")
+            if not _compile_opts.aot_mode
+            else None;
         if libc_name {
             llvm.load_library_permanently(libc_name);
         }
 
         import os;
         clib_paths = module.gen._clib_paths;
+        if _compile_opts.aot_mode {
+            clib_paths = None;
+        }
         if clib_paths {
             for lib_path in clib_paths {
                 try {
@@ -572,10 +577,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
             } except Exception { }
         }
 
-        for dep_lib_path in meta.clib_paths {
-            try {
-                self._jit_load_clib(dep_lib_path);
-            } except Exception { }
+        if not self.prog._compile_options.aot_mode {
+            for dep_lib_path in meta.clib_paths {
+                try {
+                    self._jit_load_clib(dep_lib_path);
+                } except Exception { }
+            }
         }
 
         try {

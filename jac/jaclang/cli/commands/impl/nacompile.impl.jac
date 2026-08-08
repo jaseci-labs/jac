@@ -1,3 +1,9 @@
+import from jaclang.compiler.passes.native.linker_common {
+    collect_floor_archives,
+    floor_lib_dir,
+    resolve_floor_dir,
+    clib_to_archive_name
+}
 import os;
 import sys;
 
@@ -457,7 +463,7 @@ impl nacompile(
     init_funcs: list[str] = [];
 
     clib_paths = ir_module.gen._clib_paths;
-    (archive_members, _floor_handled) = _collect_floor_archives(
+    (archive_members, _floor_handled) = collect_floor_archives(
         clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
     );
     if archive_members {
@@ -717,55 +723,6 @@ impl nacompile(
 }
 
 
-def _resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
-    import os;
-    import from jaclang.runtimelib.utils { triple_arch }
-    want = triple_arch(triple);
-
-    pbs = os.path.join(pkg_root, ".pbs-build");
-    if os.path.isdir(pbs) {
-        fallback: (str | None) = None;
-        for d in sorted(os.listdir(pbs)) {
-            libdir = os.path.join(pbs, d, "python", "build", "lib");
-            if os.path.isdir(libdir) {
-                if fallback is None {
-                    fallback = libdir;
-                }
-                if want in d {
-                    return libdir;
-                }
-            }
-        }
-        if fallback is not None {
-            return fallback;
-        }
-    }
-
-    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
-    if os.path.isdir(floor) {
-        for d in sorted(os.listdir(floor)) {
-            cand = os.path.join(floor, d);
-            if os.path.isdir(cand) and (want in d) {
-                return cand;
-            }
-        }
-    }
-    return None;
-}
-
-
-def _floor_lib_dir(triple: str) -> (str | None) {
-    import os;
-    env = os.environ.get("JAC_NATIVE_FLOOR_DIR", "");
-    if env and os.path.isdir(env) {
-        return env;
-    }
-    import jaclang;
-    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
-    return _resolve_floor_dir(pkg_root, triple);
-}
-
-
 def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
     import os;
 
@@ -806,71 +763,6 @@ def _floor_ca_bundle -> (str | None) {
     import jaclang;
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
     return _resolve_ca_bundle(pkg_root);
-}
-
-
-def _clib_to_archive_name(clib_path: str) -> str {
-    import os;
-    return os.path.basename(clib_path).split(".")[0] + ".a";
-}
-
-
-def _collect_floor_archives(
-    clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
-) -> tuple {
-    import os;
-    import from jaclang.compiler.passes.native.linker_common { select_ar_members }
-    member_bytes: list = [];
-    handled: set = set();
-
-    tl = triple.lower();
-    is_pe = ("windows" in tl) or ("win32" in tl) or ("msvc" in tl) or ("mingw" in tl);
-    if is_pe or not clib_paths {
-        return (member_bytes, handled);
-    }
-    lib_dir = _floor_lib_dir(triple);
-    if lib_dir is None {
-        return (member_bytes, handled);
-    }
-
-    syms_by_lib: dict = {};
-    for (sym, raw) in clib_symbol_lib.items() {
-        syms_by_lib.setdefault(raw, []).append(sym);
-    }
-
-    roots_by_archive: dict = {};
-    paths_by_archive: dict = {};
-    for clib_path in clib_paths {
-        arch_file = os.path.join(lib_dir, _clib_to_archive_name(clib_path));
-        if not os.path.isfile(arch_file) {
-            continue;
-        }
-        paths_by_archive.setdefault(arch_file, []).append(clib_path);
-        for s in syms_by_lib.get(clib_path, []) {
-            roots_by_archive.setdefault(arch_file, []).append(
-                ("_" + s) if is_macos else s
-            );
-        }
-    }
-    for (arch_file, roots) in roots_by_archive.items() {
-        if not roots {
-            continue;
-        }
-        with open(arch_file, "rb") as _f {
-            data = _f.read();
-        }
-        members = select_ar_members(data, roots);
-        if not members {
-            continue;
-        }
-        for m in members {
-            member_bytes.append(m.data);
-        }
-        for p in paths_by_archive.get(arch_file, []) {
-            handled.add(p);
-        }
-    }
-    return (member_bytes, handled);
 }
 
 

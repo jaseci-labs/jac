@@ -62,4 +62,3 @@ def view_dot_graph(graph: Any, filename: Any = None, view: Any = False) -> objec
 with entry {
     ffi.lib.LLVMPY_WriteCFG.argtypes = [ffi.LLVMValueRef, POINTER(c_char_p), c_int];
 }
-

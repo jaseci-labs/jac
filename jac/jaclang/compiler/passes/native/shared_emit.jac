@@ -7,18 +7,37 @@ def inject_shared_init(
         init_calls.append("  call void @__jac_glob_init()");
     }
     import from jaclang.jac0core.codeinfo { native_safe_sym }
+    import re as _re;
+
+    _defined: list[str] = [];
+    for _m in _re.finditer(
+        r'define[^@\n]*@"?(__jac_glob_init_[A-Za-z0-9_]+)"?\s*\(', llvm_ir_str
+    ) {
+        _dn = _m.group(1);
+        if _dn not in _defined {
+            _defined.append(_dn);
+        }
+    }
+
     _seen: set = set();
+    _ordered: list[str] = [];
     for _src in transitive_sources {
         if _src is None or _src in _seen {
             continue;
         }
         _seen.add(_src);
-
-        _safe = native_safe_sym(_src);
-        _nm = f"__jac_glob_init_{_safe}";
-        if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
-            init_calls.append(f"  call void @{_nm}()");
+        _nm = f"__jac_glob_init_{native_safe_sym(_src)}";
+        if _nm in _defined and _nm not in _ordered {
+            _ordered.append(_nm);
         }
+    }
+    for _dn in _defined {
+        if _dn not in _ordered {
+            _ordered.append(_dn);
+        }
+    }
+    for _nm in _ordered {
+        init_calls.append(f"  call void @{_nm}()");
     }
     parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
     _body = ("\n".join(init_calls) + "\n") if init_calls else "";
@@ -58,7 +77,9 @@ def emit_shared_library(
     export_symbols: list[str],
     output_path: str,
     opt_level: int = 2,
-    auto_init: bool = False
+    auto_init: bool = False,
+    clib_paths: (list | None) = None,
+    clib_symbol_lib: (dict | None) = None
 ) -> tuple[bool, str] {
     import os;
     import sys;
@@ -84,6 +105,7 @@ def emit_shared_library(
     }
 
     target = llvm.Target.from_default_triple();
+    triple = llvm.get_default_triple();
     target_machine = target.create_target_machine(
         opt=2, reloc="pic", codemodel="small"
     );
@@ -115,6 +137,12 @@ def emit_shared_library(
             );
         } elif is_macos {
             import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
+            import from jaclang.compiler.passes.native.linker_common {
+                collect_floor_archives
+            }
+            (_floor_members, _floor_handled) = collect_floor_archives(
+                clib_paths or [], clib_symbol_lib or {}, triple, True
+            );
             ok = MachOLinker.link(
                 obj_bytes=obj_bytes,
                 output_path=output_path,
@@ -124,10 +152,16 @@ def emit_shared_library(
                 export_symbols=exports,
                 init_funcs=init_funcs,
                 soname=soname,
-                archive_members=[]
+                archive_members=_floor_members
             );
         } else {
             import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+            import from jaclang.compiler.passes.native.linker_common {
+                collect_floor_archives as _cfa_elf
+            }
+            (_floor_members_elf, _fh_elf) = _cfa_elf(
+                clib_paths or [], clib_symbol_lib or {}, triple, False
+            );
             ok = ElfLinker.link(
                 obj_bytes=obj_bytes,
                 output_path=output_path,
@@ -137,7 +171,7 @@ def emit_shared_library(
                 export_symbols=exports,
                 init_funcs=init_funcs,
                 soname=soname,
-                archive_members=[],
+                archive_members=_floor_members_elf,
                 static_link=False
             );
         }

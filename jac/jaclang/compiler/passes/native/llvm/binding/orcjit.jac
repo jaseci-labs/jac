@@ -10,11 +10,13 @@ class _LinkElement(ctypes.Structure) {
         ];
     }
 }
+
 class _SymbolAddress(ctypes.Structure) {
     with entry {
         _fields_ = [("name", c_char_p), ("address", c_uint64)];
     }
 }
+
 """
     Create a library for linking by OrcJIT
 
@@ -40,6 +42,7 @@ class JITLibraryBuilder {
         self.__exports = `set();
         self.__imports = {};
     }
+
     """
         Adds a compilation unit to the library using LLVM IR as the input
         format.
@@ -217,6 +220,7 @@ class ResourceTracker(ffi.ObjectRef) {
         self.__name = name;
         ffi.ObjectRef.init(self, ptr);
     }
+
     """
         Get the address of an exported symbol as an integer
         """
@@ -228,6 +232,7 @@ class ResourceTracker(ffi.ObjectRef) {
     def name(self: ResourceTracker) -> object {
         return self.__name;
     }
+
     def _dispose(self: ResourceTracker) -> object {
         with ffi.OutputString() as outerr {
             if self._capi.LLVMPY_LLJIT_Dylib_Tracker_Dispose(self, outerr) {
@@ -253,6 +258,7 @@ class LLJIT(ffi.ObjectRef) {
         self._td = None;
         ffi.ObjectRef.init(self, ptr);
     }
+
     """
         Find a function in this dynamic library and construct a new tracking
         object for it
@@ -363,4 +369,3 @@ with entry {
     ];
     ffi.lib.LLVMPY_LLJIT_Dylib_Tracker_Dispose.restype = c_bool;
 }
-

@@ -230,6 +230,17 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                     }
                 }
 
+                _exp_types = impl_func.function_type.args;
+                for _ai in range(len(args)) {
+                    if _ai < len(_exp_types)
+                        and args[_ai].type != _exp_types[_ai]
+                        and isinstance(args[_ai].type, ir.PointerType)
+                        and isinstance(_exp_types[_ai], ir.PointerType) {
+                        args[_ai] = builder.bitcast(
+                            args[_ai], _exp_types[_ai], name=f"inh.arg{_ai}"
+                        );
+                    }
+                }
                 result = builder.call(impl_func, args, name=f"inherited.{method_name}");
 
                 if isinstance(orig_fn_type.return_type, ir.VoidType) {

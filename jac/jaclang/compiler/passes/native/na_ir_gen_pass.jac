@@ -155,6 +155,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
+        _struct_source_mod: dict[str, str] = {},
         _native_skipped_methods: set[str] = set(),
         _class_name_consts: dict[str, ir.Value] = {},
         osp_type_tag_field: dict[str, int] = {},
@@ -360,6 +361,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _native_module_call_target(nd: uni.FuncCall) -> (tuple | None);
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
+    def _empty_ctor_args_of(nd: uni.FuncCall) -> list;
     def _emit_new(nd: uni.FuncCall) -> (ir.Value | None);
 
     has lambda_captures: dict[str, list[tuple]] = {},
@@ -467,6 +469,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _resolve_field_type(var: uni.UniNode) -> ir.Type;
     def _foreign_optional_field(tb: any) -> bool;
     def _type_base_is_unknown(tb: any) -> bool;
@@ -557,10 +560,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> ir.Value;
 
     def _codegen_enum(nd: uni.Enum) -> None;
+    def _codegen_enum_layout(enum_name: str, owner: (uni.Module | None)) -> None;
+    def _class_enum_member_str(cls_name: str, member: str) -> (str | None);
+    def _class_enum_member_int(cls_name: str, member: str) -> (int | None);
     def _build_enum_string_table(
         enum_name: str, entries: list, with_values: bool = True
     ) -> None;
 
+    def _wrap_enum_str(raw: (ir.Value | None)) -> (ir.Value | None);
     def _codegen_enum_value_lookup(
         enum_name: str, ordinal_val: ir.Value, use_name: bool = False
     ) -> (ir.Value | None);
@@ -692,7 +699,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
     def _demote_method_if_unlowerable(
-        full_name: str, func: ir.Function, err_mark: int, local_mark: int
+        full_name: str,
+        func: ir.Function,
+        err_mark: int,
+        local_mark: int,
+        keep_func: bool = False
     ) -> bool;
 
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;

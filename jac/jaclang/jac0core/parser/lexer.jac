@@ -1,8 +1,8 @@
 import from .tokens {
-    Token,
+    LexToken,
     TokenKind,
     SourceLoc,
-    LexDiag,
+    SrcDiag,
     CommentData,
     lookup_keyword
 }
@@ -37,7 +37,7 @@ obj Lexer {
         jsx_closing_tag: bool = False,
         prev_token_kind: TokenKind | None = None,
         comments: list[CommentData] = [],
-        diags: list[LexDiag] = [],
+        diags: list[SrcDiag] = [],
         _brace_depth: int = 0,
         _paren_depth: int = 0,
         _bracket_depth: int = 0,
@@ -49,7 +49,7 @@ obj Lexer {
     def in_jsx -> bool;
     def prev_is_value -> bool;
     def in_view_body -> bool;
-    def _track_view_context(tok: Token);
+    def _track_view_context(tok: LexToken);
     def current -> str;
     def peek(offset: int = 1) -> str;
     def advance -> str;
@@ -63,7 +63,7 @@ obj Lexer {
     def make_loc(start_line: int, start_col: int, start_pos: int) -> SourceLoc;
     def make_token(
         kind: TokenKind, value: str, start_line: int, start_col: int, start_pos: int
-    ) -> Token;
+    ) -> LexToken;
 
     def error(
         message: str,
@@ -90,27 +90,27 @@ obj Lexer {
     def skip_line_comment;
     def skip_block_comment -> bool;
     def skip_whitespace_and_comments;
-    def scan_identifier -> Token;
-    def scan_kwesc_name -> Token;
-    def scan_number -> Token;
-    def scan_leading_dot_float -> Token;
-    def scan_string(quote: str) -> Token;
-    def scan_fstring(prefix: str) -> Token;
-    def scan_fstring_content -> Token;
+    def scan_identifier -> LexToken;
+    def scan_kwesc_name -> LexToken;
+    def scan_number -> LexToken;
+    def scan_leading_dot_float -> LexToken;
+    def scan_string(quote: str) -> LexToken;
+    def scan_fstring(prefix: str) -> LexToken;
+    def scan_fstring_content -> LexToken;
     def get_fstring_text_kind(mode: LexerMode) -> TokenKind;
     def get_fstring_end_kind(mode: LexerMode) -> TokenKind;
-    def scan_fstring_expr_token -> Token;
-    def scan_jsx_open_start -> Token;
-    def scan_jsx_tag_token -> Token;
-    def scan_jsx_content -> Token;
-    def scan_regular_token -> Token;
-    def scan_pynline -> Token;
-    def scan_operator -> Token;
-    def next_token -> Token;
-    def tokenize -> list[Token];
+    def scan_fstring_expr_token -> LexToken;
+    def scan_jsx_open_start -> LexToken;
+    def scan_jsx_tag_token -> LexToken;
+    def scan_jsx_content -> LexToken;
+    def scan_regular_token -> LexToken;
+    def scan_pynline -> LexToken;
+    def scan_operator -> LexToken;
+    def next_token -> LexToken;
+    def tokenize -> list[LexToken];
 }
 
-def tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int] {
+def tokenize(source: str, file_path: str = "<input>") -> tuple[list[LexToken], int] {
     lexer = Lexer(source=source, file_path=file_path);
     tokens = lexer.tokenize();
     return (tokens, lexer.error_count);
@@ -118,7 +118,7 @@ def tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int]
 
 def tokenize_full(
     source: str, file_path: str = "<input>"
-) -> tuple[list[Token], list[CommentData], list[LexDiag], int] {
+) -> tuple[list[LexToken], list[CommentData], list[SrcDiag], int] {
     lexer = Lexer(source=source, file_path=file_path);
     tokens = lexer.tokenize();
     return (tokens, lexer.comments, lexer.diags, lexer.error_count);

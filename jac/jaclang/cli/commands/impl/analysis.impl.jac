@@ -99,15 +99,35 @@ impl check(
             import from jaclang.jac0core.compile_options { CompileOptions }
             console.print(f"  Checking {file_path}...");
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-            prog.compile(
-                file_path=file_path,
-                options=CompileOptions(
-                    type_check=not parse_only,
-                    no_cgen=not native_census,
-                    force_target_program=True,
-                    suppress_codes=suppressed_codes
-                )
-            );
+            if parse_only {
+                import from jaclang.jac0core.parser.frontend {
+                    parse_diags,
+                    _replay_diags
+                }
+                import from jaclang.jac0core.parser.lexer { Lexer }
+                import from jaclang.jac0core.parser.parser { Parser as _SyntaxParser }
+                import from jaclang.jac0core.unitree { Source as _Src }
+                import from jaclang.jac0core.helpers {
+                    read_file_with_encoding as _read_src
+                }
+                _src_txt = _read_src(file_path);
+                (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
+                if _pd or _ld {
+                    _dsrc = _Src(_src_txt, mod_path=file_path);
+                    _replay_diags(_ld, Lexer, prog, _dsrc);
+                    _replay_diags(_pd, _SyntaxParser, prog, _dsrc);
+                }
+            } else {
+                prog.compile(
+                    file_path=file_path,
+                    options=CompileOptions(
+                        type_check=True,
+                        no_cgen=not native_census,
+                        force_target_program=True,
+                        suppress_codes=suppressed_codes
+                    )
+                );
+            }
 
             if placements {
                 import from jaclang.jac0core.placement { collect_placement_rows }

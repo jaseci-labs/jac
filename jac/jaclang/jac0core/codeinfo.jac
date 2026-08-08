@@ -4,6 +4,7 @@ import from collections.abc { Sequence }
 import from contextvars { ContextVar }
 import from dataclasses { field }
 import from typing { Any }
+import from jaclang.jac0core.srcloc { CodeLocInfo }
 import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
 import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import type from jaclang.jac0core.unitree { CommentToken }
@@ -111,7 +112,9 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "time",
          "os",
          "random",
-         "struct"
+         "struct",
+         "enum",
+         "collections.abc"
      },
      _effective_codespace_ctx: ContextVar[str] = ContextVar(
          "jac_effective_default_codespace", default=""
@@ -496,37 +499,4 @@ obj CodeGenTarget {
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
-}
-
-obj CodeLocInfo {
-    has first_tok: Token,
-        last_tok: Token;
-
-    has orig_src: Source { getter; }
-    has mod_path: str { getter; }
-    has first_line: int { getter; }
-    has last_line: int { getter; }
-    has col_start: int { getter; }
-    has col_end: int { getter; }
-    has pos_start: int { getter; }
-    has pos_end: int { getter; }
-
-    def update_token_range(first_tok: Token, last_tok: Token) {
-        self.first_tok = first_tok;
-        self.last_tok = last_tok;
-    }
-
-    def update_first_token(first_tok: Token) {
-        self.first_tok = first_tok;
-    }
-
-    def update_last_token(last_tok: Token) {
-        self.last_tok = last_tok;
-    }
-
-    def __str__ -> str {
-        return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
-    }
-
-    def snapshot -> CodeLocInfo;
 }

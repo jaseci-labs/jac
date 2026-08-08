@@ -347,6 +347,26 @@ impl gen_jir_registry(verify: bool = False) -> int {
     return 0;
 }
 
+impl gen_unitree(verify: bool = False) -> int {
+    import from jaclang.jac0core.gen_unitree { write_all, verify_all }
+    if verify {
+        stale = verify_all();
+        for rel in stale {
+            console.error(f"Arena artifact OUT OF DATE: {rel}");
+        }
+        if stale {
+            console.error("Run `jac gen-unitree` to update.");
+            return 1;
+        }
+        console.print("All arena artifacts are up to date.");
+        return 0;
+    }
+    for msg in write_all() {
+        console.print(msg);
+    }
+    return 0;
+}
+
 impl gen_uni_dispatch(verify: bool = False) -> int {
     import from jaclang.jac0core.gen_uni_dispatch { write_all, verify_all }
     if verify {

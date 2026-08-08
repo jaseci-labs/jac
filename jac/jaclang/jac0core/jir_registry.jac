@@ -1495,7 +1495,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="body", kind=5),
                  FieldDesc(name="description", kind=6),
-                 FieldDesc(name="decorators", kind=5)
+                 FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="TEST_COUNT", kind=1)
              )
          ),
          NodeSpec(

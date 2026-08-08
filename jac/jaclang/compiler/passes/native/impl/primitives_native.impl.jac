@@ -2589,6 +2589,12 @@ impl NativeListEmitter.emit_extend(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     src = args[0];
+    if p._opt_payload_of(src.type) is not None {
+        src = p._coerce_type(src, target.type);
+    }
+    if not isinstance(src.type, ir.PointerType) or src.type.is_opaque {
+        return None;
+    }
     src_len_ptr = b.gep(
         src, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ext.src.len.ptr"
     );
@@ -5194,6 +5200,10 @@ impl NativeBuiltinEmitter.emit_list(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     val = args[0];
+    _opt_pl = p._opt_payload_of(val.type);
+    if _opt_pl is not None {
+        val = b.extract_value(val, 1, name="l.opt.payload");
+    }
 
     for (sk, shelpers) in p.set_helpers.items() {
         stype = p.set_types.get(sk);
@@ -5236,6 +5246,16 @@ impl NativeBuiltinEmitter.emit_list(
             }
             _ctx2 = ctx.__class__(pass_ref=p, type_key=lk);
             return _le.emit_copy(_ctx2, val, []);
+        }
+    }
+    if isinstance(val.type, ir.PointerType) {
+        p._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
+        _lt_ptr = p.list_types.get("ptr");
+        _le3 = p?._native_emitters?.get("list");
+        if _lt_ptr is not None and _le3 is not None {
+            _lv = b.bitcast(val, _lt_ptr.as_pointer(), name="l.union.cast");
+            _ctx3 = ctx.__class__(pass_ref=p, type_key="ptr");
+            return _le3.emit_copy(_ctx3, _lv, []);
         }
     }
     return None;

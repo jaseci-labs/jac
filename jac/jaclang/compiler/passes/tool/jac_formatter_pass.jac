@@ -33,3 +33,11 @@ obj JacFormatPass(Transform[uni.Module, uni.Module]) {
         trailing_width: int = 0
     ) -> str;
 }
+
+def format_module(mod: uni.Module) -> str {
+    import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
+    import from jaclang.jac0core.program { JacProgram }
+    return JacFormatPass(
+        ir_in=DocIRGenPass(ir_in=mod, prog=JacProgram()).ir_out, prog=JacProgram()
+    ).ir_out.gen.jac;
+}

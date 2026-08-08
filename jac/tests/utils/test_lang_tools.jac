@@ -83,3 +83,18 @@ test "uninode doc" {
         in auto_uni
     );
 }
+
+test "uni dispatch annexes in sync and unduplicated" {
+    import from jaclang.jac0core.gen_uni_dispatch { verify_all, abs_path, UNI_PASS_SRC }
+    stale = verify_all();
+    assert stale == [] , f"stale dispatch artifacts: {stale}";
+    src = open(abs_path(UNI_PASS_SRC), encoding="utf-8").read();
+    decls: list[str] = [];
+    for line in src.splitlines() {
+        s = line.strip();
+        if s.startswith("def enter_") or s.startswith("def exit_") {
+            decls.append(s.split("(")[0]);
+        }
+    }
+    assert len(decls) == len(set(decls)) , "duplicate visitor declarations in uni_pass.jac";
+}

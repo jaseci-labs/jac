@@ -1,3 +1,6 @@
+# Auto-generated UniPass visitor base surface (#6942 A.1).
+# DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.
+
 impl UniPass.enter_ability(nd: uni.Ability) -> None {
     self.default_enter(nd);
 }
