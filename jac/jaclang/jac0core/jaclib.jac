@@ -50,7 +50,9 @@ glob __all__ = [
          'on_exit',
          'set_trigger',
          'thread_run',
-         'thread_wait'
+         'thread_wait',
+         '__jac_tensor_eq_assert__',
+         '__jac_trap_guard__'
      ],
      connect = JacRuntimeInterface.connect,
      create_j_context = JacRuntimeInterface.create_j_context,
@@ -81,4 +83,6 @@ glob __all__ = [
      on_exit = JacRuntimeInterface.on_exit,
      set_trigger = JacRuntimeInterface.set_trigger,
      thread_run = JacRuntimeInterface.thread_run,
-     thread_wait = JacRuntimeInterface.thread_wait;
+     thread_wait = JacRuntimeInterface.thread_wait,
+     __jac_tensor_eq_assert__ = JacRuntimeInterface.tensor_eq_assert,
+     __jac_trap_guard__ = JacRuntimeInterface.trap_guard;

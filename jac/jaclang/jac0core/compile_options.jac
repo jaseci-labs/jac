@@ -27,6 +27,7 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
+        graphmend: bool = False,
         force_codespace: str = "",
         na_gc_mode: (str | None) = None,
         nogc_enforce_all: bool = False,

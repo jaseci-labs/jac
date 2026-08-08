@@ -39,6 +39,13 @@ glob registry = get_registry();
             config_key="run.cache"
         ),
         Arg.create(
+            "graphmend",
+            typ=bool,
+            default=False,
+            help="Apply GraphMend passes to eliminate PyTorch 2 FX graph breaks (experimental)",
+            short="g"
+        ),
+        Arg.create(
             "profile",
             default="",
             short="",
@@ -108,6 +115,7 @@ def run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
+    graphmend: bool = False,
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
