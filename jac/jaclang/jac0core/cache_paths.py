@@ -41,6 +41,35 @@ def get_bootstrap_cache_dir() -> Path:
     return get_jir_cache_dir() / "bootstrap"
 
 
+# jaclang package root (parent of jac0core/).  Pure-Python so jir.jac and
+# meta_importer can consult it before jac0core is transpiled.
+_JACLANG_PKG_DIR = str(Path(__file__).resolve().parent.parent)
+_JAC0CORE_DIR = str(Path(__file__).resolve().parent)
+
+
+def is_bootstrap_jac_path(source_path: str) -> bool:
+    """True for jac0-tier .jac sources compiled by jac0 during bootstrap."""
+    resolved = str(Path(source_path).resolve())
+    return resolved.endswith(".jac") and resolved.startswith(_JAC0CORE_DIR + os.sep)
+
+
+def is_jac_lazy_eligible(source_path: str) -> bool:
+    """True when a .jac module may use lazy chunked JIR (user deps only).
+
+    Excludes jac0core bootstrap modules and the jaclang self-hosting tree so
+    enabling JAC_LAZY_JAC globally does not cascade lazy hydration across the
+    ~165 interdependent compiler modules (which OOMs under memory pressure).
+    """
+    resolved = str(Path(source_path).resolve())
+    if not resolved.endswith(".jac") or resolved.endswith(".na.jac"):
+        return False
+    if is_bootstrap_jac_path(resolved):
+        return False
+    if resolved.startswith(_JACLANG_PKG_DIR + os.sep):
+        return False
+    return True
+
+
 def get_app_cache_dir() -> Path:
     """Global cache dir for materialized app bundles (.jab), content-keyed."""
     return get_jir_cache_dir().parent / "apps"

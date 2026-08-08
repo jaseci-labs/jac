@@ -3485,42 +3485,64 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     }
 
     resolved_path = str(Path(path).resolve());
-
     compiler = self.program._get_compiler();
-    target_hub = compiler._resolve_program(resolved_path, self.program).mod.hub;
+    target_program = compiler._resolve_program(resolved_path, self.program);
+    target_hub = target_program.mod.hub;
+
     if resolved_path in self.program.mod.hub {
-        return self.program.mod.hub[resolved_path];
+        mod = self.program.mod.hub[resolved_path];
+        if mod.parent_scope is None and mod is not self.builtins_module {
+            mod.parent_scope = self.builtins_module;
+        }
+        return mod;
     }
     if resolved_path in target_hub {
-        return target_hub[resolved_path];
-    }
-    memoized = _stub_module_memo.get(resolved_path);
-    if memoized is not None and memoized[0] == os.path.getmtime(path) {
-        target_hub[resolved_path] = memoized[1];
-        return memoized[1];
-    }
-    file_content = read_file_with_encoding(path);
-    if path.endswith("builtins.pyi") and "def chunks(" not in file_content {
-        _ck_anchor = "    def copy(self) -> list[_T]: ...";
-        if _ck_anchor in file_content {
-            file_content = file_content.replace(
-                _ck_anchor,
-                _ck_anchor
-                    + "\n    # Jac extension: chunked iteration views"
-                    + " (`for c in &xs.chunks(n)`).\n"
-                    + "    def chunks(self, n: int, /) -> list[list[_T]]: ...",
-                1
-            );
+        mod = target_hub[resolved_path];
+        if mod.parent_scope is None and mod is not self.builtins_module {
+            mod.parent_scope = self.builtins_module;
         }
+        return mod;
     }
-    uni_source = uni.Source(file_content, path);
-    mod = PyastBuildPass(
-        ir_in=uni.PythonModuleAst(py_ast.parse(file_content), orig_src=uni_source,),
-        prog=self.program,
-    ).ir_out;
-    SymTabBuildPass(ir_in=mod, prog=self.program);
-    target_hub[resolved_path] = mod;
-    _stub_module_memo[resolved_path] = (os.path.getmtime(path), mod);
+
+    memoized = _stub_module_memo.get(resolved_path);
+    # Keyed by content SHA (the same hash the disk cache's module key uses),
+    # not mtime, so a stub rewritten with preserved mtime (git ops, `touch -r`)
+    # cannot serve stale types process-wide. This only short-circuits the disk
+    # cache when the on-disk content is genuinely unchanged.
+    if memoized is not None and memoized[0] == compute_content_sha256(path) {
+        mod = memoized[1];
+        target_hub[resolved_path] = mod;
+        target_program.hub_cache_stamp(resolved_path);
+        if mod.parent_scope is None and mod is not self.builtins_module {
+            mod.parent_scope = self.builtins_module;
+        }
+        return mod;
+    }
+
+    use_str: (str | None) = None;
+    if path.endswith("builtins.pyi") {
+        file_content = read_file_with_encoding(path);
+        if "def chunks(" not in file_content {
+            _ck_anchor = "    def copy(self) -> list[_T]: ...";
+            if _ck_anchor in file_content {
+                file_content = file_content.replace(
+                    _ck_anchor,
+                    _ck_anchor
+                        + "\n    # Jac extension: chunked iteration views"
+                        + " (`for c in &xs.chunks(n)`).\n"
+                        + "    def chunks(self, n: int, /) -> list[list[_T]]: ...",
+                    1
+                );
+            }
+        }
+        use_str = file_content;
+    }
+
+    mod = self.program.load_dependency_module(path, use_str=use_str);
+    if mod.parent_scope is None and mod is not self.builtins_module {
+        mod.parent_scope = self.builtins_module;
+    }
+    _stub_module_memo[resolved_path] = (compute_content_sha256(path), mod);
     return mod;
 }
 
