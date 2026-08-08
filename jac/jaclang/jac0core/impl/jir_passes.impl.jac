@@ -446,73 +446,55 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
         import from jaclang.jac0core.unitree { Module as ModuleCls }
         if isinstance(last_node, ModuleCls) {
             if self._source_path {
-                self._wire_source(last_node);
+                last_node.source = self._ensure_module_source();
             }
-            self._fix_param_kinds();
             return last_node;
         }
     }
     return None;
 }
 
-impl JirReader._wire_source(module: Module) -> None {
-    import from jaclang.jac0core.unitree { Source, Token }
-
-    source_content = '';
-    try {
-        with open(self._source_path, 'r', encoding='utf-8') as f {
-            source_content = f.read();
+impl JirReader._ensure_module_source -> Source {
+    import from jaclang.jac0core.unitree { Source }
+    if self._module_source is None {
+        source_content = '';
+        try {
+            with open(self._source_path, 'r', encoding='utf-8') as f {
+                source_content = f.read();
+            }
+        } except Exception {
+            ;
         }
-    } except Exception {
-        ;
+        self._module_source = Source(source_content, self._source_path);
     }
-
-    src = Source(source_content, self._source_path);
-    module.source = src;
-
-    stack = [module];
-    visited: set[int] = set();
-    while stack {
-        cur = stack.pop();
-        cur_id = id(cur);
-        if cur_id in visited {
-            continue;
-        }
-        visited.add(cur_id);
-        if isinstance(cur, Token) {
-            cur.orig_src = src;
-        }
-        stack.extend(cur.kid);
-    }
+    return self._module_source;
 }
 
-impl JirReader._fix_param_kinds -> None {
+impl JirReader._fix_one_func_signature(sig: object) -> None {
     import from jaclang.jac0core.unitree { FuncSignature, ParamVar, ParamKind }
-
-    for ir_item in self._nodes {
-        if isinstance(ir_item, FuncSignature) {
-            for p in (ir_item.posonly_params or []) {
-                if isinstance(p, ParamVar) {
-                    p.param_kind = ParamKind.POSONLY;
-                }
-            }
-            for p in (ir_item.params or []) {
-                if isinstance(p, ParamVar) {
-                    p.param_kind = ParamKind.NORMAL;
-                }
-            }
-            if ir_item.varargs is not None and isinstance(ir_item.varargs, ParamVar) {
-                ir_item.varargs.param_kind = ParamKind.VARARG;
-            }
-            for p in (ir_item.kwonlyargs or []) {
-                if isinstance(p, ParamVar) {
-                    p.param_kind = ParamKind.KWONLY;
-                }
-            }
-            if ir_item.kwargs is not None and isinstance(ir_item.kwargs, ParamVar) {
-                ir_item.kwargs.param_kind = ParamKind.KWARG;
-            }
+    if not isinstance(sig, FuncSignature) {
+        return;
+    }
+    for p in (sig.posonly_params or []) {
+        if isinstance(p, ParamVar) {
+            p.param_kind = ParamKind.POSONLY;
         }
+    }
+    for p in (sig.params or []) {
+        if isinstance(p, ParamVar) {
+            p.param_kind = ParamKind.NORMAL;
+        }
+    }
+    if sig.varargs is not None and isinstance(sig.varargs, ParamVar) {
+        sig.varargs.param_kind = ParamKind.VARARG;
+    }
+    for p in (sig.kwonlyargs or []) {
+        if isinstance(p, ParamVar) {
+            p.param_kind = ParamKind.KWONLY;
+        }
+    }
+    if sig.kwargs is not None and isinstance(sig.kwargs, ParamVar) {
+        sig.kwargs.param_kind = ParamKind.KWARG;
     }
 }
 
@@ -529,6 +511,7 @@ impl JirReader._init_caches -> None {
         ParamVar,
         ParamKind,
         FuncCall,
+        FuncSignature,
         Token,
         Module,
         Import,
@@ -569,6 +552,7 @@ impl JirReader._init_caches -> None {
     self._ParamVar = ParamVar;
     self._FuncCall = FuncCall;
     self._ParamKind_NORMAL = ParamKind.NORMAL;
+    self._FuncSignature = FuncSignature;
     self._Token = Token;
     self._Module = Module;
     self._Import = Import;
@@ -837,6 +821,13 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         if 'col_end' in nd {
             nd['c_end'] = nd['col_end'];
         }
+        if nd.get('orig_src') is None and self._source_path {
+            nd['orig_src'] = self._ensure_module_source();
+        }
+    }
+
+    if isinstance(ir_node, self._FuncSignature) {
+        self._fix_one_func_signature(ir_node);
     }
 
     if isinstance(ir_node, self._Module) {
