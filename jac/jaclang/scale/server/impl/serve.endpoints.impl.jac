@@ -245,6 +245,7 @@ impl JacAPIServerEndpoints.create_function_callback(
 ) -> Callable[..., (TransportResponse | StreamingResponse | Response)] {
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     import from fastapi { Request }
+    import from fastapi.responses { Response }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
 
     func_spec = self.get_functions()[func_name].restspec
@@ -270,7 +271,9 @@ impl JacAPIServerEndpoints.create_function_callback(
         result = await self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
-
+        if isinstance(result, Response) {
+            return result;
+        }
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             import from jaclang.scale.runtime.middleware.sse { sse_frame_stream }
             return StreamingResponse(
@@ -300,9 +303,7 @@ impl JacAPIServerEndpoints.create_function_callback(
         }
         if raw_body {
             payload = result.get('result') if isinstance(result, dict) else result;
-            if isinstance(payload, bytes) {
-                body = payload;
-            } elif isinstance(payload, str) {
+            if isinstance(payload, str) {
                 body = payload.encode('utf-8');
             } elif payload is None {
                 body = b"";

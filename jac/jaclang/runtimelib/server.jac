@@ -22,7 +22,12 @@ import from typing {
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
-import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
+import from jaclang.runtimelib.transport {
+    TransportResponse,
+    HTTPTransport,
+    Meta,
+    is_raw_response
+}
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
@@ -93,7 +98,7 @@ obj ExecutionManager {
     async def report_collector(call_state: CallState) -> dict[str, JsonValue];
     async def _finalize_call_response(
         call_state: CallState, result: any
-    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator | Any;
 }
 
 obj ModuleIntrospector {

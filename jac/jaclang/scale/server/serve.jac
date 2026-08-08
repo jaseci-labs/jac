@@ -183,7 +183,7 @@ obj JacAPIServerEndpoints {
     def register_functions_endpoints -> None;
     def create_function_callback(
         func_name: str
-    ) -> Callable[..., (TransportResponse | StreamingResponse)];
+    ) -> Callable[..., (TransportResponse | StreamingResponse | Response)];
 
     def create_function_parameters(
         func_name: str, method: HTTPMethod = HTTPMethod.POST

@@ -125,6 +125,26 @@ walker:pub upload_doc {
 
 S3 backends and `get_url` presigning: `jac-sv-deploy`.
 
+## Returning files / binary
+
+For binary payloads (images, PDFs, downloads), return a Starlette/FastAPI `Response` or `FileResponse` from a `def:pub` function. The runtime passes it through without the JSON transport envelope or serializer mangling:
+
+```jac
+import from fastapi.responses { FileResponse, Response }
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET, path="/photo.png")
+def:pub photo() -> FileResponse {
+    return FileResponse(path="assets/photo.png", media_type="image/png");
+}
+
+def:pub icon() -> Response {
+    return Response(content=ICON_BYTES, media_type="image/png");
+}
+```
+
+Use `envelope=False` for text/JSON bodies that should reach the wire verbatim (installer scripts, bare JSON documents). Walkers cannot return a `Response`; use functions for file/binary endpoints.
+
 ## Pitfalls
 
 - Mark an endpoint `async def:pub` when its body uses `await` (external API calls, LLM endpoints), so the result is awaited rather than handed back as an unresolved coroutine.

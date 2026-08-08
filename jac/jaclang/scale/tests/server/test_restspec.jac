@@ -1,10 +1,14 @@
 """Test for restspec decorator functionality."""
 
+import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
     extract_data
 }
+
+glob FIXTURES_DIR: Path = Path(__file__).parent.parent / "fixtures",
+     PHOTO_BYTES: bytes = (FIXTURES_DIR / "photo_1x1.png").read_bytes();
 
 test "custom method walker" {
     client = make_client("restspec_fixtures.jac");
@@ -655,6 +659,35 @@ test "envelope remains the default" {
         assert r.status_code == 200 , r.text;
         assert r.headers["content-type"].startswith("application/json");
         assert extract_data(r.json())["result"] == "wrapped";
+    } finally {
+        client.close();
+    }
+}
+
+# ============================================================================
+# File / binary responses -- return Response / FileResponse from functions
+# ============================================================================
+test "file response skips the transport envelope" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/file/photo");
+        assert r.status_code == 200 , r.text;
+        assert r.headers["content-type"].startswith("image/png");
+        assert r.content == PHOTO_BYTES;
+        assert b'"ok"' not in r.content;
+    } finally {
+        client.close();
+    }
+}
+
+test "response with bytes skips the transport envelope" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/file/bytes");
+        assert r.status_code == 200 , r.text;
+        assert r.headers["content-type"].startswith("image/png");
+        assert r.content == PHOTO_BYTES;
+        assert b'"ok"' not in r.content;
     } finally {
         client.close();
     }

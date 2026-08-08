@@ -2,6 +2,8 @@
 
 import from jaclang.runtimelib.builtin { restspec }
 import from http { HTTPMethod }
+import from pathlib { Path }
+import from fastapi.responses { FileResponse, Response }
 
 # ============================================================================
 # RestSpec Decorator Tests
@@ -355,4 +357,20 @@ def:pub raw_json -> dict {
 @restspec(method=HTTPMethod.GET, path="/raw/enveloped")
 def:pub still_enveloped -> str {
     return "wrapped";
+}
+
+# ============================================================================
+# File / binary responses: return a Starlette/FastAPI Response directly
+# ============================================================================
+glob PHOTO_PATH: Path = Path(__file__).parent / "photo_1x1.png";
+glob PHOTO_BYTES: bytes = PHOTO_PATH.read_bytes();
+
+@restspec(method=HTTPMethod.GET, path="/file/photo")
+def:pub get_photo -> FileResponse {
+    return FileResponse(path=str(PHOTO_PATH), media_type="image/png");
+}
+
+@restspec(method=HTTPMethod.GET, path="/file/bytes")
+def:pub get_bytes -> Response {
+    return Response(content=PHOTO_BYTES, media_type="image/png");
 }

@@ -2,6 +2,12 @@ import json;
 import from collections.abc { Callable }
 import from typing { Any }
 
+def is_raw_response(value: any) -> bool {
+    return hasattr(value, 'render')
+        and hasattr(value, 'status_code')
+        and hasattr(value, 'raw_headers');
+}
+
 enum MessageType {
     RESPONSE = "response",
     EVENT = "event",
