@@ -125,6 +125,10 @@ obj CacheConfig {
         dir: str = "cache";
 }
 
+obj InstallConfig {
+    has auto: bool = True;
+}
+
 obj StorageConfig {
     has storage_type: str = "local",
         base_path: str = "./storage",
@@ -176,6 +180,7 @@ obj JacConfig {
         check: CheckConfig = CheckConfig(),
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
+        install: InstallConfig = InstallConfig(),
         storage: StorageConfig = StorageConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),

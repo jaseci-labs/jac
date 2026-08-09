@@ -17,7 +17,6 @@ impl create(
     `list: bool = False,
     pack: str = "",
     pack_output: str = "",
-    `skip: bool = False,
     style: str | None = None,
     baseColor: str | None = None,
     theme: str | None = None,
@@ -29,35 +28,20 @@ impl create(
     if pack {
         return jacpack(action="pack", path=pack, output=pack_output);
     }
-    prev_skip_npm = os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL");
-    if `skip {
-        os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
-    }
-    try {
-        return _create_body(
-            name,
-            force,
-            kind,
-            use,
-            `list,
-            `skip or bool(os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL")),
-            style,
-            baseColor,
-            theme,
-            font,
-            radius,
-            menuAccent,
-            menuColor
-        );
-    } finally {
-        if `skip {
-            if prev_skip_npm is None {
-                os.environ.pop("JAC_CLIENT_SKIP_NPM_INSTALL", None);
-            } else {
-                os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = prev_skip_npm;
-            }
-        }
-    }
+    return _create_body(
+        name,
+        force,
+        kind,
+        use,
+        `list,
+        style,
+        baseColor,
+        theme,
+        font,
+        radius,
+        menuAccent,
+        menuColor
+    );
 }
 
 def _create_body(
@@ -66,7 +50,6 @@ def _create_body(
     kind: str,
     use: str,
     list_kinds: bool,
-    skip_deps: bool,
     style: str | None,
     baseColor: str | None,
     theme: str | None,
@@ -272,11 +255,6 @@ def _create_body(
         }
     }
 
-    deps_installed = False;
-    if not skip_deps {
-        deps_installed = _bootstrap_project_deps(project_path);
-    }
-
     elapsed_time = time.time() - start_time;
     console.print();
     if elapsed_time < 1 {
@@ -290,9 +268,6 @@ def _create_body(
     steps = [];
     if create_subdir {
         steps.append(f"cd {name}");
-    }
-    if not deps_installed {
-        steps.append("jac install           Install dependencies");
     }
     steps.append(f"jac run               {_run_blurb(tmpl.kind)}");
     console.print_next_steps(steps);
@@ -922,27 +897,6 @@ impl install(
     } else {
         console.error("Some dependencies failed to install");
         return 1;
-    }
-}
-
-def _bootstrap_project_deps(project_path: Path) -> bool {
-    import from jaclang.project.config { get_config, set_config }
-    prev = os.getcwd();
-    prev_cfg = get_config();
-    try {
-        os.chdir(str(project_path));
-
-        set_config(get_config(start_path=project_path, force_discover=True));
-        return install() == 0;
-    } except Exception as e {
-        console.warning(f"Could not install dependencies: {e}");
-        console.print(
-            "  Run 'jac install' in the project directory when ready.\n", style="muted"
-        );
-        return False;
-    } finally {
-        os.chdir(prev);
-        set_config(prev_cfg);
     }
 }
 

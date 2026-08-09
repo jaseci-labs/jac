@@ -1906,3 +1906,14 @@ test "discover flags configs found in an ancestor directory" {
         );
     }
 }
+
+test "install section parses auto flag" {
+    config_mod._config = None;
+    # Absent -> auto-install on by default.
+    base = JacConfig.from_toml_str("\n[project]\nname = \"p\"\n");
+    assert base.install.auto is True;
+
+    config_mod._config = None;
+    off = JacConfig.from_toml_str("\n[install]\nauto = false\n");
+    assert off.install.auto is False;
+}

@@ -131,6 +131,7 @@ impl JacConfig._section_map -> dict {
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
+        "install": self.install,
         "environment": self.environment,
         "client": self.client
     };
@@ -1221,6 +1222,10 @@ impl _parse_toml_data(
     if "precommit" in data {
         pc_data = data["precommit"];
         config.precommit = PrecommitConfig(typecheck=pc_data.get("typecheck", True));
+    }
+    if "install" in data {
+        install_data = data["install"];
+        config.install = InstallConfig(auto=install_data.get("auto", True));
     }
     if "check" in data {
         check_data = data["check"];

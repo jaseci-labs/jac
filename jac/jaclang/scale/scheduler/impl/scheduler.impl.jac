@@ -26,7 +26,7 @@ impl TriggerSpec.validate(
         _ct: Any = CronTrigger;
         if _ct is None {
             raise ValueError(
-                "cron triggers require APScheduler — enable the 'scheduler' capability and run 'jac install'."
+                "cron triggers require APScheduler — enable the 'scheduler' capability in jac.toml (the next start installs it automatically)."
             );
         }
         try {
@@ -335,7 +335,8 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
         self._apscheduler = None;
         logger.info(
             "APScheduler not installed — dynamic scheduling disabled. "
-            "Enable the 'scheduler' capability and run 'jac install'."
+            "Enable the 'scheduler' capability in jac.toml (the next start "
+            "installs it automatically)."
         );
     }
 }
@@ -477,7 +478,7 @@ impl JacScaleScheduler.create_job(
 ) -> dict {
     if self._apscheduler is None {
         raise RuntimeError(
-            "APScheduler is not available — enable the 'scheduler' capability and run 'jac install'."
+            "APScheduler is not available — enable the 'scheduler' capability in jac.toml (the next start installs it automatically)."
         );
     }
 

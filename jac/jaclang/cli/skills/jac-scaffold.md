@@ -85,9 +85,10 @@ So before running the named form:
 After `jac create`:
 
 1. `cd <project>`
-2. Dependencies: `jac create` already runs a full `jac install` (Python + npm)
-   unless you passed `--skip` / set `JAC_CLIENT_SKIP_NPM_INSTALL`. If you
-   skipped, or you edited `jac.toml` deps afterward, run `jac install`.
+2. Dependencies: `jac create` only scaffolds - the first `jac run`/`jac start`
+   auto-installs `[dependencies]` into `.jac/venv`, and the client bundler
+   installs npm deps at first bundle. No manual `jac install` needed (it still
+   exists for explicit syncs, `--dev`, `--extras`, or when `[install] auto = false`).
 3. **Verify the scaffold compiles**: `jac check .` (then `jac run main.jac` for backend projects)
 4. **Run the project**: a bare `jac run` (no filename) dispatches on the project's `kind` in `jac.toml` - execute / serve / build as appropriate (`jac run --show` prints the plan first). For web-app, `jac start --dev` runs the server with hot reload. NOT `jac serve` (deprecated).
 5. QA in a headless browser with `jac browse`: `jac browse open localhost:8000`, `jac browse snapshot`, `jac browse click @e5`, `jac browse close`. See `jac-fullstack-patterns` for the full loop.
@@ -116,7 +117,8 @@ All non-`[jacpack]` sections of the template's `jac.toml` become the created pro
 - **Generate `jac.toml` via `jac create`, then edit specific sections as needed** - load `jac-config` for the full section map (`[serve]`, `[scripts]`, `[check.lint]`, ...) before hand-editing.
 - **Match the template to the user's actual need.** Picking `web-app` for a UI-only spike adds unused server scaffolding; picking `web-static` for an app that needs persistence forces a later migration.
 - **Don't scaffold into a non-empty workspace.** The named form inside an existing project nests silently (see above); inspect the workspace first and extend an existing project instead.
-- **Setting `JAC_CLIENT_SKIP_NPM_INSTALL=1` (or `jac create --skip`)** skips the
-  create-time Python + npm install - convenient for offline scaffolding, but
-  you'll need `jac install` before running.
+- **`jac create` does not install dependencies** - they materialize on first
+  run (auto-install) or first client bundle (npm). For offline execution, set
+  `JAC_AUTO_INSTALL=0` / `JAC_CLIENT_SKIP_NPM_INSTALL=1` and expect missing-dep
+  errors until you can `jac install`.
 - **Project-name argument is optional.** Omit it to scaffold in cwd; pass a name to create `cwd/<name>/`.

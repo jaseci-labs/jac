@@ -2065,3 +2065,223 @@ test "install package failure returns error code" {
         reset_config();
     }
 }
+
+# =========================================================================
+# Auto-sync: the jac-sync.json marker and ensure_project_env
+# =========================================================================
+
+test "sync marker records, satisfies, and unions" {
+    import from jaclang.project.pyvenv {
+        read_sync_marker,
+        record_synced_specs,
+        sync_marker_satisfies
+    }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        venv_dir = Path(tmp) / "venv";
+        venv_dir.mkdir();
+        assert sync_marker_satisfies(venv_dir, ["requests>=2.28.0"]) is False;
+        record_synced_specs(venv_dir, ["requests>=2.28.0"]);
+        assert sync_marker_satisfies(venv_dir, ["requests>=2.28.0"]) is True;
+        assert sync_marker_satisfies(venv_dir, ["requests>=2.28.0", "flask~=3.0"])
+            is False;
+        record_synced_specs(venv_dir, ["flask~=3.0"]);
+        assert sync_marker_satisfies(venv_dir, ["requests>=2.28.0", "flask~=3.0"])
+            is True;
+        marker = read_sync_marker(venv_dir);
+        assert sorted(marker["specs"]) == ["flask~=3.0", "requests>=2.28.0"];
+        # An empty spec list never touches the marker; a missing venv dir no-ops.
+        record_synced_specs(venv_dir, []);
+        assert read_sync_marker(venv_dir)["specs"] != [];
+        record_synced_specs(Path(tmp) / "missing", ["x==1"]);
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "sync marker python tag mismatch invalidates" {
+    import json;
+    import from jaclang.project.pyvenv {
+        SYNC_MARKER_NAME,
+        read_sync_marker,
+        record_synced_specs,
+        sync_marker_satisfies
+    }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        venv_dir = Path(tmp) / "venv";
+        venv_dir.mkdir();
+        (venv_dir / SYNC_MARKER_NAME).write_text(
+            json.dumps({"python": "2.7", "specs": ["requests>=2.28.0"]}),
+            encoding="utf-8"
+        );
+        assert sync_marker_satisfies(venv_dir, ["requests>=2.28.0"]) is False;
+        # Recording under the current runtime resets the stale-python spec set.
+        record_synced_specs(venv_dir, ["flask~=3.0"]);
+        assert read_sync_marker(venv_dir)["specs"] == ["flask~=3.0"];
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "prune_synced_specs drops by name and wipes unattributable" {
+    import from jaclang.project.pyvenv {
+        read_sync_marker,
+        record_synced_specs,
+        prune_synced_specs
+    }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        venv_dir = Path(tmp) / "venv";
+        venv_dir.mkdir();
+        record_synced_specs(venv_dir, ["typing_extensions>=4.0", "flask~=3.0"]);
+        # Name matching is normalized (case, underscore vs dash).
+        prune_synced_specs(venv_dir, "Typing-Extensions");
+        assert read_sync_marker(venv_dir)["specs"] == ["flask~=3.0"];
+        record_synced_specs(venv_dir, ["git+https://example.com/lib.git@main"]);
+        # A git+ spec can't be attributed to a package name: wipe everything so
+        # the next execution re-syncs rather than trusting stale state.
+        prune_synced_specs(venv_dir, "somelib");
+        assert read_sync_marker(venv_dir)["specs"] == [];
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "ensure_project_env installs once then satisfies from marker" {
+    import from jaclang.project.pyvenv { record_synced_specs }
+    import from jaclang.project.sync { ensure_project_env }
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    original_env = os.environ.get("JAC_AUTO_INSTALL");
+    try {
+        os.environ["JAC_AUTO_INSTALL"] = "1";
+        config = JacConfig.load(project_dir / "jac.toml");
+        venv_dir = config.get_venv_dir();
+        venv_dir.mkdir(parents=True, exist_ok=True);
+        with patch(
+            "jaclang.project.providers.capability_dependencies", return_value=[]
+        ) as _cap, patch.object(
+            PythonProvider, "install_all", MagicMock(return_value=True)
+        ) as mock_install {
+            assert ensure_project_env(config) is True;
+            assert mock_install.call_count == 1;
+            # A satisfied marker turns the next run into a pure read.
+            record_synced_specs(venv_dir, ["requests>=2.28.0"]);
+            assert ensure_project_env(config) is True;
+            assert mock_install.call_count == 1;
+            # Dev mode widens the required set past the marker.
+            assert ensure_project_env(config, include_dev=True) is True;
+            assert mock_install.call_count == 2;
+        }
+    } finally {
+        if original_env is None {
+            os.environ.pop("JAC_AUTO_INSTALL", None);
+        } else {
+            os.environ["JAC_AUTO_INSTALL"] = original_env;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "ensure_project_env kill switches: env beats config" {
+    import from jaclang.project.sync { auto_install_enabled, ensure_project_env }
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    original_env = os.environ.get("JAC_AUTO_INSTALL");
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        with patch(
+            "jaclang.project.providers.capability_dependencies", return_value=[]
+        ) as _cap, patch.object(
+            PythonProvider, "install_all", MagicMock(return_value=True)
+        ) as mock_install {
+            os.environ["JAC_AUTO_INSTALL"] = "0";
+            assert auto_install_enabled(config) is False;
+            assert ensure_project_env(config) is True;
+            assert mock_install.call_count == 0;
+            os.environ.pop("JAC_AUTO_INSTALL", None);
+            config.install.auto = False;
+            assert auto_install_enabled(config) is False;
+            assert ensure_project_env(config) is True;
+            assert mock_install.call_count == 0;
+            os.environ["JAC_AUTO_INSTALL"] = "1";
+            assert auto_install_enabled(config) is True;
+            assert ensure_project_env(config) is True;
+            assert mock_install.call_count == 1;
+        }
+    } finally {
+        if original_env is None {
+            os.environ.pop("JAC_AUTO_INSTALL", None);
+        } else {
+            os.environ["JAC_AUTO_INSTALL"] = original_env;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "ensure_project_env failed install warns and reports False" {
+    import from jaclang.project.sync { ensure_project_env }
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    original_env = os.environ.get("JAC_AUTO_INSTALL");
+    try {
+        os.environ["JAC_AUTO_INSTALL"] = "1";
+        config = JacConfig.load(project_dir / "jac.toml");
+        with patch(
+            "jaclang.project.providers.capability_dependencies", return_value=[]
+        ) as _cap, patch.object(
+            PythonProvider, "install_all", MagicMock(return_value=False)
+        ) as mock_install {
+            assert ensure_project_env(config) is False;
+            assert mock_install.call_count == 1;
+        }
+    } finally {
+        if original_env is None {
+            os.environ.pop("JAC_AUTO_INSTALL", None);
+        } else {
+            os.environ["JAC_AUTO_INSTALL"] = original_env;
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "module_not_found_hint declared, undeclared, chained, absent" {
+    import from jaclang.project.config { set_config }
+    import from jaclang.project.sync { module_not_found_hint }
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        set_config(config);
+
+        declared = module_not_found_hint(
+            ModuleNotFoundError("No module named 'requests'", name="requests")
+        );
+        assert declared is not None;
+        assert "declared in jac.toml" in declared;
+        assert "jac install" in declared;
+
+        undeclared = module_not_found_hint(
+            ModuleNotFoundError("No module named 'numpy'", name="numpy")
+        );
+        assert undeclared is not None;
+        assert "not declared" in undeclared;
+        assert "jac install numpy" in undeclared;
+
+        inner = ModuleNotFoundError("No module named 'requests'", name="requests");
+        outer = RuntimeError("wrapper");
+        outer.__cause__ = inner;
+        chained = module_not_found_hint(outer);
+        assert chained is not None and "declared in jac.toml" in chained;
+
+        assert module_not_found_hint(ValueError("boom")) is None;
+        assert module_not_found_hint(None) is None;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}

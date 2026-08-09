@@ -1,6 +1,6 @@
 ---
 name: jac-config
-description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], capability tables ([byllm], [scale], [client] incl. app_meta_data, [desktop]), [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/install/remove/update/x). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
+description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [install] auto-install, [scripts], [environments], capability tables ([byllm], [scale], [client] incl. app_meta_data, [desktop]), [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/install/remove/update/x). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
 ---
 
 `jac.toml` is the single config file (think `pyproject.toml` + `package.json`). Commands find it by walking up from cwd. Generate it with `jac create`, then edit sections directly or via `jac config set` / `jac install <pkg>` - hand-editing is normal and expected.
@@ -22,6 +22,7 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[test]` | `jac test` defaults: `directory`, `filter`, `verbose`, `fail_fast`, `max_failures` |
 | `[build]` | `typecheck`, `dir` (artifact root, default `.jac/` - holds `cache/`, `venv/`, `client/`, `data/`) |
 | `[gc]` / `[gc.enforce]` | native memory management: `default = "cycles"/"rc"/"none"` (mode when `--gc` not passed); `enforce.modules`/`enforce.grandfathered` glob patterns opt modules into zero-RC nogc enforcement (see `jac-native-memory`) |
+| `[install]` | `auto = true` (default): execution commands (`jac run`/`start`/`enter`/`test`) sync `[dependencies]` into `.jac/venv` automatically before running; set `false` to require an explicit `jac install`. Env override: `JAC_AUTO_INSTALL=0/1` |
 | `[scripts]` | named command shortcuts run via `jac x <name>` |
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[byllm]` / `[byllm.model]` / `[byllm.call_params]` | AI settings: model identity, API keys, call params (see `jac-by-llm`) |
@@ -46,6 +47,14 @@ jac install -e /path/to/lib   # editable install of a sibling Jac package
 jac remove requests           # uninstall + delete from jac.toml
 jac update                    # bump deps; only rewrites the auto-generated ~= pins
 ```
+
+Execution commands auto-sync: `jac run`/`jac start`/`jac enter`/`jac test` install any
+`[dependencies]` (plus the capability closure; `jac test` and `jac start --dev` also
+include `[dev-dependencies]`) missing from `.jac/venv` before running, so a fresh
+clone runs without a manual `jac install`. An up-to-date venv costs one JSON read
+(`.jac/venv/jac-sync.json` records the applied pip specs). Disable with
+`[install] auto = false` or `JAC_AUTO_INSTALL=0`. npm deps are not part of this
+path - the client bundler installs `node_modules` when it builds the client.
 
 ## `jac config` - read/write settings from the CLI
 
