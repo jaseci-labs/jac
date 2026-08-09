@@ -29,7 +29,7 @@ impl Anchor.is_populated -> bool {
     return ('archetype' in self.__dict__);
 }
 
-impl Anchor.make_stub -> TANCH {
+impl Anchor.make_stub -> Self {
     if self.is_populated() {
         unloaded = object.__new__(self.__class__);
         unloaded.id = self.id;

@@ -1,5 +1,4 @@
 import os;
-import from collections.abc { Sequence }
 import from enum { IntEnum }
 import from hashlib { md5 }
 import from jaclang.jac0core.bccache { discover_base_file }

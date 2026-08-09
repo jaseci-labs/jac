@@ -5,15 +5,11 @@ import from inspect { _empty, signature }
 import from logging { getLogger }
 import from pickle { dumps }
 import from types { UnionType }
-import from typing { Any, ClassVar, TypeAlias, TypeVar }
+import from typing { Any, ClassVar, Self, TypeAlias }
 import from uuid { UUID, uuid4 }
 import from jaclang.jac0core.constant { EdgeDir }
 glob logger = getLogger(__name__),
-     TARCH = TypeVar('TARCH', bound='Archetype'),
-     TANCH = TypeVar('TANCH', bound='Anchor'),
-     T = TypeVar('T');
-
-glob _NO_TRIGGER = object();
+     _NO_TRIGGER = object();
 
 enum AccessLevel { NO_ACCESS = -1, READ = 0, CONNECT = 1, WRITE = 2 }
 
@@ -76,7 +72,7 @@ obj Anchor {
         hash: int = 0;
 
     def is_populated -> bool;
-    def make_stub -> TANCH;
+    def make_stub -> Self;
     def populate -> None;
     def __getattr__(name: str) -> object;
     def __getstate__ -> dict[(str, Any)];

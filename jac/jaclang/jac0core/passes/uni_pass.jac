@@ -1,8 +1,5 @@
-import from typing { TypeVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
-
-glob T = TypeVar('T', bound=uni.UniNode);
 
 obj UniPass(ModuleCodegenPass) {
     has term_signal: bool = False,
@@ -16,7 +13,7 @@ obj UniPass(ModuleCodegenPass) {
     def default_enter(nd: uni.UniNode) -> None;
     def default_exit(nd: uni.UniNode) -> None;
     def prune -> None;
-    static def get_all_sub_nodes(nd: uni.UniNode, typ: type[T]) -> list[T] {
+    static def get_all_sub_nodes[T](nd: uni.UniNode, typ: type[T]) -> list[T] {
         result: list[T] = [];
         if not nd {
             return result;
@@ -31,7 +28,7 @@ obj UniPass(ModuleCodegenPass) {
         return result;
     }
 
-    static def find_parent_of_type(nd: uni.UniNode, typ: type[T]) -> (T | None) {
+    static def find_parent_of_type[T](nd: uni.UniNode, typ: type[T]) -> (T | None) {
         while nd.parent {
             if isinstance(nd.parent, typ) {
                 return nd.parent;

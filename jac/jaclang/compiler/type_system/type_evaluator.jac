@@ -170,7 +170,6 @@ obj TypeEvaluator {
         _DOM_TYPES_STUB_FILE_PATH: str postinit,
         _NA_BUILTINS_STUB_FILE_PATH: str postinit,
         _JS_GLOBALS_STUB_FILE_PATH: str postinit,
-        _TYPING_AMBIENT_STUB_FILE_PATH: str postinit,
         ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str postinit,
         symbol_resolution_stack: list[uni.Symbol] = [],

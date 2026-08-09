@@ -24,6 +24,7 @@ from types import ModuleType
 import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
+from jaclang.jac0core import ambient as _ambient  # noqa: E402
 from jaclang.jac0core import ext_registry  # noqa: E402
 from jaclang.jac0core import sealed as _sealed  # noqa: E402
 from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
@@ -142,6 +143,7 @@ if _modresolver_code is None:
 _modresolver = types.ModuleType("jaclang.jac0core.modresolver")
 _modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.jac0core"
+_ambient.inject(_modresolver.__dict__)
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
 sys.modules["jaclang.jac0core.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
@@ -269,6 +271,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
         """
+        # The ambient type vocabulary (runtimelib/prelude.jac) binds pre-exec:
+        # jac0-emitted code carries no per-reference auto-imports, so this is
+        # the only thing that makes `isinstance(x, Sequence)` resolve on the
+        # bootstrap tier without an explicit import.
+        _ambient.inject(module.__dict__)
+
         # Sealed image: the bootstrap code object is frozen in the manifest;
         # there is no .jac source to transpile.
         frozen = _sealed.find_module(module.__name__)
@@ -375,7 +383,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         if interop_py_funcs is not None:
             module.__dict__["__jac_interop_py_funcs__"] = interop_py_funcs
 
-        # Execute the bytecode directly in the module's namespace
+        # Execute the bytecode directly in the module's namespace. Ambient
+        # vocabulary binds first (setdefault -- the module's own names win);
+        # full-tier emission also auto-imports referenced ambient names, so
+        # this is belt-and-braces there but authoritative for exec'd code
+        # that skips the preamble.
+        _ambient.inject(module.__dict__)
         exec(codeobj, module.__dict__)
 
         # An inferred-native module keeps its plain python side for python

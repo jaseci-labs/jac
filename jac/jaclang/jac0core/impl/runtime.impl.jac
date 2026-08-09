@@ -540,10 +540,8 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
     return cls;
 }
 
-impl JacModule.impl_patch_filename(
-    file_loc: str
-) -> Callable[([Callable[(P, T)]], Callable[(P, T)])] {
-    def decorator(func: Callable[(P, T)]) -> Callable[(P, T)] {
+impl JacModule.impl_patch_filename(file_loc: str) -> Callable[([Callable], Callable)] {
+    def decorator(func: Callable) -> Callable {
         try {
             code = func.__code__;
             new_code = types.CodeType(

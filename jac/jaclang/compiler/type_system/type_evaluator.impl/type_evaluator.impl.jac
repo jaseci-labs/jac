@@ -3549,9 +3549,6 @@ impl TypeEvaluator.postinit -> None {
     self._JS_GLOBALS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "js_globals.pyi"
     );
-    self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
-        os.path.dirname(__file__), "typing_ambient.pyi"
-    );
     self._ENUM_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
     );
@@ -3642,29 +3639,13 @@ impl TypeEvaluator.postinit -> None {
         }
     }
 
-    def read_ambient_imports_by_module(path: str) -> dict[str, set[str]] {
-        out: dict[str, set[str]] = {};
-        try {
-            allowed = read_dunder_all(path);
-            if allowed is None {
-                return out;
-            }
-            py_tree = py_ast.parse(read_file_with_encoding(path));
-            for node in py_tree.body {
-                if (isinstance(node, py_ast.ImportFrom) and node.module is not None) {
-                    public = {(alias.asname or alias.name) for alias in node.names}
-                        & allowed;
-                    if public {
-                        out[node.module] = out.get(node.module, set()) | public;
-                    }
-                }
-            }
-        } except Exception {
-            return {};
-        }
-        return out;
+    import from jaclang.jac0core.ambient {
+        ambient_imports_by_module as prelude_imports
     }
-    raw_groups = read_ambient_imports_by_module(self._TYPING_AMBIENT_STUB_FILE_PATH);
+
+    raw_groups: dict[str, set[str]] = {
+        mod_name: set(names) for (mod_name, names) in prelude_imports().items()
+    };
     typing_ambient_flat: set[str] = set();
     for names in raw_groups.values() {
         typing_ambient_flat = typing_ambient_flat | names;
