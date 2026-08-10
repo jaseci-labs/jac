@@ -17,7 +17,6 @@ with entry {
 
 class JacProgram {
     has mod: uni.ProgramModule,
-        py_raise_map: dict[(str, str)],
         mtir_map: dict[(str, Info)],
         errors_had: list[Alert],
         warnings_had: list[Alert],

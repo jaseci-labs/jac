@@ -103,21 +103,15 @@ obj JirWriter {
     has _pool: _StringPool postinit,
         _node_ids: dict[int, int] postinit,
         _nodes: list[object] postinit,
-        _buf: bytearray postinit,
         _parent_scope_links: list[tuple[int, int]] postinit,
-        _name_of_links: list[tuple[int, int]] postinit,
-        _overload_entries: list[tuple[int, str, list[int]]] postinit,
-        _inherited_scope_entries: list[tuple[int, int, bool, list[str]]] postinit;
+        _name_of_links: list[tuple[int, int]] postinit;
 
     def postinit {
         self._pool = _StringPool();
         self._node_ids = {};
         self._nodes = [];
-        self._buf = bytearray();
         self._parent_scope_links = [];
         self._name_of_links = [];
-        self._overload_entries = [];
-        self._inherited_scope_entries = [];
     }
 
     def write_module(
@@ -137,8 +131,7 @@ obj JirWriter {
 }
 
 obj JirReader {
-    has _skip_loc: bool = True,
-        _source_path: str = "",
+    has _source_path: str = "",
         _module_source: (Source | None) = None,
         _pool: (_StringPool | None) = None,
         _nodes: list[object] postinit,

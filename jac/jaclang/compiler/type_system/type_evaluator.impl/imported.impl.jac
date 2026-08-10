@@ -60,13 +60,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         return binding.type;
                     }
                     mod = self._import_module_from_path(
-                        path_str, importer_path=self._resolve_importer_path(node_)
+                        path_str, importer_path=resolve_importer_path_from_node(node_)
                     );
 
-                    is_subpackage_init = (
-                        path.name.startswith("__init__")
-                        and path.parent.name == item_name
-                    );
                     is_parent_init = (
                         path.name.startswith("__init__")
                         and path.parent.name != item_name
@@ -175,7 +171,7 @@ impl TypeEvaluator._resolve_star_import_symbol(
             candidate = resolved[-1];
             if candidate and Path(candidate).exists() {
                 submod = self._import_module_from_path(
-                    candidate, importer_path=self._resolve_importer_path(mod)
+                    candidate, importer_path=resolve_importer_path_from_node(mod)
                 );
             }
         }
@@ -264,7 +260,7 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 continue;
             }
             mod: uni.Module = self._import_module_from_path(
-                mod_path, importer_path=self._resolve_importer_path(node_)
+                mod_path, importer_path=resolve_importer_path_from_node(node_)
             );
             mod_type = types.ModuleType(
                 mod_name=npath.value,
@@ -367,11 +363,6 @@ impl TypeEvaluator.forget_module(resolved_path: str) -> None {
     if resolved_path in self._module_type_cache {
         del (self._module_type_cache[resolved_path], );
     }
-}
-
-impl TypeEvaluator._resolve_importer_path(ast_node: uni.UniNode) -> (str | None) {
-    import from jaclang.compiler.symbol_utils { resolve_importer_path_from_node }
-    return resolve_importer_path_from_node(ast_node);
 }
 
 impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {

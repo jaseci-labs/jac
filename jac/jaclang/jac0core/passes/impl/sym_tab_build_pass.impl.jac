@@ -208,16 +208,10 @@ impl SymTabBuildPass._exit_import_absorb(
     import_all_module_path_node: uni.ModulePath = nd.items[0];
     import_all_module_path = import_all_module_path_node.resolve_relative_path();
     module: (uni.Module | None) = None;
-    if (import_all_module_path in self.prog.mod.hub) {
-        module = self.prog.mod.hub[import_all_module_path];
-    } else {
-        try {
-            module = self.prog.compile(
-                import_all_module_path, no_cgen=True, type_check=False
-            );
-        } except Exception {
-            return;
-        }
+    try {
+        module = self.prog.load_dependency_module(import_all_module_path);
+    } except Exception {
+        return;
     }
     self._bind_import_path_symbols(import_all_module_path_node);
     if module {

@@ -686,6 +686,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _register_imported_struct_types -> None;
     def _permuted_walk_order(mods: list) -> list;
     def _ensure_imported_module_inferred(imported_mod: uni.Module) -> None;
+    def _load_native_import_dep(full_path: str) -> (uni.Module | None);
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;

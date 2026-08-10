@@ -367,22 +367,7 @@ impl NaIRGenPass._find_source_ability(
     if full_path is None {
         return None;
     }
-    imported_mod = self.prog.mod.hub.get(full_path);
-    if imported_mod is None {
-        imported_mod = self.prog.mod.hub.get(os.path.abspath(full_path));
-    }
-    if imported_mod is None and os.path.isfile(full_path) {
-        _saved_opts = self.prog._compile_options;
-        try {
-            imported_mod = self.prog.compile(
-                full_path, no_cgen=True, symtab_ir_only=True
-            );
-        } except Exception {
-            imported_mod = None;
-        } finally {
-            self.prog._compile_options = _saved_opts;
-        }
-    }
+    imported_mod = self._load_native_import_dep(full_path);
     if imported_mod is None {
         return None;
     }

@@ -2,7 +2,6 @@ impl JacProgram.init(
     self: JacProgram, main_mod: (uni.ProgramModule | None) = None
 ) -> None {
     self.mod: uni.ProgramModule = main_mod or uni.ProgramModule();
-    self.py_raise_map: dict[(str, str)] = {};
     self.mtir_map: dict[(str, Info)] = {};
     self.errors_had: list[Alert] = [];
     self.warnings_had: list[Alert] = [];
@@ -192,9 +191,6 @@ impl JacProgram.load_dependency_module(
         }
         if jir_mod is not None {
             mod = jir_mod;
-            if resolved_path.endswith('.pyi') and not mod.stub_only {
-                mod.stub_only = True;
-            }
         } elif resolved_path.endswith('.pyi') {
             import ast as py_ast;
             import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }

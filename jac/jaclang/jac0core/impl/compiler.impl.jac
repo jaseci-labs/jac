@@ -128,7 +128,6 @@ impl JacCompiler.get_bytecode(
 ) -> (types.CodeType | None) {
     actual_program = self._resolve_program(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
-    symtab_only_recovery = False;
 
     if (
         (not rebuild)
@@ -143,7 +142,6 @@ impl JacCompiler.get_bytecode(
         and not actual_program.mod.hub[full_target].gen.py_bytecode
     ) {
         actual_program.invalidate_module(full_target);
-        symtab_only_recovery = True;
     } elif (
         (not rebuild)
         and (full_target in actual_program.mod.hub)
@@ -208,7 +206,6 @@ impl JacCompiler.get_bytecode(
             } else {
                 cache_path.unlink(missing_ok=True);
                 actual_program.invalidate_module(full_target);
-                symtab_only_recovery = True;
             }
         } except Exception {
             ;
@@ -219,20 +216,17 @@ impl JacCompiler.get_bytecode(
     precompiled_bc = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
     if precompiled_bc is not None {
         try {
-            import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
-            jir_bytes = write_precompiled_jir(
-                precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
-            );
-            cache_path.parent.mkdir(parents=True, exist_ok=True);
-
-            import os as _os;
-            tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
-            try {
-                tmp_path.write_bytes(jir_bytes);
-                tmp_path.rename(cache_path);
-            } finally {
-                tmp_path.unlink(missing_ok=True);
+            import from jaclang.jac0core.jir {
+                write_precompiled_jir,
+                FLAG_PRECOMPILED,
+                atomic_write_jir,
             }
+            atomic_write_jir(
+                cache_path,
+                write_precompiled_jir(
+                    precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
+                )
+            );
         } except Exception {
             ;
         }
@@ -782,7 +776,6 @@ impl JacCompiler.compile(
     use_str: (str | None) = None,
     options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    import from pathlib { Path as _WrapPath }
     import from jaclang.jac0core.codeinfo {
         get_effective_default_codespace_override,
         set_effective_default_codespace

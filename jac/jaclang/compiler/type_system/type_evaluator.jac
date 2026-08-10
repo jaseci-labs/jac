@@ -11,8 +11,6 @@ import from jaclang.jac0core.constant {
     SymbolAccess,
     OwnershipKind,
 }
-import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
 import type from jaclang.jac0core.program { JacProgram }
@@ -20,7 +18,10 @@ import type from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system { properties }
-import from jaclang.compiler.symbol_utils { int_subscript_suffix }
+import from jaclang.compiler.symbol_utils {
+    int_subscript_suffix,
+    resolve_importer_path_from_node,
+}
 import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 import from jaclang.compiler.type_system.ts_decl_parser {
@@ -34,7 +35,6 @@ import from jaclang.compiler.type_system.ts_decl_parser {
 
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
-    E1001,
     E1010,
     E1023,
     E1030,
@@ -64,9 +64,6 @@ import from jaclang.jac0core.diagnostics {
     E1073,
     E1080,
     E1081,
-    E1096,
-    E1097,
-    E1098,
     E1099,
     E1100,
     E1101,
@@ -216,7 +213,6 @@ obj TypeEvaluator {
         path: str, importer_path: (str | None) = None
     ) -> uni.Module;
 
-    def _resolve_importer_path(ast_node: uni.UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _resolve_client_npm_module(node_: uni.ModulePath) -> (str | None);

@@ -548,23 +548,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
 
-        imported_mod = self.prog.mod.hub.get(full_path);
-        if imported_mod is None {
-            imported_mod = self.prog.mod.hub.get(abs_key);
-        }
-
-        if imported_mod is None and os.path.isfile(full_path) {
-            _saved_opts = self.prog._compile_options;
-            try {
-                imported_mod = self.prog.compile(
-                    full_path, no_cgen=True, symtab_ir_only=True
-                );
-            } except Exception {
-                imported_mod = None;
-            } finally {
-                self.prog._compile_options = _saved_opts;
-            }
-        }
+        imported_mod = self._load_native_import_dep(full_path);
         if imported_mod is None {
             continue;
         }
@@ -680,6 +664,25 @@ impl NaIRGenPass._ensure_imported_module_inferred(imported_mod: uni.Module) -> N
     } finally {
         self.prog._compile_options = _saved_opts;
     }
+}
+
+impl NaIRGenPass._load_native_import_dep(full_path: str) -> (uni.Module | None) {
+    import os;
+    imported_mod = self.prog.mod.hub.get(full_path);
+    if imported_mod is None {
+        imported_mod = self.prog.mod.hub.get(os.path.abspath(full_path));
+    }
+    if imported_mod is None and os.path.isfile(full_path) {
+        _saved_opts = self.prog._compile_options;
+        try {
+            imported_mod = self.prog.load_dependency_module(full_path);
+        } except Exception {
+            imported_mod = None;
+        } finally {
+            self.prog._compile_options = _saved_opts;
+        }
+    }
+    return imported_mod;
 }
 
 impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {

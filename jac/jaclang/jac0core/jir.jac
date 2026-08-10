@@ -512,6 +512,17 @@ def read_module_jir_cache(source_path: str) -> (object | None) {
     }
 }
 
+def atomic_write_jir(cache_path: Path, jir_bytes: bytes) {
+    cache_path.parent.mkdir(parents=True, exist_ok=True);
+    tmp_path = cache_path.with_suffix(f'.{os.getpid()}.tmp');
+    try {
+        tmp_path.write_bytes(jir_bytes);
+        tmp_path.rename(cache_path);
+    } finally {
+        tmp_path.unlink(missing_ok=True);
+    }
+}
+
 def write_module_jir_cache(
     source_path: str, mod: object, extra_sections: (dict[int, bytes] | None) = None
 ) -> bool {
@@ -521,15 +532,11 @@ def write_module_jir_cache(
     if not jir_cacheable_source_path(resolved_path) {
         return False;
     }
-    if resolved_path.endswith('.pyi') and not mod.stub_only {
-        mod.stub_only = True;
-    }
     try {
         cache_path = get_module_cache_path(resolved_path);
         if is_module_cache_valid(resolved_path, cache_path) {
             return False;
         }
-        cache_path.parent.mkdir(parents=True, exist_ok=True);
         writer = JirWriter();
         sections: dict[int, bytes] = {
             SEC_MODKEY: module_cache_key(resolved_path).encode('utf-8')
@@ -543,14 +550,7 @@ def write_module_jir_cache(
         if bc is not None and SEC_BYTECODE not in sections {
             sections[SEC_BYTECODE] = bc;
         }
-        jir_bytes = writer.write_module(mod, sections=sections);
-        tmp_path = cache_path.with_suffix(f'.{os.getpid()}.tmp');
-        try {
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
-        } finally {
-            tmp_path.unlink(missing_ok=True);
-        }
+        atomic_write_jir(cache_path, writer.write_module(mod, sections=sections));
         return True;
     } except Exception {
         return False;

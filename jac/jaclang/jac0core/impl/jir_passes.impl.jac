@@ -5,7 +5,7 @@ import zlib;
 impl JirWriter.write_module(
     module: Module, sections: (dict[int, bytes] | None) = None
 ) -> bytes {
-    import from jaclang.jac0core.jir { HEADER_FMT, HEADER_SIZE, MAGIC, FORMAT_VERSION }
+    import from jaclang.jac0core.jir { HEADER_FMT, MAGIC, FORMAT_VERSION }
     import from importlib.metadata { version as pkg_version }
 
     self._assign_ids(module);
@@ -86,7 +86,7 @@ impl JirWriter._get_node_id(ir_node: (UniNode | None)) -> int {
 }
 
 impl JirWriter._write_node(buf: bytearray, ir_node: UniNode) -> None {
-    import from jaclang.jac0core.unitree { UniScopeNode, UniCFGNode, NameAtom, Symbol }
+    import from jaclang.jac0core.unitree { UniScopeNode, UniCFGNode, NameAtom }
     import from jaclang.jac0core.unitree { ContextAwareNode }
     import from jaclang.jac0core.constant { CodeContext }
 
@@ -904,8 +904,7 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 impl JirReader._read_scope_overlay(
     data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
 ) -> int {
-    import from jaclang.jac0core.unitree { UniScopeNode, Symbol, InheritedSymbolTable }
-    import from jaclang.jac0core.constant { SymbolAccess }
+    import from jaclang.jac0core.unitree { UniScopeNode, InheritedSymbolTable }
 
     assert self._pool is not None;
 
@@ -1132,8 +1131,6 @@ impl JirReader._read_name_atom_overlay(
 
 impl JirReader._read_link_table(data: (bytes | memoryview), pos: int) -> int {
     import from jaclang.jac0core.unitree { UniScopeNode, NameAtom, AstSymbolNode }
-
-    nodes = self._nodes;
 
     (count, pos) = _read_varint(data, pos);
     for _ in range(count) {
