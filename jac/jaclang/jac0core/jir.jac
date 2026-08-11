@@ -26,16 +26,9 @@ glob MAGIC = b"JIR\x00",
      INPUT_MAIN: str = "main",
      INPUT_IMPL: str = "impl",
      INPUT_TEST: str = "test",
-     INPUT_VARIANTS: str = "variants",
      INPUT_STYLE: str = "style",
      INPUT_CONFIG: str = "config",
-     BYTECODE_INPUT_KEYS: list[str] = [
-         "compiler",
-         "main",
-         "impl",
-         "variants",
-         "config"
-     ],
+     BYTECODE_INPUT_KEYS: list[str] = ["compiler", "main", "impl", "config"],
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
      FLAG_BOOTSTRAP: int = 0x04;
@@ -149,22 +142,17 @@ def _find_jac_toml_path(source_path: str) -> (str | None) {
 
 def _discover_annex_path_groups(
     source_path: str
-) -> tuple[list[str], list[str], list[str], list[str]] {
-    import from jaclang.jac0core.bccache {
-        discover_annex_files,
-        discover_variant_files,
-        discover_style_annex
-    }
+) -> tuple[list[str], list[str], list[str]] {
+    import from jaclang.jac0core.bccache { discover_annex_files, discover_style_annex }
     src = str(Path(source_path).resolve());
     impl_paths = discover_annex_files(src, '.impl.jac');
     test_paths = discover_annex_files(src, '.test.jac');
-    variant_paths = discover_variant_files(src);
     style_path = discover_style_annex(src);
     style_paths: list[str] = [];
     if style_path is not None {
         style_paths.append(style_path);
     }
-    return (impl_paths, test_paths, variant_paths, style_paths);
+    return (impl_paths, test_paths, style_paths);
 }
 
 def _hash_sorted_paths(paths: list[str]) -> str {
@@ -196,24 +184,19 @@ def _config_fingerprint(source_path: str) -> str {
     cut = cut_digest(source_path);
     toml = _find_jac_toml_path(source_path);
     if toml is not None {
-        return (
-            f"{codespace_mode}:{kind}:{pins}:{cut}:{compute_content_sha256(toml)}"
-        );
+        return (f"{codespace_mode}:{kind}:{pins}:{cut}:{compute_content_sha256(toml)}");
     }
     return f"{codespace_mode}:{kind}:{pins}:{cut}";
 }
 
 def compute_input_fingerprints(source_path: str) -> dict[str, str] {
     src = str(Path(source_path).resolve());
-    (impl_paths, test_paths, variant_paths, style_paths) = (
-        _discover_annex_path_groups(source_path)
-    );
+    (impl_paths, test_paths, style_paths) = _discover_annex_path_groups(source_path);
     return {
         INPUT_COMPILER: _compiler_fingerprint(),
         INPUT_MAIN: compute_content_sha256(src),
         INPUT_IMPL: _hash_sorted_paths(impl_paths),
         INPUT_TEST: _hash_sorted_paths(test_paths),
-        INPUT_VARIANTS: _hash_sorted_paths(variant_paths),
         INPUT_STYLE: _hash_sorted_paths(style_paths),
         INPUT_CONFIG: _config_fingerprint(source_path)
     };
@@ -260,10 +243,9 @@ def bytecode_inputs_match(stored: dict[str, str], current: dict[str, str]) -> bo
 
 def bytecode_mtime_paths(source_path: str) -> list[str] {
     src = str(Path(source_path).resolve());
-    (impl_paths, _, variant_paths, _) = _discover_annex_path_groups(source_path);
+    (impl_paths, _, _) = _discover_annex_path_groups(source_path);
     paths: list[str] = [src];
     paths.extend(impl_paths);
-    paths.extend(variant_paths);
     toml = _find_jac_toml_path(source_path);
     if toml is not None {
         paths.append(toml);
@@ -327,10 +309,6 @@ def _store_client_kind_cache(
 }
 
 def _module_codespace_mode(source_path: str) -> str {
-    import from jaclang.jac0core.ext_registry { codespace_of }
-    if codespace_of(source_path) is not None {
-        return "explicit";
-    }
     try {
         import from jaclang.jac0core.codeinfo { effective_default_codespace }
         return effective_default_codespace();
