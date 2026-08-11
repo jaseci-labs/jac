@@ -6,7 +6,12 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.runtime.routing { format_route_lines, resolve_routes }
+import from jaclang.scale.runtime.routing {
+    ensure_main_service,
+    format_route_lines,
+    resolve_routes,
+    resolve_service_files
+}
 
 
 obj KubernetesRealizer {
@@ -22,27 +27,32 @@ obj KubernetesRealizer {
         import from jaclang.scale.injector.binary { reset_deploy_version_cache }
 
         reset_deploy_version_cache();
-        enabled = self.ms_config.get("enabled", None);
 
-        if target == "kubernetes" and enabled is not False {
+        if target == "kubernetes" {
             routes: dict[str, str] = resolve_routes(self.ms_config);
-            if (enabled is True) or routes {
-                target = "kubernetes-microservice";
-                if routes {
-                    raw_cfg = get_scale_config().load();
-                    raw_ms = raw_cfg.setdefault("microservices", {});
-                    raw_ms["routes"] = routes;
-                    self.ms_config["routes"] = routes;
-                    plural = "s" if len(routes) != 1 else "";
-                    console.print(
-                        f"Microservice mode: {len(routes)} "
-                        f"service{plural}. Deploying to kubernetes.",
-                        style="cyan"
-                    );
-                    for line in format_route_lines(routes) {
-                        console.print(f"  {line}", style="muted");
-                    }
+            if routes {
+                service_files = resolve_service_files(self.ms_config, routes);
+                ensure_main_service(routes, service_files, os.path.basename(filename));
+                raw_cfg = get_scale_config().load();
+                raw_ms = raw_cfg.setdefault("microservices", {});
+                raw_ms["routes"] = routes;
+                raw_ms["service_files"] = service_files;
+                self.ms_config["routes"] = routes;
+                self.ms_config["service_files"] = service_files;
+                plural = "s" if len(routes) != 1 else "";
+                console.print(
+                    f"Deploying {len(routes)} service{plural} behind a gateway.",
+                    style="cyan"
+                );
+                for line in format_route_lines(routes) {
+                    console.print(f"  {line}", style="muted");
                 }
+            } else {
+                console.print(
+                    "No [scale.microservices.routes] declared; deploying the app "
+                    "as a single service behind a gateway.",
+                    style="cyan"
+                );
             }
         }
         if not os.path.exists(filename) {
@@ -89,31 +99,15 @@ obj KubernetesRealizer {
         base_file_path = os.path.basename(filename);
         deployment_target.secrets = scale_config.get_secrets_config();
 
-        no_image = target == "kubernetes-microservice";
-        app_config = AppConfig(
-            code_folder=code_folder, file_name=base_file_path, no_image=no_image
+        app_config = AppConfig(code_folder=code_folder, file_name=base_file_path);
+        console.warning(
+            "Copying local source into the cluster via PVC and installing "
+            "jac at pod startup. Keep secrets in [scale.secrets] "
+            "(synced as a K8s Secret) or in .env, never inline in source."
         );
-        if no_image {
-            deployment_target.no_image = True;
-            console.warning(
-                "Copying local source into the cluster via PVC and installing "
-                "jac at pod startup. Keep secrets in [scale.secrets] "
-                "(synced as a K8s Secret) or in .env, never inline in source."
-            );
-        }
-        if target == "kubernetes-microservice" {
-            console.print("Preparing microservice deployment...");
-        } else {
-            console.print("Installing Jaseci packages from PyPI...");
-        }
+        console.print("Preparing deployment...");
 
         if dry_run {
-            if target != "kubernetes-microservice" {
-                console.warning(
-                    f"--dry-run only supported with kubernetes-microservice target (got {target!r})."
-                );
-                return 1;
-            }
             try {
                 import from jaclang.scale.runtime.cli.plan { print_plan }
                 import from jaclang.scale.runtime.cli.diagnostics { has_errors }

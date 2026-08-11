@@ -12,7 +12,16 @@ import from 'react-native' {
     Keyboard as RNKeyboard,
     Platform as RNPlatform,
     ActivityIndicator as RNActivityIndicator,
-    useWindowDimensions as RNuseWindowDimensions
+    useWindowDimensions as RNuseWindowDimensions,
+    FlatList as RNFlatList,
+    SectionList as RNSectionList,
+    RefreshControl as RNRefreshControl,
+    Modal as RNModal,
+    Switch as RNSwitch,
+    StatusBar as RNStatusBar,
+    Dimensions as RNDimensions,
+    Alert as RNAlert,
+    Linking as RNLinking
 }
 
 
@@ -29,4 +38,13 @@ glob:pub View = RNView,
      Keyboard = RNKeyboard,
      Platform = RNPlatform,
      ActivityIndicator = RNActivityIndicator,
-     useWindowDimensions = RNuseWindowDimensions;
+     useWindowDimensions = RNuseWindowDimensions,
+     FlatList = RNFlatList,
+     SectionList = RNSectionList,
+     RefreshControl = RNRefreshControl,
+     Modal = RNModal,
+     Switch = RNSwitch,
+     StatusBar = RNStatusBar,
+     Dimensions = RNDimensions,
+     Alert = RNAlert,
+     Linking = RNLinking;

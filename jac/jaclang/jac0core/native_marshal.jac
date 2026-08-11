@@ -1,6 +1,15 @@
 import ctypes;
 import logging;
 import from dataclasses { field }
+import from jaclang.jac0core.codeinfo {
+    HDR_ALLOC_ID_OFF,
+    HDR_DTOR_OFF,
+    HDR_MAGIC,
+    HDR_RC_OFF,
+    RC_SENTINEL,
+    STR_LEN_TAG_BIT,
+    STR_LEN_TAG_SHIFT
+}
 
 glob logger = logging.getLogger(__name__),
      LLVM_TO_CTYPES: dict[(str, type)] = {
@@ -16,16 +25,96 @@ glob logger = logging.getLogger(__name__),
      };
 
 def _build_cfunctype(finfo: any) -> type {
-    ret_ct = LLVM_TO_CTYPES.get(finfo.func_ret_type);
-    if ret_ct is None {
-        ret_ct = ctypes.c_void_p if finfo.func_ret_type != "void" else None;
+    if finfo.func_ret_type == "jacstr3" {
+        ret_ct = JacStrRet3;
+    } elif finfo.func_ret_type == "jacstr2" {
+        ret_ct = JacStrRet2;
+    } else {
+        ret_ct = LLVM_TO_CTYPES.get(finfo.func_ret_type);
+        if ret_ct is None {
+            ret_ct = ctypes.c_void_p if finfo.func_ret_type != "void" else None;
+        }
     }
     param_cts: list = [];
     for pt in (finfo.func_param_types or []) {
-        pct = LLVM_TO_CTYPES.get(pt, ctypes.c_void_p);
-        param_cts.append(pct);
+        if pt == "jacstr3" {
+            param_cts.extend([ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64]);
+        } elif pt == "jacstr2" {
+            param_cts.extend([ctypes.c_void_p, ctypes.c_int64]);
+        } else {
+            param_cts.append(LLVM_TO_CTYPES.get(pt, ctypes.c_void_p));
+        }
     }
     return ctypes.CFUNCTYPE(ret_ct, *param_cts);
+}
+
+
+class JacStrRet3(ctypes.Structure) {
+    has _fields_: list[tuple[str, type]] = [
+        ("root", ctypes.c_void_p),
+        ("data", ctypes.c_void_p)
+    ];
+}
+
+class JacStrRet2(ctypes.Structure) {
+    has _fields_: list[tuple[str, type]] = [
+        ("data", ctypes.c_void_p),
+        ("slen", ctypes.c_int64)
+    ];
+}
+
+def layout_str_header_stamped(layout: any) -> bool {
+    return layout?.str_headerless is False;
+}
+
+
+def native_stamped_str_len(addr: int, header_stamped: bool) -> (int | None) {
+    if not header_stamped {
+        return None;
+    }
+    if ctypes.c_uint64.from_address(addr + HDR_RC_OFF).value != RC_SENTINEL {
+        _aid = ctypes.c_uint64.from_address(addr + HDR_ALLOC_ID_OFF).value;
+        if ((_aid >> 32) & 0xFFFF) != HDR_MAGIC {
+            return None;
+        }
+    }
+    _dv = ctypes.c_uint64.from_address(addr + HDR_DTOR_OFF).value;
+    if not (_dv & STR_LEN_TAG_BIT) {
+        return None;
+    }
+    return _dv >> STR_LEN_TAG_SHIFT;
+}
+
+
+def decode_native_str(addr: any, header_stamped: bool = False) -> str {
+    if (addr is None or not addr) {
+        return "";
+    }
+    _a = int(addr);
+    stamped = native_stamped_str_len(_a, header_stamped);
+    if stamped is None {
+        return ctypes.string_at(_a).decode("utf-8", errors="replace");
+    }
+    if stamped <= 0 {
+        return "";
+    }
+    return ctypes.string_at(_a, stamped).decode("utf-8", errors="replace");
+}
+
+
+def elem_hints_for(
+    elem_key: str, keys: any, ctypes_classes: dict
+) -> tuple[(str | None, str | None)] {
+    if (elem_key != "ptr" or not keys or len(keys) != 1 or not keys[0]) {
+        return (None, None);
+    }
+    if keys[0] == "str" {
+        return (None, "str");
+    }
+    if keys[0] in ctypes_classes {
+        return (keys[0], None);
+    }
+    return (None, None);
 }
 
 
@@ -38,12 +127,65 @@ class NativeList(ctypes.Structure) {
 }
 
 
+class NativeJacVal(ctypes.Structure) {
+    has _fields_: list[tuple[str, type]] = [
+        ("tag", ctypes.c_uint8),
+        ("payload", ctypes.c_int64)
+    ];
+}
+
+
+def decode_jacval(tag: int, payload: int, header_stamped: bool = False) -> any {
+    if tag == 1 {
+        import struct as _struct;
+        return _struct.unpack("<d", _struct.pack("<q", payload))[0];
+    }
+    if tag == 2 {
+        return decode_native_str(payload, header_stamped);
+    }
+    if tag == 7 {
+        return payload != 0;
+    }
+    if tag == 8 {
+        return None;
+    }
+    return int(payload);
+}
+
+
+def _decode_jacval_at(addr: any, slots: list, header_stamped: bool = False) -> list {
+    if (not slots or not addr) {
+        return [];
+    }
+    arr = (NativeJacVal * (max(slots) + 1)).from_address(addr);
+    return [
+        decode_jacval(int(arr[s].tag), int(arr[s].payload), header_stamped)
+        for s in slots
+    ];
+}
+
+
 class NativeDict(ctypes.Structure) {
     has _fields_: list[tuple[str, type]] = [
         ("len", ctypes.c_int64),
         ("cap", ctypes.c_int64),
         ("keys", ctypes.c_void_p),
-        ("vals", ctypes.c_void_p)
+        ("vals", ctypes.c_void_p),
+        ("ctrl", ctypes.c_void_p),
+        ("used", ctypes.c_int64),
+        ("order", ctypes.c_void_p)
+    ];
+}
+
+
+class NativeSet(ctypes.Structure) {
+    has _fields_: list[tuple[str, type]] = [
+        ("len", ctypes.c_int64),
+        ("cap", ctypes.c_int64),
+        ("keys", ctypes.c_void_p),
+        ("ctrl", ctypes.c_void_p),
+        ("used", ctypes.c_int64),
+        ("order", ctypes.c_void_p)
     ];
 }
 
@@ -169,7 +311,11 @@ def get_list_view(
 
 
 def _decode_scalar_array(
-    addr: any, count: int, type_name: str, as_str: bool = False
+    addr: any,
+    count: int,
+    type_name: str,
+    as_str: bool = False,
+    header_stamped: bool = False
 ) -> list {
     if (count <= 0 or not addr) {
         return [];
@@ -181,7 +327,10 @@ def _decode_scalar_array(
         return [float(x) for x in (ctypes.c_double * count).from_address(addr)];
     }
     ptrs = (ctypes.c_void_p * count).from_address(addr);
-    if (type_name == "bytes" or as_str) {
+    if as_str {
+        return [decode_native_str(p, header_stamped) for p in ptrs];
+    }
+    if type_name == "bytes" {
         return [
             ctypes.string_at(p).decode("utf-8", errors="replace") if p else ""
             for p in ptrs
@@ -191,7 +340,46 @@ def _decode_scalar_array(
 }
 
 
-def _marshal_dict(dict_ptr: int, spec: str, func_layout: any = None) -> any {
+def _decode_scalar_at(
+    addr: any,
+    slots: list,
+    type_name: str,
+    as_str: bool = False,
+    header_stamped: bool = False
+) -> list {
+    if (not slots or not addr) {
+        return [];
+    }
+    if type_name == "i64" {
+        arr = (ctypes.c_int64 * (max(slots) + 1)).from_address(addr);
+        return [int(arr[s]) for s in slots];
+    }
+    if type_name == "f64" {
+        arr = (ctypes.c_double * (max(slots) + 1)).from_address(addr);
+        return [float(arr[s]) for s in slots];
+    }
+    ptrs = (ctypes.c_void_p * (max(slots) + 1)).from_address(addr);
+    if as_str {
+        return [decode_native_str(ptrs[s], header_stamped) for s in slots];
+    }
+    if type_name == "bytes" {
+        return [
+            ctypes.string_at(ptrs[s]).decode("utf-8", errors="replace")
+                if ptrs[s]
+                else "" for s in slots
+        ];
+    }
+    return [int(ptrs[s]) if ptrs[s] is not None else 0 for s in slots];
+}
+
+
+def _marshal_dict(
+    dict_ptr: int,
+    spec: str,
+    func_layout: any = None,
+    elem_keys: any = None,
+    layout: any = None
+) -> any {
     parts = spec.split(".", 1);
     if len(parts) != 2 {
         return dict_ptr;
@@ -199,38 +387,107 @@ def _marshal_dict(dict_ptr: int, spec: str, func_layout: any = None) -> any {
     (key_name, val_name) = (parts[0], parts[1]);
     if (
         key_name not in ("i64", "f64", "bytes", "ptr")
-        or val_name not in ("i64", "f64", "ptr")
+        or val_name not in ("i64", "f64", "ptr", "jacval")
     ) {
         return dict_ptr;
     }
     nd = NativeDict.from_address(dict_ptr);
     count = int(nd.len) if nd.len > 0 else 0;
-    ret_keys = func_layout?.ret_elem_keys if func_layout is not None else None;
+    cap = int(nd.cap) if nd.cap > 0 else 0;
+    if (count <= 0 or cap <= 0 or not nd.order) {
+        return {};
+    }
+    ret_keys = elem_keys;
+    if (ret_keys is None and func_layout is not None) {
+        ret_keys = func_layout?.ret_elem_keys;
+    }
+    _hs = layout_str_header_stamped(layout);
     key_as_str = bool(
         key_name == "ptr" and ret_keys and len(ret_keys) == 2 and ret_keys[0] == "str"
     );
     val_as_str = bool(
         val_name == "ptr" and ret_keys and len(ret_keys) == 2 and ret_keys[1] == "str"
     );
-    dkeys = _decode_scalar_array(nd.keys, count, key_name, as_str=key_as_str);
-    dvals = _decode_scalar_array(nd.vals, count, val_name, as_str=val_as_str);
+    order = (ctypes.c_int64 * count).from_address(nd.order);
+    slots = [
+        int(s)
+        for s in order
+        if 0 <= int(s) and int(s) < cap
+    ];
+    dkeys = _decode_scalar_at(
+        nd.keys, slots, key_name, as_str=key_as_str, header_stamped=_hs
+    );
+    if val_name == "jacval" {
+        dvals = _decode_jacval_at(nd.vals, slots, header_stamped=_hs);
+    } else {
+        dvals = _decode_scalar_at(
+            nd.vals, slots, val_name, as_str=val_as_str, header_stamped=_hs
+        );
+    }
     return dict(zip(dkeys, dvals));
 }
 
 
-def _marshal_set(set_ptr: int, elem_name: str, func_layout: any = None) -> any {
+def _marshal_set(
+    set_ptr: int,
+    elem_name: str,
+    func_layout: any = None,
+    elem_keys: any = None,
+    layout: any = None
+) -> any {
     if elem_name not in ("i64", "f64", "bytes", "ptr") {
         return set_ptr;
     }
-    nl = NativeList.from_address(set_ptr);
-    count = int(nl.len) if (nl.len > 0 and nl.data) else 0;
-    ret_keys = func_layout?.ret_elem_keys if func_layout is not None else None;
+    ns = NativeSet.from_address(set_ptr);
+    count = int(ns.len) if ns.len > 0 else 0;
+    cap = int(ns.cap) if ns.cap > 0 else 0;
+    if (count <= 0 or cap <= 0 or not ns.order) {
+        return set();
+    }
+    ret_keys = elem_keys;
+    if (ret_keys is None and func_layout is not None) {
+        ret_keys = func_layout?.ret_elem_keys;
+    }
     as_str = bool(
         elem_name == "ptr" and ret_keys and len(ret_keys) == 1 and ret_keys[0] == "str"
     );
-    return set(_decode_scalar_array(nl.data, count, elem_name, as_str=as_str));
+    order = (ctypes.c_int64 * count).from_address(ns.order);
+    slots = [
+        int(s)
+        for s in order
+        if 0 <= int(s) and int(s) < cap
+    ];
+    return set(
+        _decode_scalar_at(
+            ns.keys,
+            slots,
+            elem_name,
+            as_str=as_str,
+            header_stamped=layout_str_header_stamped(layout)
+        )
+    );
 }
 
+
+glob _OPT_CTYPES: dict = {};
+
+def _opt_ctype(payload_type: str) -> type {
+    cached = _OPT_CTYPES.get(payload_type);
+    if cached is not None {
+        return cached;
+    }
+    pct = LLVM_TO_CTYPES.get(payload_type);
+    if pct is None or payload_type.endswith("*") or payload_type == "ptr" {
+        pct = ctypes.c_void_p;
+    }
+    cls = type(
+        f"NativeOpt_{payload_type.replace('*', 'p').replace('.', '_')}",
+        (ctypes.Structure, ),
+        {"_fields_": [("tag", ctypes.c_int8), ("payload", pct)]}
+    );
+    _OPT_CTYPES[payload_type] = cls;
+    return cls;
+}
 
 def build_ctypes_classes(layout: any) -> dict {
     classes: dict = {};
@@ -239,6 +496,8 @@ def build_ctypes_classes(layout: any) -> dict {
         for f in struct_layout.fields {
             if f.is_func_ptr {
                 ct = ctypes.c_void_p;
+            } elif f.llvm_type.startswith("opt.") {
+                ct = _opt_ctype(f.llvm_type[4:]);
             } else {
                 ct = LLVM_TO_CTYPES.get(f.llvm_type);
                 if (ct is None or f.llvm_type == "i8*") {
@@ -295,6 +554,26 @@ def marshal_value(
         return fn_type(raw);
     }
 
+    if llvm_type.startswith("opt.") {
+        if raw is None {
+            return None;
+        }
+        if int(raw.tag) == 0 {
+            return None;
+        }
+        return marshal_value(
+            raw.payload,
+            llvm_type[4:],
+            ctypes_classes,
+            enum_maps,
+            py_classes,
+            None,
+            func_layout,
+            layout,
+            view_memo
+        );
+    }
+
     if llvm_type in ("i64", "i32", "i16", "i8") {
         val = int(raw);
 
@@ -321,6 +600,16 @@ def marshal_value(
     if llvm_type in ("f64", "f32") {
         return float(raw);
     }
+    if llvm_type == "jacstr3" {
+        return decode_native_str(raw?.data, layout_str_header_stamped(layout));
+    }
+    if llvm_type == "jacstr2" {
+        _d = raw?.data;
+        if not _d {
+            return "";
+        }
+        return ctypes.string_at(_d, int(raw.slen)).decode("utf-8", errors="replace");
+    }
     if llvm_type == "i8*" {
         if (raw is None or raw == 0) {
             return "";
@@ -330,7 +619,7 @@ def marshal_value(
         }
 
         if isinstance(raw, int) {
-            return ctypes.string_at(raw).decode("utf-8", errors="replace");
+            return decode_native_str(raw, layout_str_header_stamped(layout));
         }
         return str(raw);
     }
@@ -357,14 +646,14 @@ def marshal_value(
         if (raw is None or raw == 0) {
             return {};
         }
-        return _marshal_dict(raw, llvm_type[5:-1], func_layout);
+        return _marshal_dict(raw, llvm_type[5:-1], func_layout, layout=layout);
     }
 
     if (llvm_type.startswith("Set.") and llvm_type.endswith("*")) {
         if (raw is None or raw == 0) {
             return set();
         }
-        return _marshal_set(raw, llvm_type[4:-1], func_layout);
+        return _marshal_set(raw, llvm_type[4:-1], func_layout, layout=layout);
     }
 
     if (llvm_type.endswith("*") and not llvm_type.startswith("List.")) {
@@ -392,16 +681,8 @@ def marshal_value(
         if (raw is None or raw == 0) {
             return NativeListView.empty();
         }
-        struct_hint: (str | None) = None;
-        elem_hint: (str | None) = None;
         ret_keys = func_layout?.ret_elem_keys if func_layout is not None else None;
-        if (elem_key == "ptr" and ret_keys and len(ret_keys) == 1 and ret_keys[0]) {
-            if ret_keys[0] == "str" {
-                elem_hint = "str";
-            } elif ret_keys[0] in ctypes_classes {
-                struct_hint = ret_keys[0];
-            }
-        }
+        (struct_hint, elem_hint) = elem_hints_for(elem_key, ret_keys, ctypes_classes);
         return get_list_view(
             raw,
             elem_key,
@@ -488,8 +769,20 @@ def wrap_native_function(
         return None;
     }
 
+    if any(pt.startswith("opt.") for pt in func_layout.param_types) {
+        return None;
+    }
+
     c_arg_types: list = [];
     for pt in func_layout.param_types {
+        if pt == "jacstr3" {
+            c_arg_types.extend([ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64]);
+            continue;
+        }
+        if pt == "jacstr2" {
+            c_arg_types.extend([ctypes.c_void_p, ctypes.c_int64]);
+            continue;
+        }
         ct = LLVM_TO_CTYPES.get(pt);
         if ct is None {
             ct = ctypes.c_void_p;
@@ -498,10 +791,18 @@ def wrap_native_function(
     }
 
     ret_type = func_layout.ret_type;
-    c_ret = LLVM_TO_CTYPES.get(ret_type);
+    if ret_type == "jacstr3" {
+        c_ret = JacStrRet3;
+    } elif ret_type == "jacstr2" {
+        c_ret = JacStrRet2;
+    } else {
+        c_ret = LLVM_TO_CTYPES.get(ret_type);
+    }
     if c_ret is None {
         if ret_type == "void" {
             c_ret = None;
+        } elif ret_type.startswith("opt.") {
+            c_ret = _opt_ctype(ret_type[4:]);
         } else {
             c_ret = ctypes.c_void_p;
         }
@@ -514,7 +815,7 @@ def wrap_native_function(
     fl = func_layout;
 
     str_new_fn: any = None;
-    if any(pt == "i8*" for pt in param_types) {
+    if any(pt in ("i8*", "jacstr3", "jacstr2") for pt in param_types) {
         _sn_addr = 0;
         for _sn_name in ("jac_str_new", "__jac_str_new") {
             try {
@@ -536,8 +837,23 @@ def wrap_native_function(
 
     def wrapper(*args: any) -> any {
         c_args: list = [];
+        _keepalive: list = [];
         for (arg, pt) in zip(args, param_types) {
-            if (pt == "i8*" and isinstance(arg, str)) {
+            if pt in ("jacstr3", "jacstr2") and isinstance(arg, (str, bytes)) {
+                _b = arg.encode("utf-8") if isinstance(arg, str) else arg;
+                if str_new_fn is not None {
+                    _sp = str_new_fn(_b, len(_b));
+                } else {
+                    _keep = ctypes.create_string_buffer(_b);
+                    _keepalive.append(_keep);
+                    _sp = ctypes.cast(_keep, ctypes.c_void_p).value;
+                }
+                if pt == "jacstr3" {
+                    c_args.extend([_sp, _sp, len(_b)]);
+                } else {
+                    c_args.extend([_sp, len(_b)]);
+                }
+            } elif (pt == "i8*" and isinstance(arg, str)) {
                 _b = arg.encode("utf-8");
                 if str_new_fn is not None {
                     _sp = str_new_fn(_b, len(_b));

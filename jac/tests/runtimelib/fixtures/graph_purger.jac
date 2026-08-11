@@ -97,9 +97,9 @@ walker purge {
 
 walker check {
     can enter with Root entry {
-        # Count rows in SQLite database
-        l3 = Jac.get_context().mem.l3;
-        cursor = l3.__conn__.execute("SELECT COUNT(*) FROM anchors");
-        print(cursor.fetchone()[0]);
+        # Count persisted anchor rows in the project store
+        mem = Jac.get_context().mem;
+        mem.read_barrier();
+        print(mem.store.rows("SELECT COUNT(*) FROM anchors", {})[0][0]);
     }
 }

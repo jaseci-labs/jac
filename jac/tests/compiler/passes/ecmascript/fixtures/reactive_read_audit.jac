@@ -7,7 +7,6 @@ string literal, member property) MUST NOT. Under React/Preact the read seam is a
 no-op, so this fixture is also a plain bare-identifier fixture.
 """
 
-
 def:pub audit_app(items: list) -> JsxElement {
     has count: int = 0;
 
@@ -17,7 +16,10 @@ def:pub audit_app(items: list) -> JsxElement {
     nested = [count, count + 1];
 
     # write target — must lower to setter, never `count() = ...`
-    count = count + 1;
+    # (writes are deferred: render-phase writes are E0082)
+    can with entry {
+        count = count + 1;
+    }
 
     # member property named like the reactive var — property key untouched
     first = items[0].count;

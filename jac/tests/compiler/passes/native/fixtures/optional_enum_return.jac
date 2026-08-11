@@ -1,9 +1,9 @@
 """Fixture: a function returning `<enum> | None`.
 
-`pick` returns `Color | None`. The native backend must lower this to an i64
-(enum ordinal, with a sentinel for `None`) and record the enum name so the
-marshaller maps the ordinal back to a `Color` member -- exactly like a plain
-`-> Color` return. The optional wrapper must not collapse the return type to
+`pick` returns `Color | None`. The native backend lowers this through the one
+JacOptional rule -- a tagged {i8, i64} value carrying the enum ordinal -- and
+records the enum name so the marshaller maps a present ordinal back to a
+`Color` member. The optional wrapper must not collapse the return type to
 `void` (which made any caller binding `c = pick(...)` fail to lower).
 """
 

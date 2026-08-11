@@ -74,7 +74,7 @@ Consuming a server-sent-event stream (raw `fetch` + `resp.body.getReader()` agai
 
 ## CustomEvent - cross-component bus
 
-Dispatch: `window.dispatchEvent(new(CustomEvent, "theme-change", {"detail": {"theme": t}}));`. Listen in a single manual `useEffect` (so add/remove share the handler closure - see the entry/exit split warning in `jac-cl-components`):
+Dispatch: `window.dispatchEvent(new(CustomEvent, "theme-change", {"detail": {"theme": t}}));`. Listening is an acquire-then-release pair (addEventListener/removeEventListener must share the handler closure), so this is one of the rare cases for a manual `useEffect` - see the entry/exit split warning in `jac-cl-components`. Effects with no handle to release stay `can with entry` abilities even here in interop land:
 
 ```
 useEffect(lambda {
@@ -90,7 +90,7 @@ useEffect(lambda {
 
 ## Timing patterns (all use `Ref` value fields - see `jac-npm-packages`)
 
-- **Polling:** single `useEffect` returning cleanup - `interval = setInterval(lambda { fetch_data(); }, 5000); return lambda { clearInterval(interval); };`. Outer lambda must NOT be `-> None`.
+- **Polling:** an acquire/release pair (setInterval/clearInterval), so a manual `useEffect` returning cleanup - `interval = setInterval(lambda { fetch_data(); }, 5000); return lambda { clearInterval(interval); };`. Outer lambda must NOT be `-> None`. (No interval/listener/socket to release? Then it's not this pattern - use `can with entry`, see `jac-cl-components`.)
 - **Debounce:** `has timerRef: Ref[any] = Ref(None);` - on each call `if timerRef.current { clearTimeout(timerRef.current); } timerRef.current = setTimeout(lambda { doSave(); }, 2000);`.
 - **RAF batching:** `if rafRef.current { return; } rafRef.current = requestAnimationFrame(lambda { rafRef.current = None; applyPosition(lastX.current); });`.
 - **Duplicate-submit guard:** `has sendingRef: Ref[bool] = Ref(False);` - check/set around the awaited call in a `try`/`finally`.

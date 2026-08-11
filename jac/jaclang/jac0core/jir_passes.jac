@@ -139,6 +139,7 @@ obj JirWriter {
 obj JirReader {
     has _skip_loc: bool = True,
         _source_path: str = "",
+        _module_source: (Source | None) = None,
         _pool: (_StringPool | None) = None,
         _nodes: list[object] postinit,
         _class_map: (dict[str, type] | None) = None,
@@ -150,8 +151,8 @@ obj JirReader {
     }
 
     def read_module(data: bytes) -> (Module | None);
-    def _wire_source(module: Module) -> None;
-    def _fix_param_kinds -> None;
+    def _ensure_module_source -> Source;
+    def _fix_one_func_signature(sig: object) -> None;
     def _init_caches -> None;
     def _resolve_node(node_id: int) -> (UniNode | None);
     def _read_node(data: (bytes | memoryview), pos: int, idx: int) -> int;

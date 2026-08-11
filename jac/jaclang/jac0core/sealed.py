@@ -77,20 +77,23 @@ from pathlib import Path
 from jaclang.jac0core import ext_registry
 
 MANIFEST_NAME = "MANIFEST.json"
-MANIFEST_FORMAT = 4
+MANIFEST_FORMAT = 5
 # Format 3 adds optional app metadata (kind / capabilities / entry) and
 # payloads on top of format 2's module map; format 4 adds the optional
 # ``native_artifacts`` map (AOT-compiled compiler modules: shared library +
-# marshal layout per fullname). Format-2/3 images stay loadable -- they simply
-# carry no native artifacts.
-MANIFEST_FORMATS_ACCEPTED = (2, 3, MANIFEST_FORMAT)
+# marshal layout per fullname); format 5 adds the optional ``placement`` map
+# (pkg-relative source path -> list of codespaces the module emits into,
+# persisted by the seal so downstream tools read placement instead of
+# re-deriving it). Older images stay loadable -- they simply carry no
+# placement facts.
+MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, MANIFEST_FORMAT)
 # Must match jaclang.jac0core.jir.* ; kept literal here because this module
 # must import before any .jac module (including jir.jac) can. This is the whole
 # point of the bootstrap tier: jac0core modules are loaded from their JIR by the
 # pure-Python section reader below, so they need none of the .jac machinery
 # (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
-JIR_FORMAT_VERSION = 17
+JIR_FORMAT_VERSION = 18
 _HEADER_SIZE = 32
 _SECTIONS_MAGIC = b"JIRX"
 _SEC_BYTECODE = 0x02
@@ -166,6 +169,10 @@ class SealedImage:
         self.native_artifacts: dict[str, dict] = (
             manifest.get("native_artifacts") or {}
         )
+        # Optional placement facts (format 5): pkg-relative posix source path
+        # -> codespaces the module emits into (["server"], ["client"], ...).
+        # The compiler's verdict, persisted; consumers must not re-derive it.
+        self.placement: dict[str, list[str]] = manifest.get("placement") or {}
         # fullname -> (entry, src_relpath). One tree: full-compiler modules and
         # jac0-compiled bootstrap modules share the JIR container + manifest;
         # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).

@@ -82,6 +82,32 @@ imports lower to RPC service stubs.
 - Editor hover shows `placement: <space> (inferred)` for any symbol, with a
   `dual` tag when the element is emitted into both spaces.
 
+## Consuming placement: the facts API
+
+The solver is the only thing that computes placement; everything else reads
+its verdict. The single query surface is
+`jaclang.jac0core.placement_facts`:
+
+- `module_spaces(mod)` rolls a compiled module's element-level verdicts up to
+  the set of codespaces it emits into (`{"server"}`, `{"client"}`, a mixed
+  set, ...); `is_client_only(mod)` / `emits_server_code(mod)` are the common
+  questions asked of that rollup.
+- `discover_spaces(paths)` answers the same question for a batch of source
+  files by running the stamps-only placement compile (no codegen); the deploy
+  seal uses it to skip client-only modules -- pinned *and* inferred -- instead
+  of parsing them into pod bytecode.
+- `sealed_spaces_for(path)` answers from a sealed image's
+  `_precompiled/MANIFEST.json`, which persists the per-module verdict at seal
+  time (manifest format 5), so post-build tools never re-derive placement.
+- `pinned_module_space(path)` exposes the raw `[placement.pins]` *input* for
+  the few places that need explicit user intent rather than the solved
+  verdict (project-kind resolution, trust-boundary import handling).
+
+Tools must not read `[placement.pins]` directly as if it were the placement
+verdict -- pins are one input to the solver, and most client modules carry no
+pin at all. Direct `placement_pins` imports are restricted to the solver
+layer and enforced by a repository test.
+
 ## When do I still pin?
 
 Pins are never *placement* facts -- the solver can infer those. They are

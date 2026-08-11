@@ -17,7 +17,6 @@ import from jaclang.scale.websocket.websocket {
 import from jaclang.scale.websocket.backplane {
     BaseBackplane,
     MemoryBackplane,
-    RedisBackplane,
     build_backplane
 }
 import from jaclang.scale.websocket.protocol { ws_handle_control, ws_heartbeat_loop }
@@ -127,7 +126,6 @@ test "the websocket config block is read from [scale.websocket]" {
     assert cfg['messages_per_second'] == 20.0;
     assert cfg['target_timeout_seconds'] == 30.0;
     assert 'backplane' in cfg;
-    assert 'redis_url' in cfg;
 }
 
 
@@ -159,22 +157,10 @@ test "a non-positive websocket limit is rejected at load" {
 
 
 test "build_backplane selects the backplane the config names" {
+    import from jaclang.scale.websocket.backplane { PgBackplane }
     assert isinstance(build_backplane({}), MemoryBackplane);
-    assert isinstance(
-        build_backplane({'backplane': 'memory', 'redis_url': 'redis://x:6379'}),
-        MemoryBackplane
-    );
-    assert isinstance(
-        build_backplane({'backplane': 'redis', 'redis_url': 'redis://x:6379'}),
-        RedisBackplane
-    );
-    assert isinstance(build_backplane({'redis_url': 'redis://x:6379'}), RedisBackplane);
-    try {
-        build_backplane({'backplane': 'redis'});
-        assert False , "redis backplane with no redis_url should raise";
-    } except ValueError as e {
-        assert '[scale.websocket]' in str(e) , f"error names the wrong config block: {e}";
-    }
+    assert isinstance(build_backplane({'backplane': 'memory'}), MemoryBackplane);
+    assert isinstance(build_backplane({'backplane': 'pg'}), PgBackplane);
     try {
         build_backplane({'backplane': 'kafka'});
         assert False , "unknown backplane should raise";

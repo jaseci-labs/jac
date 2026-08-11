@@ -1,85 +1,82 @@
-import from typing { Literal }
-import from pydantic { BaseModel, ConfigDict, Field }
+import from jaclang.runtimelib.serving.model { ApiModel, require_str }
 
 
-class CreateJobRequest(BaseModel) {
-    has walker_or_function: str = Field(
-        ...,
-        min_length=1,
-        description='Name of the walker or function decorated with '
-        '@schedule(trigger=ScheduleTrigger.DYNAMIC).'
-    ),
-        trigger: Literal['interval', 'cron', 'date'] = Field(
-            ...,
-            description='How the job is triggered: '
-            "'interval' (every N seconds), 'cron' (5-field crontab, UTC), "
-            "or 'date' (single fire at an ISO-8601 UTC datetime)."
-        ),
-        interval: float | None = Field(
-            None,
-            gt=0,
-            description='Seconds between executions. Required when trigger="interval".'
-        ),
-        cron: str | None = Field(
-            None,
-            description='5-field cron expression interpreted in UTC. '
-            'Required when trigger="cron".'
-        ),
-        date: str | None = Field(
-            None,
-            description='ISO-8601 datetime (UTC) to fire once. '
-            'Required when trigger="date".'
-        ),
-        model_config: ConfigDict = ConfigDict(
-            extra='forbid',
-            json_schema_extra={
-                "examples": [
-                    {
-                        "walker_or_function": "MyScheduledWalker",
-                        "trigger": "interval",
-                        "interval": 60
-                    },
-                    {
-                        "walker_or_function": "daily_report",
-                        "trigger": "cron",
-                        "cron": "0 9 * * *"
-                    },
-                    {
-                        "walker_or_function": "OneShotCleanup",
-                        "trigger": "date",
-                        "date": "2026-12-31 09:00:00"
-                    }
-                ]
-            }
-        );
+glob TRIGGER_KINDS: set[str] = {'interval', 'cron', 'date'};
+
+
+def _validate_trigger_fields(data: dict, allowed: set[str]) {
+    extra = [
+        k
+        for k in data.keys()
+        if k not in allowed
+    ];
+    if extra {
+        raise ValueError(f"unexpected fields: {sorted(extra)}");
+    }
+    trigger = require_str(data, 'trigger');
+    if trigger not in TRIGGER_KINDS {
+        raise ValueError("trigger must be one of 'interval', 'cron', or 'date'");
+    }
+    interval = data.get('interval');
+    if interval is not None {
+        if not isinstance(interval, (int, float)) or float(interval) <= 0 {
+            raise ValueError('interval must be a number greater than 0');
+        }
+    }
+    cron = data.get('cron');
+    if cron is not None and not isinstance(cron, str) {
+        raise ValueError('cron must be a string');
+    }
+    date = data.get('date');
+    if date is not None and not isinstance(date, str) {
+        raise ValueError('date must be a string');
+    }
 }
 
+obj CreateJobRequest(ApiModel) {
+    has walker_or_function: str,
+        trigger: str,
+        interval: (float | None) = None,
+        cron: (str | None) = None,
+        date: (str | None) = None;
 
-class UpdateJobRequest(BaseModel) {
-    has trigger: Literal['interval', 'cron', 'date'] = Field(
-        ..., description='New trigger type for this job.'
-    ),
-        interval: float | None = Field(
-            None,
-            gt=0,
-            description='Seconds between executions. Required when trigger="interval".'
-        ),
-        cron: str | None = Field(
-            None,
-            description='5-field cron expression interpreted in UTC. '
-            'Required when trigger="cron".'
-        ),
-        date: str | None = Field(
-            None, description='ISO-8601 datetime (UTC). Required when trigger="date".'
-        ),
-        model_config: ConfigDict = ConfigDict(
-            extra='forbid',
-            json_schema_extra={
-                "examples": [
-                    {"trigger": "interval", "interval": 120},
-                    {"trigger": "cron", "cron": "*/15 * * * *"},
-                    {"trigger": "date", "date": "2027-01-01 00:00:00"}
-                ]
-            }
+    static def from_dict(data: any) -> CreateJobRequest {
+        if not isinstance(data, dict) {
+            raise ValueError('request body must be an object');
+        }
+        _validate_trigger_fields(
+            data, {'walker_or_function', 'trigger', 'interval', 'cron', 'date'}
         );
+        return CreateJobRequest(
+            walker_or_function=require_str(data, 'walker_or_function'),
+            trigger=str(data.get('trigger')),
+            interval=float(data['interval'])
+                if data.get('interval') is not None
+                else None,
+            cron=data.get('cron'),
+            date=data.get('date')
+        );
+    }
+}
+
+obj UpdateJobRequest(ApiModel) {
+    has trigger: str,
+        interval: (float | None) = None,
+        cron: (str | None) = None,
+        date: (str | None) = None;
+
+    static def from_dict(data: any) -> UpdateJobRequest {
+        if not isinstance(data, dict) {
+            raise ValueError('request body must be an object');
+        }
+        _validate_trigger_fields(data, {'trigger', 'interval', 'cron', 'date'});
+        return UpdateJobRequest(
+            trigger=str(data.get('trigger')),
+            interval=float(data['interval'])
+                if data.get('interval') is not None
+                else None,
+            cron=data.get('cron'),
+            date=data.get('date')
+        );
+    }
 }

@@ -5,7 +5,8 @@ def _wasm_rt_src_dir -> str {
 }
 
 def _wasm_libc_dir -> (str | None) {
-    env = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", "");
+    import from jaclang.jac0core.compile_options { env_wasm_libc_dir }
+    env = env_wasm_libc_dir();
     if env {
         return env if os.path.isdir(env) else None;
     }
@@ -100,8 +101,17 @@ def _load_libc_module(llvm: object, libc_dir: str, triple: str) -> object {
         }
     }
     try {
-        with open(merged_path, "wb") as f {
-            f.write(merged.as_bitcode());
+        import tempfile;
+        (tmp_fd, tmp_path) = tempfile.mkstemp(dir=libc_dir, suffix=".merged.tmp");
+        try {
+            with os.fdopen(tmp_fd, "wb") as f {
+                f.write(merged.as_bitcode());
+            }
+            os.replace(tmp_path, merged_path);
+        } except OSError {
+            try {
+                os.unlink(tmp_path);
+            } except OSError { }
         }
     } except OSError { }
     return merged;
@@ -421,11 +431,14 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
 
 def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
     import from jaclang.jac0core.program { JacProgram }
-    import from jaclang.jac0core.compile_options { CompileOptions }
+    import from jaclang.jac0core.compile_options {
+        CompileOptions,
+        push_native_target_env,
+        pop_native_target_env
+    }
     import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
     (gc_mode, enf_mods, enf_grand) = _project_gc_settings();
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target_env("wasm32-unknown-unknown");
     auto_promote = True;
     try {
         prog = JacProgram();
@@ -439,7 +452,8 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
                     default_codespace=('native' if auto_promote else ''),
                     na_gc_mode=gc_mode,
                     nogc_enforce_modules=enf_mods,
-                    nogc_grandfathered=enf_grand
+                    nogc_grandfathered=enf_grand,
+                    native_target="wasm32-unknown-unknown"
                 )
             );
         } finally {
@@ -468,11 +482,7 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
         llvm_ir_str = str(ir.gen.llvm_ir);
         app_imports = app_declared_imports(ir);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target_env(prev);
     }
     if gc_mode == "none" {
         _assert_ir_rc_free(llvm_ir_str, file_path);

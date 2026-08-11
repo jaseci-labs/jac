@@ -494,3 +494,20 @@ def test_runtime_finally_na -> int {
     }
     return result;
 }
+
+def test_list_index_miss_na -> int {
+    result: int = 0;
+    xs: list[int] = [10, 20, 30];
+    try {
+        i: int = xs.index(99);
+    } except ValueError {
+        result = 1;
+    }
+    return result;
+}
+
+def test_setdefault_none_na -> int {
+    d: dict[str, str] = {"a": "x"};
+    d.setdefault("missing");
+    return 1 if (d.get("missing", "sentinel") is None) else 0;
+}

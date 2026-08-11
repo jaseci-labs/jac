@@ -399,6 +399,7 @@ class VectorType(Type) {
         if isinstance(other, VectorType) {
             return ((self.element == other.element) and (self.count == other.count));
         }
+        return False;
     }
 
     def __hash__(self: VectorType) -> object {
@@ -483,6 +484,7 @@ class ArrayType(Aggregate) {
         if isinstance(other, ArrayType) {
             return ((self.element == other.element) and (self.count == other.count));
         }
+        return False;
     }
 
     def __hash__(self: ArrayType) -> object {
@@ -583,6 +585,7 @@ class LiteralStructType(BaseStructType) {
                 (self.elements == other.elements) and (self.packed == other.packed)
             );
         }
+        return False;
     }
 
     def __hash__(self: LiteralStructType) -> object {
@@ -624,6 +627,7 @@ class IdentifiedStructType(BaseStructType) {
         if isinstance(other, IdentifiedStructType) {
             return ((self.name == other.name) and (self.packed == other.packed));
         }
+        return False;
     }
 
     def __hash__(self: IdentifiedStructType) -> object {

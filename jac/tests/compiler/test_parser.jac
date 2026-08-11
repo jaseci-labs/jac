@@ -134,6 +134,18 @@ test "param syntax" {
     assert len(prog.errors_had) == 8;
 }
 
+test "operator after cast target is a syntax error" {
+    # The cast target is a tight type production; `x as int + 1` no longer
+    # silently absorbs `+ 1` into the cast type (#7885).
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURES, "cast_rhs_operator_err.jac"));
+    sys.stdout = sys.__stdout__;
+    assert prog.errors_had;
+    assert any(e.code is not None and e.code.code == "E0006" for e in prog.errors_had);
+}
+
 test "new keyword errors" {
     # `new` is an ambient builtin in Jac (callable as `new(Cls, ...args)`),
     # so JS-style `new Cls(args)` usage no longer parses. The parser detects

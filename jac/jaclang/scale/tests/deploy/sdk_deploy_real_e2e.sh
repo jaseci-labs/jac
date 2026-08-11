@@ -161,15 +161,19 @@ rm -f "${DEPLOY_LOG}"
 echo "  all phase events streamed"
 
 _t "deploy returned; verifying rollout"
-if ! kubectl rollout status "deployment/${APP}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
-    echo "FAIL: ${APP} deployment did not complete its rollout" >&2
-    dump_state
-    exit 1
-fi
+# The unified deploy realizes a no-routes app as the N=1 fleet: the app's own
+# service behind the gateway.
+for dep in "deployment/${APP}-deployment" "deployment/gateway-deployment"; do
+    if ! kubectl rollout status "${dep}" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
+        echo "FAIL: ${dep} did not complete its rollout" >&2
+        dump_state
+        exit 1
+    fi
+done
 
 _t "pods Ready"
 echo "=== assert DeploySpec.labels stamped on the app manifests ==="
-for res in "deployment/${APP}" "service/${APP}-service"; do
+for res in "deployment/${APP}-deployment" "service/${APP}-service"; do
     LABEL=$(kubectl get "${res}" -n "${NAMESPACE}" -o jsonpath='{.metadata.labels.jac-scale\.example}')
     if [ "${LABEL}" != "sdk-deploy" ]; then
         echo "FAIL: ${res} missing the platform label (jac-scale.example='${LABEL}')" >&2
@@ -180,13 +184,13 @@ done
 echo "  labels stamped"
 
 echo "=== assert DeploySpec.env and DeploySpec.secrets reached the pod ==="
-POD_GREETING=$(kubectl exec -n "${NAMESPACE}" "deploy/${APP}" -- printenv GREETING_PREFIX 2>/dev/null || echo "")
+POD_GREETING=$(kubectl exec -n "${NAMESPACE}" "deploy/${APP}-deployment" -- printenv GREETING_PREFIX 2>/dev/null || echo "")
 if [ "${POD_GREETING}" != "${SDK_DEPLOY_GREETING}" ]; then
     echo "FAIL: GREETING_PREFIX in the pod is '${POD_GREETING}', expected '${SDK_DEPLOY_GREETING}' (DeploySpec.env not wired)" >&2
     dump_state
     exit 1
 fi
-POD_SECRET=$(kubectl exec -n "${NAMESPACE}" "deploy/${APP}" -- printenv GREETER_SECRET 2>/dev/null || echo "")
+POD_SECRET=$(kubectl exec -n "${NAMESPACE}" "deploy/${APP}-deployment" -- printenv GREETER_SECRET 2>/dev/null || echo "")
 if [ "${POD_SECRET}" != "${SDK_DEPLOY_SECRET}" ]; then
     echo "FAIL: GREETER_SECRET missing in the pod (DeploySpec.secrets not wired)" >&2
     dump_state
@@ -195,7 +199,7 @@ fi
 echo "  env + secret reached the pod through the spec"
 
 echo "=== port-forward the app service + liveness ==="
-kubectl port-forward -n "${NAMESPACE}" "svc/${APP}-service" "${APP_LOCAL_PORT}:8000" >/dev/null 2>&1 &
+kubectl port-forward -n "${NAMESPACE}" "svc/gateway-service" "${APP_LOCAL_PORT}:8000" >/dev/null 2>&1 &
 PORT_FORWARD_PID=$!
 sleep 2
 LIVE_CODE="000"

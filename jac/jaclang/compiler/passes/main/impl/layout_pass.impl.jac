@@ -406,6 +406,35 @@ impl LayoutPass._build_enum_layouts(module: uni.Module) -> None {
             name=ename, is_string_enum=is_string_enum, members=members
         );
     }
+    for nd in class_form_enum_decls(module) {
+        ename = nd.name.value;
+        if ename in self.registry.enums {
+            continue;
+        }
+        _scalar = class_form_enum_scalar(nd.name.type);
+        _cf_members: list[EnumMemberLayout] = [];
+        for mname in nd.names_in_scope {
+            _lit = class_form_enum_literal(nd.name.type, mname);
+            if _lit is None {
+                continue;
+            }
+            _cf_members.append(
+                EnumMemberLayout(
+                    name=mname,
+                    ordinal=len(_cf_members),
+                    int_value=(_lit if isinstance(_lit, int) else 0),
+                    str_value=(_lit if isinstance(_lit, str) else None)
+                )
+            );
+        }
+        self.registry.enums[ename] = EnumLayout(
+            name=ename,
+            underlying=("str" if _scalar == "str" else "i64"),
+            is_string_enum=(_scalar == "str"),
+            is_class_form=True,
+            members=_cf_members
+        );
+    }
 }
 
 impl LayoutPass._build_vtable_layout(

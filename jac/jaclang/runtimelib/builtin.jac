@@ -74,6 +74,19 @@ def unsafe_html(html: any) -> dict;
 
 def managed(x: any) -> any;
 
+obj JacListView {
+    has backing: any = None,
+        start: int = 0,
+        stop: int = 0;
+
+    def __len__ -> int;
+    def __getitem__(i: any) -> any;
+    def __setitem__(i: any, v: any) -> None;
+    def __iter__ -> any;
+}
+
+def _jac_chunks(xs: any, n: int) -> list;
+
 
 glob __all__ = [
          'printgraph',
@@ -89,10 +102,7 @@ glob __all__ = [
          'store',
          'llm',
          'new',
-         'NoPerm',
-         'ReadPerm',
-         'ConnectPerm',
-         'WritePerm',
+         'AccessLevel',
          'restspec',
          'schedule',
          'ScheduleTrigger',
@@ -104,6 +114,8 @@ glob __all__ = [
          'schema_upgrade',
          'unsafe_html',
          'managed',
+         'JacListView',
+         '_jac_chunks',
          'Region',
          '_jac_region_open',
          '_jac_region_close',

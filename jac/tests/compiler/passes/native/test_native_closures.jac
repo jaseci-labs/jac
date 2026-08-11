@@ -15,7 +15,7 @@ silently mis-bound value.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
@@ -87,7 +87,7 @@ test "closure: rebound capture writes through to the enclosing frame" {
 
 test "closure: RC pointer capture (str) reads without double release" {
     (eng, _) = compile_native("closures.jac");
-    f = get_func(eng, "str_capture", ctypes.c_int64, ctypes.c_char_p);
+    f = native_str_func(eng, "str_capture", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"abcd") == 8;
 }
 

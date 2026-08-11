@@ -1,4 +1,4 @@
-"""Must fence (E1406): appending an owned heap object into a list."""
+"""OK since #7857 Phase B: a fresh archetype moves into a list append."""
 obj Box {
     has tag: int = 0;
 }

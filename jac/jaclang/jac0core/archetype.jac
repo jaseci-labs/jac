@@ -90,13 +90,10 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        topology_index_data: (bytes | None) = None,
         version: int = 0;
 
     def __getstate__ -> dict[(str, object)];
     def is_populated -> bool;
-    def get_topology_index -> any;
-    def set_topology_index(index: any) -> None;
     def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
     def remove_edge(`edge: EdgeAnchor) -> None;
 }
@@ -136,6 +133,7 @@ obj Archetype {
 
     def __init_subclass__(cls: any, **kwargs: object) -> None;
     def postinit -> None;
+    def __setattr__(name: str, value: any) -> None;
     def __repr__ -> str;
     def __jac_access__ -> (AccessLevel | str | int | None);
 }
@@ -215,64 +213,4 @@ obj JsxElement {
     has tag: object,
         `props: dict[(str, object)],
         children: list;
-}
-
-glob ObjectSpatialFilter: TypeAlias = Callable[[Archetype], bool]
-         | Archetype
-         | list[Archetype]
-         | None;
-
-obj ObjectSpatialDestination {
-    has direction: EdgeDir,
-        `edge: (Callable[([Archetype], bool)] | None) = None,
-        nd: (Callable[([Archetype], bool)] | None) = None;
-
-    def edge_filter(arch: Archetype) -> bool;
-    def node_filter(arch: Archetype) -> bool;
-}
-
-obj ObjectSpatialPath {
-    has origin: list[NodeArchetype],
-        destinations: list[ObjectSpatialDestination],
-        edge_only: bool,
-        from_visit: bool;
-
-    def init(
-        origin: (NodeArchetype | list[NodeArchetype]),
-        destinations: (list[ObjectSpatialDestination] | None) = None
-    ) -> None;
-
-    def convert(filter: ObjectSpatialFilter) -> (Callable[([Archetype], bool)] | None);
-    def append(
-        direction: EdgeDir, `edge: ObjectSpatialFilter, nd: ObjectSpatialFilter
-    ) -> ObjectSpatialPath;
-
-    def edge_out(
-        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath;
-
-    def edge_in(
-        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath;
-
-    def edge_any(
-        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath;
-
-    def `edge -> ObjectSpatialPath {
-        self.edge_only = True;
-        return self;
-    }
-
-    def `visit -> ObjectSpatialPath {
-        self.from_visit = True;
-        return self;
-    }
-
-    with entry {
-        set_visit = `visit;
-    }
-
-    def repr_builder(repr_str: str, dest: ObjectSpatialDestination, mark: str) -> str;
-    def __repr__ -> str;
 }

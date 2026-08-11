@@ -232,18 +232,36 @@ impl NaIRGenPass._emit_rc_simple_visitor(
     name: str, phase_fn: ir.Function
 ) -> ir.Function {
     i8_ptr = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
     phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     vis_fn = ir.Function(self.llvm_module, phase_fnty, name=name);
     vis_fn.linkage = "internal";
     vis_fn.args[0].name = "child";
 
     v_null = vis_fn.append_basic_block("null");
+    v_sent = vis_fn.append_basic_block("sent");
     v_work = vis_fn.append_basic_block("work");
     v_done = vis_fn.append_basic_block("done");
 
     b = ir.IRBuilder(v_null);
     b.cbranch(
         b.icmp_unsigned("==", vis_fn.args[0], ir.Constant(i8_ptr, None), name="null"),
+        v_done,
+        v_sent
+    );
+
+    b = ir.IRBuilder(v_sent);
+    _vs_rc = b.load(
+        b.bitcast(
+            b.gep(vis_fn.args[0], [ir.Constant(i64, HDR_RC_OFF)], name="rsp"),
+            i64_ptr,
+            name="rptr"
+        ),
+        name="rc"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", _vs_rc, ir.Constant(i64, RC_SENTINEL), name="sent"),
         v_done,
         v_work
     );
@@ -542,7 +560,7 @@ impl NaIRGenPass._emit_rc_collect_white_reclaim(
     );
     _cw_len = b.icmp_unsigned(
         "!=",
-        b.and_(dtor_val, ir.Constant(i64, 1), name="cw.dtor.lowbit"),
+        b.and_(dtor_val, ir.Constant(i64, STR_LEN_TAG_BIT), name="cw.dtor.lowbit"),
         ir.Constant(i64, 0),
         name="cw.dtor.is.len"
     );

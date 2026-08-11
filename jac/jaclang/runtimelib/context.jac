@@ -7,7 +7,9 @@ import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { NodeAnchor, PermissionDenied, Root }
 import from jaclang.jac0core.constant { Constants as Con }
-import from jaclang.runtimelib.memory { Memory, TieredMemory }
+import from jaclang.runtimelib.session { Session }
+
+import from jaclang.runtimelib.query_planner { resolve_query as _rq_anchor }
 
 glob __all__ = ['ExecutionContext'],
      logger = getLogger(__name__);
@@ -18,7 +20,7 @@ obj CallState {
 }
 
 obj ExecutionContext {
-    has mem: Memory postinit,
+    has mem: Session postinit,
         reports: list[any] = [],
         diagnostics: list[PermissionDenied] = [],
         pending_effects: list[Callable] = [],

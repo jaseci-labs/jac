@@ -8,7 +8,6 @@ import secrets;
 import sqlite3;
 import threading;
 import from collections.abc { Callable }
-import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
 import from typing {
@@ -22,7 +21,27 @@ import from typing {
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
-import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
+import from jaclang.runtimelib.transport { TransportResponse, Meta }
+import from jaclang.runtimelib.serving.app { ServingApp, transport_to_response }
+import from jaclang.runtimelib.serving.datatypes {
+    HTMLResponse,
+    JSONResponse,
+    Request,
+    Response as ServingResponse
+}
+import from jaclang.runtimelib.serving.endpoint {
+    APIParameter,
+    HTTPMethod,
+    JEndPoint,
+    ParameterType
+}
+import from jaclang.runtimelib.serving.middleware {
+    cors_middleware,
+    custom_headers_middleware
+}
+import from jaclang.runtimelib.serving.openapi { register_docs_endpoints }
+import from jaclang.runtimelib.serving.server { ServingServer }
+import from jaclang.runtimelib.static_files { find_static_candidate, is_asset_request }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
@@ -99,6 +118,7 @@ obj ExecutionManager {
 obj ModuleIntrospector {
     has module_name: str,
         base_path: (str | None),
+        module_file: (str | None) = None,
         _module: any = None,
         _functions: dict[(str, Callable[(..., Any)])] = {},
         _walkers: dict[(str, type[WalkerArchetype])] = {},
@@ -134,27 +154,11 @@ obj ModuleIntrospector {
     ) -> dict[str, any];
 
     def spa_fallback_status(url_path: str) -> int;
+    def has_client_route(url_path: str) -> bool;
     def _load_spa_routes -> (list[str] | None);
     def _spa_route_matches(pattern: str, segments: list[str]) -> bool;
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-}
-
-obj ResponseBuilder {
-    static def send_json(
-        handler: BaseHTTPRequestHandler,
-        status: StatusCode,
-        data: dict[(str, JsonValue)]
-    ) -> None;
-
-    static def send_html(
-        handler: BaseHTTPRequestHandler, status: StatusCode, body: str
-    ) -> None;
-
-    static def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None;
-    static def send_css(handler: BaseHTTPRequestHandler, css: str) -> None;
-    static def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None;
-    static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
 }
 
 obj AuthHandler {
@@ -204,6 +208,7 @@ obj JacAPIServer {
     has module_name: str,
         port: int = 8000,
         base_path: str = "",
+        module_file: (str | None) = None,
         is_sv_sibling: bool = False,
         user_manager: UserManager postinit,
         execution_manager: ExecutionManager postinit,
@@ -211,8 +216,11 @@ obj JacAPIServer {
         auth_handler: AuthHandler postinit,
         introspection_handler: IntrospectionHandler postinit,
         execution_handler: ExecutionHandler postinit,
-        server: (HTTPServer | None) postinit,
+        server: any postinit,
+        app: any postinit,
         scheduler: Scheduler postinit;
+
+    def _make_user_manager -> UserManager;
 
     obj RestSpecs {
         has method: str = "",
@@ -224,7 +232,7 @@ obj JacAPIServer {
     }
 
     def postinit -> None;
-    def create_handler -> type[BaseHTTPRequestHandler];
+    def build_app -> ServingApp;
     def load_module(force_reload: bool = False) -> None;
 
     has module: object { getter; }

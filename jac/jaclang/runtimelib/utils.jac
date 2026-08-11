@@ -53,6 +53,15 @@ def host_arch -> str {
 }
 
 
+def host_os -> str {
+    sysname = platform.system().strip().lower();
+    if sysname == "darwin" {
+        return "macos";
+    }
+    return sysname;
+}
+
+
 def triple_arch(triple: str) -> str {
     if "aarch64" in triple.lower() or "arm64" in triple.lower() {
         return "aarch64";

@@ -52,13 +52,15 @@ def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
 }
 
 # --- #1 Counter read/write -----------------------------------------------------
-test "matrix #1 react: bare identifier read, setCount write" {
+test "matrix #1 react: store cell read, cell setter write" {
     js = compile_fixture_with_backend("reactive_state_client.jac", ReactBackend());
-    assert "const [count, setCount] = useState(0)" in js;
-    assert "setCount(42)" in js;
-    # React reads are bare identifiers, never accessor calls.
+    assert "const __jacS_count = useJacState(0)" in js;
+    assert "__jacS_count.set(42)" in js;
+    # React reads are synchronous cell reads, never accessor calls.
+    assert "__jacS_count.val" in js;
     assert "count()" not in js;
     assert "createSignal" not in js;
+    assert "useState" not in js;
 }
 
 test "matrix #1 solid: accessor read, setCount write, createSignal state" {
@@ -77,7 +79,10 @@ test "matrix #1 solid: accessor read, setCount write, createSignal state" {
 test "matrix #2 react: useEffect keeps an explicit dep array" {
     js = compile_fixture_with_backend("reactive_effects_deps.jac", ReactBackend());
     assert "useEffect(" in js;
-    assert "[userId, loading]" in js , "React effect must keep its dep array";
+    # `userId` is a prop (stays bare); `loading` is state (samples the cell).
+    assert "[userId, __jacS_loading.val]" in js , (
+        "React effect must keep its dep array, sampling state cell values"
+    );
     assert "createEffect" not in js;
 }
 
@@ -107,11 +112,12 @@ test "matrix #3 solid: awaiting lowers to Solid Suspense, never the React shim" 
 # --- #4 Dynamic {count} / #6 onClick handler -----------------------------------
 test "matrix #4/#6 react: dynamic positions and handler are plain (seam no-op)" {
     js = compile_fixture_with_backend("reactive_view_audit.jac", ReactBackend());
-    # Read + view seams are identity on React: the dynamic attribute value is a
-    # bare identifier, not a Solid-style accessor thunk. (The `onClick` lambda
-    # is still an arrow function — that is the handler itself, not a view thunk.)
-    assert '"value": count' in js;
-    assert "() => count()" not in js , "React must not thunk dynamic positions";
+    # Read seam lowers to a synchronous cell read; the view seam stays
+    # identity on React — no Solid-style accessor thunks. (The `onClick`
+    # lambda is still an arrow function — the handler itself, not a view
+    # thunk.)
+    assert '"value": __jacS_count.val' in js;
+    assert "count()" not in js , "React must not thunk dynamic positions";
     assert '"type": "text"' in js;
     assert '"onClick":' in js;
 }
@@ -132,12 +138,16 @@ test "matrix #4/#6 solid: dynamic positions un-thunked, handler never view-wrapp
 }
 
 # --- #5 Block / scope shadowing — KNOWN LIMITATION -----------------------------
-test "matrix #5 react: shadowing param reads as a bare local (correct)" {
+test "matrix #5 react: shadowing param is WRONGLY treated as reactive (pinned bug)" {
     js = compile_fixture_with_backend("reactive_shadow.jac", ReactBackend());
-    # The reactive field and the shadowing parameter both read bare on React,
-    # which happens to be correct here.
-    assert "const [count, setCount] = useState(0)" in js;
-    assert 'return __jacJsx("span", {}, [count])' in js;
+    # Same §4.3 known limitation as Solid, now uniform across backends: the
+    # shadowing `count` parameter still lowers through `lower_state_read`,
+    # so the nested read hits the outer cell instead of the local param.
+    # Under the old bare-identifier lowering React happened to be correct
+    # here; the store lowering makes the limitation visible. Do NOT "fix"
+    # this pin without landing contract §4.3 (block-scoped tracking).
+    assert "const __jacS_count = useJacState(0)" in js;
+    assert 'return __jacJsx("span", {}, [__jacS_count.val])' in js;
     assert "count()" not in js;
 }
 

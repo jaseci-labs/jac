@@ -62,11 +62,6 @@ test "N concurrent slow walkers must complete in ~1 SLOW_SEC (async honesty)" {
     # Generous threshold: 2x slowest-acceptable concurrent wall-clock.
     MAX_ALLOWED_SEC = SLOW_SEC * 2.5;
 
-    # Use SQLite backend — we want to prove blocking is loop-level, not driver-level.
-    for k in ["MONGODB_URI", "REDIS_URL"] {
-        os.environ.pop(k, None);
-    }
-
     data_dir = FIXTURES_DIR / ".jac" / "data";
     if data_dir.exists() {
         import shutil;

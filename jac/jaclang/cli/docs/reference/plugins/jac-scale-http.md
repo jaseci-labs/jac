@@ -56,7 +56,7 @@ jac start --port 8000 --profile prod
 
 When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
 
-When `MONGODB_URI` is set (or `--scale` provisions Mongo on Kubernetes), persistence flips to `MongoBackend`. The MongoDB backend has full Layer 1+2+3 schema-migration support: every persisted document is stamped with `arch_module`, `arch_type`, `fingerprint`, and `format_version`; documents that can't be deserialized (un-resolvable archetype class, corrupt data, deserialize exception) are moved to a `<collection>_quarantine` companion collection instead of being silently dropped; and DB-resident class-rename aliases live in `<collection>_aliases` and are merged into the in-process Serializer registry on every connect. The same `jac db inspect / quarantine / alias / recover` operator commands work against Mongo deployments unchanged -- see [CLI → Database Operations](../cli/index.md#database-operations) and [Persistence & Schema Migration](../persistence.md) for the full model.
+Persistence is Postgres-native everywhere: the same store serves `jac run`, `jac start`, and `--scale` deployments, with full schema-migration support (fingerprints, drift repair, and the quarantine sidecar). See [CLI -> Database Operations](../cli/index.md#database-operations) and [Persistence & Schema Migration](../persistence.md) for the full model.
 
 ```bash
 # Inspect a live Mongo-backed deployment.
@@ -87,8 +87,8 @@ In single-process `jac start` mode the FastAPI app installs a permissive
 CORS middleware (`allow_origins=['*']`, all methods/headers); there is
 no `[scale.cors]` knob to tune it.
 
-In **microservice mode** (`[scale.microservices] enabled = true`),
-the gateway exposes a configurable CORS section:
+In **microservice mode** (on whenever `[scale.microservices.routes]`
+declares services), the gateway exposes a configurable CORS section:
 
 ```toml
 [scale.microservices.cors]
@@ -452,29 +452,24 @@ A user can have at most **one** identity of each non-SSO type (one username, one
 |------|-------------|
 | `password` | Bcrypt-hashed password |
 
-Passwords are hashed with [bcrypt](https://en.wikipedia.org/wiki/Bcrypt) (random salt per password). Plain-text passwords never leave the request handler.
+Passwords are hashed with [scrypt](https://en.wikipedia.org/wiki/Scrypt) (random salt per password, stdlib `hashlib.scrypt`). Plain-text passwords never leave the request handler.
 
-### Storage Backends
+### Storage
 
-The identity storage layer is backend-agnostic. jac-scale automatically selects the backend based on your database configuration:
-
-- **SQLite** (default) -- used when no `mongodb_uri` is configured. User data is stored in `.jac/data/users.db` relative to your project root using SQLAlchemy. Good for development and single-instance deployments.
-- **MongoDB** -- used when `mongodb_uri` is set (via `jac.toml` or `MONGODB_URI` environment variable). User data is stored in the `users` collection of the `jac_db` database. Required for multi-instance production deployments.
-
-Both backends implement the same `IdentityStorage` interface. Application code (endpoints, walkers, middleware) is completely unaware of which backend is in use.
+Identity data lives in the same Postgres database as the graph -- the embedded per-project server locally, or whatever `[scale.database].url` / `JAC_DB_URL` points at:
 
 ```toml
-# jac.toml -- use MongoDB
+# jac.toml -- use an external Postgres server
 [scale.database]
-mongodb_uri = "mongodb://localhost:27017"
+url = "postgresql://user:pass@host:5432/jac"
 ```
 
 ```bash
 # Or via environment variable
-export MONGODB_URI="mongodb://localhost:27017"
+export JAC_DB_URL="postgresql://user:pass@host:5432/jac"
 ```
 
-When no MongoDB URI is configured, SQLite is used automatically with no additional setup.
+With nothing configured, the embedded server provisions automatically with no additional setup. Serving without any reachable database fails loudly at startup rather than silently opening a second credential store.
 
 ### User Registration
 
@@ -1275,12 +1270,14 @@ See [Roles](#roles) in the Authentication section for details on protected accou
 
 ### Access Levels
 
+Levels are members of the ambient `AccessLevel` enum (no import needed):
+
 | Level | Value | Description |
 |-------|-------|-------------|
-| `NO_ACCESS` | `-1` | No access to the object |
-| `READ` | `0` | Read-only access |
-| `CONNECT` | `1` | Can traverse edges to/from this object |
-| `WRITE` | `2` | Full read/write access |
+| `AccessLevel.NO_ACCESS` | `-1` | No access to the object |
+| `AccessLevel.READ` | `0` | Read-only access |
+| `AccessLevel.CONNECT` | `1` | Can traverse edges to/from this object |
+| `AccessLevel.WRITE` | `2` | Full read/write access |
 
 ### Granting Permissions
 
@@ -1291,10 +1288,10 @@ Use `perm_grant` to allow all users to access an object at a given level:
 ```jac
 with entry {
     # Allow everyone to read this node
-    perm_grant(node, READ);
+    perm_grant(node, AccessLevel.READ);
 
     # Allow everyone to write
-    perm_grant(node, WRITE);
+    perm_grant(node, AccessLevel.WRITE);
 }
 ```
 
@@ -1305,10 +1302,10 @@ Use `allow_root` to grant access to a specific user's root graph:
 ```jac
 with entry {
     # Allow a specific user to read this node
-    allow_root(node, target_root_id, READ);
+    allow_root(node, target_root_id, AccessLevel.READ);
 
     # Allow write access
-    allow_root(node, target_root_id, WRITE);
+    allow_root(node, target_root_id, AccessLevel.WRITE);
 }
 ```
 
@@ -1328,7 +1325,7 @@ with entry {
 ```jac
 with entry {
     # Revoke a specific user's access
-    disallow_root(node, target_root_id, READ);
+    disallow_root(node, target_root_id, AccessLevel.READ);
 }
 ```
 

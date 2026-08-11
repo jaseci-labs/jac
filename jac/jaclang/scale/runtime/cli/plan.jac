@@ -2,9 +2,7 @@ import yaml;
 import from typing { Any }
 import from jaclang.cli.console { console }
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.microservice.manifest_builder {
-    GATEWAY_NAME
-}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { GATEWAY_NAME }
 import from jaclang.scale.runtime.cli.diagnostics {
     Diagnostic,
     PlanValidator,

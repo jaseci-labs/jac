@@ -3,13 +3,15 @@
 Note: useState import is auto-injected from @jac/runtime when `has` variables are used.
 """
 
-def:pub counter_app() -> JsxElement {
-    has count: int = 0;
-    has name: str = "test";
+def:pub counter_app -> JsxElement {
+    has count: int = 0,
+        name: str = "test";
 
-    count = count + 1;
-    count = 42;
-    name = "hello";
+    can with entry {
+        count = count + 1;
+        count = 42;
+        name = "hello";
+    }
 
     return
         <div>

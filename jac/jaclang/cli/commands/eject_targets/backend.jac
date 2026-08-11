@@ -100,32 +100,25 @@ def emit_backend(
         );
     }
 
-    sql = str(db.get("driver", "")).lower() in ["sqlalchemy", "sqlite", "sql"];
-    db_basename = _default_db_basename(project_name) if sql else "";
-    if sql {
-        console.print(
-            "  ✔ SQLAlchemy persistence (vendored runtime backend)", style="success"
+    driver = str(db.get("driver", "")).lower();
+    if driver not in ["", "postgres", "postgresql", "pg"] {
+        console.error(
+            f"  backend: [eject.db] driver = '{driver}' is not supported: the "
+            "jaclang runtime persists natively to Postgres (an external server "
+            "via JAC_DB_URL, or an embedded runtime-managed one). Remove "
+            "[eject.db] or set driver = \"postgres\"."
         );
+        return 1;
     }
 
     _emit_main_py(
-        backend_dir,
-        project_name,
-        walkers_full,
-        functions_full,
-        sql,
-        db_basename,
-        has_env,
-        entry_module
+        backend_dir, project_name, walkers_full, functions_full, has_env, entry_module
     );
 
     import from jaclang.publish.runtime_vendor { vendor_runtime }
     uses_llm = _uses_llm(emitted_codes);
-    sql_seeds = ["jaclang.runtimelib.storage.sqlalchemy_memory"] if sql else [];
     try {
-        vendored = vendor_runtime(
-            backend_dir, emitted_codes, include_byllm=uses_llm, extra_seeds=sql_seeds
-        );
+        vendored = vendor_runtime(backend_dir, emitted_codes, include_byllm=uses_llm);
     } except ValueError as e {
         console.error(f"  {e}");
         return 1;
@@ -147,9 +140,6 @@ def emit_backend(
     }
 
     detected_caps: set = set();
-    if sql {
-        detected_caps.add("data.sql");
-    }
     if uses_llm {
         detected_caps.add("llm");
     }
@@ -185,16 +175,6 @@ def _capability_requirements(caps: set) -> list[str] {
         }
     }
     return lines;
-}
-
-
-def _default_db_basename(project_name: str) -> str {
-    chars: list = [];
-    for ch in project_name.lower() {
-        chars.append(ch if ch.isalnum() else "_");
-    }
-    name = "".join(chars).strip("_");
-    return name or "jac_db";
 }
 
 
@@ -477,8 +457,6 @@ def _emit_main_py(
     project_name: str,
     walkers: list,
     functions: list,
-    sql: bool,
-    db_basename: str,
     has_env: bool,
     entry_module: str
 ) {
@@ -497,7 +475,10 @@ def _emit_main_py(
     lines: list[str] = [
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
         'runs the compiled walkers on the jaclang runtime with jaclang-native auth',
-        '(register/login via UserManager; :pub walkers open, others token-gated)."""',
+        '(register/login via UserManager; :pub walkers open, others token-gated).',
+        'Graph state persists through the runtime\'s Postgres-native store: set',
+        'JAC_DB_URL to use an external server, otherwise the runtime provisions',
+        'an embedded database automatically."""',
         'import inspect',
         'import json',
         'import os',
@@ -553,24 +534,6 @@ def _emit_main_py(
     for f in functions {
         fn = str(f["name"]);
         lines.append("from " + str(f["module"]) + " import " + fn + " as _F_" + fn);
-    }
-
-    if sql {
-        lines += [
-            'from jaclang.jac0core.runtime import JacRuntime as _Jac',
-            'from jaclang.runtimelib.storage.sqlalchemy_memory import SqlAlchemyMemory',
-            '',
-            '_DB_URL = os.environ.get("JAC_DB_URL") or (',
-            '    "sqlite:///" + os.path.join(_BASE, '
-                + repr(str(db_basename) + ".db")
-                + ')',
-            ')',
-            '',
-            '',
-            '_Jac.set_persistent_memory_provider(',
-            '    lambda config: SqlAlchemyMemory(_DB_URL)',
-            ')'
-        ];
     }
 
     lines += [
@@ -934,7 +897,7 @@ def _req_key(req: str) -> str {
 
 
 def _emit_requirements(backend_dir: Path, extra_reqs: list) {
-    lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    lines: list[str] = ["fastapi>=0.121", "uvicorn[standard]>=0.38"];
     seen: set = {_req_key(r) for r in lines};
     for req in extra_reqs {
         key = _req_key(str(req));

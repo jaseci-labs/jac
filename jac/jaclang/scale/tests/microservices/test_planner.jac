@@ -23,13 +23,13 @@ test "local microservice fronts with a process gateway over http, no injector" {
 }
 
 
-test "k8s monolith uses its own gateway pod, redis state, and the injector" {
+test "k8s monolith uses its own gateway pod, pg state, and the injector" {
     plan = plan_realization(True, 1);
     assert plan.environment == "kubernetes";
     assert plan.topology == "monolith";
     assert plan.gateway_mode == "process";
     assert plan.transport == "http";
-    assert plan.state_backend == "redis";
+    assert plan.state_backend == "pg";
     assert plan.uses_injector == True;
 }
 
@@ -39,17 +39,17 @@ test "the gateway_embedded flag collapses the gateway for a k8s monolith" {
     assert plan.gateway_mode == "embedded";
     assert plan.transport == "in_process";
 
-    assert plan.state_backend == "redis";
+    assert plan.state_backend == "pg";
 }
 
 
-test "k8s microservice is fully distributed: process gateway, http, redis, injector" {
+test "k8s microservice is fully distributed: process gateway, http, pg, injector" {
     plan = plan_realization(True, 5);
     assert plan.environment == "kubernetes";
     assert plan.topology == "microservice";
     assert plan.gateway_mode == "process";
     assert plan.transport == "http";
-    assert plan.state_backend == "redis";
+    assert plan.state_backend == "pg";
     assert plan.uses_injector == True;
 }
 

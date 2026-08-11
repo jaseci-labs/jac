@@ -356,3 +356,11 @@ def:pub raw_json -> dict {
 def:pub still_enveloped -> str {
     return "wrapped";
 }
+
+
+"""Function with a custom path and NO method= (#8000 f3): must default to
+POST and register a live route instead of an unroutable "" method."""
+@restspec(path="/custom/no-method-func")
+def no_method_func -> dict {
+    return {"message": "no_method_func executed"};
+}

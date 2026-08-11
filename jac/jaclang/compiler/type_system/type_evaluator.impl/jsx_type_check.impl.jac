@@ -134,12 +134,7 @@ impl TypeEvaluator._validate_component_jsx_props(
     if len(param_map) == 1 and "props" in param_map {
         props_type = param_map["props"].param_type;
 
-        is_any_class = (
-            self.prefetch is not None
-            and self.prefetch.any_class is not None
-            and isinstance(props_type, types.ClassType)
-            and props_type.shared == self.prefetch.any_class.shared
-        );
+        is_any_class = props_type is not None and props_type.is_any_instance();
         if (
             props_type is None
             or isinstance(props_type, (types.AnyType, types.UnknownType))

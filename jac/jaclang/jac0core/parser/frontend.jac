@@ -45,6 +45,14 @@ def _native_scan -> any {
                     fn.__jac_engine__ = eng;
                 }
             }
+            if fn is not None {
+                _sc = fn('x = "\\q";', "__seal_selfcheck__.jac");
+                _sc_diags = _sc[2];
+                if len(_sc_diags) != 1
+                    or getattr(_sc_diags[0], "code_str", "") != "W0100" {
+                    fn = None;
+                }
+            }
         }
     } except Exception {
         fn = None;

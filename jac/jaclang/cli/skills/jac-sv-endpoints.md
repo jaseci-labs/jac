@@ -109,7 +109,7 @@ Parameters are classified: **path** (name matches `{...}` in path) → **file** 
 ## File uploads
 
 ```jac
-import from http { UploadFile }
+import from jaclang.runtimelib.serving.datatypes { UploadFile }
 
 glob storage: any = store();   # ambient builtin; local disk by default
 
@@ -122,6 +122,8 @@ walker:pub upload_doc {
     }
 }
 ```
+
+`UploadFile` buffers the whole body in memory; the server rejects request bodies over 100 MB (413). Keep uploads well under that, or stream large payloads through object storage directly.
 
 S3 backends and `get_url` presigning: `jac-sv-deploy`.
 

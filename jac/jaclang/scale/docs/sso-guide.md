@@ -152,50 +152,42 @@ enum Platforms {
 
 ### Step 2: Create the Provider Class
 
-Create a new file `sso/microsoft.jac` implementing the `SSOProvider` interface:
+Create a new file `sso/microsoft.jac` extending `OAuth2CodeProvider` (which handles the redirect, state nonce, and code-for-token exchange; you supply the endpoints and the user fetch):
 
 ```jac
-import from fastapi { Request, Response }
-import from fastapi_sso.sso.microsoft { MicrosoftSSO }
-import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
-import from jac_scale.shared.enums { Platforms }
+import from jaclang.scale.sso.provider { OAuth2CodeProvider, SSOUserInfo }
+import from jaclang.runtimelib.serving.client { arequest }
 
-obj MicrosoftSSOProvider(SSOProvider) {
-    has client_id: str,
-        client_secret: str,
-        redirect_uri: str,
-        allow_insecure_http: bool = True,
-        _microsoft_sso: (MicrosoftSSO | None) = None;
+obj MicrosoftSSOProvider(OAuth2CodeProvider) {
+    def authorize_url -> str {
+        return 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
+    }
 
-    def postinit -> None {
-        self._microsoft_sso = MicrosoftSSO(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=self.redirect_uri,
-            allow_insecure_http=self.allow_insecure_http
+    def token_url -> str {
+        return 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+    }
+
+    def scope -> str {
+        return 'openid email profile User.Read';
+    }
+
+    async def fetch_user(
+        access_token: str, token_payload: dict[str, any]
+    ) -> SSOUserInfo {
+        resp = await arequest(
+            'GET',
+            'https://graph.microsoft.com/v1.0/me',
+            headers={'Authorization': f"Bearer {access_token}"}
         );
-    }
-
-    async def initiate_auth -> Response {
-        with self._microsoft_sso {
-            return await self._microsoft_sso.get_login_redirect();
+        if not resp.ok() {
+            raise RuntimeError(f"Microsoft Graph /me failed: HTTP {resp.status_code}");
         }
-    }
-
-    async def handle_callback(request: Request) -> SSOUserInfo {
-        with self._microsoft_sso {
-            user_info = await self._microsoft_sso.verify_and_process(request);
-            return SSOUserInfo(
-                email=user_info.email,
-                external_id=user_info.id,
-                platform=self.get_platform_name(),
-                display_name=user_info?.display_name
-            );
-        }
-    }
-
-    def get_platform_name -> str {
-        return Platforms.MICROSOFT.value;
+        info = resp.json();
+        return SSOUserInfo(
+            email=str(info.get('mail') or info.get('userPrincipalName')),
+            external_id=str(info.get('id')),
+            display_name=info.get('displayName')
+        );
     }
 }
 ```
@@ -206,7 +198,7 @@ obj MicrosoftSSOProvider(SSOProvider) {
 
 ```jac
 if platform == Platforms.MICROSOFT.value {
-    import from jac_scale.sso.microsoft { MicrosoftSSOProvider }
+    import from myapp.sso.microsoft { MicrosoftSSOProvider }
     return MicrosoftSSOProvider(
         client_id=credentials['client_id'],
         client_secret=credentials['client_secret'],

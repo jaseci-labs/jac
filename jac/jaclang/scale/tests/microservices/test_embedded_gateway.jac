@@ -1,4 +1,4 @@
-import from fastapi.testclient { TestClient }
+import from jaclang.runtimelib.serving.testing { ServingTestClient as TestClient }
 import from jaclang.scale.runtime.gateway.embedded_gateway { EmbeddedGateway }
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,

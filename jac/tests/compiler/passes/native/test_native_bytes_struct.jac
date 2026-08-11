@@ -39,6 +39,86 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
     return functype(addr);
 }
 
+class JacStrABI(ctypes.Structure) {
+    # Register view of a by-value JacStr {root, data, len} return. LLVM
+    # lowers the aggregate return into scalar return registers; a 16-byte
+    # two-pointer struct restype makes libffi read the first two of them,
+    # which yields root and data. len rides in the third return register,
+    # unreachable through libffi, but Jac string payloads are always
+    # NUL-terminated at len so a bounded read is recovered from data.
+    has _fields_: list[tuple[str, type]] = [
+        ("root", ctypes.c_void_p),
+        ("data", ctypes.c_void_p)
+    ];
+}
+
+def get_sfunc(eng: object, name: str, restype: type | None, *argtypes: type) -> object {
+    # descriptor-ABI variant of get_func: a c_char_p spelling here means a
+    # Jac `str` (the by-value {root, data, len} descriptor at the native
+    # ABI). LLVM decomposes a by-value descriptor param into three scalar
+    # slots, so each str param is declared as (root, data, len) scalars and
+    # bytes/str args build their backing storage via jac_str_new; str
+    # returns come back as the full bytes of the result string, so existing
+    # comparisons keep working.
+    addr = eng.get_function_address(name);
+    assert addr != 0 , f"Function '{name}' not found in JIT engine";
+    real_res = JacStrABI if restype == ctypes.c_char_p else restype;
+    str_slots: list = [];
+    real_args: list = [];
+    for a in argtypes {
+        if a == ctypes.c_char_p {
+            str_slots.append(True);
+            real_args.append(ctypes.c_void_p);
+            real_args.append(ctypes.c_void_p);
+            real_args.append(ctypes.c_int64);
+        } else {
+            str_slots.append(False);
+            real_args.append(a);
+        }
+    }
+    raw = ctypes.CFUNCTYPE(real_res, *real_args)(addr);
+    sn_addr = 0;
+    for sn in ("jac_str_new", "__jac_str_new") {
+        try {
+            sn_addr = eng.get_function_address(sn);
+        } except Exception {
+            sn_addr = 0;
+        }
+        if sn_addr {
+            break;
+        }
+    }
+    mkstr = (
+        ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(sn_addr)
+            if sn_addr
+            else None
+    );
+    def _call(*args: any) -> any {
+        c_args: list = [];
+        for (a, is_str) in zip(args, str_slots) {
+            if is_str {
+                assert mkstr is not None , "jac_str_new not found in JIT engine";
+                b = a.encode("utf-8") if isinstance(a, str) else a;
+                p = mkstr(b, len(b));
+                c_args.append(p);
+                c_args.append(p);
+                c_args.append(len(b));
+            } else {
+                c_args.append(a);
+            }
+        }
+        r = raw(*c_args);
+        if real_res is JacStrABI {
+            if not r.data {
+                return b"";
+            }
+            return ctypes.string_at(r.data);
+        }
+        return r;
+    }
+    return _call;
+}
+
 # ─── bytes type: length awareness, indexing, slicing, equality ───
 test "bytes literal length counts embedded NUL" {
     (eng, _) = compile_native("bytes_ops.jac");
@@ -286,7 +366,7 @@ def _write_blob -> str {
 
 test "binary read length counts embedded NULs" {
     (eng, _) = compile_native("binary_file.jac");
-    f = get_func(eng, "read_len", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "read_len", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
         assert f(path.encode("utf-8")) == 8;
@@ -297,7 +377,7 @@ test "binary read length counts embedded NULs" {
 
 test "binary read byte after NUL" {
     (eng, _) = compile_native("binary_file.jac");
-    f = get_func(eng, "byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
         assert f(path.encode("utf-8")) == 153;
@@ -308,7 +388,7 @@ test "binary read byte after NUL" {
 
 test "struct unpack from binary file slice" {
     (eng, _) = compile_native("binary_file.jac");
-    f = get_func(eng, "struct_from_file", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "struct_from_file", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
         assert f(path.encode("utf-8")) == 305419896;
@@ -319,7 +399,7 @@ test "struct unpack from binary file slice" {
 
 test "binary read via context manager" {
     (eng, _) = compile_native("binary_file.jac");
-    f = get_func(eng, "read_with_ctx", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "read_with_ctx", ctypes.c_int64, ctypes.c_char_p);
     path = _write_blob();
     try {
         assert f(path.encode("utf-8")) == 8;
@@ -338,7 +418,7 @@ def _write_line_blob -> str {
 
 test "binary readline keeps embedded NUL (length-aware)" {
     (eng, _) = compile_native("binary_file.jac");
-    f = get_func(eng, "first_line_len", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "first_line_len", ctypes.c_int64, ctypes.c_char_p);
     path = _write_line_blob();
     try {
         assert f(path.encode("utf-8")) == 5;
@@ -349,7 +429,7 @@ test "binary readline keeps embedded NUL (length-aware)" {
 
 test "binary readline byte after NUL" {
     (eng, _) = compile_native("binary_file.jac");
-    f = get_func(eng, "first_line_byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "first_line_byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
     path = _write_line_blob();
     try {
         assert f(path.encode("utf-8")) == 67;
@@ -440,6 +520,6 @@ test "bytes vs None comparison is null-safe (#6751)" {
     assert get_func(eng, "both_none_ne", ctypes.c_int64)() == 0;
     assert get_func(eng, "some_eq_bytes", ctypes.c_int64)() == 1;
     assert get_func(eng, "some_eq_diff", ctypes.c_int64)() == 0;
-    # ordering (< > <= >=) against None raises TypeError, not a segfault
-    assert get_func(eng, "none_ordering_raises", ctypes.c_int64)() == 4;
+    # ordering (< > <= >=) against an un-narrowed None operand is rejected
+    # at check time (E1121, pinned in test_native_optional_ptr.jac)
 }

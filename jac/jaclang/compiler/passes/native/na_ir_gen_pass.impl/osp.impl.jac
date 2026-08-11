@@ -1,39 +1,17 @@
 glob _NA_OSP_KERNEL_MOD: list = [];
 
-def _write_native_osp_source(core_dir: str, dest: str) {
-    import os;
-    _kernel = os.path.join(core_dir, "osp_kernel.jac");
-    _graph = os.path.join(core_dir, "osp_graph.jac");
-    with open(_kernel, "r") as _kf {
-        _ktext = _kf.read();
-    }
-    with open(_graph, "r") as _gf {
-        _gtext = _gf.read();
-    }
-    with open(dest, "w") as _out {
-        _out.write(_ktext + "\n\n" + _gtext);
-    }
-}
-
 def _load_native_osp_kernel_module -> (uni.Module | None) {
     if _NA_OSP_KERNEL_MOD {
         return _NA_OSP_KERNEL_MOD[0];
     }
-    import os;
-    import shutil;
-    import tempfile;
-    import jaclang;
+    import from jaclang.jac0core.kernel_units { osp_core_unit_path }
     import from jaclang.jac0core.program { JacProgram }
-    _core = os.path.join(os.path.dirname(jaclang.__file__), "jac0core");
-    tmp_dir = tempfile.mkdtemp();
-    na_copy = os.path.join(tmp_dir, "osp_kernel.jac");
     mod = None;
     try {
         import from jaclang.jac0core.compile_options { CompileOptions as _KernelOpts }
-        _write_native_osp_source(_core, na_copy);
         prog = JacProgram();
         mod = prog.compile(
-            na_copy,
+            osp_core_unit_path('na'),
             options=_KernelOpts(
                 no_cgen=True,
                 symtab_ir_only=True,
@@ -46,8 +24,6 @@ def _load_native_osp_kernel_module -> (uni.Module | None) {
         );
     } except Exception {
         mod = None;
-    } finally {
-        shutil.rmtree(tmp_dir, ignore_errors=True);
     }
     if mod is not None {
         _NA_OSP_KERNEL_MOD.append(mod);
@@ -63,6 +39,7 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
     if kernel_mod is None {
         return;
     }
+    kernel_mod.gen.nogc_enforced = getattr(self.ir_in.gen, "nogc_enforced", False);
     self._walk_imported_module_type_names(kernel_mod);
     self._walk_imported_module_types(kernel_mod);
     self._walk_imported_module_abilities(kernel_mod);
@@ -190,6 +167,9 @@ impl NaIRGenPass._osp_rc_new(struct_name: str) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._osp_make_immortal(ptr: ir.Value) -> None {
+    if self._nogc_headerless() {
+        return;
+    }
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     _raw = self.builder.bitcast(ptr, i8p, name="osp.imm.i8");
@@ -447,9 +427,27 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     _ocf.linkage = "internal";
     self._builder = ir.IRBuilder(_ocf.append_basic_block("entry"));
     _ws_idx = self.struct_field_indices.get("WalkScope", {});
-    _li64 = self.list_types.get("i64");
-    if _li64 is not None {
+    if _ws_idx {
+        _deliver = _ocf.append_basic_block("deliver");
+        _oc_done = _ocf.append_basic_block("done");
         _scope = _ocf.args[0];
+
+        _nested = self.builder.load(
+            self.builder.gep(
+                _scope,
+                [ir.Constant(i32, 0), ir.Constant(i32, _ws_idx.get("nested", 7))],
+                name="oc.nested.p"
+            ),
+            name="oc.nested"
+        );
+        self.builder.cbranch(
+            self.builder.icmp_unsigned(
+                "!=", _nested, ir.Constant(_nested.type, 0), name="oc.isnested"
+            ),
+            _oc_done,
+            _deliver
+        );
+        self._builder = ir.IRBuilder(_deliver);
 
         _wlk_jv = self.builder.load(
             self.builder.gep(
@@ -477,10 +475,12 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
             _rep,
             self.builder.bitcast(
                 self.builder.gep(_wlk_i8, [ir.Constant(i64, 16)], name="oc.repslot.i8"),
-                _li64.as_pointer().as_pointer(),
+                _rep.type.as_pointer(),
                 name="oc.repslot"
             )
         );
+        self.builder.branch(_oc_done);
+        self._builder = ir.IRBuilder(_oc_done);
     }
     self.builder.ret_void();
     out["on_complete"] = _ocf;
@@ -852,6 +852,122 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
     return tgt;
 }
 
+impl NaIRGenPass._osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool {
+    if isinstance(expr, uni.EdgeRefTrailer) {
+        return True;
+    }
+    if not isinstance(expr, uni.Expr) or expr?.type is None {
+        return False;
+    }
+    try {
+        import from jaclang.compiler.type_system.types { ClassType as _DiscClassType }
+    } except ImportError {
+        return False;
+    }
+    t = expr.type;
+    if isinstance(t, _DiscClassType)
+        and t?.shared
+        and t.is_builtin()
+        and t.shared.class_name in ("list", "tuple", "set", "frozenset") {
+        return True;
+    }
+    return False;
+}
+
+impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    dop = nd.op;
+    if not isinstance(dop, uni.DisconnectOp) {
+        return None;
+    }
+    disc_fn = self.func_symtab.get("osp_disconn_between");
+    _fcond = dop.edge_spec.filter_cond;
+    _xnames: list = [
+        self._spawn_operand_name(nd.left),
+        self._spawn_operand_name(nd.right),
+
+    ];
+    _etname: (str | None) = None;
+    if (_fcond is not None) and (_fcond.f_type is not None) {
+        _etname = self._get_name(_fcond.f_type);
+        _xnames.append(_etname);
+    }
+    _xhelp = self._xmod_osp_help(_xnames);
+    if (disc_fn is None) or (_xhelp is not None) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="binary operator",
+            name="DisconnectOp",
+            help_text=_xhelp
+        );
+        return None;
+    }
+    if self._osp_disc_list_operand(nd.left) or self._osp_disc_list_operand(nd.right) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="binary operator",
+            name="DisconnectOp",
+            help_text="native disconnect lowers single node endpoints; a "
+            "list-valued operand would silently disconnect nothing. Loop "
+            "over the nodes and disconnect each pair."
+        );
+        return None;
+    }
+    if (_fcond is not None) and _fcond.compares {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="binary operator",
+            name="DisconnectOp",
+            help_text="attribute predicates on a disconnect edge filter are "
+            "not lowered natively yet; disconnect by edge type only, or "
+            "collect the matching edges with an edge ref and `del` each."
+        );
+        return None;
+    }
+    i64 = ir.IntType(64);
+    edge_tag = -1;
+    if (_fcond is not None) and (_fcond.f_type is not None) {
+        _dc_model = self.ir_in.gen.osp_model;
+        _dc_tags = _dc_model.tags if (_dc_model is not None) else {};
+        edge_tag = _dc_tags.get(_etname, -1) if (_etname is not None) else -1;
+        if edge_tag < 0 {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="binary operator",
+                name="DisconnectOp",
+                help_text=self._xmod_osp_help([_etname])
+            );
+            return None;
+        }
+    }
+    if self._osp_ensure_fn is not None {
+        self.builder.call(self._osp_ensure_fn, []);
+    }
+    left = self._codegen_expr(nd.left);
+    right = self._codegen_expr(nd.right);
+    if (left is None) or (right is None) {
+        return None;
+    }
+    _dir = int(dop.edge_spec.edge_dir.value);
+    _argtys = disc_fn.function_type.args;
+    _res = self.builder.call(
+        disc_fn,
+        [
+            self._coerce_type(left, _argtys[0]),
+            self._coerce_type(right, _argtys[1]),
+            self._coerce_type(ir.Constant(i64, _dir), _argtys[2]),
+            self._coerce_type(ir.Constant(i64, edge_tag), _argtys[3])
+        ],
+        name="osp.disc"
+    );
+    return self.builder.icmp_signed(
+        "!=", _res, ir.Constant(_res.type, 0), name="osp.disc.bool"
+    );
+}
+
 impl NaIRGenPass._codegen_edge_ref_trailer(
     nd: uni.EdgeRefTrailer
 ) -> (ir.Value | None) {
@@ -907,6 +1023,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 
         _dir = int(step.edge_dir.value);
         _edge_tag = -1;
+        _etname: (str | None) = None;
         _fcond = step.filter_cond;
         if (_fcond is not None) and (_fcond.f_type is not None) {
             _etname = self._get_name(_fcond.f_type);
@@ -925,8 +1042,48 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
                 }
             }
         }
+        _ec_compares: list = [];
+        if (_fcond is not None) and _fcond.compares {
+            _ec_compares = list(_fcond.compares);
+        }
+        if _ec_compares and (_etname is None) {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="expression",
+                name="EdgeRefTrailer",
+                help_text="edge attribute predicates need a named edge type "
+                "(`->:E:field == value:->`) so the edge layout is known"
+            );
+            return None;
+        }
         _edges_only = 1 if (nd.edges_only and _is_last_hop) else 0;
-        if _cur is None {
+        if _ec_compares and (_edges_only == 0) {
+            _wrap_fn = self.func_symtab.get("osp_wrap1");
+            if (_cur is None) and (_wrap_fn is None) {
+                self.emit(
+                    E5092, node_override=nd, kind="expression", name="EdgeRefTrailer"
+                );
+                return None;
+            }
+            if _cur is not None {
+                _origins = _cur;
+            } else {
+                _origins = self.builder.call(
+                    _wrap_fn,
+                    [self._coerce_type(origin_val, _wrap_fn.function_type.args[0])],
+                    name="osp.eph.org1"
+                );
+            }
+            _result = self._emit_osp_edge_pred_hop(
+                _origins, _dir, _edge_tag, _etname, _ec_compares, nd
+            );
+            if _result is None {
+                return None;
+            }
+            self._mark_owned(_result);
+            self._emit_rc_release_simple(_origins, op="osp_refs_hop", loc="");
+        } elif _cur is None {
             _argtys = osp_refs_fn.function_type.args;
             _result = self.builder.call(
                 osp_refs_fn,
@@ -959,6 +1116,15 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
             );
             self._mark_owned(_result);
             self._emit_rc_release_simple(_cur, op="osp_refs_hop", loc="");
+        }
+        if _ec_compares and (_edges_only == 1) {
+            _epre = _result;
+            _result = self._emit_osp_predicate_filter(_epre, _etname, _ec_compares, nd);
+            if _result is None {
+                return None;
+            }
+            self._mark_owned(_result);
+            self._emit_rc_release_simple(_epre, op="osp_refs_pred", loc="");
         }
 
         if _step_filter is not None {
@@ -1197,6 +1363,146 @@ impl NaIRGenPass._emit_osp_predicate_filter(
     _i.add_incoming(_i1v, self.builder.block);
     self.builder.branch(_loop);
     self._builder = ir.IRBuilder(_done);
+    return _out;
+}
+
+impl NaIRGenPass._emit_osp_edge_pred_hop(
+    origins: ir.Value,
+    dir_val: int,
+    edge_tag: int,
+    edge_arch: str,
+    compares: list[uni.CompareExpr],
+    nd: uni.UniNode
+) -> (ir.Value | None) {
+    osp_refs_fn = self.func_symtab.get("osp_refs");
+    peer_fn = self.func_symtab.get("osp_edge_peer");
+    if (osp_refs_fn is None) or (peer_fn is None) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="EdgeRefTrailer",
+            help_text="edge attribute predicates on a node-returning hop need "
+            "the osp_edge_peer store function; recompile against a kernel "
+            "that provides it"
+        );
+        return None;
+    }
+    i64 = ir.IntType(64);
+    self._emit_list_helpers("i64", i64);
+    _h = self.list_helpers.get("i64");
+    if _h is None {
+        self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
+        return None;
+    }
+    fn = self.builder.function;
+    _oloop = fn.append_basic_block("eph.oloop");
+    _obody = fn.append_basic_block("eph.obody");
+    _odone = fn.append_basic_block("eph.odone");
+    _out = self._rc_call_with_ctx(_h["new"], [], op="new", loc="", name="eph.out");
+    _olen = self.builder.call(_h["len"], [origins], name="eph.olen");
+    _pre = self.builder.block;
+    self.builder.branch(_oloop);
+
+    self._builder = ir.IRBuilder(_oloop);
+    _oi = self.builder.phi(i64, name="eph.oi");
+    _oi.add_incoming(ir.Constant(i64, 0), _pre);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">=", _oi, _olen, name="eph.oend"), _odone, _obody
+    );
+
+    self._builder = ir.IRBuilder(_obody);
+    _org = self.builder.call(_h["get"], [origins, _oi], name="eph.org");
+    _rargs = osp_refs_fn.function_type.args;
+    _edges = self.builder.call(
+        osp_refs_fn,
+        [
+            self._coerce_type(_org, _rargs[0]),
+            self._coerce_type(ir.Constant(i64, dir_val), _rargs[1]),
+            self._coerce_type(ir.Constant(i64, edge_tag), _rargs[2]),
+            self._coerce_type(ir.Constant(i64, 1), _rargs[3])
+        ],
+        name="eph.edges"
+    );
+    _filt = self._emit_osp_predicate_filter(_edges, edge_arch, compares, nd);
+    if _filt is None {
+        return None;
+    }
+    self._emit_rc_release_simple(_edges, op="osp_edge_pred_hop", loc="");
+    _start = self.builder.call(_h["len"], [_out], name="eph.start");
+    _flen = self.builder.call(_h["len"], [_filt], name="eph.flen");
+
+    _iloop = fn.append_basic_block("eph.iloop");
+    _ibody = fn.append_basic_block("eph.ibody");
+    _mchk = fn.append_basic_block("eph.mchk");
+    _mloop = fn.append_basic_block("eph.mloop");
+    _mbody = fn.append_basic_block("eph.mbody");
+    _mnext = fn.append_basic_block("eph.mnext");
+    _mkeep = fn.append_basic_block("eph.mkeep");
+    _inext = fn.append_basic_block("eph.inext");
+    _idone = fn.append_basic_block("eph.idone");
+    _obody_end = self.builder.block;
+    self.builder.branch(_iloop);
+
+    self._builder = ir.IRBuilder(_iloop);
+    _fi = self.builder.phi(i64, name="eph.fi");
+    _fi.add_incoming(ir.Constant(i64, 0), _obody_end);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">=", _fi, _flen, name="eph.iend"), _idone, _ibody
+    );
+
+    self._builder = ir.IRBuilder(_ibody);
+    _eh = self.builder.call(_h["get"], [_filt, _fi], name="eph.eh");
+    _pargs = peer_fn.function_type.args;
+    _peer_raw = self.builder.call(
+        peer_fn,
+        [self._coerce_type(_eh, _pargs[0]), self._coerce_type(_org, _pargs[1])],
+        name="eph.peer"
+    );
+    _peer = self._coerce_type(_peer_raw, i64);
+    _live = self.builder.icmp_signed(
+        "!=", _peer, ir.Constant(i64, -1), name="eph.live"
+    );
+    self.builder.cbranch(_live, _mchk, _inext);
+
+    self._builder = ir.IRBuilder(_mchk);
+    _mlen = self.builder.call(_h["len"], [_out], name="eph.mlen");
+    _mchk_end = self.builder.block;
+    self.builder.branch(_mloop);
+
+    self._builder = ir.IRBuilder(_mloop);
+    _mi = self.builder.phi(i64, name="eph.mi");
+    _mi.add_incoming(_start, _mchk_end);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">=", _mi, _mlen, name="eph.mend"), _mkeep, _mbody
+    );
+
+    self._builder = ir.IRBuilder(_mbody);
+    _seen = self.builder.call(_h["get"], [_out, _mi], name="eph.seen");
+    _dup = self.builder.icmp_signed("==", _seen, _peer, name="eph.dup");
+    self.builder.cbranch(_dup, _inext, _mnext);
+
+    self._builder = ir.IRBuilder(_mnext);
+    _mi1 = self.builder.add(_mi, ir.Constant(i64, 1), name="eph.mi1");
+    _mi.add_incoming(_mi1, self.builder.block);
+    self.builder.branch(_mloop);
+
+    self._builder = ir.IRBuilder(_mkeep);
+    self._rc_call_with_ctx(_h["append"], [_out, _peer], op="append", loc="");
+    self.builder.branch(_inext);
+
+    self._builder = ir.IRBuilder(_inext);
+    _fi1 = self.builder.add(_fi, ir.Constant(i64, 1), name="eph.fi1");
+    _fi.add_incoming(_fi1, self.builder.block);
+    self.builder.branch(_iloop);
+
+    self._builder = ir.IRBuilder(_idone);
+    self._emit_rc_release_simple(_filt, op="osp_edge_pred_hop", loc="");
+    _oi1 = self.builder.add(_oi, ir.Constant(i64, 1), name="eph.oi1");
+    _oi.add_incoming(_oi1, self.builder.block);
+    self.builder.branch(_oloop);
+
+    self._builder = ir.IRBuilder(_odone);
     return _out;
 }
 

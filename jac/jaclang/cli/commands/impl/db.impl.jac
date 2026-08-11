@@ -1,465 +1,154 @@
-import json;
 import os;
 import from pathlib { Path }
-import from typing { cast }
+import from typing { Any }
 import from jaclang.cli.console { console }
-import from jaclang.runtimelib.memory { PersistentMemory, TieredMemory }
 
 
-def _resolve_app_path(explicit: str) -> (str | None) {
+def _project_data_dir(explicit: str) -> str {
     if explicit {
-        p = Path(explicit);
-        if not p.exists() {
-            console.error(f"--app path not found: {p}");
-            return None;
-        }
-        return str(p);
+        return str(Path(explicit).expanduser());
     }
+    import from jaclang.runtimelib.session { shared_pg_data_dir }
+    return shared_pg_data_dir();
+}
 
+
+def _project_database -> str {
+    import from jaclang.runtimelib.session { project_db_name }
+    base = str(Path.cwd());
     jacs = sorted(
         p
         for p in Path.cwd().glob("*.jac")
         if p.is_file()
     );
-    if not jacs {
-        console.error(
-            "No .jac files in the current directory.",
-            hint="Pass --app <path/to/app.jac> explicitly."
-        );
-        return None;
-    }
-    if len(jacs) > 1 {
-        console.error(
-            "Multiple .jac files in cwd; pick one with --app:",
-            hint=", ".join(j.name for j in jacs)
-        );
-        return None;
-    }
-    return str(jacs[0]);
+    target = str(jacs[0]) if len(jacs) == 1 else None;
+    return project_db_name(base, target);
 }
 
 
-def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
+def _runtime_for(data_dir: str, tcp: bool = False, port: int = 5432) -> Any {
+    import from jaclang.runtimelib.pgembed { PgRuntime }
+    return PgRuntime(
+        data_dir=data_dir, tcp=tcp, port=port, database=_project_database()
+    );
+}
+
+
+def _open_store(rt: Any) -> Any {
+    import from jaclang.runtimelib.store { PgStore }
+    store = PgStore(conninfo=rt.ensure());
+    store.ensure_schema({});
+    return store;
+}
+
+
+def _db_status(data_dir: str) -> int {
+    rt = _runtime_for(data_dir);
+    running = rt.is_running();
+    console.print(f"data dir : {data_dir}");
+    console.print(f"running  : {running}");
+    if not running and not os.path.isdir(data_dir) {
+        console.print("state    : no store yet (created on first `jac run`)");
+        return 0;
+    }
+    store = _open_store(rt);
     try {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        abs_path = os.path.abspath(app_path);
-        (base, mod) = os.path.split(abs_path);
-        if mod.endswith('.jac') {
-            mod = mod[:-4];
-        }
-
-        Jac.set_full_target_path(abs_path);
-        if not Jac.get_base_path_dir() {
-            Jac.set_base_path(base);
-        }
-
-        mach = Jac.create_j_context(
-            user_root=None,
-            base_path_dir=Jac.get_base_path_dir(),
-            full_target_path=abs_path
+        store.begin(serializable=False);
+        rows = store.rows(
+            'SELECT kind, count(*) FROM anchors GROUP BY kind ORDER BY kind', {}
         );
-        Jac.set_context(mach);
-        Jac.jac_import(target=mod, base_path=base, override_name='__main__');
-    } except Exception as e {
-        console.error(f"Failed to import {app_path}: {e}");
-        return None;
+        console.print(f"server   : PostgreSQL {store.server_version()}");
+        for (kind, cnt) in rows {
+            console.print(f"{kind:<12}: {cnt}");
+        }
+        store.commit();
+    } finally {
+        store.close();
     }
+    return 0;
+}
+
+
+def _db_inspect(data_dir: str) -> int {
+    rt = _runtime_for(data_dir);
+    store = _open_store(rt);
     try {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        ctx = Jac.get_context();
-        mem = ctx.mem;
-        if isinstance(mem, TieredMemory) {
-            tiered = cast(TieredMemory, mem);
-            if tiered.l3 is None {
-                console.error(
-                    "No L3 persistent backend is configured.",
-                    hint=(
-                        "Ensure your app has a base_path set or a plugin "
-                        "(e.g. the built-in scale backend) that installs one."
-                    )
-                );
-                return None;
-            }
-            return tiered.l3;
+        store.begin(serializable=False);
+        rows = store.rows(
+            """
+            SELECT kind, arch_type, count(*) FROM anchors
+            GROUP BY kind, arch_type ORDER BY kind, count(*) DESC
+            """,
+            {}
+        );
+        for (kind, atype, cnt) in rows {
+            console.print(f"{kind:<12} {atype or '-':<24} {cnt}");
         }
-        if isinstance(mem, PersistentMemory) {
-            return cast(PersistentMemory, mem);
+        q = store.rows('SELECT count(*) FROM quarantine', {});
+        console.print(f"quarantined : {q[0][0]}");
+        store.commit();
+    } finally {
+        store.close();
+    }
+    return 0;
+}
+
+
+def _db_sql(data_dir: str, query: str) -> int {
+    if not query {
+        console.error("usage: jac db sql \"<statement>\"");
+        return 1;
+    }
+    rt = _runtime_for(data_dir);
+    store = _open_store(rt);
+    try {
+        store.begin(serializable=False);
+        for row in store.rows(query, {}) {
+            console.print(' | '.join(str(c) for c in row));
         }
-        console.error(
-            "Runtime memory is not a PersistentMemory backend.",
-            hint=f"Got {type(mem).__name__}; expected a PersistentMemory."
-        );
-    } except Exception as e {
-        console.error(f"Failed to resolve backend: {e}");
-    }
-    return None;
-}
-
-
-def _get_backend(app: str) -> (PersistentMemory | None) {
-    app_path = _resolve_app_path(app);
-    if not app_path {
-        return None;
-    }
-    return _load_app_and_get_l3(app_path);
-}
-
-
-def _cmd_inspect(app: str) -> int {
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    s = backend.inspect_summary();
-    console.print_header(f"Jac DB: {s.get('location', '?')}");
-    console.info(
-        f"format_version={s.get('format_version')}   "
-        f"anchors={s.get('anchors_total')}   "
-        f"quarantined={s.get('quarantine_total')}   "
-        f"aliases={s.get('aliases_total')}",
-        emoji=False
-    );
-    anchors_by = s.get('anchors_by_type') or [];
-    if anchors_by {
-        console.print_table(
-            headers=["arch_type", "count"],
-            rows=[[str(r[0]), str(r[1])] for r in anchors_by],
-            title="Anchors"
-        );
-    }
-    qby = s.get('quarantine_by_type') or [];
-    if qby {
-        console.print_table(
-            headers=["arch_type", "count"],
-            rows=[[str(r[0]), str(r[1])] for r in qby],
-            title="Quarantined"
-        );
+        store.commit();
+    } finally {
+        store.close();
     }
     return 0;
 }
 
 
-def _cmd_quarantine_list(app: str, limit: int) -> int {
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    rows = backend.list_quarantined(limit);
-    if not rows {
-        console.success("Nothing quarantined. Everything is clean.");
-        return 0;
-    }
-    console.print_table(
-        headers=["id", "arch", "fingerprint", "error", "quarantined_at"],
-        rows=[
-            [
-                (r.get('id') or '')[:8] + '…',
-                str(r.get('arch') or ''),
-                (r.get('fingerprint') or '')[:8],
-                (r.get('error') or '')[:60],
-                (r.get('quarantined_at') or '')[:19]
-            ] for r in rows
-        ],
-        title=f"Quarantined (top {len(rows)})"
-    );
-    return 0;
-}
-
-
-def _cmd_quarantine_show(app: str, row_id: str) -> int {
-    if not row_id {
-        console.error(
-            "Row id required.", hint="jac db quarantine show <full-or-prefix-uuid>"
-        );
-        return 1;
-    }
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    row = backend.show_quarantined(row_id);
-    if row is None {
-        console.error(f"No quarantined row matching {row_id}");
-        return 1;
-    }
-    if row.get('error') == 'ambiguous' {
-        console.error(f"Prefix {row_id} matches multiple rows; use a longer prefix.");
-        return 1;
-    }
-    console.print(json.dumps(row, indent=2, default=str));
-    return 0;
-}
-
-
-def _cmd_alias_list(app: str) -> int {
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    rows = backend.list_aliases();
-    if not rows {
-        console.info("No DB-resident aliases.");
-        return 0;
-    }
-    console.print_table(
-        headers=["old_name", "new_name", "created_at"],
-        rows=[
-            [
-                str(r.get('old_name') or ''),
-                str(r.get('new_name') or ''),
-                (r.get('created_at') or '')[:19]
-            ] for r in rows
-        ],
-        title="Aliases"
-    );
-    return 0;
-}
-
-
-def _cmd_alias_add(app: str, old_name: str, new_name: str) -> int {
-    if not old_name or not new_name {
-        console.error(
-            "Both old and new names required.",
-            hint="jac db alias add old.mod.OldName new.mod.NewName"
-        );
-        return 1;
-    }
-    if old_name == new_name {
-        console.error("old_name and new_name are identical; alias is a no-op.");
-        return 1;
-    }
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    backend.add_alias(old_name, new_name);
-    console.success(f"Alias registered: {old_name} -> {new_name}");
-    console.info(
-        "Run `jac db recover-all` to retry any rows currently quarantined "
-        "for this class.",
-        emoji=False
-    );
-    return 0;
-}
-
-
-def _cmd_alias_remove(app: str, old_name: str) -> int {
-    if not old_name {
-        console.error("old_name required.", hint="jac db alias remove old.mod.OldName");
-        return 1;
-    }
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    removed = backend.remove_alias(old_name);
-    if not removed {
-        console.warning(f"No alias for {old_name}; nothing to remove.");
-        return 1;
-    }
-    console.success(f"Removed alias: {old_name}");
-    return 0;
-}
-
-
-def _cmd_recover(app: str, row_id: str) -> int {
-    if not row_id {
-        console.error("Row id required.", hint="jac db recover <row-id-or-prefix>");
-        return 1;
-    }
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    (ok, reason) = backend.recover_one(row_id);
-    if ok {
-        console.success(f"Recovered: {row_id}");
-        return 0;
-    }
-    console.error(f"Could not recover {row_id}", hint=reason);
-    return 1;
-}
-
-
-def _cmd_recover_all(app: str) -> int {
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    (recovered, still_stuck) = backend.recover_all();
-    total = recovered + len(still_stuck);
-    if total == 0 {
-        console.success("No quarantined rows to recover.");
-        return 0;
-    }
-    console.success(f"Recovered {recovered} of {total} quarantined rows.");
-    if still_stuck {
-        console.warning(f"{len(still_stuck)} rows still quarantined.", emoji=False);
-        console.print_table(
-            headers=["id", "reason"],
-            rows=[
-                [(x[0] or '')[:8] + '…', (x[1] or '')[:80]] for x in still_stuck[:20]
-            ],
-            title="Still quarantined"
-        );
-    }
-    return 0;
-}
-
-
-def _cmd_fsck(app: str, repair: bool) -> int {
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    r = backend.fsck(repair=repair);
-    dne = r.get('dangling_node_edge') or [];
-    den = r.get('dangling_edge_node') or [];
-    orphan_edges = r.get('orphan_edges') or [];
-    orphan_nodes = r.get('orphan_nodes') or [];
-    half_linked = r.get('half_linked_edges') or [];
-    dangling_total = len(dne) + len(den);
-
-    referrers_affected = len({p[0] for p in dne} | {p[0] for p in den});
-    console.print_header(f"Jac DB fsck: {r.get('location', '?')}");
-    console.info(
-        f"dangling refs : {dangling_total}   "
-        f"({referrers_affected} document(s) cite a missing referent)",
-        emoji=False
-    );
-    console.info(f"orphan edges  : {len(orphan_edges)}", emoji=False);
-    console.info(f"orphan nodes  : {len(orphan_nodes)}", emoji=False);
-    console.info(
-        f"half-linked   : {len(half_linked)}   "
-        "(edge cited by one endpoint only -- OCC residual)",
-        emoji=False
-    );
-    if r.get('repaired') {
-        c = r.get('repaired_counts') or {};
-        console.success(
-            f"repaired: pruned {c.get('pruned', 0)} citation(s), "
-            f"quarantined {c.get('quarantined', 0)} dangler(s) under "
-            f"DANGLING_REF, collected {c.get('collected', 0)} orphan(s)."
-        );
-    } elif (
-        dangling_total == 0
-        and not orphan_edges
-        and not orphan_nodes
-        and not half_linked
-    ) {
-        console.success("Clean: no referential-integrity violations.");
-    } else {
-        console.info(
-            "Run `jac db fsck repair` to heal danglers and collect orphans.",
-            emoji=False
-        );
-    }
-    return 0;
-}
-
-
-def _cmd_schema_rules(app: str) -> int {
-    backend = _get_backend(app);
-    if not backend {
-        return 1;
-    }
-    import from jaclang.runtimelib.schema_rules { repair_mode }
-    import jaclang.runtimelib.schema_rules as _rules_mod;
-    collected = getattr(_rules_mod, '_collected', {});
-    console.print_header("Registered schema drift rules");
-    console.info(f"JAC_SCHEMA_REPAIR mode: {repair_mode()}", emoji=False);
-    if not collected {
-        console.info("No archetype declares a __jac_schema__ hook.");
-        return 0;
-    }
-    rows: list = [];
-    for (owner, r) in sorted(collected.items()) {
-        for w in r.was_names {
-            rows.append([owner, 'was', w]);
-        }
-        for a in r.aliases {
-            rows.append([owner, 'alias', f"{a.stored_name} -> {a.new_name}"]);
-        }
-        for d in r.drops {
-            rows.append([owner, 'drop', d.field_name]);
-        }
-        for u in r.upgrades {
-            rows.append([owner, 'upgrade', getattr(u.fn, '__name__', '<fn>')]);
-        }
-    }
-    console.print_table(
-        headers=["archetype", "rule", "detail"], rows=rows, title="Rules"
-    );
-    return 0;
+def _db_serve(data_dir: str, port: int) -> int {
+    serve_dir = data_dir or os.environ.get('JAC_PGDATA') or '/var/lib/jac/pgdata';
+    serve_port = int(os.environ.get('JAC_DB_PORT', str(port)));
+    console.print(f"serving postgres from {serve_dir} on :{serve_port}");
+    rt = _runtime_for(serve_dir, tcp=True, port=serve_port);
+    return rt.serve();
 }
 
 
 impl db(
-    action: str = 'inspect',
-    sub: str = '',
-    arg1: str = '',
-    arg2: str = '',
-    limit: int = 50,
-    app: str = ''
+    action: str = "status", query: str = "", data_dir: str = "", port: int = 5432
 ) -> int {
+    if action == 'serve' {
+        return _db_serve(data_dir, port);
+    }
+    dd = _project_data_dir(data_dir);
+    if action == 'status' {
+        return _db_status(dd);
+    }
     if action == 'inspect' {
-        return _cmd_inspect(app);
+        return _db_inspect(dd);
     }
-    if action == 'fsck' {
-        if sub == '' or sub == 'check' or sub == 'scan' {
-            return _cmd_fsck(app, repair=False);
-        }
-        if sub == 'repair' or sub == 'fix' {
-            return _cmd_fsck(app, repair=True);
-        }
-        console.error(
-            f"Unknown fsck sub-action '{sub}'", hint="expected: (none), repair"
-        );
-        return 1;
+    if action == 'sql' {
+        return _db_sql(dd, query);
     }
-    if action == 'quarantine' {
-        if sub == 'list' or sub == '' {
-            return _cmd_quarantine_list(app, limit);
+    if action == 'stop' {
+        rt = _runtime_for(dd);
+        if rt.is_running() {
+            rt.stop();
+            console.print("stopped");
+        } else {
+            console.print("not running");
         }
-        if sub == 'show' {
-            return _cmd_quarantine_show(app, arg1);
-        }
-        console.error(
-            f"Unknown quarantine sub-action '{sub}'", hint="expected: list, show"
-        );
-        return 1;
+        return 0;
     }
-    if action == 'alias' {
-        if sub == 'list' or sub == '' {
-            return _cmd_alias_list(app);
-        }
-        if sub == 'add' {
-            return _cmd_alias_add(app, arg1, arg2);
-        }
-        if sub == 'remove' or sub == 'rm' {
-            return _cmd_alias_remove(app, arg1);
-        }
-        console.error(
-            f"Unknown alias sub-action '{sub}'", hint="expected: list, add, remove"
-        );
-        return 1;
-    }
-    if action == 'recover' {
-        return _cmd_recover(app, sub);
-    }
-    if action == 'recover-all' {
-        return _cmd_recover_all(app);
-    }
-    if action == 'schema' {
-        if sub == 'rules' or sub == '' {
-            return _cmd_schema_rules(app);
-        }
-        console.error(f"Unknown schema sub-action '{sub}'", hint="expected: rules");
-        return 1;
-    }
-    console.error(
-        f"Unknown action '{action}'",
-        hint="expected: inspect, fsck, quarantine, alias, recover, recover-all, schema"
-    );
+    console.error(f"unknown action: {action}");
     return 1;
 }

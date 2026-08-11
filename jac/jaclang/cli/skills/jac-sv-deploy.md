@@ -15,7 +15,7 @@ docs_enabled = false          # disables /docs, /redoc, /openapi.json
 suppress_health_check_logs = true
 ```
 
-**Backends:** SQLite at `.jac/data/` by default (graph + users; zero setup). Set `MONGODB_URI` (or `[scale.database] mongodb_uri`) for MongoDB and `REDIS_URL` for the Redis cache tier - required for multi-replica deployments. Config precedence everywhere: **env var > jac.toml > default**.
+**Backend:** Postgres, always. An embedded per-project server provisions automatically (zero setup); set `JAC_DB_URL` (or `[scale.database] url`) to use an external server - k8s deploys provision a Postgres StatefulSet and inject `JAC_DB_URL` into every pod. Config precedence everywhere: **env var > jac.toml > default**.
 
 **Secrets** ship to pods via `[scale.secrets]` with `${ENV_VAR}` interpolation, resolved from your local env at deploy time and injected as a k8s Secret:
 
@@ -91,6 +91,6 @@ bucket = "my-app-uploads"      # region, prefix, endpoint_url (non-AWS), public_
 - **`jac scale destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
 - `--dry-run` catches config errors (HPA min>max, bad resource units like `500MB` vs `500Mi`) in ~1s vs finding out after a 5-10 minute build-push-deploy.
 - HPA does nothing without `cpu_request` - Kubernetes can't compute a utilization %.
-- Multi-replica + SQLite = corruption/confusion. Going past one replica requires `MONGODB_URI` (+ Redis for cache/locks).
+- Multi-replica pods must share one database: the k8s deploy injects `JAC_DB_URL` for you; for other topologies point every replica at the same Postgres URL.
 - Schema edits in prod: never `rm -rf .jac/data/` - use the alias/quarantine machinery (`jac db ...`) in `jac-sv-persistence`.
 - Webhook walkers don't answer on `/walker/<name>`, and regular walkers don't answer on `/webhook/<name>` - a 404 there is routing, not registration.

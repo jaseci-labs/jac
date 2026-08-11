@@ -3,10 +3,10 @@ import json as json_module;
 import logging;
 import time;
 import re;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
 import from jaclang.runtimelib.transport { TransportResponse }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -178,27 +178,21 @@ def _build_logql(
 
 
 async def _loki_request(path: str, params: dict) -> dict {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { ClientConnectionError, arequest }
     base = _loki_base_url();
     url = f"{base}{path}";
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(8.0, connect=3.0)
-        ) as client {
-            response = await client.get(url, params=params);
-            response.raise_for_status();
-            return response.json();
-        }
-    } except httpx.TimeoutException as e {
-        raise ConnectionError(f"Loki timeout at {url}: {e}");
-    } except httpx.RequestError as e {
+        response = await arequest("GET", url, params=params, timeout=8.0);
+    } except ClientConnectionError as e {
         raise ConnectionError(f"Loki request failed at {url}: {e}");
-    } except httpx.HTTPStatusError as e {
-        body = e.response.text[:200] if e.response else "";
+    }
+    if not response.ok() {
+        body = response.text()[:200];
         raise ConnectionError(
-            f"Loki returned HTTP {e.response.status_code} at {url}: {body}"
+            f"Loki returned HTTP {response.status_code} at {url}: {body}"
         );
     }
+    return response.json();
 }
 
 
@@ -424,9 +418,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     name="trace_id",
                     data_type="string",
                     required=True,
-                    default=None,
+                    default_value=None,
                     description="K-12 trace id (full UUID or 8-char short form)",
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

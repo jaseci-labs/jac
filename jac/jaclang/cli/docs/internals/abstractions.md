@@ -83,8 +83,8 @@ delegates to `JacRuntimeInterface`.
 
 The `__all__` in `builtin.jac` also exports adjacent names that fall outside
 the blog post's nine but follow the same registration pattern: `llm`,
-`archetype_alias`, the access-level singletons (`NoPerm`, `ReadPerm`,
-`ConnectPerm`, `WritePerm`), and the decorators `restspec` and `schedule`.
+`archetype_alias`, the ambient `AccessLevel` enum, and the decorators
+`restspec` and `schedule`.
 
 ---
 
@@ -104,7 +104,7 @@ The consolidated `__all__` covers:
 
 - **Archetypes**: `Node`, `Edge`, `Walker`, `Obj`, `Root`, `GenericEdge`, `JsxElement`
 - **Graph operations**: `spawn`, `visit`, `disengage`, `connect`, `disconnect`, `refs`, `arefs`, `filter_on`, `build_edge`, `destroy`
-- **Walker support types**: `OPath`, `DSFunc`, `EdgeDir`
+- **Walker support types**: `GraphQuery`, `QHop`, `QPred`, `DSFunc`, `EdgeDir`
 - **Context & root**: `root`, `create_j_context`, `get_context`
 - **Lifecycle**: `on_entry`, `on_exit`
 - **AI/MTIR**: `get_mtir`, `sem`, `call_llm`, `by_operator`
@@ -124,13 +124,12 @@ exposes its own `__all__` under the `jaclang.byllm` namespace:
 
 ### scale (`jac/jaclang/scale/`, formerly the `jac-scale` plugin)
 
-[`jaclang/scale/persistence/lib.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/persistence/lib.jac)
-is intentionally minimal -- a single `kvstore()` factory that returns a `Db`
-instance backed by MongoDB or Redis. The substantive abstractions live in
+[`jaclang/scale/persistence/pg.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/persistence/pg.jac)
+is intentionally minimal -- the shared Postgres store accessor
+(`shared_store()` / `scale_db_url()`). The substantive abstractions live in
 [`jaclang/scale/abstractions/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale/abstractions)
 as interface contracts:
 
-- `database_provider.jac` -- provider interface
 - `deployment_target.jac` -- deployment abstraction
 - `logger.jac` -- logging abstraction
 - `metrics.jac` -- metrics interface
@@ -175,7 +174,7 @@ holds everywhere, but the four library packages do not share a common shape:
 |---|---|---|
 | `jaclang` | yes | single consolidated `__all__` re-exporting `jac0core/jaclib.jac` |
 | `jaclang.byllm` | yes | own `__all__` in own namespace |
-| `jaclang.scale` | yes (minimal) | `persistence/lib.jac` exposes only `kvstore`; substantive abstractions in `abstractions/` directory |
+| `jaclang.scale` | yes (minimal) | `persistence/pg.jac` exposes only the shared store accessor; substantive abstractions in `abstractions/` directory |
 | `jaclang.runtimelib.client` | no | built into core; no curated re-export |
 | `mcp` (`jaclang.cli.mcp`) | no | built into core; no curated re-export |
 

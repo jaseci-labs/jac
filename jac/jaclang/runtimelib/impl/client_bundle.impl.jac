@@ -26,6 +26,23 @@ impl _ensure_js_generated(mod: Module, program: any) -> None {
         _warn_mark = len(program.warnings_had);
         EsastGenPass(ir_in=mod, prog=program);
         if len(program.errors_had) > _err_mark {
+            try {
+                import sys;
+                import from jaclang.cli.console { console as _demote_console }
+                for _e in program.errors_had[_err_mark:] {
+                    _first = _e.pretty_print().split('\n')[0];
+                    _demote_console.print(
+                        f"note: client pull of {os.path.basename(
+                            mod.loc.mod_path or ''
+                        )} "
+                        f"demoted after ES lowering error ({_first})",
+                        style="dim",
+                        file=sys.stderr
+                    );
+                }
+            } except Exception {
+                ;
+            }
             import from jaclang.jac0core.placement_solver {
                 demote_client_pulled_elements
             }

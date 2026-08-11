@@ -141,7 +141,12 @@ test "get_microservices_config reads routes from JAC_SV_ROUTES when config empty
     os.environ["JAC_SV_ROUTES"] = "{\"orders_app\": \"/api/orders\", \"cart_app\": \"/api/cart\"}";
     try {
         out = cfg.get_microservices_config();
-        assert out["routes"] == {"orders_app": "/api/orders", "cart_app": "/api/cart"};
+        assert out["routes"]
+            == {
+                "orders_app": "/api/orders",
+                "cart_app": "/api/cart",
+                "main": "/__main__"
+            };
     } finally {
         del os.environ["JAC_SV_ROUTES"];
     }
@@ -153,7 +158,7 @@ test "get_microservices_config: explicit config routes win over JAC_SV_ROUTES" {
     os.environ["JAC_SV_ROUTES"] = "{\"ghost_app\": \"/api/ghost\"}";
     try {
         out = cfg.get_microservices_config();
-        assert out["routes"] == {"real_app": "/api/real"};
+        assert out["routes"] == {"real_app": "/api/real", "main": "/__main__"};
     } finally {
         del os.environ["JAC_SV_ROUTES"];
     }
@@ -168,5 +173,41 @@ test "get_microservices_config: malformed JAC_SV_ROUTES falls back to empty" {
         assert out["routes"] == {};
     } finally {
         del os.environ["JAC_SV_ROUTES"];
+    }
+}
+
+
+test "every get_websocket_config key has a schema entry (#8000 1.2)" {
+    # The websocket guide documented a backplane value that raised at boot and
+    # none of the seven [scale.websocket] keys were schema-declared, so nothing
+    # validated or surfaced them. Keep the runtime reader and the schema in
+    # lockstep.
+    import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
+    schema = JacScalePluginConfig.get_config_schema();
+    ws_schema = schema["options"].get("websocket");
+    assert ws_schema is not None , "[scale.websocket] missing from plugin_config schema";
+    declared = set(ws_schema["nested"].keys());
+    cfg = JacScaleConfig();
+    cfg._config = {"websocket": {}};
+    read_keys = set(cfg.get_websocket_config().keys());
+    assert read_keys == declared , f"schema/read drift: schema-only={declared
+        - read_keys}, read-only={read_keys - declared}";
+}
+
+
+test "config sections read by config_loader are schema-declared (#8000 1.2)" {
+    import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
+    schema_sections = set(JacScalePluginConfig.get_config_schema()["options"].keys());
+    cfg = JacScaleConfig();
+    cfg._config = {};
+    for section in [
+        "websocket",
+        "database",
+        "kubernetes",
+        "events",
+        "monitoring",
+        "server"
+    ] {
+        assert section in schema_sections , f"[scale.{section}] is read by config_loader but has no schema entry";
     }
 }

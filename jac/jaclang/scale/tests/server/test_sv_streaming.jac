@@ -1,17 +1,47 @@
-import httpx;
 import json;
 import from jaclang.runtimelib { sv_client }
-import from jaclang.runtimelib.sv_sse { _parse_sse, consume_sse_stream }
+import from jaclang.runtimelib.serving.sse {
+    consume_sse_events as consume_sse_stream,
+    parse_sse as _parse_sse
+}
 import from jaclang.scale.plugin { JacScalePlugin }
 
 
-def _mock_client_class(handler: any) -> any {
-    transport = httpx.MockTransport(handler);
-    real_client_cls = httpx.Client;
-    def factory(*args: any, **kwargs: any) -> any {
-        return real_client_cls(transport=transport);
+obj _StubResp {
+    has body_text: str,
+        content_type: str = "application/json";
+
+    has text: str { getter; }
+
+    def json -> any {
+        return json.loads(self.body_text);
     }
-    return factory;
+
+    def headers_obj -> any {
+        import from jaclang.runtimelib.serving.datatypes { Headers }
+        h = Headers();
+        h.set("Content-Type", self.content_type);
+        return h;
+    }
+
+    has headers: any { getter; }
+}
+
+impl _StubResp.text.getter -> str {
+    return self.body_text;
+}
+
+impl _StubResp.headers.getter -> any {
+    return self.headers_obj();
+}
+
+obj _StubClient {
+    has body_text: str,
+        content_type: str = "application/json";
+
+    def post(path: str, json: any = None) -> _StubResp {
+        return _StubResp(body_text=self.body_text, content_type=self.content_type);
+    }
 }
 
 
@@ -75,7 +105,7 @@ test "_parse_sse yields trailing message without final blank line" {
     assert out == [("message", "a"), ("message", "b")];
 }
 
-test "_parse_sse decodes bytes input (httpx iter_lines() under raw mode)" {
+test "_parse_sse decodes bytes input (native client aiter_lines yields bytes)" {
     body_lines = [b"data: hi", b"", b"event: end", b"data: {}", b""];
     out: list = [];
     for ev in _parse_sse(body_lines) {
@@ -100,7 +130,7 @@ test "consume_sse_stream yields parsed dicts and stops at event: end" {
     events_in = [{"type": "tool_use", "step": 1}, {"type": "agent_text", "text": "hi"}];
     resp = _FakeResp(body=_sse_body(events_in));
     got: list = [];
-    for ev in consume_sse_stream(resp, "test.func") {
+    for ev in consume_sse_stream(resp.iter_lines(), "test.func") {
         got.append(ev);
     }
     assert got == events_in;
@@ -110,7 +140,7 @@ test "consume_sse_stream raises RuntimeError on event: error" {
     resp = _FakeResp(body=_sse_body([], trailer="error"));
     raised_msg = "";
     try {
-        for _ in consume_sse_stream(resp, "test.func") {
+        for _ in consume_sse_stream(resp.iter_lines(), "test.func") {
             ;
         }
     } except RuntimeError as e {
@@ -134,7 +164,7 @@ test "consume_sse_stream skips malformed JSON payload, keeps streaming" {
     );
     resp = _FakeResp(body=body);
     got: list = [];
-    for ev in consume_sse_stream(resp, "test.func") {
+    for ev in consume_sse_stream(resp.iter_lines(), "test.func") {
         got.append(ev);
     }
     assert got == [{"valid": 1}, {"valid": 2}];
@@ -149,20 +179,10 @@ test "sv_service_call returns a generator when downstream emits SSE" {
 
     ];
 
-    def handler(request: httpx.Request) -> httpx.Response {
-        return httpx.Response(
-            status_code=200,
-            headers={"content-type": "text/event-stream"},
-            content=_sse_body(events_in)
-        );
-    }
-
-    original_client = httpx.Client;
-    httpx.Client = _mock_client_class(handler);
-
+    sv_client._test_clients["stream_mod"] = _StubClient(
+        body_text=_sse_body(events_in), content_type="text/event-stream"
+    );
     try {
-        sv_client.register("stream_mod", "http://demo.invalid");
-
         gen = JacScalePlugin.sv_service_call("stream_mod", "stream_events", {});
         out: list = [];
         for ev in gen {
@@ -170,25 +190,16 @@ test "sv_service_call returns a generator when downstream emits SSE" {
         }
         assert out == events_in;
     } finally {
-        httpx.Client = original_client;
-        sv_client.unregister("stream_mod");
+        sv_client._test_clients.pop("stream_mod", None);
     }
 }
 
 test "sv_service_call SSE path surfaces producer error as RuntimeError" {
-    def handler(request: httpx.Request) -> httpx.Response {
-        return httpx.Response(
-            status_code=200,
-            headers={"content-type": "text/event-stream"},
-            content=_sse_body([{"type": "agent_started"}], trailer="error")
-        );
-    }
-
-    original_client = httpx.Client;
-    httpx.Client = _mock_client_class(handler);
-
+    sv_client._test_clients["stream_err_mod"] = _StubClient(
+        body_text=_sse_body([{"type": "agent_started"}], trailer="error"),
+        content_type="text/event-stream"
+    );
     try {
-        sv_client.register("stream_err_mod", "http://demo.invalid");
         gen = JacScalePlugin.sv_service_call("stream_err_mod", "stream_events", {});
         raised_msg = "";
         try {
@@ -201,27 +212,18 @@ test "sv_service_call SSE path surfaces producer error as RuntimeError" {
         assert "stream_err_mod.stream_events" in raised_msg;
         assert "boom" in raised_msg;
     } finally {
-        httpx.Client = original_client;
-        sv_client.unregister("stream_err_mod");
+        sv_client._test_clients.pop("stream_err_mod", None);
     }
 }
 
 test "sv_service_call still unwraps JSON envelope when not SSE" {
-    def handler(request: httpx.Request) -> httpx.Response {
-        return httpx.Response(
-            status_code=200, json={"ok": True, "data": {"result": "plain_json_ok"}}
-        );
-    }
-
-    original_client = httpx.Client;
-    httpx.Client = _mock_client_class(handler);
-
+    sv_client._test_clients["json_mod"] = _StubClient(
+        body_text=json.dumps({"ok": True, "data": {"result": "plain_json_ok"}})
+    );
     try {
-        sv_client.register("json_mod", "http://demo.invalid");
         result = JacScalePlugin.sv_service_call("json_mod", "echo", {});
         assert result == "plain_json_ok";
     } finally {
-        httpx.Client = original_client;
-        sv_client.unregister("json_mod");
+        sv_client._test_clients.pop("json_mod", None);
     }
 }

@@ -1,5 +1,10 @@
 import from 'react' { * as React }
-import from 'react' { useState as reactUseState, useEffect as reactUseEffect }
+import from 'react' {
+    useState as reactUseState,
+    useEffect as reactUseEffect,
+    useRef as reactUseRef,
+    useSyncExternalStore as reactUseSyncExternalStore
+}
 import from 'react-router-dom' {
     BrowserRouter as ReactRouterBrowserRouter,
     Routes as ReactRouterRoutes,
@@ -109,6 +114,8 @@ async def:pub jacSsoLogin(
 def:pub jacSetToken(token: str) -> None;
 
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
+
+def:pub useJacState(initial: any) -> any;
 
 glob:pub useState = reactUseState,
      useEffect = reactUseEffect,

@@ -1285,6 +1285,16 @@ impl ModuleItem.from_mod_path.getter -> ModulePath {
     return self.from_parent.from_loc;
 }
 
+impl ModuleItem.binding_name.getter -> (Name | None) {
+    if isinstance(self.name, Name) {
+        return self.name;
+    }
+    if self.name.value == 'default' {
+        return self.alias;
+    }
+    return None;
+}
+
 impl ModuleItem.resolve_relative_path -> str {
     item_name = self.name.value if isinstance(self.name, Name) else None;
 

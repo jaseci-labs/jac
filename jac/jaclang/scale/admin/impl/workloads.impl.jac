@@ -2,10 +2,10 @@ import os;
 import time;
 import math;
 import logging;
-import from fastapi { Request }
-import from starlette.concurrency { run_in_threadpool }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import asyncio;
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -109,7 +109,7 @@ def _unavailable_reason -> str {
 impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     async def summary_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(self.admin_workloads_summary, authorization);
+        return await asyncio.to_thread(self.admin_workloads_summary, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -125,7 +125,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     );
     async def list_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(self.admin_workloads_list, authorization);
+        return await asyncio.to_thread(self.admin_workloads_list, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -141,7 +141,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     );
     async def pods_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(self.admin_workloads_pods, authorization);
+        return await asyncio.to_thread(self.admin_workloads_pods, authorization);
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -159,7 +159,7 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
         request: Request, range_minutes: int = 60
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return await run_in_threadpool(
+        return await asyncio.to_thread(
             self.admin_workloads_timeseries, range_minutes, authorization
         );
     }
@@ -173,9 +173,9 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
                     name='range_minutes',
                     data_type='integer',
                     required=False,
-                    default=60,
+                    default_value=60,
                     description='Range in minutes (60=1h, 360=6h, 1440=24h, 10080=7d)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,

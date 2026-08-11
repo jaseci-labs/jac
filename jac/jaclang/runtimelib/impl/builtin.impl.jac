@@ -60,14 +60,18 @@ impl printgraph(
 }
 
 impl __getattr__(name: str) -> object {
-    if (name == 'NoPerm') {
-        return _get_access_level().NO_ACCESS;
-    } elif (name == 'ReadPerm') {
-        return _get_access_level().READ;
-    } elif (name == 'ConnectPerm') {
-        return _get_access_level().CONNECT;
-    } elif (name == 'WritePerm') {
-        return _get_access_level().WRITE;
+    if (name == 'AccessLevel') {
+        return _get_access_level();
+    } elif (name in ('NoPerm', 'ReadPerm', 'ConnectPerm', 'WritePerm')) {
+        _member = {
+            'NoPerm': 'NO_ACCESS',
+            'ReadPerm': 'READ',
+            'ConnectPerm': 'CONNECT',
+            'WritePerm': 'WRITE'
+        }[name];
+        raise AttributeError(
+            f"'{name}' was removed; use AccessLevel.{_member} (ambient, no import)"
+        );
     } elif (name == 'jid') {
         return _get_jid();
     } elif (name == 'jobj') {
@@ -211,13 +215,83 @@ impl managed(x: any) -> any {
 }
 
 impl restspec(**specs: any) -> Callable {
+    import logging;
     import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.runtimelib.serving.endpoint { HTTPMethod }
     SpecsCls = Jac.get_api_server_class().RestSpecs;
+
+    protocol = specs.get('protocol');
+    if protocol is not None and not isinstance(protocol, APIProtocol) {
+        raw_p = str(protocol).strip().lower();
+        try {
+            specs['protocol'] = APIProtocol('websocket' if raw_p == 'ws' else raw_p);
+        } except ValueError {
+            raise ValueError(
+                f"@restspec protocol={protocol!r} is not recognized. Expected "
+                "APIProtocol.HTTP / WEBHOOK / WEBSOCKET (or the strings "
+                "'http', 'webhook', 'websocket'/'ws')."
+            );
+        }
+    }
+    method = specs.get('method');
+    if method is not None and not isinstance(method, HTTPMethod) {
+        try {
+            specs['method'] = HTTPMethod(str(method).strip().upper());
+        } except ValueError {
+            raise ValueError(
+                f"@restspec method={method!r} is not routable. Expected one "
+                f"of: {', '.join([m.value for m in HTTPMethod])}."
+            );
+        }
+    }
+
     def decorator(cls: type) -> type {
-        cls.restspec = SpecsCls(**specs);
+        spec = SpecsCls(**specs);
+        _validate_restspec_target(spec, cls);
+        cls.restspec = spec;
         return cls;
     }
     return decorator;
+}
+
+def _validate_restspec_target(spec: any, target: any) {
+    import inspect;
+    import logging;
+    logger = logging.getLogger(__name__);
+    name = getattr(target, '__name__', repr(target));
+    is_walker = inspect.isclass(target);
+    proto = getattr(spec, 'protocol', APIProtocol.HTTP) or APIProtocol.HTTP;
+
+    if proto == APIProtocol.WEBHOOK and not is_walker {
+        raise ValueError(
+            f"@restspec(protocol=WEBHOOK) on '{name}': webhook endpoints are "
+            "walker-only; a plain def cannot receive webhooks. Use a walker "
+            "or drop the webhook protocol."
+        );
+    }
+    if getattr(spec, 'broadcast', False) and proto != APIProtocol.WEBSOCKET {
+        raise ValueError(
+            f"@restspec(broadcast=True) on '{name}' requires "
+            "protocol=WEBSOCKET; broadcast has no meaning on "
+            f"{proto} endpoints."
+        );
+    }
+    if proto in (APIProtocol.WEBHOOK, APIProtocol.WEBSOCKET) {
+        fixed = '/webhook/{name}' if proto == APIProtocol.WEBHOOK else '/ws';
+        if getattr(spec, 'path', '') or getattr(spec, 'method', '') {
+            logger.warning(
+                f"@restspec on '{name}': path/method are ignored for "
+                f"{proto} endpoints; the route is fixed under {fixed}."
+            );
+        }
+    }
+    if is_walker
+        and (getattr(spec, 'produces', '') or not getattr(spec, 'envelope', True)) {
+        logger.warning(
+            f"@restspec on '{name}': produces/envelope are ignored on "
+            "walkers; walker responses always use the report envelope."
+        );
+    }
 }
 
 impl schedule(**kwargs: any) -> Callable {
@@ -233,4 +307,52 @@ impl schedule(**kwargs: any) -> Callable {
         return target;
     }
     return decorator;
+}
+
+impl JacListView.__len__ -> int {
+    return self.stop - self.start;
+}
+
+impl JacListView.__getitem__(i: any) -> any {
+    _n = self.stop - self.start;
+    if i < 0 {
+        i = i + _n;
+    }
+    if i < 0 or i >= _n {
+        raise IndexError("list index out of range");
+    }
+    return self.backing[self.start + i];
+}
+
+impl JacListView.__setitem__(i: any, v: any) -> None {
+    _n = self.stop - self.start;
+    if i < 0 {
+        i = i + _n;
+    }
+    if i < 0 or i >= _n {
+        raise IndexError("list assignment index out of range");
+    }
+    self.backing[self.start + i] = v;
+}
+
+impl JacListView.__iter__ -> any {
+    return iter([self.backing[k] for k in range(self.start, self.stop)]);
+}
+
+impl _jac_chunks(xs: any, n: int) -> list {
+    if n < 1 {
+        n = 1;
+    }
+    out: list = [];
+    i = 0;
+    total = len(xs);
+    while i < total {
+        j = i + n;
+        if j > total {
+            j = total;
+        }
+        out.append(JacListView(backing=xs, start=i, stop=j));
+        i = j;
+    }
+    return out;
 }

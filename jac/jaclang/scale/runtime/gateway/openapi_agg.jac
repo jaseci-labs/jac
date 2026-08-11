@@ -1,6 +1,7 @@
 import logging;
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
+    ServiceEntry,
     ServiceStatus
 }
 
@@ -20,11 +21,33 @@ def _prefixed_paths(paths: dict, prefix: str) -> dict {
     return result;
 }
 
-async def aggregate_openapi(registry: ServiceRegistry) -> dict {
+async def fetch_service_spec(
+    service_entry: ServiceEntry, timeout: float = 5.0
+) -> dict | None {
     import json;
-    import urllib.request;
-    import from urllib.error { URLError }
+    import from jaclang.scale.runtime.transport.http_forward { raw_forward }
 
+    result = await raw_forward(
+        "GET", f"{service_entry.url}/openapi.json", {}, b"", timeout=int(timeout)
+    );
+    if result is None {
+        return None;
+    }
+    (status, _headers, body) = result;
+    if status != 200 {
+        return None;
+    }
+    try {
+        doc = json.loads(body.decode("utf-8"));
+    } except Exception as e {
+        _agg_logger.warning(f"openapi: unreadable spec from {service_entry.name}: {e}");
+        return None;
+    }
+    return doc if isinstance(doc, dict) else None;
+}
+
+
+async def aggregate_openapi(registry: ServiceRegistry) -> dict {
     merged_paths: dict = {};
     merged_schemas: dict = {};
 
@@ -35,22 +58,9 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
         if not entry.url {
             continue;
         }
-        try {
-            with urllib.request.urlopen(
-                f"{entry.url}/openapi.json", timeout=5.0
-            ) as resp {
-                status_code: int = getattr(resp, "status", 0);
-                if status_code != 200 {
-                    continue;
-                }
-                body: bytes = resp.read();
-                doc: dict = json.loads(body.decode("utf-8"));
-            }
-        } except URLError as e {
-            _agg_logger.warning(f"openapi aggregate: skipping {name}: {e}");
-            continue;
-        } except Exception as e {
-            _agg_logger.warning(f"openapi aggregate: skipping {name}: {e}");
+        doc = await fetch_service_spec(entry);
+        if doc is None {
+            _agg_logger.warning(f"openapi aggregate: skipping {name}");
             continue;
         }
 

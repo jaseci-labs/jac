@@ -2,7 +2,12 @@ import from collections.abc { Sequence }
 import from typing { TypeAlias }
 import jaclang.jac0core.unitree as uni;
 import jaclang.compiler.passes.main.dataflow as dataflow;
-import from jaclang.jac0core.constant { OwnershipKind, SymbolStorage, is_borrow_kind }
+import from jaclang.jac0core.constant {
+    OwnershipKind,
+    SymbolStorage,
+    Tokens as Tok,
+    is_borrow_kind
+}
 import from jaclang.jac0core.passes.transform { Transform }
 
 glob SymId: TypeAlias = int;
@@ -79,12 +84,28 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
     def transform(ir_in: uni.Module) -> uni.Module;
     def _stamp_param_rebound(ir_in: uni.Module) -> None;
     def _stamp_escapes(ir_in: uni.Module) -> None;
+    def _call_use_stack_safe(nm: uni.NameAtom, sym: uni.Symbol) -> bool;
+    def _borrow_arg_callee_ok(bx: uni.UnaryExpr) -> bool;
+    def _scalar_attr_read(nm: uni.NameAtom) -> bool;
     def _stamp_region_handles(ir_in: uni.Module) -> None;
     def _asn_makes_region_handle(nd: uni.Assignment) -> bool;
     def _use_ok_for_stack(nm: uni.NameAtom) -> bool;
     def _enclosing_fn_scope(nd: uni.UniNode) -> (uni.UniNode | None);
     def _is_param_sym(sym: uni.Symbol) -> bool;
     def _stamp_last_use(ir_in: uni.Module) -> None;
+    def _stamp_move_in(ir_in: uni.Module) -> None;
+    def _stamp_anon_regions(ir_in: uni.Module) -> None;
+    def _scan_anon_region_block(body: Sequence[uni.UniNode]) -> list[tuple];
+    def _arch_of_call(expr: (uni.UniNode | None)) -> (uni.Archetype | None);
+    def _connect_chain_leaves(expr: uni.UniNode) -> (list[uni.Name] | None);
+    def _blessed_arch_call(fc: uni.FuncCall, member_sids: set[int]) -> bool;
+    def _anon_extent_poisoned(
+        body: Sequence[uni.UniNode],
+        open_idx: int,
+        close_idx: int,
+        member_sids: set[int]
+    ) -> bool;
+
     def _collect_last_use(
         owner: uni.UniNode, body: Sequence[uni.UniNode], out: dict[int, list[str]]
     ) -> None;
@@ -92,7 +113,7 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
     def _param_plainly_rebound(sym: uni.Symbol) -> bool;
     def _stamp_move_lowerable(ir_in: uni.Module) -> None;
     def _cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None);
-    def _is_def_name(nm: uni.Name) -> bool;
+    def _is_def_name(nm: uni.NameAtom) -> bool;
     def _is_alias_value(nm: uni.Name) -> bool;
     def _move_candidate_source(nd: uni.Assignment) -> (uni.Name | None);
     def _live_transfer(nd: uni.UniCFGNode, out_set: set[SymId]) -> set[SymId];

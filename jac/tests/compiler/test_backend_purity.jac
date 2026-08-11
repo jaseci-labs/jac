@@ -69,8 +69,13 @@ glob FORBIDDEN: dict[str, str] = {
              "check-only runs agree"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
-             1,
-             "declaration-surface read: component PascalCase rename "
+             2,
+             "declaration-surface reads: (1) cross-module archetype kind "
+             "for OSP lowering (#7948) - _arch_kind_by_name resolves an "
+             "imported archetype NAME to its declared node/edge/walker "
+             "kind via the module symbol, the exact declaration-IS-the-"
+             "fact category; tags derive from stable_osp_tag(name), no "
+             "analysis re-run. (2) component PascalCase rename "
              "collision guard checks whether the capitalized name is "
              "already declared in the module - the declared NAME is the "
              "consumed fact, not a resolved type. The former sv-import "
@@ -124,6 +129,14 @@ glob FORBIDDEN: dict[str, str] = {
              2,
              "declaration-surface reads at interop layout export"
          ),
+         ("native/na_ir_gen_pass.impl/calls.impl.jac", "type_tag.tag"): (
+             1,
+             "declaration-surface read of foreign extern signatures: the "
+             "clib membrane needs the DECLARED str params/returns of a "
+             "foreign call to route them through the JacStr wrap/unwrap "
+             "shims (#7870 strings step 2) - the C membrane always "
+             "trafficks NUL-terminated char*"
+         ),
          ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
              4,
              "scalar LLVM materialization from declared clib annotations "
@@ -132,7 +145,19 @@ glob FORBIDDEN: dict[str, str] = {
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
              1,
-             "declaration-surface read during archetype field lowering"
+             "declaration-surface read during archetype field lowering: "
+             "the field's declared annotation node is read once into a "
+             "local and feeds both the enum-name map and the container "
+             "element-key map the sealed layout exports. Keep it one read "
+             "- consumers of the annotation are added to the local, never "
+             "by reaching for type_tag.tag again"
+         ),
+         ("native/na_ir_gen_pass.impl/lists.impl.jac", "type_tag.tag"): (
+             1,
+             "declared-vs-inferred bare list is a declaration-surface "
+             "distinction central facts do not carry (the checker stamps "
+             "unannotated empties as bare list too); the empty-literal "
+             "storage-family decision must key on the explicit annotation"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
              7,

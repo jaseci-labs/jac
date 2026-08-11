@@ -4,12 +4,7 @@ import tarfile;
 import tempfile;
 import tomllib;
 import from pathlib { Path }
-import from unittest.mock { patch }
-import from jaclang.scale.injector.bundle {
-    bake_database_intent,
-    sanitized_jac_toml,
-    pack_jab
-}
+import from jaclang.scale.injector.bundle { sanitized_jac_toml, pack_jab }
 import from jaclang.scale.injector.pvc_injector {
     PvcInjector,
     build_bundle_pvc,
@@ -33,10 +28,10 @@ def _make_project(project: str, toml: str) {
 }
 
 
-def _baked_toml(project: str, database: str = "") -> dict {
-    # sanitized_jac_toml owns the strip + bake logic pack_jab ships verbatim, so
+def _sanitized_toml(project: str) -> dict {
+    # sanitized_jac_toml owns the strip logic pack_jab ships verbatim, so
     # assert it directly instead of running a full (binary-dependent) seal.
-    return tomllib.loads(sanitized_jac_toml(Path(project), database) or "");
+    return tomllib.loads(sanitized_jac_toml(Path(project)) or "");
 }
 
 
@@ -58,13 +53,13 @@ test "secrets are stripped and secret-bearing files excluded from the sealed .ja
             handle.write(
                 "plugins.scale.secrets.jwt = \"topsecret\"\n"
                     + "[project]\nname = \"x\"\n"
-                    + "[plugins.scale.database]\nbackend = \"mongo\"\n"
+                    + "[plugins.scale.database]\nurl = \"env:JAC_DB_URL\"\n"
                     + "[plugins.scale]\n# nested creds annotation\nsecrets.token = \"nestedshh\"\n"
-                    + "[plugins.scale.secrets]\nmongodb_uri = \"mongodb://u:p@h\"\n"
+                    + "[plugins.scale.secrets]\ndb_password = \"p@ssw0rd\"\n"
                     + "# s3 access creds\n[scale.secrets]\napi_key = \"shhhh\"\n"
             );
         }
-        raw = pack_jab(project, "", _JAC_BIN.read_bytes());
+        raw = pack_jab(project, _JAC_BIN.read_bytes());
         names: list[str] = [];
         toml_text = "";
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
@@ -76,65 +71,23 @@ test "secrets are stripped and secret-bearing files excluded from the sealed .ja
         assert ".env" not in names;
         assert "tls.key" not in names;
         assert "[plugins.scale.database]" in toml_text;
-        assert "backend = \"mongo\"" in toml_text;
         assert "[plugins.scale.secrets]" not in toml_text;
         assert "[scale.secrets]" not in toml_text;
         assert "topsecret" not in toml_text;
-        assert "mongodb" not in toml_text;
+        assert "p@ssw0rd" not in toml_text;
         assert "shhhh" not in toml_text;
         assert "nestedshh" not in toml_text;
     }
 }
 
 
-test "the provisioned database is baked into an intent-less manifest (#7137)" {
+test "no database intent is fabricated into the shipped manifest (#8000)" {
+    # bake_database_intent used to append a backend the pod's install would
+    # map to a data capability; INTENT_RULES no longer maps any database
+    # value, so the whole baking path is gone and the toml ships as written.
     with tempfile.TemporaryDirectory() as project {
         _make_project(project, "[project]\nname = \"x\"\nversion = \"0.1.0\"\n");
-        data = _baked_toml(project, "mongo");
-        assert data["plugins"]["scale"]["database"]["backend"] == "mongo";
-    }
-}
-
-
-test "a declared database backend is never overridden" {
-    with tempfile.TemporaryDirectory() as project {
-        _make_project(
-            project,
-            "[project]\nname = \"x\"\n\n[plugins.scale.database]\nbackend = \"redis\"\n"
-        );
-        data = _baked_toml(project, "mongo");
-        assert data["plugins"]["scale"]["database"]["backend"] == "redis";
-    }
-}
-
-
-test "the database bakes into [scale.database] when the project uses the [scale] form" {
-    with tempfile.TemporaryDirectory() as project {
-        _make_project(
-            project, "[project]\nname = \"x\"\n\n[scale.events]\nbackend = \"redis\"\n"
-        );
-        data = _baked_toml(project, "mongo");
-        # scale_intent_from_config prefers [scale] over [plugins.scale], so the
-        # baked intent must land where the pod will actually read it.
-        assert data["scale"]["database"]["backend"] == "mongo";
-        assert "plugins" not in data;
-    }
-}
-
-
-test "bake_database_intent warns and ships unbaked when the toml will not parse" {
-    broken = "[project\nname = \"x\"\n";
-    with patch("logging.Logger.warning") as mock_warn {
-        assert bake_database_intent(broken, "mongo") == broken;
-        mock_warn.assert_called_once();
-    }
-}
-
-
-test "nothing is baked when no database is provisioned" {
-    with tempfile.TemporaryDirectory() as project {
-        _make_project(project, "[project]\nname = \"x\"\n");
-        data = _baked_toml(project);
+        data = _sanitized_toml(project);
         assert "plugins" not in data;
         assert "scale" not in data;
     }

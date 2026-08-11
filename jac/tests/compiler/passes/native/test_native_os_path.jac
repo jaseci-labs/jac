@@ -29,7 +29,7 @@ def _nacompile_run(fixture: str) -> str {
 
 test "os path isfile and isdir report real file kinds natively" {
     out = _nacompile_run("os_path_probe.jac").strip().split("\n");
-    assert out == ["1", "0", "1", "0", "1", "0", "5", "-1"] , f"os.path probe mismatch: {out}";
+    assert out == ["True", "False", "True", "False", "True", "False", "5", "-1"] , f"os.path probe mismatch: {out}";
 }
 
 test "unsupported os path members fail the native compile loudly" {

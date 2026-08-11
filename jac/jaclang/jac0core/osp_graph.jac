@@ -7,16 +7,14 @@ glob _r_src: list[int] = [],
      _r_ntgt: list[int] = [],
      _row_free: list[int] = [];
 
-glob _nt_cap: int = 0,
-     _nt_cnt: int = 0,
+glob _nt_cnt: list[int] = [],
      _nt_key: list[int] = [],
      _nt_ho: list[int] = [],
      _nt_to: list[int] = [],
      _nt_hi: list[int] = [],
      _nt_ti: list[int] = [];
 
-glob _rt_cap: int = 0,
-     _rt_cnt: int = 0,
+glob _rt_cnt: list[int] = [],
      _rt_key: list[int] = [],
      _rt_head: list[int] = [];
 
@@ -25,37 +23,44 @@ glob _rk_addr: list[int] = [],
      _rk_free: list[int] = [];
 
 def _nt_grow {
-    ok = _nt_key;
-    oho = _nt_ho;
-    oto = _nt_to;
-    ohi = _nt_hi;
-    oti = _nt_ti;
-    ocap = _nt_cap;
+    ocap = len(_nt_key);
+    ok: list[int] = [];
+    oho: list[int] = [];
+    oto: list[int] = [];
+    ohi: list[int] = [];
+    oti: list[int] = [];
+    i = 0;
+    while i < ocap {
+        ok.append(_nt_key[i]);
+        oho.append(_nt_ho[i]);
+        oto.append(_nt_to[i]);
+        ohi.append(_nt_hi[i]);
+        oti.append(_nt_ti[i]);
+        i += 1;
+    }
     ncap = ocap * 2;
     if ncap == 0 {
         ncap = 1024;
     }
-    nk: list[int] = [];
-    nho: list[int] = [];
-    nto: list[int] = [];
-    nhi: list[int] = [];
-    nti: list[int] = [];
+    while len(_nt_key) > 0 {
+        _nt_key.pop();
+        _nt_ho.pop();
+        _nt_to.pop();
+        _nt_hi.pop();
+        _nt_ti.pop();
+    }
+    while len(_nt_cnt) > 0 {
+        _nt_cnt.pop();
+    }
     i = 0;
     while i < ncap {
-        nk.append(0);
-        nho.append(-1);
-        nto.append(-1);
-        nhi.append(-1);
-        nti.append(-1);
+        _nt_key.append(0);
+        _nt_ho.append(-1);
+        _nt_to.append(-1);
+        _nt_hi.append(-1);
+        _nt_ti.append(-1);
         i += 1;
     }
-    _nt_key = nk;
-    _nt_ho = nho;
-    _nt_to = nto;
-    _nt_hi = nhi;
-    _nt_ti = nti;
-    _nt_cap = ncap;
-    _nt_cnt = 0;
     m = ncap - 1;
     i = 0;
     while i < ocap {
@@ -70,17 +75,17 @@ def _nt_grow {
             _nt_to[h] = oto[i];
             _nt_hi[h] = ohi[i];
             _nt_ti[h] = oti[i];
-            _nt_cnt += 1;
+            _nt_cnt.append(0);
         }
         i += 1;
     }
 }
 
 def _nt_slot(addr: int) -> int {
-    if _nt_cap == 0 or _nt_cnt * 4 >= _nt_cap * 3 {
+    if len(_nt_key) == 0 or len(_nt_cnt) * 4 >= len(_nt_key) * 3 {
         _nt_grow();
     }
-    m = _nt_cap - 1;
+    m = len(_nt_key) - 1;
     h = ((addr >> 4) ^ (addr >> 16)) & m;
     while True {
         k = _nt_key[h];
@@ -89,7 +94,7 @@ def _nt_slot(addr: int) -> int {
         }
         if k == 0 {
             _nt_key[h] = addr;
-            _nt_cnt += 1;
+            _nt_cnt.append(0);
             return h;
         }
         h = (h + 1) & m;
@@ -98,10 +103,10 @@ def _nt_slot(addr: int) -> int {
 }
 
 def _nt_find(addr: int) -> int {
-    if _nt_cap == 0 {
+    if len(_nt_key) == 0 {
         return -1;
     }
-    m = _nt_cap - 1;
+    m = len(_nt_key) - 1;
     h = ((addr >> 4) ^ (addr >> 16)) & m;
     while True {
         k = _nt_key[h];
@@ -117,7 +122,7 @@ def _nt_find(addr: int) -> int {
 }
 
 def _nt_del(s: int) {
-    m = _nt_cap - 1;
+    m = len(_nt_key) - 1;
     i = s;
     j = s;
     while True {
@@ -151,29 +156,36 @@ def _nt_del(s: int) {
     _nt_to[i] = -1;
     _nt_hi[i] = -1;
     _nt_ti[i] = -1;
-    _nt_cnt -= 1;
+    _nt_cnt.pop();
 }
 
 def _rt_grow {
-    ok = _rt_key;
-    oh = _rt_head;
-    ocap = _rt_cap;
+    ocap = len(_rt_key);
+    ok: list[int] = [];
+    oh: list[int] = [];
+    i = 0;
+    while i < ocap {
+        ok.append(_rt_key[i]);
+        oh.append(_rt_head[i]);
+        i += 1;
+    }
     ncap = ocap * 2;
     if ncap == 0 {
         ncap = 256;
     }
-    nk: list[int] = [];
-    nh: list[int] = [];
+    while len(_rt_key) > 0 {
+        _rt_key.pop();
+        _rt_head.pop();
+    }
+    while len(_rt_cnt) > 0 {
+        _rt_cnt.pop();
+    }
     i = 0;
     while i < ncap {
-        nk.append(0);
-        nh.append(-1);
+        _rt_key.append(0);
+        _rt_head.append(-1);
         i += 1;
     }
-    _rt_key = nk;
-    _rt_head = nh;
-    _rt_cap = ncap;
-    _rt_cnt = 0;
     m = ncap - 1;
     i = 0;
     while i < ocap {
@@ -185,17 +197,17 @@ def _rt_grow {
             }
             _rt_key[h] = k;
             _rt_head[h] = oh[i];
-            _rt_cnt += 1;
+            _rt_cnt.append(0);
         }
         i += 1;
     }
 }
 
 def _rt_slot(rgn: int) -> int {
-    if _rt_cap == 0 or _rt_cnt * 4 >= _rt_cap * 3 {
+    if len(_rt_key) == 0 or len(_rt_cnt) * 4 >= len(_rt_key) * 3 {
         _rt_grow();
     }
-    m = _rt_cap - 1;
+    m = len(_rt_key) - 1;
     h = ((rgn >> 4) ^ (rgn >> 16)) & m;
     while True {
         k = _rt_key[h];
@@ -204,7 +216,7 @@ def _rt_slot(rgn: int) -> int {
         }
         if k == 0 {
             _rt_key[h] = rgn;
-            _rt_cnt += 1;
+            _rt_cnt.append(0);
             return h;
         }
         h = (h + 1) & m;
@@ -213,7 +225,7 @@ def _rt_slot(rgn: int) -> int {
 }
 
 def _rt_del(s: int) {
-    m = _rt_cap - 1;
+    m = len(_rt_key) - 1;
     i = s;
     j = s;
     while True {
@@ -241,7 +253,7 @@ def _rt_del(s: int) {
     }
     _rt_key[i] = 0;
     _rt_head[i] = -1;
-    _rt_cnt -= 1;
+    _rt_cnt.pop();
 }
 
 def osp_conn(
@@ -313,8 +325,8 @@ def _rk_reg(addr: int, rgn: int) {
     _rt_head[s] = e;
 }
 
-def osp_refs(origin: int, dir: int, edge_tag: int, edges_only: int) -> list {
-    out: list = [];
+def osp_refs(origin: int, dir: int, edge_tag: int, edges_only: int) -> list[int] {
+    out: list[int] = [];
     s = _nt_find(origin);
     if s < 0 {
         return out;
@@ -350,8 +362,10 @@ def osp_refs(origin: int, dir: int, edge_tag: int, edges_only: int) -> list {
     return out;
 }
 
-def osp_refs_many(origins: list, dir: int, edge_tag: int, edges_only: int) -> list {
-    out: list = [];
+def osp_refs_many(
+    origins: list[int], dir: int, edge_tag: int, edges_only: int
+) -> list[int] {
+    out: list[int] = [];
     i = 0;
     n = len(origins);
     while i < n {
@@ -370,8 +384,8 @@ def osp_refs_many(origins: list, dir: int, edge_tag: int, edges_only: int) -> li
     return out;
 }
 
-def osp_wrap1(x: int) -> list {
-    out: list = [];
+def osp_wrap1(x: int) -> list[int] {
+    out: list[int] = [];
     out.append(x);
     return out;
 }
@@ -424,6 +438,69 @@ def _unlink_in(tgt: int, row: int) {
     }
 }
 
+def osp_edge_peer(edge_handle: int, origin: int) -> int {
+    i = 0;
+    n = len(_r_handle);
+    while i < n {
+        if _r_handle[i] == edge_handle and _r_src[i] != -1 {
+            if _r_src[i] == origin {
+                return _r_tgt[i];
+            }
+            return _r_src[i];
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+def osp_disconn_between(src: int, tgt: int, dir: int, edge_tag: int) -> int {
+    s = _nt_find(src);
+    if s < 0 {
+        return 0;
+    }
+    hits: list[int] = [];
+    r = _nt_ho[s];
+    while r >= 0 {
+        eff = dir;
+        if _r_undir[r] != 0 {
+            eff = 3;
+        }
+        if (eff == 2 or eff == 3)
+            and _r_tgt[r] == tgt
+            and (edge_tag < 0 or _r_tag[r] == edge_tag) {
+            hits.append(r);
+        }
+        r = _r_nsrc[r];
+    }
+    r = _nt_hi[s];
+    while r >= 0 {
+        eff = dir;
+        if _r_undir[r] != 0 {
+            eff = 3;
+        }
+        if (eff == 1 or eff == 3)
+            and _r_src[r] == tgt
+            and (edge_tag < 0 or _r_tag[r] == edge_tag) {
+            if r not in hits {
+                hits.append(r);
+            }
+        }
+        r = _r_ntgt[r];
+    }
+    i = 0;
+    n = len(hits);
+    while i < n {
+        row = hits[i];
+        _unlink_out(_r_src[row], row);
+        _unlink_in(_r_tgt[row], row);
+        _r_src[row] = -1;
+        _r_handle[row] = 0;
+        _row_free.append(row);
+        i = i + 1;
+    }
+    return n;
+}
+
 def osp_disconnect(edge_handle: int) -> int {
     i = 0;
     n = len(_r_handle);
@@ -443,10 +520,10 @@ def osp_disconnect(edge_handle: int) -> int {
 
 def osp_region_died(rgn: int) -> int {
     n = 0;
-    if _rt_cap == 0 {
+    if len(_rt_key) == 0 {
         return 0;
     }
-    m = _rt_cap - 1;
+    m = len(_rt_key) - 1;
     h = ((rgn >> 4) ^ (rgn >> 16)) & m;
     s = -1;
     while True {

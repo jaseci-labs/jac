@@ -509,6 +509,16 @@ impl TypeBase.mangle -> str {
     return "<unbound>";
 }
 
+impl TypeBase.is_any_instance -> bool {
+    if self.category == TypeCategory.Any {
+        return True;
+    }
+    if isinstance(self, ClassType) {
+        return self.is_builtin("Any");
+    }
+    return False;
+}
+
 impl TypeBase.is_any_type -> bool {
     if self.category in (TypeCategory.Any, TypeCategory.TypeVar) {
         return True;

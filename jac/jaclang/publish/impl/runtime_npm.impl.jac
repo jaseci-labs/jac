@@ -181,18 +181,28 @@ def _relative_dep_specs(js: str) -> list[str] {
     return specs;
 }
 
-def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
+def _collect_dep_modules(
+    entry_js: str, entry_dir: str = ""
+) -> tuple[str, list[tuple[str, str]]] {
     import jaclang;
     import posixpath;
     base = Path(jaclang.__file__).parent.parent;
     seen: set[str] = set();
     out: list[tuple[str, str]] = [];
 
-    worklist: list[tuple[str, str]] = [("", entry_js)];
+    worklist: list[tuple[str, str]] = [(entry_dir, entry_js)];
+    is_entry = True;
     while worklist {
         (cur_dir, js) = worklist.pop();
         for spec in _relative_dep_specs(js) {
             rel = posixpath.normpath(posixpath.join(cur_dir, spec));
+            if is_entry and rel != spec.lstrip("./") {
+                for quote in ['"', "'"] {
+                    entry_js = entry_js.replace(
+                        quote + spec + quote, quote + "./" + rel + quote
+                    );
+                }
+            }
             if rel in seen {
                 continue;
             }
@@ -202,8 +212,9 @@ def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
             out.append((rel, dep_js));
             worklist.append((posixpath.dirname(rel), dep_js));
         }
+        is_entry = False;
     }
-    return out;
+    return (entry_js, out);
 }
 
 def _runtime_package_json(
@@ -233,7 +244,14 @@ impl build_runtime_tarball(
     name = pkg_name or runtime_pkg_name(framework);
     entry_js = compile_runtime_js(framework);
 
-    deps = _collect_dep_modules(entry_js);
+    import posixpath;
+    import jaclang;
+    import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+    base = Path(jaclang.__file__).parent.parent;
+    entry_dir = posixpath.dirname(
+        Path(resolve_client_runtime_cl_path()).relative_to(base).as_posix()
+    );
+    (entry_js, deps) = _collect_dep_modules(entry_js, entry_dir);
 
     exports = runtime_export_names(entry_js, framework);
     if exports {

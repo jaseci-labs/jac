@@ -197,3 +197,55 @@ test "drop hook fires on rc release (--gc rc)" {
 test "drop hook fires under the default cycles collector" {
     check_drop_parity(None);
 }
+
+# --- Tuple unpack across an optional store (PR #7982) ---
+"""Call one fixture fn and return (result, drops it caused)."""
+def call_counting_drops(eng: object, name: str, a: int, b: int) -> tuple[int, int] {
+    fn = get_func(eng, name, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
+    drops = get_func(eng, "drop_count", ctypes.c_int64);
+    before = drops();
+    value = fn(a, b);
+    return (value, drops() - before);
+}
+
+test "tuple unpack into an optional slot destroys each object exactly once" {
+    # Two Res are allocated and bound into `Res | None` locals through the
+    # coerced store. Each bind retains the field it borrows from the box,
+    # the box release runs the destructor that drops the box's own
+    # reference to each field, and scope exit releases each payload: one
+    # destruction per allocation. The two ways to get this wrong land on
+    # either side of 2, so the count discriminates between them.
+    (eng, _) = compile_native("rc_tuple_unpack_optional.jac");
+    (value, drops) = call_counting_drops(eng, "unpack_into_optional", 3, 4);
+    assert value == 34 , f"Expected 34, got {value}";
+    assert drops == 2 , (
+        f"2 allocations must produce 2 drops, got {drops} "
+        f"(0 means the box abandoned its fields, more than 2 that the bind "
+        f"skipped its retain and each payload was released twice)"
+    );
+}
+
+test "tuple unpack from an optional element costs no more than the plain one" {
+    # Both fixtures allocate 4 Res and overwrite two locals through a value
+    # tuple; `unpack_plain_into_plain` has no optional anywhere. They must
+    # drop the same number, i.e. the optional coercion adds no leak of its
+    # own. Both drop 4: the store releases what each target slot held for a
+    # value tuple exactly as for a boxed one, reaching the overwritten
+    # original through the optional payload when the slot is an optional.
+    # Asserting the two are equal rather than naming a constant is what let
+    # this survive the accounting change that moved both from 2 to 4.
+    (eng, _) = compile_native("rc_tuple_unpack_optional.jac");
+    (opt_value, opt_drops) = call_counting_drops(
+        eng, "unpack_optional_into_plain", 3, 4
+    );
+    (plain_value, plain_drops) = call_counting_drops(
+        eng, "unpack_plain_into_plain", 3, 4
+    );
+    assert opt_value == 34 , f"Expected 34 from the optional unpack, got {opt_value}";
+    assert plain_value == 34 , f"Expected 34 from the plain unpack, got {plain_value}";
+    assert opt_drops == plain_drops , (
+        f"optional-element unpack dropped {opt_drops} but the identical "
+        f"non-optional shape dropped {plain_drops}; the optional coercion "
+        f"must not change ownership accounting"
+    );
+}

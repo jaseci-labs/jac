@@ -251,6 +251,10 @@ A React Native app is a **mobUI** project -- one source tree that compiles to bo
 | `TextInput` | `input`, `textarea` |
 | `Image` | `img` |
 | `ScrollView` | `ul`, `ol`, scroll areas |
+| `FlatList` / `SectionList` | long or grouped lists (virtualized -- prefer over `ScrollView`) |
+| `Modal` | `dialog` |
+| `Switch` | `input type="checkbox"` |
+| `Alert` / `Linking` | `window.alert` / `window.open` |
 | `StyleSheet` | CSS / `className` |
 
 Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `className`. In a mobUI project, raw HTML tags (`<div>`, `<span>`, ...) are **compile errors** (`E1105`) with a fix-it pointing at the `@jac/mobui` primitive to use instead. See the [diagnostics reference](../../reference/diagnostics.md#mobui-project-jsx-host-tags) for details.
@@ -353,7 +357,7 @@ See the [jac-client Reference -> EAS Update (OTA)](../../reference/plugins/jac-c
 
 ### Platform-specific files
 
-When you need platform-exclusive native modules, add a `.native.jac` variant alongside a `.jac` module. The compiler picks up the `.native.jac` file when `--client react-native` is selected and falls back to `.jac` otherwise. This is a last resort -- prefer components from the `@jac/mobui` vocabulary, which absorb platform divergence internally. (A `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
+When you need platform-exclusive native modules, add a `.native.jac` variant alongside a `.jac` module. The compiler picks up the `.native.jac` file when `--client react-native` is selected and falls back to `.jac` otherwise. This is a last resort -- prefer components from the `@jac/mobui` vocabulary, which absorb platform divergence internally. Use a file pair only when the platforms need *different imports*; to branch on values, `Platform` is part of the vocabulary already, so `Platform.OS` and `Platform.select({ios: ..., android: ..., default: ...})` work inline.
 
 ### What carries over
 

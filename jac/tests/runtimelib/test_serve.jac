@@ -12,6 +12,7 @@ import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
 import from jaclang.runtimelib.server { JacAPIServer }
+import from jaclang.runtimelib.server { UserManager as CoreUserManager }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -31,7 +32,7 @@ def get_free_port -> int {
 test "user manager creation" {
     with TemporaryDirectory() as tmpdir {
         session_file = str(Path(tmpdir) / "test.session");
-        user_mgr = Jac.get_user_manager(session_file);
+        user_mgr = CoreUserManager(base_path=session_file);
         # Create first user
         result1 = user_mgr.create_user("user1", "pass1");
         assert "token" in result1;
@@ -53,7 +54,7 @@ test "user manager creation" {
 test "user manager authentication" {
     with TemporaryDirectory() as tmpdir {
         session_file = str(Path(tmpdir) / "test.session");
-        user_mgr = Jac.get_user_manager(session_file);
+        user_mgr = CoreUserManager(base_path=session_file);
         # Create user
         create_result = user_mgr.create_user("testuser", "testpass");
         create_data = create_result.get("data", create_result);
@@ -76,7 +77,7 @@ test "user manager authentication" {
 test "user manager token validation" {
     with TemporaryDirectory() as tmpdir {
         session_file = str(Path(tmpdir) / "test.session");
-        user_mgr = Jac.get_user_manager(session_file);
+        user_mgr = CoreUserManager(base_path=session_file);
         # Create user
         result = user_mgr.create_user("validuser", "validpass");
         data = result.get("data", result);
@@ -320,20 +321,20 @@ test "dev banner headlines vite port not api port" {
 }
 
 # --- Server construction ---
-"""The stdlib fallback server must be threading: on a plain (non-threading)
-HTTPServer one in-flight SSE stream or slow handler monopolizes the accept
-loop and every other client hangs with no response."""
-test "api server binds a threading http server" {
+"""Constructing the API server must not bind a socket; the serving core binds
+lazily at start() so test-mode servers (port=0) stay socket-free and the app
+can be built and dispatched fully in-process."""
+test "api server construction is socket-free and builds a serving app" {
+    import from jaclang.runtimelib.serving.app { ServingApp }
     with TemporaryDirectory() as tmpdir {
         port = get_free_port();
         Jac.set_base_path(tmpdir);
         srv = JacAPIServer(module_name="serve_api", port=port, base_path=tmpdir);
-        try {
-            assert isinstance(srv.server, ThreadingHTTPServer) , f"expected ThreadingHTTPServer, got {type(
-                srv.server
-            ).__name__}";
-        } finally {
-            srv.server.server_close();
-        }
+        assert srv.server is None , f"expected no bound server at construction, got {type(
+            srv.server
+        ).__name__}";
+        app = srv.build_app();
+        assert isinstance(app, ServingApp);
+        assert app.router.all_endpoints() , "built app has no endpoints";
     }
 }

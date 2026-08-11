@@ -39,10 +39,12 @@ test "collect_node_connections still returns the resolvable part of the graph" {
     other_arch: any = Root();
     ranch: any = root_arch.__jac__;
 
-    edge_arch: any = GenericEdge();
-    e: any = edge_arch.__jac__;
-    e.source = ranch;
-    e.target = other_arch.__jac__;
+    e: any = EdgeAnchor(
+        archetype=GenericEdge(),
+        source=ranch,
+        target=other_arch.__jac__,
+        is_undirected=False
+    );
     ranch.edges.append(e);
     ranch.edges.append(_dangling_edge_stub());
 

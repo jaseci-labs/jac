@@ -10,20 +10,15 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         elem_type = ir.IntType(64);
     }
 
+    _list_layout = self._container_layout_dense([elem_type]);
     list_struct = self.llvm_module.context.get_identified_type(
         f"List.{elem_type_name}"
     );
-    if self._gc_mode() == "none" {
-        list_struct.set_body(
-            ir.IntType(64),
-            ir.IntType(64),
-            elem_type.as_pointer(),
-            self._nogc_elem_drop_slot_ty()
-        );
-    } else {
-        list_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
+    if not list_struct.elements {
+        list_struct.set_body(*self._container_struct_fields(_list_layout));
     }
     self.list_types[elem_type_name] = list_struct;
+    self.container_layouts[f"List.{elem_type_name}"] = _list_layout;
     list_ptr_type = list_struct.as_pointer();
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
@@ -41,7 +36,10 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     }
 
     new_fn = self._emit_container_new_fn(
-        f"__list_new_{elem_type_name}", list_ptr_type, [elem_type], dtor_fn=_rel_fn_decl
+        f"__list_new_{elem_type_name}",
+        list_ptr_type,
+        _list_layout,
+        dtor_fn=_rel_fn_decl
     );
 
     append_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, elem_type]);
@@ -78,15 +76,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     cur_data = b.load(data_p_s, name="data");
     slot = b.gep(cur_data, [cur_len], name="slot");
 
-    if isinstance(elem_type, ir.PointerType) and not self._nogc_headerless() {
-        if self.rc_retain_fn is None {
-            self._emit_rc_helpers();
-        }
-        v_cast = b.bitcast(
-            v_arg, ir.IntType(8).as_pointer(), name="append.retain.cast"
-        );
-        b.call(self.rc_retain_fn, [v_cast]);
-    }
+    self._emit_elem_retain(b, elem_type, v_arg);
     b.store(v_arg, slot);
     new_len = b.add(cur_len, ir.Constant(i64, 1), name="new.len");
     b.store(new_len, len_p2);
@@ -112,17 +102,11 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     d2 = b.load(dp2, name="data");
     ep2 = b.gep(d2, [set_fn.args[1]], name="elem.ptr");
 
-    if isinstance(elem_type, ir.PointerType) and not self._nogc_headerless() {
-        if self.rc_retain_fn is None {
-            self._emit_rc_helpers();
-        }
-        _i8p_s = ir.IntType(8).as_pointer();
-        _new_c_s = b.bitcast(set_fn.args[2], _i8p_s, name="lset_retain_cast");
-        b.call(self.rc_retain_fn, [_new_c_s]);
+    if self._elem_kind(elem_type) != "raw" and not self._nogc_headerless() {
+        self._emit_elem_retain(b, elem_type, set_fn.args[2]);
         _old_v_s = b.load(ep2, name="lset_old_val");
         b.store(set_fn.args[2], ep2);
-        _old_c_s = b.bitcast(_old_v_s, _i8p_s, name="lset_old_cast");
-        b.call(self.rc_release_simple_fn, [_old_c_s]);
+        self._emit_elem_release(b, elem_type, _old_v_s);
     } else {
         b.store(set_fn.args[2], ep2);
     }
@@ -134,7 +118,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         self._emit_container_drop_fn(f"List.{elem_type_name}");
     } else {
         release_fn = self._emit_container_release_fn(
-            f"__rc_release_list_{elem_type_name}", list_ptr_type, [(2, elem_type)]
+            f"__rc_release_list_{elem_type_name}", list_ptr_type, _list_layout
         );
         self.list_release_fns[elem_type_name] = release_fn;
     }
@@ -152,10 +136,26 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     self._pending_list_elem_struct = None;
     if not nd.values {
-        elem_type_name = "i64";
+        elem_type_name = "";
+        _decl_par = nd.parent;
+        _bare_list_decl = False;
+        if isinstance(_decl_par, (uni.Assignment, uni.HasVar))
+            and _decl_par.value is nd
+            and _decl_par.type_tag is not None {
+            _lt_tag = _decl_par.type_tag.tag;
+            _lt_name: (str | None) = None;
+            if isinstance(_lt_tag, uni.Name) {
+                _lt_name = _lt_tag.value;
+            } elif uni?.BuiltinType and isinstance(_lt_tag, uni.BuiltinType) {
+                _lt_name = _lt_tag.value;
+            }
+            _bare_list_decl = _lt_name == "list";
+        }
         _own_spec = self._elem_spec_of(nd);
         if _own_spec is not None {
             elem_type_name = _own_spec;
+        } elif _bare_list_decl {
+            elem_type_name = "i64";
         } elif self._builder and self._builder.function {
             ret_type = self.builder.function.return_value.type;
             if isinstance(ret_type, ir.PointerType) {
@@ -166,6 +166,9 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                     }
                 }
             }
+        }
+        if not elem_type_name {
+            elem_type_name = "jacval" if self?.jacval_type else "i64";
         }
 
         if elem_type_name == "ptr" {
@@ -186,9 +189,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             _empty_new = self._rc_call_with_ctx(
                 helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
             );
-            self._nogc_stamp_elem_drops(
-                _empty_new, self._nogc_type_arg_mangles(nd), "list"
-            );
+            self._nogc_stamp_elem_drops(_empty_new, self._nogc_type_arg_mangles(nd));
             return _empty_new;
         }
         return None;
@@ -199,7 +200,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if _decl_elem is not None
         else None;
 
-    first_val = self._codegen_expr(nd.values[0]);
+    first_val = self._str_norm(self._codegen_expr(nd.values[0]));
     if first_val is None {
         return None;
     }
@@ -213,14 +214,25 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     if _clos_elem is not None and first_val.type != _decl_elem {
         first_val = self._coerce_type(first_val, _decl_elem);
     }
-    elem_type = first_val.type;
-    elem_type_name = "i64";
-    if isinstance(elem_type, ir.DoubleType) {
-        elem_type_name = "f64";
-    } elif isinstance(elem_type, ir.PointerType) {
-        elem_type_name = "ptr";
-    } elif self?.jacval_type and elem_type == self.jacval_type {
+    _lit_spec = self._elem_spec_of(nd);
+    if _lit_spec == "jacval" and self?.jacval_type {
+        elem_type = self.jacval_type;
         elem_type_name = "jacval";
+    } elif _lit_spec in ("i64", "f64")
+        and _decl_elem is not None
+        and isinstance(_decl_elem, (ir.IntType, ir.DoubleType)) {
+        elem_type = _decl_elem;
+        elem_type_name = _lit_spec;
+    } else {
+        elem_type = first_val.type;
+        elem_type_name = "i64";
+        if isinstance(elem_type, ir.DoubleType) {
+            elem_type_name = "f64";
+        } elif isinstance(elem_type, ir.PointerType) {
+            elem_type_name = "ptr";
+        } elif self?.jacval_type and elem_type == self.jacval_type {
+            elem_type_name = "jacval";
+        }
     }
 
     if isinstance(elem_type, ir.PointerType)
@@ -238,9 +250,14 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     list_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_list_new_loc, name="list.new"
     );
-    self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd), "list");
+    self._nogc_stamp_elem_drops(list_val, self._nogc_type_arg_mangles(nd));
 
     first_val = self._nogc_elem_prep(nd.values[0], first_val);
+    if self._reject_ptr_into_raw_slot(
+        nd, first_val, helpers["elem_type"], "list element"
+    ) {
+        return list_val;
+    }
     append_val = first_val;
     if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
         append_val = self.builder.bitcast(first_val, i8p, name="elem.cast");
@@ -254,12 +271,14 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         helpers["append"], [list_val, append_val], op="list_init", loc=_linit_loc
     );
 
-    if isinstance(first_val.type, ir.PointerType) and self._is_owned(first_val) {
+    if isinstance(first_val.type, ir.PointerType)
+        and self._is_owned(first_val)
+        and self._gc_mode() != "none" {
         self._emit_rc_release_simple(first_val, op="list_init", loc=_linit_loc);
     }
 
     for i in range(1, len(nd.values)) {
-        val = self._codegen_expr(nd.values[i]);
+        val = self._str_norm(self._codegen_expr(nd.values[i]));
         if val is not None {
             if self._pending_list_elem_struct is not None
                 and isinstance(self._pending_list_elem_struct, ir.PointerType)
@@ -277,6 +296,11 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             }
             val = self._nogc_elem_prep(nd.values[i], val);
             _boxed_val = val;
+            if self._reject_ptr_into_raw_slot(
+                nd, val, helpers["elem_type"], "list element"
+            ) {
+                return list_val;
+            }
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
             } else {
@@ -287,7 +311,8 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             );
 
             if isinstance(_boxed_val.type, ir.PointerType)
-                and self._is_owned(_boxed_val) {
+                and self._is_owned(_boxed_val)
+                and self._gc_mode() != "none" {
                 self._emit_rc_release_simple(
                     _boxed_val, op="list_init", loc=_linit_loc
                 );
@@ -378,6 +403,7 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
 impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
+    value = self._str_norm(value);
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
         return;
@@ -404,12 +430,240 @@ impl NaIRGenPass._codegen_index_set(
     _lset_ctx_loc = getattr(
         value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
     );
+
+    if self._reject_ptr_into_raw_slot(
+        None, value, elem_type, "list element assignment"
+    ) {
+        return;
+    }
+    _orig_value = value;
+    _val_was_owned = self._is_owned(value);
     value = self._coerce_type(value, elem_type);
     self._rc_call_with_ctx(
         helpers["set"], [target_val, index_val, value], op="list_set", loc=_lset_ctx_loc
     );
 
-    if isinstance(elem_type, ir.PointerType) and self._is_owned(value) {
-        self._emit_rc_release_simple(value, op="list_set", loc=_lset_ctx_loc);
+    if (
+        isinstance(_orig_value.type, ir.PointerType)
+        and _val_was_owned
+        and self._elem_kind(elem_type) != "raw"
+    ) {
+        self._emit_rc_release_simple(_orig_value, op="list_set", loc=_lset_ctx_loc);
     }
+}
+
+impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
+    _spec = f"aos.{tname}";
+    if _spec in self.list_types {
+        return self.list_types[_spec];
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    _t_struct = self.struct_types[tname];
+    _tp = _t_struct.as_pointer();
+    st = self.llvm_module.context.get_identified_type(f"List.aos.{tname}");
+    st.set_body(i64, i64, _tp);
+    self.list_types[_spec] = st;
+    self.container_layouts[f"List.aos.{tname}"] = {
+        "kind": "aos",
+        "data_fields": [(2, _t_struct)],
+        "elem_kinds": ["raw"],
+        "ctrl_idx": -1,
+        "used_idx": -1,
+        "order_idx": -1,
+        "drop_base": 3
+    };
+    _stp = st.as_pointer();
+    _malloc = self._get_or_declare_extern("malloc", i8p, [i64]);
+    _free = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    _memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    _z = ir.Constant(i32, 0);
+
+    new_fn = self._define_function(
+        f"__list_new_aos_{tname}", ir.FunctionType(_stp, [])
+    );
+    new_fn.linkage = "private";
+    b = ir.IRBuilder(new_fn.append_basic_block("entry"));
+    _szT = b.ptrtoint(
+        b.gep(ir.Constant(_tp, None), [ir.Constant(i32, 1)], name="szT.p"),
+        i64,
+        name="szT"
+    );
+    _szSelf = b.ptrtoint(
+        b.gep(ir.Constant(_stp, None), [ir.Constant(i32, 1)], name="szS.p"),
+        i64,
+        name="szS"
+    );
+    _selfp = b.bitcast(
+        b.call(_malloc, [_szSelf], name="aos.self8"), _stp, name="aos.self"
+    );
+    b.store(
+        ir.Constant(i64, 0), b.gep(_selfp, [_z, ir.Constant(i32, 0)], name="aos.len")
+    );
+    b.store(
+        ir.Constant(i64, 8), b.gep(_selfp, [_z, ir.Constant(i32, 1)], name="aos.cap")
+    );
+    _buf0 = b.call(
+        _malloc, [b.mul(ir.Constant(i64, 8), _szT, name="aos.b0.sz")], name="aos.b0"
+    );
+    b.store(
+        b.bitcast(_buf0, _tp, name="aos.b0.t"),
+        b.gep(_selfp, [_z, ir.Constant(i32, 2)], name="aos.data")
+    );
+    b.ret(_selfp);
+
+    append_fn = self._define_function(
+        f"__list_append_aos_{tname}", ir.FunctionType(ir.VoidType(), [_stp, _tp])
+    );
+    append_fn.linkage = "private";
+    _a_entry = append_fn.append_basic_block("entry");
+    _a_grow = append_fn.append_basic_block("grow");
+    _a_store = append_fn.append_basic_block("store");
+    b = ir.IRBuilder(_a_entry);
+    _a_szT = b.ptrtoint(
+        b.gep(ir.Constant(_tp, None), [ir.Constant(i32, 1)], name="a.szT.p"),
+        i64,
+        name="a.szT"
+    );
+    _a_len_p = b.gep(append_fn.args[0], [_z, ir.Constant(i32, 0)], name="a.len.p");
+    _a_cap_p = b.gep(append_fn.args[0], [_z, ir.Constant(i32, 1)], name="a.cap.p");
+    _a_data_p = b.gep(append_fn.args[0], [_z, ir.Constant(i32, 2)], name="a.data.p");
+    _a_len = b.load(_a_len_p, name="a.len");
+    _a_cap = b.load(_a_cap_p, name="a.cap");
+    b.cbranch(b.icmp_signed(">=", _a_len, _a_cap, name="a.full"), _a_grow, _a_store);
+    b = ir.IRBuilder(_a_grow);
+    _g_ncap = b.mul(_a_cap, ir.Constant(i64, 2), name="a.ncap");
+    _g_new = b.call(_malloc, [b.mul(_g_ncap, _a_szT, name="a.nsz")], name="a.nbuf");
+    _g_old = b.load(_a_data_p, name="a.old");
+    b.call(
+        _memcpy,
+        [
+            _g_new,
+            b.bitcast(_g_old, i8p, name="a.old8"),
+            b.mul(_a_len, _a_szT, name="a.copysz")
+        ]
+    );
+    b.call(_free, [b.bitcast(_g_old, i8p, name="a.old8f")]);
+    b.store(b.bitcast(_g_new, _tp, name="a.nbuf.t"), _a_data_p);
+    b.store(_g_ncap, _a_cap_p);
+    b.branch(_a_store);
+    b = ir.IRBuilder(_a_store);
+    _s_data = b.load(_a_data_p, name="a.data");
+    _s_dst = b.gep(_s_data, [_a_len], name="a.dst");
+    b.call(
+        _memcpy,
+        [
+            b.bitcast(_s_dst, i8p, name="a.dst8"),
+            b.bitcast(append_fn.args[1], i8p, name="a.src8"),
+            _a_szT
+        ]
+    );
+    b.call(_free, [b.bitcast(append_fn.args[1], i8p, name="a.shell8")]);
+    b.store(b.add(_a_len, ir.Constant(i64, 1), name="a.len1"), _a_len_p);
+    b.ret_void();
+
+    get_fn = self._define_function(
+        f"__list_get_aos_{tname}", ir.FunctionType(_tp, [_stp, i64])
+    );
+    get_fn.linkage = "private";
+    b = ir.IRBuilder(get_fn.append_basic_block("entry"));
+    _g_data = b.load(
+        b.gep(get_fn.args[0], [_z, ir.Constant(i32, 2)], name="g.data.p"), name="g.data"
+    );
+    b.ret(b.gep(_g_data, [get_fn.args[1]], name="g.elem"));
+
+    set_fn = self._define_function(
+        f"__list_set_aos_{tname}", ir.FunctionType(ir.VoidType(), [_stp, i64, _tp])
+    );
+    set_fn.linkage = "private";
+    b = ir.IRBuilder(set_fn.append_basic_block("entry"));
+    _st_szT = b.ptrtoint(
+        b.gep(ir.Constant(_tp, None), [ir.Constant(i32, 1)], name="s.szT.p"),
+        i64,
+        name="s.szT"
+    );
+    _st_data = b.load(
+        b.gep(set_fn.args[0], [_z, ir.Constant(i32, 2)], name="s.data.p"), name="s.data"
+    );
+    _st_slot = b.gep(_st_data, [set_fn.args[1]], name="s.slot");
+    _fields_fn = self._emit_struct_drop_fields_fn(tname);
+    if _fields_fn is not None {
+        b.call(_fields_fn, [b.bitcast(_st_slot, i8p, name="s.slot8")]);
+    }
+    b.call(
+        _memcpy,
+        [
+            b.bitcast(_st_slot, i8p, name="s.slot8b"),
+            b.bitcast(set_fn.args[2], i8p, name="s.src8"),
+            _st_szT
+        ]
+    );
+    b.call(_free, [b.bitcast(set_fn.args[2], i8p, name="s.shell8")]);
+    b.ret_void();
+
+    len_fn = self._define_function(
+        f"__list_len_aos_{tname}", ir.FunctionType(i64, [_stp])
+    );
+    len_fn.linkage = "private";
+    b = ir.IRBuilder(len_fn.append_basic_block("entry"));
+    b.ret(
+        b.load(
+            b.gep(len_fn.args[0], [_z, ir.Constant(i32, 0)], name="l.len.p"),
+            name="l.len"
+        )
+    );
+
+    drop_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [i8p]),
+        name=f"__drop_List_aos_{tname}"
+    );
+    drop_fn.linkage = "private";
+    drop_fn.args[0].name = "self";
+    _d_entry = drop_fn.append_basic_block("entry");
+    _d_prep = drop_fn.append_basic_block("prep");
+    _d_done = drop_fn.append_basic_block("done");
+    b = ir.IRBuilder(_d_entry);
+    _d_null = b.icmp_unsigned(
+        "==", drop_fn.args[0], ir.Constant(i8p, None), name="d.null"
+    );
+    b.cbranch(_d_null, _d_done, _d_prep);
+    b = ir.IRBuilder(_d_prep);
+    _d_selfp = b.bitcast(drop_fn.args[0], _stp, name="d.self");
+    _d_fields = self._emit_struct_drop_fields_fn(tname);
+
+    def _aos_drop_elem(bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list) -> ir.IRBuilder {
+        if _d_fields is not None {
+            bl.call(_d_fields, [bl.bitcast(elem_ptrs[0], i8p, name="d.elem8")]);
+        }
+        return bl;
+    }
+    b = self._emit_live_slot_loop(
+        drop_fn,
+        b,
+        _d_selfp,
+        self.container_layouts[f"List.aos.{tname}"],
+        "d",
+        _aos_drop_elem
+    );
+    _d_data = b.load(
+        b.gep(_d_selfp, [_z, ir.Constant(i32, 2)], name="d.data.p"), name="d.data"
+    );
+    b.call(_free, [b.bitcast(_d_data, i8p, name="d.data8")]);
+    b.call(_free, [drop_fn.args[0]]);
+    b.branch(_d_done);
+    b = ir.IRBuilder(_d_done);
+    b.ret_void();
+    self.container_drop_fns[f"List.aos.{tname}"] = drop_fn;
+
+    self.list_helpers[_spec] = {
+        "new": new_fn,
+        "append": append_fn,
+        "get": get_fn,
+        "set": set_fn,
+        "len": len_fn,
+        "elem_type": _tp
+    };
+    return st;
 }

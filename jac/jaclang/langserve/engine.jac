@@ -123,6 +123,15 @@ obj JacLangServer(JacProgram, LanguageServer) {
         file_path: str, position: lspt.Position
     ) -> Optional[lspt.Location];
 
+    def _string_import_definition(
+        file_path: str, position: lspt.Position
+    ) -> Optional[lspt.Location];
+
+    def _module_spec_target(mp: uni.ModulePath) -> Optional[str];
+    def _npm_item_location(
+        from_loc: uni.ModulePath, item_name: str
+    ) -> Optional[lspt.Location];
+
     def get_references(file_path: str, position: lspt.Position) -> list[lspt.Location];
     def rename_symbol(
         file_path: str, position: lspt.Position, new_name: str

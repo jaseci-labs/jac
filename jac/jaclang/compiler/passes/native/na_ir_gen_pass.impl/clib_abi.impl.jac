@@ -88,7 +88,7 @@ impl NaIRGenPass._clib_alloc_box(name: str) -> ir.Value {
         i64p = i64.as_pointer();
         raw_i8 = self.builder.bitcast(typed_ptr, i8p, name="clib.box.i8");
         dtor_slot = self.builder.gep(
-            raw_i8, [ir.Constant(i64, -8)], name="clib.box.dtorslot"
+            raw_i8, [ir.Constant(i64, HDR_DTOR_OFF)], name="clib.box.dtorslot"
         );
         dtor_slot_i64 = self.builder.bitcast(dtor_slot, i64p, name="clib.box.dtori64p");
         dtor_i64 = self.builder.ptrtoint(dtor_fn, i64, name="clib.box.dtori64");
@@ -203,7 +203,11 @@ impl NaIRGenPass._codegen_clib_call(
             if jac_val is None {
                 call_args.append(ir.Constant(pp["type"], 0));
             } else {
-                call_args.append(self._coerce_type(jac_val, pp["type"]));
+                _cv = jac_val;
+                if pp.get("is_str") and isinstance(_cv.type, ir.PointerType) {
+                    _cv = self._membrane_str_out(self.builder, _cv);
+                }
+                call_args.append(self._coerce_type(_cv, pp["type"]));
             }
         } elif kind == "struct_mem" {
             c_ptr = self._clib_materialize_c_ptr(jac_val, pp["sname"]);
@@ -291,6 +295,9 @@ impl NaIRGenPass._codegen_clib_call(
     }
 
     if isinstance(result.type, ir.PointerType) {
+        if ret_plan.get("is_str") {
+            result = self._membrane_str_in(self.builder, result);
+        }
         self._mark_owned(result);
     }
     return self._clib_sext_ret(func_name, result);

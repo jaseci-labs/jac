@@ -659,3 +659,72 @@ test "envelope remains the default" {
         client.close();
     }
 }
+
+
+test "restspec without method registers a live POST route (#8000 f3)" {
+    # A restspec instance is truthy, so `restspec.method if restspec else POST`
+    # yielded method="" for any @restspec(path=...) def without method= - the
+    # router bucketed it under "" and every request 404ed. It must default to
+    # POST and serve.
+    client = make_client("restspec_fixtures.jac");
+    try {
+        client.register_user("u1", "p1");
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
+        token = extract_data(login.json())["token"];
+
+        response = client.post(
+            "/custom/no-method-func", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code == 200 , (
+            f"expected a live default-POST route, got {response.status_code}: {response.text}"
+        );
+        data = extract_data(response.json());
+        assert data["result"]["message"] == "no_method_func executed";
+
+        schema = client._server.server.app.openapi();
+        methods = list(schema["paths"]["/custom/no-method-func"].keys());
+        assert methods == ["post"] , f"openapi must carry a real verb, got {methods}";
+    } finally {
+        client.close();
+    }
+}
+
+
+test "restspec decoration-time validation rejects bad specs (#8000 f3)" {
+    import pytest;
+    import from jaclang.runtimelib.builtin { APIProtocol }
+    import jaclang.runtimelib.builtin as blt;
+
+    with pytest.raises(ValueError) as exc {
+        blt.restspec(method="HEAD")(lambda { 1; });
+    }
+    assert "not routable" in str(exc.value);
+
+    with pytest.raises(ValueError) as exc2 {
+        blt.restspec(protocol="carrier-pigeon")(lambda { 1; });
+    }
+    assert "not recognized" in str(exc2.value);
+
+    def some_fn -> int {
+        return 1;
+    }
+    with pytest.raises(ValueError) as exc3 {
+        blt.restspec(protocol=APIProtocol.WEBHOOK)(some_fn);
+    }
+    assert "walker-only" in str(exc3.value);
+
+    with pytest.raises(ValueError) as exc4 {
+        blt.restspec(broadcast=True)(some_fn);
+    }
+    assert "WEBSOCKET" in str(exc4.value);
+
+    # String coercion: 'ws' and 'get' normalize instead of degrading to HTTP.
+    decorated = blt.restspec(method="get")(some_fn);
+    assert decorated.restspec.method.value == "GET";
+}

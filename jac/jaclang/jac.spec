@@ -2,8 +2,7 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::=
-    lambda_expr | (cast | concurrent_expr) ("if" expression "else" expression)?
+expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
@@ -11,7 +10,9 @@ walrus_assign ::= by_expr (":=" by_expr)?
 
 by_expr ::= pipe ("by" by_expr)?
 
-cast ::= concurrent_expr ("as" pipe)*
+cast ::= bitwise_or ("as" cast_type)*
+
+cast_type ::= atomic_chain ("|" atomic_chain)*
 
 pipe ::= pipe_back ("|>" pipe_back)*
 
@@ -32,10 +33,8 @@ logical_and ::= logical_not ("and" logical_not)*
 logical_not ::= "not" logical_not | compare
 
 compare ::=
-    bitwise_or (
-        ("==" | "!=" | "<" | ">" | "<=" | ">=" | "in" | "is" | "not in" | "is not")
-        bitwise_or
-    )*
+    cast
+    (("==" | "!=" | "<" | ">" | "<=" | ">=" | "in" | "is" | "not in" | "is not") cast)*
 
 arithmetic ::= term (("+" | "-") term)*
 
@@ -63,7 +62,11 @@ spawn ::= "spawn" unpack | unpack ("spawn" unpack)*
 
 unpack ::= "*" ref | ref
 
-ref ::= "own" await_expr | "&" (await_expr | "mut"? await_expr) | await_expr
+ref ::=
+    "own" await_expr
+    | "imm" await_expr
+    | "&" (await_expr | "mut"? await_expr)
+    | await_expr
 
 await_expr ::= "await" pipe_call | pipe_call
 
@@ -308,7 +311,7 @@ open_stmt ::= "in" expression "{" code_block_stmts "}"
 forever_stmt ::= "forever" "{" code_block_stmts "}"
 
 for_stmt ::=
-    "async"? "for" atomic_chain (
+    "async"? "flow"? "for" atomic_chain (
         "=" expression "while" expression "with" atomic_chain assignment_with_target?
         "{" code_block_stmts "}" else_stmt?
         | "in" expression "{" code_block_stmts "}" else_stmt?
@@ -467,7 +470,7 @@ switch_case ::= ("default" | "case" pattern) ":" statement*
 global_var ::= "glob" access_tag global_var_assignment ("," global_var_assignment)* ";"
 
 global_var_assignment ::=
-    (NAME | KWESC_NAME) (":" pipe)? ("=" expression ("=" expression)*)?
+    (NAME | KWESC_NAME) (":" ownership_prefix pipe)? ("=" expression ("=" expression)*)?
 
 impl_def ::=
     ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)* (

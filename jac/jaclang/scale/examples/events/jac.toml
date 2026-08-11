@@ -6,9 +6,10 @@ entry-point = "app.jac"
 
 [scale.events]
 enabled = true
-# Omit `url` to use the in-memory LocalEventStream. Set it (or [scale.database].redis_url)
-# to switch to RedisEventStream without code changes.
-url = "redis://localhost:6379/0"
+# Omit `url` to fall back to [scale.database].url / JAC_DB_URL (the shared
+# Postgres database); with no database at all, the in-memory LocalEventStream
+# is used. Set it explicitly to stream through a dedicated Postgres server.
+# url = "postgresql://user:pass@localhost:5432/jac"
 consumer_group = "events-example"
 
 [scale.events.retry]

@@ -34,9 +34,7 @@ test "memory span nests under the active server span" {
     server = start_server_span("GET /api/x", _UUID);
     assert server is not None;
 
-    mem = start_memory_span(
-        "memory.get", {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
-    );
+    mem = start_memory_span("memory.get", {"db.system": "postgresql", "mem.op": "get"});
     assert mem is not None;
 
     sctx = server.get_span_context();

@@ -43,8 +43,8 @@ def enforced_codes(fixture: str) -> list[str] {
 }
 
 # --- Heap element reaching a container by any write must be fenced (E1406). ----
-test "E1406: appending an owned heap object into a list" {
-    assert enforced_codes("append_obj.jac") == ["E1406"];
+test "fresh archetypes move into list appends since #7857 Phase B" {
+    assert enforced_codes("append_obj.jac") == [];
 }
 
 test "E1406: appending a borrowed str param into a list" {

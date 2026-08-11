@@ -14,6 +14,28 @@ test "int" {
     run_with_both("prim_int.jac", "int_py", "int_cl", "int_na");
 }
 
+test "dict ctor" {
+    run_with_both(
+        "prim_dict.jac", "dict_ctor_py", "dict_ctor_cl", "dict_ctor_na", require=["cl"]
+    );
+}
+
+test "dict iteration" {
+    run_with_both(
+        "prim_dict.jac", "dict_iter_py", "dict_iter_cl", "dict_iter_na", require=["cl"]
+    );
+}
+
+test "numeric parse" {
+    run_with_both(
+        "prim_float.jac", "numparse_py", "numparse_cl", "numparse_na", require=["cl"]
+    );
+}
+
+test "enums" {
+    run_with_both("prim_enums.jac", "enums_py", "enums_cl", "enums_na", require=["cl"]);
+}
+
 test "float" {
     run_with_both("prim_float.jac", "float_py", "float_cl", "float_na");
 }
@@ -174,6 +196,31 @@ test "native any tuple roundtrip" {
 
 test "dict" {
     run_with_both("prim_dict.jac", "dict_py", "dict_cl", "dict_na");
+}
+
+test "native print renders bools as True and False" {
+    run_with_both(
+        "prim_print_bool.jac", "pbool_py", "pbool_cl", "pbool_na", require=["cl", "na"]
+    );
+    # The native print of an i1 must go through the True/False string
+    # select, not the %lld integer path that rendered bools as 1/0.
+    (eng, na_ir) = compile_native("prim_print_bool.jac");
+    llvm_txt = str(na_ir.gen.llvm_ir);
+    assert (".repr.true" in llvm_txt) and (".repr.false" in llvm_txt) , (
+        "print(bool) must select the True/False repr strings natively"
+    );
+}
+
+test "unboxed scalars are never None on any backend" {
+    run_with_both(
+        "prim_none_identity.jac", "nid_py", "nid_cl", "nid_na", require=["cl", "na"]
+    );
+}
+
+test "dict get miss is a real None on every backend" {
+    run_with_both(
+        "prim_dict_get_none.jac", "dgn_py", "dgn_cl", "dgn_na", require=["cl", "na"]
+    );
 }
 
 test "phi str box" {
@@ -655,6 +702,23 @@ test "exception as binding" {
     assert f() == 1;
 }
 
+test "runtime list index miss raises ValueError" {
+    # Native list.index returned -1 on a miss instead of raising -- and
+    # xs[-1] is a *valid* index, so the poison spread silently (#7922).
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_list_index_miss_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime setdefault no-default inserts a real None" {
+    # Native setdefault() with no default inserted a fabricated zero of
+    # the value type; for nullable (pointer) value slots it must insert
+    # None like Python (#7922).
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_setdefault_none_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
 test "runtime divzero caught exact" {
     (eng, _) = compile_native("prim_runtime_errors.jac");
     f = get_func(eng, "test_divzero_catch_exact_na", ctypes.c_int64);
@@ -738,7 +802,11 @@ test "builtins introspection" {
 
 test "match sequence" {
     run_with_both(
-        "prim_match.jac", "match_seq_py", "match_seq_cl", "match_seq_na", require=["na"]
+        "prim_match.jac",
+        "match_seq_py",
+        "match_seq_cl",
+        "match_seq_na",
+        require=["cl", "na"]
     );
 }
 
@@ -748,13 +816,17 @@ test "match star" {
         "match_star_py",
         "match_star_cl",
         "match_star_na",
-        require=["na"]
+        require=["cl", "na"]
     );
 }
 
 test "match mapping" {
     run_with_both(
-        "prim_match.jac", "match_map_py", "match_map_cl", "match_map_na", require=["na"]
+        "prim_match.jac",
+        "match_map_py",
+        "match_map_cl",
+        "match_map_na",
+        require=["cl", "na"]
     );
 }
 
@@ -764,10 +836,16 @@ test "match class" {
         "match_arch_py",
         "match_arch_cl",
         "match_arch_na",
-        require=["na"]
+        require=["cl", "na"]
     );
 }
 
 test "new builtin and positional ctors" {
     run_with_both("prim_new.jac", "new_py", "new_cl", "new_na", require=["na"]);
+}
+
+test "hetero containers round trip" {
+    run_with_both(
+        "prim_hetero.jac", "hetero_py", "hetero_cl", "hetero_na", require=["na"]
+    );
 }

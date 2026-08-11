@@ -9,6 +9,7 @@ import from jaclang.jac0core.archetype {
     ObjectSpatialFunction,
     WalkerArchetype
 }
+import from jaclang.jac0core.osp_graph_sv { cls_of_tag, tag_of_cls }
 import from jaclang.jac0core.osp_kernel {
     Slot,
     WalkerDesc,
@@ -68,19 +69,7 @@ def isolate_request_walk_stack {
     }
 }
 
-glob _tag_of_cls: dict[(any, int)] = {},
-     _cls_of_tag: list[any] = [],
-     _desc_of_cls: dict[(any, WalkerDesc)] = {};
-
-def _tag_for(cls: any) -> int {
-    if cls in _tag_of_cls {
-        return _tag_of_cls[cls];
-    }
-    t = len(_cls_of_tag);
-    _tag_of_cls[cls] = t;
-    _cls_of_tag.append(cls);
-    return t;
-}
+glob _desc_of_cls: dict[(any, WalkerDesc)] = {};
 
 def _trigger_members(trig: any) -> list[any] {
     if trig is None {
@@ -118,7 +107,7 @@ def _slots_from(funcs: list[ObjectSpatialFunction]) -> list[Slot] {
             slots.append(Slot(trig_tag=UNTYPED, fn=wrapped));
         } else {
             for m in members {
-                slots.append(Slot(trig_tag=_tag_for(m), fn=wrapped));
+                slots.append(Slot(trig_tag=tag_of_cls(m), fn=wrapped));
             }
         }
     }
@@ -130,7 +119,7 @@ def desc_for(cls: any) -> WalkerDesc {
         return _desc_of_cls[cls];
     }
     desc = WalkerDesc(
-        type_tag=_tag_for(cls),
+        type_tag=tag_of_cls(cls),
         entry=_slots_from(cast(list[ObjectSpatialFunction], cls._jac_entry_funcs_)),
         exit=_slots_from(cast(list[ObjectSpatialFunction], cls._jac_exit_funcs_))
     );
@@ -139,15 +128,21 @@ def desc_for(cls: any) -> WalkerDesc {
 }
 
 def _sv_tag_of(handle: any) -> int {
-    return _tag_for(`type(_unwrap(handle)));
+    return tag_of_cls(`type(_unwrap(handle)));
 }
 
 def _sv_is_a(tag: int, base: int) -> bool {
-    return issubclass(cast(type, _cls_of_tag[tag]), cast(type, _cls_of_tag[base]));
+    tc = cls_of_tag(tag);
+    bc = cls_of_tag(base);
+    return tc is not None and bc is not None and issubclass(tc, bc);
 }
 
 def _sv_node_desc(tag: int) -> NodeDesc {
-    d = desc_for(_cls_of_tag[tag]);
+    cls = cls_of_tag(tag);
+    if cls is None {
+        return NodeDesc(type_tag=tag, entry=[], exit=[]);
+    }
+    d = desc_for(cls);
     return NodeDesc(type_tag=d.type_tag, entry=d.entry, exit=d.exit);
 }
 
@@ -158,11 +153,7 @@ def _sv_on_complete(scope: WalkScope, ok: bool) {
         anch.next = [];
         anch.ignores = [];
     }
-    if _kernel._walk_stack {
-        outer = _kernel._walk_stack[-1];
-        for r in scope.reports {
-            outer.reports.append(r);
-        }
+    if scope.nested {
         return;
     }
 
@@ -293,7 +284,14 @@ async def _visit_recursive_async(
 async def osp_spawn_async(
     rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list
 ) -> any {
-    scope = WalkScope(wlk=wlk, path=[], next=`list(starts), ignores=[], reports=[]);
+    scope = WalkScope(
+        wlk=wlk,
+        path=[],
+        next=`list(starts),
+        ignores=[],
+        reports=[],
+        nested=(len(_kernel._walk_stack) > 0)
+    );
     _kernel._walk_stack.append(scope);
     ok = False;
     try {
@@ -315,6 +313,12 @@ async def osp_spawn_async(
         ok = True;
     } finally {
         _kernel._walk_stack.pop();
+        if scope.nested and _kernel._walk_stack {
+            outer = _kernel._walk_stack[-1];
+            for r in scope.reports {
+                outer.reports.append(r);
+            }
+        }
         rt.on_complete(scope, ok);
     }
     return wlk;

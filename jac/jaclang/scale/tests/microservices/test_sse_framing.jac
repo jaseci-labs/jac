@@ -1,6 +1,6 @@
 import asyncio;
 import from typing { AsyncIterator, Iterator }
-import from jaclang.scale.runtime.middleware.sse { sse_frame_stream }
+import from jaclang.runtimelib.serving.sse { sse_frame_stream }
 
 
 def _run(coro: object) -> object {

@@ -199,62 +199,69 @@ impl native_capability_violations(mod: uni.Module) -> list {
     _base_dir = os.path.dirname(os.path.abspath(mod.loc.mod_path))
         if (mod?.loc and mod.loc.mod_path)
         else '.';
+    for stmt in ModuleCodegenPass.iter_module_imports(mod, CodeContext.NATIVE)
+        + ModuleCodegenPass.iter_nested_imports(mod, CodeContext.NATIVE) {
+        if stmt.clib_decls or not stmt.items {
+            continue;
+        }
+        for item in stmt.items {
+            (mod_name, _ok) = classify_native_import(item);
+            if mod_name is not None and not _ok {
+                import from jaclang.jac0core.codeinfo {
+                    is_bundled_native_module,
+                    resolve_native_module
+                }
+                if is_bundled_native_module(mod_name) {
+                    continue;
+                }
+                _plain_bare = (
+                    not stmt.is_absorb
+                    and isinstance(item, uni.ModulePath)
+                    and item.alias is None
+                    and len(item.path) == 1
+                );
+                if (stmt.is_absorb or _plain_bare)
+                    and resolve_native_module(mod_name, _base_dir)[1] is not None {
+                    continue;
+                }
+
+                _bound = import_bound_name(item);
+                if (
+                    _bound is not None
+                    and _bound in _type_used
+                    and _bound not in _runtime_used
+                ) {
+                    continue;
+                }
+                if _stdlib_help is None {
+                    _supported_list = ", ".join(
+                        f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
+                    );
+                    _stdlib_help = (
+                        f"Native compilation supports these stdlib imports: "
+                        f"{_supported_list}; C-library imports "
+                        f"(`import from \"lib\" {{...}}`); and other Jac "
+                        f"modules on the native pathway (`import mod` or "
+                        f"`import from mod {{...}}`, unaliased). Move "
+                        f"Python-dependent code to a @sv/Python context."
+                    );
+                }
+                out.append((item, "Python module import", mod_name, _stdlib_help));
+            }
+        }
+    }
+
     for stmt in _native_stmts {
         if isinstance(stmt, uni.Import) {
-            if stmt.clib_decls or not stmt.items {
-                continue;
-            }
-            for item in stmt.items {
-                (mod_name, _ok) = classify_native_import(item);
-                if mod_name is not None and not _ok {
-                    import from jaclang.jac0core.codeinfo {
-                        is_bundled_native_module,
-                        resolve_native_module
-                    }
-                    if is_bundled_native_module(mod_name) {
-                        continue;
-                    }
-                    _plain_bare = (
-                        not stmt.is_absorb
-                        and isinstance(item, uni.ModulePath)
-                        and item.alias is None
-                        and len(item.path) == 1
-                    );
-                    if (stmt.is_absorb or _plain_bare)
-                        and resolve_native_module(mod_name, _base_dir)[1] is not None {
-                        continue;
-                    }
-
-                    _bound = import_bound_name(item);
-                    if (
-                        _bound is not None
-                        and _bound in _type_used
-                        and _bound not in _runtime_used
-                    ) {
-                        continue;
-                    }
-                    if _stdlib_help is None {
-                        _supported_list = ", ".join(
-                            f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
-                        );
-                        _stdlib_help = (
-                            f"Native compilation supports these stdlib imports: "
-                            f"{_supported_list}; C-library imports "
-                            f"(`import from \"lib\" {{...}}`); and other Jac "
-                            f"modules on the native pathway (`import mod` or "
-                            f"`import from mod {{...}}`, unaliased). Move "
-                            f"Python-dependent code to a @sv/Python context."
-                        );
-                    }
-                    out.append((item, "Python module import", mod_name, _stdlib_help));
-                }
-            }
             continue;
         }
 
         work: list = [stmt];
         while work {
             nd = work.pop();
+            if isinstance(nd, uni.Import) {
+                continue;
+            }
             if isinstance(nd, NATIVE_REJECT_NODES) {
                 kind = "expression" if isinstance(nd, uni.Expr) else "statement";
                 out.append((nd, kind, type(nd).__name__, None));
@@ -529,6 +536,24 @@ impl NativeCapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     ir_in.gen.native_viols_reported = True;
     return ir_in;
 }
+
+impl ClientCapabilityCheckPass.postinit -> None {
+    super.postinit();
+}
+
+impl ClientCapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
+    import from jaclang.jac0core.passes.module_codegen_pass {
+        client_capability_violations
+    }
+    if not ir_in.gen.client_viols_reported {
+        for (_vnode, _vkind) in client_capability_violations(ir_in) {
+            self.emit(E5096, node_override=_vnode, kind=_vkind);
+        }
+        ir_in.gen.client_viols_reported = True;
+    }
+    return ir_in;
+}
+
 
 impl PortabilityWarnPass.postinit -> None {
     super.postinit();

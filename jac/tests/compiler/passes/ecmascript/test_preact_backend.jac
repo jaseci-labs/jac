@@ -47,7 +47,7 @@ test "react backend reports runtime symbols for reactive lowering" {
     backend = ReactBackend();
     init = es.Literal(value=0, raw="0");
     assert backend.state_field_symbols(StateField(name="count", init_expr=init))
-        == ["useState"];
+        == ["useJacState"];
     assert backend.ref_field_symbols(RefField(name="node", init_expr=init))
         == ["useRef"];
     assert backend.effect_symbols(
@@ -72,7 +72,7 @@ test "preact backend inherits hook symbol names from react" {
     backend = PreactBackend();
     init = es.Literal(value=0, raw="0");
     assert backend.state_field_symbols(StateField(name="count", init_expr=init))
-        == ["useState"];
+        == ["useJacState"];
     assert backend.effect_symbols(
         Effect(body=[], deps=[], is_entry=True, is_async=False)
     )
@@ -109,13 +109,14 @@ test "preact shares the canonical client runtime source" {
     assert os.path.isfile(path);
 }
 
-test "reactive counter fixture imports hooks from preact" {
+test "reactive counter fixture lowers state through the shared store hook" {
     backend = PreactBackend();
     js = compile_fixture_with_backend("reactive_state.jac", backend);
-    assert 'from "preact/hooks"' in js;
-    assert "useState" in js;
+    # State cells come from the shared runtime shim (react imports are
+    # remapped to preact/compat at bundle time), never preact/hooks.
+    assert 'import { useJacState } from "@jac/runtime"' in js;
     assert 'from "react"' not in js;
-    assert "setCount" in js;
+    assert "__jacS_count.set(" in js;
 }
 
 test "reactive effect fixture imports useEffect from preact hooks" {

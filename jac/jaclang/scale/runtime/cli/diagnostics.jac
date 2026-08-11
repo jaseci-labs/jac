@@ -1,7 +1,5 @@
 import from typing { Any }
-import from jaclang.scale.deploy.target.kubernetes.microservice.manifest_builder {
-    GATEWAY_NAME
-}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { GATEWAY_NAME }
 import from jaclang.scale.runtime.cli._narrow {
     bget,
     dget,

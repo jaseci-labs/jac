@@ -89,9 +89,8 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
                 if opv == "**"
                     and isinstance(lv, int)
                     and isinstance(rv, int)
-                    and rv >= 0
                     and abs(lv) < 1024
-                    and rv < 63 {
+                    and abs(rv) < 63 {
                     return (True, lv ** rv);
                 }
                 if opv == "<<"

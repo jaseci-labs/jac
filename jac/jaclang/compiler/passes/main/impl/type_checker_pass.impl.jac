@@ -148,6 +148,7 @@ impl TypeCheckPass.exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> 
 
 impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
     import from jaclang.compiler.symbol_utils {
+        CallKind,
         classify_call,
         ability_of_symbol,
         resolve_expr_symbol
@@ -164,6 +165,10 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
 
     nd.callee_decl = ability_of_symbol(resolve_expr_symbol(nd.target));
 
+    if nd.call_kind == CallKind.INTRINSIC.value {
+        self._check_intrinsic_call(nd);
+    }
+
     if isinstance(nd.target, uni.AtomTrailer) and not nd.target.is_attr {
         if isinstance(nd.target.right, uni.IndexSlice) {
             idx_slice: uni.IndexSlice = nd.target.right;
@@ -177,8 +182,111 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
     }
 }
 
+impl TypeCheckPass._check_intrinsic_call(
+    self: TypeCheckPass, nd: uni.FuncCall
+) -> None {
+    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
+
+    intrinsics = intrinsic_registry_if_ready();
+    name = nd.target.sym_name if isinstance(nd.target, uni.Name) else None;
+    intr = intrinsics.get(name)
+        if intrinsics is not None and name is not None
+        else None;
+    if intr is None {
+        return;
+    }
+    positional: list = [];
+    has_kw = False;
+    for p in (nd.params or []) {
+        if isinstance(p, uni.KWPair) {
+            has_kw = True;
+        } else {
+            positional.append(p);
+        }
+    }
+    if has_kw {
+        self.emit(
+            E5095,
+            node_override=nd,
+            name=intr.name,
+            reason="keyword arguments are not accepted"
+        );
+    } elif len(positional) != intr.arity() {
+        self.emit(
+            E5095,
+            node_override=nd,
+            name=intr.name,
+            reason=f"expected {intr.arity()} argument(s), got {len(positional)}"
+        );
+    }
+    import from jaclang.compiler.type_system { types }
+    if intr.result_spec in ("i64", "f64") {
+        if self.evaluator.na_builtins_module is not None {
+            result_cls = self.evaluator._get_type_from_module(
+                self.evaluator.na_builtins_module, intr.result_spec
+            );
+            if not isinstance(result_cls, types.UnknownType) {
+                nd.type = self.evaluator._convert_to_instance(result_cls);
+            }
+        }
+    } else {
+        nd.type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    }
+}
+
+impl TypeCheckPass._check_intrinsic_collision(
+    self: TypeCheckPass, nd: uni.Ability
+) -> None {
+    import from jaclang.compiler.symbol_utils { intrinsic_registry_if_ready }
+
+    intrinsics = intrinsic_registry_if_ready();
+    if intrinsics is None {
+        return;
+    }
+    name = nd.name_ref.sym_name if nd.name_ref is not None else None;
+    if name is None or not intrinsics.is_intrinsic(name) {
+        return;
+    }
+    if str(nd.loc.mod_path).endswith(".pyi") {
+        return;
+    }
+    for w in self.prog.warnings_had {
+        if (
+            w.code is W6008
+            and w.loc.mod_path == nd.loc.mod_path
+            and w.loc.first_line == nd.loc.first_line
+        ) {
+            return;
+        }
+    }
+    self.emit(W6008, node_override=nd, name=name);
+}
+
 impl TypeCheckPass.exit_jsx_element(self: TypeCheckPass, nd: uni.JsxElement) -> None {
     self.evaluator.get_type_of_expression(nd);
+}
+
+impl TypeCheckPass.exit_compare_expr(self: TypeCheckPass, nd: uni.CompareExpr) -> None {
+    if self._lambda_depth > 0 {
+        return;
+    }
+    _cmp_mod = nd.find_parent_of_type(uni.Module);
+    if _cmp_mod is None or _cmp_mod.is_raised_from_py {
+        return;
+    }
+    _ord_ops = (Tok.LT, Tok.LTE, Tok.GT, Tok.GTE);
+    operands: list = [nd.left];
+    operands.extend(nd.rights);
+    for (i, op) in enumerate(nd.ops) {
+        _opname = op.name if isinstance(op, uni.Token) else str(op);
+        if _opname not in _ord_ops {
+            continue;
+        }
+        for side in (operands[i], operands[i + 1]) {
+            _side_t = self.evaluator.get_type_of_expression(side);
+            self.evaluator._diag_unnarrowed_optional(nd, _side_t, "an ordered operand");
+        }
+    }
 }
 
 impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None {
@@ -189,10 +297,38 @@ impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> 
 }
 
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
+    import from jaclang.compiler.type_system { types }
     if self._lambda_depth > 0 {
         return;
     }
     self.evaluator.get_type_of_expression(nd);
+    _at_mod = nd.find_parent_of_type(uni.Module);
+    if (
+        not nd.is_attr
+        and _at_mod is not None
+        and not _at_mod.is_raised_from_py
+        and isinstance(nd.right, uni.IndexSlice)
+        and not nd.right.is_range
+        and nd.right.slices
+        and nd.right.slices[0].start is not None
+    ) {
+        _idx_expr = nd.right.slices[0].start;
+        _idx_t = self.evaluator.get_type_of_expression(_idx_expr);
+        if isinstance(_idx_t, types.UnionType) {
+            _base_t = self.evaluator.get_type_of_expression(nd.target);
+            if isinstance(_base_t, types.ClassType)
+                and _base_t.is_class_instance()
+                and not _base_t.is_any_type()
+                and self.evaluator.get_type_of_magic_method_call(
+                    _base_t, "__getitem__", [_idx_expr], None
+                )
+                    is None {
+                self.evaluator._diag_unnarrowed_optional(
+                    nd, _idx_t, "a subscript index"
+                );
+            }
+        }
+    }
 }
 
 impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None {
@@ -217,6 +353,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 is_unannotated_reassign = True;
 
                 left_type = self.evaluator._widen_literal_for_declaration(left_type);
+            }
+
+            if isinstance(left_type, types.UnknownType) and left_type.is_incomplete {
+                return;
             }
 
             if hover_type := self.evaluator._get_type_of_lhs_assignment(target) {
@@ -389,7 +529,8 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 AUG_TO_BINARY_MAP,
                 BINARY_OPERATOR_MAP,
                 ARITHMETIC_OPERATORS,
-                get_numeric_promotion_type
+                get_numeric_promotion_type,
+                get_pow_result_type
             }
             if (
                 not isinstance(left_type, types.UnknownType)
@@ -404,9 +545,15 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                         base_op = AUG_TO_BINARY_MAP.get(nd.aug_op.name);
                         if base_op is not None {
                             if base_op in ARITHMETIC_OPERATORS {
-                                promoted = get_numeric_promotion_type(
-                                    self.evaluator, left_type, right_type, base_op
-                                );
+                                if nd.aug_op is not None and nd.aug_op.value == "**=" {
+                                    promoted = get_pow_result_type(
+                                        self.evaluator, left_type, right_type, nd.value
+                                    );
+                                } else {
+                                    promoted = get_numeric_promotion_type(
+                                        self.evaluator, left_type, right_type, base_op
+                                    );
+                                }
                                 if promoted is not None {
                                     result = promoted;
                                 }
@@ -446,7 +593,13 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
     } else {
         for target in nd.target {
             if isinstance(target, uni.Name) and target.sym {
-                target.type = self.evaluator.get_type_of_symbol(target.sym);
+                target_type = self.evaluator.get_type_of_symbol(target.sym);
+                if not (
+                    isinstance(target_type, types.UnknownType)
+                    and target_type.is_incomplete
+                ) {
+                    target.type = target_type;
+                }
             } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
                 self._eval_unpacking_names(target);
             } else {
@@ -491,6 +644,8 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     import from jaclang.compiler.type_system { types }
 
     self.evaluator.validate_typevar_variance(nd);
+
+    self._check_intrinsic_collision(nd);
 
     if (
         isinstance(nd.signature, uni.FuncSignature)

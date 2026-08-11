@@ -12,7 +12,7 @@ node Spot {
 walker Bump {
     has k: int = 0,
         sink: int = 0,
-        keep: list = [];
+        keep: list[Scratch] = [];
 
     can a with Spot entry {
         for i in range(self.k) {

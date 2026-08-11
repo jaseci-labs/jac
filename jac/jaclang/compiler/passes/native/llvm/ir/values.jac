@@ -7,16 +7,30 @@ import string;
 import re;
 import from types { MappingProxyType }
 import from jaclang.compiler.passes.native.llvm.ir { values, types, _utils }
-import from jaclang.compiler.passes.native.llvm.ir._utils { _StrCaching, _StringReferenceCaching, _HasMetadata }
+import from jaclang.compiler.passes.native.llvm.ir._utils {
+    _StrCaching,
+    _StringReferenceCaching,
+    _HasMetadata
+}
+
 with entry {
     _VALID_CHARS = (
-        frozenset(map(ord, string.ascii_letters)) | frozenset(
-            map(ord, string.digits)
-        ) | frozenset(map(ord, ' !#$%&\'()*+,-./:;<=>?@[]^_`{|}~'))
+        frozenset(map(ord, string.ascii_letters))
+        | frozenset(map(ord, string.digits))
+        | frozenset(map(ord, ' !#$%&\'()*+,-./:;<=>?@[]^_`{|}~'))
     );
     _SIMPLE_IDENTIFIER_RE = re.compile(r"[-a-zA-Z$._][-a-zA-Z$._0-9]*$");
-    _CMP_MAP = {'>': 'gt', '<': 'lt', '==': 'eq', '!=': 'ne', '>=': 'ge', '<=': 'le'};
 }
+
+glob _CMP_MAP = {
+         '>': 'gt',
+         '<': 'lt',
+         '==': 'eq',
+         '!=': 'ne',
+         '>=': 'ge',
+         '<=': 'le'
+     };
+
 """
     Escape the given bytestring for safe use as a LLVM array constant.
     Any unicode string input is first encoded with utf8 into bytes.
@@ -46,10 +60,8 @@ def _binop(opname: Any) -> object {
             if (lhs.type != rhs.type) {
                 raise ValueError(
                     (
-                        "Operands must be the same type, got (%s, %s)" % (
-                            lhs.type,
-                            rhs.type
-                        )
+                        "Operands must be the same type, got (%s, %s)"
+                        % (lhs.type, rhs.type)
                     )
                 );
             }
@@ -62,6 +74,7 @@ def _binop(opname: Any) -> object {
     }
     return wrap;
 }
+
 def _castop(opname: Any) -> object {
     def wrap(fn: Any) -> object {
         @functools.wraps(fn)
@@ -79,6 +92,7 @@ def _castop(opname: Any) -> object {
     }
     return wrap;
 }
+
 """
     A mixin defining constant operations, for use in constant-like classes.
     """
@@ -224,10 +238,8 @@ class _ConstOpMixin(object) {
         if (self.type != other.type) {
             raise ValueError(
                 (
-                    "Operands must be the same type, got (%s, %s)" % (
-                        self.type,
-                        other.type
-                    )
+                    "Operands must be the same type, got (%s, %s)"
+                    % (self.type, other.type)
                 )
             );
         }
@@ -236,6 +248,7 @@ class _ConstOpMixin(object) {
         );
         return FormattedConstant(types.IntType(1), fmt);
     }
+
     """
         Signed integer comparison:
             lhs <cmpop> rhs
@@ -443,6 +456,7 @@ class _Undefined(object) {
 with entry {
     Undefined = _Undefined();
 }
+
 """
     A constant LLVM value.
     """
@@ -454,9 +468,11 @@ class Constant(_StrCaching, _StringReferenceCaching, _ConstOpMixin, Value) {
         constant = typ.wrap_constant_value(constant);
         self.constant = constant;
     }
+
     def _to_string(self: Constant) -> object {
         return '{0} {1}'.format(self.type, self.get_reference());
     }
+
     def _get_reference(self: Constant) -> object {
         if (self.constant is None) {
             val = self.type.null;
@@ -469,6 +485,7 @@ class Constant(_StrCaching, _StringReferenceCaching, _ConstOpMixin, Value) {
         }
         return val;
     }
+
     """
         Construct a literal array constant made of the given members.
         """
@@ -503,6 +520,7 @@ class Constant(_StrCaching, _StringReferenceCaching, _ConstOpMixin, Value) {
         }
         return self.type.addrspace;
     }
+
     def __eq__(self: Constant, other: Any) -> object {
         if isinstance(other, Constant) {
             return (str(self) == str(other));
@@ -510,12 +528,15 @@ class Constant(_StrCaching, _StringReferenceCaching, _ConstOpMixin, Value) {
             return False;
         }
     }
+
     def __ne__(self: Constant, other: Any) -> object {
         return not self.__eq__(other);
     }
+
     def __hash__(self: Constant) -> object {
         return hash(str(self));
     }
+
     def __repr__(self: Constant) -> object {
         return ("<ir.Constant type='%s' value=%r>" % (self.type, self.constant));
     }
@@ -529,9 +550,11 @@ class FormattedConstant(Constant) {
         assert isinstance(constant, str);
         Constant.init(self, typ, constant);
     }
+
     def _to_string(self: FormattedConstant) -> object {
         return self.constant;
     }
+
     def _get_reference(self: FormattedConstant) -> object {
         return self.constant;
     }
@@ -553,6 +576,7 @@ class NamedValue(_StrCaching, _StringReferenceCaching, Value) {
         self.type = `type;
         self._set_name(name);
     }
+
     def _to_string(self: NamedValue) -> object {
         buf = [];
         if not isinstance(self.type, types.VoidType) {
@@ -561,12 +585,15 @@ class NamedValue(_StrCaching, _StringReferenceCaching, Value) {
         self.descr(buf);
         return "".join(buf).rstrip();
     }
+
     def descr(self: NamedValue, buf: Any) -> object {
         raise NotImplementedError;
     }
+
     def _get_name(self: NamedValue) -> object {
         return self._name;
     }
+
     def _set_name(self: NamedValue, name: Any) -> object {
         name = self.parent.scope.register(name, deduplicate=self.deduplicate_name);
         self._name = name;
@@ -583,11 +610,13 @@ class NamedValue(_StrCaching, _StringReferenceCaching, Value) {
         }
         return '{0}"{1}"'.format(self.name_prefix, name);
     }
+
     def __repr__(self: NamedValue) -> object {
         return (
             "<ir.%s %r of type '%s'>" % (self.__class__.__name__, self.name, self.type)
         );
     }
+
     @property
     def function_type(self: NamedValue) -> object {
         ty = self.type;
@@ -611,9 +640,11 @@ class MetaDataString(NamedValue) {
         super.init(parent, types.MetaDataType(), name="");
         self.string = string;
     }
+
     def descr(self: MetaDataString, buf: Any) -> object {
         buf += (self.get_reference(), "\n");
     }
+
     def _get_reference(self: MetaDataString) -> object {
         return '!"{0}"'.format(_escape_string(self.string));
     }
@@ -629,9 +660,11 @@ class MetaDataString(NamedValue) {
             return False;
         }
     }
+
     def __ne__(self: MetaDataString, other: Any) -> object {
         return not self.__eq__(other);
     }
+
     def __hash__(self: MetaDataString) -> object {
         return hash(self.string);
     }
@@ -651,6 +684,7 @@ class MetaDataArgument(_StrCaching, _StringReferenceCaching, Value) {
         self.type = types.MetaDataType();
         self.wrapped_value = value;
     }
+
     def _get_reference(self: MetaDataArgument) -> object {
         return "{0} {1}".format(
             self.wrapped_value.type, self.wrapped_value.get_reference()
@@ -672,6 +706,7 @@ class NamedMetaData(object) {
         self.parent = parent;
         self.operands = [];
     }
+
     def add(self: NamedMetaData, md: Any) -> object {
         self.operands.append(md);
     }
@@ -692,6 +727,7 @@ class MDValue(NamedValue) {
         self.operands = `tuple(values);
         parent.metadata.append(self);
     }
+
     def descr(self: MDValue, buf: Any) -> object {
         operands = [];
         for op in self.operands {
@@ -708,9 +744,11 @@ class MDValue(NamedValue) {
         operands = ', '.join(operands);
         buf += ("!{{ {0} }}".format(operands), "\n");
     }
+
     def _get_reference(self: MDValue) -> object {
         return (self.name_prefix + str(self.name));
     }
+
     def __eq__(self: MDValue, other: Any) -> object {
         if isinstance(other, MDValue) {
             return (self.operands == other.operands);
@@ -718,9 +756,11 @@ class MDValue(NamedValue) {
             return False;
         }
     }
+
     def __ne__(self: MDValue, other: Any) -> object {
         return not self.__eq__(other);
     }
+
     def __hash__(self: MDValue) -> object {
         return hash(self.operands);
     }
@@ -762,6 +802,7 @@ class DIValue(NamedValue) {
         self.operands = `tuple(operands);
         parent.metadata.append(self);
     }
+
     def descr(self: DIValue, buf: Any) -> object {
         if self.is_distinct {
             buf += ("distinct ", );
@@ -794,9 +835,11 @@ class DIValue(NamedValue) {
         operands = ', '.join(operands);
         buf += ("!", self.kind, "(", operands, ")\n");
     }
+
     def _get_reference(self: DIValue) -> object {
         return (self.name_prefix + str(self.name));
     }
+
     def __eq__(self: DIValue, other: Any) -> object {
         if isinstance(other, DIValue) {
             return (
@@ -808,9 +851,11 @@ class DIValue(NamedValue) {
             return False;
         }
     }
+
     def __ne__(self: DIValue, other: Any) -> object {
         return not self.__eq__(other);
     }
+
     def __hash__(self: DIValue) -> object {
         return hash((self.is_distinct, self.kind, self.operands));
     }
@@ -851,6 +896,7 @@ class GlobalVariable(GlobalValue) {
         self.align = None;
         self.parent.add_global(self);
     }
+
     def descr(self: GlobalVariable, buf: Any) -> object {
         if self.global_constant {
             kind = 'constant';
@@ -879,10 +925,8 @@ class GlobalVariable(GlobalValue) {
             if (self.initializer.type != self.value_type) {
                 raise TypeError(
                     (
-                        "got initializer of type %s " "for global value type %s" % (
-                            self.initializer.type,
-                            self.value_type
-                        )
+                        "got initializer of type %s " "for global value type %s"
+                        % (self.initializer.type, self.value_type)
                     )
                 );
             }
@@ -923,15 +967,18 @@ class AttributeSet(`set) {
             self.add(name);
         }
     }
+
     def _expand(self: AttributeSet, name: Any, typ: Any) -> object {
         return name;
     }
+
     def add(self: AttributeSet, name: Any) -> object {
         if (name not in self._known) {
             raise ValueError('unknown attr {!r} for {}'.format(name, self));
         }
         return super.add(name);
     }
+
     def _to_list(self: AttributeSet, typ: Any) -> object {
         return [self._expand(i, typ) for i in sorted(self)];
     }
@@ -982,6 +1029,7 @@ class FunctionAttributes(AttributeSet) {
         self._personality = None;
         super.init(args);
     }
+
     def add(self: FunctionAttributes, name: Any) -> object {
         if (
             ((name == 'alwaysinline') and ('noinline' in self))
@@ -991,24 +1039,29 @@ class FunctionAttributes(AttributeSet) {
         }
         super.add(name);
     }
+
     @property
     def alignstack(self: FunctionAttributes) -> object {
         return self._alignstack;
     }
+
     @alignstack.setter
     def alignstack(self: FunctionAttributes, val: Any) -> object {
         assert (val >= 0);
         self._alignstack = val;
     }
+
     @property
     def personality(self: FunctionAttributes) -> object {
         return self._personality;
     }
+
     @personality.setter
     def personality(self: FunctionAttributes, val: Any) -> object {
         assert ((val is None) or isinstance(val, GlobalValue));
         self._personality = val;
     }
+
     def _to_list(self: FunctionAttributes, ret_type: Any) -> object {
         attrs = super._to_list(ret_type);
         if self.alignstack {
@@ -1025,6 +1078,7 @@ class FunctionAttributes(AttributeSet) {
         return attrs;
     }
 }
+
 """Represent a LLVM Function but does uses a Module as parent.
     Global Values are stored as a set of dependencies (attribute `depends`).
     """
@@ -1041,23 +1095,28 @@ class Function(GlobalValue) {
         self.parent.add_global(self);
         self.calling_convention = '';
     }
+
     @property
     def module(self: Function) -> object {
         return self.parent;
     }
+
     @property
     def entry_basic_block(self: Function) -> object {
         return self.blocks[0];
     }
+
     @property
     def basic_blocks(self: Function) -> object {
         return self.blocks;
     }
+
     def append_basic_block(self: Function, name: Any = '') -> object {
         blk = Block(parent=self, name=name);
         self.blocks.append(blk);
         return blk;
     }
+
     """Insert block before
         """
     def insert_basic_block(self: Function, before: Any, name: Any = '') -> object {
@@ -1122,11 +1181,13 @@ class Function(GlobalValue) {
             buf.append("}\n");
         }
     }
+
     def __str__(self: Function) -> object {
         buf = [];
         self.descr(buf);
         return "".join(buf);
     }
+
     @property
     def is_declaration(self: Function) -> object {
         return (len(self.blocks) == 0);
@@ -1150,6 +1211,7 @@ class ArgumentAttributes(AttributeSet) {
                 'nonnull': False,
                 'noundef': False,
                 'preallocated': True,
+                'readonly': False,
                 'returned': False,
                 'signext': False,
                 'sret': True,
@@ -1167,6 +1229,7 @@ class ArgumentAttributes(AttributeSet) {
         self._dereferenceable_or_null = 0;
         super.init(args);
     }
+
     def _expand(self: ArgumentAttributes, name: Any, typ: Any) -> object {
         requires_type = self._known.get(name);
         if requires_type {
@@ -1175,33 +1238,40 @@ class ArgumentAttributes(AttributeSet) {
             return name;
         }
     }
+
     @property
     def align(self: ArgumentAttributes) -> object {
         return self._align;
     }
+
     @align.setter
     def align(self: ArgumentAttributes, val: Any) -> object {
         assert (isinstance(val, int) and (val >= 0));
         self._align = val;
     }
+
     @property
     def dereferenceable(self: ArgumentAttributes) -> object {
         return self._dereferenceable;
     }
+
     @dereferenceable.setter
     def dereferenceable(self: ArgumentAttributes, val: Any) -> object {
         assert (isinstance(val, int) and (val >= 0));
         self._dereferenceable = val;
     }
+
     @property
     def dereferenceable_or_null(self: ArgumentAttributes) -> object {
         return self._dereferenceable_or_null;
     }
+
     @dereferenceable_or_null.setter
     def dereferenceable_or_null(self: ArgumentAttributes, val: Any) -> object {
         assert (isinstance(val, int) and (val >= 0));
         self._dereferenceable_or_null = val;
     }
+
     def _to_list(self: ArgumentAttributes, typ: Any) -> object {
         attrs = super._to_list(typ);
         if self.align {
@@ -1217,6 +1287,7 @@ class ArgumentAttributes(AttributeSet) {
         return attrs;
     }
 }
+
 class _BaseArgument(NamedValue) {
     def init(self: _BaseArgument, parent: Any, typ: Any, name: Any = '') -> object {
         assert isinstance(typ, types.Type);
@@ -1224,15 +1295,18 @@ class _BaseArgument(NamedValue) {
         self.parent = parent;
         self.attributes = ArgumentAttributes();
     }
+
     def __repr__(self: _BaseArgument) -> object {
         return (
             "<ir.%s %r of type %s>" % (self.__class__.__name__, self.name, self.type)
         );
     }
+
     def add_attribute(self: _BaseArgument, attr: Any) -> object {
         self.attributes.add(attr);
     }
 }
+
 """
     The specification of a function argument.
     """
@@ -1277,22 +1351,27 @@ class Block(NamedValue) {
         self.instructions = [];
         self.terminator = None;
     }
+
     @property
     def is_terminated(self: Block) -> object {
         return (self.terminator is not None);
     }
+
     @property
     def function(self: Block) -> object {
         return self.parent;
     }
+
     @property
     def module(self: Block) -> object {
         return self.parent.module;
     }
+
     def descr(self: Block, buf: Any) -> object {
         buf.append("{0}:\n".format(self._format_name()));
         buf += ["  {0}\n".format(instr) for instr in self.instructions];
     }
+
     """Replace an instruction"""
     def replace(self: Block, old: Any, new: Any) -> object {
         if (old.type != new.type) {
@@ -1307,6 +1386,7 @@ class Block(NamedValue) {
             }
         }
     }
+
     def _format_name(self: Block) -> object {
         name = self.name;
         if not _SIMPLE_IDENTIFIER_RE.match(name) {
@@ -1316,4 +1396,3 @@ class Block(NamedValue) {
         return name;
     }
 }
-

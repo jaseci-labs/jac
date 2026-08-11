@@ -189,7 +189,8 @@
         { "title": "Ownership Checker Specification", "page": "internals/ownership-checker-spec.md" },
         { "title": "Import Patterns", "page": "internals/jac_import_patterns.md" },
         { "title": "Compiler Architecture", "page": "internals/compiler_architecture.md" },
-        { "title": "Cross-Codespace Interop", "page": "internals/interop.md" }
+        { "title": "Cross-Codespace Interop", "page": "internals/interop.md" },
+        { "title": "Region-Granular Persistence Design", "page": "internals/region-persistence-design.md" }
       ]
     },
     { "title": "Ask Jac GPT ✨", "url": "https://jac-gpt.jaseci.org" }

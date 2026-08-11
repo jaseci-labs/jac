@@ -98,6 +98,18 @@ jaclang.org's own source (`game/arena.jac` and `game/webgl_host.jac`):
 `webgl_host.jac` reaches the game through exactly the `na import` +
 `set_na_env` pair above.
 
+## Concurrency on wasm
+
+WebAssembly builds are single-threaded by design today: the toolchain
+has no wasm-threads/shared-memory-atomics story, so `flow for` and
+`flow` call expressions always take their sequential lowering on the
+wasm triple. This is documented behavior, not a bug -- the checker's
+disjointness and sendability rules guarantee the sequential result is
+identical to the parallel one, so the same source runs parallel on a
+native host (enforced zero-RC and atomic-rc builds) and sequential in
+the browser with byte-identical output. Parallel fan-out on wasm lands
+only if and when a wasm-threads story exists.
+
 ## Where to go next
 
 - [Native pathway reference](../../reference/language/native-pathway.md) -- the `na` subset, targets, optimization levels, shared libraries

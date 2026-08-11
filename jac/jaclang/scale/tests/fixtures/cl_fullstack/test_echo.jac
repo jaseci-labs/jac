@@ -7,7 +7,6 @@ jac-scale's enhanced server. Covers signup -> login -> authenticated walker
 spawn end to end, plus the function-call 401 self-heal (issue #7638).
 """
 
-
 import from "@jac/runtime" {
     jacSignup,
     jacLogin,

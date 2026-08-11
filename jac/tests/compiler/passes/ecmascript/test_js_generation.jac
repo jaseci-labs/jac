@@ -173,7 +173,11 @@ test "core fixture emits expected constructs" {
         "function greet",
         "function fibonacci",
         "for (const i of array)",
-        "for (let i = 0; (i < limit); i += 1)",
+        # `for i=0 to ...` loop vars are function-scoped in Jac (symtab hoists
+        # the untyped init assignment), so the declaration hoists out of the
+        # for-head and the var stays readable after the loop (#7922).
+        "for (i = 0; (i < limit); i += 1)",
+        "let i;",
         "while ((counter > 0))",
         "while (true)",
 
@@ -232,7 +236,7 @@ test "advanced fixture emits expected constructs" {
         "async function fetch_value",
         "await fetch_value",
         "async function gather_async",
-        "function generator_examples",
+        "function* generator_examples",
         "function spread_and_rest_examples",
         "...defaults",
         "function template_literal_examples",
@@ -505,6 +509,19 @@ test "assignment inside globvar js" {
     for pattern in expected_generated_code {
         assert pattern in js_code;
     }
+}
+
+test "effect lambda local hoists its declaration into the effect body" {
+    jac_code = "def:pub app -> JsxElement {\n    has status: str = \"starting\";\n\n    can with entry {\n        setup = lambda {\n            probe = \"READY\";\n            status = probe;\n        };\n        setup();\n    }\n\n    <div>{status}</div>\n}\n";
+    temp_path = write_temp_jac(jac_code);
+    js_code = compile_fixture_to_js(temp_path);
+
+    assert "let probe;" in js_code , (
+        "a local first-assigned inside an effect lambda must keep its `let`; "
+        "a bare assignment throws ReferenceError in a strict-mode bundle"
+    );
+    assert "let setup = () => {" in js_code;
+    assert_balanced_syntax(js_code, temp_path);
 }
 
 test "hyphenated package imports generate correct js" {
@@ -810,7 +827,7 @@ test "sv import kwargs preserve names in jac call function" {
     js_code = compile_fixture_to_js(fixture, FIXTURES);
 
     # Pure-kwargs single arg: ``greet(name=input_text)``
-    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val})' in js_code , (
         "Single-kwarg call must propagate the name into the args object;\n"
         + "got:\n"
         + js_code
@@ -859,12 +876,12 @@ test "sv import kwargs preserve names in production jac2js path" {
     fixture = "svc_kwargs/sv_import_kwargs_client.jac";
     js_code = compile_fixture_to_js_production(fixture, FIXTURES);
 
-    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val})' in js_code , (
         "Production jac2js path must lower sv-import kwargs directly into the RPC args object;\n"
         + "got:\n"
         + js_code
     );
-    assert "await greet({name: input_text})" not in js_code , (
+    assert "await greet({name: __jacS_input_text.val})" not in js_code , (
         "Production jac2js path must not pass kwargs object into the generated RPC wrapper;\n"
         + "got:\n"
         + js_code
@@ -914,12 +931,12 @@ test "plain client kwargs lower to ordered js arguments" {
     js_code = compile_fixture_to_js_production(fixture, FIXTURES);
     compact_js = js_code.replace("\n", "").replace(" ", "");
 
-    assert "setTotal(add(5, 10));" in js_code , (
+    assert "__jacS_total.set(add(5, 10));" in js_code , (
         "Known Jac function kwargs must lower to ordered JS positional args;\n"
         + "got:\n"
         + js_code
     );
-    assert "setMixed(add(1, 2));" in js_code , (
+    assert "__jacS_mixed.set(add(1, 2));" in js_code , (
         "Mixed positional/kwarg call must preserve positional args and order kwargs by signature;\n"
         + "got:\n"
         + js_code
@@ -929,12 +946,12 @@ test "plain client kwargs lower to ordered js arguments" {
         + "got:\n"
         + js_code
     );
-    assert "setDefaulted(add_defaults(undefined, 99));" in js_code , (
+    assert "__jacS_defaulted.set(add_defaults(undefined, 99));" in js_code , (
         "Skipping an earlier defaulted param must emit an undefined placeholder, not collapse positions;\n"
         + "got:\n"
         + js_code
     );
-    assert 'setSpread_total(add(kw["a"], kw["b"]));' in js_code , (
+    assert '__jacS_spread_total.set(add(kw["a"], kw["b"]));' in js_code , (
         "Known **kwargs calls must lower to declared-parameter property reads;\n"
         + "got:\n"
         + js_code
@@ -943,7 +960,7 @@ test "plain client kwargs lower to ordered js arguments" {
         "Complex **kwargs source must be evaluated exactly once;\n" + "got:\n" + js_code
     );
     assert (
-        'setSpread_call_total((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))(get_kw()));'
+        '__jacS_spread_call_total.set((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))(get_kw()));'
         in compact_js
     ) , (
         "Known **function_call() spread must lower through a single-evaluation temp IIFE;\n"
@@ -951,7 +968,7 @@ test "plain client kwargs lower to ordered js arguments" {
         + js_code
     );
     assert (
-        'setSpread_merge_total((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))({...kw1,...kw2}));'
+        '__jacS_spread_merge_total.set((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))({...kw1,...kw2}));'
         in compact_js
     ) , (
         "Multiple **kwargs spreads must merge earlier and later sources before keyed reads;\n"
@@ -959,14 +976,14 @@ test "plain client kwargs lower to ordered js arguments" {
         + js_code
     );
     assert (
-        'setSpread_override_total((__jac_kwargs=>add3(__jac_kwargs["a"],99,__jac_kwargs["c"]))({...kw1,...kw2}));'
+        '__jacS_spread_override_total.set((__jac_kwargs=>add3(__jac_kwargs["a"],99,__jac_kwargs["c"]))({...kw1,...kw2}));'
         in compact_js
     ) , (
         "Explicit kwargs must override **spread values while preserving other merged keys;\n"
         + "got:\n"
         + js_code
     );
-    assert "setMethod_total(counter.bump(5, 3));" in js_code , (
+    assert "__jacS_method_total.set(counter.bump(5, 3));" in js_code , (
         "Known method kwargs must lower to ordered JS positional args;\n"
         + "got:\n"
         + js_code
@@ -1245,10 +1262,10 @@ test "compr list method call" {
 test "str methods on local vars and chained calls" {
     js_code = compile_fixture_to_js("str_method_chaining.jac", FIXTURES);
     assert "temp.toLowerCase()" in js_code , "str.lower() on local var should map to .toLowerCase()";
-    assert "text.trim().toLowerCase()" in js_code , "chained str.strip().lower() should map to .trim().toLowerCase()";
-    assert "text.toUpperCase().trim()" in js_code , "chained str.upper().strip() should map to .toUpperCase().trim()";
-    assert "text.trim().toUpperCase()" in js_code , "chained str.strip().upper() should map to .trim().toUpperCase()";
-    assert "text.toUpperCase().trim().toLowerCase()" in js_code , "triple-chained str.upper().strip().lower() should map to .toUpperCase().trim().toLowerCase()";
+    assert "__jacS_text.val.trim().toLowerCase()" in js_code , "chained str.strip().lower() should map to .trim().toLowerCase()";
+    assert "__jacS_text.val.toUpperCase().trim()" in js_code , "chained str.upper().strip() should map to .toUpperCase().trim()";
+    assert "__jacS_text.val.trim().toUpperCase()" in js_code , "chained str.strip().upper() should map to .trim().toUpperCase()";
+    assert "__jacS_text.val.toUpperCase().trim().toLowerCase()" in js_code , "triple-chained str.upper().strip().lower() should map to .toUpperCase().trim().toLowerCase()";
 }
 
 test "issue 5508 case1 in operator on str method call" {
@@ -1764,17 +1781,19 @@ test "is and is not emit identity comparison operators" {
     # both `is` and `is not` fell through to the `===` default. `is None`
     # was accidentally correct; `is not None` silently inverted to `===`,
     # causing branches like `if x is not None { ... }` to run only when x
-    # *was* None.
+    # *was* None. None comparisons now lower to LOOSE equality (== null /
+    # != null) so JS undefined -- from no-return calls, empty pops, host
+    # interop -- reads as Jac None instead of impersonating a value (#7922).
     jac_code = "\"\"\"Test is/is not codegen.\"\"\"\n\ndef check(x: int | None) -> int {\n    if x is None {\n        return 1;\n    }\n    if x is not None {\n        return 2;\n    }\n    return 3;\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {
         js_code = compile_fixture_to_js(temp_path);
-        assert "x === null" in js_code , (
-            f"`is None` must emit `=== null`, got:\n{js_code}"
+        assert "x == null" in js_code and "x === null" not in js_code , (
+            f"`is None` must emit loose `== null`, got:\n{js_code}"
         );
-        assert "x !== null" in js_code , (
-            f"`is not None` must emit `!== null`, got:\n{js_code}"
+        assert "x != null" in js_code and "x !== null" not in js_code , (
+            f"`is not None` must emit loose `!= null`, got:\n{js_code}"
         );
         assert_balanced_syntax(js_code, temp_path);
     } finally {
@@ -2580,9 +2599,10 @@ test "builtin type used as a value lowers to a callable (#7454)" {
             + user_js
         );
     }
-    # The direct-call path must stay inline (no runtime round-trip).
-    assert "Math.trunc(Number(x))" in user_js , (
-        "direct `int(x)` must still coerce inline:\n" + user_js
+    # The direct-call path routes through the strict runtime parser so that
+    # `int("12abc")` raises ValueError like Python instead of yielding NaN.
+    assert "_jac.builtin.int(x)" in user_js , (
+        "direct `int(x)` must route through the strict runtime parser:\n" + user_js
     );
 
     wrapper = (
@@ -2781,16 +2801,21 @@ test "getattr default with or/and emits parenthesized nullish coalescing (#6562)
     assert_balanced_syntax(js_code, fixture);
 }
 
-test "ESDictEmitter.emit_get parenthesizes ?? for 1- and 2-arg forms (#6562)" {
+test "ESDictEmitter.emit_get routes through the membership-checked runtime (#6562, #7884)" {
+    # `target[k] ?? default` was wrong on three axes: a miss produced
+    # undefined (never equal to null, so `is None` failed), a stored None
+    # with no default became undefined, and a stored None with a default
+    # wrongly returned the default. The runtime's _jac.dict.get does the
+    # required membership check and defaults to null.
     emitter = ESDictEmitter();
     ctx = ESEmitCtx(unparser=JSCodeGenerator());
     one_arg = emitter.emit_get(ctx, "d", ['"k"']);
     two_arg = emitter.emit_get(ctx, "d", ['"k"', '""']);
-    assert one_arg == '(d["k"] ?? undefined)' , (
-        "1-arg emit_get must wrap ?? in parens; got " + str(one_arg)
+    assert one_arg == '_jac.dict.get(d, "k")' , (
+        "1-arg emit_get must call the runtime helper; got " + str(one_arg)
     );
-    assert two_arg == '(d["k"] ?? "")' , (
-        "2-arg emit_get must wrap ?? in parens; got " + str(two_arg)
+    assert two_arg == '_jac.dict.get(d, "k", "")' , (
+        "2-arg emit_get must forward the default; got " + str(two_arg)
     );
 }
 
@@ -2818,4 +2843,368 @@ test "builtin name used as a dict key lowers to that key, not the 'key' fallback
     } finally {
         os.unlink(temp_path);
     }
+}
+
+test "unimplemented client statement is a hard error, not a silent drop (#7922)" {
+    # RC-1: EsastGenPass assembled bodies by silently skipping any statement
+    # that never produced an es_ast, so constructs with no ES lowering
+    # (del, with, ...) vanished from the output while `jac check` stayed
+    # green -- the function compiled but computed the wrong value at
+    # runtime. Any such statement must now be a blocks_codegen error.
+    jac_code = (
+        "def t_del() -> int {\n"
+        "    d: dict[str, int] = {\"a\": 1, \"b\": 2};\n"
+        "    del d[\"a\"];\n"
+        "    return len(d.keys());\n"
+        "}\n"
+    );
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=temp_path, no_cgen=True, type_check=True);
+        EsastGenPass(ir_in=ir, prog=prog);
+        drops = [
+            e
+            for e in prog.errors_had
+            if "not supported by client codegen" in str(e)
+        ];
+        assert len(drops) == 1 , (
+            "Expected exactly one E5017 silent-drop diagnostic, got "
+            + str([str(e) for e in prog.errors_had])
+        );
+        assert "del" in str(drops[0]) , (
+            "E5017 must name the offending construct; got " + str(drops[0])
+        );
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "supported client statements do not trip the completeness guard (#7922)" {
+    # Companion to the guard test: a body exercising the ordinary statement
+    # repertoire (assignment, if/else, loops, try/except, return) must not
+    # produce any E5017 -- the guard fires only for genuinely unlowered
+    # statements.
+    jac_code = (
+        "def t_ok(n: int) -> int {\n"
+        "    total = 0;\n"
+        "    for i in range(n) {\n"
+        "        if i % 2 == 0 { total += i; } else { total += 1; }\n"
+        "    }\n"
+        "    while total > 100 { total -= 10; }\n"
+        "    try { total += 1; } except Exception as e { total = 0; }\n"
+        "    return total;\n"
+        "}\n"
+    );
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=temp_path, no_cgen=True, type_check=True);
+        EsastGenPass(ir_in=ir, prog=prog);
+        drops = [
+            e
+            for e in prog.errors_had
+            if "not supported by client codegen" in str(e)
+        ];
+        assert not drops , (
+            "Guard false-positive on supported statements: "
+            + str([str(e) for e in drops])
+        );
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "branch-first assignment binds function-wide, not per block (#7882)" {
+    # RC-3: the ES backend declared `let` at the assignment site in whatever
+    # block scope was current, so `if {result=..} else {result=..} return
+    # result;` emitted two dead block-scoped bindings and threw
+    # ReferenceError. The symbol table hoists such names to the enclosing
+    # Ability; the emitted JS must match it. Executes all seven shapes.
+    js_code = compile_fixture_to_js("scope_hoist_shapes.jac", FIXTURES);
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(t_all()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "scope-hoist shapes crashed in Node:\nstdout="
+        + result.stdout
+        + "\nstderr="
+        + result.stderr
+        + "\njs:\n"
+        + js_code
+    );
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {
+        "ifelse": "NEG",
+        "whl": 1,
+        "fr": 3,
+        "tr": "ok",
+        "wal": 5,
+        "des": 30,
+        "imp": "B"
+    };
+    for (key, want) in expected.items() {
+        assert key in got and got[key] == want , (
+            f"shape {key}: expected {want}, got {got.get(key)}\njs:\n" + js_code
+        );
+    }
+
+    # The if/else shape must produce exactly one binding for `result`
+    # (scan only the user function -- the _jac runtime bundle has its own
+    # unrelated `let result` locals).
+    fn_idx = js_code.find("function t_ifelse");
+    assert fn_idx >= 0 , "compiled function t_ifelse must be present";
+    user_chunk = js_code[fn_idx:fn_idx + 300];
+    assert user_chunk.count("let result") == 1 , (
+        "expected a single hoisted `let result`, got:\n" + user_chunk
+    );
+}
+
+test "module-level entry block assignment hoists to module scope (#7882)" {
+    jac_code = (
+        "with entry {\n"
+        "    if True {\n"
+        "        z = 42;\n"
+        "    }\n"
+        "    print(z);\n"
+        "}\n"
+    );
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "let z;" in js_code , (
+            "module-level `z` must be hoisted to module scope as `let z;`:\n" + js_code
+        );
+        assert "let z = 42" not in js_code , (
+            "branch assignment must not block-scope `z`:\n" + js_code
+        );
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "len dispatches on argument type: dict, set, unknown (#7883)" {
+    # RC-4: emit_len unconditionally returned `.length`, which is undefined
+    # on plain JS objects (dict) and on Set, so len(d) silently returned
+    # undefined and every comparison against it was false. The builtin
+    # emitter now sees the argument's inferred type.
+    js_code = compile_fixture_to_js("len_type_dispatch.jac", FIXTURES);
+
+    d_idx = js_code.find("function t_len_dict");
+    assert d_idx >= 0;
+    d_chunk = js_code[d_idx:d_idx + 250];
+    assert "Object.keys(d).length" in d_chunk , (
+        "len(dict) must emit Object.keys(x).length; got:\n" + d_chunk
+    );
+
+    s_idx = js_code.find("function t_len_set");
+    assert s_idx >= 0;
+    s_chunk = js_code[s_idx:s_idx + 250];
+    assert ".size" in s_chunk , ("len(set) must emit .size; got:\n" + s_chunk);
+
+    a_idx = js_code.find("function t_len_any");
+    assert a_idx >= 0;
+    a_chunk = js_code[a_idx:a_idx + 250];
+    assert "_jac.builtin.len(" in a_chunk , (
+        "len(<unknown type>) must route through _jac.builtin.len; got:\n" + a_chunk
+    );
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(t_len_all()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "len dispatch crashed in Node:\nstdout="
+        + result.stdout
+        + "\nstderr="
+        + result.stderr
+    );
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {"d": 2, "s": 3, "a": 4, "l": 3, "st": 4};
+    for (key, want) in expected.items() {
+        assert key in got and got[key] == want , (
+            f"len shape {key}: expected {want}, got {got.get(key)}\njs:\n" + js_code
+        );
+    }
+}
+
+test "dict.get miss is a real None on the client (#7884)" {
+    # RC-5: emit_get produced `(d[k] ?? undefined)` while None lowers to
+    # null, so `d.get(missing) is None` was false and `is not None` true
+    # for every missing key. Also covers the two present-but-None axes the
+    # runtime's own docs warn about.
+    js_code = compile_fixture_to_js("dict_get_none_semantics.jac", FIXTURES);
+
+    assert "?? undefined" not in js_code , (
+        "dict.get must not emit `?? undefined`:\n" + js_code
+    );
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(get_all()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "dict.get semantics crashed in Node:\nstdout="
+        + result.stdout
+        + "\nstderr="
+        + result.stderr
+    );
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {
+        "miss_is_none": True,
+        "miss_is_not_none": False,
+        "present": 1,
+        "stored_none": True,
+        "stored_none_default": True,
+        "miss_default": 7
+    };
+    for (key, want) in expected.items() {
+        assert key in got and got[key] == want , (
+            f"dict.get axis {key}: expected {want}, got {got.get(key)}\njs:\n" + js_code
+        );
+    }
+}
+
+test "None comparisons lower to loose equality so undefined cannot impersonate a value (#7884, #7922)" {
+    # RC-5, class-closing half: undefined leaks into Jac-visible values
+    # from sites beyond dict.get (no-return functions, empty pops, host
+    # interop). JS `x == null` is true for exactly null and undefined --
+    # precisely Jac None-ness -- so None comparisons use loose equality
+    # while `is` between non-None operands stays strict.
+    js_code = compile_fixture_to_js("none_compare_loose.jac", FIXTURES);
+
+    n_idx = js_code.find("function t_noret_is_none");
+    assert n_idx >= 0;
+    n_chunk = js_code[n_idx:n_idx + 200];
+    assert "== null" in n_chunk and "=== null" not in n_chunk , (
+        "`is None` must lower to loose `== null`; got:\n" + n_chunk
+    );
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(none_cmp_all()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "none-compare fixture crashed in Node:\nstdout="
+        + result.stdout
+        + "\nstderr="
+        + result.stderr
+    );
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {
+        "noret_none": True,
+        "noret_not_none": False,
+        "pop_empty_none": True,
+        "value_not_none": True
+    };
+    for (key, want) in expected.items() {
+        assert key in got and got[key] == want , (
+            f"none-compare axis {key}: expected {want}, got {got.get(key)}\njs:\n"
+            + js_code
+        );
+    }
+}
+
+test "match lowers to a guarded if-chain with full pattern coverage (#7881)" {
+    # RC-2: EsastGenPass had no MatchStmt lowering at all, so a client
+    # function whose body was a match compiled to an empty function that
+    # returned undefined for every input. The lowering is an if-chain over
+    # a cached subject (never a JS switch): guards fall through to later
+    # cases, bodies keep their own return/break semantics, and captures
+    # hoist through the same scope machinery as ordinary assignments.
+    js_code = compile_fixture_to_js("match_lowering.jac", FIXTURES);
+
+    v_idx = js_code.find("function m_value");
+    assert v_idx >= 0;
+    v_chunk = js_code[v_idx:v_idx + 400];
+    assert "__jac_match_subj_" in v_chunk , (
+        "match must lower to the cached-subject if-chain; got:\n" + v_chunk
+    );
+    assert "switch" not in v_chunk , (
+        "match must not lower to a JS switch; got:\n" + v_chunk
+    );
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(m_all()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "match lowering crashed in Node:\nstdout="
+        + result.stdout
+        + "\nstderr="
+        + result.stderr
+    );
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {
+        "v_a": "AAA",
+        "v_b": "BBB",
+        "v_z": "OTHER",
+        "g_big": "big",
+        "g_mid": "mid",
+        "g_small": "small",
+        "s_exact": "exact",
+        "s_star": "starts1:3",
+        "s_empty": "empty",
+        "s_other": "other",
+        "m_circle": "circle:5",
+        "m_kind": "kind:sq",
+        "m_none": "nokind",
+        "a_origin": "origin",
+        "a_yaxis": "yaxis:7",
+        "a_point": "point",
+        "a_not": "notpoint",
+        "o_small": "small",
+        "o_letter": "letter",
+        "o_none": "none",
+        "o_big": "big",
+        "r_hit": "rest:1:2",
+        "r_no": "no",
+        "as_pair": "pair:5:2",
+        "as_no": "no",
+        "t": "T",
+        "f": "F",
+        "n": "N",
+        "v": "V"
+    };
+    for (key, want) in expected.items() {
+        assert key in got and got[key] == want , (
+            f"match axis {key}: expected {want}, got {got.get(key)}"
+        );
+    }
+}
+
+test "obj postinit is invoked by the generated constructor" {
+    js_code = compile_fixture_to_js("postinit_obj.jac", FIXTURES);
+    # the method must exist AND the constructor must call it — an emitted
+    # but never-invoked __post_init__ leaves dataclass semantics broken in
+    # the browser while Python runs it automatically.
+    assert "__post_init__()" in js_code;
+    assert "this.__post_init__();" in js_code , (
+        "constructor must call __post_init__ (postinit was silently dead client-side)"
+    );
+    # a fields-less archetype with postinit still needs a constructor
+    assert js_code.count("this.__post_init__();") >= 2 , (
+        "postinit-only archetype (no has fields) must also get the call"
+    );
+    assert_balanced_syntax(js_code, "postinit_obj.jac");
 }

@@ -347,6 +347,17 @@ expression without a trailing `;` is the return value, even in a
 multi-statement body (`lambda (x: int) { y = x + 1; y * 10 }` returns
 `y * 10`).
 
+Multi-statement lambdas are supported in **every expression position**,
+including decorator arguments (`@deco(lambda { ... })`), default parameter
+values (`def f(x = lambda { ... })`), `has` field defaults, callback
+arguments (`sorted(xs, key=lambda { ... })`), compound-statement conditions
+(`if (lambda { ... })(x) { ... }`, `while ...`), and method/function bodies
+returned from a method. On the Python (server) target these positions lower
+via a hoisted helper `def` placed in the nearest enclosing function-or-module
+scope (never inside a class body, and with a single-underscore name so Python
+private-name mangling can't break the reference); the client and native targets
+use inline lowering and were never affected by the hoist bug.
+
 ```jac
 # Simple lambda -- single expression statement is the implicit return
 glob add = lambda (a: int, b: int) -> int { a + b; };

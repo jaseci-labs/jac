@@ -31,16 +31,17 @@ obj CFGBuildPass(UniPass) {
         false_target: (uni.UniCFGNode | None)
     ) -> uni.CfgExpr;
 
+    def _wire_bool_chain(
+        values: list[uni.CfgExpr],
+        op_is_and: bool,
+        true_target: (uni.UniCFGNode | None),
+        false_target: (uni.UniCFGNode | None)
+    ) -> uni.CfgExpr;
+
     def _set_and_link(
         cfg: uni.CfgExpr,
         true_target: (uni.UniCFGNode | None),
         false_target: (uni.UniCFGNode | None)
-    ) -> None;
-
-    def _patch_inner_bool(
-        nested: uni.BoolExpr,
-        my_true: (uni.UniCFGNode | None),
-        my_false: (uni.UniCFGNode | None)
     ) -> None;
 
     def enter_node(nd: uni.UniNode) -> None;

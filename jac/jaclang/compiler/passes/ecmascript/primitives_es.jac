@@ -14,7 +14,8 @@ import from jaclang.compiler.primitives {
 }
 
 obj ESEmitCtx {
-    has unparser: object;
+    has unparser: object,
+        arg_type_names: (list[str] | None) = None;
 }
 
 def _mcall(target: str, method: str, args: list[str]) -> str {

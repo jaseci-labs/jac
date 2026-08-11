@@ -35,10 +35,10 @@ walker:pub leave_note {
     has text: str = "";
 
     can run with Root entry {
-        fresh = root.shared +>: HasNote() :+> Note(text=self.text);
+        fresh = root.shared +>:HasNote():+> Note(text=self.text);
         if fresh {
             # The note is owned by its author; open it to all readers.
-            grant(fresh, level=ReadPerm);
+            grant(fresh, level=AccessLevel.READ);
         }
         report {"saved": self.text};
     }

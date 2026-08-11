@@ -50,6 +50,7 @@ obj TypeBase(ABC) {
     def is_instance -> bool;
     def is_instantiable_class -> bool;
     def is_class_instance -> bool;
+    def is_any_instance -> bool;
     def is_any_type -> bool;
 }
 
@@ -58,7 +59,8 @@ obj UnknownType(TypeBase) {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
 
-    has is_diagnosed: bool = False;
+    has is_diagnosed: bool = False,
+        is_incomplete: bool = False;
 
     def __str__ -> str;
 }

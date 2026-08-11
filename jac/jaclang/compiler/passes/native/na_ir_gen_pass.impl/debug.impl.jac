@@ -3,6 +3,11 @@ import from jaclang.compiler.passes.native.llvm { binding as llvm }
 import os;
 import sys;
 
+impl NaIRGenPass._na_debug_on -> bool {
+    _opts = self.prog._compile_options;
+    return _opts is not None and bool(_opts.na_debug);
+}
+
 impl NaIRGenPass._attach_di_subprogram(
     func: ir.Function, name: str, line: int
 ) -> None {
@@ -83,8 +88,7 @@ impl NaIRGenPass.post_transform -> None {
 
     ir_str = str(self.llvm_module);
 
-    if os.environ.get("JAC_DEBUG_IR", "").strip().lower()
-        in ("1", "true", "yes", "on") {
+    if self.prog._compile_options.debug_ir {
         import from jaclang.jac0core.jir { get_native_cache_dir }
         src_path = self.ir_in.loc.mod_path;
         if src_path {

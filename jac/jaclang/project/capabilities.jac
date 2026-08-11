@@ -4,25 +4,7 @@ glob RUNTIME: str = "runtime",
      DEPLOY: str = "deploy";
 
 glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
-         "serve": {
-             "context": "runtime",
-             "deps": {
-                 "fastapi": ">=0.121.3,<0.122.0",
-                 "uvicorn[standard]": ">=0.38.0,<0.39.0",
-                 "pyjwt": ">=2.10.1,<2.11.0",
-                 "fastapi-sso": ">=0.21.0,<1.0.0",
-                 "python-multipart": ">=0.0.21,<1.0.0",
-                 "bcrypt": ">=4.0.0,<5.0.0",
-                 "aiohttp": ">=3.9.0,<4.0.0",
-                 "sqlalchemy": ">=2.0.0,<3.0.0",
-                 "email-validator": ">=2.3.0,<3.0.0",
-                 "python-dotenv": ">=1.2.1,<2.0.0",
-                 "requests": ">=2.32.0,<3.0.0"
-             }
-         },
-         "data.mongo": {"context": "runtime", "deps": {"pymongo": ">=4.15.4,<5.0.0"}},
-         "data.redis": {"context": "runtime", "deps": {"redis": ">=7.1.0,<8.0.0"}},
-         "data.sql": {"context": "runtime", "deps": {"sqlalchemy": ">=2.0.0,<3.0.0"}},
+         "serve": {"context": "runtime", "deps": {"python-dotenv": ">=1.2.1,<2.0.0"}},
          "env": {"context": "runtime", "deps": {"python-dotenv": ">=1.2.1,<2.0.0"}},
          "upload": {
              "context": "runtime",
@@ -30,7 +12,10 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          },
          "monitoring": {
              "context": "runtime",
-             "deps": {"prometheus-client": ">=0.21.0,<1.0.0"}
+             "deps": {
+                 "prometheus-client": ">=0.21.0,<1.0.0",
+                 "requests": ">=2.32.0,<3.0.0"
+             }
          },
          "tracing": {
              "context": "runtime",
@@ -61,7 +46,7 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
              "deps": {
                  "kubernetes": ">=34.1.0,<35.0.0",
                  "docker": ">=7.1.0,<8.0.0",
-                 "bcrypt": ">=4.0.0,<5.0.0"
+                 "requests": ">=2.32.0,<3.0.0"
              }
          },
          "llm": {
@@ -91,20 +76,6 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
      };
 
 glob INTENT_RULES: list[dict[str, any]] = [
-         {
-             "section": "database",
-             "keys": ["backend", "type"],
-             "values": {
-                 "mongo": "data.mongo",
-                 "mongodb": "data.mongo",
-                 "redis": "data.redis"
-             }
-         },
-         {
-             "section": "events",
-             "keys": ["backend", "broker"],
-             "values": {"redis": "data.redis"}
-         },
          {
              "section": "storage",
              "keys": ["backend", "type", "storage_type"],
@@ -222,14 +193,6 @@ def derive_capabilities(
                 }
             }
         }
-    }
-
-    if (
-        ("serve" in caps)
-        and (intent or "deploy.k8s" in caps)
-        and not ({"data.mongo", "data.redis"} & caps)
-    ) {
-        caps.add("data.mongo");
     }
     return caps;
 }

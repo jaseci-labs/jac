@@ -3,7 +3,7 @@ name: jac-cl-components
 description: Writing a client-side UI component - shape, reactive state, mount effects, props and Callable callbacks, JSX rendering, event handlers. Load when creating or editing any client component file (a plain `.jac` placed client by its JSX/npm imports; see `jac-codespaces`). Pair with `jac-cl-routing` (multi-page apps), `jac-cl-organization` (architecture & file layout), `jac-cl-auth` (protected pages).
 ---
 
-A plain `.jac` declaration carrying JSX or npm imports is client-side Jac: client placement is inferred (see `jac-codespaces`). Everything in this guide applies to client code however it was placed. A component is a `def:pub` function returning `JsxElement`. The idiomatic body ends with the JSX element as a bare **implicit return** - the final expression without a trailing `;` is the return value (early guard returns stay explicit `return <X />;`). State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No wrapper or marker needed - the JSX or npm import already places the declaration client.
+A plain `.jac` declaration carrying JSX or npm imports is client-side Jac: client placement is inferred (see `jac-codespaces`). Everything in this guide applies to client code however it was placed. A component is a `def:pub` function returning `JsxElement`. The idiomatic body ends with the JSX element as a bare **implicit return** - the final expression without a trailing `;` is the return value (early guard returns stay explicit `return <X />;`). State = `has` fields - assign directly (`x = x + 1` re-renders; no `setX(...)` call), and **assignment is immediately visible**: a `has` write can be read back in the same ability, in helper methods, in lambdas, and after `await`s (state lowers to a synchronous store cell; only *rendering* is deferred and batched). The one restriction: assigning a `has` field in the component body itself (render phase) is a compile error (E0082) - writes belong in abilities, handlers, and methods. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No wrapper or marker needed - the JSX or npm import already places the declaration client.
 
 ## This is Jac, not React or JavaScript
 
@@ -111,11 +111,33 @@ Use the matching type even when you don't read `e`; for an event not in the tabl
 | `async can with entry { ... }` | same, body wrapped in an async IIFE |
 | `can with [dep] entry { ... }` | `useEffect(fn, [dep])` - re-runs when `dep` changes |
 | `can with (a, b) entry { ... }` | `useEffect(fn, [a, b])` |
+| `async can with [dep] entry { ... }` | async IIFE + `[dep]` - async and deps COMPOSE |
 | `can with exit { ... }` | `useEffect(() => () => { ... }, [])` - cleanup on unmount |
 
 Multiple `can with entry` blocks in one component are fine and good for separating concerns - each compiles to its own `useEffect`, and dep-array effects (`can with [darkMode] entry`) sit alongside the mount effects.
 
-⚠ **`entry` and `exit` compile to SEPARATE `useEffect` closures.** A handle created in `can with entry` (interval id, WebSocket, listener) is **invisible** in `can with exit` - the cleanup silently no-ops. For acquire-then-release pairs, use a single manual `useEffect` whose body returns the cleanup - and the outer lambda must NOT be annotated `-> None` (it returns a function):
+`async` and dependency arrays compose freely - the "await something whenever a prop changes" effect (re-fetch on a new query, re-render a diagram from new source, reload on a route param) is a single entry ability, NOT a manual `useEffect` with `.then()` chains:
+
+```jac
+async def search_items(query: str) -> list[str];
+
+def:pub SearchResults(query: str) -> JsxElement {
+    has results: list[str] = [];
+    has failed: bool = False;
+
+    async can with [query] entry {          # re-runs whenever `query` changes
+        try {
+            results = await search_items(query);
+        } except Exception {
+            failed = True;
+        }
+    }
+
+    <ul>{for r in results { <li>{r}</li> }}</ul>
+}
+```
+
+⚠ **`entry` and `exit` compile to SEPARATE `useEffect` closures.** A handle created in `can with entry` (interval id, WebSocket, listener) is **invisible** in `can with exit` - the cleanup silently no-ops. That acquire-then-release pair - a handle created in the effect that its cleanup must release - is the ONLY reason to import `useEffect` and write it manually, with the body returning the cleanup (the outer lambda must NOT be annotated `-> None` - it returns a function). Async work, dep arrays, and promise-returning libraries are NOT reasons - the entry-ability forms above cover all of them. Litmus test: if your manual `useEffect` would end in an empty `return lambda { };`, you have no release to do - delete it and write `can with entry`:
 
 ```jac
 import from "react" { useEffect }
@@ -168,26 +190,10 @@ Caveats specific to slot bodies:
 
 The first four bullets below are **silent runtime bugs** (⚠) - no compile error, no obvious failure mode at runtime. Read them every time.
 
-- ⚠ **In-place mutation does NOT re-render - rebind instead.** `has` state compiles to `useState`; React only re-renders on a *new* value assignment. `todos.append(x)`, `todos[0] = y`, `d["k"] = v`, `.sort()` all mutate the existing object - the UI silently never updates. This is the #1 Python-habit bug. Rebind a fresh value: `todos = todos + [x];`, `todos = [t for t in todos if jid(t) != tid];`, `d = {**d, "k": v};`.
+- ⚠ **In-place mutation does NOT re-render - rebind instead.** State writes bail out when the assigned value is identical (`Object.is`) to the current one; mutating an existing list/dict keeps the same reference, so nothing re-renders. `todos.append(x)`, `todos[0] = y`, `d["k"] = v`, `.sort()` all mutate the existing object - the UI silently never updates. This is the #1 Python-habit bug. Rebind a fresh value: `todos = todos + [x];`, `todos = [t for t in todos if jid(t) != tid];`, `d = {**d, "k": v};`.
 - ⚠ **Hooks + `has` BEFORE any conditional return.** React hooks must fire in the same order every render. `if not jacIsLoggedIn() { return <Navigate />; } has x: int = 0;` → white screen, no compile error.
 - ⚠ **Mount effects (`async can with entry`) fire even when the component returns `<Navigate>`.** Guard the EFFECT body with `if jacIsLoggedIn() { ... }`, not just the render - otherwise `def:priv` calls fire and return 401 silently.
-- ⚠ **Long-running async code reads a STALE snapshot of `has` state.** After an `await`, reading a reactive field back gives the render-time value, not the latest write - so `story = story + frame;` inside a streaming/polling loop re-appends to the same old string every iteration. Accumulate into a LOCAL and assign the whole value each step:
-
-```
-# FRAGILE - each read of reactive `story` inside the loop sees the render-time snapshot
-while feeding {
-    frame = await next_frame();
-    story = story + frame;      # appends to the SAME stale value every time
-}
-
-# CORRECT - local accumulator; assign the full value each iteration (each write re-renders)
-acc = "";
-while feeding {
-    frame = await next_frame();
-    acc = acc + frame;
-    story = acc;
-}
-```
+- **Reads always see the latest write - including after `await`.** `story = story + frame;` inside a streaming/polling loop appends correctly every iteration, a branch right after `x = jacIsLoggedIn();` takes the path you wrote, and `n += 1; n += 1;` in one handler nets +2. (Older jaclang lowered state to raw `useState`, where all of these silently read the previous render's value - if you see advice about "stale snapshots" or local-accumulator workarounds, it predates the store-cell lowering; the workarounds still work but are no longer needed.)
 
 - **`has` fields are reactive state - assign directly.** `count = count + 1` re-renders. No `setCount`. Non-default fields come before defaulted ones (E2004 - see `jac-has-fields`).
 - **Derived values are locals, not `has` fields.** Anything computable from props/params/hook results gets recomputed every render - so it's a local. Putting it in `has` forces a top-level write to keep it in sync, which can cascade to React error #301. Rule: `has` is only for event-driven or async values (user input, fetch results, server data).

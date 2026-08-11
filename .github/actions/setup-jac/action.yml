@@ -12,6 +12,25 @@ description: >
   a miss). Exact-key match only (no restore-keys), so a stale binary can never
   be served -- which is why this is safe even though zig's own incremental cache
   stays disabled (it doesn't reliably invalidate on a jaclang/payload change).
+inputs:
+  ninja:
+    description: >
+      Fuse the neovim editor closure into the binary. The closure's Lua
+      dependency is fetched from lua.org on a cold package store -- the
+      flakiest fetch in the whole build -- and test workloads never open the
+      editor, so dev-lane fallbacks pass "false" to skip it entirely. A
+      no-ninja binary is never saved to the shared jac-bin cache (release
+      flows restore that key and must get the fused editor).
+    required: false
+    default: "true"
+  skip-precompile:
+    description: >
+      Skip the payload JIR precompile (~24 min cold). Only sane for dev-lane
+      fallbacks, whose runtime bypasses the bundled compiler entirely via the
+      [dev] jaclang_source loop; a skip-precompile binary is never saved to
+      the shared jac-bin cache.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -163,6 +182,24 @@ runs:
         # for the payload step, so leave it off and rebuild from scratch on a miss.
         use-cache: false
 
+    # lua.org (the flakiest fetch in the closure -- see the package-store cache
+    # note above) must not be load-bearing on a cold build: when the store cache
+    # missed, pre-seed the Lua source from Debian's pool, whose orig tarball is
+    # byte-identical upstream content on a CDN. `zig fetch` stores it in the
+    # package store under its computed content hash, so the seed is used only if
+    # it extracts to the exact tree the zon pin names (verified: it does), and
+    # `zig build` then resolves lua by hash without ever contacting lua.org. On
+    # main the refreshed store is re-saved by the cache step below, so this also
+    # self-heals the shared zig-pkgs entry after eviction. Best-effort: on a
+    # mirror failure the build falls back to lua.org exactly as before.
+    - name: Pre-seed Lua from the Debian mirror (store-cache miss only)
+      if: steps.cache.outputs.cache-hit != 'true' && steps.zig-pkgs-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: jac
+      run: |
+        zig fetch https://deb.debian.org/debian/pool/main/l/lua5.1/lua5.1_5.1.5.orig.tar.gz \
+          || echo "::warning::Lua mirror pre-seed failed; the build will fall back to lua.org"
+
     # Download + extract the pinned LLVM into jac/.llvm-build (idempotent: a no-op
     # when the cache above restored it). Must run before `zig build` so the shim's
     # static archives exist when build.zig configures the jacllvm step. Skipped
@@ -171,7 +208,13 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
-      run: zig build fetch-llvm --summary all
+      # -Dno-ninja unconditionally: fetching the LLVM slice is
+      # editor-independent (exactly like fetch-typeshed below), and
+      # configuring the graph without it drags the neovim + Lua closure
+      # (incl. the flaky lua.org tarball) into a step that cannot retry.
+      # The fused build still configures ninja itself, inside the retried
+      # build step.
+      run: zig build -Dno-ninja fetch-llvm --summary all
 
     - name: Fetch typeshed stdlib stubs
       if: steps.typeshed-cache.outputs.cache-hit != 'true'
@@ -198,38 +241,24 @@ runs:
           cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
           SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
         fi
-        # zig build intermittently dies from a transient Zig 0.16.0 stdlib panic
-        build_log="$RUNNER_TEMP/jac-build.log"
-        mkdir -p "$RUNNER_TEMP"
-        attempts=0
-        max_attempts=3
-        last_status=0
-        transient=0
-        set +e
-        until [ "$attempts" -ge "$max_attempts" ]; do
-          attempts=$((attempts + 1))
-          echo "::group::zig build (attempt $attempts/$max_attempts)"
-          zig build "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$build_log"
-          last_status=${PIPESTATUS[0]}
-          echo "::endgroup::"
-          if [ "$last_status" -eq 0 ]; then break; fi
-          if grep -Eq 'thread [0-9]+ panic:|terminated with signal|std/Io/Threaded\.zig|integer overflow' "$build_log"; then
-            transient=1
-            remaining=$((max_attempts - attempts))
-            echo "::warning::zig build attempt $attempts hit a transient stdlib panic; retrying ($remaining attempt(s) left)"
-            continue
-          fi
-          break
-        done
-        set -e
-        if [ "$last_status" -ne 0 ]; then
-          if [ "$transient" -eq 1 ]; then
-            echo "::error::zig build failed after $attempts attempt(s) with transient stdlib panics; see collapsed group(s) above."
-          else
-            echo "::error::zig build failed on attempt $attempts; see log above."
-          fi
+        NINJA_ARG=()
+        if [ "${{ inputs.ninja }}" != "true" ]; then
+          NINJA_ARG=(-Dno-ninja)
         fi
-        exit "$last_status"
+        PRE_ARG=()
+        if [ "${{ inputs.skip-precompile }}" = "true" ]; then
+          PRE_ARG=(-Dskip-precompile)
+        fi
+        # Retried: the cold-store fetches (lua.org especially) time out
+        # transiently, and one flake otherwise costs a whole run.
+        for attempt in 1 2 3; do
+          if zig build "${NINJA_ARG[@]}" "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all; then
+            exit 0
+          fi
+          echo "zig build failed (attempt $attempt); retrying in 30s"
+          sleep 30
+        done
+        exit 1
 
     # Seed the shared binary cache from main only (see the note by the restore
     # step). Saved after the build so both the binary and the materialized
@@ -237,7 +266,9 @@ runs:
     - name: Save jac binary cache (main only)
       if: >-
         github.ref == 'refs/heads/main' &&
-        steps.cache.outputs.cache-hit != 'true'
+        steps.cache.outputs.cache-hit != 'true' &&
+        inputs.ninja == 'true' &&
+        inputs.skip-precompile != 'true'
       uses: actions/cache/save@v4
       with:
         path: |

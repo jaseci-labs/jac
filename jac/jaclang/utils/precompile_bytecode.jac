@@ -108,44 +108,84 @@ def find_jac_files(package_dir: str) -> list[str] {
     return result;
 }
 
-glob NATIVE_ONLY_DIR: str = os.path.join("runtimelib", "na_stdlib"),
-     MIXED_NATIVE_DIR: str = os.path.join(
-         "runtimelib", "client", "targets", "desktop", "native"
-     );
-
-def _is_native_only_source(package_dir: str, p: str) -> bool {
-    rel = os.path.relpath(p, package_dir);
-    if rel.startswith(NATIVE_ONLY_DIR + os.sep) {
-        return True;
-    }
-
-    if rel.startswith(MIXED_NATIVE_DIR + os.sep) {
-        import from jaclang.jac0core.placement_solver { native_default_path_ok }
-        return native_default_path_ok(p);
-    }
-    return False;
-}
+glob _sealable_cache: dict[str, list[str]] = {},
+     _placement_cache: dict[str, dict[str, set[str]]] = {};
 
 def sealable_sources(package_dir: str) -> list[str] {
+    key = os.path.abspath(package_dir);
+    cached = _sealable_cache.get(key);
+    if cached is not None {
+        return cached;
+    }
     boot_prefix = str(Path(package_dir) / "jac0core") + os.sep;
     nested = _nested_project_dirs(package_dir);
-    return [
+    candidates = [
         p
         for p in find_jac_files(package_dir)
-        if not p.startswith(boot_prefix)
-            and not _is_native_only_source(package_dir, p)
-            and not _is_pinned_client(package_dir, p)
-            and not any(p.startswith(n) for n in nested)
+        if not p.startswith(boot_prefix) and not any(p.startswith(n) for n in nested)
     ];
+    if Path(package_dir).name == "jaclang" {
+        import from jaclang.jac0core.placement_facts { toolchain_native_by_policy }
+        result = [
+            p
+            for p in candidates
+            if not toolchain_native_by_policy(package_dir, p)
+        ];
+    } else {
+        import from jaclang.jac0core.placement_facts {
+            discover_spaces,
+            spaces_are_client_only
+        }
+        import from jaclang.jac0core.program { JacProgram }
+        discovery = JacProgram();
+        facts = discover_spaces(candidates, discovery);
+        _placement_cache[key] = facts;
+        if discovery.errors_had {
+            console.print(
+                f"  Placement discovery hit {len(discovery.errors_had)} "
+                "error(s); sealing every candidate so each failure surfaces "
+                "per-file instead of being skipped."
+            );
+            result = candidates;
+        } else {
+            skipped = [
+                p
+                for p in candidates
+                if spaces_are_client_only(facts[os.path.abspath(p)])
+            ];
+            result = [
+                p
+                for p in candidates
+                if p not in skipped
+            ];
+            if skipped {
+                names = ", ".join(
+                    str(Path(p).relative_to(Path(key))) for p in skipped[:8]
+                );
+                console.print(
+                    f"  Skipping {len(skipped)} client-only module(s): {names}"
+                );
+            }
+        }
+        discovery.release_compile_closure();
+    }
+    _sealable_cache[key] = result;
+    return result;
 }
 
-def _is_pinned_client(package_dir: str, p: str) -> bool {
-    import from jaclang.jac0core.placement_pins { config_module_pin }
-    try {
-        return config_module_pin(p) == 'client';
-    } except Exception {
-        return False;
+def placement_facts_map(package_dir: str) -> dict[str, list[str]] {
+    key = os.path.abspath(package_dir);
+    sealable_sources(package_dir);
+    facts = _placement_cache.get(key);
+    if not facts {
+        return {};
     }
+    out: dict[str, list[str]] = {};
+    for (ap, spaces) in facts.items() {
+        rel = Path(ap).relative_to(Path(key)).as_posix();
+        out[rel] = sorted(spaces);
+    }
+    return out;
 }
 
 def precompile_unit(
@@ -228,7 +268,250 @@ def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
     return failed;
 }
 
-glob NATIVE_SEAL_MODULES: tuple = ("jac0core/parser/lexer.jac", );
+glob NATIVE_SEAL_MODULES: tuple = ("jac0core/parser/lexer.jac", ),
+     NATIVE_SEAL_DEMOTION_WAIVERS: dict[str, tuple] = {};
+
+def _seal_module_label(path: str, pkg_path: (Path | None)) -> str {
+    if pkg_path is not None {
+        try {
+            return Path(path).resolve().relative_to(
+                Path(pkg_path).resolve()
+            ).as_posix();
+        } except ValueError { }
+    }
+    return os.path.basename(path);
+}
+
+def _seal_demotions(
+    census: dict, pkg_path: (Path | None) = None
+) -> list[tuple[str, str, str]] {
+    found: list[tuple[str, str, str]] = [];
+    for (path, rec) in sorted(census.items()) {
+        where = _seal_module_label(path, pkg_path);
+        for seam in (rec.get("seams") or []) {
+            text = str(seam);
+            (name, sep, why) = text.partition(": ");
+            bare = name if sep else text;
+            reason = why if sep else text;
+            found.append((f"{where}::{bare}", bare, f"{where}: {reason}"));
+        }
+        if rec.get("outcome") == "demoted" {
+            code = rec.get("code") or "?";
+            detail = rec.get("detail") or "";
+            found.append(
+                (
+                    f"{where}::<module>",
+                    "<module>",
+                    f"{where}: whole module demoted [{code}] {detail}"
+                )
+            );
+        }
+    }
+    return found;
+}
+
+def seal_waiver_names(rel: str, waivers: (dict | None) = None) -> tuple[set, set] {
+    table = NATIVE_SEAL_DEMOTION_WAIVERS if waivers is None else waivers;
+    qualified = set(table.get(rel, ()));
+    bare = {q.split("::")[-1] for q in qualified};
+    return (qualified, bare);
+}
+
+def seal_demotion_report(
+    rel: str,
+    census: dict,
+    waivers: (dict | None) = None,
+    pkg_path: (Path | None) = None
+) -> tuple[str, list[str], list[str]] {
+    (allowed, _bare) = seal_waiver_names(rel, waivers);
+    found = _seal_demotions(census, pkg_path);
+    names = {q for (q, _b, _why) in found};
+    offending = [
+        (q, why)
+        for (q, _b, why) in found
+        if q not in allowed
+    ];
+    waived = sorted(
+        n
+        for n in names
+        if n in allowed
+    );
+    stale = sorted(
+        a
+        for a in allowed
+        if a not in names
+    );
+    if not offending {
+        return ("", waived, stale);
+    }
+    lines = [
+        f"NATIVE SEAL: {rel} demoted {len(offending)} method(s) the native "
+        "backend could not lower. A sealed artifact has no Python left to fall "
+        "back to, so every demotion ships as an abort stub that kills the "
+        "process at the first call with no diagnostic."
+    ];
+    for (n, why) in offending {
+        lines.append(f"    {n}  <-  {why}");
+    }
+    lines.append(
+        "  Fix the native lowering, or waive a knowingly-unreachable method by "
+        "adding its exact <module>::<Type>.<method> name above to "
+        "NATIVE_SEAL_DEMOTION_WAIVERS[\""
+            + rel
+            + "\"] in jaclang/utils/precompile_bytecode.jac. The module half is "
+            + "required: a bare method name would also waive a same-named "
+            + "method demoting in a different module of the closure. Set "
+            + "JAC_NA_DEBUG=1 to print the full diagnostic behind each demotion."
+    );
+    return ("\n".join(lines), waived, stale);
+}
+
+def seal_abort_stubs(llvm_ir_text: str) -> list[str] {
+    import re;
+    name_re = re.compile(r'@(?:"([^"]+)"|([A-Za-z0-9_.$\-]+))\s*\(');
+    abort_re = re.compile(
+        r'^(?:tail\s+|musttail\s+|notail\s+)?call\s+void\s+@"?abort"?\s*\(\s*\)'
+    );
+    stubs: list[str] = [];
+    lines = llvm_ir_text.splitlines();
+    total = len(lines);
+    i = 0;
+    while i < total {
+        head = lines[i].strip();
+        i += 1;
+        if not head.startswith("define") {
+            continue;
+        }
+        matched = name_re.search(head);
+        if matched is None {
+            continue;
+        }
+        body: list[str] = [];
+        while i < total {
+            cur = lines[i].strip();
+            i += 1;
+            if cur == "}" {
+                break;
+            }
+            if cur and cur != "{" {
+                body.append(cur);
+            }
+        }
+        if (
+            len(body) == 3
+            and body[0].endswith(":")
+            and abort_re.match(body[1]) is not None
+            and body[2] == "unreachable"
+        ) {
+            stubs.append(matched.group(1) or matched.group(2));
+        }
+    }
+    return sorted(set(stubs));
+}
+
+def purge_native_ir_cache(root_src: str, deps: (list[str] | None) = None) -> int {
+    import glob as _glob;
+    import from jaclang.jac0core.jir { get_native_cache_dir }
+    base = os.path.dirname(os.path.abspath(root_src));
+    dirs: list[str] = [];
+    stems: list[str] = [];
+    for raw in [root_src] + list(deps or []) {
+        if not raw {
+            continue;
+        }
+        resolved = raw if os.path.isabs(raw) else os.path.join(base, raw);
+        stems.append(os.path.splitext(os.path.basename(resolved))[0]);
+        try {
+            cache_dir = str(get_native_cache_dir(resolved));
+            if cache_dir not in dirs {
+                dirs.append(cache_dir);
+            }
+        } except Exception { }
+    }
+    removed = 0;
+    for cache_dir in dirs {
+        for stem in sorted(set(stems)) {
+            for suffix in ("ir_cache", "ir_meta") {
+                for stale in _glob.glob(
+                    os.path.join(cache_dir, f"{stem}.*.{suffix}")
+                ) {
+                    try {
+                        os.remove(stale);
+                        removed += 1;
+                    } except OSError { }
+                }
+            }
+        }
+    }
+    return removed;
+}
+
+def seal_native_canary(lib_path: str, exports: list[str]) -> str {
+    import ctypes;
+    import traceback;
+    import from jaclang.jac0core.compile_options { env_na_debug }
+    import from jaclang.jac0core.native_dylib { DylibEngine }
+
+    debug = env_na_debug();
+    name = os.path.basename(lib_path);
+    sys.stderr.write(f"    canary: dlopen {name}\n");
+    sys.stderr.flush();
+    try {
+        eng = DylibEngine(lib_path);
+    } except Exception as _open_exc {
+        if debug {
+            traceback.print_exc(file=sys.stderr);
+        }
+        return f"dlopen failed: {type(_open_exc).__name__}: {_open_exc}";
+    }
+    missing = sorted(
+        {
+            s
+            for s in (list(exports) + ["__jac_shared_init"])
+            if eng.get_function_address(s) == 0
+        }
+    );
+    if missing {
+        shown = ", ".join(missing[:8]);
+        return (
+            f"{len(missing)} advertised export(s) are not in the linked "
+            f"artifact: {shown}"
+        );
+    }
+    sys.stderr.write(f"    canary: __jac_shared_init + jac_str_new in {name}\n");
+    sys.stderr.flush();
+    try {
+        eng.initialize();
+    } except Exception as _init_exc {
+        if debug {
+            traceback.print_exc(file=sys.stderr);
+        }
+        return f"__jac_shared_init raised {type(_init_exc).__name__}: {_init_exc}";
+    }
+    probe = eng.get_function_address("jac_str_new");
+    if not probe {
+        return "";
+    }
+    try {
+        made = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(
+            probe
+        )(
+            b"jac", 3
+        );
+    } except Exception as _call_exc {
+        if debug {
+            traceback.print_exc(file=sys.stderr);
+        }
+        return f"jac_str_new raised {type(_call_exc).__name__}: {_call_exc}";
+    }
+    if not made {
+        return (
+            "jac_str_new returned NULL: the artifact loaded but its runtime is "
+            "not live"
+        );
+    }
+    return "";
+}
 
 def _native_lib_filename(stem: str) -> str {
     if sys.platform.startswith("win") {
@@ -241,7 +524,10 @@ def _native_lib_filename(stem: str) -> str {
 }
 
 def seal_native_artifacts(
-    pkg_path: Path, precompiled_dir: Path
+    pkg_path: Path,
+    precompiled_dir: Path,
+    modules: (tuple | None) = None,
+    waivers: (dict | None) = None
 ) -> (dict[str, dict] | None) {
     artifacts: dict[str, dict] = {};
     stale_native = precompiled_dir / "native";
@@ -254,35 +540,48 @@ def seal_native_artifacts(
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.compile_options { CompileOptions }
     import from jaclang.jac0core.codeinfo { native_layout_to_dict }
+    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
     import from jaclang.compiler.passes.native.shared_emit { emit_shared_library }
     import jaclang.compiler.passes.native.llvm.binding as llvm;
 
     pkg_name = pkg_path.name;
-    for rel in NATIVE_SEAL_MODULES {
+    for rel in (NATIVE_SEAL_MODULES if modules is None else modules) {
         src = pkg_path / rel;
         if not src.is_file() {
             console.error(f"NATIVE SEAL: missing source {src}");
             return None;
         }
         prog = JacProgram();
-        ir = prog.compile(
-            file_path=str(src),
-            options=CompileOptions(
-                aot_mode=True,
-                type_check=False,
-                force_codespace='native',
-                force_target_program=True,
-                na_gc_mode='cycles'
-            )
-        );
+        na_census_begin();
+        try {
+            ir = prog.compile(
+                file_path=str(src),
+                options=CompileOptions(
+                    aot_mode=True,
+                    type_check=False,
+                    force_codespace='native',
+                    force_target_program=True,
+                    na_gc_mode='cycles',
+                    no_ir_cache=True
+                )
+            );
+        } finally {
+            census = na_census_end();
+        }
+        closure_deps: list[str] = [];
+        if ir is not None and ir.gen.interop_manifest is not None {
+            closure_deps = list(ir.gen.interop_manifest.native_transitive_sources);
+        }
         if prog.errors_had {
             for _err in prog.errors_had {
                 console.error(f"NATIVE SEAL: {_err.pretty_print()}");
             }
+            purge_native_ir_cache(str(src), closure_deps);
             return None;
         }
         if ir is None or ir.gen.llvm_ir is None or ir.gen.native_layout is None {
             console.error(f"NATIVE SEAL: no native IR/layout for {rel}");
+            purge_native_ir_cache(str(src), closure_deps);
             return None;
         }
         manifest = ir.gen.interop_manifest;
@@ -291,12 +590,56 @@ def seal_native_artifacts(
                 f"NATIVE SEAL: {rel} has Python-side imports; artifact would "
                 "need in-process callbacks and cannot be sealed AOT."
             );
+            purge_native_ir_cache(str(src), closure_deps);
+            return None;
+        }
+        (demotion_error, waived, stale_waivers) = seal_demotion_report(
+            rel, census, waivers, pkg_path
+        );
+        if demotion_error {
+            console.error(demotion_error);
+            purge_native_ir_cache(str(src), closure_deps);
+            return None;
+        }
+        for name in waived {
+            console.warning(
+                f"NATIVE SEAL: {rel} ships {name} as an abort stub -- waived by "
+                "NATIVE_SEAL_DEMOTION_WAIVERS. Calling it in a sealed build "
+                "aborts the process."
+            );
+        }
+        for name in stale_waivers {
+            console.warning(
+                f"NATIVE SEAL: {rel} waives {name}, which did not demote; drop "
+                "the stale entry from NATIVE_SEAL_DEMOTION_WAIVERS."
+            );
+        }
+        llvm_ir_text = str(ir.gen.llvm_ir);
+
+        (_qualified, allowed_bare) = seal_waiver_names(rel, waivers);
+        shipped_stubs = [
+            s
+            for s in seal_abort_stubs(llvm_ir_text)
+            if s not in allowed_bare
+        ];
+        if shipped_stubs {
+            console.error(
+                f"NATIVE SEAL: {rel} would link {len(shipped_stubs)} abort "
+                f"stub(s) into its artifact: {', '.join(shipped_stubs)}. This is "
+                "read off the IR that actually ships, so it holds even when the "
+                "native census recorded nothing (a stale native IR cache serves "
+                "a demoted dependency without re-running codegen). The cached IR "
+                "for this closure has been purged; re-run the seal to recompile "
+                "it and get the per-method diagnostic."
+            );
+            purge_native_ir_cache(str(src), closure_deps);
             return None;
         }
         layout = ir.gen.native_layout;
         exports = sorted(layout.functions.keys());
         if not exports {
             console.error(f"NATIVE SEAL: {rel} exports no module functions");
+            purge_native_ir_cache(str(src), closure_deps);
             return None;
         }
         triple = llvm.get_default_triple();
@@ -310,6 +653,19 @@ def seal_native_artifacts(
         );
         if not ok {
             console.error(f"NATIVE SEAL: {rel}: {err}");
+            purge_native_ir_cache(str(src), closure_deps);
+            return None;
+        }
+        canary = seal_native_canary(str(lib_path), exports);
+        if canary {
+            console.error(
+                f"NATIVE SEAL: {rel}: the emitted artifact "
+                f"{lib_path.name} failed its load canary: {canary}. The seal "
+                "refuses artifacts it cannot load and call; set JAC_NA_DEBUG=1 "
+                "for the traceback."
+            );
+            lib_path.unlink(missing_ok=True);
+            purge_native_ir_cache(str(src), closure_deps);
             return None;
         }
         layout_path = out_dir / f"{stem}.layout.json";
@@ -536,6 +892,12 @@ def seal_finalize(
             f"  App: kind={app_meta.get('kind')} caps={app_meta.get('capabilities')}"
         );
     }
+    placement = placement_facts_map(str(pkg_path)) if pkg_name != "jaclang" else {};
+    if placement {
+        console.print(f"  Placement facts: {len(placement)} modules");
+        app_meta = dict(app_meta);
+        app_meta["placement"] = placement;
+    }
     write_manifest(
         precompiled_dir,
         pkg_name,
@@ -564,7 +926,7 @@ def write_manifest(
     } except Exception {
         jac_ver = "0.0.0";
     }
-    manifest = {
+    manifest: dict[str, any] = {
         "format": MANIFEST_FORMAT,
         "package": pkg_name,
         "python_tag": pyver,
@@ -637,6 +999,17 @@ def main {
     }
 
     pkg_name = Path(package_dir).name;
+    if (seal or seal_compile or finalize_only)
+        and pkg_name != "jaclang"
+        and not (Path(package_dir) / "jac.toml").is_file() {
+        console.error(
+            f"Seal aborted: {package_dir} has no jac.toml. An app seal reads "
+            "placement, nested-project scoping, and app metadata from the "
+            "project config; sealing without it would compile every module "
+            "including client code. Stage a sanitized jac.toml first."
+        );
+        sys.exit(1);
+    }
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
     precompiled_dir = Path(package_dir) / "_precompiled";
 

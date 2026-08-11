@@ -97,7 +97,10 @@ def install_structured_logging {
         _structured_installed = True;
     }
 
-    for noisy_name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"] {
+    for noisy_name in [
+        "jaclang.runtimelib.serving.server",
+        "jaclang.runtimelib.serving.app"
+    ] {
         noisy = logging.getLogger(noisy_name);
         if noisy.handlers or not noisy.propagate {
             noisy.handlers = [];

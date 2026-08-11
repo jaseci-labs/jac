@@ -17,6 +17,8 @@ glob logger = logging.getLogger(__name__),
      VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'],
      CONFIG_META_KEYS = frozenset({'extension'});
 
+def client_deps_stale(build_dir: Path) -> bool;
+
 class ViteBundler {
     has dev_server_port: int = 0;
 

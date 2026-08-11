@@ -8,7 +8,7 @@ import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib { sv_client as __jac_sv }
-import from starlette.testclient { TestClient }
+import from jaclang.runtimelib.serving.testing { ServingTestClient as TestClient }
 import from jaclang.scale.server.serve { JacAPIServer }
 
 glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
@@ -28,7 +28,6 @@ def build_service(mod: str, tmp: str) -> tuple[TestClient, JacAPIServer] {
     srv.register_functions_endpoints();
     srv.register_auth_endpoints();
     srv.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
-    srv.server.create_server();
     client = TestClient(srv.server.app, raise_server_exceptions=False);
     __jac_sv.register_test_client(mod, client);
     return (client, srv);
@@ -312,8 +311,8 @@ test "sv boundary: private function rejects malformed token (401)" {
 }
 
 test "sv boundary: private function rejects expired token (401)" {
-    import jwt;
     import from datetime { datetime, UTC, timedelta }
+    import from jaclang.runtimelib.serving.authcrypt { jwt_encode }
     import from jaclang.scale.identity.user_manager { JWT_SECRET, JWT_ALGORITHM }
 
     tmp = setup_env();
@@ -321,7 +320,7 @@ test "sv boundary: private function rejects expired token (401)" {
         (prov, srv) = _secure_provider(tmp);
         (uid, _valid) = _mint_user_token(srv, "expired_user_fn");
         past = datetime.now(UTC) - timedelta(days=2);
-        expired = jwt.encode(
+        expired = jwt_encode(
             {
                 "sub": uid,
                 "user_id": uid,

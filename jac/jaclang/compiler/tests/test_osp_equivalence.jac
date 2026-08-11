@@ -20,20 +20,21 @@ Comparisons use only portable logical data (walker state, report values as int
 lists), never backend-specific identity (anchor ids / uuids / pointers).
 
 Backend support today (see each fixture's docstring for specifics):
-  - na: entry-only spawn, EXACT-type dispatch. No visit / edges / report /
-    disengage; exit abilities compile but do not fire; no subtype dispatch.
-    So only the entry-only fixtures (`osp_acc`, `osp_multi_walker`,
-    `osp_nested_spawn`) carry `require=["na"]`.
-  - cl: runs local-archetype walkers in-process through the kernel -- entry
-    dispatch, `visit`, edge connect/refs, `disengage`, `report`, exit abilities,
-    and subtype / tuple-trigger dispatch -- so every fixture carries
-    `require=["cl"]`.
+  - na and cl both run the full portable kernel: entry/exit dispatch, `visit`
+    (incl. ordering, `else`, list targets), `disengage`, `skip`, `report`
+    (incl. nested-walk bubbling), subtype / tuple-trigger dispatch, edge
+    connect/refs/disconnect with filters and predicates, and plain-function
+    edge ops. The one-substrate interop gate runs with require=["na", "cl"].
+  - Fixtures whose require list omits a backend are gated on golden-transcript
+    parity only where each arm's compare keys exist; a backend named in
+    `require=` must compile, run, and match, so moving a backend into the list
+    is how "support landed" becomes an enforced regression.
 """
 
 import from jaclang.compiler.tests.xbackend_equiv { run_with_both, run_py_fixture }
 
 # ---------------------------------------------------------------------------
-# Entry-only subset -- na participates today (require=["na"]).
+# Spawn/dispatch core.
 # ---------------------------------------------------------------------------
 test "osp acc: typed entry ability accumulates walker state across spawns" {
     assert run_py_fixture("osp_acc", "acc_py") == {"total": 42};
@@ -62,12 +63,21 @@ test "osp nested spawn: an ability spawns a second walker and folds its result" 
     );
 }
 
+test "osp nested report: an inner walk's reports bubble to the enclosing walk" {
+    assert run_py_fixture("osp_nested_report", "nested_report_py")
+        == {"reports": [3, 40, 41, 300]};
+    run_with_both(
+        "osp_nested_report.jac",
+        "nested_report_py",
+        "nested_report_cl",
+        "nested_report_na",
+        require=["na", "cl"]
+    );
+}
+
 # ---------------------------------------------------------------------------
-# Traversal subset -- cl runs these in-process through the kernel (visit, edge
-# connect/refs, disengage, report, exit abilities), so they are enforced
-# cross-backend on cl (require=["cl"]). na still rejects visit/edges/report/
-# disengage with E5090, so it is skipped automatically. `subtype_dispatch` also
-# runs on cl via the emitted subtype `is_a` table.
+# Traversal subset -- visit, edge connect/refs, disengage, report, exit
+# abilities, subtype dispatch. Enforced on the backends named per-test.
 # ---------------------------------------------------------------------------
 test "osp multi-hop: chained typed/untyped hops with per-step node filters" {
     assert run_py_fixture("osp_multi_hop", "multi_hop_py")
@@ -227,6 +237,32 @@ test "osp edge del: `del e` removes the edge from the adjacency (rewire)" {
         == {"before": 1, "after_edges": 1, "now_in": 1};
     run_with_both(
         "osp_edge_del.jac", "edge_del_py", "edge_del_na", "edge_del_na", require=["na"]
+    );
+}
+
+test "osp disconn between: `a del ->:E:-> b` / `c del --> d` remove matching edges" {
+    # Binary disconnect (DisconnectOp) lowers on na via the central
+    # osp_disconn_between store call (and on cl via the __ospDiscBetweenW
+    # wrapper over the same store): typed form removes only matching-type
+    # edges between the endpoints (parallel F edge survives), untyped form
+    # removes every edge between its endpoints; the expression yields bool.
+    assert run_py_fixture("osp_disconn_between", "disc_between_py")
+        == {
+            "before_a": 3,
+            "before_c": 2,
+            "removed_t": 1,
+            "removed_u": 1,
+            "typed_left": 1,
+            "f_left": 1,
+            "a_out": 2,
+            "c_out": 0
+        };
+    run_with_both(
+        "osp_disconn_between.jac",
+        "disc_between_py",
+        "disc_between_cl",
+        "disc_between_na",
+        require=["na", "cl"]
     );
 }
 
@@ -459,5 +495,44 @@ test "osp typed edge endpoints: field read off an unfiltered neighbour traversal
         "typed_endpoint_na",
         "typed_endpoint_na",
         require=["na"]
+    );
+}
+
+test "osp plain-function ops: explicit origins, filters, multi-hop, disconnect (#7941)" {
+    # Every earlier fixture built graphs in plain code but traversed only
+    # inside walker abilities; the cl backend hardcoded `here` as the ref
+    # origin and silently lowered explicit-origin refs to undefined. This
+    # pins the full bare-op surface outside any walker on every backend.
+    assert run_py_fixture("osp_plain_fn_ops", "plain_ops_py")
+        == {
+            "out_all": 3,
+            "out_typed": 2,
+            "picked_v": 4,
+            "two_hop": 1,
+            "into_d": 2,
+            "first_v": 3,
+            "after_del": 1,
+            "still_in_d": 2
+        };
+    run_with_both(
+        "osp_plain_fn_ops.jac",
+        "plain_ops_py",
+        "plain_ops_cl",
+        "plain_ops_na",
+        require=["na", "cl"]
+    );
+}
+
+test "osp interop: plain-built graphs walk, walker-built edges traverse (#7941)" {
+    # The one-substrate gate: a shim keeping bare-op edges in a store the
+    # kernel cannot see can never pass this.
+    assert run_py_fixture("osp_interop", "interop_py")
+        == {"hits": 105, "after_b": 2, "grown_v": 99};
+    run_with_both(
+        "osp_interop.jac",
+        "interop_py",
+        "interop_cl",
+        "interop_na",
+        require=["na", "cl"]
     );
 }

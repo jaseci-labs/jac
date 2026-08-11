@@ -251,6 +251,12 @@ obj AwaitExpression(Node) {
         `type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
 }
 
+obj YieldExpression(Node) {
+    has argument: (Expression | None) = None,
+        delegate: bool = False,
+        `type: TypingLiteral['YieldExpression'] = 'YieldExpression';
+}
+
 obj TemplateLiteral(Node) {
     has quasis: list[TemplateElement] = [],
         expressions: list[Expression] = [],
@@ -466,6 +472,7 @@ glob Statement = ExpressionStatement
          | CallExpression
          | NewExpression
          | AwaitExpression
+         | YieldExpression
          | TemplateLiteral
          | JsxElement
          | JsxFragment

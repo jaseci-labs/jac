@@ -142,9 +142,9 @@ impl JacAPIServerAuth.register_refresh_token_endpoint -> None {
                     name='token',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='JWT token to refresh (with or without Bearer prefix)',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -345,25 +345,25 @@ impl JacAPIServerAuth.register_sso_endpoints -> None {
                     name='platform',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='SSO platform: google, apple, github',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 ),
                 APIParameter(
                     name='operation',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Operation: "login" or "register"',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 ),
                 APIParameter(
                     name='client_callback',
                     data_type='string',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Optional loopback URL (e.g. http://127.0.0.1:<port>/...) for native/desktop clients. The token is redirected here after auth so it lands on the client\'s own origin; ignored unless it is a safe loopback address.',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -383,9 +383,9 @@ impl JacAPIServerAuth.register_sso_endpoints -> None {
                     name='platform',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='SSO platform: google, apple, github',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -404,9 +404,9 @@ impl JacAPIServerAuth.register_sso_endpoints -> None {
                     name='platform',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='SSO platform: google, apple, github',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -541,25 +541,25 @@ impl JacAPIServerAuth.register_api_key_endpoints -> None {
                     name='name',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='A friendly name for the API key',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='expiry_days',
                     data_type='integer',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Number of days until expiry (default from config)',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='allowed_walkers',
                     data_type='string',
                     required=False,
-                    default='',
+                    default_value='',
                     description='Comma-separated webhook walker names this key may call. Empty/omitted for an unscoped key (any walker).',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -590,9 +590,9 @@ impl JacAPIServerAuth.register_api_key_endpoints -> None {
                     name='api_key_id',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='The ID of the API key to revoke',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

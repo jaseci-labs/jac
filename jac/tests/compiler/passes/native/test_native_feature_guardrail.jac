@@ -428,10 +428,14 @@ test "guardrail: foreign import used as a runtime value is still rejected" {
     )}";
 }
 
-# Edge disconnect has no native lowering (connect and traversal do - they
-# ride the OSP kernel adjacency). The capability sweep rejects it
-# pre-codegen.
-test "guardrail: edge disconnect is rejected" {
+# Scalar edge disconnect (`a del --> b` / `a del ->:E:-> b`) now lowers
+# natively through the central osp_disconn_between store call; behavioral
+# coverage lives in jaclang/compiler/tests/test_osp_equivalence.jac
+# (osp_disconn_between fixture). A LIST-valued endpoint is the residual
+# unlowered shape: the store call takes single node handles, so a list
+# operand would coerce to a meaningless address and silently disconnect
+# nothing. Codegen rejects it with a structured E5092 instead.
+test "guardrail: edge disconnect with a list endpoint is rejected" {
     prog = compile_na_inline(
         "disconnect",
         "node N {}\n"
@@ -442,7 +446,7 @@ test "guardrail: edge disconnect is rejected" {
         "}\n"
         "with entry { W() spawn N(); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for DisconnectOp, got: {fmt_errors(
+    assert has_error_code(prog, "E5092") , f"Expected E5092 for list-endpoint DisconnectOp, got: {fmt_errors(
         prog
     )}";
 }

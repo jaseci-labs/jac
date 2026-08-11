@@ -11,7 +11,7 @@ glob TRANSPORT_IN_PROCESS: str = "in_process",
      TRANSPORT_HTTP: str = "http";
 
 glob STATE_IN_PROCESS: str = "in_process",
-     STATE_REDIS: str = "redis";
+     STATE_PG: str = "pg";
 
 
 obj RealizationPlan {
@@ -36,7 +36,7 @@ def plan_realization(
 
     transport = TRANSPORT_IN_PROCESS if embed_gateway else TRANSPORT_HTTP;
 
-    state_backend = STATE_REDIS if scale_enabled else STATE_IN_PROCESS;
+    state_backend = STATE_PG if scale_enabled else STATE_IN_PROCESS;
 
     uses_injector = scale_enabled;
 

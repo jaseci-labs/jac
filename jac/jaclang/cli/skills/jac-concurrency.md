@@ -48,6 +48,10 @@ with entry {
 
 **Async walkers** work too: declare `async walker W { async can step with Item entry { data = await fetch(...); } }`, then `await (root spawn W())` from an async context - the traversal yields at each `await` instead of blocking.
 
+## `flow for` - the disjoint-partition loop
+
+`flow for x in &xs { }` / `flow for m in &mut xs { }` applies the `flow` modifier to a loop: the body is declared per-element over a lent collection and the closing brace is the join. The checker proves the shape race-free (lent collection required, no `break`/`return` across the join, no shared mutation in the body - E1313/E1308; write through the `&mut` element instead). Int accumulators in the reduction shapes (`acc += x`, `acc = min(acc, x)`, `acc = max(acc, x)`) are licensed: each task folds a private partial and the join combines them, so the result equals the sequential fold. In a zero-RC enforced native build (`jac nacompile --enforce-nogc --gc none`) it runs genuinely parallel - element ranges fan out over pthreads and join at the brace (`JAC_FLOW_THREADS` sets the width, default 4). `--gc rc` builds fan out the same way with atomic refcounts; `--gc cycles`, Python, and wasm run it sequentially with identical results. Full rules live in the `jac-native-memory` guide.
+
 ## Choosing
 
 | | `flow`/`wait` | `async`/`await` |

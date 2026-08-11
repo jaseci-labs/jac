@@ -486,6 +486,7 @@ obj ModuleItem(UniNode) {
 
     has from_parent: Import { getter; }
     has from_mod_path: ModulePath { getter; }
+    has binding_name: (Name | None) { getter; }
 
     def resolve_relative_path -> str;
 }
@@ -911,7 +912,8 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
         mutable: bool = True,
         aug_op: (Token | None) = None,
         na_move_lowerable: bool = False,
-        na_overwrite_consumed: bool = False;
+        na_overwrite_consumed: bool = False,
+        na_flow_reduce: str = "";
 
     def postinit -> None;
 }

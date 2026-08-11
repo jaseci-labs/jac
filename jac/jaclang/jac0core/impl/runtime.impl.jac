@@ -157,201 +157,6 @@ impl JacAccessValidation.check_access_level(
     return access_level;
 }
 
-impl JacGraph.get_edges(
-    origin: list[NodeArchetype], destination: ObjectSpatialDestination
-) -> list[EdgeArchetype] {
-    _prefetch_edges(origin);
-    edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
-    for nd in origin {
-        nanch = nd.__jac__;
-
-        for stub in `list(nanch.edges) {
-            `edge = resolve_ref(stub, nanch);
-            if `edge is None {
-                continue;
-            }
-            source = resolve_ref(`edge.source, `edge);
-            target = resolve_ref(`edge.target, `edge);
-            if source is None or target is None {
-                gmem = JacRuntimeInterface.get_context().mem;
-
-                dead = (
-                    (
-                        source is None
-                        and not gmem.is_recoverable_quarantine(`edge.source.id)
-                    )
-                    or (
-                        target is None
-                        and not gmem.is_recoverable_quarantine(`edge.target.id)
-                    )
-                );
-                if dead {
-                    gmem.quarantine_ref(nanch, `edge);
-                }
-                continue;
-            }
-            effective_dir = EdgeDir.ANY
-                if `edge.is_undirected
-                else destination.direction;
-            if (
-                destination.edge_filter(`edge.archetype)
-                and source.archetype
-                and target.archetype
-            ) {
-                if (
-                    (effective_dir in [EdgeDir.OUT, EdgeDir.ANY])
-                    and (nanch == source)
-                    and destination.node_filter(target.archetype)
-                    and JacRuntimeInterface.check_read_access(target)
-                ) {
-                    edges[`edge] = `edge.archetype;
-                }
-                if (
-                    (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
-                    and (nanch == target)
-                    and destination.node_filter(source.archetype)
-                    and JacRuntimeInterface.check_read_access(source)
-                ) {
-                    edges[`edge] = `edge.archetype;
-                }
-            }
-        }
-    }
-    return `list(edges.values());
-}
-
-impl JacGraph.get_edges_with_node(
-    origin: list[NodeArchetype],
-    destination: ObjectSpatialDestination,
-    from_visit: bool = False
-) -> list[(EdgeArchetype | NodeArchetype)] {
-    _prefetch_edges(origin);
-    loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
-    for nd in origin {
-        nanch = nd.__jac__;
-        for stub in `list(nanch.edges) {
-            `edge = resolve_ref(stub, nanch);
-            if `edge is None {
-                continue;
-            }
-            source = resolve_ref(`edge.source, `edge);
-            target = resolve_ref(`edge.target, `edge);
-            if source is None or target is None {
-                gmem = JacRuntimeInterface.get_context().mem;
-
-                dead = (
-                    (
-                        source is None
-                        and not gmem.is_recoverable_quarantine(`edge.source.id)
-                    )
-                    or (
-                        target is None
-                        and not gmem.is_recoverable_quarantine(`edge.target.id)
-                    )
-                );
-                if dead {
-                    gmem.quarantine_ref(nanch, `edge);
-                }
-                continue;
-            }
-            effective_dir = EdgeDir.ANY
-                if `edge.is_undirected
-                else destination.direction;
-            if (
-                destination.edge_filter(`edge.archetype)
-                and source.archetype
-                and target.archetype
-            ) {
-                if (
-                    (effective_dir in [EdgeDir.OUT, EdgeDir.ANY])
-                    and (nanch == source)
-                    and destination.node_filter(target.archetype)
-                    and JacRuntimeInterface.check_read_access(target)
-                ) {
-                    loc[`edge] = `edge.archetype;
-                    loc[target] = target.archetype;
-                }
-                if (
-                    (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
-                    and (nanch == target)
-                    and destination.node_filter(source.archetype)
-                    and JacRuntimeInterface.check_read_access(source)
-                ) {
-                    loc[`edge] = `edge.archetype;
-                    loc[source] = source.archetype;
-                }
-            }
-        }
-    }
-    return `list(loc.values());
-}
-
-impl JacGraph.edges_to_nodes(
-    origin: list[NodeArchetype], destination: ObjectSpatialDestination
-) -> list[NodeArchetype] {
-    _prefetch_edges(origin);
-
-    JacRuntimeInterface.get_context().note_traversal_reads(
-        [nd.__jac__ for nd in origin]
-    );
-    nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
-    for nd in origin {
-        nanch = nd.__jac__;
-        for stub in `list(nanch.edges) {
-            `edge = resolve_ref(stub, nanch);
-            if `edge is None {
-                continue;
-            }
-            source = resolve_ref(`edge.source, `edge);
-            target = resolve_ref(`edge.target, `edge);
-            if source is None or target is None {
-                gmem = JacRuntimeInterface.get_context().mem;
-
-                dead = (
-                    (
-                        source is None
-                        and not gmem.is_recoverable_quarantine(`edge.source.id)
-                    )
-                    or (
-                        target is None
-                        and not gmem.is_recoverable_quarantine(`edge.target.id)
-                    )
-                );
-                if dead {
-                    gmem.quarantine_ref(nanch, `edge);
-                }
-                continue;
-            }
-            effective_dir = EdgeDir.ANY
-                if `edge.is_undirected
-                else destination.direction;
-            if (
-                destination.edge_filter(`edge.archetype)
-                and source.archetype
-                and target.archetype
-            ) {
-                if (
-                    (effective_dir in [EdgeDir.OUT, EdgeDir.ANY])
-                    and (nanch == source)
-                    and destination.node_filter(target.archetype)
-                    and JacRuntimeInterface.check_read_access(target)
-                ) {
-                    nodes[target] = target.archetype;
-                }
-                if (
-                    (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
-                    and (nanch == target)
-                    and destination.node_filter(source.archetype)
-                    and JacRuntimeInterface.check_read_access(source)
-                ) {
-                    nodes[source] = source.archetype;
-                }
-            }
-        }
-    }
-    return `list(nodes.values());
-}
-
 impl JacWalker.`visit(
     `walker: WalkerArchetype,
     expr:
@@ -361,12 +166,12 @@ impl JacWalker.`visit(
             | list[EdgeArchetype]
             | NodeArchetype
             | EdgeArchetype
-            | ObjectSpatialPath
+            | GraphQuery
         ),
     insert_loc: int = -1
 ) -> bool {
     import from jaclang.jac0core.osp_kernel { osp_visit }
-    if isinstance(expr, ObjectSpatialPath) {
+    if isinstance(expr, GraphQuery) {
         expr.from_visit = True;
         expr = JacRuntimeInterface.refs(expr);
     }
@@ -623,29 +428,31 @@ impl JacPersistence.on_commit(callback: Callable) -> None {
 }
 
 impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
-    import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
     ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
-    persistence = mem.l3;
-    conn = persistence?.__conn__ if persistence else None;
-    if (conn and isinstance(conn, sqlite3.Connection)) {
-        cursor = conn.execute("SELECT id, json_extract(data, '$.root') FROM anchors");
-        candidates = [(UUID(row[0]), row[1]) for row in cursor.fetchall()];
-    } else {
-        candidates = [
-            (anchor.id, str(anchor.root) if anchor.root else None)
-            for anchor in mem.get_mem().values()
-        ];
+    cand_map: dict = {};
+    store = mem?.store;
+    if store is not None {
+        mem.read_barrier();
+        for row in store.rows("SELECT id, root_id FROM anchors", {}) {
+            cand_map[UUID(str(row[0]))] = str(row[1]) if row[1] else None;
+        }
     }
+    for anchor in mem.get_mem().values() {
+        cand_map[anchor.id] = str(anchor.root) if anchor.root else None;
+    }
+    candidates = list(cand_map.items());
+    import from jaclang.jac0core.osp_graph_sv { sv_forget_by_id }
     for (aid, aroot) in candidates {
         if ((aid == ranchor.id) or (aroot != str(ranchor.id))) {
             continue;
         }
         deleted_ids.add(aid);
         mem.delete(aid);
+        sv_forget_by_id(aid, mem);
         deleted_count += 1;
     }
     ranchor.edges = [
@@ -1076,63 +883,30 @@ impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
 }
 
 impl JacGraph.refs(
-    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
-    post_filter: (Callable[([Archetype], bool)] | None) = None,
-    slc: (slice | None) = None
+    path: GraphQuery | NodeArchetype | list[NodeArchetype], slc: (slice | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
-    if not isinstance(path, ObjectSpatialPath) {
-        path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
+    if not isinstance(path, GraphQuery) {
+        path = GraphQuery(path, hops=[QHop(dir=EdgeDir.OUT.value)]);
     }
-
-    if post_filter is not None and path.destinations {
-        last = path.destinations[-1];
-        if last.nd is None {
-            last.nd = post_filter;
-        } else {
-            orig_nd = last.nd;
-            last.nd = lambda (i: any) { orig_nd(i) and post_filter(i); };
-        }
-    }
-
+    import from jaclang.runtimelib.query_planner { resolve_query, resolve_query_edges }
     ctx = JacRuntimeInterface.get_context();
     ctx.note_traversal_reads([nd.__jac__ for nd in path.origin]);
-
-    import from jaclang.runtimelib.resolver { resolve_path_anchors }
-    if not path.edge_only {
-        planned = resolve_path_anchors(ctx.mem, path, slc);
-        return [
-            a.archetype
-            for a in planned
-            if a.archetype is not None
-        ];
+    if slc is not None and path.slc is None {
+        path.slc = slc;
     }
-
-    origin: list[NodeArchetype];
-    if len(path.destinations) > 1 {
-        prefix_path = ObjectSpatialPath(path.origin, path.destinations[:-1]);
-        prefix_anchors = resolve_path_anchors(ctx.mem, prefix_path);
-        origin = [
-            a.archetype
-            for a in prefix_anchors
-            if a.archetype is not None
-        ];
-    } else {
-        origin = path.origin;
-    }
-    if path.from_visit {
-        result = JacRuntimeInterface.get_edges_with_node(origin, path.destinations[-1]);
-    } else {
-        result = JacRuntimeInterface.get_edges(origin, path.destinations[-1]);
-    }
-    if slc is not None {
-        result = result[slc];
-    }
-    return result;
+    planned = (
+        resolve_query_edges(ctx.mem, path)
+            if path.edges_only
+            else resolve_query(ctx.mem, path)
+    );
+    return [
+        a.archetype
+        for a in planned
+        if a.archetype is not None
+    ];
 }
 
-impl JacGraph.arefs(
-    path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
-) -> None {
+impl JacGraph.arefs(path: GraphQuery | NodeArchetype | list[NodeArchetype]) -> None {
     ;
 }
 
@@ -1193,44 +967,44 @@ impl JacGraph.disconnect(
     dir: EdgeDir = EdgeDir.OUT,
     filter: (Callable[([EdgeArchetype], bool)] | None) = None
 ) -> bool {
+    import from jaclang.jac0core.osp_graph_sv {
+        sv_candidate_edges_between,
+        sv_register_hydrated
+    }
     disconnect_occurred = False;
     left = [left] if isinstance(left, NodeArchetype) else left;
     right = [right] if isinstance(right, NodeArchetype) else right;
     for i in left {
         nd = i.__jac__;
-        for anchor in `set(nd.edges) {
-            if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and (not filter or filter(anchor.archetype))
-                and source.archetype
-                and target.archetype
-            ) {
-                if (
-                    (dir in [EdgeDir.OUT, EdgeDir.ANY])
-                    and (nd == source)
-                    and (target.archetype in right)
-                    and JacRuntimeInterface.check_connect_access(
-                        target, op_hint="edge_delete"
-                    )
-                ) {
-                    JacRuntimeInterface.destroy([anchor])
-                        if anchor.persistent
-                        else anchor.detach();
-                    disconnect_occurred = True;
+        for stub in `set(nd.edges) {
+            if not stub.is_populated() {
+                stub.populate();
+            }
+        }
+        sv_register_hydrated(nd);
+        handled: set = set();
+        for j in right {
+            for anchor in sv_candidate_edges_between(nd, j.__jac__, dir.value) {
+                if anchor.id in handled {
+                    continue;
                 }
+                handled.add(anchor.id);
                 if (
-                    (dir in [EdgeDir.IN, EdgeDir.ANY])
-                    and (nd == target)
-                    and (source.archetype in right)
-                    and JacRuntimeInterface.check_connect_access(
-                        source, op_hint="edge_delete"
-                    )
+                    (source := anchor.source)
+                    and (target := anchor.target)
+                    and (not filter or filter(anchor.archetype))
+                    and source.archetype
+                    and target.archetype
                 ) {
-                    JacRuntimeInterface.destroy([anchor])
-                        if anchor.persistent
-                        else anchor.detach();
-                    disconnect_occurred = True;
+                    other = target if source.id == nd.id else source;
+                    if JacRuntimeInterface.check_connect_access(
+                        other, op_hint="edge_delete"
+                    ) {
+                        JacRuntimeInterface.destroy([anchor])
+                            if anchor.persistent
+                            else anchor.detach();
+                        disconnect_occurred = True;
+                    }
                 }
             }
         }
@@ -1274,12 +1048,14 @@ impl JacGraph.build_edge(
 ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)] {
     ct = conn_type or GenericEdge;
     def builder(source: NodeAnchor, target: NodeAnchor) -> EdgeArchetype {
+        import from jaclang.jac0core.osp_graph_sv { sv_conn }
         `edge = ct() if isinstance(ct, `type) else ct;
         eanch = `edge.__jac__=EdgeAnchor(
             archetype=`edge, source=source, target=target, is_undirected=is_undirected
         );
         source.edges.append(eanch);
         target.edges.append(eanch);
+        sv_conn(source, target, eanch, is_undirected);
         if conn_assign {
             for (fld, val) in zip(conn_assign[0], conn_assign[1], strict=False) {
                 if hasattr(`edge, fld) {
@@ -1292,8 +1068,6 @@ impl JacGraph.build_edge(
         if (source.persistent or target.persistent) {
             JacRuntimeInterface.save(eanch);
         }
-        import from jaclang.runtimelib.topo_utils { on_edge_created }
-        on_edge_created(source, target, eanch);
         return `edge;
     }
     return builder;
@@ -1309,8 +1083,6 @@ impl JacPersistence.save(`obj: (Archetype | Anchor)) -> None {
     jctx.mem.put(anchor);
     match anchor {
         case NodeAnchor():
-            import from jaclang.runtimelib.topo_utils { on_node_saved }
-            on_node_saved(anchor);
             for ed in anchor.edges {
                 if (ed.is_populated() and not ed.persistent) {
                     JacRuntimeInterface.save(ed);
@@ -1343,29 +1115,17 @@ impl JacPersistence.destroy(
         if JacRuntimeInterface.check_write_access(anchor, op_hint="delete") {
             match anchor {
                 case NodeAnchor():
-                    import from jaclang.runtimelib.topo_utils { on_edge_destroyed }
                     for `edge in anchor.edges[:] {
-                        if `edge.is_populated() {
-                            on_edge_destroyed(`edge.source, `edge.target, `edge);
-                        }
                         `edge.detach();
                         JacRuntimeInterface.get_context().mem.delete(`edge.id);
                     }
 
                 case EdgeAnchor():
-                    import from jaclang.runtimelib.topo_utils { on_edge_destroyed }
-                    if anchor.is_populated() {
-                        on_edge_destroyed(anchor.source, anchor.target, anchor);
-                    }
                     anchor.detach();
 
                 case _:
                     ;
 
-            }
-            if isinstance(anchor, NodeAnchor) {
-                import from jaclang.runtimelib.topo_utils { on_node_destroyed }
-                on_node_destroyed(anchor);
             }
             JacRuntimeInterface.get_context().mem.delete(anchor.id);
         }
@@ -1437,13 +1197,11 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         return;
     }
     import os;
-    import socket;
     import time;
-    import threading;
     import urllib.request;
-    import from http.server { ThreadingHTTPServer }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.server { JacAPIServer as CoreJacAPIServer }
+    import from jaclang.runtimelib.serving.server { ServingServer }
     if module_name in sv_client._registry {
         return;
     }
@@ -1451,36 +1209,16 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         return;
     }
     base_port = 18000 + (hash(module_name) % 1000);
-    port = base_port;
-    bind_ok = False;
-    for _ in range(100) {
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
-        try {
-            s.bind(('127.0.0.1', port));
-            s.close();
-            bind_ok = True;
-            break;
-        } except OSError {
-            s.close();
-            port = port + 1;
-        }
-    }
-    if not bind_ok {
-        raise RuntimeError(f"Could not find free port near {base_port}");
-    }
 
     srv = CoreJacAPIServer(
         module_name=module_name, port=0, base_path=base_path, is_sv_sibling=True
     );
-    srv.port = port;
     srv.load_module();
-    handler_class = srv.create_handler();
-    httpd = ThreadingHTTPServer(('127.0.0.1', port), handler_class);
-    srv.server = httpd;
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True);
-    thread.start();
-    time.sleep(0.05);
+    serving = ServingServer(app=srv.build_app(), host='127.0.0.1', port=base_port);
+    serving.serve_background(port_retries=100);
+    port = serving.bound_port;
+    srv.port = port;
+    srv.server = serving;
     base_url = f"http://127.0.0.1:{port}";
     deadline = time.time() + 10.0;
     healthy = False;
@@ -1510,45 +1248,28 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
         return _sp.sv_service_call(module_name, func_name, args);
     }
     import from jaclang.runtimelib { sv_client }
-
-    import from jaclang.runtimelib.sv_sse {
-        sv_http_post,
-        wrap_sse_keepalive,
-        wrap_sse_keepalive_conn
-    }
+    import from jaclang.runtimelib.serving.client { post_stream_aware_sync }
+    import from jaclang.runtimelib.serving.sse { consume_sse_events }
 
     func_label = f"{module_name}.{func_name}";
 
     if module_name in sv_client._test_clients {
         client = sv_client._test_clients[module_name];
-        stream_cm = client.stream("POST", f"/function/{func_name}", json=args);
-        resp = stream_cm.__enter__();
-        ct = resp.headers.get("content-type", "");
+        resp = client.post(f"/function/{func_name}", json=args);
+        ct = str(resp.headers.get("Content-Type") or "");
         if ct.startswith("text/event-stream") {
-            return wrap_sse_keepalive(stream_cm, resp, None, func_label);
+            return consume_sse_events(str(resp.text).splitlines(), func_label);
         }
-        try {
-            resp.read();
-            data = resp.json();
-        } finally {
-            stream_cm.__exit__(None, None, None);
-        }
+        data = resp.json();
     } else {
-        import json;
         url = sv_client.resolve_url(module_name);
-        (resp, conn) = sv_http_post(url, f"/function/{func_name}", args);
-        ct = resp.headers.get("Content-Type", "") or "";
-        if ct.startswith("text/event-stream") {
-            if conn.sock is not None {
-                conn.sock.settimeout(None);
-            }
-            return wrap_sse_keepalive_conn(resp, conn, func_label);
+        (kind, payload) = post_stream_aware_sync(
+            f"{url}/function/{func_name}", json_body=args, label=func_label
+        );
+        if kind == 'sse' {
+            return payload;
         }
-        try {
-            data = json.loads(resp.read().decode('utf-8'));
-        } finally {
-            conn.close();
-        }
+        data = payload;
     }
 
     if isinstance(data, dict) and data.get("ok") {
@@ -1574,7 +1295,7 @@ impl JacServe.sv_walker_call(
         return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
     }
     import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.sv_sse { sv_http_post }
+    import from jaclang.runtimelib.serving.client { request_sync }
 
     label = f"{module_name}.{walker_name}";
 
@@ -1583,14 +1304,10 @@ impl JacServe.sv_walker_call(
         resp = client.post(f"/walker/{walker_name}", json=args);
         data = resp.json();
     } else {
-        import json;
         url = sv_client.resolve_url(module_name);
-        (resp, conn) = sv_http_post(url, f"/walker/{walker_name}", args);
-        try {
-            data = json.loads(resp.read().decode('utf-8'));
-        } finally {
-            conn.close();
-        }
+        data = request_sync(
+            'POST', f"{url}/walker/{walker_name}", json_body=args
+        ).json();
     }
 
     if isinstance(data, dict) and data.get("ok") {
@@ -1629,7 +1346,7 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
-) -> HTTPServer {
+) -> any {
     _sp = _scale_provider();
     if _sp is not None {
         _scaled = _sp.create_server(jac_server, host, port);
@@ -1637,31 +1354,9 @@ impl JacServe.create_server(
             return _scaled;
         }
     }
-    import from http.server { ThreadingHTTPServer }
-    handler_class = jac_server.create_handler();
-    current_port = port;
-    for _ in range(max_retries) {
-        try {
-            server = ThreadingHTTPServer((host, current_port), handler_class);
-            if current_port != port {
-                import from jaclang.cli.console { console }
-                console.print(
-                    f"  Port {port} is in use, using port {current_port} instead",
-                    style="warning"
-                );
-                jac_server.port = current_port;
-            }
-            return server;
-        } except OSError as e {
-            if e.errno in (98, 10048) or "Address already in use" in str(e) {
-                current_port += 1;
-            } else {
-                raise;
-            }
-        }
-    }
-    raise OSError(
-        f"Could not find an available port after trying {port}-{current_port}"
+    raise RuntimeError(
+        "create_server is retired: JacAPIServer.start binds the Jac-native "
+        "serving core directly"
     );
 }
 
@@ -1678,37 +1373,6 @@ impl JacServe.render_page(
 impl JacServe.get_client_js(introspector: ModuleIntrospector) -> str {
     import from jaclang.runtimelib.client.serving { JacClient }
     return JacClient.get_client_js(introspector);
-}
-
-impl JacServe.send_json(
-    handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[(str, JsonValue)]
-) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_json(handler, status, data);
-}
-
-impl JacServe.send_html(
-    handler: BaseHTTPRequestHandler, status: StatusCode, body: str
-) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_html(handler, status, body);
-}
-
-impl JacServe.send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_javascript(handler, code);
-}
-
-impl JacServe.send_css(handler: BaseHTTPRequestHandler, css_code: str) -> None {
-    import from jaclang.runtimelib.server { ResponseBuilder }
-    ResponseBuilder.send_css(handler, css_code);
-}
-
-impl JacServe.send_static_file(
-    handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
-) -> None {
-    import from jaclang.runtimelib.client.serving { JacClient }
-    JacClient.send_static_file(handler, file_path, content_type);
 }
 
 impl JacLLM.get_mtir(

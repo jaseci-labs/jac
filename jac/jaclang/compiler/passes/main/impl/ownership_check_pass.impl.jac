@@ -1,6 +1,14 @@
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.diagnostics { E1301, E1302, E1303, E1304, E1306 }
+import from jaclang.jac0core.diagnostics {
+    E1301,
+    E1302,
+    E1303,
+    E1304,
+    E1306,
+    E1311,
+    W1312
+}
 
 glob _MOVE_EXEMPT_CALLS: tuple = (
          "len",
@@ -72,16 +80,21 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.idx_concurrent = [];
     self.name_uses_by_sym = {};
     self.imm_decl = {};
+    self.view_syms = set();
+    self.view_elision_fns = {};
 
     self._build_index(ir_in);
     self._stamp_ownership();
+    self._stamp_loop_borrows();
     self._stamp_region_borrows();
+    self._process_partition_sugar();
     self._nogc_setup();
     if not self.owned_decl
         and not self.borrow_meta
         and not self.imm_decl
         and not self._has_region_blocks()
         and not self.idx_concurrent
+        and not self._flow_for_stmts()
         and self.nogc_prov is None {
         return ir_in;
     }
@@ -98,11 +111,17 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._emit_loop_move_diagnostics();
     self._emit_diagnostics();
     self._emit_borrow_diagnostics();
+    self._emit_element_space_conflicts();
     self._emit_move_while_borrowed(cfg_nodes);
     self._emit_escape_diagnostics();
+    self._emit_view_diagnostics();
     self._emit_region_escape_diagnostics();
     self._emit_sendability_diagnostics();
+    self._emit_flow_for_diagnostics();
+    self._emit_chunk_view_diagnostics();
     self._emit_marker_diagnostics();
+    self._emit_freeze_diagnostics();
+    self._emit_seal_warnings();
     self._emit_enforcement_diagnostics();
     return ir_in;
 }
@@ -231,11 +250,16 @@ impl OwnershipCheckPass._stamp_ownership -> None {
             self.borrow_created_at[sid] = nd;
         }
         tag = nd.type_tag;
-        if tag is not None and len(nd.target) == 1 {
+        _rhs_imm = (
+            isinstance(nd.value, uni.UnaryExpr)
+            and nd.value.ownership == OwnershipKind.IMM
+        );
+        if (tag is not None or _rhs_imm) and len(nd.target) == 1 {
             target = nd.target[0];
             if isinstance(target, uni.Name) and target.sym {
                 sid = self._name_sym_id(target);
-                if tag.ownership == OwnershipKind.IMM {
+                if (tag is not None and tag.ownership == OwnershipKind.IMM)
+                    or _rhs_imm {
                     target.sym.ownership = OwnershipKind.IMM;
                     self.imm_decl[sid] = target;
                 }
@@ -285,10 +309,209 @@ impl OwnershipCheckPass._stamp_ownership -> None {
                         is_mut_kind(nd.value.ownership)
                             if isinstance(nd.value, uni.UnaryExpr)
                             else False
-                    )
+                    ),
+                field=self._single_field_of(nd.value.operand)
+                    if isinstance(nd.value, uni.UnaryExpr)
+                    else ""
             );
             self.borrow_created_at[borrow_id] = nd;
         }
+    }
+}
+
+impl OwnershipCheckPass._emit_seal_warnings -> None {
+    for call in self.ir_in.get_all_sub_nodes(uni.FuncCall) {
+        _cd = call.callee_decl;
+        if _cd is None
+            or _cd.signature is None
+            or not isinstance(_cd.signature, uni.FuncSignature) {
+            continue;
+        }
+        if isinstance(call.target, uni.Name) and call.target.sym_name == "managed" {
+            continue;
+        }
+        _params = _cd.signature.get_parameters();
+        for (i, a) in enumerate(call.params or []) {
+            if isinstance(a, uni.KWPair) or not isinstance(a, uni.Name) {
+                continue;
+            }
+            if a.sym is None or a.sym.ownership != OwnershipKind.OWN {
+                continue;
+            }
+            if i >= len(_params) {
+                continue;
+            }
+            _ptag = _params[i].type_tag;
+            if _ptag is not None and _ptag.ownership != OwnershipKind.NONE {
+                continue;
+            }
+            self.emit(W1312, node_override=a, name=a.sym_name);
+        }
+    }
+}
+
+impl OwnershipCheckPass._emit_freeze_diagnostics -> None {
+    for ux in self.ir_in.get_all_sub_nodes(uni.UnaryExpr) {
+        if ux.ownership != OwnershipKind.IMM {
+            continue;
+        }
+        if ux.find_parent_of_type(uni.SubTag) is not None
+            or ux.find_parent_of_type(uni.FuncSignature) is not None {
+            continue;
+        }
+        arg = ux.operand;
+        if isinstance(arg, uni.Name) {
+            s = arg.sym;
+            if s is not None and s.ownership == OwnershipKind.OWN {
+                continue;
+            }
+            self.emit(E1311, node_override=ux, name=arg.sym_name);
+            continue;
+        }
+        if isinstance(
+            arg,
+            (
+                uni.FuncCall,
+                uni.ListVal,
+                uni.SetVal,
+                uni.DictVal,
+                uni.String,
+                uni.MultiString,
+                uni.FString
+            )
+        ) {
+            continue;
+        }
+        self.emit(E1311, node_override=ux, name="<expression>");
+    }
+}
+
+impl OwnershipCheckPass._spawn_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    gen: set[SymId] = set();
+    operands: list[uni.Expr] = [];
+    for bx in nd.get_all_sub_nodes(uni.BinaryExpr) {
+        if isinstance(bx.op, uni.ConnectOp) {
+            _seal_h = self._seal_connect_handle(bx);
+            if _seal_h is not None {
+                operands.append(_seal_h);
+            }
+        } elif bx.op?.name == Tok.KW_SPAWN {
+            operands.append(bx.left);
+            operands.append(bx.right);
+        }
+    }
+    for ux in nd.get_all_sub_nodes(uni.UnaryExpr) {
+        if ux.op?.name == Tok.KW_SPAWN {
+            operands.append(ux.operand);
+        }
+        if ux.ownership == OwnershipKind.IMM
+            and ux.find_parent_of_type(uni.SubTag) is None {
+            operands.append(ux.operand);
+        }
+    }
+    for opnd in operands {
+        if isinstance(opnd, uni.Name)
+            and opnd.sym is not None
+            and opnd.sym.ownership == OwnershipKind.OWN {
+            sid = self._name_sym_id(opnd);
+            gen.add(sid);
+        }
+    }
+    return gen;
+}
+
+impl OwnershipCheckPass._emit_element_space_conflicts -> None {
+    _writers = (
+        "append",
+        "insert",
+        "add",
+        "remove",
+        "pop",
+        "clear",
+        "extend",
+        "update"
+    );
+    for call in self.ir_in.get_all_sub_nodes(uni.FuncCall) {
+        tgt = call.target;
+        if not (
+            isinstance(tgt, uni.AtomTrailer)
+            and tgt.is_attr
+            and isinstance(tgt.right, uni.Name)
+            and tgt.right.sym_name in _writers
+        ) {
+            continue;
+        }
+        _ownr = self._place_of(tgt.target);
+        if _ownr is None
+            or _ownr.sym is None
+            or _ownr.sym.ownership != OwnershipKind.OWN {
+            continue;
+        }
+        owner_id = self._name_sym_id(_ownr);
+        cfg = self._cfg_owner(call);
+        if cfg is None {
+            continue;
+        }
+        _active = self._active_borrows_at(cfg);
+        for (b, meta) in self.borrow_meta.items() {
+            if meta.owner != owner_id {
+                continue;
+            }
+            if not self._fields_overlap(meta.field, "[]") {
+                continue;
+            }
+            _site = self.borrow_created_at.get(b);
+            if isinstance(_site, uni.InForStmt) {
+                if not self._is_ancestor(_site, call) {
+                    continue;
+                }
+            } elif b not in _active {
+                continue;
+            }
+            bsite = self.borrow_created_at.get(b);
+            bname = self._borrow_display_name(b, "");
+            related = [(f"element loan of '{bname}' created here", bsite)]
+                if bsite is not None
+                else None;
+            code = E1302 if self._borrow_is_mut_of(b) else E1303;
+            self.emit(code, node_override=call, name=_ownr.sym_name, related=related);
+            break;
+        }
+    }
+}
+
+impl OwnershipCheckPass._stamp_loop_borrows -> None {
+    for st in self.ir_in.get_all_sub_nodes(uni.InForStmt) {
+        coll = st.collection;
+        if not (isinstance(coll, uni.UnaryExpr) and is_borrow_kind(coll.ownership)) {
+            continue;
+        }
+        owner = self._place_of(coll.operand);
+        if owner is None {
+            _chk = self._chunks_shape_of(coll.operand);
+            if _chk is not None {
+                owner = self._place_of(_chk[0]);
+            }
+        }
+        if owner is None
+            or owner.sym is None
+            or owner.sym.ownership != OwnershipKind.OWN {
+            continue;
+        }
+        tgt = st.target;
+        if not (isinstance(tgt, uni.Name) and tgt.sym is not None) {
+            continue;
+        }
+        borrow_id = self._name_sym_id(tgt);
+        is_mut = is_mut_kind(coll.ownership);
+        tgt.sym.ownership = OwnershipKind.MUT_BORROW
+            if is_mut
+            else OwnershipKind.BORROW;
+        self.borrow_meta[borrow_id] = BorrowMeta(
+            name=tgt.sym_name, owner=self._name_sym_id(owner), is_mut=is_mut, field="[]"
+        );
+        self.borrow_created_at[borrow_id] = st;
     }
 }
 
@@ -297,11 +520,18 @@ impl OwnershipCheckPass._return_roots_at_param_borrow(nd: uni.Expr | None) -> bo
     if base is None {
         return False;
     }
-    return (
+    if (
         base.sym is not None
         and base.sym.storage == SymbolStorage.PARAM
         and is_borrow_kind(base.sym.ownership)
-    );
+    ) {
+        return True;
+    }
+    _vsid = self._borrow_sym_of(nd);
+    if _vsid is not None and _vsid in self.view_syms {
+        return self._sym_is_param(self._view_root_owner(_vsid));
+    }
+    return False;
 }
 
 impl OwnershipCheckPass._borrow_region(sym_id: SymId) -> (uni.UniScopeNode | None) {
@@ -462,6 +692,12 @@ impl OwnershipCheckPass._transfer(
         }
     }
     for g in self._return_move_gen(nd) {
+        out.add(g);
+        if g not in self.consumed_at {
+            self.consumed_at[g] = nd;
+        }
+    }
+    for g in self._spawn_move_gen(nd) {
         out.add(g);
         if g not in self.consumed_at {
             self.consumed_at[g] = nd;
@@ -737,6 +973,28 @@ impl OwnershipCheckPass._borrow_is_mut_of(borrow_id: SymId) -> bool {
     return False;
 }
 
+impl OwnershipCheckPass._borrow_field_of(borrow_id: SymId) -> str {
+    meta = self.borrow_meta.get(borrow_id);
+    if meta is not None {
+        return meta.field;
+    }
+    return "";
+}
+
+impl OwnershipCheckPass._single_field_of(nd: uni.Expr | None) -> str {
+    if isinstance(nd, uni.AtomTrailer)
+        and nd.is_attr
+        and isinstance(nd.target, uni.Name)
+        and isinstance(nd.right, uni.Name) {
+        return nd.right.sym_name;
+    }
+    return "";
+}
+
+impl OwnershipCheckPass._fields_overlap(a: str, b: str) -> bool {
+    return a == "" or b == "" or a == b;
+}
+
 impl OwnershipCheckPass._borrow_display_name(borrow_id: SymId, fallback: str) -> str {
     meta = self.borrow_meta.get(borrow_id);
     if meta is not None {
@@ -948,6 +1206,11 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                 if self._borrow_owner_of(other) != owner_id {
                     continue;
                 }
+                if not self._fields_overlap(
+                    self._borrow_field_of(borrow_id), self._borrow_field_of(other)
+                ) {
+                    continue;
+                }
                 if nd.value
                     and isinstance(nd.value, uni.UnaryExpr)
                     and (
@@ -1006,6 +1269,9 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                 if (
                     self._borrow_owner_of(borrow_id) == tgt_owner_id
                     and not self._borrow_is_mut_of(borrow_id)
+                    and self._fields_overlap(
+                        self._borrow_field_of(borrow_id), self._single_field_of(tgt)
+                    )
                 ) {
                     borrow_site = self.borrow_created_at.get(borrow_id);
                     borrow_name = self._borrow_display_name(borrow_id, "");

@@ -752,6 +752,20 @@ def _npm_package_entry(pkg_dir: str, data: dict) -> (str | None) {
     return None;
 }
 
+def relative_js_specifier(target_path: str, importer_path: str) -> str {
+    target = target_path;
+    if target.endswith('.jac') {
+        target = target[:-4];
+    }
+
+    rel = os.path.relpath(target, os.path.dirname(importer_path));
+    rel = rel.replace(os.sep, '/');
+    if not rel.startswith('.') {
+        rel = './' + rel;
+    }
+    return rel + '.js';
+}
+
 def convert_to_js_import_path(path: str) -> str {
     if not path {
         return path;

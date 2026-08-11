@@ -3,11 +3,11 @@
 # baked at BUILD time so containers pay neither cost at boot:
 #   1. the runtime payload is extracted (pinned under XDG_CACHE_HOME so any
 #      runtime HOME hits the warm path) - skips jac's one-time setup
-#   2. the scale serve closure (fastapi, uvicorn, pymongo, ...) is resolved by
-#      a seed `jac install` and promoted into the runtime site - pods need no
-#      pip for the serving stack (installs from an init container cannot reach
-#      the main container anyway: they land on the container-local runtime
-#      site)
+#   2. the scale serve closure (python-dotenv; the Postgres driver is vendored
+#      with the runtime) is resolved by a seed `jac install` and promoted into
+#      the runtime site - pods need no pip for the serving stack (installs
+#      from an init container cannot reach the main container anyway: they
+#      land on the container-local runtime site)
 #
 # Built per release by .github/workflows/build-binaries.yml (docker-image job):
 #   jaseci/jaclang:<version>  - each jaclang release
@@ -50,13 +50,13 @@ RUN apt-get update \
     && jac --version \
     && ls /opt/jac/cache/jac/rt/*/.ok \
     && mkdir /tmp/seed \
-    && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n[dependencies]\nsetuptools = ">=75"\n\n[serve]\nbase_route_app = "app"\n\n[scale.kubernetes]\nnamespace = "seed"\n\n[scale.database]\nbackend = "mongodb"\n' > /tmp/seed/jac.toml \
+    && printf '[project]\nname = "seed"\nversion = "0.0.1"\nentry-point = "main.jac"\n\n[dependencies]\nsetuptools = ">=75"\n\n[serve]\nbase_route_app = "app"\n\n[scale.kubernetes]\nnamespace = "seed"\n' > /tmp/seed/jac.toml \
     && printf 'with entry {}\n' > /tmp/seed/main.jac \
     && (cd /tmp/seed && jac install) \
     && rt_lib=$(ls -d /opt/jac/cache/jac/rt/*/python/lib/python3.*) \
     && mkdir -p "$rt_lib/site-packages" \
     && cp -a /tmp/seed/.jac/venv/lib/python3.*/site-packages/. "$rt_lib/site-packages/" \
-    && ls "$rt_lib/site-packages" | grep -q fastapi \
+    && ls "$rt_lib/site-packages" | grep -q dotenv \
     && ls "$rt_lib/site-packages" | grep -q setuptools \
     && rm -rf /tmp/seed \
     && chmod -R a+rX /opt/jac/cache \

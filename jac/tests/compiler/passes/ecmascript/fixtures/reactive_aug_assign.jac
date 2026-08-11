@@ -5,13 +5,14 @@ setter call is setCount(count + 5) / setCount(count - 2) rather than the
 incorrect setCount(count + (count + 5)) that a double-application bug produces.
 """
 
-
-def:pub aug_counter() -> JsxElement {
+def:pub aug_counter -> JsxElement {
     has count: int = 0;
 
-    count += 5;
-    count -= 2;
-    count *= 3;
+    can with entry {
+        count += 5;
+        count -= 2;
+        count *= 3;
+    }
 
     return <div>{count}</div>;
 }

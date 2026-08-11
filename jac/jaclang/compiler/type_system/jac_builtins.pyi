@@ -73,11 +73,8 @@ __all__ = [
     "unsafe_html",
     # Ambient values and constants
     "llm",
-    "NoPerm",
-    "ReadPerm",
-    "ConnectPerm",
-    "WritePerm",
     # Builtin enums
+    "AccessLevel",
     "ScheduleTrigger",
     "APIProtocol",
 ]
@@ -136,7 +133,11 @@ class DSFunc: ...
 # First-class region handle: an ownable, sendable, escape-checked allocation
 # extent opened by `in <handle> { ... }`. On managed backends the handle is a
 # no-op; native codegen gives it arena semantics.
-class Region: ...
+class Region:
+    @overload
+    def partition(self) -> Region: ...
+    @overload
+    def partition(self, n: int) -> tuple[Region, ...]: ...
 
 class EdgeDir:
     OUT: int
@@ -213,13 +214,13 @@ def unsafe_html(html: object) -> object: ...
 
 def destroy(objs: object) -> None: ...
 
-# ── Permission constants ───────────────────────────────────────────
-NoPerm: int
-ReadPerm: int
-ConnectPerm: int
-WritePerm: int
-
 # ── Builtin enums ──────────────────────────────────────────────────
+class AccessLevel:
+    NO_ACCESS: AccessLevel
+    READ: AccessLevel
+    CONNECT: AccessLevel
+    WRITE: AccessLevel
+
 class ScheduleTrigger:
     STATIC: str
     DYNAMIC: str

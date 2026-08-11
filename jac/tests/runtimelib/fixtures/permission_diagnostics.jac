@@ -32,7 +32,8 @@ walker create_profile {
 }
 
 walker grant_profile_to {
-    has requestor_id: str, level: str = "READ";
+    has requestor_id: str,
+        level: str = "READ";
 
     can enter with Root entry {
         for p in [here-->] {
@@ -41,11 +42,18 @@ walker grant_profile_to {
     }
 }
 
-def _print_diagnostics -> None {
+def _print_diagnostics {
     ctx = Jac.get_context();
     for d in ctx.diagnostics {
         print(
-            "DIAG:" + d.operation + ":" + d.target_type + ":" + d.required.name + ":" + d.actual.name
+            "DIAG:"
+                + d.operation
+                + ":"
+                + d.target_type
+                + ":"
+                + d.required.name
+                + ":"
+                + d.actual.name
         );
     }
     ctx.diagnostics.clear();
@@ -55,19 +63,20 @@ walker try_edge_write {
     has target_id: str;
 
     can enter with Root entry {
-        target = & (self.target_id);
+        target = &(self.target_id);
         # Cross-user edge write: here = current user's root (writeable),
-        # target = foreign Profile (denied without ConnectPerm grant).
+        # target = foreign Profile (denied without AccessLevel.CONNECT grant).
         here ++> target;
         _print_diagnostics();
     }
 }
 
 walker try_field_write {
-    has target_id: str, new_tag: str;
+    has target_id: str,
+        new_tag: str;
 
     can enter with Root entry {
-        target = & (self.target_id);
+        target = &(self.target_id);
         target.tag = self.new_tag;
         # Force commit so persist-time access check fires.
         Jac.commit();
@@ -79,7 +88,7 @@ walker try_delete {
     has target_id: str;
 
     can enter with Root entry {
-        target = & (self.target_id);
+        target = &(self.target_id);
         del target;
         _print_diagnostics();
     }
@@ -89,7 +98,7 @@ walker check_profile_tag {
     has target_id: str;
 
     can enter with Root entry {
-        target = & (self.target_id);
+        target = &(self.target_id);
         print(target.tag);
     }
 }

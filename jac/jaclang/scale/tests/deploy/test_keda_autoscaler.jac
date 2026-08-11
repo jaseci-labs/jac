@@ -153,6 +153,33 @@ test "build manifests produces a complete and valid ScaledObject body" {
     assert m["body"]["spec"]["triggers"][0]["metadata"]["value"] == "60";
 }
 
+test "build manifests applies behavior_overlay through advanced.horizontalPodAutoscalerConfig" {
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="orders-deployment",
+        namespace="staging",
+        min_replicas=2,
+        max_replicas=10,
+        triggers=[Trigger(type="cpu", metadata={"averageUtilization": "60"})],
+        behavior_overlay={
+            "scaleDown": {
+                "stabilizationWindowSeconds": 600,
+                "selectPolicy": "Min",
+                "policies": [{"type": "Pods", "value": 2, "periodSeconds": 300}]
+            }
+        }
+    );
+    m = keda._build_manifests(spec);
+    behavior = m["body"]["spec"]["advanced"]["horizontalPodAutoscalerConfig"][
+        "behavior"
+    ];
+    assert behavior["scaleDown"]["stabilizationWindowSeconds"] == 600;
+    assert behavior["scaleDown"]["selectPolicy"] == "Min";
+    assert behavior["scaleDown"]["policies"]
+        == [{"type": "Pods", "value": 2, "periodSeconds": 300}];
+    assert behavior["scaleUp"]["stabilizationWindowSeconds"] == 60;
+}
+
 test "build manifests adds idleReplicaCount zero for scale-to-zero" {
     keda = KEDAAutoscaler();
     spec = AutoscalerSpec(

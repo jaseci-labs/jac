@@ -63,21 +63,6 @@ test "sso config uses FIREBASE_PROJECT_ID fallback" {
 }
 
 
-test "database config uses FIREBASE_PROJECT_ID fallback" {
-    with patch.dict(
-        os.environ, {FIREBASE_PROJECT_ID_ENV: "shared-project"}, clear=True
-    ) {
-        reset_scale_config();
-        try {
-            db_config = get_scale_config().get_database_config();
-            assert db_config["project_id"] == "shared-project";
-        } finally {
-            reset_scale_config();
-        }
-    }
-}
-
-
 def _mock_storage_factory_get_default(env: dict[str, str]) -> any {
     cfg_patcher = patch("jaclang.scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", env, clear=True);

@@ -374,10 +374,40 @@ Collections are represented as LLVM struct types:
 
 | Jac Type | Internal Layout |
 |----------|----------------|
-| `list[T]` | `{ i64 capacity, i64 len, T* data }` |
-| `dict[K, V]` | `{ K* keys, V* values, i64 len }` |
-| `set[T]` | `{ T* data, i64 len }` |
+| `list[T]` | `{ i64 len, i64 cap, T* data }` |
+| `dict[K, V]` | `{ i64 len, i64 cap, K* keys, V* vals, i8* ctrl, i64 used, i64* order }` |
+| `set[T]` | `{ i64 len, i64 cap, T* keys, i8* ctrl, i64 used, i64* order }` |
 | `tuple[T, ...]` | LLVM literal struct (fields packed by type) |
+
+`dict` and `set` are open-addressing hash tables sharing one core: FNV-1a hashing for strings, bytes, and by-value aggregates, multiplicative hashing for scalars, control-byte fingerprints with tombstone-aware linear probing, rehash at 75% load, and an insertion-order slot array so iteration matches Python semantics.
+
+### Element Storage Authority
+
+Container element storage is decided in one place: the element-storage authority (`_elem_storage_llvm` in the native IR generator's type lowering). A homogeneous element type keeps its specialized storage (`i64`, `f64`, or pointer arrays). An element type that mixes representations -- a union whose members lower differently, or `any` -- selects tagged storage: the container becomes `List.jacval` / `Dict.<k>.jacval`, and every element is a `{ i8 tag, i64 payload }` value that describes itself (int, float, str, list, dict, set, object, bool, None). Because elements are self-describing, retain, release, cycle-trace, and ownership-drop all route through the tag inside the container helpers and the shared lifecycle emitters; no call site carries element-ownership special cases, container death reclaims every boxed element, slot overwrite releases the replaced element, and `clear()` releases them all. Under the headerless no-GC dialect, jacval element slots drop through a stamped, tag-dispatched elem-drop routine.
+
+Mixed-representation dict keys and set elements have no native hash order, so they are stable `E5092` diagnostics rather than storage. Storing a pointer value into a scalar container slot is likewise an `E5092` diagnostic: no code path boxes a managed pointer into an integer slot where memory management cannot see it, and an IR-shape test over the heterogeneous fixtures enforces that no such coercion exists in emitted IR.
+
+### Container Lifecycle Authority
+
+Each container type is described by one set of layout facts (element arrays plus, for hash containers, the control/used/order fields), registered in the native pass's container layout registry. One slot-iteration emitter is the sole authority for visiting live element slots: dense containers iterate `[0..len)`; hash containers walk `[0..cap)` gated on control-byte occupancy. The shared constructor, release, cycle-trace, and ownership-drop emitters are parameterized by those facts, so a container type acquires its complete lifecycle from its layout facts and slot iterator alone. Cycle-trace registration (the `E9002` invariant) and the mid-collection reentry guard live only inside the shared emitters; a container wired through the authority participates in cycle collection by construction, and one that bypasses the emitters cannot exist because the emitters are the only path.
+
+Static strings have one constructor: a single helper builds the `{ i64 sentinel, i64 tagged_len, [N x i8] }` immortal-string struct used by string literals, enum name and value tables, and the `__jac_chars` single-character cache, so a layout change is a one-helper edit.
+
+### Type Identity and Layout Authority
+
+The single authority for native type identity and layout is the layout registry (`LayoutRegistry` in `jaclang/compiler/passes/main/layout_pass.jac`), keyed by defining module + symbol. Archetype field order, inheritance topology, vtable shape, enum identity, and enum member value tables all resolve through it: native lowering asks the authority which module defines a type and reads that module's registry, so the order in which the native pass walks imported modules never changes the answer. A walk-order fuzz gate compiles the cross-module fixtures under forward, reversed, and shuffled module walk orders and requires identical IR.
+
+Enum classes lower to their backing `i64` through one path: the authority predicate (`is_enum_class_type`) plus a defining-module lookup (`enum_decl_of`) that materializes the member value tables on demand. The native pass's `type_map` is a static primitive-name table seeded once from the type registry at pass construction; nothing registers into it during module walks, and a source-scan test enforces this.
+
+A type the native backend cannot lower is a stable `E5092` diagnostic naming the type, at field declarations as everywhere else; there is no rescue path that substitutes an opaque slot for a failed lowering, so a lowering bug in a modeled type can never flow into layout as defined-behavior-by-accident. One field shape is lowered to an opaque slot by rule rather than by failure: a field declared as an optional foreign type (a `X | None` whose non-`None` resolution the checker cannot model, such as a Python class in a native archetype) lowers to a nullable `i8*` slot that native construction leaves null and that refcounting, tracing, and destructors never touch. The rule is keyed on the checker's verdict about the declared type, never on the outcome of lowering, so it cannot mask a failure elsewhere.
+
+### Optional Lowering Authority
+
+`T | None` lowers through one rule for every modeled `T`: a tagged JacOptional value `{ i8 tag, T payload }` where tag `0` is None and tag `1` carries a payload. There is no pointer special case -- `int | None`, `str | None`, object references, tuples, and containers all take the same representation, so a None can never travel as a raw NULL pointer into a consumer. For pointer payloads the None constant zero-initializes the payload slot; the tag is the only authority on None-ness, and the null payload exists solely so that the shared field-release and cycle-trace emitters can pass the slot to the (centrally null-safe) refcount runtime without a tag branch.
+
+Construction (a None literal or a `T`-to-optional widening), `is None` / `is not None` narrowing (a tag read), equality (tag arithmetic plus a payload compare only when both sides carry values, matching Python's `None == x` semantics), and truthiness (tag and payload truthiness) are all emitted from the tagged value. Explicit unwrap is emitted by exactly one site -- the coercion authority (`_coerce_type_inner` in the native IR generator's type lowering) -- which raises `TypeError` on a None payload; a source-scan gate enforces that no other emitter carries a NULL-compare guard against a string operand. Container slots hold optional elements as jacval (the element-storage authority selects tagged storage for any element type that includes `None`), and values convert between the jacval slot form and the JacOptional value form at the coercion authority.
+
+At native strict sites, using a `T | None` value where the unwrapped `T` is required without narrowing first is an `E1121` diagnostic at check time: ordering comparisons on an optional operand and optional subscript indexes are rejected, parameter and assignment seams are rejected by the assignability rules, and attribute access on an optional receiver is rejected by member lookup. Flow-sensitive narrowing (`if x is not None { ... }`) makes the safe patterns clean, equality and `is` comparisons operate on the optional directly, and an f-string renders a None as `None`. The foreign-optional field rule above is the one deliberate exception and is keyed on the checker's verdict, not on lowering failure.
 
 ---
 
@@ -815,7 +845,7 @@ jac nacompile service.jac --gc none --enforce-nogc --assert-no-rc
 Notes on the enforced world:
 
 - **The `managed()` membrane.** In an enforced module compiled under a managed gc mode, a heap value may cross out to unenforced (reference-counted) code only through the explicit `managed(x)` builtin at the boundary -- an implicit crossing is `E1403`, and sealing an owned value into managed storage is `E1402`. Under `--gc none` the artifact has no reference-counted side to cross into, so `managed()` of a heap value is itself rejected (`E1406`). Scalars and `imm` values cross freely everywhere, and on the Python backend `managed()` is the identity function.
-- **Region opens are rejected (`E1406`).** An [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is not yet legal inside a nogc-enforced module: arena interiors currently rely on the sentinel-header scheme that presumes retain/release call sites exist to be inert against. Making opens legal there (headerless arena interiors that stay `--assert-no-rc`-clean) is the planned follow-up; until then, keep region-using code outside enforced modules.
+- **Region opens compile headerless.** An [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is legal inside a nogc-enforced module: arena interiors compile without object headers, teardown at the handle's drop point is the same LIFO dtor-log walk plus one bulk free the managed modes observe, and the artifact stays `--assert-no-rc`-clean.
 - **Unhandled exceptions abort.** In a nogc-enforced module, a `raise` with no local handler prints a diagnostic line and calls `abort()` rather than unwinding -- unwinding would require the managed runtime.
 - **Grandfathering.** `[gc.enforce] grandfathered` patterns exempt matching modules from enforcement so a codebase can adopt the contract incrementally.
 
@@ -829,9 +859,11 @@ rc-stats [mod.jac] gc=cycles retains=1 releases=10 elided=3 coverage=21.4%
 
 A module with zero emitted retains and releases is tagged `rc-free` at the end of the line -- the same condition `--assert-no-rc` checks structurally in the IR.
 
+When any owned locals were stack-promoted (an `own` local whose only escaping-looking uses are checked frame-local borrows or scalar field reads allocates on the stack instead of the heap, under every gc mode), the line also reports `promoted=N`.
+
 ### Reserved `__rc_*` runtime hooks
 
-Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table in the native code generator (`_codegen_rc_intrinsic`).
+Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table in the native code generator (`_codegen_rc_intrinsic`). `__rc_debug_enable()` toggles tracing only in binaries compiled with `JAC_RC_DEBUG_CODEGEN=1` in the compiler's environment; in a default build the trace machinery is compiled out, `__rc_debug_disable()` is a no-op, and `__rc_debug_enable()` prints a one-line notice to stderr instead.
 
 These hooks exist only in native code. On the Python backend they have no runtime implementation, and a call surfaces an unresolved-type diagnostic at check time rather than silently type-checking.
 
@@ -883,6 +915,40 @@ Assert messages in native tests are limited to string literals: `assert cond, "m
 
 ---
 
+## Build Options and Artifact Identity
+
+The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/jac0core/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then environment override, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
+
+The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The fingerprint participates in artifact identity: it is folded into the JIR module cache key and into the native import IR cache key, so flipping any codegen option re-keys the artifact and a stale build is never served. Each native import artifact is stamped with the fingerprint of the options that built it; a cached module whose stamp disagrees with the current build is rejected with `E5027` instead of being linked into a mixed-options binary.
+
+### Codegen options (part of the fingerprint)
+
+| Environment override | `jac.toml` key | Effect |
+|---|---|---|
+| `JAC_NATIVE_TARGET` | `[build.native] target` | Cross-compilation target triple; also selects OS-specific source variants (`.linux.jac`, `.darwin.jac`, `.windows.jac`). |
+| `JAC_OPT_LEVEL` | `[build.native] opt_level` | LLVM optimization level, 0 through 3 (default 2). |
+| `JAC_NATIVE_DEBUG` | `[build.native] debug` | Emits DWARF debug info and runs the JIT path unoptimized. |
+| `JAC_RC_DEBUG_CODEGEN` | `[build.native] rc_debug_codegen` | Compiles the RC trace machinery (`RC MALLOC` / `RC FREE` lines behind `__rc_debug_enable()`) into the binary. |
+| (none) | `[gc] default` | GC mode `cycles` / `rc` / `none`; `jac nacompile --gc` overrides. |
+| (none) | `[gc.enforce] modules`, `grandfathered` | Zero-RC enforcement patterns. |
+
+### Diagnostic options (read into the options object, outside the fingerprint)
+
+| Environment override | `jac.toml` key | Effect |
+|---|---|---|
+| `JAC_DUMP_IR` | `[build.native] dump_ir` | Writes the final optimized IR to the given path. |
+| `JAC_DEBUG_IR` | (none) | Saves each module's generated IR as `<stem>.ll` in the native cache dir. |
+| `JAC_RC_STATS` | (none) | Prints the per-module rc-stats line to stderr. |
+| `JAC_NOGC_DEBUG` | (none) | Verbose ownership-enforcement logging to stderr. |
+| `JAC_NA_DEBUG` | (none) | Explains every native demotion: `NA_DEBUG demote <Type>.<method>` followed by the full diagnostics that made the method un-lowerable, and `NA_DEBUG raise <Type>.<method>` plus a Python traceback when the emitter raised. Forces the "native seam" warning on regardless of `[check] warn_native_seams`, and prints the traceback behind a failed seal canary. |
+| `JAC_SYMMAP` | (none) | Writes a `<binary>.symmap` symbol map beside a linked ELF executable. |
+
+Toolchain location variables are read through the same boundary module, never inside passes: `JAC_LLVM_SHIM`, `JAC_LLVM_TYPED_POINTERS` (with `LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS` honored as a fallback), `JAC_NATIVE_WASM_LIBC_DIR`, `JAC_NATIVE_MUSL_DIR`, `JAC_NATIVE_FLOOR_DIR`, `JAC_NATIVE_CA_BUNDLE`.
+
+`JAC_NO_GC` and `JAC_GC_CYCLES` are runtime switches read by the compiled binary itself, not by the compiler; the Memory Management section above describes them.
+
+---
+
 ## Debugging
 
 ### Dumping LLVM IR
@@ -894,6 +960,40 @@ JAC_DUMP_IR=/tmp/output.ll jac nacompile program.jac
 ```
 
 This produces a human-readable `.ll` file that can be inspected with any text editor or processed with LLVM tools (`llc`, `opt`, `llvm-dis`).
+
+### Explaining a demotion
+
+A method the backend cannot lower is *demoted*: it falls back to its Python implementation while the rest of its class stays native. The build prints a one-line `warning: native seam -- demoting ...` for each. `JAC_NA_DEBUG=1` turns that line into the full story:
+
+```bash
+JAC_NA_DEBUG=1 jac nacompile program.jac
+```
+
+Each demotion emits `NA_DEBUG demote <Type>.<method>` followed by every diagnostic that made the method un-lowerable, with source context. When the emitter raised outright rather than reporting a diagnostic, the line is `NA_DEBUG raise <Type>.<method>` followed by the Python traceback pointing at the codegen site. The flag also forces the seam warning on when `[check] warn_native_seams = false` would otherwise silence it, and prints the traceback behind a failed seal canary.
+
+### Sealed artifacts and demotion
+
+A demotion is only a speed cost while Python is still there to catch it. In a sealed AOT artifact it is not: the demoted method is emitted as an `abort()` stub, so the first call kills the process with no diagnostic. `seal_native_artifacts` therefore refuses to seal a module whose closure demoted anything, naming each offending method and the reason it could not lower. A demotion that is genuinely unreachable in the sealed build can be waived, but only by naming the method:
+
+```jac
+glob NATIVE_SEAL_DEMOTION_WAIVERS: dict[str, tuple] = {
+    "jac0core/parser/lexer.jac": ("jac0core/parser/lexer.jac::Lexer.debug_dump", )
+};
+```
+
+The key is the sealed module; each entry is `<module>::<Type>.<method>`, where the module is the one that actually demoted, given relative to the package root. The module half is required rather than cosmetic: a demotion one hop out in the closure can share a `Type.method` name with one in another module, and a bare name would waive both. The refusal diagnostic prints the exact string to paste in.
+
+Each waived method is announced on every seal, and a waiver that no longer matches a real demotion is reported as stale.
+
+The verdict must not depend on how warm the build cache is, so the gate is layered:
+
+- The seal compiles its closure with the native IR cache disabled. Transitive native imports are otherwise served straight from `<cache>/native/*.ir_cache`, which skips codegen for that module entirely, so its demotions would be recorded nowhere.
+- Independently of that, the seal scans the LLVM IR it is about to hand to the linker for the demotion stub signature (a function whose entire body is `call void @abort()` then `unreachable`) and refuses any it finds. This reads what actually ships, so it holds for every route into the artifact, not just the one the census knows about.
+- A seal that refuses for any reason purges the native IR cache entries for its closure, so a failed build never leaves state that a later build could inherit. The cached IR itself is a faithful record of that compile, so it is not suppressed at write time -- a demoted method genuinely lowers to an abort stub in any native link, and skipping the cache write would silently disable caching for every module containing one.
+
+Before an artifact is written into `MANIFEST.json` it must also pass a load canary: the seal `dlopen`s the freshly linked library, checks that every export the layout advertises is really in it, runs `__jac_shared_init`, and calls a known-good runtime export. An artifact that cannot be loaded and called is deleted and the seal fails. The canary proves the artifact loads; it cannot prove the artifact is free of abort stubs, because an `abort()`-bodied function still resolves through `dlsym` and is never called. That is the scan's job.
+
+The canary's probe string is deliberately **not** released. `jac_release` reaches `__rc_release_simple`, which drops the refcount and, at zero, runs the type-tagged destructor and removes the object from the cycle collector's live list. Under the `cycles` GC mode the seal builds with, that machinery is set up for the module's own execution, not for a foreign `ctypes` caller that has only run `__jac_shared_init`: calling it on the sealed lexer segfaults at address 0 inside the artifact. One probe allocation per artifact, in a build step that exits moments later, is the cheaper of the two.
 
 ### Bytecode Cache
 

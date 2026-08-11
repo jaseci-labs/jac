@@ -1,6 +1,5 @@
 """Button component for the Jac client application."""
 
-
 def:pub Button(
     label: str, onClick: any, variant: str = "primary", disabled: bool = False
 ) -> JsxElement {

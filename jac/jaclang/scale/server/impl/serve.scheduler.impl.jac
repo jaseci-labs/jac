@@ -1,8 +1,8 @@
 import from jaclang.scale.shared.utils { authenticate_or_fail }
-import from jaclang.scale._optdeps.pymongo { PyMongoError }
+import from jaclang.runtimelib.pgwire { PgWireError }
 
 def _err_response(e: Exception) -> TransportResponse {
-    if isinstance(e, PyMongoError) {
+    if isinstance(e, (PgWireError, OSError)) {
         logger.error(f"Storage failure on /jobs: {type(e).__name__}: {e}");
         return TransportResponse.fail(
             code='STORAGE_UNAVAILABLE',
@@ -117,9 +117,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -139,9 +139,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             request_model=UpdateJobRequest,
@@ -162,9 +162,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

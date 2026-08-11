@@ -80,6 +80,12 @@ def _build_harness(
     module_js: str, tests: list, api_base_url: str = "", storage: (dict | None) = None
 ) -> str;
 
+def _collect_local_imports(
+    module_js: str, source_dir: str, entry_path: str
+) -> tuple[dict, dict];
+
+def _exported_names(js: str) -> set;
+
 def find_server_entry(
     test_filepath: str, server_imports: (list[str] | None) = None
 ) -> (str | None);
@@ -102,7 +108,8 @@ def _run_harness(
     imports: dict,
     api_base_url: str,
     storage: (dict | None),
-    timeout: float
+    timeout: float,
+    source_path: (str | None) = None
 ) -> list[ClTestResult];
 
 def _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None);

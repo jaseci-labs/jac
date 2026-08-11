@@ -15,7 +15,9 @@ glob logger = logging.getLogger(__name__);
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      JAC_HOME: str = "/app/.jachome",
-     TOOLCHAIN_SUBDIR: str = ".jactoolchain";
+     TOOLCHAIN_SUBDIR: str = ".jactoolchain",
+     DEFAULT_SEAL_TIMEOUT_S: int = 1800,
+     PLACEHOLDER_JAC_TOML: str = "[project]\nname = \"app\"\n";
 
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
@@ -64,6 +66,9 @@ def is_excluded(rel: Path) -> bool {
     if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
         return False;
     }
+    if len(parts) == 2 and parts[0] == ".jac" and parts[1] == "serve_manifest.json" {
+        return False;
+    }
     for part in parts {
         if part in _EXCLUDE_DIRS {
             return True;
@@ -96,35 +101,7 @@ def _is_dev_section(name: str) -> bool {
 }
 
 
-def bake_database_intent(toml_text: str, backend: str) -> str {
-    if not backend {
-        return toml_text;
-    }
-    try {
-        data = tomllib.loads(toml_text);
-    } except tomllib.TOMLDecodeError as exc {
-        logger.warning(
-            f"Sanitized jac.toml is not parseable ({exc}); shipping it without "
-            f"the provisioned '{backend}' database intent -- the pod's install "
-            f"may miss the matching data capability."
-        );
-        return toml_text;
-    }
-    scale = data.get("scale");
-    uses_scale_table = isinstance(scale, dict);
-    if not uses_scale_table {
-        plugins = data.get("plugins");
-        scale = plugins.get("scale") if isinstance(plugins, dict) else None;
-    }
-    if isinstance(scale, dict) and isinstance(scale.get("database"), dict) {
-        return toml_text;
-    }
-    header = "scale.database" if uses_scale_table else "plugins.scale.database";
-    return f'{toml_text}\n[{header}]\nbackend = "{backend}"\n';
-}
-
-
-def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | None) {
+def sanitized_jac_toml(base: Path) -> (str | None) {
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
@@ -166,7 +143,7 @@ def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | Non
         out.append(line);
     }
     out.extend(pending);
-    return bake_database_intent("\n".join(out) + "\n", provisioned_database);
+    return "\n".join(out) + "\n";
 }
 
 
@@ -186,7 +163,23 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 }
 
 
-def _precompile_app(base: Path, pod_binary: bytes) -> Path {
+def nested_sanitized_tomls(base: Path) -> dict[str, str] {
+    out: dict[str, str] = {};
+    for toml_path in sorted(base.rglob("jac.toml")) {
+        rel = toml_path.relative_to(base);
+        if len(rel.parts) == 1 or any(part in _EXCLUDE_DIRS for part in rel.parts) {
+            continue;
+        }
+        text = sanitized_jac_toml(toml_path.parent);
+        if text is not None {
+            out[rel.as_posix()] = text;
+        }
+    }
+    return out;
+}
+
+
+def _stage_app(base: Path, sanitized_toml: (str | None)) -> Path {
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
@@ -198,29 +191,57 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
             dest.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(str(path), str(dest));
         }
-
+        stage.mkdir(parents=True, exist_ok=True);
+        if sanitized_toml is not None {
+            (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
+        } else {
+            (stage / "jac.toml").write_text(PLACEHOLDER_JAC_TOML, encoding="utf-8");
+        }
+        for (rel, text) in nested_sanitized_tomls(base).items() {
+            dest = stage / Path(rel);
+            dest.parent.mkdir(parents=True, exist_ok=True);
+            dest.write_text(text, encoding="utf-8");
+        }
         marker = stage / "__init__.jac";
         if not marker.exists() {
             marker.write_text("");
         }
-        jac_path = stage_root / ".pod-jac";
-        jac_path.write_bytes(pod_binary);
+        return stage_root;
+    } except Exception {
+        shutil.rmtree(str(stage_root), ignore_errors=True);
+        raise;
+    }
+}
+
+
+def _seal_subprocess_env -> dict[str, str] {
+    return {
+        k: v
+        for (k, v) in os.environ.items()
+        if k not in ("PYTHONPATH", "PYTHONHOME", "JAC_LLVM_SHIM")
+    };
+}
+
+
+def _precompile_app(
+    base: Path, seal_binary: bytes, sanitized_toml: (str | None), timeout_s: int
+) -> Path {
+    stage_root = _stage_app(base, sanitized_toml);
+    stage = stage_root / "app";
+    try {
+        jac_path = stage_root / ".seal-jac";
+        jac_path.write_bytes(seal_binary);
         jac_path.chmod(0o755);
         script = Path(str(__file__)).parent.parent.parent
             / "utils"
             / "precompile_bytecode.jac";
 
-        seal_env = {
-            k: v
-            for (k, v) in os.environ.items()
-            if k not in ("PYTHONPATH", "PYTHONHOME", "JAC_LLVM_SHIM")
-        };
         result = subprocess.run(
             [str(jac_path), "run", str(script), str(stage_root), "--seal"],
             capture_output=True,
             text=True,
-            timeout=600,
-            env=seal_env,
+            timeout=timeout_s,
+            env=_seal_subprocess_env(),
             cwd=str(stage_root)
         );
         jac_path.unlink();
@@ -232,6 +253,11 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
                 f"App seal did not complete, so the deploy cannot produce a "
                 f".jab: {(result.stderr or result.stdout).strip()[-2000:]}"
             );
+        }
+        for line in (result.stdout or "").splitlines()[-12:] {
+            if line.strip() {
+                logger.info(f"seal: {line.strip()}");
+            }
         }
         return stage;
     } except Exception {
@@ -267,20 +293,52 @@ def fat_bundle_enabled(project_dir: str) -> bool {
 }
 
 
-def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) {
-    if sanitized_toml is not None {
-        (stage / "jac.toml").write_text(sanitized_toml, encoding="utf-8");
+def seal_timeout_setting(project_dir: str) -> int {
+    import from jaclang.project.config { get_config_for_path }
+
+    try {
+        config = get_config_for_path(Path(project_dir));
+    } except Exception as exc {
+        logger.warning(f"seal_timeout check skipped, jac.toml unparseable: {exc}");
+        return DEFAULT_SEAL_TIMEOUT_S;
     }
-    jac_path = stage.parent / ".pod-jac";
-    jac_path.write_bytes(pod_binary);
+    if config is None {
+        return DEFAULT_SEAL_TIMEOUT_S;
+    }
+    section = config.get_section("scale");
+    if section is None or "seal_timeout" not in section {
+        return DEFAULT_SEAL_TIMEOUT_S;
+    }
+    try {
+        val = int(section.get("seal_timeout"));
+    } except (TypeError, ValueError) {
+        logger.warning("Ignoring non-integer [scale] seal_timeout in jac.toml.");
+        return DEFAULT_SEAL_TIMEOUT_S;
+    }
+    return val if val > 0 else DEFAULT_SEAL_TIMEOUT_S;
+}
+
+
+def _pod_wheel_platform(pod_arch: str) -> str {
+    if not pod_arch {
+        return "";
+    }
+    return f"manylinux_2_36_{pod_arch}";
+}
+
+
+def _vendor_stage(stage: Path, seal_binary: bytes, platform_tag: str = "") {
+    jac_path = stage.parent / ".seal-jac";
+    jac_path.write_bytes(seal_binary);
     jac_path.chmod(0o755);
     script = Path(str(__file__)).parent.parent / "utils" / "vendor_wheels.jac";
+    cmd = [str(jac_path), "run", str(script), str(stage)];
+    if platform_tag {
+        cmd.append(platform_tag);
+    }
     try {
         result = subprocess.run(
-            [str(jac_path), "run", str(script), str(stage)],
-            capture_output=True,
-            text=True,
-            timeout=900
+            cmd, capture_output=True, text=True, timeout=900, env=_seal_subprocess_env()
         );
     } finally {
         jac_path.unlink(missing_ok=True);
@@ -300,21 +358,30 @@ def _vendor_stage(stage: Path, sanitized_toml: (str | None), pod_binary: bytes) 
 }
 
 
-def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
-    if not pod_binary {
+def pack_jab(project_dir: str, seal_binary: bytes, pod_arch: str = "") -> bytes {
+    if not seal_binary {
         raise ValueError(
-            "pack_jab requires the pod binary to seal the app image; none given."
+            "pack_jab requires a host-runnable jac binary to seal the app "
+            "image; none given."
         );
     }
     base = Path(project_dir).resolve();
-    staged = _precompile_app(base, pod_binary);
+    if not base.is_dir() {
+        raise ValueError(
+            f"App project directory does not exist: {base}. A deploy seals "
+            "the project tree; check the code_folder path."
+        );
+    }
+    sanitized = sanitized_jac_toml(base);
+    staged = _precompile_app(
+        base, seal_binary, sanitized, seal_timeout_setting(project_dir)
+    );
 
     try {
-        sanitized = sanitized_jac_toml(base, provisioned_database);
         (fat, fat_explicit) = fat_bundle_setting(project_dir);
         if fat {
             try {
-                _vendor_stage(staged, sanitized, pod_binary);
+                _vendor_stage(staged, seal_binary, _pod_wheel_platform(pod_arch));
             } except Exception as exc {
                 if fat_explicit {
                     raise;
@@ -374,6 +441,12 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
                 if sanitized is not None {
                     data = sanitized.encode("utf-8");
                     info = tarfile.TarInfo(name="jac.toml");
+                    info.size = len(data);
+                    tar.addfile(info, io.BytesIO(data));
+                }
+                for (toml_rel, toml_text) in nested_sanitized_tomls(base).items() {
+                    data = toml_text.encode("utf-8");
+                    info = tarfile.TarInfo(name=toml_rel);
                     info.size = len(data);
                     tar.addfile(info, io.BytesIO(data));
                 }

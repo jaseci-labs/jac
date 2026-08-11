@@ -212,21 +212,23 @@ Tune limits and the broadcast backplane under `[scale.websocket]` in `jac.toml`:
 max_connections_per_target = 5000   # live connections allowed per target
 max_connections_per_user = 10       # live connections allowed per authenticated user
 max_anonymous_per_target = 100      # live connections allowed per target, unauthenticated
-max_message_bytes = 65536           # per-frame size cap, in wire bytes
+max_message_bytes = 65536           # message size cap, enforced during frame reassembly
 messages_per_second = 20            # per-connection token-bucket rate limit
 target_timeout_seconds = 30         # per-message execution timeout
-backplane = "redis"                 # "memory" (default) or "redis"
-redis_url = "redis://localhost:6379"
+backplane = "pg"                    # "memory" or "pg"
+allowed_origins = []                # cross-origin upgrade allowlist (see below)
 ```
+
+`allowed_origins` controls browser cross-origin upgrades: the default `[]` refuses any `Origin` that does not match the request's `Host` (non-browser clients, which send no Origin, always pass). List origins explicitly (`["https://app.example.com"]`) or use `["*"]` to allow any. `max_message_bytes` is enforced while fragments reassemble, before authentication, so an oversized message closes with `1009` without ever being buffered whole.
 
 `backplane` selects broadcast fan-out:
 
-- **`memory`** (default) keeps broadcasts inside one worker. Correct for a single-process deployment; with multiple workers, a client only sees broadcasts produced by the worker it happens to be connected to.
-- **`redis`** publishes broadcasts over Redis pub/sub so every worker delivers them to its own clients. Required for any multi-worker deployment that uses `broadcast=True`.
+- **`memory`** keeps broadcasts inside one worker. Correct for a single-process deployment; with multiple workers, a client only sees broadcasts produced by the worker it happens to be connected to.
+- **`pg`** publishes broadcasts over Postgres `LISTEN`/`NOTIFY` so every worker delivers them to its own clients. Required for any multi-worker deployment that uses `broadcast=True`.
 
 `messages_per_second` and `target_timeout_seconds` accept fractional values (`0.5`, `1.5`). Every limit must be **greater than zero**; none of them treat `0` as "unlimited", and a zero would wedge the connection rather than loosen it (a `messages_per_second` of `0` leaves the token bucket with nothing to refill it, so the socket is rate-limited forever after its first message). A non-positive or non-numeric value is rejected at startup. To effectively disable a limit, set it high.
 
-If `backplane` is unset but a `redis_url` is configured (here or under `[scale.database]`), Redis is selected automatically.
+If `backplane` is unset, `pg` is selected automatically whenever a database URL is configured (`[scale.database].url` or the `JAC_DB_URL` env var, which k8s deploys inject); otherwise broadcasts stay in-memory.
 
 ## 6. Important Notes
 

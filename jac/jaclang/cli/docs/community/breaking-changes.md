@@ -7,6 +7,23 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### The ambient permission constants are now one ambient `AccessLevel` enum (unreleased)
+
+The four ambient access-level constants - `NoPerm`, `ReadPerm`, `ConnectPerm`, `WritePerm` - are removed. The `AccessLevel` enum they aliased is now itself ambient (no import needed), and its members are the one spelling of access levels everywhere a level is taken:
+
+| Old | New |
+|---|---|
+| `grant(node, level=ReadPerm)` | `grant(node, level=AccessLevel.READ)` |
+| `Jac.allow_root(node, rid, WritePerm)` | `Jac.allow_root(node, rid, AccessLevel.WRITE)` |
+| `return WritePerm;` in `__jac_access__` | `return AccessLevel.WRITE;` |
+| `NoPerm` / `ConnectPerm` | `AccessLevel.NO_ACCESS` / `AccessLevel.CONNECT` |
+
+This also unifies the vocabulary with the Scale reference's `perm_grant` / `allow_root` API, which already spoke in `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` levels, and it makes the honest hook signature type-check: `def __jac_access__ -> AccessLevel { return AccessLevel.WRITE; }` (the constants were stub-typed `int`, so the checker rejected exactly that form). String (`"WRITE"`) and int returns remain accepted at runtime for policies stored in data, but enum members are the canonical spelling - a typo'd string literal raises `KeyError` at access-check time.
+
+**Impact:** a mechanical 1:1 rename. A bare removed name is now an unresolved-name error at compile time; importing one from `jaclang.runtimelib.builtin` raises an `AttributeError` that names the replacement member.
+
+---
+
 ### All placement spellings removed: `sv`/`cl`/`na` markers, the `.sv.jac`/`.cl.jac` suffixes, and the `variant` directive ([#7772](https://github.com/jaseci-labs/jac/issues/7772), jaclang 0.35)
 
 Placement no longer has any spelling in source code or filenames. The `sv { }` / `cl { }` / `na { }` blocks, the single-statement prefixes (`cl import ...`, `sv def ...`), the `.sv.jac` and `.cl.jac` file suffixes, and the short-lived `variant client;` / `variant native;` module directive are all removed -- marker code is a syntax error, and a leftover suffixed file fails loudly:

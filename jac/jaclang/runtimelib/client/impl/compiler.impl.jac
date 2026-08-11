@@ -182,12 +182,15 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
 
     core_path = runtime_utils_path.parent / 'client_runtime_core.jac';
     if core_path.exists() {
-        core_specifier = './jaclang/runtimelib/client_runtime_core.js';
-        if core_specifier in runtimeutils_js {
+        import re;
+        core_match = re.search(
+            r'from\s+[\'\"]([^\'\"]*client_runtime_core\.js)[\'\"]', runtimeutils_js
+        );
+        if core_match {
             (core_js, core_mod, _) = self.jac_compiler.compile_module(core_path);
             core_js = prepend_active_runtime_globals(core_js);
             runtimeutils_js = runtimeutils_js.replace(
-                core_specifier, './client_runtime_core.js'
+                core_match.group(1), './client_runtime_core.js'
             );
             core_out = self.compiled_dir / 'client_runtime_core.js';
             core_out.write_text(core_js, encoding='utf-8');

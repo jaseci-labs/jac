@@ -6,6 +6,10 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .config.config_loader { get_scale_config }
+import from .events.streams.postgres { PgEventStream }
+
+import from .persistence.pg { shared_store as _pg_anchor }
+import from .state.pg_state_backend { PgStateBackend as _state_anchor }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
@@ -43,7 +47,9 @@ def _scale_runtime_active -> bool {
         return True;
     }
     db = get_scale_config().get_database_config();
-    return bool(db.get("mongodb_uri") or db.get("redis_url"));
+    return bool(
+        db.get("url") or db.get("postgres_url") or os.environ.get("JAC_DB_URL")
+    );
 }
 
 def scale_start(
@@ -52,11 +58,15 @@ def scale_start(
     target: str,
     enable_tls: bool,
     dry_run: bool,
-    show_yaml: bool
+    show_yaml: bool,
+    port: int = 8000
 ) -> int | None {
     os.environ["JAC_SCALE_RUNTIME"] = "1";
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
+    if port and port != 8000 {
+        ms_config["gateway_port"] = port;
+    }
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
     enabled = ms_config.get("enabled", None);
@@ -72,11 +82,27 @@ def scale_start(
             ms_config["service_files"] = resolve_service_files(
                 ms_config, ms_config["routes"]
             );
+            if ms_config["routes"] {
+                import from jaclang.scale.runtime.routing { ensure_main_service }
+                ensure_main_service(
+                    ms_config["routes"],
+                    ms_config["service_files"],
+                    os.path.basename(filename)
+                );
+            }
 
             import from jaclang.scale.runtime.realizer.local_realizer { LocalRealizer }
             realizer = LocalRealizer(ms_config=ms_config);
             should_serve_ms = realizer.should_serve(enabled);
-        } except Exception {
+        } except ValueError as e {
+            console.error(f"Microservice configuration invalid: {e}", emoji=False);
+            return 1;
+        } except Exception as e {
+            console.error(
+                f"Microservice mode unavailable "
+                f"({type(e).__name__}: {e}); starting as a monolith.",
+                emoji=False
+            );
             realizer = None;
             should_serve_ms = False;
         }
@@ -173,12 +199,6 @@ def _print_deployment_status(status_data: dict) -> None {
         if 'grafana' in urls {
             console.print(f"  Grafana:       {urls['grafana']}", style="bold");
         }
-        if 'redis_insight' in urls {
-            console.print(f"  RedisInsight:  {urls['redis_insight']}", style="bold");
-        }
-        if 'mongo_express' in urls {
-            console.print(f"  Mongo Express: {urls['mongo_express']}", style="bold");
-        }
         console.print();
     }
 }
@@ -192,7 +212,7 @@ def deploy_destroy(
         raise FileNotFoundError(f"File not found: '{file_path}'");
     }
 
-    valid_components = ["application", "database", "cache", "monitoring", "dashboard"];
+    valid_components = ["application", "database", "monitoring"];
     if component and target != 'kubernetes' {
         console.print(
             "ERROR: --component is only supported for the 'kubernetes' target.",
@@ -394,7 +414,7 @@ def _scale_split(module_name: str) -> int {
             "component",
             typ=str,
             default="",
-            help="Platform destroy: component to remove (application, database, cache, monitoring, dashboard; default: entire deployment)"
+            help="Platform destroy: component to remove (application, database, monitoring; default: entire deployment)"
         ),
 
     ],
@@ -412,7 +432,7 @@ def _scale_split(module_name: str) -> int {
         ("jac scale destroy app.jac", "Remove app's platform deployment"),
         (
             "jac scale destroy app.jac --component database",
-            "Remove only MongoDB from the deployment"
+            "Remove only the database from the deployment"
         ),
 
     ],
@@ -443,7 +463,9 @@ def scale_cmd(
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
 
-    if ms_config.get("enabled", None) is False {
+    is_fleet_pod = os.environ.get("JAC_SV_SIBLING") == "1";
+    if ms_config.get("enabled", None) is False
+        and not (action == "gateway" and is_fleet_pod) {
         console.print(
             "Microservice mode is disabled (enabled = false in jac.toml).",
             style="error"
@@ -563,12 +585,7 @@ class JacScalePlugin {
     }
 
     static def create_server(jac_server: JacServer, host: str, port: int) {
-        try {
-            import from .jserver.jfast_api { JFastApiServer }
-        } except ImportError {
-            return None;
-        }
-        return JFastApiServer([]);
+        return None;
     }
 
     static def get_api_server_class -> type | None {
@@ -586,6 +603,9 @@ class JacScalePlugin {
     }
 
     static def get_user_manager(base_path: str) -> UserManager | None {
+        if not _scale_runtime_active() {
+            return None;
+        }
         try {
             import from .identity.user_manager { JacScaleUserManager }
         } except ImportError {
@@ -623,7 +643,7 @@ class JacScalePlugin {
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jaclang.scale.config.config_loader { get_scale_config }
-                import from jaclang.scale.deploy.target.kubernetes.microservice.manifest_builder {
+                import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
                     k8s_safe_name
                 }
                 import from jaclang.scale.runtime.context.util {
@@ -703,7 +723,7 @@ class JacScalePlugin {
 
         try {
             import from jaclang.scale.config.config_loader { get_scale_config }
-            import from jaclang.scale.deploy.target.kubernetes.microservice.runtime_resolver {
+            import from jaclang.scale.deploy.target.kubernetes.runtime_resolver {
                 build_k8s_registry
             }
             ms_cfg = get_scale_config().get_microservices_config();
@@ -720,12 +740,7 @@ class JacScalePlugin {
     }
 
     static def sv_transport_available -> bool {
-        try {
-            import httpx;
-            return True;
-        } except ImportError {
-            return False;
-        }
+        return True;
     }
 
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {

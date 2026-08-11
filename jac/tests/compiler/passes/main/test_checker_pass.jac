@@ -2959,6 +2959,22 @@ test "guard_narrowing" {
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Test narrowing survives loop-exit edges when the body rewrites the symbol."""
+test "loop_exit_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_loop_exit_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All cases should pass: post-loop guards narrow from the declared type
+    # when the body writes the symbol, and narrowed state still carries
+    # across loops that leave the symbol untouched.
+    assert len(program.errors_had) == 0 , "Expected 0 type errors, but got "
+        + f"{len(program.errors_had)}:\n"
+        + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 """Test impl files can access imports from their parent .jac file."""
 test "impl_imports_from_parent" {
     program = JacProgram();
@@ -3878,7 +3894,9 @@ test "root_cause_1_raise_does_not_narrow" {
     ok_errors = [
         e
         for e in program.errors_had
-        if e.loc and 96 <= e.loc.first_line <= 101
+        if e.loc
+            and str(e.loc.mod_path).endswith("checker_narrowing_root_causes.jac")
+            and 96 <= e.loc.first_line <= 101
     ];
     assert len(ok_errors) == 0 , f"ok_raise_narrowing_simple should have 0 errors, got {len(
         ok_errors
@@ -3889,7 +3907,9 @@ test "root_cause_1_raise_does_not_narrow" {
     rc1_errors = [
         e
         for e in program.errors_had
-        if e.loc and 105 <= e.loc.first_line <= 134
+        if e.loc
+            and str(e.loc.mod_path).endswith("checker_narrowing_root_causes.jac")
+            and 105 <= e.loc.first_line <= 134
     ];
     # FIXED: Raise narrowing now promotes inverted narrowings to parent scope.
     assert len(rc1_errors) == 0 , f"Expected 0 raise-narrowing errors (fixed), got {len(
@@ -4244,15 +4264,24 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # 26 errors (down from 29): dotted stdlib submodules (`importlib.util`)
-    # now resolve through ModuleType attribute access, removing the
-    # `.util`-on-Unknown errors from the Root Cause 6 corpus. Before that,
-    # 29 was down from 35: partial union member access returning resolved
-    # types instead of Unknown eliminated 6 cascading errors.
-    assert len(program.errors_had) == 26 , f"Expected 26 total errors, got {len(
-        program.errors_had
+    # 25 errors located in the fixture itself (the count is scoped to the
+    # fixture file: stub-evaluation diagnostics such as typeshed E0075 are
+    # attributed to whichever program first evaluates the stub classes, so
+    # an unscoped count is process-order-dependent). Down from 29: dotted
+    # stdlib submodules (`importlib.util`) resolve through ModuleType
+    # attribute access, removing the `.util`-on-Unknown errors from the
+    # Root Cause 6 corpus. Before that, 29 was down from 35: partial union
+    # member access returning resolved types instead of Unknown eliminated
+    # 6 cascading errors.
+    _fixture_errors = [
+        e
+        for e in program.errors_had
+        if e.loc and str(e.loc.mod_path).endswith("checker_narrowing_root_causes.jac")
+    ];
+    assert len(_fixture_errors) == 25 , f"Expected 25 fixture errors, got {len(
+        _fixture_errors
     )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+        + "\n---\n".join(e.pretty_print() for e in _fixture_errors);
 }
 
 """MRO resolves correctly when base class imported through Python __init__.py re-export."""
@@ -4324,6 +4353,22 @@ test "bare_generic_iteration_yields_any" {
         bare_generic_warnings
     )}:\n"
         + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+}
+
+test "bare_generic_any_propagates_through_operations" {
+    # A bare generic's value type is any, so subscripting, attribute access,
+    # binary ops and iteration on it must yield any rather than Unknown.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_any_propagation.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "bare_generic_in_signatures_emits_w1036" {
@@ -5238,6 +5283,36 @@ test "as_cast_resolves_any_assignment" {
         + "\n---\n".join(e.pretty_print() for e in parse_errs);
 }
 
+test "cast_target_must_be_a_type" {
+    # A cast target that is not a type expression -- a comparison, a value
+    # variable -- is diagnosed with E1044; unions and generics stay valid (#7885).
+    path = os.path.join(CHECKER_FIXTURES, "checker_cast_target_not_type.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1044 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1044"
+    ];
+    assert len(e1044) == 2 , f"Expected 2 E1044 (bad_parens, bad_value), got {len(
+        e1044
+    )}:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    lines = sorted(e.loc.first_line for e in e1044);
+    assert lines == [4, 8] , f"E1044 on wrong lines: {lines}";
+
+    others = [
+        e
+        for e in program.errors_had
+        if not (e.code and e.code.code == "E1044")
+    ];
+    assert len(others) == 0 , "Only E1044 expected -- the union and generic casts"
+    " must stay valid:\n"
+        + "\n---\n".join(e.pretty_print() for e in others);
+}
+
 # ============================================================================
 # Issue #6058 — TypeEvaluator correctness for patterns native code uses.
 # Fixed-width primitives (iN, uN, fN) are width refinements of the same
@@ -5762,4 +5837,43 @@ test "bare_list_flow_inference" {
             target
         )}";
     }
+}
+
+test "none_equality_not_flagged" {
+    # `==` / `!=` never fail to resolve in Python (object.__eq__ is the
+    # universal identity fallback), so None-equality must not raise E1110.
+    # typeshed's NoneType has no __eq__, which previously made every
+    # `x == None` an error and steered users toward `is None` (#7922).
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_none_equality.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    eq_errors = [
+        e
+        for e in program.errors_had
+        if "not supported between" in str(e)
+    ];
+    assert not eq_errors , (
+        "None equality must type-check; got: " + str([str(e) for e in eq_errors])
+    );
+}
+
+test "match_wildcard_no_warning_noise" {
+    # `case _:` is a binder, not an expression read: it must not draw
+    # W2001 ("may be undefined") from static analysis or W1051 (unknown
+    # expression type) from the checker (#7922).
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_match_wildcard.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    noise = [
+        w
+        for w in program.warnings_had
+        if ("'_'" in str(w))
+            or ("may be undefined" in str(w))
+            or ("could not be resolved" in str(w))
+    ];
+    assert not noise , (
+        "case _ must not draw warning noise; got: " + str([str(w) for w in noise])
+    );
 }

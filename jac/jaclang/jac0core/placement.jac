@@ -9,7 +9,8 @@ glob PLACEMENT_SCHEMA: int = 1,
          uni.TypedCtxBlock,
          uni.PyInlineCode,
          uni.JsxElement
-     );
+     ),
+     PLACEMENT_NATIVE_REJECT_NODES: tuple = ();
 
 obj ElementSummary {
     has index: int = -1,
@@ -214,6 +215,29 @@ def _fill_import_facts(es: ElementSummary, imp: uni.Import) {
     }
 }
 
+def module_has_root_access(stmt: uni.UniNode) -> bool {
+    mod = stmt
+        if isinstance(stmt, uni.Module)
+        else stmt.find_parent_of_type(uni.Module);
+    if mod is None {
+        return True;
+    }
+
+    cached = mod.gen.has_root_access;
+    if cached is not None {
+        return cached;
+    }
+    found = False;
+    for svr in mod.get_all_sub_nodes(uni.SpecialVarRef) {
+        if svr.orig.name == Tok.KW_ROOT {
+            found = True;
+            break;
+        }
+    }
+    mod.gen.has_root_access = found;
+    return found;
+}
+
 def _element_reqs(stmt: uni.UniNode) -> list {
     reqs: list = [];
     if isinstance(stmt, uni.Import) {
@@ -253,7 +277,9 @@ def _element_reqs(stmt: uni.UniNode) -> list {
         }
     }
     if isinstance(stmt, uni.Archetype) and stmt.arch_kind is not None {
-        reqs.append(['PERSIST', f"{stmt.arch_kind} archetype"]);
+        if module_has_root_access(stmt) {
+            reqs.append(['PERSIST', f"{stmt.arch_kind} archetype"]);
+        }
     }
     for ab in stmt.get_all_sub_nodes(uni.Ability) {
         if ab.is_async {
@@ -442,7 +468,7 @@ def module_anchor_reasons(module: uni.Module) -> list[str] {
         }
     }
     for arch in module.get_all_sub_nodes(uni.Archetype) {
-        if arch.arch_kind is not None {
+        if arch.arch_kind is not None and module_has_root_access(module) {
             reasons.append(f"graph archetype '{arch.name.value}'");
             break;
         }
@@ -494,6 +520,12 @@ def scan_native_blockers(
     for typ in PLACEMENT_SV_SIGNAL_NODES {
         if module.get_all_sub_nodes(typ) {
             return (f"contains {typ.__name__}", deps);
+        }
+    }
+
+    for typ in PLACEMENT_NATIVE_REJECT_NODES {
+        if module.get_all_sub_nodes(typ) {
+            return (f"native-unsupported {typ.__name__}", deps);
         }
     }
     for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {

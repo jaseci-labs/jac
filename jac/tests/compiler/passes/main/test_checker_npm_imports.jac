@@ -70,6 +70,67 @@ test "declared npm types are real: misuse is a genuine type error" {
     }
 }
 
+test "default-as import types from the package d.ts default export" {
+    with TemporaryDirectory() as td {
+        proj = make_npm_client_project(Path(td));
+        f = proj / "lib" / "dflt.jac";
+        f.write_text(
+            'import from "clsx" { default as cx, clsx }\n\n'
+            'def:pub use() -> str {\n'
+            '    return cx("a");\n'
+            '}\n'
+        );
+        (program, err_codes, warn_codes) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , f"Expected no errors, got: {pretty_checker_errors(
+            program
+        )}";
+        # clsx.d.mts declares `export default clsx` -- the alias must carry the
+        # declared function type, not an undiagnosed Unknown (issue #7836).
+        assert "W1051" not in warn_codes , f"default import must not be Unknown at use sites, "
+        f"codes={warn_codes}";
+        assert "W1102" not in warn_codes , f"declared default export must not fall back to foreign "
+        f"any, codes={warn_codes}";
+    }
+}
+
+test "declared default export is real: misuse is a genuine type error" {
+    with TemporaryDirectory() as td {
+        proj = make_npm_client_project(Path(td));
+        bad = proj / "lib" / "dflt_misuse.jac";
+        bad.write_text(
+            'import from "clsx" { default as cx }\n\n'
+            'def:pub bad() -> int {\n'
+            '    return cx("a");\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(bad);
+        # The d.ts default export is `(...inputs) => string`; returning it as
+        # int must fail -- guards against typing default imports as plain any.
+        assert "E1002" in err_codes , f"str->int misuse of a declared default import must error, "
+        f"got codes={err_codes}:\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "undeclared default import stays gradual with W1102" {
+    with TemporaryDirectory() as td {
+        proj = make_npm_client_project(Path(td));
+        f = proj / "lib" / "dflt_untyped.jac";
+        f.write_text(
+            'import from "untyped-pkg" { default as mystery }\n\n'
+            'def:pub use() -> str {\n'
+            '    return mystery(1);\n'
+            '}\n'
+        );
+        (program, err_codes, warn_codes) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , f"foreign any must flow gradually, got: {pretty_checker_errors(
+            program
+        )}";
+        assert "W1102" in warn_codes , f"untyped default fallback must warn W1102, codes={warn_codes}";
+        assert "W1051" not in warn_codes , f"untyped default must be foreign any, not Unknown, "
+        f"codes={warn_codes}";
+    }
+}
+
 test "undeclared npm imports stay gradual with W1102" {
     with TemporaryDirectory() as td {
         proj = make_npm_client_project(Path(td));

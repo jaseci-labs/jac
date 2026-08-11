@@ -636,3 +636,96 @@ test "explicit python_image is never rewritten" {
         binary_mod._http_get_bytes = saved;
     }
 }
+
+
+test "binary cache paths are keyed by platform as well as channel and arch" {
+    assert binary_mod._binary_cache_path("stable", "aarch64").name
+        == "jac-stable-linux-aarch64";
+    assert binary_mod._binary_cache_path("stable", "aarch64", "macos").name
+        == "jac-stable-macos-aarch64";
+}
+
+
+test "host_seal_platform accepts linux/macos hosts and rejects the rest" {
+    assert binary_mod.host_seal_platform() in ("linux", "macos");
+    saved = binary_mod.host_os;
+    def _windows -> str {
+        return "windows";
+    }
+    try {
+        binary_mod.host_os = _windows;
+        caught = "";
+        try {
+            binary_mod.host_seal_platform();
+        } except RuntimeError as e {
+            caught = str(e);
+        }
+        assert "not supported" in caught , caught;
+    } finally {
+        binary_mod.host_os = saved;
+    }
+}
+
+
+glob _dl_seen: dict = {};
+
+
+def _capture_fetch(url: str, checksum_url: str, cache_file: Path, what: str) -> bytes {
+    _dl_seen["url"] = url;
+    _dl_seen["cache"] = str(cache_file);
+    return b"BIN";
+}
+
+
+test "download_release_binary fetches the asset for the requested platform" {
+    with unittest.mock.patch.object(
+        binary_mod, "_fetch_verified_asset", _capture_fetch
+    ) {
+        assert binary_mod.download_release_binary("dev", "aarch64", "", "macos")
+            == b"BIN";
+        assert _dl_seen["url"].endswith("jac-dev-macos-aarch64");
+        assert _dl_seen["cache"].endswith("jac-dev-macos-aarch64");
+        binary_mod.download_release_binary("dev", "x86_64");
+        assert _dl_seen["url"].endswith("jac-dev-linux-x86_64");
+    }
+}
+
+
+test "the seal binary targets the deploy host; the pod bytes are reused only on a matching linux host (#7451)" {
+    import jaclang.scale.injector.binary_injector as bi_mod;
+    inj = BinaryInjector(channel=Channel.STABLE);
+    saved_dl = bi_mod.download_release_binary;
+    saved_plat = bi_mod.host_seal_platform;
+    saved_arch = bi_mod.host_arch;
+    def _dl(channel: str, arch: str, version: str = "", plat: str = "linux") -> bytes {
+        return f"BIN-{plat}-{arch}".encode();
+    }
+    def _macos -> str {
+        return "macos";
+    }
+    def _linux -> str {
+        return "linux";
+    }
+    def _arm -> str {
+        return "aarch64";
+    }
+    try {
+        bi_mod.download_release_binary = _dl;
+        bi_mod.host_seal_platform = _macos;
+        bi_mod.host_arch = _arm;
+        # A macOS host must seal with a macos asset, never the pod's ELF.
+        assert inj._resolve_seal_binary(b"POD", "x86_64", "") == b"BIN-macos-aarch64";
+        bi_mod.host_seal_platform = _linux;
+        # Same-arch linux host: the pod binary doubles as the seal binary.
+        assert inj._resolve_seal_binary(b"POD", "aarch64", "") == b"POD";
+        # Cross-arch linux host (JAC_NODE_ARCH): seal with the host arch.
+        assert inj._resolve_seal_binary(b"POD", "x86_64", "") == b"BIN-linux-aarch64";
+        # LOCAL channel ships a host-provided binary; it seals too.
+        local_inj = BinaryInjector(channel=Channel.LOCAL);
+        assert local_inj._resolve_seal_binary(b"POD", "x86_64", "") == b"POD";
+    } finally {
+        bi_mod.download_release_binary = saved_dl;
+        bi_mod.host_seal_platform = saved_plat;
+        bi_mod.host_arch = saved_arch;
+    }
+}

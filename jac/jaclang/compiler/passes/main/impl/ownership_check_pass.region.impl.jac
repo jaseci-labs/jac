@@ -1,5 +1,94 @@
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.diagnostics { E1307, W1310 }
+import from jaclang.jac0core.diagnostics { E1307, E1314, W1310 }
+
+impl OwnershipCheckPass._partition_sugar_reason(call: uni.FuncCall) -> str {
+    _params = [p for p in (call.params or [])];
+    if len(_params) != 1 or not isinstance(_params[0], uni.Int) {
+        return "a non-literal child count";
+    }
+    _n = int(_params[0].value);
+    asgn = call.parent;
+    if not (isinstance(asgn, uni.Assignment) and asgn.value is call) {
+        return "use outside a direct tuple-unpack assignment";
+    }
+    if len(asgn.target) != 1 {
+        return "a non-tuple unpack target";
+    }
+    _tv = asgn.target[0];
+    if not isinstance(_tv, uni.TupleVal) {
+        return "a non-tuple unpack target";
+    }
+    _names: list[uni.Name] = [];
+    for v in (_tv.values or []) {
+        if not isinstance(v, uni.Name) {
+            return "a non-name unpack target";
+        }
+        _names.append(v);
+    }
+    if len(_names) != _n {
+        return f"an unpack arity of {len(_names)} for n={_n}";
+    }
+    _recv = call.target.target if isinstance(call.target, uni.AtomTrailer) else None;
+    if not isinstance(_recv, uni.Name) {
+        return "a receiver that is not an owned `Region` handle";
+    }
+    _rsid = self._sym_id(_recv);
+    if _rsid is None or _rsid not in self.owned_decl {
+        return "a receiver that is not an owned `Region` handle";
+    }
+    return "";
+}
+
+impl OwnershipCheckPass._process_partition_sugar -> None {
+    for call in self.ir_in.get_all_sub_nodes(uni.FuncCall) {
+        _tr = call.target;
+        if not (
+            isinstance(_tr, uni.AtomTrailer)
+            and isinstance(_tr.right, uni.Name)
+            and _tr.right.sym_name == "partition"
+        ) {
+            continue;
+        }
+        if not (call.params or []) {
+            continue;
+        }
+        _psr_recv = _tr.target;
+        _psr_m = "";
+        try {
+            _psr_m = _psr_recv.type.mangle() if _psr_recv.type is not None else "";
+        } except Exception {
+            _psr_m = "";
+        }
+        if _psr_m != "Region" {
+            continue;
+        }
+        reason = self._partition_sugar_reason(call);
+        if reason != "" {
+            self.emit(E1314, node_override=call, name=reason);
+            continue;
+        }
+        _ps_asgn = call.parent;
+        if not isinstance(_ps_asgn, uni.Assignment) {
+            continue;
+        }
+        _ps_tv = _ps_asgn.target[0];
+        if not isinstance(_ps_tv, uni.TupleVal) {
+            continue;
+        }
+        for nmv in (_ps_tv.values or []) {
+            if not isinstance(nmv, uni.Name) {
+                continue;
+            }
+            _sid = self._sym_id(nmv);
+            if _sid is None or nmv.sym is None {
+                continue;
+            }
+            nmv.sym.ownership = OwnershipKind.OWN;
+            nmv.sym.na_region_handle = True;
+            self.owned_decl[_sid] = nmv;
+        }
+    }
+}
 
 glob _REGION_SCALARS: tuple = ("int", "float", "bool", "None", "NoneType"),
      _REGION_SAFE_CALLEES: frozenset[str] = frozenset(
@@ -111,6 +200,130 @@ impl OwnershipCheckPass._is_region_local(nd: uni.Name, region: uni.OpenStmt) -> 
         return False;
     }
     return self._is_ancestor(region, nd.sym.decl);
+}
+
+impl OwnershipCheckPass._seal_connect_handle(bx: uni.BinaryExpr) -> (uni.Name | None) {
+    co = bx.op;
+    if not isinstance(co, uni.ConnectOp) {
+        return None;
+    }
+    region = bx.find_parent_of_type(uni.OpenStmt);
+    if region is None {
+        return None;
+    }
+    _dir = int(co.edge_dir.value);
+    if _dir == 3 {
+        return None;
+    }
+    _lroot = self._place_of(bx.left);
+    _rroot = self._place_of(bx.right);
+    if _lroot is None or _rroot is None {
+        return None;
+    }
+    _l_in = self._is_region_local(_lroot, region);
+    _r_in = self._is_region_local(_rroot, region);
+    if _l_in == _r_in {
+        return None;
+    }
+    _tgt_in = _l_in if _dir == 1 else _r_in;
+    if not _tgt_in {
+        return None;
+    }
+    if self._region_handle_kind(region) != "own" {
+        return None;
+    }
+    return self._open_handle_name(region);
+}
+
+impl OwnershipCheckPass._seal_arch_ctor(fc: uni.FuncCall) -> bool {
+    if not isinstance(fc.target, uni.Name) {
+        return False;
+    }
+    sym = fc.target.sym;
+    if sym is None or sym.decl is None {
+        return False;
+    }
+    decl = sym.decl;
+    arch = decl
+        if isinstance(decl, uni.Archetype)
+        else decl.find_parent_of_type(uni.Archetype);
+    return arch is not None and arch.name.value == fc.target.sym_name;
+}
+
+impl OwnershipCheckPass._emit_post_seal_diagnostics(region: uni.OpenStmt) -> None {
+    if not isinstance(region.body, (list, tuple)) {
+        return;
+    }
+    _stmts: list[uni.UniNode] = [s for s in getattr(region, "body", [])];
+    _ridx: dict[int, int] = {};
+    for (i2, s2) in enumerate(_stmts) {
+        _ridx[id(s2)] = i2;
+    }
+    _seal_idx = -1;
+    _seal_site: uni.UniNode = region;
+    for bx in region.get_all_sub_nodes(uni.BinaryExpr) {
+        if self._seal_connect_handle(bx) is None {
+            continue;
+        }
+        _cur: (uni.UniNode | None) = bx;
+        while _cur is not None and id(_cur) not in _ridx {
+            _cur = _cur.parent;
+        }
+        if _cur is None {
+            continue;
+        }
+        _bi = _ridx[id(_cur)];
+        if _seal_idx < 0 or _bi < _seal_idx {
+            _seal_idx = _bi;
+            _seal_site = bx;
+        }
+    }
+    if _seal_idx < 0 {
+        return;
+    }
+    for (_si3, s3) in enumerate(_stmts) {
+        if _si3 == _seal_idx {
+            for bx3 in s3.get_all_sub_nodes(uni.BinaryExpr) {
+                if isinstance(bx3.op, uni.ConnectOp)
+                    and bx3 is not _seal_site
+                    and self._seal_connect_handle(bx3) is not None {
+                    self.emit(
+                        E1307,
+                        node_override=bx3,
+                        name="connect",
+                        related=[("second seal of this region", _seal_site)]
+                    );
+                }
+            }
+        }
+        if _si3 <= _seal_idx {
+            continue;
+        }
+        for fc in s3.get_all_sub_nodes(uni.FuncCall) {
+            if self._seal_arch_ctor(fc) {
+                self.emit(
+                    E1307,
+                    node_override=fc,
+                    name=fc.target.sym_name
+                        if isinstance(fc.target, uni.Name)
+                        else "<expression>",
+                    related=[
+                        ("allocated after this seal closed the region", _seal_site)
+                    ]
+                );
+            }
+        }
+        for bx2 in s3.get_all_sub_nodes(uni.BinaryExpr) {
+            if isinstance(bx2.op, uni.ConnectOp) {
+                self.emit(
+                    E1307,
+                    node_override=bx2,
+                    name="connect",
+                    related=[("wired after this seal closed the region", _seal_site)]
+                );
+            }
+        }
+    }
 }
 
 impl OwnershipCheckPass._emit_region_escape(
@@ -228,6 +441,10 @@ impl OwnershipCheckPass._stamp_region_borrows -> None {
             }
             tsid = self._name_sym_id(tgt);
             if tsid == hsid or tsid in self.borrow_meta or tsid in self.owned_decl {
+                continue;
+            }
+            if isinstance(asn.value, uni.UnaryExpr)
+                and asn.value.ownership == OwnershipKind.IMM {
                 continue;
             }
             if self._region_expr_is_scalar(asn.value) {
@@ -479,6 +696,9 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             if not isinstance(bexpr.op, uni.ConnectOp) {
                 continue;
             }
+            if self._seal_connect_handle(bexpr) is not None {
+                continue;
+            }
             _lroot = self._place_of(bexpr.left);
             _rroot = self._place_of(bexpr.right);
             if _lroot is None or _rroot is None {
@@ -497,6 +717,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             seen.add(key);
             self._emit_region_escape(_mix_root, region);
         }
+        self._emit_post_seal_diagnostics(region);
 
         if _hsid is None {
             continue;

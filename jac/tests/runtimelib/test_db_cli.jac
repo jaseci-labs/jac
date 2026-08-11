@@ -1,8 +1,8 @@
-"""End-to-end tests for the `jac db` CLI subcommands.
+"""End-to-end tests for the `jac db` CLI over the Postgres store.
 
-Each test spawns real `jac db ...` (and sometimes `jac enter`) subprocesses
-so we exercise the full subprocess + DB-on-disk + CLI argparse path —
-exactly the interface a developer or operator uses.
+Each test spawns real `jac ...` subprocesses so we exercise the full
+subprocess + embedded-server + CLI argparse path — exactly the interface a
+developer or operator uses.
 """
 
 import os;
@@ -14,7 +14,15 @@ import from tempfile { TemporaryDirectory }
 
 """Run a subprocess and return (rc, stdout, stderr)."""
 def _run(cwd: str, argv: list) -> tuple {
-    result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=180);
+    import jaclang;
+    # -m jaclang must resolve to the source tree under test, not a
+    # launcher-embedded snapshot.
+    env = dict(os.environ);
+    src = str(Path(jaclang.__file__).parent.parent);
+    env['PYTHONPATH'] = src + os.pathsep + env.get('PYTHONPATH', '');
+    result = subprocess.run(
+        argv, cwd=cwd, capture_output=True, text=True, timeout=300, env=env
+    );
     return (result.returncode, result.stdout, result.stderr);
 }
 
@@ -24,213 +32,78 @@ def _jac(cwd: str, args: list) -> tuple {
 }
 
 
-glob V1_LEGACY = "node LegacyPerson { has name: str; }\n"
+"""Point the tmp project at the source tree under test (launcher binaries
+otherwise serve their embedded jaclang snapshot for CLI dispatch)."""
+def _seed_project(tmpdir: str, name: str) {
+    import jaclang;
+    src = str(Path(jaclang.__file__).parent.parent);
+    (Path(tmpdir) / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\n\n[dev]\njaclang_source = "{src}"\n'
+    );
+}
+
+
+def _stop_db(cwd: str) {
+    _jac(cwd, ["db", "stop"]);
+}
+
+
+glob APP = "node Person { has name: str; }\n"
      "walker create {\n"
      "    can s with Root entry {\n"
-     "        here ++> LegacyPerson(name=\"alice\");\n"
-     "        here ++> LegacyPerson(name=\"bob\");\n"
+     "        here ++> Person(name=\"alice\");\n"
+     "        here ++> Person(name=\"bob\");\n"
      "    }\n"
-     "}\n",
-     V2_PERSON = "node Person { has name: str; }\n"
-     "walker dump {\n"
-     "    can r with Root entry { visit [-->]; }\n"
-     "    can p with Person entry { print(here.name); }\n"
      "}\n";
 
 
-test "db inspect prints a summary with counts" {
+test "db status reports server state and row counts after a run" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
-        app.write_text(V1_LEGACY);
-        (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
-        assert rc == 0 , f"create failed: {err}";
-        (rc, out, err) = _jac(tmpdir, ["db", "inspect"]);
-        assert rc == 0 , f"inspect failed: {err}";
-        # Assert only on the summary line, which is rendered via plain
-        # console.info() and is deterministic regardless of terminal
-        # width. The per-arch_type Rich table IS printed, but its cell
-        # contents are truncated / styled in terminal-width-dependent
-        # ways (including ANSI codes in some CI environments), which
-        # makes substring assertions on class names fundamentally
-        # fragile. The summary line is enough to prove the CLI ran
-        # correctly; archetype-level correctness is exercised by
-        # backend-direct unit tests.
-        assert "format_version=1" in out , f"summary missing format_version: {out!r}";
-        # Create walker makes 2 LegacyPerson nodes on root, which also
-        # creates 2 GenericEdge anchors -- 5 anchors total with root.
-        assert "anchors=5" in out , f"expected anchors=5 in summary: {out!r}";
-        assert "quarantined=0" in out;
+        app.write_text(APP);
+        _seed_project(tmpdir, "dbcli");
+        try {
+            (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
+            assert rc == 0 , f"create failed: {err}";
+            (rc, out, err) = _jac(tmpdir, ["db", "status"]);
+            assert rc == 0 , f"status failed: {err}";
+            assert "running" in out;
+            # root + 2 Person nodes, 2 edges
+            assert "NodeAnchor" in out and "EdgeAnchor" in out , out;
+        } finally {
+            _stop_db(tmpdir);
+        }
     }
 }
 
 
-test "db alias add/list/remove round-trip works" {
+test "db sql runs a statement against the project store" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
-        app.write_text(V1_LEGACY);
-        # Need a DB to act on.
-        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
-        # Initially empty: console.info() line is plain text, not Rich,
-        # so this assertion is stable across terminal widths.
-        (rc, out, _) = _jac(tmpdir, ["db", "alias", "list"]);
-        assert rc == 0;
-        assert "No DB-resident aliases" in out;
-        # Add: console.success() emits "Alias registered: ..." as plain text.
-        (rc, out, _) = _jac(tmpdir, ["db", "alias", "add", "old.mod.X", "new.mod.Y"]);
-        assert rc == 0;
-        assert "registered" in out.lower();
-        # Verify the alias actually landed in the DB by querying it directly,
-        # not by parsing the Rich-rendered table (which is terminal-width-
-        # sensitive in CI).
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        dbs = sorted(data_dir.glob("*.db"));
-        assert dbs;
-        conn = sqlite3.connect(str(dbs[0]));
-        rows = list(
-            conn.execute("SELECT old_name, new_name FROM aliases ORDER BY old_name")
-        );
-        conn.close();
-        assert rows == [("old.mod.X", "new.mod.Y")];
-        # Also confirm `alias list` exits cleanly (table render, rc check only).
-        (rc, _, _) = _jac(tmpdir, ["db", "alias", "list"]);
-        assert rc == 0;
-        # Remove.
-        (rc, out, _) = _jac(tmpdir, ["db", "alias", "remove", "old.mod.X"]);
-        assert rc == 0;
-        assert "Removed" in out;
-        # Confirm removal via DB, and that list reports empty via its info line.
-        conn = sqlite3.connect(str(dbs[0]));
-        count = conn.execute("SELECT count(*) FROM aliases").fetchone()[0];
-        conn.close();
-        assert count == 0;
-        (rc, out, _) = _jac(tmpdir, ["db", "alias", "list"]);
-        assert rc == 0;
-        assert "No DB-resident aliases" in out;
+        app.write_text(APP);
+        _seed_project(tmpdir, "dbcli");
+        try {
+            (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
+            assert rc == 0 , f"create failed: {err}";
+            (rc, out, err) = _jac(
+                tmpdir,
+                ["db", "sql", "SELECT count(*) FROM anchors WHERE kind = 'NodeAnchor'"]
+            );
+            assert rc == 0 , f"sql failed: {err}";
+            assert "3" in out , f"expected 3 nodes in: {out!r}";
+        } finally {
+            _stop_db(tmpdir);
+        }
     }
 }
 
 
-test "db recover-all rescues quarantined rows after CLI alias add" {
+test "db rejects unknown actions" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
-        app = Path(tmpdir) / "app.jac";
-        # v1: LegacyPerson is the live class.
-        app.write_text(V1_LEGACY);
-        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
-        # Swap to v2: Person, with NO @archetype_alias. Old anchors quarantine
-        # when the v2 walker tries to traverse them.
-        app.write_text(V2_PERSON);
-        _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
-        # Confirm quarantine populated. The cascade fix quarantines both the
-        # 2 LegacyPerson nodes AND their 2 connecting GenericEdge anchors = 4.
-        (rc, out, _) = _jac(tmpdir, ["db", "inspect"]);
-        assert rc == 0;
-        assert "quarantined=4" in out;
-        # Operator-side rescue: register the alias in the DB, then recover.
-        (rc, _, _) = _jac(
-            tmpdir, ["db", "alias", "add", "__main__.LegacyPerson", "__main__.Person"]
-        );
-        assert rc == 0;
-        (rc, out, err) = _jac(tmpdir, ["db", "recover-all", "--app", str(app)]);
-        assert rc == 0 , f"recover-all failed: {err}";
-        assert "Recovered 4 of 4" in out;
-        # Inspect confirms quarantine cleared via its plain-text summary line.
-        (rc, out, _) = _jac(tmpdir, ["db", "inspect"]);
-        assert rc == 0;
-        assert "quarantined=0" in out;
-        # Confirm the recovered rows are now stamped as Person by querying the
-        # DB directly -- the Rich-rendered arch_type table is terminal-width
-        # dependent and unreliable for substring matching in CI.
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        dbs = sorted(data_dir.glob("*.db"));
-        assert dbs;
-        conn = sqlite3.connect(str(dbs[0]));
-        person_count = conn.execute(
-            "SELECT count(*) FROM anchors WHERE arch_type = 'Person'"
-        ).fetchone()[0];
-        legacy_count = conn.execute(
-            "SELECT count(*) FROM anchors WHERE arch_type = 'LegacyPerson'"
-        ).fetchone()[0];
-        # Verify re-link: root node's data.edges must be repopulated with
-        # the 2 recovered edge IDs (cascade stripped them during quarantine).
-        # Use json_each in SQL to count, matching the style of other DB checks.
-        root_edge_count = conn.execute(
-            """
-            SELECT COUNT(*)
-            FROM json_each(json_extract(
-                (SELECT data FROM anchors WHERE arch_type = 'Root'),
-                '$.edges'
-            ))
-            """
-        ).fetchone()[0];
-        conn.close();
-        assert person_count == 2 , f"expected 2 rows stamped as Person, got {person_count}";
-        assert legacy_count == 0 , f"expected 0 stale LegacyPerson rows, got {legacy_count}";
-        assert root_edge_count == 2 , (
-            f"root data.edges must have 2 re-linked edges after recover-all, got: {root_edge_count}"
-        );
-        # Final smoke: the dump walker now finds the recovered data.
-        (rc, out, err) = _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
-        assert rc == 0 , f"dump failed: {err}";
-        assert "alice" in out and "bob" in out;
-    }
-}
-
-
-test "db quarantine list and show return data, never silently empty" {
-    with TemporaryDirectory() as raw_tmpdir {
-        tmpdir = str(raw_tmpdir);
-        app = Path(tmpdir) / "app.jac";
-        app.write_text(V1_LEGACY);
-        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
-        # Force quarantine.
-        app.write_text(V2_PERSON);
-        _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
-        # `quarantine list` renders via Rich print_table (terminal-width
-        # sensitive in CI), so assert only on exit code -- the fact that
-        # rows exist is verified via direct DB query below.
-        (rc, _, _) = _jac(tmpdir, ["db", "quarantine", "list"]);
-        assert rc == 0;
-        # Find a NodeAnchor row id for the show step. The cascade fix also
-        # quarantines the connecting EdgeAnchors, so we explicitly filter to a
-        # NodeAnchor row to ensure the show output contains "LegacyPerson".
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        dbs = sorted(data_dir.glob("*.db"));
-        assert dbs;
-        conn = sqlite3.connect(str(dbs[0]));
-        ids = [
-            r[0]
-            for r in conn.execute(
-                "SELECT id FROM anchors_quarantine WHERE type = 'NodeAnchor' LIMIT 1"
-            )
-        ];
-        conn.close();
-        assert ids;
-        # `quarantine show` prints json.dumps() output -- plain text, not a
-        # Rich table, so substring matching on class names is safe.
-        (rc, out, _) = _jac(tmpdir, ["db", "quarantine", "show", ids[0]]);
-        assert rc == 0;
-        assert ids[0] in out;
-        assert "LegacyPerson" in out;
-    }
-}
-
-
-test "db rejects bad sub-actions with helpful errors" {
-    with TemporaryDirectory() as raw_tmpdir {
-        tmpdir = str(raw_tmpdir);
-        app = Path(tmpdir) / "app.jac";
-        app.write_text(V1_LEGACY);
-        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
-        (rc, _, err) = _jac(tmpdir, ["db", "alias", "frobnicate"]);
-        assert rc != 0;
-        assert "alias" in err.lower() or "expected" in err.lower();
-        (rc, _, err) = _jac(tmpdir, ["db", "quarantine", "frobnicate"]);
+        (rc, _, err) = _jac(tmpdir, ["db", "definitely-not-an-action"]);
         assert rc != 0;
     }
 }

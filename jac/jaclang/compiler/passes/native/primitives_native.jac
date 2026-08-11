@@ -19,7 +19,8 @@ import from jaclang.jac0core.diagnostics { E5092 }
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
-        call_kwargs: dict = {};
+        call_kwargs: dict = {},
+        arg_nodes: list = [];
 }
 
 
@@ -1177,6 +1178,14 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_set_elem_loop(
+        self: NativeSetEmitter,
+        ctx: NativeEmitCtx,
+        src_set: ir.Value,
+        prefix: str,
+        body_cb: object
+    ) -> None;
+
     def _emit_set_relation(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
@@ -1828,17 +1837,11 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             and isinstance(args[2].type, ir.IntType) {
             return self.emit_pow_mod(ctx, base, exp, args[2]);
         }
-        if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
-            return p._codegen_int_pow(base, exp);
+        exp_node = None;
+        if len(ctx.arg_nodes) >= 2 {
+            exp_node = ctx.arg_nodes[1];
         }
-        if isinstance(base.type, ir.DoubleType)
-            and isinstance(exp.type, ir.DoubleType) {
-            pow_fn = p._get_or_declare_extern(
-                "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
-            );
-            return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
-        }
-        return None;
+        return p._codegen_pow(base, exp, exp_node);
     }
 
     def emit_pow_mod(

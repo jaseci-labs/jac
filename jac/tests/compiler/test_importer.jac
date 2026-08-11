@@ -288,6 +288,262 @@ test "get bytecode uses JIR cache on second call" {
     }
 }
 
+test "type evaluator uses JIR cache for pyi stubs" {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".pyi", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("class Foo:\n    x: int\n");
+        tmp.flush();
+        stub_file = tmp.name;
+    }
+
+    past = time.time() - 2;
+    os.utime(stub_file, (past, past));
+
+    try {
+        prog1 = JacProgram();
+        mod1 = prog1.load_dependency_module(stub_file);
+        sym1 = mod1.sym_tab.lookup("Foo");
+        assert sym1 is not None , "Foo symbol missing after first pyi import";
+
+        cache_path = get_module_cache_path(stub_file);
+        assert cache_path.exists() , "JIR cache file should exist after first pyi import";
+
+        prog2 = JacProgram();
+        mod2 = prog2.load_dependency_module(stub_file);
+        sym2 = mod2.sym_tab.lookup("Foo");
+        assert sym2 is not None , "Foo symbol missing after JIR cache read";
+
+        import from jaclang.jac0core.unitree { Archetype }
+        import from jaclang.jac0core.constant { Tokens as Tok }
+        foo2: list = [];
+        for a in mod2.get_all_sub_nodes(Archetype) {
+            if a.name is not None and a.name.value == "Foo" {
+                foo2.append(a);
+            }
+        }
+        assert len(foo2) == 1 , "Foo archetype missing after JIR cache read";
+        assert foo2[0].arch_type is not None , "arch_type lost in JIR round-trip";
+        assert foo2[0].arch_type.name == Tok.KW_CLASS , (
+            "arch_type wrong after JIR round-trip"
+        );
+        assert mod2.source is not None , "cached stub should retain source";
+        assert stub_file in mod2.source.file_path
+            or os.path.basename(stub_file) in mod2.source.file_path , (
+            "module.source must reference original .pyi path"
+        );
+
+        future = time.time() + 5;
+        os.utime(stub_file, (future, future));
+        prog3 = JacProgram();
+        mod3 = prog3.load_dependency_module(stub_file);
+        assert mod3.sym_tab.lookup("Foo") is not None , (
+            "stale JIR cache reused after pyi edit"
+        );
+    } finally {
+        os.unlink(stub_file);
+        cache_path2 = get_module_cache_path(stub_file);
+        if cache_path2.exists() {
+            cache_path2.unlink();
+        }
+    }
+}
+
+test "load_dependency_module uses JIR cache without recompiling" {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".pyi", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("class Bar:\n    y: str\n");
+        tmp.flush();
+        stub_file = tmp.name;
+    }
+    past = time.time() - 2;
+    os.utime(stub_file, (past, past));
+    compile_calls = 0;
+    orig_compile = JacProgram.compile;
+    def counting_compile(
+        self: JacProgram,
+        file_path: str,
+        use_str: (str | None) = None,
+        no_cgen: bool = False,
+        type_check: bool = False,
+        symtab_ir_only: bool = False,
+        cancel_token = None,
+        options = None
+    ) -> object {
+        compile_calls += 1;
+        return orig_compile(
+            self,
+            file_path,
+            use_str=use_str,
+            no_cgen=no_cgen,
+            type_check=type_check,
+            symtab_ir_only=symtab_ir_only,
+            cancel_token=cancel_token,
+            options=options
+        );
+    }
+    JacProgram.compile = counting_compile;
+    try {
+        prog1 = JacProgram();
+        prog1.load_dependency_module(stub_file);
+        assert compile_calls == 0 , (
+            "first .pyi load should use PyastBuildPass, not compile"
+        );
+        cache_path = get_module_cache_path(stub_file);
+        assert cache_path.exists() , "first .pyi load should write JIR cache";
+
+        prog2 = JacProgram();
+        prog2.load_dependency_module(stub_file);
+        assert compile_calls == 0 , "warm cache should skip compile";
+    } finally {
+        JacProgram.compile = orig_compile;
+        os.unlink(stub_file);
+        cache_path = get_module_cache_path(stub_file);
+        if cache_path.exists() {
+            cache_path.unlink();
+        }
+    }
+}
+
+test "resolve_import_source_module uses JIR cache without recompiling" {
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.compiler.symbol_utils { resolve_import_source_module }
+
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        stub_name = "cache_probe.pyi";
+        stub_file = os.path.join(d, stub_name);
+        with open(stub_file, "w") as f {
+            f.write("class CacheProbe:\n    v: int\n");
+        }
+        past = time.time() - 2;
+        os.utime(stub_file, (past, past));
+        importer_file = os.path.join(d, "importer.jac");
+        with open(importer_file, "w") as f {
+            f.write('import from "' + stub_name + '" { CacheProbe }\n');
+        }
+        compile_calls = 0;
+        orig_compile = JacProgram.compile;
+        def counting_compile(
+            self: JacProgram,
+            file_path: str,
+            use_str: (str | None) = None,
+            no_cgen: bool = False,
+            type_check: bool = False,
+            symtab_ir_only: bool = False,
+            cancel_token = None,
+            options = None
+        ) -> object {
+            compile_calls += 1;
+            return orig_compile(
+                self,
+                file_path,
+                use_str=use_str,
+                no_cgen=no_cgen,
+                type_check=type_check,
+                symtab_ir_only=symtab_ir_only,
+                cancel_token=cancel_token,
+                options=options
+            );
+        }
+        JacProgram.compile = counting_compile;
+        try {
+            prog1 = JacProgram();
+            mod1 = prog1.parse_str(
+                'import from "' + stub_name + '" { CacheProbe }\n', importer_file
+            );
+            imports1 = [
+                stmt
+                for stmt in mod1.body
+                if isinstance(stmt, uni.Import)
+            ];
+            assert len(imports1) == 1 , "expected one import statement";
+            resolve_import_source_module(prog1, imports1[0]);
+            assert compile_calls == 0 , (
+                "first .pyi resolve should use PyastBuildPass, not compile"
+            );
+            cache_path = get_module_cache_path(stub_file);
+            assert cache_path.exists() , "first .pyi resolve should write JIR cache";
+
+            prog2 = JacProgram();
+            mod2 = prog2.parse_str(
+                'import from "' + stub_name + '" { CacheProbe }\n', importer_file
+            );
+            imports2 = [
+                stmt
+                for stmt in mod2.body
+                if isinstance(stmt, uni.Import)
+            ];
+            resolve_import_source_module(prog2, imports2[0]);
+            assert compile_calls == 0 , "warm cache should skip compile";
+        } finally {
+            JacProgram.compile = orig_compile;
+            cache_path = get_module_cache_path(stub_file);
+            if cache_path.exists() {
+                cache_path.unlink();
+            }
+        }
+    }
+}
+
+test "corrupt pyi JIR cache falls back to source compile" {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".pyi", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("class Baz:\n    z: int\n");
+        tmp.flush();
+        stub_file = tmp.name;
+    }
+    past = time.time() - 2;
+    os.utime(stub_file, (past, past));
+    try {
+        prog1 = JacProgram();
+        prog1.load_dependency_module(stub_file);
+        cache_path = get_module_cache_path(stub_file);
+        assert cache_path.exists() , "cache should exist";
+        cache_path.write_bytes(b"corrupt-jir-data");
+
+        prog2 = JacProgram();
+        mod = prog2.load_dependency_module(stub_file);
+        assert mod.sym_tab.lookup("Baz") is not None , (
+            "corrupt cache should fall back to source compile"
+        );
+    } finally {
+        os.unlink(stub_file);
+        cache_path2 = get_module_cache_path(stub_file);
+        if cache_path2.exists() {
+            cache_path2.unlink();
+        }
+    }
+}
+
+test "stub module cache key is source focused" {
+    import from jaclang.jac0core.jir {
+        compute_module_key,
+        compute_stub_module_key,
+        module_cache_key,
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".pyi", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("class KeyProbe:\n    k: int\n");
+        tmp.flush();
+        stub_file = tmp.name;
+    }
+    try {
+        stub_key = compute_stub_module_key(stub_file);
+        assert stub_key == module_cache_key(stub_file) , (
+            "module_cache_key should use stub key for .pyi"
+        );
+        jac_key = compute_module_key(stub_file);
+        assert stub_key != jac_key , (
+            "stub cache key should not include placement/client config"
+        );
+    } finally {
+        os.unlink(stub_file);
+    }
+}
+
 test "get_bytecode busts in-memory hub when .impl.jac changes" {
     # Regression: in a persistent process, editing a .impl.jac annex left a
     # stale in-memory module in mod.hub; get_bytecode returned it with no

@@ -37,13 +37,13 @@ impl WebhookUtils.create_api_key_token(
         payload['exp'] = current_time + timedelta(days=int(default_expiry));
     }
 
-    return jwt.encode(payload, jwt_config['secret'], algorithm=jwt_config['algorithm']);
+    return jwt_encode(payload, jwt_config['secret'], algorithm=jwt_config['algorithm']);
 }
 
 impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
     try {
         jwt_config = get_scale_config().get_jwt_config();
-        payload = jwt.decode(
+        payload = jwt_decode(
             api_key, jwt_config['secret'], algorithms=[jwt_config['algorithm']]
         );
 
@@ -56,9 +56,9 @@ impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
             'api_key_id': payload.get('api_key_id', ''),
             'name': payload.get('name', '')
         };
-    } except jwt.ExpiredSignatureError {
+    } except JWTExpiredError {
         return None;
-    } except jwt.InvalidTokenError {
+    } except JWTError {
         return None;
     }
 }
@@ -80,16 +80,20 @@ impl ApiKeyManager.postinit -> None {
         }
     } else {
         logger.warning(
-            "Webhook API keys are stored in memory (no MongoDB configured). "
+            "Webhook API keys are stored in memory (no database available). "
             "Keys and revocations are NOT durable: every restart invalidates "
-            "all keys. Configure MongoDB for production webhook use."
+            "all keys. Ensure the shared database is reachable for "
+            "production webhook use."
         );
     }
 }
 
 impl ApiKeyManager._ensure_indexes -> None {
-    col = self._db._get_mongo_collection(self._collection);
-    col.create_index('user_id');
+    self._db.rows(
+        'CREATE INDEX IF NOT EXISTS jac_docs_user_id_idx ON jac_docs '
+        "(collection, (doc->>'user_id'))",
+        {}
+    );
 }
 
 impl ApiKeyManager.create_api_key(
@@ -115,7 +119,6 @@ impl ApiKeyManager.create_api_key(
     }
     signing_secret = secrets.token_hex(32);
     key_doc = {
-        '_id': api_key_id,
         'user_id': user_id,
         'name': name,
         'created_at': key_created_at.isoformat(),
@@ -125,9 +128,14 @@ impl ApiKeyManager.create_api_key(
         'allowed_walkers': allowed_walkers or []
     };
     if self._db is not None {
-        self._db.insert_one(self._collection, key_doc);
+        self._db.rows(
+            'INSERT INTO jac_docs (collection, id, doc) '
+            'VALUES (:c, :i, CAST(:d AS jsonb)) '
+            'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
+            {'c': self._collection, 'i': api_key_id, 'd': json.dumps(key_doc)}
+        );
     } else {
-        self._inmemory_store[api_key_id] = key_doc;
+        self._inmemory_store[api_key_id] = dict(key_doc);
     }
     return TransportResponse.success(
         data={
@@ -142,35 +150,32 @@ impl ApiKeyManager.create_api_key(
     );
 }
 
+def _key_summary(api_key_id: str, doc: dict) -> dict {
+    return {
+        'api_key_id': api_key_id,
+        'name': doc.get('name', ''),
+        'created_at': doc.get('created_at'),
+        'expires_at': doc.get('expires_at'),
+        'active': True
+    };
+}
+
 impl ApiKeyManager.list_api_keys(user_id: str) -> TransportResponse {
     keys: list[dict[str, any]] = [];
     if self._db is not None {
-        cursor = self._db.find(
-            self._collection, {'user_id': user_id, 'revoked': False}
+        rows = self._db.rows(
+            "SELECT id, doc FROM jac_docs WHERE collection = :c "
+            "AND doc->>'user_id' = :u AND doc->>'revoked' = 'false' ORDER BY id",
+            {'c': self._collection, 'u': user_id}
         );
-        for doc in cursor {
-            keys.append(
-                {
-                    'api_key_id': doc.get('_id', ''),
-                    'name': doc.get('name', ''),
-                    'created_at': doc.get('created_at'),
-                    'expires_at': doc.get('expires_at'),
-                    'active': True
-                }
-            );
+        for (kid, raw) in rows {
+            doc = raw if isinstance(raw, dict) else json.loads(str(raw));
+            keys.append(_key_summary(str(kid), doc));
         }
     } else {
-        for doc in self._inmemory_store.values() {
+        for (kid, doc) in self._inmemory_store.items() {
             if doc.get('user_id') == user_id and not doc.get('revoked', False) {
-                keys.append(
-                    {
-                        'api_key_id': doc.get('_id', ''),
-                        'name': doc.get('name', ''),
-                        'created_at': doc.get('created_at'),
-                        'expires_at': doc.get('expires_at'),
-                        'active': True
-                    }
-                );
+                keys.append(_key_summary(str(kid), doc));
             }
         }
     }
@@ -180,12 +185,7 @@ impl ApiKeyManager.list_api_keys(user_id: str) -> TransportResponse {
 }
 
 impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportResponse {
-    key_info: dict | None = None;
-    if self._db is not None {
-        key_info = self._db.find_one(self._collection, {'_id': api_key_id});
-    } else {
-        key_info = self._inmemory_store.get(api_key_id);
-    }
+    key_info = self._get_key_doc(api_key_id);
     if not key_info {
         return TransportResponse.fail(
             code='NOT_FOUND',
@@ -203,8 +203,10 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
     }
 
     if self._db is not None {
-        self._db.update_one(
-            self._collection, {'_id': api_key_id}, {'$set': {'revoked': True}}
+        self._db.rows(
+            "UPDATE jac_docs SET doc = doc || '{\"revoked\": true}'::jsonb "
+            'WHERE collection = :c AND id = :i',
+            {'c': self._collection, 'i': api_key_id}
         );
     } else {
         self._inmemory_store[api_key_id]['revoked'] = True;
@@ -216,10 +218,24 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
 }
 
 impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict | None {
+    doc: dict | None = None;
     if self._db is not None {
-        return self._db.find_one(self._collection, {'_id': api_key_id});
+        rows = self._db.rows(
+            'SELECT doc FROM jac_docs WHERE collection = :c AND id = :i',
+            {'c': self._collection, 'i': api_key_id}
+        );
+        if rows {
+            raw = rows[0][0];
+            doc = raw if isinstance(raw, dict) else json.loads(str(raw));
+        }
+    } else {
+        got = self._inmemory_store.get(api_key_id);
+        doc = dict(got) if got is not None else None;
     }
-    return self._inmemory_store.get(api_key_id);
+    if doc is not None {
+        doc['api_key_id'] = api_key_id;
+    }
+    return doc;
 }
 
 impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {

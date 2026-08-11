@@ -4,7 +4,7 @@ Under a server, `root.shared` resolves through the resolver the server
 registers at startup, mapping the internal guest user to its root — so any
 request, authenticated or not, can address the shared public graph without
 an `allroots()` scan. The runtime floors the shared root's access at
-ConnectPerm (it is a commons), so no app-side arming grant is needed.
+AccessLevel.CONNECT (it is a commons), so no app-side arming grant is needed.
 Outside a server there are no separate users, so `root.shared` falls back
 to the current context's root.
 """
@@ -145,7 +145,7 @@ test "deleting a commons node takes cross-owner edges with it" {
 
 
 test "a cross-owner delete without a write grant no-ops with a warning" {
-    # Notes are opened ReadPerm only: bob's delete must leave the note in
+    # Notes are opened AccessLevel.READ only: bob's delete must leave the note in
     # place, still return 200, and surface a diagnostic in the envelope -
     # a denied delete may be a no-op but never a silent one.
     with TemporaryDirectory() as tmpdir {

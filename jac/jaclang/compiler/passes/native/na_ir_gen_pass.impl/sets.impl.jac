@@ -5,25 +5,19 @@ impl NaIRGenPass._emit_set_helpers(
         return;
     }
 
-    set_struct = self.llvm_module.context.get_identified_type(f"Set.{elem_type_name}");
-    if self._gc_mode() == "none" {
-        set_struct.set_body(
-            ir.IntType(64),
-            ir.IntType(64),
-            elem_type.as_pointer(),
-            self._nogc_elem_drop_slot_ty()
-        );
-    } else {
-        set_struct.set_body(ir.IntType(64), ir.IntType(64), elem_type.as_pointer());
+    _struct_name = f"Set.{elem_type_name}";
+    layout = self._container_layout_hash(elem_type, None);
+    set_struct = self.llvm_module.context.get_identified_type(_struct_name);
+    if not set_struct.elements {
+        set_struct.set_body(*self._container_struct_fields(layout));
     }
     self.set_types[elem_type_name] = set_struct;
+    self.container_layouts[_struct_name] = layout;
     set_ptr_type = set_struct.as_pointer();
-    i64 = ir.IntType(64);
-    i32 = ir.IntType(32);
 
     _rel_fn_decl_s = None;
+    _rel_fn_name_s = f"__rc_release_set_{elem_type_name}";
     if not self._nogc_headerless() {
-        _rel_fn_name_s = f"__rc_release_set_{elem_type_name}";
         _rel_fnty_s = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
         try {
             _rel_fn_decl_s = self.llvm_module.get_global(_rel_fn_name_s);
@@ -36,129 +30,39 @@ impl NaIRGenPass._emit_set_helpers(
     }
 
     new_fn = self._emit_container_new_fn(
-        f"__set_new_{elem_type_name}", set_ptr_type, [elem_type], dtor_fn=_rel_fn_decl_s
+        f"__set_new_{elem_type_name}", set_ptr_type, layout, dtor_fn=_rel_fn_decl_s
     );
 
-    add_fnty = ir.FunctionType(ir.VoidType(), [set_ptr_type, elem_type]);
-    add_fn = ir.Function(
-        self.llvm_module, add_fnty, name=f"__set_add_{elem_type_name}"
+    core = self._emit_hash_core_helpers(
+        "set",
+        elem_type_name,
+        set_ptr_type,
+        elem_type,
+        None,
+        elem_type_name,
+        elem_size,
+        layout
     );
-    add_fn.linkage = "private";
-    add_fn.args[0].name = "set";
-    add_fn.args[1].name = "elem";
-    entry_bb = add_fn.append_basic_block("entry");
-    b = ir.IRBuilder(entry_bb);
-    s_arg = add_fn.args[0];
-    e_arg = add_fn.args[1];
-    len_p2 = b.gep(s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
-    cap_p2 = b.gep(s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
-    elems_p2 = b.gep(
-        s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="elems.ptr"
-    );
-    cur_len = b.load(len_p2, name="len");
-    elems_arr = b.load(elems_p2, name="elems");
-
-    (found_b, not_found_b, _) = self._emit_linear_search_loop(
-        add_fn, b, e_arg, elems_arr, cur_len, elem_type, elem_size
-    );
-
-    if self._nogc_headerless()
-        and isinstance(elem_type, ir.PointerType)
-        and isinstance(elem_type.pointee, ir.IntType)
-        and elem_type.pointee.width == 8 {
-        _i8p_dup = ir.IntType(8).as_pointer();
-        _sslot_p = found_b.gep(
-            s_arg, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="sadd.dup.slot.p"
-        );
-        _sslot = found_b.load(_sslot_p, name="sadd.dup.slot");
-        _shave = found_b.icmp_unsigned(
-            "!=",
-            _sslot,
-            ir.Constant(self._nogc_elem_drop_slot_ty(), None),
-            name="sadd.dup.have"
-        );
-        _dup_free_bb = add_fn.append_basic_block("dup.free");
-        _dup_done_bb = add_fn.append_basic_block("dup.done");
-        found_b.cbranch(_shave, _dup_free_bb, _dup_done_bb);
-        _fb = ir.IRBuilder(_dup_free_bb);
-        _e_i8_dup = _fb.bitcast(e_arg, _i8p_dup, name="sadd.dup.i8");
-        _fb.call(_sslot, [_e_i8_dup]);
-        _fb.branch(_dup_done_bb);
-        _db = ir.IRBuilder(_dup_done_bb);
-        _db.ret_void();
-    } else {
-        found_b.ret_void();
-    }
-
-    grow_bb = add_fn.append_basic_block("grow");
-    append_bb = add_fn.append_basic_block("append");
-    cur_cap = not_found_b.load(cap_p2, name="cap");
-    need_grow = not_found_b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
-    not_found_b.cbranch(need_grow, grow_bb, append_bb);
-
-    b = ir.IRBuilder(grow_bb);
-    self._emit_grow_array(b, elems_p2, elem_type, cur_len, cap_p2, cur_cap);
-    b.branch(append_bb);
-
-    b = ir.IRBuilder(append_bb);
-    elems_arr_app = b.load(elems_p2, name="elems.app");
-    cur_len_app = b.load(len_p2, name="len.app");
-    elem_slot = b.gep(elems_arr_app, [cur_len_app], name="elem.slot");
-
-    if isinstance(elem_type, ir.PointerType) and not self._nogc_headerless() {
-        if self.rc_retain_fn is None {
-            self._emit_rc_helpers();
-        }
-        _e_cast_sa = b.bitcast(
-            e_arg, ir.IntType(8).as_pointer(), name="sadd_retain_cast"
-        );
-        b.call(self.rc_retain_fn, [_e_cast_sa]);
-    }
-    b.store(e_arg, elem_slot);
-    new_len = b.add(cur_len_app, ir.Constant(i64, 1), name="new.len");
-    b.store(new_len, len_p2);
-    b.ret_void();
-
-    contains_fnty = ir.FunctionType(ir.IntType(1), [set_ptr_type, elem_type]);
-    contains_fn = ir.Function(
-        self.llvm_module, contains_fnty, name=f"__set_contains_{elem_type_name}"
-    );
-    contains_fn.linkage = "private";
-    contains_fn.args[0].name = "set";
-    contains_fn.args[1].name = "elem";
-    entry_bb_c = contains_fn.append_basic_block("entry");
-    b = ir.IRBuilder(entry_bb_c);
-    len_pc = b.gep(
-        contains_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
-    );
-    elems_pc = b.gep(
-        contains_fn.args[0],
-        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-        name="elems.ptr"
-    );
-    len_c = b.load(len_pc, name="len");
-    elems_c = b.load(elems_pc, name="elems");
-    (found_b_c, not_found_b_c, _) = self._emit_linear_search_loop(
-        contains_fn, b, contains_fn.args[1], elems_c, len_c, elem_type, elem_size
-    );
-    found_b_c.ret(ir.Constant(ir.IntType(1), 1));
-    not_found_b_c.ret(ir.Constant(ir.IntType(1), 0));
 
     len_fn = self._emit_container_len_fn(f"__set_len_{elem_type_name}", set_ptr_type);
 
     if self._nogc_headerless() {
-        self._emit_container_drop_fn(f"Set.{elem_type_name}");
+        self._emit_container_drop_fn(_struct_name);
     } else {
         release_fn = self._emit_container_release_fn(
-            f"__rc_release_set_{elem_type_name}", set_ptr_type, [(2, elem_type)]
+            _rel_fn_name_s, set_ptr_type, layout
         );
         self.set_release_fns[elem_type_name] = release_fn;
     }
 
     self.set_helpers[elem_type_name] = {
         "new": new_fn,
-        "add": add_fn,
-        "contains": contains_fn,
+        "add": core["insert"],
+        "contains": core["contains"],
+        "remove": core["remove"],
+        "clear": core["clear"],
+        "get": core["get_key"],
+        "find": core["find"],
         "len": len_fn,
         "elem_type": elem_type,
         "elem_size": elem_size
@@ -175,7 +79,24 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         return None;
     }
 
-    first_val = self._codegen_expr(nd.values[0]);
+    _decl_args = nd.type.private.type_args
+        if (isinstance(nd, uni.Expr) and nd.type is not None)
+        else [];
+    _decl_elem = self._elem_storage_llvm(_decl_args[0]) if _decl_args else None;
+    if _decl_elem is not None
+        and self?.jacval_type
+        and _decl_elem == self.jacval_type {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="set of mixed element types",
+            help_text="Native sets hash a single concrete element type; a set whose elements mix representations has no native storage. Use a homogeneous element type, or a list for mixed values."
+        );
+        return None;
+    }
+
+    first_val = self._str_norm(self._codegen_expr(nd.values[0]));
     if first_val is None {
         return None;
     }
@@ -202,7 +123,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     set_val = self._rc_call_with_ctx(
         helpers["new"], [], op="new", loc=_set_new_loc, name="set.new"
     );
-    self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd), "set");
+    self._nogc_stamp_elem_drops(set_val, self._nogc_type_arg_mangles(nd));
     _sinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
@@ -213,9 +134,12 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     );
 
     for i in range(1, len(nd.values)) {
-        val = self._codegen_expr(nd.values[i]);
+        val = self._str_norm(self._codegen_expr(nd.values[i]));
         if val is not None {
             val = self._nogc_elem_prep(nd.values[i], val);
+            if self._reject_ptr_into_raw_slot(nd, val, elem_type, "set element") {
+                return set_val;
+            }
             _orig_sv = val;
             val = self._coerce_type(val, elem_type);
             self._rc_call_with_ctx(

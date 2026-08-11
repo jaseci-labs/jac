@@ -47,7 +47,9 @@ Use this for air-gapped clusters, to pin an exact build, or to deploy a binary y
 
 ### App Artifact (`.jab`)
 
-The app is packed on the deploy driver into a sealed **`.jab`** image, seeded to the bundle PVC, and extracted into the pod's `/app` volume. The `.jab` contains the project source, a `_precompiled/` sealed image (`MANIFEST.json` + content-keyed `.jir` modules built with the pod binary), and the sanitized `jac.toml`.
+The app is packed on the deploy driver into a sealed **`.jab`** image, seeded to the bundle PVC, and extracted into the pod's `/app` volume. The `.jab` contains the project source, a `_precompiled/` sealed image (`MANIFEST.json` + content-keyed `.jir` modules built with the pod binary), and the sanitized `jac.toml` (root and nested project tomls, secrets and `[dev]` sections stripped).
+
+The seal stage is a valid, sanitized copy of the project: sanitized tomls are written into it before the seal runs, so `[placement.pins]` and nested-project scoping are visible at seal time. The seal compiles exactly the modules that emit server code -- client-only modules (pinned or inferred) produce JS, not pod bytecode, and are skipped via the placement facts API. The per-module placement verdict is recorded in the sealed `MANIFEST.json` (`placement` map, manifest format 5). The seal subprocess timeout defaults to 1800s and is configurable with `[scale] seal_timeout` in `jac.toml`.
 
 Sealing is **mandatory**: if the app cannot be sealed into a valid image, the deploy fails rather than shipping a bundle that cold-compiles on the pod's first boot. When a pod starts, the compiler auto-loads the sibling `_precompiled/` image, so services run from precompiled modules with no on-pod compile step - for both single-app and microservice deployments.
 
@@ -97,8 +99,6 @@ To use a pre-existing shared controller instead, see [Shared Ingress](#shared-in
 |------|-------------|
 | `http://localhost:30080/` | Jaseci application |
 | `http://localhost:30080/grafana` | Grafana dashboard (if monitoring enabled) |
-| `http://localhost:30080/cache-dashboard/` | Redis Insight (if `redis_dashboard = true`); protected by HTTP basic auth using `redis_insight_username` / `redis_insight_password` |
-| `http://localhost:30080/db-dashboard` | Mongo Express (if `mongodb_dashboard = true`) |
 
 **To change in `jac.toml`:**
 
@@ -236,7 +236,7 @@ On the first response, NGINX sets a `route` cookie in the browser. Every subsequ
 
 **Limitations:**
 
-Sticky sessions ensure routing **while a pod is alive**. If a pod is deleted (e.g. during a rolling deployment), in-flight user processes on that pod are lost. The user is automatically re-routed to a new pod, but any in-memory state is gone. For true resilience, externalize per-user state to Redis or a database so any pod can serve any user.
+Sticky sessions ensure routing **while a pod is alive**. If a pod is deleted (e.g. during a rolling deployment), in-flight user processes on that pod are lost. The user is automatically re-routed to a new pod, but any in-memory state is gone. For true resilience, externalize per-user state to the shared Postgres database so any pod can serve any user.
 
 ---
 
@@ -291,8 +291,6 @@ Output:
 TLS enabled. App is now live at:
   App URL:        https://app.example.com
   Grafana:        https://app.example.com/grafana
-  Mongo Express:  https://app.example.com/db-dashboard
-  RedisInsight:   https://app.example.com/cache-dashboard
 ```
 
 > **Note:** `--enable-tls` requires a domain and `cert_manager_email`. Both are read from the annotations a prior deploy recorded on the live Ingress (`jac-scale/domain`, `jac-scale/cert-email`), falling back to `jac.toml`; it errors if neither source provides them. Because the annotation wins, changing `domain` in `jac.toml` and re-running `--enable-tls` has no effect while a prior deploy's annotation exists -- re-deploy to update it.
@@ -407,6 +405,24 @@ The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. 
 !!! note
     KEDA must be installed on the cluster before using this engine. If KEDA CRDs are absent at deploy time, jac-scale emits an install warning with a link to the [KEDA installation docs](https://keda.sh/docs/latest/deploy/) and the deploy continues with the Deployment's static replica count -- 1 for single-app deploys, the configured per-service `replicas` for microservices (no autoscaler is created).
 
+!!! note "HTTP-activated workloads also require the KEDA HTTP Add-on"
+    Workloads scaled via `apply_http_activation` (HTTP request-driven scale-to-zero) require the [KEDA HTTP Add-on](https://keda.sh/docs/latest/deploy/#http-add-on) in addition to core KEDA. Call `KEDAAutoscaler.discover_capabilities()` to check both together: it returns a `KEDACapabilities` object that distinguishes a missing core install from a missing or outdated HTTP Add-on, an RBAC-denied check from a genuinely absent API, and a missing external-scaler or interceptor-proxy Service, each with its own diagnostic. Results are cached per cluster; pass `refresh=True` or call `invalidate_capabilities()` to force a recheck. `apply_http_activation` calls `discover_capabilities()` automatically and raises when the Add-on is installed but broken, instead of deploying a workload that will never receive traffic. If the Add-on is simply absent, it logs a warning and skips activation rather than failing the deploy.
+
+    Install both with Helm:
+    ```bash
+    helm repo add kedacore https://kedacore.github.io/charts
+    helm repo update
+    helm install keda kedacore/keda -n keda --create-namespace --wait
+    helm install http-add-on kedacore/keda-add-ons-http -n keda --wait
+    ```
+
+    Upgrading an older HTTP Add-on install (pre-0.14, `HTTPScaledObject` only) to the current `InterceptorRoute` API:
+    ```bash
+    helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait
+    ```
+
+    Chart names, flags, and required values can change over time, so every install/upgrade command surfaced by `discover_capabilities()` also links to the current getting-started guide as the authoritative fallback: [https://keda.sh/http-add-on/0.15/getting-started/](https://keda.sh/http-add-on/0.15/getting-started/).
+
 **Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
 
 !!! note "Scale-down pacing"
@@ -474,30 +490,30 @@ host = { name = "rabbitmq-secret", key = "host" }
 
 ### Persistent Storage
 
-Persistent storage covers two volumes: the **application bundle PVC** (holds the `.jab` source bundle, shared by all pods) and the **MongoDB data PVC**. Redis has no persistent volume -- it runs on `emptyDir` and its contents reset on pod restart.
+Persistent storage covers two volumes: the **application bundle PVC** (holds the `.jab` source bundle, shared by all pods) and the **Postgres data PVC** attached to the provisioned StatefulSet.
 
 **Defaults:**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
 | `bundle_storage_class` | `""` | StorageClass for the application bundle PVC. The PVC needs `ReadWriteMany`; set this to an RWX-capable class (e.g. EFS, NFS). When empty, the single-app deploy silently omits `storageClassName` and uses the cluster default; the microservice bundle path errors instead, since most cloud default classes are RWO-only |
-| `mongodb_storage_size` | `1Gi` | Storage size for the MongoDB data PVC |
+| `postgres_storage` (`[scale.database]`) | `2Gi` | Storage size for the Postgres data PVC |
 
 **To change in `jac.toml`:**
 
 ```toml
 [scale.kubernetes]
 bundle_storage_class = "efs-sc"
-mongodb_storage_size = "10Gi"
+postgres_storage = "10Gi"  # under [scale.database]
 ```
 
-**MongoDB PVC resize behaviour:**
+**Postgres PVC resize behaviour:**
 
-- **Increase**: Applying a larger `mongodb_storage_size` on redeploy automatically patches the existing PVC. Your stored data is preserved - only the capacity request is updated.
+- **Increase**: Applying a larger `postgres_storage` on redeploy automatically patches the existing PVC. Your stored data is preserved - only the capacity request is updated.
 - **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
 - **No change**: If the value matches the current size, no action is taken.
 
-> **Note:** MongoDB PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
+> **Note:** Postgres PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
 > **Note:** The application bundle PVC has a fixed size (1Gi) and is created once, never resized. Bundle contents are content-addressed, so an unchanged app is not re-uploaded on redeploy.
 
 ---
@@ -511,7 +527,7 @@ Controls the base images used for the application pod and init containers. Overr
 | TOML Key  | Default | Description |
 |----------|---------|-------------|
 | `python_image` | `""` (auto) | Base image for the application pod. When empty, the deploy resolves the official image matching the runtime channel -- `jaseci/jaclang:latest` (stable), `:dev`, `:experimental-<PR#>`, or `:<x.y.z>` for a `jac-version` pin -- and pins it to an immutable `@sha256:` digest when Docker Hub is reachable (experimental builds are deliberately not digest-pinned). Falls back to `python:3.12-slim` when the registry is unreachable and always on the local-binary channel |
-| `wait_image` | `busybox` | Init container image used for dependency wait checks (Redis/MongoDB readiness) |
+| `wait_image` | `busybox` | Init container image used for dependency wait checks (Postgres readiness) |
 
 **To change in `jac.toml`:**
 
@@ -649,7 +665,7 @@ jac scale status app.jac
 
 Displays a table with:
 
-- **Component health** - Jaseci App, Redis, MongoDB, Prometheus, Grafana, RedisInsight, Mongo Express, NGINX Ingress (companion components appear when deployed)
+- **Component health** - Jaseci App, Postgres, Prometheus, Grafana, NGINX Ingress (companion components appear when deployed)
 - **Pod readiness** - `ready/total` replica count per component
 - **Service URLs** - application endpoint and Grafana URL
 
@@ -677,7 +693,7 @@ kubectl get all -l managed=jac-scale -A
 
 Tagged resource types: Deployments, StatefulSets, DaemonSets, Services, ServiceAccounts, ConfigMaps, Secrets, PersistentVolumeClaims, ClusterRoles/Bindings, HorizontalPodAutoscalers, ScaledObjects (KEDA engine), TriggerAuthentications (KEDA engine).
 
-> **Note:** Pod-template labeling is inconsistent: some pods carry `managed: jac-scale` (Redis, kube-state-metrics, node-exporter, Alloy, and all microservice pods), while others carry only `app` (the single-app main pod, MongoDB, Prometheus, Grafana, Tempo, Loki, NGINX). `kubectl get pods -l managed=jac-scale` therefore returns a partial, misleading subset -- list pods via their owning Deployment/StatefulSet instead.
+> **Note:** Pod-template labeling is inconsistent: some pods carry `managed: jac-scale` (kube-state-metrics, node-exporter, Alloy, and all microservice pods), while others carry only `app` (the single-app main pod, Postgres, Prometheus, Grafana, Tempo, Loki, NGINX). `kubectl get pods -l managed=jac-scale` therefore returns a partial, misleading subset -- list pods via their owning Deployment/StatefulSet instead.
 
 ---
 
@@ -693,11 +709,11 @@ jac scale destroy app.jac
 Removes:
 
 - Application Deployment and pods
-- Redis Deployment and MongoDB StatefulSet
+- The Postgres StatefulSet
 - PersistentVolumeClaims (data is lost)
 - Services, ConfigMaps, Secrets, and autoscaler resources
 
-For partial teardown, pass `--component` with one of `application`, `database`, `cache`, `monitoring`, or `dashboard` to remove just that component while leaving the rest of the deployment running:
+For partial teardown, pass `--component` with one of `application`, `database`, or `monitoring` to remove just that component while leaving the rest of the deployment running:
 
 ```bash
 jac scale destroy app.jac --component monitoring
@@ -1169,16 +1185,15 @@ kubectl get svc
 ### Database Connection Issues
 
 ```bash
-# Check MongoDB (StatefulSet) and Redis (Deployment)
-kubectl get statefulsets   # MongoDB only -- Redis runs as a Deployment
+# Check Postgres (StatefulSet)
+kubectl get statefulsets
 kubectl get deployments
 
-# Check persistent volumes (MongoDB and the bundle PVC; Redis has none)
+# Check persistent volumes (Postgres and the bundle PVC)
 kubectl get pvc
 
 # View database logs (labels are prefixed with your app name)
-kubectl logs -l app=<app_name>-mongodb
-kubectl logs -l app=<app_name>-redis
+kubectl logs -l app=<app_name>-postgres
 ```
 
 ### Pods Stuck in Init

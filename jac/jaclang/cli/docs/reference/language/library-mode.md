@@ -98,7 +98,8 @@ Run `jac tool jac2py friends.jac` to generate:
     from jaclang.lib import (
         Edge,
         Node,
-        OPath,
+        GraphQuery,
+        QHop,
         Root,
         Walker,
         build_edge,
@@ -149,17 +150,17 @@ Run `jac tool jac2py friends.jac` to generate:
                 print(f"{here.name} is a friend of friend, or family")
             else:
                 self.started = True
-                visit(self, refs(OPath(here).edge_out().visit()))
+                visit(self, refs(GraphQuery(here, hops=[QHop(dir=2)]).visit()))
             visit(
                 self,
                 refs(
-                    OPath(here).edge_out(edge=lambda (i) { isinstance(i, Family); }).edge().visit()
+                    GraphQuery(here, hops=[QHop(dir=2, edge=Family)], edges_only=True).visit()
                 ),
             )
 
         @on_entry
         def move_to_person(self, here: Root) -> None:
-            visit(self, refs(OPath(here).edge_out().visit()))
+            visit(self, refs(GraphQuery(here, hops=[QHop(dir=2)]).visit()))
 
 
     result = spawn(FriendFinder(), root())
@@ -326,15 +327,15 @@ walker Visitor {
 **In Library Mode:**
 
 ```python
-from jaclang.lib import visit, refs, OPath
+from jaclang.lib import visit, refs, GraphQuery, QHop
 
-visit(self, refs(OPath(here).edge_out().visit()))
+visit(self, refs(GraphQuery(here, hops=[QHop(dir=2)]).visit()))
 visit(
-    self, refs(OPath(here).edge_out(edge=lambda (i) { isinstance(i, Family); }).edge().visit())
+    self, refs(GraphQuery(here, hops=[QHop(dir=2, edge=Family)], edges_only=True).visit())
 )
 ```
 
-`OPath(node)` builds a traversal path: `edge_out()`/`edge_in()` select direction, `edge()` keeps edges only (no destination nodes), and `visit()` marks the path; `refs()` resolves it to concrete node/edge references for `visit()`.
+`GraphQuery(origin, hops=[QHop(dir=...)])` is the closed query IR: `dir` is 1/2/3 (in/out/any), `QHop.edge`/`QHop.nd` take archetype classes, `QHop.preds` takes `QPred(field, op, value)` data, `edges_only=True` keeps edges, and `.visit()` marks the query for walker traversal; `refs()` resolves it in id space.
 
 ---
 
@@ -361,7 +362,7 @@ visit(
 | `Walker` | Graph traversal agent | `class MyWalker(Walker):` |
 | `Root` | Root node type | Entry point for graphs |
 | `GenericEdge` | Generic edge when no type specified | Default edge type |
-| `OPath` | Object-spatial path builder | `OPath(node).edge_out()` |
+| `GraphQuery` | Closed graph-query IR | `GraphQuery(node, hops=[QHop(dir=2)])` |
 
 ### **Decorators**
 
@@ -389,7 +390,7 @@ visit(
 | `async_spawn_call(walker, node)` | Internal spawn execution (async) | Same as spawn_call (async version) |
 | `visit(walker, nodes)` | Visit specified nodes | `walker`: Walker instance<br>`nodes`: Node/edge references |
 | `disengage(walker)` | Stop walker traversal | `walker`: Walker to stop |
-| `refs(path)` | Convert path to node/edge references | `path`: ObjectSpatialPath |
+| `refs(query)` | Resolve a query to node/edge references | `query`: GraphQuery |
 | `arefs(path)` | Async path references (placeholder) | `path`: ObjectSpatialPath |
 | `filter_on(items, func)` | Filter archetype list by predicate | `items`: list of archetypes<br>`func`: filter function |
 

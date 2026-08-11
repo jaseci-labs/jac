@@ -11,6 +11,17 @@ Owner notes (enforced by convention, not by code):
   - orders_app writes Order
 """
 
+# A declared pip dep imported by a module the client entry reaches. The host
+# builds the client bundle by importing the app's whole module graph, so this
+# pins that the deploy gives the build host the app's [dependencies] too.
+import humanize;
+
+
+def qty_label(qty: int) -> str {
+    return humanize.apnumber(qty);
+}
+
+
 node Products {}
 
 node Product {

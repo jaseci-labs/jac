@@ -61,10 +61,3 @@ obj BaseTransport {
 
     async def send(data: any) -> None;
 }
-
-obj HTTPTransport(BaseTransport) {
-    has handler: any = None,
-        response_data: dict[(str, Any)] = {};
-
-    def send(data: any) -> None;
-}

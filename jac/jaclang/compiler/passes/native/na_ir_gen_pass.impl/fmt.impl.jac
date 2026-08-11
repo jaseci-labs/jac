@@ -1,35 +1,17 @@
 glob _NA_FMT_KERNEL_MOD: list = [];
 
-def _write_native_fmt_source(core_dir: str, dest: str) {
-    import os;
-    _kernel = os.path.join(core_dir, "fmt_kernel.jac");
-    with open(_kernel, "r") as _kf {
-        _ktext = _kf.read();
-    }
-    with open(dest, "w") as _out {
-        _out.write(_ktext);
-    }
-}
-
 def _load_native_fmt_kernel_module -> (uni.Module | None) {
     if _NA_FMT_KERNEL_MOD {
         return _NA_FMT_KERNEL_MOD[0];
     }
-    import os;
-    import shutil;
-    import tempfile;
-    import jaclang;
+    import from jaclang.jac0core.kernel_units { fmt_kernel_unit_path }
     import from jaclang.jac0core.program { JacProgram }
-    _core = os.path.join(os.path.dirname(jaclang.__file__), "jac0core");
-    tmp_dir = tempfile.mkdtemp();
-    na_copy = os.path.join(tmp_dir, "fmt_kernel.jac");
     mod = None;
     try {
         import from jaclang.jac0core.compile_options { CompileOptions as _KernelOpts }
-        _write_native_fmt_source(_core, na_copy);
         prog = JacProgram();
         mod = prog.compile(
-            na_copy,
+            fmt_kernel_unit_path('na'),
             options=_KernelOpts(
                 no_cgen=True,
                 symtab_ir_only=True,
@@ -42,8 +24,6 @@ def _load_native_fmt_kernel_module -> (uni.Module | None) {
         );
     } except Exception {
         mod = None;
-    } finally {
-        shutil.rmtree(tmp_dir, ignore_errors=True);
     }
     if mod is not None {
         _NA_FMT_KERNEL_MOD.append(mod);

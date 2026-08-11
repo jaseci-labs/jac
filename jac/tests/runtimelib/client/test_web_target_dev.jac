@@ -129,3 +129,54 @@ test "static and pwa dev flows inherit the compile-before-serve fix" {
         "PWA projects compile before Vite starts"
     );
 }
+
+
+obj _FakeConfig {
+    has meta_data: dict;
+
+    def get_plugin_config(name: str) -> dict {
+        return {"app_meta_data": self.meta_data};
+    }
+}
+
+
+"""The dev server writes its own index.html rather than going through
+HeaderBuilder, so `[client.app_meta_data] scripts` has to be injected there too.
+Without it an SDK the app depends on is present in `jac build` output but
+silently missing under `jac start --dev`, which reads as a bug."""
+test "configured scripts reach the dev server index.html" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+
+    def _fake_get_config -> any {
+        return _FakeConfig(
+            meta_data={
+                "title": "ignored in dev",
+                "scripts": [{"src": "https://js.stripe.com/v3", "defer": True}]
+            }
+        );
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp);
+        bundler = ViteBundler(project_dir=build_dir);
+        with unittest.mock.patch(
+            "jaclang.project.config.get_config", _fake_get_config
+        ) {
+            bundler._ensure_dev_index_html(build_dir);
+        }
+        page = (build_dir / "index.html").read_text(encoding="utf-8");
+    }
+
+    assert '<script src="https://js.stripe.com/v3" defer></script>' in page , (
+        "scripts configured in jac.toml must be injected into the dev "
+        f"index.html; got:\n{page}"
+    );
+    assert page.index("js.stripe.com") < page.index("</head>") , (
+        "the injected script must land inside the head, not after it"
+    );
+    assert "ignored in dev" not in page , (
+        "only the scripts key is injected in dev; the dev index keeps its own "
+        "title and meta tags"
+    );
+}

@@ -8,7 +8,7 @@ version-CAS primitive but not the runtime wiring that decides *when* it fires.
 Two defects motivated these:
 
   1. Read capture lived only in the `edges_to_nodes` slow path. Once a root
-     carries any child its topology index is populated, so `refs` resolves
+     carries any child its graph index rows exist, so `refs` resolves
      `[-->[?:T]]` via the planner fast path (`execute_path`) and returns
      without ever calling `edges_to_nodes` -- no read version recorded, the
      CAS never fires, and concurrent find-or-create still duplicates. Edge
@@ -42,11 +42,10 @@ node Tag {
 edge Owns {}
 
 
-"""Persistent ExecutionContext with the topology index on (the default), so
-`refs` takes the planner fast path once the root has a child."""
+"""Persistent ExecutionContext so `refs` resolves via the storage-owned
+graph index once the root has a child."""
 def _persistent_ctx(tmpdir: str) -> any {
     cfg = JacConfig();
-    cfg.run.topology_index = True;
     set_config(cfg);
     JacRuntime.set_base_path(tmpdir);
     ctx: any = ExecutionContext();
@@ -56,7 +55,7 @@ def _persistent_ctx(tmpdir: str) -> any {
 
 
 """Attach one child and flush, so the root is persisted (edge writes then
-merge + CAS) and its topology index is populated."""
+merge + CAS) and its graph_edges rows exist."""
 walker Seed {
     can go with entry {
         here ++> Tag(name="seed");
@@ -112,7 +111,6 @@ test "OCC read capture: planner fast path records the read dependency" {
     try {
         ctx: any = _persistent_ctx(tmpdir);
         root spawn Seed();
-        assert len(root.__jac__.get_topology_index()) > 0;
         ctx.read_versions.clear();
         root spawn ReadProfiles();
         ctx.close();

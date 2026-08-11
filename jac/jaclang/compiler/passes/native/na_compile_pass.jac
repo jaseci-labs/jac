@@ -9,7 +9,8 @@ import from jaclang.jac0core.diagnostics {
     W5023,
     E5024,
     E5025,
-    E5026
+    E5026,
+    E5027
 }
 
 obj DepClibMeta {
@@ -18,12 +19,16 @@ obj DepClibMeta {
         exported_symbols: list[str] = [],
         imported_symbols: list[str] = [],
         owned_symbols: list[str] = [],
-        transitive_deps: list[str] = [];
+        transitive_deps: list[str] = [],
+        options_fingerprint: str = "";
 
     def to_meta -> dict;
     static def from_meta(meta: dict) -> DepClibMeta;
     def propagate_to(gen: CodeGenTarget) -> None;
 }
+
+def native_compiler_fingerprint(options: any) -> str;
+def native_dep_cache_paths(real_path: str, options: any) -> tuple;
 
 
 obj NativeCompilePass(Transform) {

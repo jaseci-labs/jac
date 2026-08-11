@@ -640,69 +640,50 @@ def _command_routes -> list[CommandMeta] {
         ),
         CommandMeta(
             name='db',
-            help='Inspect, rescue, and manage Jac persistence databases',
+            help="Manage the project's Postgres store (embedded or external)",
             group='db',
             tier='',
             hidden=False,
             handler_module='jaclang.cli.commands.db',
             handler_name='db',
             examples=[
-                ('jac db inspect', 'Summarize the DB for the .jac in cwd'),
                 (
-                    'jac db inspect --app path/to/app.jac',
-                    "Summarize a specific app's DB"
+                    'jac db status',
+                    "Show the project store's server state and row counts"
                 ),
-                ('jac db fsck', 'Scan for dangling refs / orphans (read-only)'),
-                ('jac db fsck repair', 'Heal dangling refs and collect orphans'),
-                ('jac db quarantine list', 'List quarantined anchors'),
-                ('jac db quarantine show <row-id>', 'Show one quarantined row in full'),
-                ('jac db alias list', 'List DB-resident aliases'),
+                ('jac db inspect', 'Summarize anchors by kind and archetype'),
+                ('jac db sql "SELECT count(*) FROM anchors"', 'Run one SQL statement'),
                 (
-                    'jac db alias add old.mod.OldName new.mod.NewName',
-                    'Register a rescue alias'
+                    'jac db serve',
+                    'Run Postgres in the foreground (pod / container mode)'
                 ),
-                ('jac db alias remove old.mod.OldName', 'Remove a rescue alias'),
-                ('jac db recover <row-id>', 'Try to un-quarantine one row'),
-                ('jac db recover-all', 'Try to un-quarantine every row; report counts'),
-                ('jac db schema rules', 'List registered __jac_schema__ drift rules')
+                ('jac db stop', "Stop the project's embedded server")
             ],
             args=[
                 ArgMeta(
                     name='action',
                     kind=ArgKind.POSITIONAL,
-                    default='inspect',
-                    help='Action: inspect, fsck, quarantine, alias, recover, recover-all, schema'
+                    default='status',
+                    help='Action: status, serve, stop, inspect, sql'
                 ),
                 ArgMeta(
-                    name='sub',
+                    name='query',
                     kind=ArgKind.POSITIONAL,
                     default='',
-                    help='Sub-action (for alias/quarantine) or row id (for recover)'
+                    help='SQL text (for `jac db sql`)'
                 ),
                 ArgMeta(
-                    name='arg1',
-                    kind=ArgKind.POSITIONAL,
+                    name='data_dir',
                     default='',
-                    help='First argument (alias old_name, row id, etc.)'
+                    help='Postgres data directory. Defaults to the project store (<base>/.jac/data/<name>-pg) or, for `serve`, JAC_PGDATA / /var/lib/jac/pgdata.',
+                    short='d'
                 ),
                 ArgMeta(
-                    name='arg2',
-                    kind=ArgKind.POSITIONAL,
-                    default='',
-                    help='Second argument (alias new_name, etc.)'
-                ),
-                ArgMeta(
-                    name='limit',
+                    name='port',
                     typ='int',
-                    default=50,
-                    help='Row limit for list commands',
-                    short='n'
-                ),
-                ArgMeta(
-                    name='app',
-                    default='',
-                    help='Path to the .jac app file to import before dispatching. If omitted, the single .jac file in the current directory is used. The app must be importable so user-defined archetypes (and any @archetype_alias decorators) register before the command touches the backend.',
-                    short='a'
+                    default=5432,
+                    help='TCP port for `serve`',
+                    short='p'
                 ),
 
             ]
@@ -1752,7 +1733,7 @@ def _command_routes -> list[CommandMeta] {
                 ('jac scale destroy app.jac', "Remove app's platform deployment"),
                 (
                     'jac scale destroy app.jac --component database',
-                    'Remove only MongoDB from the deployment'
+                    'Remove only the database from the deployment'
                 )
             ],
             args=[
@@ -1784,7 +1765,7 @@ def _command_routes -> list[CommandMeta] {
                 ArgMeta(
                     name='component',
                     default='',
-                    help='Platform destroy: component to remove (application, database, cache, monitoring, dashboard; default: entire deployment)',
+                    help='Platform destroy: component to remove (application, database, monitoring; default: entire deployment)',
                     short='c'
                 ),
 
@@ -1845,6 +1826,10 @@ def _command_routes -> list[CommandMeta] {
                 (
                     'jac start --scale',
                     'Deploy to a platform target instead of serving locally'
+                ),
+                (
+                    'jac start --takeover',
+                    "Evict a stuck session holding this project's database"
                 )
             ],
             args=[
@@ -1964,6 +1949,13 @@ def _command_routes -> list[CommandMeta] {
                     typ='bool',
                     default=False,
                     help='With --dry-run: dump the raw YAML stream',
+                    short=''
+                ),
+                ArgMeta(
+                    name='takeover',
+                    typ='bool',
+                    default=False,
+                    help="Evict any other session holding this project's database before starting (use when a previous jac process is stuck)",
                     short=''
                 ),
 

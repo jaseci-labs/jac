@@ -33,6 +33,10 @@ def mixed_floordiv(a: f32, b: f64) -> f64 {
     return a // b;
 }
 
+def neg_fmod(a: f64, b: f64) -> f64 {
+    return a % b;
+}
+
 def f32_int_add(a: f32, n: int) -> f64 {
     return a + n;
 }

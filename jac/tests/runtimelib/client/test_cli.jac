@@ -1060,17 +1060,16 @@ test "create cl and run no root files" {
     }
 }
 
-"""Test that ViteBundler.build() prompts to install deps when jac.toml is missing."""
-test "vite build prompts for missing client deps" {
+"""Test that ViteBundler.build() injects core deps without prompting or writing jac.toml."""
+test "vite build injects core deps without prompting" {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
     with tempfile.TemporaryDirectory() as temp_dir {
         project_dir = Path(temp_dir);
         config_file = project_dir / "jac.toml";
-        # No jac.toml -- ViteBundler.build() should prompt via ensure_client_deps
+        # No jac.toml -- core deps are injected in-memory, so no prompt fires.
         bundler = ViteBundler(project_dir);
-        # Mock input to accept, and mock bun/vite so we don't need real installs.
-        with unittest.mock.patch("builtins.input", return_value="Y") {
+        with unittest.mock.patch("builtins.input", return_value="Y") as mock_input {
             with unittest.mock.patch(
                 "jaclang.runtimelib.client.bun_installer.get_bun", return_value="bun"
             ) {
@@ -1087,27 +1086,26 @@ test "vite build prompts for missing client deps" {
                 }
             }
         }
-        # The key assertion: jac.toml was created with default client deps
-        assert config_file.exists() , (
-            "jac.toml should have been created after accepting the prompt"
+        # The injected closure makes the deps prompt unreachable.
+        assert mock_input.call_count == 0 , (
+            "ensure_client_deps should not prompt when core deps are injected"
         );
-        with open(config_file, "rb") as f {
-            data = tomllib.load(f);
-        }
-        npm_deps = data.get("dependencies", {}).get("npm", {});
-        # Uses individual deps directly (not meta-packages)
-        assert "react" in npm_deps , "react should be in dependencies.npm";
-        assert "react-dom" in npm_deps , "react-dom should be in dependencies.npm";
-        npm_dev = npm_deps.get("dev", {});
-        assert "vite" in npm_dev , "vite should be in dev dependencies";
-        # Verify the generated package.json also picked up the deps
+        # Injection is in-memory only: no jac.toml is created or written.
+        assert not config_file.exists() , (
+            "jac.toml must not be created by the client build"
+        );
+        # The generated package.json carries the injected core deps, including
+        # the packages the generated client runtime imports unconditionally.
         package_json = project_dir / ".jac" / "client" / "configs" / "package.json";
         assert package_json.exists() , "package.json should have been generated";
         with open(package_json) as f {
             pkg = json.load(f);
         }
-        # Individual deps should be in package.json
         assert pkg["dependencies"].get("react") , "package.json should have react";
+        assert pkg["dependencies"].get("@tanstack/react-form") , (
+            "package.json should have @tanstack/react-form"
+        );
+        assert pkg["dependencies"].get("zod") , "package.json should have zod";
         assert pkg["devDependencies"].get("vite") , "package.json should have vite";
     }
 }

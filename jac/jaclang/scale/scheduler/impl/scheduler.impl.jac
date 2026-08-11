@@ -78,88 +78,122 @@ impl TriggerSpec.apscheduler_kwargs -> dict {
     return {'run_date': self.date};
 }
 
-impl MongoJobStore.postinit -> None {
-    try {
-        self._db.create_index(
-            self._collection, {'job_id': 1}, unique=True, name='job_id_unique'
-        );
-    } except Exception as e {
-        logger.warning(f"Could not ensure job_id index: {e}");
+def _doc_row(raw: Any) -> dict {
+    return raw if isinstance(raw, dict) else json.loads(str(raw));
+}
+
+def _fire_lease_ttl(spec: TriggerSpec) -> int {
+    if spec.trigger == 'interval' and spec.interval {
+        return max(1, min(300, int(float(spec.interval) * 0.8)));
     }
+    if spec.trigger == 'cron' {
+        return 45;
+    }
+    return 300;
 }
 
-impl MongoJobStore.insert(job: dict) -> str {
-    self._db.insert_one(self._collection, dict(job));
-    return str(job['job_id']);
+def _where_sql(where: dict | None, params: dict) -> str {
+    sql = '';
+    n = 0;
+    for (k, v) in (where or {}).items() {
+        key = f"w{n}";
+        n += 1;
+        params[key] = json.dumps(v, default=str);
+        sql += f" AND doc->'{k}' = CAST(:{key} AS jsonb)";
+    }
+    return sql;
 }
 
-impl MongoJobStore.find_active(
+impl PgJobStore.insert(job: dict) -> str {
+    d = dict(job);
+    job_id = str(d['job_id']);
+    self.store.rows(
+        'INSERT INTO jac_docs (collection, id, doc) '
+        'VALUES (:c, :i, CAST(:d AS jsonb)) '
+        'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
+        {'c': self._collection, 'i': job_id, 'd': json.dumps(d, default=str)}
+    );
+    return job_id;
+}
+
+impl PgJobStore.find_active(
     limit: int | None = None,
     offset: int = 0,
     trigger: str | None = None,
     created_by: str | None = None
 ) -> tuple[list[dict], int] {
-    query: dict[str, Any] = {'status': 'active'};
+    conds: list[str] = ["collection = :c", "doc->>'status' = 'active'"];
+    params: dict[str, Any] = {'c': self._collection};
     if trigger {
-        query['trigger'] = trigger;
+        conds.append("doc->>'trigger' = :t");
+        params['t'] = trigger;
     }
     if created_by {
-        query['created_by'] = created_by;
+        conds.append("doc->>'created_by' = :u");
+        params['u'] = created_by;
     }
-
-    total = self._db.count_documents(self._collection, query);
-    cursor: Any = self._db.find(self._collection, query, {'_id': 0});
-    if offset > 0 {
-        cursor = cursor.skip(offset);
-    }
+    where = ' AND '.join(conds);
+    total = int(
+        self.store.rows(f"SELECT count(*) FROM jac_docs WHERE {where}", params)[0][0]
+    );
+    page_sql = f"SELECT doc FROM jac_docs WHERE {where} ORDER BY id";
     if limit is not None {
-        cursor = cursor.limit(limit);
+        page_sql += " LIMIT :lim";
+        params['lim'] = int(limit);
     }
-    return ([doc for doc in cursor], total);
-}
-
-impl MongoJobStore.find_active_one(job_id: str) -> dict | None {
-    return self._db.find_one(
-        self._collection, {'job_id': job_id, 'status': 'active'}, {'_id': 0}
-    );
-}
-
-def _job_filter(job_id: str, where: dict | None) -> dict[str, Any] {
-    f: dict[str, Any] = {'job_id': job_id};
-    if where {
-        f.update(where);
+    if offset > 0 {
+        page_sql += " OFFSET :off";
+        params['off'] = int(offset);
     }
-    return f;
+    rows = self.store.rows(page_sql, params);
+    return ([_doc_row(r[0]) for r in rows], total);
 }
 
-impl MongoJobStore.update(
-    job_id: str, updates: dict, where: dict | None = None
-) -> bool {
-    result = self._db.update_one(
-        self._collection, _job_filter(job_id, where), {'$set': updates}
+impl PgJobStore.find_active_one(job_id: str) -> dict | None {
+    rows = self.store.rows(
+        "SELECT doc FROM jac_docs WHERE collection = :c AND id = :i "
+        "AND doc->>'status' = 'active'",
+        {'c': self._collection, 'i': job_id}
     );
-    return result.modified_count > 0;
+    return _doc_row(rows[0][0]) if rows else None;
 }
 
-impl MongoJobStore.delete(job_id: str, where: dict | None = None) -> bool {
-    result = self._db.delete_one(self._collection, _job_filter(job_id, where));
-    return result.deleted_count > 0;
+impl PgJobStore.update(job_id: str, updates: dict, where: dict | None = None) -> bool {
+    params: dict[str, Any] = {
+        'c': self._collection,
+        'i': job_id,
+        'u': json.dumps(dict(updates), default=str)
+    };
+    cond = _where_sql(where, params);
+    rows = self.store.rows(
+        f"UPDATE jac_docs SET doc = doc || CAST(:u AS jsonb) "
+        f"WHERE collection = :c AND id = :i{cond} RETURNING id",
+        params
+    );
+    return len(rows) > 0;
 }
 
-impl MongoJobStore.record_run(
-    job_id: str, status: str, error: str | None = None
-) -> None {
-    self._db.update_one(
-        self._collection,
-        {'job_id': job_id},
-        {
-            '$inc': {'run_count': 1},
-            '$set': {
-                'last_run_at': _utc_now_iso(),
-                'last_status': status,
-                'last_error': error
-            }
-        }
+impl PgJobStore.delete(job_id: str, where: dict | None = None) -> bool {
+    params: dict[str, Any] = {'c': self._collection, 'i': job_id};
+    cond = _where_sql(where, params);
+    rows = self.store.rows(
+        f"DELETE FROM jac_docs WHERE collection = :c AND id = :i{cond} RETURNING id",
+        params
+    );
+    return len(rows) > 0;
+}
+
+impl PgJobStore.record_run(job_id: str, status: str, error: str | None = None) -> None {
+    updates = {
+        'last_run_at': _utc_now_iso(),
+        'last_status': status,
+        'last_error': error
+    };
+    self.store.rows(
+        "UPDATE jac_docs SET doc = doc || CAST(:u AS jsonb) || jsonb_build_object("
+        "'run_count', COALESCE((doc->>'run_count')::bigint, 0) + 1) "
+        "WHERE collection = :c AND id = :i",
+        {'c': self._collection, 'i': job_id, 'u': json.dumps(updates, default=str)}
     );
 }
 
@@ -304,17 +338,22 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
 
     scheduler_cfg = get_scale_config().get_scheduler_config();
     collection = scheduler_cfg.get('collection', 'scheduled_jobs');
-    db_cfg = get_scale_config().get_database_config();
-    if db_cfg.get('mongodb_uri') {
-        try {
-            mongo_db = MongoDb(client=get_mongo_client());
-            self._store = MongoJobStore(_db=mongo_db, _collection=collection);
-            logger.debug("MongoDB configured — jobs will be persisted");
-        } except Exception as e {
-            logger.warning(f"MongoDB connection failed, using in-memory: {e}");
-            self._store = MemoryJobStore();
-        }
+    store: Any = None;
+    try {
+        store = open_docs_store();
+    } except Exception as e {
+        logger.warning(f"scheduler job store unavailable: {e}");
+    }
+    if store is not None {
+        self._store = PgJobStore(store=store, _collection=collection);
+        logger.debug("database configured - jobs will be persisted");
     } else {
+        logger.warning(
+            "No reachable database: dynamic jobs run IN MEMORY only. "
+            "POST /jobs will accept jobs that vanish on restart and never "
+            "fire on other pods. Fix [scale.database] url / JAC_DB_URL for "
+            "durable scheduling."
+        );
         self._store = MemoryJobStore();
     }
     self._user_exists_ttl = float(scheduler_cfg.get('user_exists_ttl', 30.0));
@@ -344,6 +383,7 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
             "Enable the 'scheduler' capability and run 'jac install'."
         );
     }
+    self._start_jobs_listener();
 }
 
 impl JacScaleScheduler.start -> None {
@@ -527,6 +567,7 @@ impl JacScaleScheduler.create_job(
         raise;
     }
 
+    self._notify_jobs_changed(persisted_id);
     logger.debug(f"Created dynamic job: {name} (id={persisted_id})");
     return job_data;
 }
@@ -570,6 +611,7 @@ impl JacScaleScheduler.update_job(
             job_id=job_id, name=name, spec=spec, user_id=user_id, is_walker=is_walker
         );
     }
+    self._notify_jobs_changed(job_id);
 
     updated = dict(existing);
     updated.update(updates);
@@ -591,6 +633,9 @@ impl JacScaleScheduler.delete_job(job_id: str, acting_as: str | None = None) -> 
             );
         }
         logger.debug(f"Deleted dynamic job id={job_id}");
+    }
+    if result {
+        self._notify_jobs_changed(job_id);
     }
     return result;
 }
@@ -676,6 +721,85 @@ impl JacScaleScheduler._mark_failed(job_id: str | None, reason: str) -> None {
     }
 }
 
+impl JacScaleScheduler._acquire_fire_lease(job_id: str, spec: TriggerSpec) -> bool {
+    store = self._store;
+    if not isinstance(store, PgJobStore) {
+        return True;
+    }
+    import from jaclang.scale.state.pg_state_backend { PgStateBackend }
+    try {
+        return PgStateBackend(store=store.store).acquire_lock(
+            f"sched:{job_id}", _fire_lease_ttl(spec)
+        );
+    } except Exception as e {
+        logger.warning(f"fire-lease check failed for job {job_id}: {e}; firing anyway");
+        return True;
+    }
+}
+
+impl JacScaleScheduler._notify_jobs_changed(job_id: str) -> None {
+    store = self._store;
+    if not isinstance(store, PgJobStore) {
+        return;
+    }
+    try {
+        store.store.notify(JOBS_CHANGED_CHANNEL, job_id);
+    } except Exception as e {
+        logger.warning(
+            f"jobs-changed notify failed for {job_id}: {e}; other pods "
+            "reconcile this job on their next restart"
+        );
+    }
+}
+
+impl JacScaleScheduler._start_jobs_listener -> None {
+    store = self._store;
+    if not isinstance(store, PgJobStore) or self._apscheduler is None {
+        return;
+    }
+    def _cb(payload: str) {
+        self._on_jobs_changed(payload);
+    }
+    try {
+        store.store.listen(JOBS_CHANGED_CHANNEL, _cb);
+        logger.debug("jobs-changed listener registered");
+    } except Exception as e {
+        logger.warning(f"could not register jobs-changed listener: {e}");
+    }
+}
+
+impl JacScaleScheduler._on_jobs_changed(payload: str) -> None {
+    job_id = str(payload or '').strip();
+    if not job_id or self._apscheduler is None or self._store is None {
+        return;
+    }
+    try {
+        job = self._store.find_active_one(job_id);
+    } except Exception as e {
+        logger.warning(f"jobs-changed reconcile failed for {job_id}: {e}");
+        return;
+    }
+    if job is None {
+        try {
+            self._apscheduler.remove_job(job_id);
+            logger.debug(f"jobs-changed: removed local schedule for {job_id}");
+        } except Exception { }
+        return;
+    }
+    try {
+        self._schedule_apscheduler_job(
+            job_id=job_id,
+            name=str(job.get('name', '')),
+            spec=TriggerSpec.from_dict(job),
+            user_id=str(job.get('created_by', self._system_user_id)),
+            is_walker=bool(job.get('is_walker', True))
+        );
+        logger.debug(f"jobs-changed: reconciled local schedule for {job_id}");
+    } except Exception as e {
+        logger.warning(f"jobs-changed re-schedule failed for {job_id}: {e}");
+    }
+}
+
 impl JacScaleScheduler._schedule_apscheduler_job(
     job_id: str, name: str, spec: TriggerSpec, user_id: str, is_walker: bool = True
 ) -> None {
@@ -684,6 +808,10 @@ impl JacScaleScheduler._schedule_apscheduler_job(
     }
 
     def job_func {
+        if not self._acquire_fire_lease(job_id, spec) {
+            logger.debug(f"job {job_id} already fired on another pod; skipping");
+            return;
+        }
         if user_id != self._system_user_id and self._server is not None {
             if not self._user_is_live(user_id) {
                 logger.warning(

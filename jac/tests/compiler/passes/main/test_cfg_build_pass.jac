@@ -169,6 +169,69 @@ test "cfg loop body if tail back-edges to header" {
     assert dot == expected_dot;
 }
 
+test "cfg while loop at branch tail falls through to join" {
+    dot = cfg_dot_from_file(
+        file_name=os.path.join(FIXTURES, "cfg_while_at_branch_tail.jac")
+    );
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef tail_while( x : int ) -> int\\nif x > 0", shape=box];\n'
+        + '  1 [label="BB1\\nwhile x < 5", shape=box];\n'
+        + '  2 [label="BB2\\nx = x + 1 ;", shape=box];\n'
+        + '  3 [label="BB3\\nreturn x ;", shape=box];\n'
+        + '  0 -> 1 [label="T"];\n'
+        + "  0 -> 3;\n"
+        + '  1 -> 2 [label="T"];\n'
+        + "  1 -> 3;\n"
+        + "  2 -> 1;\n"
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
+test "cfg forever loop at branch tail gets no fall-through" {
+    dot = cfg_dot_from_file(
+        file_name=os.path.join(FIXTURES, "cfg_forever_at_branch_tail.jac")
+    );
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef tail_forever( x : int ) -> int\\nif x > 0", shape=box];\n'
+        + '  1 [label="BB1\\nforever", shape=box];\n'
+        + '  2 [label="BB2\\nx = x + 1 ;\\nif x > 5", shape=box];\n'
+        + '  3 [label="BB3\\nbreak ;", shape=box];\n'
+        + '  4 [label="BB4\\nreturn x ;", shape=box];\n'
+        + '  0 -> 1 [label="T"];\n'
+        + "  0 -> 4;\n"
+        + "  1 -> 2;\n"
+        + '  2 -> 3 [label="T"];\n'
+        + "  2 -> 1;\n"
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
+test "cfg while loop mid branch keeps single exit" {
+    dot = cfg_dot_from_file(
+        file_name=os.path.join(FIXTURES, "cfg_while_mid_branch.jac")
+    );
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef mid( x : int ) -> int\\nif x > 0", shape=box];\n'
+        + '  1 [label="BB1\\nwhile x < 5", shape=box];\n'
+        + '  2 [label="BB2\\nx = x + 1 ;", shape=box];\n'
+        + '  3 [label="BB3\\nx = x + 2 ;", shape=box];\n'
+        + '  4 [label="BB4\\nreturn x ;", shape=box];\n'
+        + '  0 -> 1 [label="T"];\n'
+        + "  0 -> 4;\n"
+        + '  1 -> 2 [label="T"];\n'
+        + "  1 -> 3;\n"
+        + "  2 -> 1;\n"
+        + "  3 -> 4;\n"
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
 test "cfg try except finally" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_try_except.jac"));
     expected_dot = (
@@ -312,12 +375,12 @@ test "cfg boolean short circuit" {
         + "  0 -> 1;\n"
         + '  1 -> 2 [label="T"];\n'
         + '  1 -> 3 [label="F"];\n'
-        + '  2 -> 3 [label="F"];\n'
         + '  2 -> 5 [label="T"];\n'
+        + '  2 -> 3 [label="F"];\n'
         + '  3 -> 4 [label="T"];\n'
         + '  3 -> 6 [label="F"];\n'
-        + '  4 -> 6 [label="F"];\n'
         + '  4 -> 5 [label="T"];\n'
+        + '  4 -> 6 [label="F"];\n'
         + "  5 -> 6;\n"
         + "  6 -> 7;\n"
         + '  7 -> 8 [label="F"];\n'
@@ -332,6 +395,79 @@ test "cfg boolean short circuit" {
         + '  12 -> 13 [label="T"];\n'
         + "  12 -> 14;\n"
         + "  13 -> 14;\n"
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
+test "cfg deeply nested boolean short circuit" {
+    dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_nested_bool.jac"));
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef deep( a : int , b : int , c : int , d : int ) -> int\\nif", shape=box];\n'
+        + '  1 [label="BB1\\na > 0", shape=box];\n'
+        + '  2 [label="BB2\\nb > 0", shape=box];\n'
+        + '  3 [label="BB3\\nc > 0", shape=box];\n'
+        + '  4 [label="BB4\\nd > 0", shape=box];\n'
+        + '  5 [label="BB5\\nreturn 1 ;", shape=box];\n'
+        + '  6 [label="BB6\\nreturn 0 ;", shape=box];\n'
+        + "  0 -> 1;\n"
+        + '  1 -> 2 [label="T"];\n'
+        + '  1 -> 6 [label="F"];\n'
+        + '  2 -> 3 [label="T"];\n'
+        + '  2 -> 6 [label="F"];\n'
+        + '  3 -> 4 [label="F"];\n'
+        + '  3 -> 5 [label="T"];\n'
+        + '  4 -> 5 [label="T"];\n'
+        + '  4 -> 6 [label="F"];\n'
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
+test "cfg deeply nested boolean or-rooted short circuit" {
+    dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_nested_bool_or.jac"));
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef deep_or( a : int , b : int , c : int , d : int ) -> int\\nif", shape=box];\n'
+        + '  1 [label="BB1\\na > 0", shape=box];\n'
+        + '  2 [label="BB2\\nb > 0", shape=box];\n'
+        + '  3 [label="BB3\\nc > 0", shape=box];\n'
+        + '  4 [label="BB4\\nd > 0", shape=box];\n'
+        + '  5 [label="BB5\\nreturn 1 ;", shape=box];\n'
+        + '  6 [label="BB6\\nreturn 0 ;", shape=box];\n'
+        + "  0 -> 1;\n"
+        + '  1 -> 5 [label="T"];\n'
+        + '  1 -> 2 [label="F"];\n'
+        + '  2 -> 3 [label="F"];\n'
+        + '  2 -> 5 [label="T"];\n'
+        + '  3 -> 4 [label="T"];\n'
+        + '  3 -> 6 [label="F"];\n'
+        + '  4 -> 5 [label="T"];\n'
+        + '  4 -> 6 [label="F"];\n'
+        + "}\n"
+    );
+    assert dot == expected_dot;
+}
+
+test "cfg not over grouped boolean is a leaf predicate" {
+    dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_bool_not_group.jac"));
+    expected_dot = (
+        "digraph G {\n"
+        + '  0 [label="BB0\\ndef mixed( a : int , b : int , c : int ) -> int\\nif", shape=box];\n'
+        + '  1 [label="BB1\\na > 0", shape=box];\n'
+        + '  2 [label="BB2\\nnot ( b > 0 or c > 0 )", shape=box];\n'
+        + '  3 [label="BB3\\nb > 0", shape=box];\n'
+        + '  4 [label="BB4\\nc > 0", shape=box];\n'
+        + '  5 [label="BB5\\nreturn 1 ;", shape=box];\n'
+        + '  6 [label="BB6\\nreturn 0 ;", shape=box];\n'
+        + "  0 -> 1;\n"
+        + '  1 -> 2 [label="T"];\n'
+        + '  1 -> 6 [label="F"];\n'
+        + "  2 -> 3;\n"
+        + '  2 -> 5 [label="T"];\n'
+        + '  2 -> 6 [label="F"];\n'
+        + '  3 -> 4 [label="F"];\n'
         + "}\n"
     );
     assert dot == expected_dot;

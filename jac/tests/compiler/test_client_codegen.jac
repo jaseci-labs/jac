@@ -255,3 +255,120 @@ test "component rename is skipped when the PascalCase name is already taken" {
     assert "function page()" in js;
     assert "const page" not in js;
 }
+
+test "archetype constructors in jsx-attribute lambdas emit new" {
+    code = """obj Task {
+    has label: str = \"\";
+}
+
+def:pub app -> JsxElement {
+    has items: list = [];
+
+    def add_direct {
+        items = items + [Task(label=\"direct\")];
+    }
+
+    <div>
+        <button onClick={lambda { items = items + [Task(label=\"clicked\")]; }}>
+            add
+        </button>
+    </div>;
+}
+""";
+    mod = compile_inline(code, client=True);
+    js = mod.gen.js;
+    n = js.count("new Task(");
+    assert n >= 2 , f"constructor lost 'new' inside jsx-attribute lambda (found {n}): {js[-1500:]}";
+}
+
+test "constructor as call argument in component-prop lambda emits new" {
+    code = """obj Program {
+    has name: str = \"untitled\";
+}
+
+def:pub Toolbar(onNew: any) -> JsxElement {
+    <button onClick={lambda { onNew(); }}>new</button>;
+}
+
+def load_program(p: any) -> None {
+    print(p);
+}
+
+def:pub app -> JsxElement {
+    <div>
+        <Toolbar onNew={lambda { load_program(Program(name=\"untitled\")); }}/>
+    </div>;
+}
+""";
+    mod = compile_inline(code, client=True);
+    js = mod.gen.js;
+    n = js.count("new Program(");
+    assert n >= 1 , f"constructor lost 'new' in component-prop lambda (found {n}): {js[-1500:]}";
+}
+
+test "absolute imports in nested modules emit importer-relative specifiers" {
+    with TemporaryDirectory() as td {
+        with open(os.path.join(td, "jac.toml"), "w") as f {
+            f.write('[placement.pins]\n"*" = "client"\n');
+        }
+        os.makedirs(os.path.join(td, "vm"));
+        os.makedirs(os.path.join(td, "blocks"));
+        with open(os.path.join(td, "vm", "model.jac"), "w") as f {
+            f.write("def helper() -> int { return 5; }\n");
+        }
+        with open(os.path.join(td, "blocks", "layout.jac"), "w") as f {
+            f.write(
+                "import from vm.model { helper }\n"
+                    + "def use_helper() -> int { return helper(); }\n"
+            );
+        }
+        prog = JacProgram();
+        mod = prog.compile(os.path.join(td, "blocks", "layout.jac"));
+        js = mod.gen.js;
+        assert "../vm/model" in js , f"nested absolute import emitted a root-relative specifier: {js[0:400]}";
+    }
+}
+
+test "client capability check rejects silently-dropped constructs" {
+    code = """def race() -> int {
+    fut = flow slow_op();
+    return wait fut;
+}
+
+def slow_op() -> int {
+    return 1;
+}
+""";
+    prog = JacProgram();
+    try {
+        compile_inline(code, prog=prog, client=True);
+    } except Exception {
+        ;
+    }
+    msgs = " ".join([str(e) for e in prog.errors_had]);
+    assert "Client pathway does not yet support flow/wait concurrency" in msgs , f"client-placed flow/wait must be diagnosed, got: {msgs[0:600]}";
+}
+
+test "client generators lower to JS function* with yield" {
+    code = """def gen_vals(limit: int) {
+    index = 0;
+    while index < limit {
+        yield index * 3;
+        index += 1;
+    }
+}
+
+def sum_gen() -> int {
+    total = 0;
+    for v in gen_vals(3) {
+        total += v;
+    }
+    return total;
+}
+""";
+    mod = compile_inline(code, client=True);
+    js = mod.gen.js;
+    assert "function* gen_vals" in js , f"generator must emit function*: {js[0:600]}";
+    assert "yield (index * 3)" in js or "yield index * 3" in js , f"yield must survive lowering: {js[0:600]}";
+    assert "for (const v of _jac.builtin.iter(gen_vals(3)))" in js , f"generator calls must stay iterable in for-of: {js[0:600]}";
+}

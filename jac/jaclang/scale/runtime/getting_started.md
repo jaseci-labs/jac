@@ -65,9 +65,9 @@ No Dockerfile and no registry config, on any cluster: nothing is built
 and nothing is pushed. `jac start --scale` packs your source into a
 bundle and copies it into the cluster on a PVC, boots every pod from a
 stock base image (a bootstrap initContainer unpacks the bundle and
-installs the pinned `jac` runtime), spins up MongoDB + Redis
-StatefulSets, injects `MONGODB_URI` / `REDIS_URL` env into every pod,
-and applies all Deployments + Services + HPAs + PDBs.
+installs the pinned `jac` runtime), spins up a Postgres StatefulSet,
+injects `JAC_DB_URL` into every pod, and applies all Deployments +
+Services + HPAs + PDBs.
 
 ## Reach your app
 

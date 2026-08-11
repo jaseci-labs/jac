@@ -30,7 +30,7 @@ def request(n: int, back: int) -> int {
     in r {
         a = Spot(v=1);
         prev = a;
-        ring: list = [];
+        ring: list[Spot] = [];
         ring.append(a);
         for i in range(2, n + 1) {
             b = Spot(v=i);

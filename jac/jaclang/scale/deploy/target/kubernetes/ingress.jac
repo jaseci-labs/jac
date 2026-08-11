@@ -1,7 +1,6 @@
 import time;
 import subprocess;
 import from jaclang.scale._optdeps.kubernetes { client, ApiException }
-import from jaclang.scale._optdeps.optional_deps { require_optional }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -10,18 +9,6 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     delete_if_exists
 }
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
-
-def _htpasswd_line(username: str, password: str) -> str {
-    require_optional("bcrypt", "deploy.k8s");
-    import bcrypt;
-
-    pw_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode(
-        'utf-8'
-    ).replace(
-        '$2b$', '$2y$'
-    );
-    return f"{username}:{pw_hash}";
-}
 
 obj IngressDeployer {
     has k8s_config: KubernetesConfig,
@@ -409,27 +396,16 @@ obj IngressDeployer {
         ingress_class: str,
         service_port: int,
         grafana_enabled: bool,
-        redis_dashboard: bool,
-        mongo_dashboard: bool,
         networking_v1: any,
         core_v1: any
     ) {
         ingress_name = f"{app_name}-ingress";
-        redis_ingress_name = f"{app_name}-redis-insight-ingress";
 
         paths = [self._ingress_path('/', f"{app_name}-service", service_port)];
 
         if grafana_enabled {
             paths.append(
                 self._ingress_path('/grafana', f"{app_name}-grafana-service", 3000)
-            );
-        }
-
-        if mongo_dashboard {
-            paths.append(
-                self._ingress_path(
-                    '/db-dashboard', f"{app_name}-mongo-express-service", 8081
-                )
             );
         }
 
@@ -536,119 +512,6 @@ obj IngressDeployer {
             }
         }
 
-        if redis_dashboard {
-            ri_username = self.k8s_config.redis_insight_username;
-            ri_password = self.k8s_config.redis_insight_password;
-            ri_auth_secret_name = f"{app_name}-redis-insight-auth";
-
-            htpasswd_line = _htpasswd_line(ri_username, ri_password);
-            ri_auth_secret = {
-                'apiVersion': 'v1',
-                'kind': 'Secret',
-                'metadata': {
-                    'name': ri_auth_secret_name,
-                    'namespace': namespace,
-                    'labels': {
-                        'app': f"{app_name}-redis-insight",
-                        'managed': 'jac-scale'
-                    }
-                },
-                'stringData': {'auth': htpasswd_line}
-            };
-            try {
-                core_v1.replace_namespaced_secret(
-                    name=ri_auth_secret_name, namespace=namespace, body=ri_auth_secret
-                );
-            } except ApiException as e {
-                if e.status == 404 {
-                    core_v1.create_namespaced_secret(
-                        namespace=namespace, body=ri_auth_secret
-                    );
-                } else {
-                    raise;
-                }
-            }
-
-            redis_ingress_annotations: dict = {
-                'nginx.ingress.kubernetes.io/proxy-body-size': '0',
-                'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
-                'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
-                'nginx.ingress.kubernetes.io/proxy-buffering': 'on',
-                'nginx.ingress.kubernetes.io/use-regex': 'true',
-                'nginx.ingress.kubernetes.io/rewrite-target': '/$2',
-                'nginx.ingress.kubernetes.io/configuration-snippet': (
-                    'proxy_set_header Accept-Encoding "";\n'
-                    'sub_filter_types text/html;\n'
-                    'sub_filter \'src="/assets/\' \'src="/cache-dashboard/assets/\';\n'
-                    'sub_filter \'href="/assets/\' \'href="/cache-dashboard/assets/\';\n'
-                    'sub_filter "var RIPROXYPATH = \'\';" "var RIPROXYPATH = \'/cache-dashboard\';";\n'
-                    'sub_filter_once off;'
-                )
-            };
-            redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-type'] = 'basic';
-            redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-secret'] = ri_auth_secret_name;
-            redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-realm'] = 'RedisInsight';
-
-            redis_paths = [
-                self._ingress_path(
-                    '/cache-dashboard(/|$)(.*)',
-                    f"{app_name}-redis-insight-service",
-                    5540,
-                    path_type='ImplementationSpecific'
-                )
-            ];
-
-            if self.k8s_config.shared_ingress {
-                redis_rules: list = [
-                    {'host': self.k8s_config.domain, 'http': {'paths': redis_paths}}
-                ];
-            } elif self.k8s_config.domain {
-                redis_rules: list = self._domain_rules(
-                    {'paths': redis_paths}, self.k8s_config.domain
-                );
-            } else {
-                redis_rules: list = [{'http': {'paths': redis_paths}}];
-            }
-
-            redis_ingress = {
-                'apiVersion': 'networking.k8s.io/v1',
-                'kind': 'Ingress',
-                'metadata': {
-                    'name': redis_ingress_name,
-                    'namespace': namespace,
-                    'labels': {'app': app_name, 'managed': 'jac-scale'},
-                    'annotations': redis_ingress_annotations
-                },
-                'spec': {'ingressClassName': ingress_class, 'rules': redis_rules}
-            };
-            try {
-                networking_v1.patch_namespaced_ingress(
-                    name=redis_ingress_name, namespace=namespace, body=redis_ingress
-                );
-            } except ApiException as e {
-                if e.status == 404 {
-                    networking_v1.create_namespaced_ingress(
-                        namespace=namespace, body=redis_ingress
-                    );
-                } else {
-                    raise;
-                }
-            }
-        } else {
-            delete_if_exists(
-                networking_v1.delete_namespaced_ingress,
-                redis_ingress_name,
-                namespace,
-                'Ingress'
-            );
-            delete_if_exists(
-                core_v1.delete_namespaced_secret,
-                f"{app_name}-redis-insight-auth",
-                namespace,
-                'Secret'
-            );
-        }
-
         if self.logger {
             self.logger.info(f"Ingress routing rules deployed for '{app_name}'");
         }
@@ -697,8 +560,6 @@ obj IngressDeployer {
         namespace: str,
         service_port: int,
         grafana_enabled: bool,
-        redis_dashboard: bool,
-        mongo_dashboard: bool,
         apps_v1: any,
         core_v1: any,
         networking_v1: any
@@ -711,8 +572,6 @@ obj IngressDeployer {
             ingress_class,
             service_port,
             grafana_enabled,
-            redis_dashboard,
-            mongo_dashboard,
             networking_v1,
             core_v1
         );
@@ -857,7 +716,6 @@ obj IngressDeployer {
         apps_v1: any
     ) -> None {
         ingress_name = f"{app_name}-ingress";
-        redis_ingress_name = f"{app_name}-redis-insight-ingress";
         tls_secret_name = f"{app_name}-tls";
 
         ingress = networking_v1.read_namespaced_ingress(
@@ -916,45 +774,6 @@ obj IngressDeployer {
             self.logger.info(f"Patched '{ingress_name}' with TLS configuration");
         }
 
-        try {
-            current_redis_ingress = networking_v1.read_namespaced_ingress(
-                name=redis_ingress_name, namespace=namespace
-            );
-            redis_ingress_dict = api_client.sanitize_for_serialization(
-                current_redis_ingress
-            );
-            existing_redis_rules = redis_ingress_dict.get('spec', {}).get('rules', []);
-            redis_base_http = existing_redis_rules[0].get('http', {'paths': []})
-                if existing_redis_rules
-                else {'paths': []};
-            if self.k8s_config.shared_ingress {
-                redis_rules_patched = [{'host': domain, 'http': redis_base_http}];
-            } else {
-                redis_rules_patched = self._domain_rules(redis_base_http, domain);
-            }
-            redis_tls_spec = {
-                'tls': [{'hosts': [domain], 'secretName': tls_secret_name}],
-                'rules': redis_rules_patched
-            };
-            networking_v1.patch_namespaced_ingress(
-                name=redis_ingress_name,
-                namespace=namespace,
-                body={
-                    'metadata': {'annotations': tls_annotations},
-                    'spec': redis_tls_spec
-                }
-            );
-            if self.logger {
-                self.logger.info(
-                    f"Patched '{redis_ingress_name}' with TLS configuration"
-                );
-            }
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
-
         if self.logger {
             self.logger.info(
                 f"Waiting for TLS certificate '{tls_secret_name}' to be issued (up to 300s)..."
@@ -1009,26 +828,12 @@ obj IngressDeployer {
         cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";
         ingress_class_name = f"{namespace}-{app_name}-nginx";
         ingress_name = f"{app_name}-ingress";
-        redis_ingress_name = f"{app_name}-redis-insight-ingress";
         service_name = f"{controller_name}-service";
         configmap_name = f"{app_name}-nginx-configuration";
 
         delete_if_exists(
             networking_v1.delete_namespaced_ingress, ingress_name, namespace, 'Ingress'
         );
-        delete_if_exists(
-            networking_v1.delete_namespaced_ingress,
-            redis_ingress_name,
-            namespace,
-            'Ingress'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_secret,
-            f"{app_name}-redis-insight-auth",
-            namespace,
-            'Secret'
-        );
-
         delete_if_exists(
             core_v1.delete_namespaced_secret, f"{app_name}-tls", namespace, 'Secret'
         );

@@ -14,6 +14,7 @@ in CI as an executable spec; this PR keeps CI green.
 """
 
 import os;
+import re;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
@@ -204,7 +205,7 @@ test "sibling slots: each accumulator IIFE declares its own `let` binding" {
     import re;
 
     # No accumulator may be initialised via a bare (non-`let`) assignment.
-    bare = re.findall(r'(?<![\w])(?<!let )__jac_view_kids\w* = \[\]', js_code);
+    bare = re.findall(r'(?<![\w])(?<!let )__jac_view_kids\w* = \[', js_code);
     assert not bare , (
         "every slot accumulator must be declared with `let`; found a bare "
         "reassignment that throws ReferenceError in a sibling IIFE:\n"
@@ -213,10 +214,10 @@ test "sibling slots: each accumulator IIFE declares its own `let` binding" {
     # Two sibling slots => two distinct accumulator bindings, the first
     # keeping the bare `__jac_view_kids` name (preserved for diagnostics)
     # and the second drawing a unique suffix.
-    assert "let __jac_view_kids = [];" in js_code , (
+    assert re.search(r"let __jac_view_kids = \[", js_code) , (
         "the first slot should keep the unsuffixed accumulator name:\n" + js_code
     );
-    assert "let __jac_view_kids_1 = [];" in js_code , (
+    assert re.search(r"let __jac_view_kids_1 = \[", js_code) , (
         "the second sibling slot needs its own suffixed accumulator:\n" + js_code
     );
 }
@@ -231,8 +232,11 @@ test "issue #6732: a bare expression statement in a slot is accumulated" {
     es_ast = compile_to_esast("bare_expr_slot.jac");
     js_code = es_to_js(es_ast);
 
-    # A (the bug): the conditional bare string must be pushed, not dropped.
-    assert '.push("BARE_STRING_A")' in js_code , (
+    # A (the bug): the conditional bare string must be accumulated, not dropped.
+    # It reaches the accumulator through the branch's indexed write.
+    assert re.search(
+        r'__jac_view_kids\w*(\[\d+\] = |\.push\()[^;]*"BARE_STRING_A"', js_code
+    ) , (
         "a bare string statement inside a slot must be accumulated into the "
         "slot's children, not evaluated and discarded:\n"
         + js_code
@@ -250,12 +254,12 @@ test "issue #6732: a bare expression statement in a slot is accumulated" {
 
     # The general rule covers every value-producing expression statement,
     # in both the `if`/`else` arms and the `for` body of `Kinds`.
-    assert '.push(`have ${count}`)' in js_code , (
-        "an f-string statement in a slot must be accumulated:\n" + js_code
-    );
-    assert '.push("EMPTY_BRANCH")' in js_code , (
-        "a bare string in an `else` arm must be accumulated:\n" + js_code
-    );
+    assert re.search(
+        r'__jac_view_kids\w*(\[\d+\] = |\.push\()[^;]*`have \$\{count\}`', js_code
+    ) , ("an f-string statement in a slot must be accumulated:\n" + js_code);
+    assert re.search(
+        r'__jac_view_kids\w*(\[\d+\] = |\.push\()[^;]*"EMPTY_BRANCH"', js_code
+    ) , ("a bare string in an `else` arm must be accumulated:\n" + js_code);
     assert ".push(label)" in js_code , (
         "a bare identifier statement in a `for` slot body must be "
         "accumulated each iteration:\n"

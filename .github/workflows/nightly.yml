@@ -132,3 +132,54 @@ jobs:
             exit 1
           fi
           echo "PASS: jac removed"
+
+  # PR CI's test jobs run the dev lane ([dev] jaclang_source: the checkout's
+  # compiler over a cached host binary), and build-jac smokes the sealed boot
+  # per PR. This is the deep sealed-path guard: the full suite against a real
+  # sealed binary, daily, so payload-only regressions (frozen bootstrap, JIR
+  # image boot, bundled deps) cannot ride a green dev-lane PR for long.
+  sealed-suite:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (sealed binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Set up Zig 0.16.0 (vendor static-musl runtime)
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.16.0
+        use-cache: false
+
+    - name: Vendor static-musl runtime
+      working-directory: jac
+      run: zig build -Dno-ninja vendor-musl --summary all
+
+    - name: Full suite against the sealed binary
+      working-directory: jac
+      run: |
+        set -uxo pipefail
+        WORK="$(mktemp -d)"
+        HOME="$WORK" JAC_TEST_JOBS=auto jac test tests/ | tee /tmp/sealed.log
+        rc=${PIPESTATUS[0]}
+        {
+          echo "## sealed full-suite result"
+          echo '```'
+          grep -E '^(FAILED|ERROR)|passed|failed' /tmp/sealed.log | tail -40 || true
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$rc"

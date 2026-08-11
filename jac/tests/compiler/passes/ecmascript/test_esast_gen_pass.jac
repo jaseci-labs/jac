@@ -315,83 +315,93 @@ test "reactive state generates use state" {
     es_ast = compile_to_esast(fixture_path("reactive_state.jac"));
     js_code = es_to_js(es_ast);
 
-    # Check that useState is imported from @jac/runtime (auto-injected)
-    assert 'import { useState } from "@jac/runtime"' in js_code , (
-        "useState should be auto-imported from @jac/runtime"
+    # Check that the store hook is imported from @jac/runtime (auto-injected)
+    assert 'import { useJacState } from "@jac/runtime"' in js_code , (
+        "useJacState should be auto-imported from @jac/runtime"
     );
 
-    # Check that has declarations generate useState destructuring
-    # has count: int = 0; -> const [count, setCount] = useState(0);
-    assert "const [count, setCount] = useState(0)" in js_code , (
-        "has count should generate useState destructuring"
+    # Check that has declarations generate store cells
+    # has count: int = 0; -> const __jacS_count = useJacState(0);
+    assert "const __jacS_count = useJacState(0)" in js_code , (
+        "has count should generate a store cell"
     );
-    assert 'const [name, setName] = useState("test")' in js_code , (
-        "has name should generate useState destructuring"
+    assert 'const __jacS_name = useJacState("test")' in js_code , (
+        "has name should generate a store cell"
     );
 
     # Check that assignments to reactive vars generate setter calls
-    # count = count + 1; -> setCount(count + 1);
-    assert "setCount((count + 1))" in js_code , (
+    # count = count + 1; -> __jacS_count.set(__jacS_count.val + 1);
+    assert "__jacS_count.set((__jacS_count.val + 1))" in js_code , (
         "Assignment to reactive var should use setter"
     );
-    assert "setCount(42)" in js_code , "Direct assignment should use setter";
-    assert "setName(" in js_code , "Assignment to name should use setName";
+    assert "__jacS_count.set(42)" in js_code , "Direct assignment should use setter";
+    assert "__jacS_name.set(" in js_code , (
+        "Assignment to name should use its cell setter"
+    );
 }
 
 test "reactive state in cl jac file" {
     es_ast = compile_to_esast(fixture_path("reactive_state.jac"));
     js_code = es_to_js(es_ast);
 
-    # Check that useState is imported from @jac/runtime (auto-injected)
-    assert 'import { useState } from "@jac/runtime"' in js_code , (
-        "useState should be auto-imported from @jac/runtime in .jac files"
+    # Check that the store hook is imported from @jac/runtime (auto-injected)
+    assert 'import { useJacState } from "@jac/runtime"' in js_code , (
+        "useJacState should be auto-imported from @jac/runtime in .jac files"
     );
 
-    # Check that has declarations generate useState destructuring
-    # has count: int = 0; -> const [count, setCount] = useState(0);
-    assert "const [count, setCount] = useState(0)" in js_code , (
-        "has count should generate useState destructuring in .jac files"
+    # Check that has declarations generate store cells
+    # has count: int = 0; -> const __jacS_count = useJacState(0);
+    assert "const __jacS_count = useJacState(0)" in js_code , (
+        "has count should generate a store cell in .jac files"
     );
-    assert 'const [name, setName] = useState("test")' in js_code , (
-        "has name should generate useState destructuring in .jac files"
+    assert 'const __jacS_name = useJacState("test")' in js_code , (
+        "has name should generate a store cell in .jac files"
     );
 
-    # Check that assignments to reactive vars generate setter calls
-    # count = count + 1; -> setCount(count + 1);
-    assert "setCount((count + 1))" in js_code , (
-        "Assignment to reactive var should use setter in .jac files"
+    # Check that assignments to reactive vars generate cell setter calls
+    # count = count + 1; -> __jacS_count.set(__jacS_count.val + 1);
+    assert "__jacS_count.set((__jacS_count.val + 1))" in js_code , (
+        "Assignment to reactive var should use the cell setter in .jac files"
     );
-    assert "setCount(42)" in js_code , "Direct assignment should use setter";
-    assert "setName(" in js_code , "Assignment to name should use setName";
+    assert "__jacS_count.set(42)" in js_code , (
+        "Direct assignment should use the cell setter"
+    );
+    assert "__jacS_name.set(" in js_code , (
+        "Assignment to name should use its cell setter"
+    );
 }
 
 test "reactive state scoping across functions" {
     es_ast = compile_to_esast(fixture_path("reactive_state_scoping.jac"));
     js_code = es_to_js(es_ast);
 
-    assert "const [cart, setCart] = useState([])" in js_code;
-    assert "setCart(useCart())" not in js_code;
+    assert "const __jacS_cart = useJacState([])" in js_code;
+    assert "__jacS_cart.set(useCart())" not in js_code;
     assert "let cart = useCart()" in js_code;
 }
 
-test "react read seam lowers a reactive read to a bare identifier (#6677)" {
-    # The #6677 contract: lower_state_read(name) -> bare Identifier on hooks
-    # backends. This is the no-op that keeps React/Preact output byte-identical.
+test "react read seam lowers a reactive read to a store cell member" {
+    # The client state contract: lower_state_read(name) -> `__jacS_<name>.val`
+    # on hooks backends, a synchronous read of the latest written value.
     read_node = ReactBackend().lower_state_read("count");
-    assert isinstance(read_node, es.Identifier) , "react read seam must return an Identifier";
-    assert read_node.name == "count";
+    assert isinstance(read_node, es.MemberExpression) , (
+        "react read seam must return a MemberExpression"
+    );
+    assert read_node.object.name == "__jacS_count";
+    assert read_node.property.name == "val";
 }
 
-test "react read seam keeps reactive reads unwrapped (zero-diff)" {
-    # Under React the value-read seam must not alter reactive reads anywhere.
+test "react read seam routes every value position through the cell" {
+    # Under React every reactive value read is a synchronous cell read; write
+    # targets and dict string keys never route through the read seam.
     js_code = es_to_js(
         compile_to_esast_with_backend(
             fixture_path("reactive_read_audit.jac"), ReactBackend()
         )
     );
-    assert "let doubled = (count + count)" in js_code;
-    assert 'let info = {"count": count}' in js_code;
-    assert "[count]" in js_code , "JSX child read stays a bare identifier";
+    assert "let doubled = (__jacS_count.val + __jacS_count.val)" in js_code;
+    assert 'let info = {"count": __jacS_count.val}' in js_code;
+    assert "[__jacS_count.val]" in js_code , "JSX child read samples the cell";
     assert "count()" not in js_code , "React must never wrap a reactive read";
 }
 
@@ -414,7 +424,9 @@ test "read seam wraps only value positions under a signals backend" {
     assert 'let info = {"count": count()}' in js_code , "dict value wraps, key untouched";
 
     # Write target lowers to its setter — never an assignment to a call.
-    assert "setCount((count() + 1))" in js_code , "write target uses setter; RHS read wraps";
+    assert "__jacS_count.set((count() + 1))" in js_code , (
+        "write target uses the cell setter; RHS read routes through the read seam"
+    );
     assert "count() =" not in js_code , "a reactive write target must not be wrapped";
 
     # Member property keys and attribute string literals are reconstructed from
@@ -439,8 +451,10 @@ test "react view seam keeps dynamic JSX unwrapped (zero-diff)" {
         )
     );
     assert "__view(" not in js_code , "React must never thunk a dynamic JSX position";
-    assert '"value": count' in js_code , "dynamic attribute stays a bare read";
-    assert "[count]" in js_code , "dynamic JSX child stays a bare read";
+    assert '"value": __jacS_count.val' in js_code , (
+        "dynamic attribute samples the cell"
+    );
+    assert "[__jacS_count.val]" in js_code , "dynamic JSX child samples the cell";
 }
 
 test "view seam thunks only dynamic positions under a signals backend" {
@@ -454,8 +468,10 @@ test "view seam thunks only dynamic positions under a signals backend" {
     );
 
     # Dynamic attribute value and dynamic child route through the seam.
-    assert '"value": __view(count)' in js_code , "dynamic attribute value should thunk";
-    assert "[__view(count)]" in js_code , "dynamic JSX child should thunk";
+    assert '"value": __view(__jacS_count.val)' in js_code , (
+        "dynamic attribute value should thunk"
+    );
+    assert "[__view(__jacS_count.val)]" in js_code , "dynamic JSX child should thunk";
 
     # Event handler is emitted as-is — never view-wrapped.
     assert '"onClick":' in js_code , "event handler attribute is still emitted";
@@ -473,16 +489,18 @@ test "reactive writes transform inside nested and deferred closures" {
     js_code = es_to_js(es_ast);
 
     # Direct handler scope.
-    assert "setSeen(true)" in js_code , "direct handler write should use setter";
+    assert "__jacS_seen.set(true)" in js_code , (
+        "direct handler write should use the cell setter"
+    );
     # Inside a setTimeout(...) callback (deferred closure). If the write had not
     # transformed it would emit `armed = true` and `setArmed` would be absent.
     assert "setTimeout(" in js_code , "deferred fixture should emit setTimeout";
-    assert "setArmed(true)" in js_code , (
-        "write inside setTimeout closure should use setter"
+    assert "__jacS_armed.set(true)" in js_code , (
+        "write inside setTimeout closure should use the cell setter"
     );
     # Inside an immediately-invoked nested lambda.
-    assert "setFired(true)" in js_code , (
-        "write inside nested closure should use setter"
+    assert "__jacS_fired.set(true)" in js_code , (
+        "write inside nested closure should use the cell setter"
     );
     # The raw reactive assignment form must never leak through.
     assert "armed = true" not in js_code , "deferred write must not stay a bare assignment";
@@ -574,8 +592,8 @@ test "reactive effects with dependencies" {
     # Check that useEffect is called
     assert "useEffect(" in js_code , "useEffect should be called";
 
-    # Check that dependency array contains userId and loading (tuple syntax)
-    assert "[userId, loading])" in js_code , (
+    # Dependency array: `userId` is a prop (bare), `loading` samples the cell.
+    assert "[userId, __jacS_loading.val])" in js_code , (
         "Effect with (userId, loading) tuple should have both in dependency array"
     );
 }
@@ -901,18 +919,18 @@ test "components with JSX slots compile to function declarations" {
     assert "__jac_view_kids" in js_code , (
         "slot bodies should lower to a `__jac_view_kids` accumulator IIFE:\n" + js_code
     );
-    assert "__jac_view_kids = []" in js_code , "accumulator should be initialized";
-    assert "__jac_view_kids.push(" in js_code , (
-        "each JSX statement should append to the accumulator in O(1)"
+    assert "__jac_view_kids = [" in js_code , "accumulator should be initialized";
+    assert "__jac_view_kids[0] = " in js_code , (
+        "each JSX statement should write the child position it reserved"
     );
     assert "__jacJsx" in js_code , "JSX should still lower to __jacJsx calls";
 
-    # `has` fields inside a component keep the existing auto-`useState` wiring.
-    assert 'const [heading, setHeading] = useState("Items")' in js_code , (
-        "has field in a component should generate useState"
+    # `has` fields inside a component lower to store cells.
+    assert 'const __jacS_heading = useJacState("Items")' in js_code , (
+        "has field in a component should generate a store cell"
     );
-    assert "setHeading(" in js_code , (
-        "assignment to a has-field should use the generated setter"
+    assert "__jacS_heading.set(" in js_code , (
+        "assignment to a has-field should use the cell setter"
     );
 
     # Public components are exported.
@@ -1229,20 +1247,22 @@ test "augmented reactive assignments do not double-apply the lhs" {
     es_ast = compile_to_esast(fixture_path("reactive_aug_assign.jac"));
     js = es_to_js(es_ast);
 
-    # Each setter call must appear exactly once as a simple binary: setCount((count op N)).
-    # gen_binary_expression always wraps in parens, so the argument is (count op N).
-    assert "setCount((count + 5))" in js , (
-        "expected setCount((count + 5)) but got:\n" + js
+    # Each setter call must appear exactly once as a simple binary:
+    # __jacS_count.set((__jacS_count.val op N)). gen_binary_expression always
+    # wraps in parens, so the argument is (….val op N).
+    assert "__jacS_count.set((__jacS_count.val + 5))" in js , (
+        "expected __jacS_count.set((__jacS_count.val + 5)) but got:\n" + js
     );
-    assert "setCount((count - 2))" in js , (
-        "expected setCount((count - 2)) but got:\n" + js
+    assert "__jacS_count.set((__jacS_count.val - 2))" in js , (
+        "expected __jacS_count.set((__jacS_count.val - 2)) but got:\n" + js
     );
-    assert "setCount((count * 3))" in js , (
-        "expected setCount((count * 3)) but got:\n" + js
+    assert "__jacS_count.set((__jacS_count.val * 3))" in js , (
+        "expected __jacS_count.set((__jacS_count.val * 3)) but got:\n" + js
     );
-    # Double-application fingerprint: with parens from gen_binary_expression the bug
-    # produces setCount((count + (count + 5))) — catch the nested `(count + (count` shape.
-    assert "setCount((count + (count" not in js , (
+    # Double-application fingerprint: with parens from gen_binary_expression the
+    # bug produces .set((__jacS_count.val + (__jacS_count.val + 5))) — catch the
+    # nested `(__jacS_count.val + (__jacS_count.val` shape.
+    assert "(__jacS_count.val + (__jacS_count.val" not in js , (
         "double-application bug detected in:\n" + js
     );
 }

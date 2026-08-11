@@ -642,10 +642,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if base_type.is_diagnosed {
                         return types.UnknownType(is_diagnosed=True);
                     }
+                    if base_type.is_incomplete {
+                        return types.UnknownType(is_incomplete=True);
+                    }
                     target_already_unknown = (
                         isinstance(expr.target.type, types.UnknownType)
                         and isinstance(expr.target, (uni.AtomTrailer, uni.FuncCall))
                     );
+
                     if not target_already_unknown {
                         self.emit_diag(E1032, expr.right, attr=expr.right.value);
                     }
@@ -655,8 +659,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                 full_narrowed: TypeBase | None = None;
 
                 assert isinstance(expr.right, uni.Name);
-                if isinstance(base_type, types.AnyType) and base_type.is_foreign {
-                    expr.right.type = types.AnyType(is_foreign=True);
+                if isinstance(base_type, types.AnyType) {
+                    expr.right.type = types.AnyType(is_foreign=base_type.is_foreign);
                     return expr.right.type;
                 }
                 if isinstance(base_type, types.ModuleType) {
@@ -719,6 +723,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
 
                         sym.add_use(expr.right);
+                        if isinstance(sym_type, types.UnknownType)
+                            and sym_type.is_incomplete {
+                            return sym_type;
+                        }
                         expr.right.type = sym_type;
                         return sym_type;
                     }
@@ -1269,6 +1277,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
                 return base_type;
             } else {
+                if isinstance(base_type, types.UnknownType)
+                    and base_type.is_incomplete {
+                    return types.UnknownType(is_incomplete=True);
+                }
                 if (
                     isinstance(base_type, types.ClassType)
                     and base_type.is_special_form("Callable")
@@ -1364,11 +1376,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return types.UnknownType();
                     }
                 }
-                if (
-                    isinstance(base_type, types.ClassType)
-                    and self.prefetch.any_class is not None
-                    and base_type.shared == self.prefetch.any_class.shared
-                ) {
+                if base_type.is_any_instance()
+                    and self.prefetch.any_class is not None {
                     return self.prefetch.any_class;
                 }
                 if isinstance(base_type, types.ClassType)
@@ -1531,9 +1540,15 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.CastExpr():
             self.get_type_of_expression(expr.value);
-            return self._convert_to_instance(
-                self.get_type_of_expression(expr.cast_type)
-            );
+            target_type = self.get_type_of_expression(expr.cast_type);
+            if not (
+                target_type.is_any_type()
+                or isinstance(target_type, types.UnknownType)
+                or operations.is_annotation_type(self, target_type)
+            ) {
+                self.emit_diag(E1044, expr.cast_type, type=str(target_type));
+            }
+            return self._convert_to_instance(target_type);
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
@@ -1593,6 +1608,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                             [expr.left if i == 0 else expr.rights[i - 1]],
                             None
                         );
+                    }
+                    if result is None and op.name in (Tok.EE, Tok.NE) {
+                        continue;
                     }
                     if result is None {
                         self.emit_diag(
@@ -1700,7 +1718,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if expr.op.name == Tok.BW_AND {
                     return self.get_type_of_expression(expr.operand);
                 }
-                if expr.ownership == OwnershipKind.OWN {
+                if expr.ownership in (OwnershipKind.OWN, OwnershipKind.IMM) {
                     return self.get_type_of_expression(expr.operand);
                 }
                 if expr.op.name == Tok.NOT {
@@ -1958,6 +1976,9 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
         case uni.AwaitExpr():
+            return self.get_type_of_expression(expr.target);
+
+        case uni.ConcurrentExpr():
             return self.get_type_of_expression(expr.target);
 
         case uni.YieldExpr():
@@ -2708,10 +2729,11 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
         return True;
     }
 
+    if ty.is_any_instance() {
+        return True;
+    }
+
     if isinstance(ty, types.ClassType) {
-        if (self.prefetch.any_class and ty.shared == self.prefetch.any_class.shared) {
-            return True;
-        }
         if (
             self.prefetch.type_var_class
             and ty.shared == self.prefetch.type_var_class.shared
@@ -2723,17 +2745,7 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
 }
 
 impl TypeEvaluator.is_explicit_any(ty: TypeBase) -> bool {
-    if isinstance(ty, types.AnyType) {
-        return True;
-    }
-    if isinstance(ty, types.ClassType) {
-        if self.prefetch
-            and self.prefetch.any_class
-            and ty.shared == self.prefetch.any_class.shared {
-            return True;
-        }
-    }
-    return False;
+    return ty.is_any_instance();
 }
 
 impl TypeEvaluator.is_none_type(ty: TypeBase) -> bool {
@@ -2744,6 +2756,29 @@ impl TypeEvaluator.is_none_type(ty: TypeBase) -> bool {
         isinstance(ty, types.ClassType)
         and ty.shared == self.prefetch.none_type_class.shared
     );
+}
+
+impl TypeEvaluator._diag_unnarrowed_optional(
+    nd: uni.UniNode, ty: TypeBase, required: str
+) -> bool {
+    if not isinstance(ty, types.UnionType) {
+        return False;
+    }
+    _has_none = False;
+    for _m in (ty.types or []) {
+        if self.is_none_type(self._convert_to_instance(_m)) {
+            _has_none = True;
+            break;
+        }
+    }
+    if not _has_none {
+        return False;
+    }
+    if not self._in_native_context() or not self._is_strict_site(nd) {
+        return False;
+    }
+    self.emit_diag(E1121, nd, type=str(ty), required=required);
+    return True;
 }
 
 impl TypeEvaluator._is_strict_site(nd: uni.UniNode) -> bool {
@@ -2832,7 +2867,8 @@ impl TypeEvaluator.assign_type(
         return True;
     }
 
-    if isinstance(src_type, types.UnknownType) and src_type.is_diagnosed {
+    if isinstance(src_type, types.UnknownType)
+        and (src_type.is_diagnosed or src_type.is_incomplete) {
         return True;
     }
 
@@ -3164,9 +3200,17 @@ impl TypeEvaluator.get_type_of_expression(
         }
     }
     result = self._get_type_of_expression_core(node_, expected_type);
+    if isinstance(result, types.UnknownType) and result.is_incomplete {
+        return result;
+    }
     if isinstance(result, types.UnknownType) {
         mod = node_.find_parent_of_type(uni.Module);
-        if mod is None or not mod.is_raised_from_py {
+        is_pattern_wildcard = (
+            isinstance(node_, uni.Name)
+            and node_.value == '_'
+            and node_.find_parent_of_type(uni.MatchPattern) is not None
+        );
+        if (mod is None or not mod.is_raised_from_py) and not is_pattern_wildcard {
             self.emit_diag(W1051, node_);
         }
     }
@@ -3180,28 +3224,22 @@ impl TypeEvaluator.get_type_of_expression(
     return result;
 }
 
-impl TypeEvaluator.pop_symbol_resolution(symbol: uni.Symbol) -> bool {
-    popped_entry = self.symbol_resolution_stack.pop();
-    assert popped_entry.symbol == symbol;
-    return popped_entry.is_result_valid;
+impl TypeEvaluator.pop_symbol_resolution(symbol: uni.Symbol) -> None {
+    popped_symbol = self.symbol_resolution_stack.pop();
+    assert popped_symbol == symbol;
 }
 
 impl TypeEvaluator.push_symbol_resolution(symbol: uni.Symbol) -> bool {
-    idx = self.get_index_of_symbol_resolution(symbol);
-    if idx is not None {
-        for i in range(idx, len(self.symbol_resolution_stack)) {
-            entry_ = self.symbol_resolution_stack[i];
-            entry_.is_result_valid = False;
-        }
+    if self.get_index_of_symbol_resolution(symbol) is not None {
         return False;
     }
-    self.symbol_resolution_stack.append(SymbolResolutionStackEntry(symbol=symbol));
+    self.symbol_resolution_stack.append(symbol);
     return True;
 }
 
 impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None {
     for (i, entry_) in enumerate(self.symbol_resolution_stack) {
-        if entry_.symbol == symbol {
+        if entry_ == symbol {
             return i;
         }
     }
@@ -3421,7 +3459,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.final_class = get_jac_builtin_class("Final");
     self.prefetch.node_class = get_jac_builtin_class("Node");
     self.prefetch.walker_class = get_jac_builtin_class("Walker");
-    self.prefetch.path_class = get_jac_builtin_class("OPath");
+    self.prefetch.path_class = get_jac_builtin_class("GraphQuery");
     self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");
     self.prefetch.html_common_props_class = get_jac_builtin_class("_HtmlCommonProps");
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
@@ -3435,23 +3473,60 @@ impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     }
 
     resolved_path = str(Path(path).resolve());
-
     compiler = self.program._get_compiler();
-    target_hub = compiler._resolve_program(resolved_path, self.program).mod.hub;
+    target_program = compiler._resolve_program(resolved_path, self.program);
+    target_hub = target_program.mod.hub;
+
     if resolved_path in self.program.mod.hub {
-        return self.program.mod.hub[resolved_path];
+        mod = self.program.mod.hub[resolved_path];
+        if mod.parent_scope is None and mod is not self.builtins_module {
+            mod.parent_scope = self.builtins_module;
+        }
+        return mod;
     }
     if resolved_path in target_hub {
-        return target_hub[resolved_path];
+        mod = target_hub[resolved_path];
+        if mod.parent_scope is None and mod is not self.builtins_module {
+            mod.parent_scope = self.builtins_module;
+        }
+        return mod;
     }
-    file_content = read_file_with_encoding(path);
-    uni_source = uni.Source(file_content, path);
-    mod = PyastBuildPass(
-        ir_in=uni.PythonModuleAst(py_ast.parse(file_content), orig_src=uni_source,),
-        prog=self.program,
-    ).ir_out;
-    SymTabBuildPass(ir_in=mod, prog=self.program);
-    target_hub[resolved_path] = mod;
+
+    memoized = _stub_module_memo.get(resolved_path);
+    if memoized is not None and memoized[0] == os.path.getmtime(path) {
+        mod = memoized[1];
+        target_hub[resolved_path] = mod;
+        target_program.hub_cache_stamp(resolved_path);
+        if mod.parent_scope is None and mod is not self.builtins_module {
+            mod.parent_scope = self.builtins_module;
+        }
+        return mod;
+    }
+
+    use_str: (str | None) = None;
+    if path.endswith("builtins.pyi") {
+        file_content = read_file_with_encoding(path);
+        if "def chunks(" not in file_content {
+            _ck_anchor = "    def copy(self) -> list[_T]: ...";
+            if _ck_anchor in file_content {
+                file_content = file_content.replace(
+                    _ck_anchor,
+                    _ck_anchor
+                        + "\n    # Jac extension: chunked iteration views"
+                        + " (`for c in &xs.chunks(n)`).\n"
+                        + "    def chunks(self, n: int, /) -> list[list[_T]]: ...",
+                    1
+                );
+            }
+        }
+        use_str = file_content;
+    }
+
+    mod = self.program.load_dependency_module(path, use_str=use_str);
+    if mod.parent_scope is None and mod is not self.builtins_module {
+        mod.parent_scope = self.builtins_module;
+    }
+    _stub_module_memo[resolved_path] = (os.path.getmtime(path), mod);
     return mod;
 }
 
@@ -3467,6 +3542,9 @@ impl TypeEvaluator.postinit -> None {
     );
     self._JAC_BUILTINS_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "jac_builtins.pyi"
+    );
+    self._BUILTIN_OVERRIDES_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "builtin_overrides.pyi"
     );
     self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "dom_types.pyi"
@@ -3487,6 +3565,7 @@ impl TypeEvaluator.postinit -> None {
     self.prefetch = PrefetchedTypes();
     self._flow_pending_symbols = set();
     self._flow_pending_keys = set();
+    self._modules_in_compile = set();
 
     self.typing_module = self._load_stub_module(self._TYPING_STUB_FILE_PATH);
     self.types_module = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
@@ -3549,6 +3628,17 @@ impl TypeEvaluator.postinit -> None {
         if existing is None or existing.imported {
             self.builtins_module.names_in_scope[name] = sym;
         }
+    }
+
+    builtin_overrides_module = self._load_stub_module(
+        self._BUILTIN_OVERRIDES_STUB_FILE_PATH
+    );
+    overrides_allowed = read_dunder_all(self._BUILTIN_OVERRIDES_STUB_FILE_PATH);
+    for (name, sym) in builtin_overrides_module.names_in_scope.items() {
+        if overrides_allowed is not None and name not in overrides_allowed {
+            continue;
+        }
+        self.builtins_module.names_in_scope[name] = sym;
     }
 
     for (name, sym) in self.dom_types_module.names_in_scope.items() {
@@ -3721,19 +3811,27 @@ impl TypeEvaluator._get_type_from_flow_node(
             continue;
         }
         if is_loop_header {
-            ancestor: uni.UniNode | None = None;
-            if isinstance(flow_node, uni.InForStmt) {
-                ancestor = pred.find_parent_of_type(uni.InForStmt);
-            } elif isinstance(flow_node, uni.IterForStmt) {
-                ancestor = pred.find_parent_of_type(uni.IterForStmt);
-            } elif isinstance(flow_node, uni.ForeverStmt) {
-                ancestor = pred.find_parent_of_type(uni.ForeverStmt);
-            } else {
-                ancestor = pred.find_parent_of_type(uni.WhileStmt);
+            is_back_edge: bool = False;
+            anc: uni.UniNode | None = pred;
+            while anc is not None {
+                if anc is flow_node {
+                    is_back_edge = True;
+                    break;
+                }
+                anc = anc.parent;
             }
-            if ancestor is flow_node {
+            if is_back_edge {
                 continue;
             }
+        }
+
+        if isinstance(
+            pred, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+        )
+            and not (pred.body and flow_node is pred.body[0])
+            and self._loop_body_writes_target(pred, target) {
+            has_unnarrowed_pred = True;
+            continue;
         }
 
         if key not in pred.affected_symbols and not isinstance(pred, uni.CfgExpr) {
@@ -3943,9 +4041,44 @@ impl TypeEvaluator._get_type_from_flow_node(
     } else {
         result = self._union_narrowed_types(incoming_types);
     }
-    self._flow_node_type_cache[cache_key] = result;
+    if not (isinstance(result, types.UnknownType) and result.is_incomplete) {
+        self._flow_node_type_cache[cache_key] = result;
+    }
     visited.discard(flow_node_id);
     return result;
+}
+
+impl TypeEvaluator._loop_body_writes_target(
+    loop_node: uni.UniCFGNode, target: NarrowingTarget
+) -> bool {
+    import from jaclang.compiler.symbol_utils { collect_assignment_target_keys }
+    cache_key = id(loop_node);
+    written = self._loop_written_keys_cache.get(cache_key);
+    if written is None {
+        keys: set[str] = set();
+        for asgn in loop_node.get_all_sub_nodes(uni.Assignment) {
+            for t in asgn.target {
+                keys.update(collect_assignment_target_keys(t));
+            }
+        }
+
+        for_nodes: list[uni.InForStmt] = loop_node.get_all_sub_nodes(uni.InForStmt);
+        if isinstance(loop_node, uni.InForStmt) {
+            for_nodes.append(loop_node);
+        }
+        for f in for_nodes {
+            keys.update(collect_assignment_target_keys(f.target));
+        }
+        for compr in loop_node.get_all_sub_nodes(uni.AssignCompr) {
+            keys.update(collect_assignment_target_keys(compr.target));
+        }
+        written = keys;
+        self._loop_written_keys_cache[cache_key] = written;
+    }
+    if target.key in written {
+        return True;
+    }
+    return bool(target.deps and (target.deps & written));
 }
 
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {

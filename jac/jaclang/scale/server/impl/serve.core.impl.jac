@@ -1,5 +1,15 @@
 import socket;
 
+def _validate_events_url(url: (str | None)) {
+    if url and not str(url).startswith(('postgres://', 'postgresql://')) {
+        raise ValueError(
+            f"Unknown [scale.events].url scheme: {url!r}. The event stream "
+            "rides Postgres; expected a postgresql:// URL (or unset, to fall "
+            "back to [scale.database].url / JAC_DB_URL)."
+        );
+    }
+}
+
 impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int {
     current_port = start_port;
     for _ in range(max_retries) {
@@ -40,24 +50,28 @@ impl _get_network_ips -> list[str] {
     return ips;
 }
 
+impl JacAPIServerCore._make_user_manager -> CoreUserManager {
+    import from jaclang.scale.identity.user_manager { JacScaleUserManager }
+    return JacScaleUserManager(base_path=self.base_path);
+}
+
 impl JacAPIServerCore.postinit -> None {
     super.postinit();
 
     if self.server is None {
-        import from jaclang.scale.jserver.jfast_api { JFastApiServer }
-        self.server = JFastApiServer();
+        self.server = NativeJServer();
     }
     self.server.set_user_manager(self.user_manager);
     self.server.app.add_middleware(
-        CORSMiddleware,
-        allow_origins=['*'],
-        allow_credentials=True,
-        allow_methods=['*'],
-        allow_headers=['*']
+        cors_middleware(
+            allow_origins=['*'],
+            allow_credentials=True,
+            allow_methods=['*'],
+            allow_headers=['*']
+        )
     );
 
     import from jaclang.project.config { JacConfig }
-    import from starlette.middleware.base { BaseHTTPMiddleware }
     import from pathlib { Path }
 
     start_path = Path(self.base_path) if self.base_path else None;
@@ -70,18 +84,11 @@ impl JacAPIServerCore.postinit -> None {
         custom_headers = config.environments["response"]["headers"];
     }
     if custom_headers {
-        class CustomHeadersMiddleware(BaseHTTPMiddleware) {
-            async def dispatch(
-                self: CustomHeadersMiddleware, request: any, call_next: any
-            ) -> any {
-                response = await call_next(request);
-                for (header_name, header_value) in custom_headers.items() {
-                    response.headers[header_name] = header_value;
-                }
-                return response;
-            }
-        }
-        self.server.app.add_middleware(CustomHeadersMiddleware);
+        self.server.app.add_middleware(
+            custom_headers_middleware(
+                [(str(hn), str(hv)) for (hn, hv) in custom_headers.items()]
+            )
+        );
     }
 
     import from jaclang.scale.observability.factory { UtilityFactory }
@@ -91,36 +98,31 @@ impl JacAPIServerCore.postinit -> None {
         metrics_collector = self._metrics;
         metrics_endpoint = metrics_config.get('endpoint', '/metrics');
 
-        class MetricsMiddleware(BaseHTTPMiddleware) {
-            async def dispatch(
-                self: MetricsMiddleware, request: any, call_next: any
-            ) -> any {
-                if request.url.path == metrics_endpoint {
-                    return await call_next(request);
-                }
-
-                metrics_collector.request_started();
-                start_time = time.perf_counter();
-
-                try {
-                    response = await call_next(request);
-                    duration = time.perf_counter() - start_time;
-                    metrics_collector.record_request(
-                        request.method, request.url.path, response.status_code, duration
-                    );
-                    return response;
-                } except Exception as e {
-                    duration = time.perf_counter() - start_time;
-                    metrics_collector.record_request(
-                        request.method, request.url.path, 500, duration
-                    );
-                    raise;
-                } finally {
-                    metrics_collector.request_finished();
-                }
+        async def metrics_middleware(request: any, call_next: any) -> any {
+            next_fn: any = call_next;
+            if request.url.path == metrics_endpoint {
+                return await next_fn(request);
+            }
+            metrics_collector.request_started();
+            start_time = time.perf_counter();
+            try {
+                response = await next_fn(request);
+                duration = time.perf_counter() - start_time;
+                metrics_collector.record_request(
+                    request.method, request.url.path, response.status_code, duration
+                );
+                return response;
+            } except Exception {
+                duration = time.perf_counter() - start_time;
+                metrics_collector.record_request(
+                    request.method, request.url.path, 500, duration
+                );
+                raise;
+            } finally {
+                metrics_collector.request_finished();
             }
         }
-        self.server.app.add_middleware(MetricsMiddleware);
+        self.server.app.add_middleware(metrics_middleware);
 
         metrics_handler = self._create_admin_metrics_handler(
             self._metrics.get_endpoint_handler()
@@ -144,7 +146,6 @@ impl JacAPIServerCore.postinit -> None {
 impl JacAPIServerCore._setup_events -> None {
     import from jaclang.scale.events.publisher { set_broker }
     import from jaclang.scale.events.subscriber { get_subscriptions }
-    import from jaclang.scale._optdeps.optional_deps { is_optional_available }
     import atexit;
 
     cfg = get_scale_config().get_events_config();
@@ -152,31 +153,25 @@ impl JacAPIServerCore._setup_events -> None {
         return;
     }
 
-    db_cfg = get_scale_config().get_database_config();
-    url = cfg.get('url') or db_cfg.get('redis_url');
+    import from jaclang.scale.persistence.pg { scale_db_url }
+    url = cfg.get('url') or scale_db_url();
+    _validate_events_url(url);
 
-    if url and is_optional_available('redis') {
-        import from jaclang.scale.events.streams.redis { RedisEventStream }
+    if url {
+        import from jaclang.scale.events.streams.postgres { PgEventStream }
         broker_cfg = dict(cfg);
         broker_cfg['url'] = url;
-        self._broker = RedisEventStream(config=broker_cfg);
-        broker_kind = "redis";
+        self._broker = PgEventStream(config=broker_cfg);
+        broker_kind = "postgres";
     } else {
         import from jaclang.scale.events.streams.local { LocalEventStream }
         self._broker = LocalEventStream(config=cfg);
         broker_kind = "local";
-        if url is None {
-            logger.warning(
-                "events enabled with no redis url; using LocalEventStream "
-                "(in-memory, single-pod). Set events.url or database.redis_url "
-                "for cross-pod streaming via Redis."
-            );
-        } else {
-            logger.warning(
-                "events enabled and url set, but `redis` extra is not installed; "
-                "using LocalEventStream. Enable the 'data.redis' capability to use Redis."
-            );
-        }
+        logger.warning(
+            "events enabled with no database url; using LocalEventStream "
+            "(in-memory, single-pod). Set events.url or JAC_DB_URL for "
+            "cross-pod streaming via Postgres."
+        );
     }
 
     set_broker(self._broker);
@@ -209,6 +204,9 @@ impl JacAPIServerCore.start(
     on_ready: Callable[..., None] | None = None
 ) -> None {
     self.introspector.load();
+    if self.introspector.has_client_route('/docs') {
+        self.server.app.docs_url = None;
+    }
     self._ensure_sv_siblings();
 
     if not dev and not no_client {
@@ -264,22 +262,19 @@ impl JacAPIServerCore.start(
     if not server_config.get('docs_enabled', True) {
         self.server.app.docs_url = None;
         self.server.app.openapi_url = None;
-        self.server.app.redoc_url = None;
     }
     self._register_endpoints();
     if dev {
-        import from starlette.requests { Request as StarletteRequest }
-        import from starlette.responses { Response as StarletteResponse }
         _self = self;
-        @self.server.app.middleware("http")
-        async def hmr_refresh_middleware(
-            request: StarletteRequest, call_next: any
-        ) -> StarletteResponse {
+
+        async def hmr_refresh_middleware(request: any, call_next: any) -> any {
             if _self._hmr_pending {
                 _self._refresh_dev_endpoints();
             }
-            return await call_next(request);
+            next_fn: any = call_next;
+            return await next_fn(request);
         }
+        self.server.app.add_middleware(hmr_refresh_middleware);
     }
     self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
 
@@ -292,15 +287,13 @@ impl JacAPIServerCore.start(
     self._setup_scheduler();
     self._setup_events();
 
-    if self.server?._prebound_listen_socket is None {
-        original_port = self.port;
-        self.port = _find_available_port(self.port);
-        if self.port != original_port {
-            console.print(
-                f"  Port {original_port} is in use, using port {self.port} instead",
-                style="warning"
-            );
-        }
+    original_port = self.port;
+    self.port = _find_available_port(self.port);
+    if self.port != original_port {
+        console.print(
+            f"  Port {original_port} is in use, using port {self.port} instead",
+            style="warning"
+        );
     }
 
     self._print_startup_banner(dev, no_client);
@@ -337,78 +330,37 @@ impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None 
 }
 
 impl JacAPIServerCore._configure_openapi_security -> None {
-    import from fastapi.openapi.utils { get_openapi }
-    def custom_openapi -> dict[str, any] {
-        if self.server.app.openapi_schema {
-            return self.server.app.openapi_schema;
+    self.server.app.openapi_security = {
+        'BearerAuth': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+            'description': "Enter your JWT token (without 'Bearer ' prefix)"
         }
-        openapi_schema = get_openapi(
-            title=self.server.app.title,
-            version=self.server.app.version,
-            routes=self.server.app.routes
-        );
-        openapi_schema['components'] = openapi_schema.get('components', {});
-        openapi_schema['components']['securitySchemes'] = {
-            'BearerAuth': {
-                'type': 'http',
-                'scheme': 'bearer',
-                'bearerFormat': 'JWT',
-                'description': "Enter your JWT token (without 'Bearer ' prefix)"
+    };
+    for ep in self.server._endpoints {
+        path_parts = ep.path.split('/');
+        if ep.path.startswith('/walker/') and len(path_parts) >= 3 {
+            walker_name = path_parts[2].split('{')[0].rstrip('/');
+            if walker_name in self.get_walkers()
+                and self.introspector.is_auth_required_for_walker(walker_name) {
+                ep.requires_auth = True;
             }
-        };
-        for (path, path_item) in openapi_schema.get('paths', {}).items() {
-            if path.startswith('/walker/') {
-                path_parts = path.split('/');
-                if (len(path_parts) >= 3) {
-                    walker_name = path_parts[2].split('{')[0].rstrip('/');
-                    if (
-                        (walker_name in self.get_walkers())
-                        and self.introspector.is_auth_required_for_walker(walker_name)
-                    ) {
-                        for method in path_item {
-                            if (method in ['get', 'post', 'put', 'patch', 'delete']) {
-                                path_item[method]['security'] = [{'BearerAuth': []}];
-                            }
-                        }
-                    }
-                }
-            } elif path.startswith('/function/') {
-                path_parts = path.split('/');
-                if (len(path_parts) >= 3) {
-                    func_name = path_parts[2];
-                    if (
-                        (func_name in self.get_functions())
-                        and self.introspector.is_auth_required_for_function(func_name)
-                    ) {
-                        for method in path_item {
-                            if (method in ['get', 'post', 'put', 'patch', 'delete']) {
-                                path_item[method]['security'] = [{'BearerAuth': []}];
-                            }
-                        }
-                    }
-                }
-            } elif path in ['/user/username', '/user/password'] {
-                for method in path_item {
-                    if (method in ['put', 'patch']) {
-                        path_item[method]['security'] = [{'BearerAuth': []}];
-                    }
-                }
-            } elif path == '/graph/data' {
-                for method in path_item {
-                    if (method in ['get', 'post', 'put', 'patch', 'delete']) {
-                        path_item[method]['security'] = [{'BearerAuth': []}, {}];
-                    }
-                }
+        } elif ep.path.startswith('/function/') and len(path_parts) >= 3 {
+            func_name = path_parts[2];
+            if func_name in self.get_functions()
+                and self.introspector.is_auth_required_for_function(func_name) {
+                ep.requires_auth = True;
             }
+        } elif ep.path in ['/user/username', '/user/password'] {
+            ep.requires_auth = True;
         }
-        self.server.app.openapi_schema = openapi_schema;
-        return openapi_schema;
     }
-    self.server.app.openapi = custom_openapi;
+    self.server.app.openapi_cache = None;
 }
 
 impl JacAPIServerCore.register_health_endpoint -> None {
-    import from fastapi.responses { JSONResponse }
+    import from jaclang.runtimelib.serving.datatypes { JSONResponse }
     import from jaclang.scale.runtime.lifecycle.drain { is_draining }
 
     async def health_live -> dict {
@@ -497,8 +449,8 @@ impl JacAPIServerCore.register_build_status_endpoint -> None {
 }
 
 impl JacAPIServerCore._register_client_error_endpoint -> None {
-    import from fastapi { Request }
-    import from fastapi.responses { JSONResponse }
+    import from jaclang.runtimelib.serving.datatypes { Request }
+    import from jaclang.runtimelib.serving.datatypes { JSONResponse }
     async def client_error_handler(request: Request) -> JSONResponse {
         try {
             data = await request.json();
@@ -607,6 +559,7 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_root_asset_endpoint();
     self._register_client_error_endpoint();
     self._configure_openapi_security();
+    register_docs_endpoints(self.server.app);
 }
 
 impl JacAPIServerCore._refresh_dev_endpoints -> None {
@@ -614,11 +567,9 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
     self.introspector.load(force_reload=True);
 
     self.server._endpoints[:] = [];
-    self.server.app.routes.clear();
-    self.server.app.setup();
+    self.server.app.clear_routes();
     self._register_endpoints();
-    self.server.execute();
-    self.server.app.openapi_schema = None;
+    self.server.app.openapi_cache = None;
 }
 
 impl JacAPIServerCore._setup_scheduler -> None {
@@ -667,14 +618,13 @@ impl JacAPIServerCore._setup_scheduler -> None {
         }
     }
 
-    self.server.app.router.on_shutdown.append(_shutdown_scheduler);
+    self.server.app.add_shutdown_hook(_shutdown_scheduler);
 }
 
 impl JacAPIServerCore._create_admin_metrics_handler(
     original_handler: Callable[..., any]
 ) -> Callable[..., any] {
-    import from fastapi { Request }
-    import from fastapi.responses { Response, JSONResponse }
+    import from jaclang.runtimelib.serving.datatypes { JSONResponse, Request, Response }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     import dataclasses;
     import base64;

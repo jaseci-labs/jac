@@ -20,11 +20,11 @@ test "identical content packs to identical bytes (content-address stable)" {
     d = tempfile.mkdtemp();
     src = Path(d, "svc.jac");
     src.write_text("with entry { print(\"ok\"); }");
-    first = pack_jab(d, "", binary);
+    first = pack_jab(d, binary);
     # A different mtime on the same content must not change the digest.
     os.utime(str(src), (0, 0));
     try {
-        assert content_address(pack_jab(d, "", binary)) == content_address(first);
+        assert content_address(pack_jab(d, binary)) == content_address(first);
     } finally {
         import shutil;
         shutil.rmtree(d, ignore_errors=True);

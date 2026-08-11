@@ -756,6 +756,11 @@ test "W2075: redundant boolean comparison" {
     assert has_diagnostic_code(prog, "W2075", in_warnings=True);
 }
 
+test "W2075 silent for boolean-literal tests over non-bool operands" {
+    (prog, _) = compile_and_check("semantic_W2075_any_identity_ok.jac");
+    assert not has_diagnostic_code(prog, "W2075", in_warnings=True) , "identity/equality against True over any-typed operands is a discriminator, not redundancy";
+}
+
 # --- Context Validity (INFRA-8) ---
 test "E2083: disengage outside walker" {
     (prog, _) = compile_and_check("context_E2083_disengage_outside_walker.jac");

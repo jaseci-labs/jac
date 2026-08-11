@@ -15,6 +15,44 @@ impl add_unique_text_edit(
     }
 }
 
+impl find_dts_decl_range(dts_path: str, name: str) -> Optional[lspt.Range] {
+    import re;
+    try {
+        with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
+            src = f.read();
+        }
+    } except OSError {
+        return None;
+    }
+    escaped = re.escape(name);
+    if name == 'default' {
+        patterns = [r'(?m)^[ \t]*export[ \t]+(default)\b'];
+    } else {
+        patterns = [
+            r'(?m)^[ \t]*(?:export[ \t]+)?(?:declare[ \t]+)?(?:abstract[ \t]+)?'
+            r'(?:const|let|var|function|class|interface|enum|namespace|type)'
+            r'[ \t]+('
+                + escaped
+                + r')\b',
+            r'export[ \t]+(?:type[ \t]+)?\{[^{}]*?\b(' + escaped + r')\b',
+
+        ];
+    }
+    for pat in patterns {
+        found = re.search(pat, src);
+        if found {
+            start = found.start(1);
+            line = src.count('\n', 0, start);
+            col = start - (src.rfind('\n', 0, start) + 1);
+            return lspt.Range(
+                start=lspt.Position(line=line, character=col),
+                end=lspt.Position(line=line, character=col + len(found.group(1)))
+            );
+        }
+    }
+    return None;
+}
+
 impl kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind {
     return lspt.SymbolKind.Function
         if isinstance(sub_tab, uni.Ability)

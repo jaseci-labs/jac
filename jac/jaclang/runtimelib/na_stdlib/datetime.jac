@@ -19,7 +19,7 @@ obj datetime {
 
     static def fromtimestamp(ts: float, tz: timezone) -> datetime {
         total: int = int(ts) + tz.offset_min * 60;
-        days: int = _fdiv(total, 86400);
+        days: int = total // 86400;
         sod: int = total - days * 86400;
         h: int = sod // 3600;
         mi: int = (sod // 60) % 60;
@@ -52,7 +52,7 @@ obj datetime {
     }
 
     def weekday -> int {
-        return _fmod(self.epoch_day + 3, 7);
+        return (self.epoch_day + 3) % 7;
     }
 
     def isoformat -> str {
@@ -71,20 +71,6 @@ obj datetime {
             + _offset_str(self.tz_offset_min)
         );
     }
-}
-
-
-def _fdiv(a: int, b: int) -> int {
-    q: int = a // b;
-    if a % b != 0 and a < 0 {
-        q = q - 1;
-    }
-    return q;
-}
-
-
-def _fmod(a: int, b: int) -> int {
-    return (a % b + b) % b;
 }
 
 

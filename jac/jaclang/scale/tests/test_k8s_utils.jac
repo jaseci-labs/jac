@@ -183,12 +183,9 @@ test "check pods restarted selector and return values" {
     current_hash = "abc123";
     expected_labels = [
         app_name,
-        f"{app_name}-redis",
-        f"{app_name}-mongodb",
+        f"{app_name}-postgres",
         f"{app_name}-grafana",
-        f"{app_name}-prometheus",
-        f"{app_name}-mongo-express",
-        f"{app_name}-redis-insight"
+        f"{app_name}-prometheus"
     ];
 
     fake_rs = unittest.mock.MagicMock();
@@ -389,13 +386,13 @@ test "check pods restarted still detects a crash-looping StatefulSet pod with no
     crash_container.state.terminated = None;
     crash_container.restart_count = 12;
 
-    pod_mongodb = unittest.mock.MagicMock();
-    pod_mongodb.metadata.labels = {"controller-revision-hash": "mongodb-abc123"};
-    pod_mongodb.status.container_statuses = [crash_container];
-    pod_mongodb.status.init_container_statuses = None;
+    pod_postgres = unittest.mock.MagicMock();
+    pod_postgres.metadata.labels = {"controller-revision-hash": "postgres-abc123"};
+    pod_postgres.status.container_statuses = [crash_container];
+    pod_postgres.status.init_container_statuses = None;
 
     resp = unittest.mock.MagicMock();
-    resp.items = [pod_deployment, pod_mongodb];
+    resp.items = [pod_deployment, pod_postgres];
 
     fake_v1 = unittest.mock.MagicMock();
     fake_v1.list_namespaced_pod.return_value = resp;

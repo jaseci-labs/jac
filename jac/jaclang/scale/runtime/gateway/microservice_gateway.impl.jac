@@ -1,21 +1,26 @@
 import shutil;
 
-import from fastapi { WebSocket }
+import from jaclang.runtimelib.serving.ws { WebSocket }
+import from jaclang.runtimelib.serving.endpoint { WSEndPoint }
 
 
-def _install_ws_catchall(gw: object) {
+def _install_ws_catchall(gw: MicroserviceGateway) {
     import from jaclang.scale.runtime.middleware.ws_forward { websocket_forward }
     import from jaclang.scale.runtime.lifecycle.drain { is_draining }
     import from jaclang.scale.runtime.gateway.service_registry { ServiceStatus }
 
-    @gw.app.websocket("/{ws_path:path}")
-    async def ws_proxy(websocket: WebSocket, ws_path: str) -> None {
+    async def ws_proxy(websocket: WebSocket) -> None {
+        ws_path: str = websocket.path_params.get('ws_path', '');
         if is_draining() {
             await websocket.close(code=1012);
             return;
         }
         full_path: str = "/" + ws_path;
         matched = gw.registry.match_route(full_path);
+        if not matched {
+            await gw.refresh_app_routes();
+            matched = gw.registry.entries.get(gw.route_table.owner(full_path));
+        }
         if not matched or not matched.url {
             await websocket.accept();
             await websocket.close(code=1008);
@@ -26,7 +31,10 @@ def _install_ws_catchall(gw: object) {
             await websocket.close(code=1013);
             return;
         }
-        remaining: str = full_path[len(matched.prefix):] or "/";
+        remaining: str = full_path[len(matched.prefix):]
+            if full_path.startswith(matched.prefix)
+            else full_path;
+        remaining = remaining or "/";
         query: str = str(websocket.url.query);
         target_http: str = f"{matched.url}{remaining}";
         if query {
@@ -37,15 +45,20 @@ def _install_ws_catchall(gw: object) {
         logger.info(f"ws proxy: {full_path} -> {target_http}");
         await websocket_forward(websocket, target_http, req_headers);
     }
+    gw.app.add_ws_endpoint(WSEndPoint(path="/{ws_path:path}", handler=ws_proxy));
+}
+
+impl MicroserviceGateway.service_base_url(service_entry: ServiceEntry) -> str {
+    import jaclang;
+
+    registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
+    return registry.get(service_entry.name, service_entry.url);
 }
 
 impl MicroserviceGateway.resolve_target_url(
     service_entry: ServiceEntry, path: str, query: str
 ) -> str {
-    import jaclang;
-
-    registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
-    base_url: str = registry.get(service_entry.name, service_entry.url);
+    base_url: str = self.service_base_url(service_entry);
 
     remaining: str = path[len(service_entry.prefix):];
     if not remaining {
@@ -368,7 +381,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
     }
 
     fwd_headers = self.build_forward_headers(request);
-    body: bytes = await request.body();
+    body: bytes = request.body;
     query: str = str(request.url.query);
 
     for (svc_name, svc_entry) in self.registry.entries.items() {
@@ -405,7 +418,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
 
 impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
     if path == "/admin" {
-        import from fastapi.responses { RedirectResponse }
+        import from jaclang.runtimelib.serving.datatypes { RedirectResponse }
         return RedirectResponse(url="/admin/", status_code=302);
     }
     if path.startswith("/admin/") {
@@ -415,40 +428,95 @@ impl MicroserviceGateway.handle_admin(path: str) -> Response | None {
     return None;
 }
 
-impl MicroserviceGateway.handle_proxy(request: Request, path: str) -> Response | None {
-    svc = self.registry.match_route(path);
-    if not svc {
-        return None;
-    }
-
+impl MicroserviceGateway.forward_to(
+    request: Request, service_entry: ServiceEntry, target_url: str
+) -> Response | None {
     import from jaclang.scale.runtime.context.errors {
         service_unavailable,
         gateway_timeout
     }
     import from jaclang.scale.runtime.transport.http_forward { stream_forward }
+    import from jaclang.scale.runtime.context.util { http_forward_timeout }
 
-    if svc.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
-        return service_unavailable(svc.name, svc.status.value);
+    if service_entry.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
+        return service_unavailable(service_entry.name, service_entry.status.value);
     }
-
-    target_url = self.resolve_target_url(svc, path, str(request.url.query));
-    logger.info(f"Proxy: {request.method} {path} -> {target_url}");
 
     fwd_headers = self.build_forward_headers(request);
     client_addr: str = getattr(request?.client, "host", "unknown");
     fwd_headers["X-Forwarded-For"] = client_addr;
 
-    body: bytes = await request.body();
+    body: bytes = request.body;
 
-    import from jaclang.scale.runtime.context.util { http_forward_timeout }
-    timeout = http_forward_timeout(svc.name);
+    timeout = http_forward_timeout(service_entry.name);
     fr = await stream_forward(
         request.method, target_url, fwd_headers, body, timeout=int(timeout)
     );
     if fr is None {
-        return gateway_timeout(svc.name);
+        return gateway_timeout(service_entry.name);
     }
     return fr.to_response();
+}
+
+impl MicroserviceGateway.handle_proxy(request: Request, path: str) -> Response | None {
+    svc = self.registry.match_route(path);
+    if not svc {
+        return None;
+    }
+    target_url = self.resolve_target_url(svc, path, str(request.url.query));
+    logger.info(f"Proxy: {request.method} {path} -> {target_url}");
+    return await self.forward_to(request, svc, target_url);
+}
+
+impl MicroserviceGateway.refresh_app_routes -> bool {
+    import time;
+    import from jaclang.scale.runtime.gateway.route_table { learn_service_routes }
+    import from jaclang.scale.runtime.context.util { route_refresh_seconds }
+
+    now: float = time.monotonic();
+    if self._routes_refreshed_at
+        and now - self._routes_refreshed_at < route_refresh_seconds() {
+        return False;
+    }
+
+    self._routes_refreshed_at = now;
+    learned: int = await learn_service_routes(self.registry, self.route_table);
+    if learned {
+        logger.info(
+            f"Learned {len(self.route_table.prefixes())} root route(s) "
+            f"from {learned} service(s)"
+        );
+    }
+    return True;
+}
+
+impl MicroserviceGateway.handle_app_route(
+    request: Request, path: str
+) -> Response | None {
+    svc_name: str = self.route_table.owner(path);
+    if not svc_name {
+        if not await self.refresh_app_routes() {
+            return None;
+        }
+        svc_name = self.route_table.owner(path);
+        if not svc_name {
+            return None;
+        }
+    }
+
+    svc = self.registry.entries.get(svc_name);
+    if svc is None {
+        self.route_table.forget(svc_name);
+        return None;
+    }
+
+    query: str = str(request.url.query);
+    target_url: str = f"{self.service_base_url(svc)}{path}";
+    if query {
+        target_url = f"{target_url}?{query}";
+    }
+    logger.info(f"App route: {request.method} {path} -> {target_url}");
+    return await self.forward_to(request, svc, target_url);
 }
 
 impl MicroserviceGateway.handle_openapi -> Response {
@@ -458,9 +526,9 @@ impl MicroserviceGateway.handle_openapi -> Response {
 }
 
 impl MicroserviceGateway.handle_docs -> Response {
-    import from fastapi.openapi.docs { get_swagger_ui_html }
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json", title="Jac Microservice Gateway - API"
+    import from jaclang.runtimelib.serving.openapi { swagger_ui_html }
+    return HTMLResponse(
+        content=swagger_ui_html("/openapi.json", "Jac Microservice Gateway - API")
     );
 }
 
@@ -484,58 +552,59 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     }
 
     file_path: str = path.lstrip("/");
-    if file_path {
-        mount_matched = False;
-        for mount in self.static_mounts {
-            prefix = str(mount.get("url_prefix", "")).lstrip("/").rstrip("/");
-            if not prefix {
-                continue;
-            }
-            if file_path == prefix {
-                continue;
-            }
-            if file_path.startswith(prefix + "/") {
-                mount_matched = True;
-                sub_path = file_path[len(prefix) + 1:];
-                local_dir = str(mount.get("local_path", ""));
-                mounted_resp = self.serve_extra_static(local_dir, sub_path);
-                if mounted_resp {
-                    return mounted_resp;
-                }
-                break;
-            }
-        }
+    if not file_path {
+        return None;
+    }
 
-        if not mount_matched {
-            static_resp = self.serve_static(file_path);
-            if static_resp {
-                return static_resp;
-            }
+    mount_matched = False;
+    for mount in self.static_mounts {
+        prefix = str(mount.get("url_prefix", "")).lstrip("/").rstrip("/");
+        if not prefix or file_path == prefix {
+            continue;
         }
-
-        if file_path.startswith("static/") {
-            proj_resp = self.serve_project_static(file_path[len("static/"):]);
-            if proj_resp {
-                return proj_resp;
+        if file_path.startswith(prefix + "/") {
+            mount_matched = True;
+            sub_path = file_path[len(prefix) + 1:];
+            local_dir = str(mount.get("local_path", ""));
+            mounted_resp = self.serve_extra_static(local_dir, sub_path);
+            if mounted_resp {
+                return mounted_resp;
             }
-        }
-    } else {
-        index_resp = self.serve_spa_fallback();
-        if index_resp {
-            return index_resp;
+            break;
         }
     }
 
-    accept: str = request.headers.get("accept", "");
-    if "text/html" in accept {
+    if not mount_matched {
+        static_resp = self.serve_static(file_path);
+        if static_resp {
+            return static_resp;
+        }
+    }
+
+    if file_path.startswith("static/") {
+        return self.serve_project_static(file_path[len("static/"):]);
+    }
+    return None;
+}
+
+impl MicroserviceGateway.handle_spa_fallback(
+    request: Request, path: str
+) -> Response | None {
+    if request.method != "GET" {
+        return None;
+    }
+    if not path.lstrip("/") {
+        return self.serve_spa_fallback();
+    }
+    if "text/html" in request.headers.get("accept", "") {
         return self.serve_spa_fallback();
     }
     return None;
 }
 
-impl MicroserviceGateway.setup -> FastAPI {
+impl MicroserviceGateway.setup -> ServingApp {
     import time;
-    self.app = FastAPI(title="Jac Microservice Gateway");
+    self.app = ServingApp(title="Jac Microservice Gateway");
     gw = self;
 
     self.bootstrap_admin_ui();
@@ -583,8 +652,8 @@ impl MicroserviceGateway.setup -> FastAPI {
         sample_ratio=float(trc_cfg.get("sample_ratio", 1.0))
     );
 
-    @self.app.middleware("http")
     async def dispatcher(request: Request, call_next: object) -> Response {
+        next_fn: any = call_next;
         path: str = request.url.path;
 
         trace_id = ensure_trace_id(request.headers.get("X-Trace-Id"));
@@ -636,7 +705,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 svc_label = "__admin__";
                 admin_resp: Response | None = None;
                 if gw.server is not None {
-                    admin_resp = await call_next(request);
+                    admin_resp = await next_fn(request);
                 } else {
                     admin_resp = gw.handle_admin(path);
                 }
@@ -647,7 +716,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 resp = admin_resp;
             } elif decision.kind == ROUTE_IDENTITY {
                 if gw.server is not None {
-                    ident_resp = await call_next(request);
+                    ident_resp = await next_fn(request);
                     if ident_resp.status_code not in (404, 405) {
                         svc_label = "__identity__";
                         resp = ident_resp;
@@ -673,6 +742,20 @@ impl MicroserviceGateway.setup -> FastAPI {
                 if static_resp is not None {
                     svc_label = "__static__";
                     resp = static_resp;
+                }
+            }
+            if resp is None {
+                app_resp = await gw.handle_app_route(request, path);
+                if app_resp is not None {
+                    svc_label = gw.route_table.owner(path) or "__app_route__";
+                    resp = app_resp;
+                }
+            }
+            if resp is None {
+                spa_resp = gw.handle_spa_fallback(request, path);
+                if spa_resp is not None {
+                    svc_label = "__static__";
+                    resp = spa_resp;
                 }
             }
             if resp is None {
@@ -713,7 +796,7 @@ impl MicroserviceGateway.setup -> FastAPI {
         }
     }
 
-    _install_ws_catchall(self);
+    self.app.add_middleware(dispatcher);
 
     import from jaclang.scale.runtime.middleware.middleware {
         Middleware,
@@ -741,17 +824,19 @@ impl MicroserviceGateway.setup -> FastAPI {
 
     cors_cfg = ms_cfg.get("cors", {});
     if cors_cfg.get("allow_origins") {
-        import from fastapi.middleware.cors { CORSMiddleware }
+        import from jaclang.runtimelib.serving.middleware { cors_middleware }
         self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_cfg["allow_origins"],
-            allow_methods=cors_cfg.get("allow_methods", ["*"]),
-            allow_headers=cors_cfg.get("allow_headers", ["*"]),
-            allow_credentials=cors_cfg.get("allow_credentials", False),
-            expose_headers=cors_cfg.get("expose_headers", []),
-            max_age=cors_cfg.get("max_age", 600)
+            cors_middleware(
+                allow_origins=cors_cfg["allow_origins"],
+                allow_methods=cors_cfg.get("allow_methods", ["*"]),
+                allow_headers=cors_cfg.get("allow_headers", ["*"]),
+                allow_credentials=cors_cfg.get("allow_credentials", False),
+                expose_headers=cors_cfg.get("expose_headers", []),
+                max_age=cors_cfg.get("max_age", 600)
+            )
         );
     }
+    _install_ws_catchall(self);
 
     return self.app;
 }
@@ -768,25 +853,22 @@ impl MicroserviceGateway.start -> None {
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
-    config = uvicorn.Config(
-        getattr(self, "app"),
-        host=self.host,
-        port=self.port,
-        timeout_graceful_shutdown=int(drain_timeout)
+    import from jaclang.runtimelib.serving.server { ServingServer }
+    serving = ServingServer(
+        app=self.app, host=self.host, port=self.port, drain_timeout=drain_timeout
     );
-    server = uvicorn.Server(config);
-    install_signal_drain(server, timeout_s=drain_timeout);
-    server.run();
+    install_signal_drain(serving, timeout_s=drain_timeout);
+    serving.run();
 }
 
 
 impl MicroserviceGateway._install_admin_api -> None {
-    import from jaclang.scale.jserver.jfast_api { JFastApiServer }
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.scale.server.native_server { NativeJServer }
+    import from jaclang.scale.identity.user_manager { JacScaleUserManager }
 
-    self.server = JFastApiServer(app=self.app);
+    self.server = NativeJServer(app=self.app, install_drain=False);
 
-    self.user_manager = Jac.get_user_manager(base_path=self.base_path);
+    self.user_manager = JacScaleUserManager(base_path=self.base_path);
     self.server.set_user_manager(self.user_manager);
 
     self.register_admin_endpoints();
@@ -806,8 +888,6 @@ impl MicroserviceGateway._install_admin_api -> None {
     self.register_update_password_endpoint();
     self.register_me_endpoint();
     self.register_update_me_endpoint();
-
-    self.server.create_server();
 
     logger.info(
         "Admin JSON API installed on gateway "

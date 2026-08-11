@@ -1,7 +1,7 @@
 """Focused tests for V-03 endpoints/ingress/PVC pure reshape helpers."""
 
-import from jaclang.scale.jserver.jserver { HTTPMethod }
-import from jaclang.scale.jserver.jfast_api { JFastApiServer }
+import from jaclang.runtimelib.serving.endpoint { HTTPMethod }
+import from jaclang.scale.server.native_server { NativeJServer }
 import from jaclang.scale.admin.network { JacAPIServerNetwork }
 import from jaclang.scale.admin.network {
     summarize_service,
@@ -95,7 +95,7 @@ test "ingress resolves host->service:port + LB; PVC claimants from pods" {
 
 test "register adds GET /admin/ops/network" {
     host = NetworkHost();
-    host.server = JFastApiServer();
+    host.server = NativeJServer();
     host.register_network_endpoints();
     eps = [
         e

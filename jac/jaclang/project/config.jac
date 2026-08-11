@@ -40,13 +40,15 @@ obj RunConfig {
     has session: str = "",
         main: bool = True,
         cache: bool = True,
-        topology_index: bool = True,
         diagnostics: str = "error";
 }
 
 obj NativeBuildConfig {
     has opt_level: int = 2,
-        dump_ir: str = "";
+        dump_ir: str = "",
+        target: str = "",
+        debug: bool = False,
+        rc_debug_codegen: bool = False;
 }
 
 obj GcEnforceConfig {

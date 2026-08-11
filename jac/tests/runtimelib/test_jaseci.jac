@@ -521,7 +521,7 @@ test "walker purger" {
                 "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
                 "E(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\nE(id=0)\nE(id=1)\n"
                 "125\n124"
-            );
+            ) , f"got: {output!r}";
         captured = capture_start();
         execution.enter(
             filename=os.path.join(FIXTURES, "graph_purger.jac"),
@@ -539,7 +539,7 @@ test "walker purger" {
             args=[]
         );
         output = capture_get(captured).strip();
-        assert output == "Root()\n1\n0";
+        assert output == "Root()\n1\n0" , f"got: {output!r}";
     } finally {
         Jac.set_base_path(_orig_base);
         shutil.rmtree(_tmpdir, ignore_errors=True);
@@ -1058,28 +1058,45 @@ test "run persistent reuse" {
     _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
-        # Database path is auto-generated at
-        # _tmpdir/.jac/data/<target file stem>.db
-        db_path = os.path.join(_tmpdir, ".jac", "data", "simple_node_connection.db");
+        # The project's rows live in its database on the shared embedded
+        # server; inspect them out-of-band through a fresh store connection.
+        import from jaclang.runtimelib.pgembed { PgRuntime }
+        import from jaclang.runtimelib.session { project_db_name, shared_pg_data_dir }
+        import from jaclang.runtimelib.store { PgStore }
+
+        def _db_counts -> tuple {
+            rt = PgRuntime(
+                data_dir=shared_pg_data_dir(),
+                database=project_db_name(
+                    _tmpdir, os.path.join(FIXTURES, "simple_node_connection.jac")
+                )
+            );
+            st = PgStore(conninfo=rt.ensure());
+            st.begin(serializable=False);
+            rows = st.rows(
+                "SELECT 1 FROM anchors WHERE id = CAST(:i AS uuid)",
+                {'i': "00000000-0000-0000-0000-000000000000"}
+            );
+            assert rows , "Root should be persisted to database";
+            edges = st.rows(
+                """
+                SELECT COUNT(*) FROM anchors
+                WHERE src = CAST(:i AS uuid) OR dst = CAST(:i AS uuid)
+                """,
+                {'i': "00000000-0000-0000-0000-000000000000"}
+            )[0][0];
+            keys = st.rows("SELECT COUNT(*) FROM anchors", {})[0][0];
+            st.commit();
+            st.close();
+            return (keys, edges);
+        }
 
         ##############################################
         #          FIRST RUN - CREATE NODES          #
         ##############################################
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
 
-        # Check database directly (not via get_object which re-runs code)
-        conn = sqlite3.connect(str(db_path));
-        cursor = conn.execute(
-            "SELECT data FROM anchors WHERE id = ?",
-            ("00000000-0000-0000-0000-000000000000", )
-        );
-        row = cursor.fetchone();
-        assert row is not None , "Root should be persisted to database";
-        root_data = json.loads(row[0]);
-        first_run_edges = len(root_data["edges"]);
-        cursor = conn.execute("SELECT COUNT(*) FROM anchors");
-        first_run_keys = cursor.fetchone()[0];
-        conn.close();
+        (first_run_keys, first_run_edges) = _db_counts();
 
         # Should have root + 2 nodes + 2 edges = 5 keys
         assert first_run_keys > 1 , "First run should persist nodes to database";
@@ -1091,18 +1108,7 @@ test "run persistent reuse" {
         ##############################################
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
 
-        # Check database again
-        conn = sqlite3.connect(str(db_path));
-        cursor = conn.execute(
-            "SELECT data FROM anchors WHERE id = ?",
-            ("00000000-0000-0000-0000-000000000000", )
-        );
-        row = cursor.fetchone();
-        root_data = json.loads(row[0]);
-        second_run_edges = len(root_data["edges"]);
-        cursor = conn.execute("SELECT COUNT(*) FROM anchors");
-        second_run_keys = cursor.fetchone()[0];
-        conn.close();
+        (second_run_keys, second_run_edges) = _db_counts();
 
         # Should have same number of keys (not doubled)
         assert second_run_keys == first_run_keys , (

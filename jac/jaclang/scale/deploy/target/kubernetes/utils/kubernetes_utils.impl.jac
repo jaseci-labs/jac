@@ -678,11 +678,6 @@ impl ensure_namespace_exists(namespace: str) -> None {
         return;
     }
     try {
-        try {
-            config.load_kube_config();
-        } except ConfigException {
-            config.load_incluster_config();
-        }
         core_v1 = client.CoreV1Api();
         existing_ns = core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");

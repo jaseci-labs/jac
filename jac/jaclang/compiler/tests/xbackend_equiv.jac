@@ -124,7 +124,9 @@ def unbox_jacval(jv: JacVal) -> object {
         }
         return ctypes.cast(jv.payload, ctypes.c_char_p).value.decode("utf-8");
     } elif jv.tag == 3 {
-        # List pointer: struct { i64 len, i64 cap, i64* data } (List.i64 layout)
+        # List pointer: {i64 len, i64 cap, T* data}. The RC header's type-tag
+        # string (at payload - 24) names the concrete storage (list_i64,
+        # list_f64, list_jacval, ...) so hetero payloads decode by element tag.
         if jv.payload == 0 {
             return [];
         }
@@ -132,35 +134,65 @@ def unbox_jacval(jv: JacVal) -> object {
             has _fields_: list = [
                 ("len", ctypes.c_int64),
                 ("cap", ctypes.c_int64),
-                ("data", ctypes.POINTER(ctypes.c_int64))
+                ("data", ctypes.c_void_p)
             ];
+        }
+        tname = "";
+        try {
+            _tslot = ctypes.cast(jv.payload - 24, ctypes.POINTER(ctypes.c_void_p));
+            _tp = _tslot.contents.value;
+            if _tp {
+                tname = ctypes.string_at(_tp).decode("utf-8", errors="replace");
+            }
+        } except Exception {
+            tname = "";
         }
         lst_ptr = ctypes.cast(jv.payload, ctypes.POINTER(ListStruct));
         n = lst_ptr.contents.len;
-        return [lst_ptr.contents.data[i] for i in range(n)];
+        data = lst_ptr.contents.data;
+        if (n == 0 or not data) {
+            return [];
+        }
+        if tname == "list_jacval" {
+            jarr = (JacVal * n).from_address(data);
+            return [unbox_jacval(jarr[i]) for i in range(n)];
+        }
+        if tname == "list_f64" {
+            farr = (ctypes.c_double * n).from_address(data);
+            return [float(farr[i]) for i in range(n)];
+        }
+        iarr = (ctypes.c_int64 * n).from_address(data);
+        return [int(iarr[i]) for i in range(n)];
     } elif jv.tag == 4 {
         # Dict pointer: struct { i64 len, i64 cap, i8** keys, JacVal* vals }
         if jv.payload == 0 {
             return {};
         }
+        # Hash-table dict layout (see DictStruct below). `order[0..len]` holds the
+        # keys/vals slot of each entry in insertion order (Python dict semantics),
+        # so iterate order[i] -> keys[slot]/vals[slot].
         class InnerDictStruct(ctypes.Structure) {
             has _fields_: list = [
                 ("len", ctypes.c_int64),
                 ("cap", ctypes.c_int64),
                 ("keys", ctypes.POINTER(ctypes.c_char_p)),
-                ("vals", ctypes.POINTER(JacVal))
+                ("vals", ctypes.POINTER(JacVal)),
+                ("ctrl", ctypes.POINTER(ctypes.c_uint8)),
+                ("used", ctypes.c_int64),
+                ("order", ctypes.POINTER(ctypes.c_int64))
             ];
         }
         dct_ptr = ctypes.cast(jv.payload, ctypes.POINTER(InnerDictStruct));
-        n = dct_ptr.contents.len;
         result: dict = {};
-        for i in range(n) {
-            k = dct_ptr.contents.keys[i].decode("utf-8");
-            result[k] = unbox_jacval(dct_ptr.contents.vals[i]);
+        for i in range(dct_ptr.contents.len) {
+            slot = dct_ptr.contents.order[i];
+            k = dct_ptr.contents.keys[slot].decode("utf-8");
+            result[k] = unbox_jacval(dct_ptr.contents.vals[slot]);
         }
         return result;
     } elif jv.tag == 5 {
-        # Set pointer: struct { i64 len, i64 cap, i64* elems } (Set.i64 layout)
+        # Set pointer: hash-table Set.i64 layout
+        #   {i64 len, i64 cap, i64* keys, i8* ctrl, i64 used, i64* order}
         if jv.payload == 0 {
             return set();
         }
@@ -168,12 +200,15 @@ def unbox_jacval(jv: JacVal) -> object {
             has _fields_: list = [
                 ("len", ctypes.c_int64),
                 ("cap", ctypes.c_int64),
-                ("elems", ctypes.POINTER(ctypes.c_int64))
+                ("keys", ctypes.POINTER(ctypes.c_int64)),
+                ("ctrl", ctypes.POINTER(ctypes.c_uint8)),
+                ("used", ctypes.c_int64),
+                ("order", ctypes.POINTER(ctypes.c_int64))
             ];
         }
         st_ptr = ctypes.cast(jv.payload, ctypes.POINTER(SetStruct));
         n = st_ptr.contents.len;
-        return {st_ptr.contents.elems[i] for i in range(n)};
+        return {st_ptr.contents.keys[st_ptr.contents.order[i]] for i in range(n)};
     } elif jv.tag == 7 {
         # bool: kept distinct from int (tag 0) so it round-trips as True/False
         # rather than 1/0, matching the Python reference exactly.
@@ -183,12 +218,20 @@ def unbox_jacval(jv: JacVal) -> object {
 }
 
 def run_native_function(eng: object, func_name: str, ir: object = None) -> dict {
+    # Open-addressing hash-table dict:
+    #   {i64 len, i64 cap, i8** keys, JacVal* vals, i8* ctrl, i64 used, i64* order}
+    # Live entries sit at sparse hashed slots across `cap`. `order[0..len]` holds
+    # the keys/vals slot index of each entry in INSERTION ORDER (Python dict
+    # semantics), so iterate order[i] -> keys[slot] / vals[slot].
     class DictStruct(ctypes.Structure) {
         has _fields_: list = [
             ("len", ctypes.c_int64),
             ("cap", ctypes.c_int64),
             ("keys", ctypes.POINTER(ctypes.c_char_p)),
-            ("vals", ctypes.POINTER(JacVal))
+            ("vals", ctypes.POINTER(JacVal)),
+            ("ctrl", ctypes.POINTER(ctypes.c_uint8)),
+            ("used", ctypes.c_int64),
+            ("order", ctypes.POINTER(ctypes.c_int64))
         ];
     }
     # Run the module initializer first so module-level and `static has` globals
@@ -230,9 +273,11 @@ def run_native_function(eng: object, func_name: str, ir: object = None) -> dict 
     f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
     dict_ptr = f();
     result: dict = {};
+    # Iterate in insertion order via order[0..len].
     for i in range(dict_ptr.contents.len) {
-        key = dict_ptr.contents.keys[i].decode("utf-8");
-        jv = dict_ptr.contents.vals[i];
+        slot = dict_ptr.contents.order[i];
+        key = dict_ptr.contents.keys[slot].decode("utf-8");
+        jv = dict_ptr.contents.vals[slot];
         result[key] = unbox_jacval(jv);
     }
     return result;

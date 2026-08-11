@@ -9,7 +9,7 @@ import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
-import from jaclang.runtimelib.utils { release_arch, host_arch }
+import from jaclang.runtimelib.utils { release_arch, host_arch, host_os }
 
 glob logger = logging.getLogger(__name__);
 
@@ -281,9 +281,71 @@ def reset_deploy_version_cache {
 }
 
 
-def download_release_binary(channel: str, arch: str, version: str = "") -> bytes {
+def host_seal_platform -> str {
+    plat = host_os();
+    if plat in ("linux", "macos") {
+        return plat;
+    }
+    raise RuntimeError(
+        f"Deploying from a {plat} host is not supported: sealing the app "
+        f"runs a host-runnable jac release binary, and {GH_REPO} publishes "
+        "linux and macos binaries only. Deploy from Linux or macOS (WSL2 "
+        "works on Windows)."
+    );
+}
+
+
+def stable_release_meta(version: str = "") -> dict {
+    api = f"https://api.github.com/repos/{GH_REPO}/releases/tags/v{version}"
+        if version
+        else f"https://api.github.com/repos/{GH_REPO}/releases/latest";
+    try {
+        return dict(json.loads(_http_get_bytes(api).decode("utf-8")));
+    } except HTTPError as e {
+        if e.code == 404 and version {
+            raise RuntimeError(
+                f"Pinned jac-version v{version} is not a published {GH_REPO} "
+                "release; fix [project] jac-version or remove it for latest."
+            );
+        }
+        raise;
+    }
+}
+
+
+def _no_asset_message(meta: dict, suffix: str, version: str) -> str {
+    tag = str(meta.get("tag_name", version or "latest"));
+    return (
+        f"No `jac-*{suffix}` asset on the {GH_REPO} release ({tag}). The node "
+        "arch may be unpublished; set JAC_NODE_ARCH or check "
+        f"https://github.com/{GH_REPO}/releases."
+    );
+}
+
+
+def preflight_pod_runtime(project_dir: str, channel: str, arch: str) -> str {
+    import from jaclang.scale.config.dev_config { Channel }
+    if channel != Channel.STABLE.value {
+        return "";
+    }
+    version = resolve_deploy_version(project_dir, channel);
+    meta = stable_release_meta(version);
+
+    needed = {f"-linux-{arch}", f"-{host_seal_platform()}-{host_arch()}"};
+    for suffix in sorted(needed) {
+        if not _pick_stable_assets(meta, suffix)[0] {
+            raise RuntimeError(_no_asset_message(meta, suffix, version));
+        }
+    }
+    return version;
+}
+
+
+def download_release_binary(
+    channel: str, arch: str, version: str = "", plat: str = "linux"
+) -> bytes {
     repo = GH_REPO;
-    suffix = f"-linux-{arch}";
+    suffix = f"-{plat}-{arch}";
     binary_url = "";
     checksum_url = "";
 
@@ -316,30 +378,10 @@ def download_release_binary(channel: str, arch: str, version: str = "") -> bytes
         binary_url = f"{base}/jac-dev{suffix}";
         checksum_url = f"{binary_url}.sha256";
     } else {
-        if version {
-            api = f"https://api.github.com/repos/{repo}/releases/tags/v{version}";
-        } else {
-            api = f"https://api.github.com/repos/{repo}/releases/latest";
-        }
-        try {
-            meta = json.loads(_http_get_bytes(api).decode("utf-8"));
-        } except HTTPError as e {
-            if e.code == 404 and version {
-                raise RuntimeError(
-                    f"Pinned jac-version v{version} is not a published {repo} "
-                    f"release; fix [project] jac-version or remove it for latest."
-                );
-            }
-            raise;
-        }
+        meta = stable_release_meta(version);
         (binary_url, checksum_url) = _pick_stable_assets(meta, suffix);
         if not binary_url {
-            tag = str(meta.get("tag_name", version or "latest"));
-            raise RuntimeError(
-                f"No `jac-*{suffix}` asset on the {repo} release ({tag}). The node "
-                f"arch may be unpublished; set JAC_NODE_ARCH or check "
-                f"https://github.com/{repo}/releases."
-            );
+            raise RuntimeError(_no_asset_message(meta, suffix, version));
         }
         if version {
             logger.info(f"Shipping the pinned pod runtime jac {version}.");
@@ -350,7 +392,7 @@ def download_release_binary(channel: str, arch: str, version: str = "") -> bytes
         return _fetch_verified_asset(
             binary_url,
             checksum_url,
-            _binary_cache_path(channel, arch),
+            _binary_cache_path(channel, arch, plat, version),
             f"{channel} jac binary"
         );
     } except HTTPError as e {
@@ -498,13 +540,17 @@ def _scale_cache_root -> Path {
 }
 
 
-def _binary_cache_path(channel: str, arch: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-linux-{arch}";
+def _binary_cache_path(
+    channel: str, arch: str, plat: str = "linux", version: str = ""
+) -> Path {
+    tag = f"{channel}-{version}" if version else channel;
+    return _scale_cache_root() / f"jac-{tag}-{plat}-{arch}";
 }
 
 
-def _admin_dist_cache_path(channel: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-admin-dist.tar.gz";
+def _admin_dist_cache_path(channel: str, version: str = "") -> Path {
+    tag = f"{channel}-{version}" if version else channel;
+    return _scale_cache_root() / f"jac-{tag}-admin-dist.tar.gz";
 }
 
 
@@ -588,7 +634,7 @@ def download_admin_dist(channel: str, version: str = "") -> bytes | None {
         return _fetch_verified_asset(
             dist_url,
             checksum_url,
-            _admin_dist_cache_path(channel),
+            _admin_dist_cache_path(channel, version),
             f"{channel} admin console"
         );
     } except Exception as e {

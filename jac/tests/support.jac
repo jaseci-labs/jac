@@ -11,6 +11,8 @@ bundled pytest and an editable `pytest` run (same mechanism as
 `tests.fixtures_list`).
 """
 
+import ctypes;
+
 import from pathlib { Path }
 
 # `tests/`: the directory holding this file.
@@ -30,4 +32,86 @@ def native_force_opts -> any {
     return CompileOptions(
         type_check=False, force_codespace='native', force_target_program=True
     );
+}
+
+
+class JacStrABI(ctypes.Structure) {
+    has _fields_: list[tuple[str, type]] = [
+        ("root", ctypes.c_void_p),
+        ("data", ctypes.c_void_p)
+    ];
+}
+
+def native_str_func(
+    eng: object, name: str, restype: type | None, *argtypes: type
+) -> object {
+    # descriptor-ABI JIT getter shared by native tests: a c_char_p
+    # spelling means a Jac str (the by-value {root, data, len}
+    # descriptor); LLVM decomposes the by-value param into three scalar
+    # slots, so str args pass as (root, data, len) built via
+    # jac_str_new, and str returns read back as a two-pointer pair with
+    # the payload NUL-bounded at data
+    addr = eng.get_function_address(name);
+    assert addr != 0 , f"Function '{name}' not found in JIT engine";
+    real_res = JacStrABI if restype == ctypes.c_char_p else restype;
+    str_slots: list = [];
+    real_args: list = [];
+    for a in argtypes {
+        if a == ctypes.c_char_p {
+            str_slots.append(True);
+            real_args.append(ctypes.c_void_p);
+            real_args.append(ctypes.c_void_p);
+            real_args.append(ctypes.c_int64);
+        } else {
+            str_slots.append(False);
+            real_args.append(a);
+        }
+    }
+    raw = ctypes.CFUNCTYPE(real_res, *real_args)(addr);
+    sn_addr = 0;
+    for sn in ("jac_str_new", "__jac_str_new") {
+        try {
+            sn_addr = eng.get_function_address(sn);
+        } except Exception {
+            sn_addr = 0;
+        }
+        if sn_addr {
+            break;
+        }
+    }
+    mkstr = (
+        ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(sn_addr)
+            if sn_addr
+            else None
+    );
+    def _call(*args: any) -> any {
+        c_args: list = [];
+        _keep: list = [];
+        for (a, is_str) in zip(args, str_slots) {
+            if is_str {
+                b = a.encode("utf-8") if isinstance(a, str) else a;
+                if mkstr is not None {
+                    p = mkstr(b, len(b));
+                } else {
+                    _buf = ctypes.create_string_buffer(b);
+                    _keep.append(_buf);
+                    p = ctypes.cast(_buf, ctypes.c_void_p).value;
+                }
+                c_args.append(p);
+                c_args.append(p);
+                c_args.append(len(b));
+            } else {
+                c_args.append(a);
+            }
+        }
+        r = raw(*c_args);
+        if real_res is JacStrABI {
+            if not r.data {
+                return b"";
+            }
+            return ctypes.string_at(r.data);
+        }
+        return r;
+    }
+    return _call;
 }

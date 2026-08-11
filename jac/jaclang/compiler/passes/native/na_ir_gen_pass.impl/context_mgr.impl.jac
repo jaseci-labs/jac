@@ -101,7 +101,7 @@ impl NaIRGenPass._codegen_with_recursive(
     }
 
     for i in range(1, len(exit_fn.args)) {
-        exit_args.append(null_ptr);
+        exit_args.append(self._coerce_type(null_ptr, exit_fn.args[i].type));
     }
     self.builder.call(exit_fn, exit_args, name="cm.exit");
     self.builder.branch(merge_bb);

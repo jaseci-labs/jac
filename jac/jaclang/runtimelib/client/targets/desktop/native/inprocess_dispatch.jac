@@ -196,9 +196,7 @@ def dispatch(payload_json: str) -> str {
     } except Exception {
         body = {"ok": False, "error": {"message": resp.text}};
     }
-    return json.dumps(
-        {"status": resp.status_code, "ok": resp.is_success, "body": body}
-    );
+    return json.dumps({"status": resp.status_code, "ok": resp.ok, "body": body});
 }
 
 

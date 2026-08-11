@@ -137,6 +137,7 @@ def request_endpoint(
 Returns ``(server_process, port)``. Caller must ``stop_server`` it.
 """
 def start_app_server(project_path: any, extra_args: list | None = None) -> tuple {
+    import tempfile;
     port = get_free_port();
     jac_cmd = get_jac_command();
     env = get_env_with_bun();
@@ -145,9 +146,28 @@ def start_app_server(project_path: any, extra_args: list | None = None) -> tuple
         args = [*args, *extra_args];
     }
     args = [*args, "main.jac", "-p", str(port)];
-    import from subprocess { DEVNULL }
-    server = Popen(args, cwd=project_path, env=env, stdout=DEVNULL, stderr=DEVNULL);
-    wait_for_port("127.0.0.1", port, timeout=120.0);
+    # Capture the server's output so a boot failure surfaces as a diagnosis
+    # instead of an opaque 120s port-wait timeout (a crashed server and a
+    # hung one look identical from wait_for_port).
+    log_f = tempfile.NamedTemporaryFile(
+        mode="w+", suffix=".log", prefix="jac_server_", delete=False
+    );
+    server = Popen(args, cwd=project_path, env=env, stdout=log_f, stderr=log_f);
+    try {
+        wait_for_port("127.0.0.1", port, timeout=120.0);
+    } except TimeoutError as exc {
+        stop_server(server);
+        log_f.flush();
+        tail = "";
+        try {
+            with open(log_f.name, "r", errors="replace") as fh {
+                tail = "".join(fh.readlines()[-60:]);
+            }
+        } except Exception {
+            tail = "(server log unreadable)";
+        }
+        raise TimeoutError(f"{exc}\n---- server output (tail) ----\n{tail}") from exc;
+    }
     return (server, port);
 }
 

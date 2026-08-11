@@ -8,7 +8,7 @@ import from jaclang.scale._optdeps.prometheus {
     CONTENT_TYPE_LATEST,
     CollectorRegistry
 }
-import from fastapi.responses { Response }
+import from jaclang.runtimelib.serving.datatypes { Response }
 
 glob DEFAULT_BUCKETS: tuple = (
          0.005,

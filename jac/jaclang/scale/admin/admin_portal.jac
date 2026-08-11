@@ -1,8 +1,13 @@
 import from pathlib { Path }
-import from fastapi { Request }
-import from fastapi.responses { HTMLResponse, JSONResponse, Response, FileResponse }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes {
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response
+}
 import from jaclang.runtimelib.transport { TransportResponse }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -41,6 +46,10 @@ obj JacAPIServerAdmin {
 
     def admin_delete_user(
         username: str, Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def admin_expire_legacy_credentials(
+        username: str | None = None, Authorization: str | None = None
     ) -> TransportResponse;
 
     def reset_password(

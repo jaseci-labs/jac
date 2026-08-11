@@ -43,5 +43,7 @@ obj ReactBackend(FrameworkBackend) {
     def vite_plugin_lines -> (tuple[str, str] | None);
     def _hook_symbols -> set[str];
     def _get_setter_name(var_name: str) -> str;
+    def _state_cell_name(var_name: str) -> str;
+    def _state_cell_member(var_name: str, member: str) -> es.Expression;
     def _jsx_fragment(children: list[es.Expression]) -> es.CallExpression;
 }

@@ -5,8 +5,6 @@ import from datetime { UTC, datetime, timedelta }
 import from typing { Any }
 import from uuid { uuid4 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.persistence.db { get_mongo_client }
-import from jaclang.scale.persistence.mongo_db { MongoDb }
 
 glob _auth_token_store: (AuthTokenStore | None) = None,
      logger = logging.getLogger(__name__);

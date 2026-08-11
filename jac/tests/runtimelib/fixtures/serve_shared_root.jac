@@ -1,9 +1,9 @@
 """Fixture exercising the shared root surfaced as `root.shared`.
 
 The shared root is the root every unauthenticated request runs on, and the
-runtime floors its access at ConnectPerm: any user can read the public
+runtime floors its access at AccessLevel.CONNECT: any user can read the public
 graph and attach to it with no app-side arming. Nodes a user hangs there
-stay owned by that user - the author opens them (ReadPerm) for everyone.
+stay owned by that user - the author opens them (AccessLevel.READ) for everyone.
 """
 
 node Note {
@@ -28,7 +28,7 @@ walker:pub leave_note {
         fresh = root.shared +>:HasNote():+> Note(text=self.text);
         if fresh {
             # The note is owned by its author; open it to all readers.
-            grant(fresh, level=ReadPerm);
+            grant(fresh, level=AccessLevel.READ);
         }
         report jid(root.shared);
     }
@@ -46,7 +46,7 @@ walker:pub read_notes {
 # an explicit non-NO_ACCESS level, the runtime's CONNECT floor respects it.
 walker:pub make_readonly {
     can run with Root entry {
-        grant(root.shared, level=ReadPerm);
+        grant(root.shared, level=AccessLevel.READ);
         report "locked";
     }
 }
@@ -57,7 +57,7 @@ node Bin {
     has tag: str = "";
 
     def __jac_access__ -> any {
-        return "WRITE";
+        return AccessLevel.WRITE;
     }
 }
 

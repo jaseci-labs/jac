@@ -88,11 +88,9 @@ def:pub create_order(user_id: str) -> dict {
 ### 2. Configure jac.toml
 
 ```toml
-[scale.microservices]
-enabled = true
-
 # The service cut: each key runs as its own service; the value is its
-# gateway URL prefix ("" derives /<module-slug>)
+# gateway URL prefix ("" derives /<module-slug>). Declaring routes IS what
+# turns microservice mode on; remove the table to run single-process.
 [scale.microservices.routes]
 products_app = "/api/products"
 cart_app = "/api/cart"
@@ -308,7 +306,8 @@ Same code, different deployer:
 
 ## Kubernetes Deployment
 
-`jac start <file>.jac --scale` with `[scale.microservices].enabled = true`
+`jac start <file>.jac --scale` with services declared in
+`[scale.microservices.routes]`
 auto-routes to the microservice K8s target: one image built and pushed,
 then per-service `Deployment` + `ClusterIP Service` + autoscaler (HPA or KEDA `ScaledObject`) + PDB applied
 for every `[scale.microservices.routes]` entry plus the gateway.
@@ -331,6 +330,7 @@ code changes from local mode.
 | `rpc_timeout` | `10.0` | service RPC httpx timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
 | `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `50` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
+| `hpa.behavior` | `{}` | Raw HPA `behavior` fragment (`scaleUp`/`scaleDown`) deep-merged over the generated scale-rate defaults - same merge rules as `deployment_overlay`. Applies to both engines; for `keda` it only governs scaling while replicas are above zero - the drop to zero is still controlled by `autoscaler_cooldown` (the ScaledObject's `cooldownPeriod`). See example below. |
 | `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[scale.kubernetes.extra_triggers]]`. |
 | `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 

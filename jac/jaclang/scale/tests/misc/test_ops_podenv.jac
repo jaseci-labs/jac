@@ -4,8 +4,8 @@ Redaction is the safety-critical bit: only allowlisted keys show their
 value; secretRef values are never resolved.
 """
 
-import from jaclang.scale.jserver.jserver { HTTPMethod }
-import from jaclang.scale.jserver.jfast_api { JFastApiServer }
+import from jaclang.runtimelib.serving.endpoint { HTTPMethod }
+import from jaclang.scale.server.native_server { NativeJServer }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
 import from jaclang.scale.admin.podenv { redact_entry, pod_env_entries }
 
@@ -25,9 +25,9 @@ test "redaction: allowlisted shown, others masked, secrets never resolved" {
     assert allowed["shown"] == True and allowed["value"] == "http://x:4318";
 
     masked = redact_entry(
-        {"name": "MONGODB_URI", "value": "mongodb://u:p@h", "source": ""}, prefixes
+        {"name": "DATABASE_URI", "value": "postgresql://u:p@h", "source": ""}, prefixes
     );
-    assert masked["shown"] == False and "mongodb://" not in masked["value"];
+    assert masked["shown"] == False and "postgresql://" not in masked["value"];
 
     secret = redact_entry(
         {"name": "JAC_SECRET", "value": "", "source": "secret"}, prefixes
@@ -45,7 +45,7 @@ test "pod_env_entries reads literals + tags valueFrom source" {
                         "env": [
                             {"name": "JAC_BUILD_SHA", "value": "abc"},
                             {
-                                "name": "MONGODB_URI",
+                                "name": "DATABASE_URI",
                                 "value_from": {
                                     "secret_key_ref": {"name": "s", "key": "uri"}
                                 }
@@ -62,7 +62,7 @@ test "pod_env_entries reads literals + tags valueFrom source" {
 
 test "register adds GET /admin/ops/podenv" {
     host = PodEnvHost();
-    host.server = JFastApiServer();
+    host.server = NativeJServer();
     host.register_podenv_endpoints();
     eps = [
         e

@@ -345,3 +345,97 @@ def dict_na() -> dict[str, any] {
         "pi_after_len": pi_after_len
     };
 }
+
+def dict_ctor_py() -> dict {
+    base: dict = {"a": 1, "b": 2};
+    copy1: dict = dict(base);
+    copy1["c"] = 3;
+    pairs: list = [["x", 10], ["y", 20]];
+    from_pairs: dict = dict(pairs);
+    empty: dict = dict();
+    return {
+        "orig_len": len(base),
+        "copy_len": len(copy1),
+        "copy_c": copy1["c"],
+        "orig_has_c": "c" in base,
+        "fp_x": from_pairs["x"],
+        "fp_y": from_pairs["y"],
+        "empty_len": len(empty)
+    };
+}
+
+def dict_ctor_cl() -> dict {
+    base: dict = {"a": 1, "b": 2};
+    copy1: dict = dict(base);
+    copy1["c"] = 3;
+    pairs: list = [["x", 10], ["y", 20]];
+    from_pairs: dict = dict(pairs);
+    empty: dict = dict();
+    return {
+        "orig_len": len(base),
+        "copy_len": len(copy1),
+        "copy_c": copy1["c"],
+        "orig_has_c": "c" in base,
+        "fp_x": from_pairs["x"],
+        "fp_y": from_pairs["y"],
+        "empty_len": len(empty)
+    };
+}
+
+def dict_ctor_na() -> dict {
+    return {};
+}
+
+def dict_iter_py() -> dict {
+    d: dict = {"a": 1, "b": 2, "c": 3};
+    seen: list = [];
+    total: int = 0;
+    for k in d {
+        seen.append(k);
+        total += d[k];
+    }
+    dyn: any = {"x": 7, "y": 8};
+    dyn_seen: list = [];
+    for k2 in dyn {
+        dyn_seen.append(k2);
+    }
+    as_list: list = list(d);
+    as_sorted: list = sorted(d);
+    return {
+        "seen": seen,
+        "total": total,
+        "dyn_seen": dyn_seen,
+        "as_list": as_list,
+        "as_sorted": as_sorted,
+        "n": len(seen)
+    };
+}
+
+def dict_iter_cl() -> dict {
+    d: dict = {"a": 1, "b": 2, "c": 3};
+    seen: list = [];
+    total: int = 0;
+    for k in d {
+        seen.append(k);
+        total += d[k];
+    }
+    dyn: any = {"x": 7, "y": 8};
+    dyn_seen: list = [];
+    for k2 in dyn {
+        dyn_seen.append(k2);
+    }
+    as_list: list = list(d);
+    as_sorted: list = sorted(d);
+    return {
+        "seen": seen,
+        "total": total,
+        "dyn_seen": dyn_seen,
+        "as_list": as_list,
+        "as_sorted": as_sorted,
+        "n": len(seen)
+    };
+}
+
+def dict_iter_na() -> dict {
+    return {};
+}

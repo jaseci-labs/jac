@@ -7,7 +7,8 @@ import from jaclang.scale.injector.bundle {
     content_address,
     fat_bundle_enabled,
     fat_bundle_setting,
-    pack_jab
+    pack_jab,
+    _pod_wheel_platform
 }
 
 
@@ -44,6 +45,13 @@ def _member(raw: bytes, name: str) -> bytes {
 }
 
 
+test "a deploy pins vendored wheels to a manylinux tag for the node arch" {
+    assert _pod_wheel_platform("") == "";
+    assert _pod_wheel_platform("aarch64") == "manylinux_2_36_aarch64";
+    assert _pod_wheel_platform("x86_64") == "manylinux_2_36_x86_64";
+}
+
+
 test "fat bundles default ON; [scale] fat_bundle=false opts out" {
     assert fat_bundle_setting(_app("[project]\nname = \"a\"\n")) == (True, False);
     assert fat_bundle_setting(
@@ -68,7 +76,7 @@ test "fat_bundle=false ships no _vendor tree" {
         return;
     }
     toml = "[project]\nname = \"mini\"\n\n[scale]\nfat_bundle = false\n";
-    names = _names(pack_jab(_app(toml), "", pod));
+    names = _names(pack_jab(_app(toml), pod));
     assert not any([n.startswith("_vendor") for n in names]) , names;
 }
 
@@ -78,7 +86,7 @@ test "default-on: a bare project ships a _vendor manifest for its closure" {
     if pod is None {
         return;
     }
-    names = _names(pack_jab(_app("[project]\nname = \"mini\"\n"), "", pod));
+    names = _names(pack_jab(_app("[project]\nname = \"mini\"\n"), pod));
     assert "_vendor/VENDOR.json" in names , names;
 }
 
@@ -89,7 +97,7 @@ test "fat_bundle=true stages _vendor/wheels resolved by the seal binary" {
         return;
     }
     toml = "[project]\nname = \"mini\"\n\n[scale]\nfat_bundle = true\n";
-    raw = pack_jab(_app(toml), "", pod);
+    raw = pack_jab(_app(toml), pod);
     names = _names(raw);
     assert "_vendor/VENDOR.json" in names , names;
     wheels = [
@@ -119,9 +127,9 @@ test "the bundle digest is deterministic and moves when a wheel changes" {
         "python-dotenv = \"{}\"\n\n[scale]\nfat_bundle = true\n"
     );
     app = _app(pinned.format("==1.2.1"));
-    first = content_address(pack_jab(app, "", pod));
-    again = content_address(pack_jab(app, "", pod));
+    first = content_address(pack_jab(app, pod));
+    again = content_address(pack_jab(app, pod));
     assert first == again;
-    bumped = content_address(pack_jab(_app(pinned.format("==1.2.2")), "", pod));
+    bumped = content_address(pack_jab(_app(pinned.format("==1.2.2")), pod));
     assert bumped != first;
 }

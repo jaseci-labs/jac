@@ -77,11 +77,25 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
         return fn_type(raw);
     }
 
-    if lt == "i8*" {
-        if (raw is None or raw == 0) {
-            return "";
+    if lt.startswith("opt.") {
+        if (raw is None or int(raw.tag) == 0) {
+            return None;
         }
-        return ctypes.string_at(raw).decode("utf-8", errors="replace");
+        return marshal_value(
+            raw.payload,
+            lt[4:],
+            self.ctypes_classes,
+            self.enum_maps,
+            {},
+            None,
+            None,
+            self.layout,
+            self._view_memo
+        );
+    }
+
+    if lt == "i8*" {
+        return decode_native_str(raw, layout_str_header_stamped(self.layout));
     }
 
     if (lt in ("i64", "i32") and finfo.enum_type) {
@@ -95,14 +109,18 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
 
     if (lt.startswith("Dict.") and lt.endswith("*")) {
         if (raw and raw != 0) {
-            return _marshal_dict(int(raw), lt[5:-1]);
+            return _marshal_dict(
+                int(raw), lt[5:-1], elem_keys=finfo.elem_keys, layout=self.layout
+            );
         }
         return {};
     }
 
     if (lt.startswith("Set.") and lt.endswith("*")) {
         if (raw and raw != 0) {
-            return _marshal_set(int(raw), lt[4:-1]);
+            return _marshal_set(
+                int(raw), lt[4:-1], elem_keys=finfo.elem_keys, layout=self.layout
+            );
         }
         return set();
     }
@@ -129,12 +147,17 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
     if (lt.startswith("List.") and lt.endswith("*")) {
         if (raw and raw != 0) {
             elem_key = lt[5:-1];
+            (struct_hint, elem_hint) = elem_hints_for(
+                elem_key, finfo.elem_keys, self.ctypes_classes
+            );
             return get_list_view(
                 raw,
                 elem_key,
                 self.ctypes_classes,
                 self.enum_maps,
                 self.layout,
+                struct_hint=struct_hint,
+                elem_hint=elem_hint,
                 view_memo=self._view_memo
             );
         }
@@ -184,6 +207,8 @@ impl NativeListView.postinit -> None {
             self._arr = (ctypes.c_int64 * self._count).from_address(nl.data);
         } elif self.elem_key == "f64" {
             self._arr = (ctypes.c_double * self._count).from_address(nl.data);
+        } elif self.elem_key == "jacval" {
+            self._arr = (NativeJacVal * self._count).from_address(nl.data);
         } else {
             self._arr = (ctypes.c_void_p * self._count).from_address(nl.data);
         }
@@ -211,6 +236,11 @@ impl NativeListView.__getitem__(index: any) -> any {
     if self.elem_key == "f64" {
         return float(raw);
     }
+    if self.elem_key == "jacval" {
+        return decode_jacval(
+            int(raw.tag), int(raw.payload), layout_str_header_stamped(self.layout)
+        );
+    }
 
     if (self._ct_cls and raw and raw != 0) {
         return get_struct_view(
@@ -225,10 +255,7 @@ impl NativeListView.__getitem__(index: any) -> any {
     }
 
     if (self.elem_hint == "str" and self.elem_key == "ptr") {
-        if (raw is None or raw == 0) {
-            return "";
-        }
-        return ctypes.string_at(raw).decode("utf-8", errors="replace");
+        return decode_native_str(raw, layout_str_header_stamped(self.layout));
     }
     return raw;
 }

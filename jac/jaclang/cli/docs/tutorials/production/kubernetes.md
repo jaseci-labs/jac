@@ -169,15 +169,15 @@ ingress_node_port = 30080
 
 | Key | Description | Default |
 |----------|-------------|---------|
-| `mongodb_enabled` | Enable MongoDB deployment | `true` |
-| `redis_enabled` | Enable Redis deployment | `true` |
+| `[scale.kubernetes]` `postgres_enabled` | Provision the Postgres StatefulSet | `true` |
+| `[scale.database]` `postgres_image` | Image used for the StatefulSet | `postgres:18` |
+| `[scale.database]` `postgres_storage` | Postgres data PVC size | `2Gi` |
 
-To use external databases instead of the auto-provisioned ones, set them under `[scale.database]` (the `MONGODB_URI` / `REDIS_URL` environment variables override these at runtime):
+To use an external database instead of the auto-provisioned one, set the URL under `[scale.database]` (the `JAC_DB_URL` environment variable overrides it at runtime, and disables in-cluster provisioning):
 
 ```toml
 [scale.database]
-mongodb_uri = "mongodb://user:pass@host:27017"
-redis_url = "redis://host:6379"
+url = "postgresql://user:pass@host:5432/jac"
 ```
 
 ### Authentication

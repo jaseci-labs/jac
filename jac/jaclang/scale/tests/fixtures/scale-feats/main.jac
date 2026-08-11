@@ -5,7 +5,7 @@ Demonstrates jac-scale specific features that require FastAPI:
 - UploadFile handling
 """
 
-import from fastapi { UploadFile }
+import from jaclang.runtimelib.serving.datatypes { UploadFile }
 import from uuid { uuid4 }
 
 # Initialize storage with custom base path

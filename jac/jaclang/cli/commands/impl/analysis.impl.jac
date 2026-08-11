@@ -159,7 +159,7 @@ impl check(
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
         } finally {
-            prog.release_compile_closure();
+            prog.release_compile_closure(keep_stubs=True);
         }
     }
     prog = JacProgram();

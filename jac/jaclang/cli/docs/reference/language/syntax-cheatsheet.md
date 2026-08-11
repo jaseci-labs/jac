@@ -540,14 +540,26 @@ with entry {
     mul = lambda (x: int, y: int) -> int { x * y; };
     print(mul(3, 4));
 
-    # Multi-statement lambda: needs an explicit return
-    # (without one, the lambda returns None)
+    # Multi-statement lambda: explicit `return` or a semicolon-less tail expression
+    # (without either, the lambda returns None)
     classify = lambda (score: int) -> str {
         if score >= 90 { return "A"; }
         elif score >= 80 { return "B"; }
         else { return "F"; }
     };
     print(classify(85));
+
+    # Tail-expression return in a multi-statement callback position
+    scaled = list(
+        map(
+            lambda (x: int) -> int {
+                y = x + 1;
+                y * 2
+            },
+            [1, 2, 3]
+        )
+    );
+    print(scaled);  # [2, 4, 6]
 
     # No-arg lambda
     get_42 = lambda { 42; };

@@ -1,17 +1,18 @@
 import os;
 import from pathlib { Path }
-import from jaclang.scale.deploy.target.kubernetes.microservice.manifest_builder {
-    MicroserviceManifestBuilder,
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
+    ManifestBuilder,
     merge_manifest_overlay
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 import from jaclang.scale.config.config_loader { JacScaleConfig }
+import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler, AutoscalerSpec }
 
 
-def _builder(services: dict) -> MicroserviceManifestBuilder {
-    return MicroserviceManifestBuilder(
+def _builder(services: dict) -> ManifestBuilder {
+    return ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
         microservices_config={"services": services},
         dry_run=True
@@ -45,6 +46,87 @@ test "named lists merge by name, appending unmatched entries" {
 test "unnamed lists are replaced wholesale" {
     merged = merge_manifest_overlay({"args": ["a", "b"]}, {"args": ["c"]});
     assert merged["args"] == ["c"];
+}
+
+test "build_behavior with no overlay returns the hardcoded default" {
+    spec = AutoscalerSpec(scale_target_name="x", namespace="ns");
+    result = Autoscaler._build_behavior(spec);
+    assert result["scaleDown"]["policies"]
+        == [{"type": "Percent", "value": 50, "periodSeconds": 60}];
+    assert result["scaleUp"]["policies"]
+        == [{"type": "Pods", "value": 2, "periodSeconds": 60}];
+}
+
+test "build_behavior with an empty overlay dict is a no-op" {
+    default = Autoscaler._build_behavior(
+        AutoscalerSpec(scale_target_name="x", namespace="ns")
+    );
+    overlaid = Autoscaler._build_behavior(
+        AutoscalerSpec(scale_target_name="x", namespace="ns", behavior_overlay={})
+    );
+    assert overlaid == default;
+}
+
+test "build_behavior overlay replaces scaleDown policy shape, leaves scaleUp default" {
+    spec = AutoscalerSpec(
+        scale_target_name="x",
+        namespace="ns",
+        behavior_overlay={
+            "scaleDown": {
+                "stabilizationWindowSeconds": 600,
+                "selectPolicy": "Min",
+                "policies": [{"type": "Pods", "value": 2, "periodSeconds": 300}]
+            }
+        }
+    );
+    result = Autoscaler._build_behavior(spec);
+    assert result["scaleDown"]["stabilizationWindowSeconds"] == 600;
+    assert result["scaleDown"]["selectPolicy"] == "Min";
+    assert result["scaleDown"]["policies"]
+        == [{"type": "Pods", "value": 2, "periodSeconds": 300}];
+    assert result["scaleUp"]["stabilizationWindowSeconds"] == 60;
+    assert result["scaleUp"]["policies"]
+        == [{"type": "Pods", "value": 2, "periodSeconds": 60}];
+}
+
+test "build_behavior overlay on scaleUp does not disturb the scaleDown default" {
+    spec = AutoscalerSpec(
+        scale_target_name="x",
+        namespace="ns",
+        behavior_overlay={
+            "scaleUp": {
+                "policies": [{"type": "Percent", "value": 100, "periodSeconds": 15}]
+            }
+        }
+    );
+    result = Autoscaler._build_behavior(spec);
+    assert result["scaleUp"]["policies"]
+        == [{"type": "Percent", "value": 100, "periodSeconds": 15}];
+    assert result["scaleUp"]["stabilizationWindowSeconds"] == 60;
+    assert result["scaleDown"]["policies"]
+        == [{"type": "Percent", "value": 50, "periodSeconds": 60}];
+}
+
+test "build_behavior overlay policies list replaces wholesale, not merged by item" {
+    # Policy dicts carry no `name` key, so merge_manifest_overlay treats
+    # `policies` as a plain list and replaces it wholesale rather than
+    # merging entries by position or identity.
+    spec = AutoscalerSpec(
+        scale_target_name="x",
+        namespace="ns",
+        behavior_overlay={
+            "scaleDown": {
+                "policies": [
+                    {"type": "Pods", "value": 1, "periodSeconds": 120},
+                    {"type": "Percent", "value": 10, "periodSeconds": 120}
+                ]
+            }
+        }
+    );
+    result = Autoscaler._build_behavior(spec);
+    assert len(result["scaleDown"]["policies"]) == 2;
+    assert result["scaleDown"]["policies"][0]["value"] == 1;
+    assert result["scaleDown"]["policies"][1]["value"] == 10;
 }
 
 test "deployment manifest applies the service overlay on the first build" {
@@ -230,18 +312,17 @@ test "embedder-supplied config gets schema defaults (client entry included)" {
 }
 
 
-test "gateway entrypoint builds the client leniently and does not swallow failure" {
+test "gateway entrypoint serves the shipped bundle and never rebuilds it" {
     b = _builder({"svc_a": {}});
     entry = b._pod_entrypoint();
     script = "".join(entry["args"]);
-    assert 'jac build "main.jac" --client web' in script;
-    assert "|| echo" not in script;
-    assert "client build failed; / will 404" not in script;
+    assert "jac build" not in script;
+    assert "exec jac scale gateway" in script;
 }
 
 
 test "embedder overrides survive normalization" {
-    b = MicroserviceManifestBuilder(
+    b = ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="t", namespace="t-ns"),
         microservices_config={
             "gateway_port": 9001,

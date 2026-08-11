@@ -30,6 +30,16 @@ def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple {
 }
 
 
+"""Point subprocesses at the branch runtime, not a stale snapshot."""
+def _seed_dev_source(tmpdir: str, name: str) {
+    import jaclang;
+    src = str(Path(str(jaclang.__file__)).parent.parent);
+    (Path(tmpdir) / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\n\n[dev]\njaclang_source = "{src}"\n'
+    );
+}
+
+
 # --- Alias: class rename ----------------------------------------------------
 glob V1_RENAME = "node LegacyPerson {\n"
      "    has name: str;\n"
@@ -66,6 +76,7 @@ test "archetype_alias resolves a renamed class back to the new class" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
+        _seed_dev_source(tmpdir, "layer3");
         app.write_text(V1_RENAME);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
         assert rc == 0 , f"v1 create failed: {err}";
@@ -91,6 +102,7 @@ test "rename without alias quarantines the stored anchors (control)" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
+        _seed_dev_source(tmpdir, "layer3");
         app.write_text(V1_RENAME);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
         assert rc == 0 , f"v1 create failed: {err}";
@@ -100,21 +112,40 @@ test "rename without alias quarantines the stored anchors (control)" {
         # matters is that the data IS quarantined, not silently deleted).
         app.write_text(V2_RENAME_WITHOUT_ALIAS);
         _jac_enter(tmpdir, str(app), "dump");
-        # Without alias: old data must NOT silently disappear; it lands
-        # in the quarantine table instead. This is the core invariant.
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        total_q = 0;
-        for db in sorted(data_dir.glob("*.db")) {
-            conn = sqlite3.connect(str(db));
-            total_q += conn.execute(
-                "SELECT count(*) FROM anchors_quarantine"
-            ).fetchone()[0];
-            conn.close();
-        }
+        # Without alias: old data must NOT silently disappear; the failed
+        # loads are filed in the store's quarantine table (the rows
+        # themselves also survive untouched). This is the core invariant.
+        import hashlib;
+        import from jaclang.runtimelib.pgembed { PgRuntime }
+        import from jaclang.runtimelib.session { shared_pg_data_dir }
+        import from jaclang.runtimelib.store { PgStore }
+        digest = hashlib.sha1(os.path.abspath(tmpdir).encode('utf-8')).hexdigest()[:8];
+        admin_rt = PgRuntime(data_dir=shared_pg_data_dir(), database='postgres');
+        admin = PgStore(conninfo=admin_rt.ensure());
+        admin.begin(serializable=False);
+        names = [
+            str(r[0])
+            for r in admin.rows(
+                "SELECT datname FROM pg_database WHERE datname LIKE :p",
+                {'p': f"%_{digest}"}
+            )
+        ];
+        admin.commit();
+        admin.close();
+        assert names , f"no project database found for digest {digest}";
+        rt = PgRuntime(data_dir=shared_pg_data_dir(), database=names[0]);
+        st = PgStore(conninfo=rt.ensure());
+        total_q = st.rows('SELECT count(*) FROM quarantine', {})[0][0];
+        surviving = st.rows(
+            "SELECT count(*) FROM anchors WHERE arch_type = 'LegacyPerson'", {}
+        )[0][0];
+        st.close();
         assert total_q >= 2 , (
             "expected at least 2 quarantined anchors (alice, bob) after "
             f"un-aliased rename; got {total_q}"
+        );
+        assert surviving == 2 , (
+            f"the stored rows themselves must survive, got {surviving}"
         );
     }
 }
@@ -149,6 +180,7 @@ test "field type int->str coerces on load without quarantine" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
+        _seed_dev_source(tmpdir, "layer3");
         app.write_text(V1_TYPED);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
         assert rc == 0 , f"v1 create failed: {err}";

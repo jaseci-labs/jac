@@ -48,7 +48,10 @@ import from jaclang.jac0core.passes {
 import from jaclang.jac0core.program { JacProgram }
 
 def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    return [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, PlacementApplyPass];
+    return validate_schedule(
+        [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, PlacementApplyPass],
+        origin='symtab-ir schedule'
+    );
 }
 
 glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', default=False),
@@ -57,36 +60,122 @@ glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', default=False),
          'jac_typecheck_sched_loading', default=False
      );
 
-def expand_with_requirements(
-    passes: list[type[Transform[uni.Module, uni.Module]]],
-    providers: dict[str, type[Transform[uni.Module, uni.Module]]]
-) -> list[type[Transform[uni.Module, uni.Module]]] {
-    out: list[type[Transform[uni.Module, uni.Module]]] = [];
+def pass_requires(p: type[Transform[uni.Module, uni.Module]]) -> tuple {
+    return getattr(p, 'REQUIRES', ()) or ();
+}
+
+def pass_provides(p: type[Transform[uni.Module, uni.Module]]) -> tuple {
+    return getattr(p, 'PROVIDES', ()) or ();
+}
+
+def providers_for(
+    passes: list[type[Transform[uni.Module, uni.Module]]]
+) -> dict[str, type[Transform[uni.Module, uni.Module]]] {
+    out: dict[str, type[Transform[uni.Module, uni.Module]]] = {};
     for p in passes {
-        for tag in (getattr(p, 'REQUIRES', ()) or ()) {
-            prov = providers.get(tag);
-            if prov is not None and prov not in out and prov not in passes {
-                out.append(prov);
-            }
-        }
-        if p not in out {
-            out.append(p);
+        for tag in pass_provides(p) {
+            out[tag] = p;
         }
     }
     return out;
 }
 
+def validate_schedule(
+    passes: list[type[Transform[uni.Module, uni.Module]]],
+    preprovided: (set[str] | None) = None,
+    origin: str = 'schedule'
+) -> list[type[Transform[uni.Module, uni.Module]]] {
+    provided: set[str] = set(preprovided) if preprovided is not None else set();
+    for p in passes {
+        for tag in pass_requires(p) {
+            if tag not in provided {
+                raise RuntimeError(
+                    f"scheduling error: pass {p.__name__} requires analysis "
+                    f"'{tag}' which is neither provided by an earlier pass in "
+                    f"the {origin} nor already available -- the schedule was "
+                    f"constructed missing a declared dependency."
+                );
+            }
+        }
+        for tag in pass_provides(p) {
+            provided.add(tag);
+        }
+    }
+    return passes;
+}
+
+def _schedule_into(
+    p: type[Transform[uni.Module, uni.Module]],
+    provider_map: dict[str, type[Transform[uni.Module, uni.Module]]],
+    acc_out: list[type[Transform[uni.Module, uni.Module]]],
+    acc_provided: set[str],
+    chain: list[type[Transform[uni.Module, uni.Module]]]
+) -> (str | None) {
+    if p in acc_out or p in chain {
+        return None;
+    }
+    for tag in pass_requires(p) {
+        if tag in acc_provided {
+            continue;
+        }
+        prov = provider_map.get(tag);
+        if prov is None {
+            return tag;
+        }
+        missing = _schedule_into(
+            prov, provider_map, acc_out, acc_provided, chain + [p]
+        );
+        if missing is not None or tag not in acc_provided {
+            return tag;
+        }
+    }
+    acc_out.append(p);
+    for tag in pass_provides(p) {
+        acc_provided.add(tag);
+    }
+    return None;
+}
+
+def resolve_schedule(
+    goals: list[type[Transform[uni.Module, uni.Module]]],
+    providers: (dict[str, type[Transform[uni.Module, uni.Module]]] | None) = None,
+    preprovided: (set[str] | None) = None,
+    drop_unsatisfiable: bool = False,
+    origin: str = 'schedule'
+) -> list[type[Transform[uni.Module, uni.Module]]] {
+    provider_map = dict(providers) if providers is not None else {};
+    provided: set[str] = set(preprovided) if preprovided is not None else set();
+    out: list[type[Transform[uni.Module, uni.Module]]] = [];
+    for g in goals {
+        trial_out = list(out);
+        trial_provided = set(provided);
+        missing = _schedule_into(g, provider_map, trial_out, trial_provided, []);
+        if missing is None {
+            out = trial_out;
+            provided = trial_provided;
+        } elif not drop_unsatisfiable {
+            raise RuntimeError(
+                f"scheduling error: pass {g.__name__} requires analysis "
+                f"'{missing}' which has no available provider while "
+                f"constructing the {origin} -- the schedule cannot satisfy a "
+                f"declared dependency."
+            );
+        }
+    }
+    return validate_schedule(out, preprovided=preprovided, origin=origin);
+}
+
 def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    return [BoundaryAnalysisPass, EndpointEffectPass];
+    return validate_schedule(
+        [BoundaryAnalysisPass, EndpointEffectPass], origin='boundary-analysis schedule'
+    );
 }
 
 def get_bootstrap_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
-    return [
-        ASTValidationPass,
-        SymTabBuildPass,
-        DeclImplMatchPass,
-        SemanticAnalysisPass
-    ];
+    return validate_schedule(
+        [ASTValidationPass, SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass],
+        origin='bootstrap-ir schedule'
+    );
 }
 
 def get_ir_gen_sched(
@@ -106,6 +195,7 @@ def get_ir_gen_sched(
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
         import jaclang.compiler.type_registry;
+        import jaclang.compiler.intrinsic_registry;
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [
             ASTValidationPass,
@@ -121,7 +211,7 @@ def get_ir_gen_sched(
         }
         passes.append(JsxIntrinsicGuardPass);
         passes.append(PlacementApplyPass);
-        return passes;
+        return validate_schedule(passes, origin='ir-gen schedule');
     } except ImportError {
         if is_internal {
             return get_bootstrap_ir_sched();
@@ -139,7 +229,7 @@ def get_cfg_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     _tok = _ir_sched_loading.set(True);
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
-        return [CFGBuildPass];
+        return validate_schedule([CFGBuildPass], origin='cfg schedule');
     } except ImportError {
         return [];
     } finally {
@@ -147,17 +237,21 @@ def get_cfg_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
-def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+def get_type_check_sched(
+    provided: (set[str] | None) = None
+) -> list[type[Transform[uni.Module, uni.Module]]] {
     if _typecheck_sched_loading.get() {
         return [];
     }
     _tok = _typecheck_sched_loading.set(True);
+    goals: list[type[Transform[uni.Module, uni.Module]]] = [];
     try {
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
         import from jaclang.compiler.passes.main.access_check_pass { AccessCheckPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
+            ClientCapabilityCheckPass,
             NativeCapabilityCheckPass,
             PortabilityWarnPass
         }
@@ -165,11 +259,12 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             OwnershipCheckPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
-        return [
+        goals = [
             StaticAnalysisPass,
             AccessCheckPass,
             OwnershipCheckPass,
             NativeCapabilityCheckPass,
+            ClientCapabilityCheckPass,
             PortabilityWarnPass,
             JacLintCheckPass
         ];
@@ -178,6 +273,13 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     } finally {
         _typecheck_sched_loading.reset(_tok);
     }
+    return resolve_schedule(
+        goals,
+        providers=providers_for(get_cfg_sched() + get_inference_sched()),
+        preprovided=provided,
+        drop_unsatisfiable=True,
+        origin='type-check schedule'
+    );
 }
 
 def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
@@ -201,7 +303,7 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         if not os.path.exists(stub_path) {
             return [];
         }
-        return [TypeInferencePass];
+        return validate_schedule([TypeInferencePass], origin='inference schedule');
     } except ImportError {
         return [];
     } finally {
@@ -209,8 +311,45 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+glob _native_env_memo: dict[str, tuple[bool, str]] = {};
+
+def native_pipeline_available -> tuple[bool, str] {
+    cached = _native_env_memo.get('verdict');
+    if cached is not None {
+        return cached;
+    }
+    if (
+        _typecheck_sched_loading.get()
+        or _ir_sched_loading.get()
+        or _codegen_sched_loading.get()
+    ) {
+        return (True, '');
+    }
+    reason = '';
+    if not get_inference_sched() {
+        reason = (
+            'native pipeline unavailable: type inference '
+            + '(vendor/typeshed stubs) is not available in this environment'
+        );
+    }
+    if not reason {
+        try {
+            import from jaclang.compiler.passes.native.llvm.binding.ffi { _find_shim }
+            _find_shim();
+        } except Exception {
+            reason = (
+                'native pipeline unavailable: LLVM shim (libjacllvm) '
+                + 'not found in this environment'
+            );
+        }
+    }
+    verdict = (not reason, reason);
+    _native_env_memo['verdict'] = verdict;
+    return verdict;
+}
+
 def get_py_code_gen(
-    native: bool = True
+    native: bool = True, provided: (set[str] | None) = None
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
     if _codegen_sched_loading.get() or _ir_sched_loading.get() {
         return [PyastGenPass, PyBytecodeGenPass];
@@ -229,9 +368,27 @@ def get_py_code_gen(
                 NaIRGenPass,
                 NativeCompilePass
             }
+            native_goals: list[type[Transform[uni.Module, uni.Module]]] = [
+                NaIRGenPass,
+                NativeCompilePass
+            ];
+            native_providers = providers_for([RcFactsPass]);
+            cross: set[str] = set(provided) if provided is not None else set();
+            if provided is None {
+                for g in native_goals {
+                    for tag in pass_requires(g) {
+                        if tag not in native_providers {
+                            cross.add(tag);
+                        }
+                    }
+                }
+            }
             passes.extend(
-                expand_with_requirements(
-                    [NaIRGenPass, NativeCompilePass], {'rc-facts': RcFactsPass}
+                resolve_schedule(
+                    native_goals,
+                    providers=native_providers,
+                    preprovided=cross,
+                    origin='native codegen schedule'
                 )
             );
         }
@@ -252,15 +409,19 @@ def get_format_sched(
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
     if auto_lint {
-        return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
-    } else {
-        return [CommentAttachPass, DocIRGenPass, JacFormatPass];
+        return validate_schedule(
+            [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass],
+            origin='format schedule'
+        );
     }
+    return validate_schedule(
+        [CommentAttachPass, DocIRGenPass, JacFormatPass], origin='format schedule'
+    );
 }
 
 def get_lint_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
-    return [JacLintCheckPass];
+    return validate_schedule([JacLintCheckPass], origin='lint schedule');
 }
 
 def patch_co_filenames_bytes(raw_bc: bytes, find: str, replace: str) -> bytes {

@@ -1,5 +1,6 @@
 import os;
 import platform;
+import shutil;
 import sys;
 
 import from jaclang.cli.console { console }
@@ -57,12 +58,29 @@ def _ensure_executable(path: str) {
 }
 
 
+impl _find_path_bun -> str | None {
+    on_path = shutil.which("bun.exe" if platform.system() == "Windows" else "bun");
+    if on_path {
+        return on_path;
+    }
+    home = os.environ.get("HOME", "");
+    if home {
+        cand = os.path.join(home, ".bun", "bin", "bun");
+        if os.path.isfile(cand) {
+            return cand;
+        }
+    }
+    return None;
+}
+
+
 impl bun_unavailable_message -> str {
     return (
-        "bun is not available in this jac runtime. Shipped binaries bundle it "
-        "(a missing copy indicates a broken build); for an editable/source "
-        "checkout run `zig build fetch-bun`, or set JAC_BUN to an absolute bun "
-        "path."
+        "bun is not available in this jac runtime (no bundled copy, nothing "
+        "on PATH, no ~/.bun install). Shipped binaries bundle it (a missing "
+        "copy indicates a broken build); for an editable/source checkout run "
+        "`zig build fetch-bun`, install bun, or set JAC_BUN to an absolute "
+        "bun path."
     );
 }
 
@@ -72,6 +90,11 @@ impl get_bun -> str | None {
     if bundled is not None {
         _ensure_executable(bundled);
         return bundled;
+    }
+
+    system_bun = _find_path_bun();
+    if system_bun is not None {
+        return system_bun;
     }
 
     console.error(bun_unavailable_message(), emoji=False);

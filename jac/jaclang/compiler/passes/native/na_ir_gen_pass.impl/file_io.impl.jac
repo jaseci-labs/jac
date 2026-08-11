@@ -67,7 +67,6 @@ impl NaIRGenPass._emit_file_like_helpers(
     fflush_fn = self._get_or_declare_extern("fflush", i32, [i8p]);
     ftell_fn = self._get_or_declare_extern("ftell", i64, [i8p]);
     fseek_fn = self._get_or_declare_extern("fseek", i32, [i8p, i64, i32]);
-    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     rc_alloc_fn = self.rc_alloc_fn;
     bt = self._get_bytes_struct_type();
@@ -100,15 +99,17 @@ impl NaIRGenPass._emit_file_like_helpers(
         b.ret(bv);
     } else {
         buf_size = b.add(file_size, ir.Constant(i64, 1), name="buf.size");
-        buffer = b.call(rc_alloc_fn, [buf_size], name="read.buf");
-        self._emit_set_type_tag(b, buffer, "str");
+        buffer = self._str_alloc(b, buf_size, name="read.buf");
         bytes_read = b.call(
             fread_fn,
             [buffer, ir.Constant(i64, 1), file_size, handle],
             name="bytes.read"
         );
-        null_pos = b.gep(buffer, [bytes_read], name="null.pos");
-        b.store(ir.Constant(i8, 0), null_pos);
+        read_end = b.gep(buffer, [bytes_read], name="read.end");
+        b.store(ir.Constant(ir.IntType(8), 0), read_end);
+        self._stamp_str_len(
+            b, buffer, self._call_str_len_raw(b, buffer, name="read.len")
+        );
         b.ret(buffer);
     }
 
@@ -130,7 +131,7 @@ impl NaIRGenPass._emit_file_like_helpers(
         arr_ptr = b.gep(data_arg, [z32, one32], name="wr.data.arr");
         src_ptr = b.bitcast(arr_ptr, i8p, name="wr.data");
     } else {
-        data_len = b.call(strlen_fn, [data_arg], name="data.len");
+        data_len = self._call_str_len(b, data_arg, name="data.len");
         src_ptr = data_arg;
     }
     written = b.call(
@@ -200,16 +201,15 @@ impl NaIRGenPass._emit_file_like_helpers(
         is_eof = b.icmp_signed("==", result, ir.Constant(i8p, None), name="is.eof");
         b.cbranch(is_eof, eof_bb, ok_bb);
         b.position_at_end(eof_bb);
-        empty = b.call(rc_alloc_fn, [ir.Constant(i64, 1)], name="empty.str");
-        self._emit_set_type_tag(b, empty, "str");
-        b.store(ir.Constant(i8, 0), empty);
+        empty = self._str_alloc(b, ir.Constant(i64, 1), name="empty.str");
+        self._str_finish(b, empty, ir.Constant(i64, 0));
         b.ret(empty);
         b.position_at_end(ok_bb);
-        slen = b.call(strlen_fn, [buf_ptr], name="line.len");
+        slen = self._call_str_len_raw(b, buf_ptr, name="line.len");
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="alloc.size");
-        line_str = b.call(rc_alloc_fn, [alloc_size], name="line.str");
-        self._emit_set_type_tag(b, line_str, "str");
-        b.call(memcpy_fn, [line_str, buf_ptr, alloc_size]);
+        line_str = self._str_alloc(b, alloc_size, name="line.str");
+        b.call(memcpy_fn, [line_str, buf_ptr, slen]);
+        self._str_finish(b, line_str, slen);
         b.ret(line_str);
     }
 
@@ -292,7 +292,7 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     if not params {
         return None;
     }
-    path_val = self._codegen_expr(params[0]);
+    path_val = self._str_norm(self._codegen_expr(params[0]));
     if path_val is None {
         return None;
     }
@@ -313,7 +313,7 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
 
     mode_val: (ir.Value | None) = None;
     if len(params) >= 2 {
-        mode_val = self._codegen_expr(params[1]);
+        mode_val = self._str_norm(self._codegen_expr(params[1]));
         if mode_val is not None and mode_val.type != i8p {
             return None;
         }

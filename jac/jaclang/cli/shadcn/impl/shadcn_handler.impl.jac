@@ -101,6 +101,10 @@ impl _resolve_peer_deps(requested: list, registry_data: dict, existing: set) -> 
     queue: list = list(requested);
     while queue {
         name = queue.pop(0);
+
+        if name not in components and name.replace("_", "-") in components {
+            name = name.replace("_", "-");
+        }
         if name in visited or name in existing {
             continue;
         }
@@ -345,6 +349,7 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
     all_npm_deps: dict = {};
     shared_deps = registry_data.get("sharedDeps", {});
     all_npm_deps.update(shared_deps);
+    dep_versions = registry_data.get("depVersions", {});
 
     added: list = [];
     for name in to_install {
@@ -369,7 +374,7 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
 
         for dep in comp_data.get("npmDeps", []) {
             if dep not in all_npm_deps {
-                all_npm_deps[dep] = "*";
+                all_npm_deps[dep] = dep_versions.get(dep, "*");
             }
         }
 

@@ -722,7 +722,7 @@ impl Parser.parse_expression(allow_cast: bool = True) -> Expr {
         return self.parse_lambda_expr();
     }
 
-    expr = self.parse_cast() if allow_cast else self.parse_concurrent_expr();
+    expr = self.parse_concurrent_expr(allow_cast);
     if self._check_js_arrow_fault() {
         expr = self._recover_js_arrow_fault(expr);
     }
@@ -799,62 +799,72 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
     return left;
 }
 
-impl Parser.parse_concurrent_expr -> Expr {
+impl Parser.parse_concurrent_expr(allow_cast: bool = True) -> Expr {
     if self.check_any(TokenKind.KW_FLOW, TokenKind.KW_WAIT) {
         tok = self.expect_any(TokenKind.KW_FLOW, TokenKind.KW_WAIT);
-        target = self.parse_walrus_assign();
+        target = self.parse_walrus_assign(allow_cast);
         uni_tok = self.make_uni_token(tok);
         return ConcurrentExpr(tok=uni_tok, target=target, kid=[uni_tok, target]);
     }
-    return self.parse_walrus_assign();
+    return self.parse_walrus_assign(allow_cast);
 }
 
-impl Parser.parse_walrus_assign -> Expr {
-    expr = self.parse_by_expr();
+impl Parser.parse_walrus_assign(allow_cast: bool = True) -> Expr {
+    expr = self.parse_by_expr(allow_cast);
     if self.check(TokenKind.WALRUS_EQ) {
         walrus_tok = self.expect(TokenKind.WALRUS_EQ);
-        value = self.parse_by_expr();
+        value = self.parse_by_expr(allow_cast);
         op = self.make_uni_token(walrus_tok);
         return BinaryExpr(left=expr, op=op, right=value, kid=[expr, op, value]);
     }
     return expr;
 }
 
-impl Parser.parse_by_expr -> Expr {
-    left = self.parse_pipe();
+impl Parser.parse_by_expr(allow_cast: bool = True) -> Expr {
+    left = self.parse_pipe(allow_cast);
     if self.match_tok(TokenKind.KW_BY) {
         by_uni = self.make_uni_token(self.previous());
-        right = self.parse_by_expr();
+        right = self.parse_by_expr(allow_cast);
         return BinaryExpr(left=left, op=by_uni, right=right, kid=[left, by_uni, right]);
     }
     return left;
 }
 
-impl Parser.parse_cast -> Expr {
-    expr = self.parse_concurrent_expr();
-    while self.match_tok(TokenKind.KW_AS) {
+impl Parser.parse_cast(allow_cast: bool = True) -> Expr {
+    expr = self.parse_bitwise_or();
+    while allow_cast and self.match_tok(TokenKind.KW_AS) {
         as_uni = self.make_uni_token(self.previous());
-        cast_type = self.parse_pipe();
+        cast_type = self.parse_cast_type();
         expr = CastExpr(value=expr, cast_type=cast_type, kid=[expr, as_uni, cast_type]);
     }
     return expr;
 }
 
-impl Parser.parse_pipe -> Expr {
-    left = self.parse_pipe_back();
-    while self.match_tok(TokenKind.PIPE_FWD) {
+impl Parser.parse_cast_type -> Expr {
+    left = self.parse_atomic_chain();
+    while self.match_tok(TokenKind.BW_OR) {
         op = self.make_uni_token(self.previous());
-        right = self.parse_pipe_back();
+        right = self.parse_atomic_chain();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
     return left;
 }
 
-impl Parser.parse_pipe_back -> Expr {
-    left = self.parse_logical_or();
+impl Parser.parse_pipe(allow_cast: bool = True) -> Expr {
+    left = self.parse_pipe_back(allow_cast);
+    while self.match_tok(TokenKind.PIPE_FWD) {
+        op = self.make_uni_token(self.previous());
+        right = self.parse_pipe_back(allow_cast);
+        left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
+    }
+    return left;
+}
+
+impl Parser.parse_pipe_back(allow_cast: bool = True) -> Expr {
+    left = self.parse_logical_or(allow_cast);
     while self.match_tok(TokenKind.PIPE_BKWD) {
         op = self.make_uni_token(self.previous());
-        right = self.parse_logical_or();
+        right = self.parse_logical_or(allow_cast);
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
     return left;
@@ -901,13 +911,13 @@ impl Parser.parse_shift -> Expr {
     return left;
 }
 
-impl Parser.parse_logical_or -> Expr {
-    left = self.parse_logical_and();
+impl Parser.parse_logical_or(allow_cast: bool = True) -> Expr {
+    left = self.parse_logical_and(allow_cast);
     while self.match_tok(TokenKind.KW_OR) {
         values: list[Expr] = [left];
         op = self.make_uni_token(self.previous());
         while True {
-            values.append(self.parse_logical_and());
+            values.append(self.parse_logical_and(allow_cast));
             if not self.match_tok(TokenKind.KW_OR) {
                 break;
             }
@@ -925,13 +935,13 @@ impl Parser.parse_logical_or -> Expr {
     return left;
 }
 
-impl Parser.parse_logical_and -> Expr {
-    left = self.parse_logical_not();
+impl Parser.parse_logical_and(allow_cast: bool = True) -> Expr {
+    left = self.parse_logical_not(allow_cast);
     while self.match_tok(TokenKind.KW_AND) {
         values: list[Expr] = [left];
         op = self.make_uni_token(self.previous());
         while True {
-            values.append(self.parse_logical_not());
+            values.append(self.parse_logical_not(allow_cast));
             if not self.match_tok(TokenKind.KW_AND) {
                 break;
             }
@@ -949,17 +959,17 @@ impl Parser.parse_logical_and -> Expr {
     return left;
 }
 
-impl Parser.parse_logical_not -> Expr {
+impl Parser.parse_logical_not(allow_cast: bool = True) -> Expr {
     if self.match_tok(TokenKind.KW_NOT) {
         op = self.make_uni_token(self.previous());
-        operand = self.parse_logical_not();
+        operand = self.parse_logical_not(allow_cast);
         return UnaryExpr(operand=operand, op=op, kid=[op, operand]);
     }
-    return self.parse_compare();
+    return self.parse_compare(allow_cast);
 }
 
-impl Parser.parse_compare -> Expr {
-    left = self.parse_bitwise_or();
+impl Parser.parse_compare(allow_cast: bool = True) -> Expr {
+    left = self.parse_cast(allow_cast);
     if self.check_any(
         TokenKind.EE,
         TokenKind.NE,
@@ -1002,7 +1012,7 @@ impl Parser.parse_compare -> Expr {
             op = self.make_uni_token(op_tok);
             ops.append(op);
             kid.append(op);
-            right = self.parse_bitwise_or();
+            right = self.parse_cast(allow_cast);
             rights.append(right);
             kid.append(right);
         }
@@ -1298,6 +1308,16 @@ impl Parser.parse_ref -> Expr {
             op=own_op,
             ownership=OwnershipKind.OWN,
             kid=[own_op, own_target]
+        );
+    }
+    if self.match_tok(TokenKind.KW_IMM) {
+        imm_op = self.make_uni_token(self.previous());
+        imm_target = self.parse_await_expr();
+        return UnaryExpr(
+            operand=imm_target,
+            op=imm_op,
+            ownership=OwnershipKind.IMM,
+            kid=[imm_op, imm_target]
         );
     }
     if self.match_tok(TokenKind.BW_AND) {
@@ -3695,6 +3715,9 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
         return self.parse_for_stmt();
     }
+    if self.check(TokenKind.KW_FLOW) and self.check_peek(TokenKind.KW_FOR) {
+        return self.parse_for_stmt();
+    }
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_WITH) {
         return self.parse_with_stmt();
     }
@@ -3985,15 +4008,22 @@ impl Parser.parse_forever_stmt -> ForeverStmt {
 impl Parser.parse_for_stmt{
     is_async = False;
     async_uni = None;
+    flow_uni = None;
     if self.match_tok(TokenKind.KW_ASYNC) {
         is_async = True;
         async_uni = self.make_uni_token(self.previous());
+    }
+    if self.match_tok(TokenKind.KW_FLOW) {
+        flow_uni = self.make_uni_token(self.previous());
     }
     for_uni = self.consume_uni(TokenKind.KW_FOR);
 
     target = self.parse_atomic_chain();
 
     if self.check(TokenKind.EQ) {
+        if flow_uni is not None {
+            self.error("`flow for` requires the `for <x> in <collection>` form");
+        }
         eq_tok = self.expect(TokenKind.EQ);
         eq_uni = self.make_uni_token(eq_tok);
         start_val = self.parse_expression();
@@ -4079,6 +4109,9 @@ impl Parser.parse_for_stmt{
     kid: list = [];
     if is_async {
         kid.append(async_uni);
+    }
+    if flow_uni is not None {
+        kid.append(flow_uni);
     }
     kid.extend([for_uni, target, in_uni, iter_expr]);
     kid.append(lb_uni);
@@ -6366,8 +6399,11 @@ impl Parser.parse_global_var_assignment -> Assignment {
     type_tag: SubTag | None = None;
     if self.match_tok(TokenKind.COLON) {
         gv_colon_uni = self.make_uni_token(self.previous());
+        gv_own_kid: list = [gv_colon_uni];
+        gv_own_kind = self.parse_ownership_prefix(gv_own_kid);
         tp = self.parse_pipe();
-        type_tag = SubTag(tag=tp, kid=[gv_colon_uni, tp]);
+        gv_own_kid.append(tp);
+        type_tag = SubTag(tag=tp, ownership=gv_own_kind, kid=gv_own_kid);
     }
     value = None;
     targets: list = [name];

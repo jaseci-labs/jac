@@ -136,6 +136,13 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
             continue;
         }
 
+        if (
+            name_nd.value == '_'
+            and name_nd.find_parent_of_type(uni.MatchPattern) is not None
+        ) {
+            continue;
+        }
+
         if name_nd.find_parent_of_type(uni.ModulePath) is not None {
             continue;
         }
@@ -331,7 +338,13 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
             if op.value in ("==", "!=", "is", "is not") {
                 right = nd.rights[i] if i < len(nd.rights) else None;
                 if isinstance(right, uni.Bool) {
-                    self.emit(W2075, node_override=nd);
+                    import from jaclang.compiler.type_system.type_utils {
+                        expr_primitive_name
+                    }
+                    left = nd.left if i == 0 else nd.rights[i - 1];
+                    if expr_primitive_name(self.prog, left) == "bool" {
+                        self.emit(W2075, node_override=nd);
+                    }
                 }
             }
         }

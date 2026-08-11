@@ -40,6 +40,97 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
     return functype(addr);
 }
 
+class JacStrABI(ctypes.Structure) {
+    # Register view of a by-value JacStr {root, data, len} return. LLVM
+    # lowers the aggregate return into scalar return registers; a 16-byte
+    # two-pointer struct restype makes libffi read the first two of them,
+    # which yields root and data. len rides in the third return register,
+    # unreachable through libffi, but Jac string payloads are always
+    # NUL-terminated at len so a bounded read is recovered from data.
+    has _fields_: list[tuple[str, type]] = [
+        ("root", ctypes.c_void_p),
+        ("data", ctypes.c_void_p)
+    ];
+}
+
+def get_sfunc(eng: object, name: str, restype: type | None, *argtypes: type) -> object {
+    # descriptor-ABI variant of get_func: a c_char_p spelling here means a
+    # Jac `str` (the by-value {root, data, len} descriptor at the native
+    # ABI). LLVM decomposes a by-value descriptor param into three scalar
+    # slots, so each str param is declared as (root, data, len) scalars and
+    # bytes/str args build their backing storage via jac_str_new; str
+    # returns come back as the full bytes of the result string, so existing
+    # comparisons keep working.
+    addr = eng.get_function_address(name);
+    assert addr != 0 , f"Function '{name}' not found in JIT engine";
+    real_res = JacStrABI if restype == ctypes.c_char_p else restype;
+    str_slots: list = [];
+    real_args: list = [];
+    for a in argtypes {
+        if a == ctypes.c_char_p {
+            str_slots.append(True);
+            real_args.append(ctypes.c_void_p);
+            real_args.append(ctypes.c_void_p);
+            real_args.append(ctypes.c_int64);
+        } else {
+            str_slots.append(False);
+            real_args.append(a);
+        }
+    }
+    raw = ctypes.CFUNCTYPE(real_res, *real_args)(addr);
+    sn_addr = 0;
+    for sn in ("jac_str_new", "__jac_str_new") {
+        try {
+            sn_addr = eng.get_function_address(sn);
+        } except Exception {
+            sn_addr = 0;
+        }
+        if sn_addr {
+            break;
+        }
+    }
+    mkstr = (
+        ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(sn_addr)
+            if sn_addr
+            else None
+    );
+    keepalive: list = [];
+    def _call(*args: any) -> any {
+        c_args: list = [];
+        for (a, is_str) in zip(args, str_slots) {
+            if is_str {
+                b = a.encode("utf-8") if isinstance(a, str) else a;
+                if mkstr is not None {
+                    p = mkstr(b, len(b));
+                } else {
+                    # modules that never build strings natively (this one only
+                    # measures len over a str param) emit no jac_str_new; back
+                    # the descriptor with a NUL-terminated ctypes buffer, the
+                    # same fallback native_marshal uses. Safe: rc ops verify
+                    # the header magic and skip foreign allocations.
+                    buf = ctypes.create_string_buffer(b);
+                    keepalive.append(buf);
+                    p = ctypes.cast(buf, ctypes.c_void_p).value;
+                }
+                c_args.append(p);
+                c_args.append(p);
+                c_args.append(len(b));
+            } else {
+                c_args.append(a);
+            }
+        }
+        r = raw(*c_args);
+        if real_res is JacStrABI {
+            if not r.data {
+                return b"";
+            }
+            return ctypes.string_at(r.data);
+        }
+        return r;
+    }
+    return _call;
+}
+
 """Compile a snippet through the native pipeline and return the program."""
 def compile_na_inline(label: str, code: str) -> JacProgram {
     path = os.path.join(FIXTURES, f"_gen_{label}.jac");
@@ -101,7 +192,7 @@ test "generator: plain return stops iteration early" {
 
 test "generator: str parameter is retained by the frame across yields" {
     (eng, _) = compile_native("generators.jac");
-    f = get_func(eng, "echo_len", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "echo_len", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"abcd") == 12 , "len('abcd') * 3";
 }
 
@@ -120,7 +211,7 @@ test "generator: yield from chains generators, lists, and plain yields" {
 
 test "generator: yield from a string yields its characters" {
     (eng, _) = compile_native("generators_residual.jac");
-    f = get_func(eng, "count_chars", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "count_chars", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"abcd") == 4;
     assert f(b"") == 0;
 }
@@ -152,7 +243,7 @@ test "generator: yield inside a for over dict keys resumes mid-loop" {
 
 test "generator: yield inside a for over a string resumes mid-loop" {
     (eng, _) = compile_native("generators_residual.jac");
-    f = get_func(eng, "count_per_char", ctypes.c_int64, ctypes.c_char_p);
+    f = get_sfunc(eng, "count_per_char", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"xyz") == 3;
 }
 

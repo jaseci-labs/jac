@@ -2,13 +2,13 @@
 
 Jac apps persist their object-spatial graph automatically, under one rule: whatever is reachable from `root` persists. The rule is called *persistence by reachability*, and the `root` node is the distinguished node anchoring every topology (each served user is issued a root of their own). But the schema of your `node`/`obj`/`edge`/`walker` archetypes inevitably evolves: you add a field, rename one, change a type, rename a class. This page covers what happens when you do.
 
-The short version: **edits never delete persisted data**. Schema changes are tolerated, type changes are coerced, and rows that genuinely can't be loaded land in a quarantine sidecar instead of being dropped. You inspect and rescue them with [`jac db`](cli/index.md#database-operations). For changes that need intent -- a field rename, a custom value transform -- archetypes declare their history in a [`__jac_schema__` hook](#declared-drift-rules-__jac_schema__) and the runtime repairs old documents on load.
+The short version: **edits never delete persisted data**. Schema changes are tolerated, type changes are coerced, and rows that genuinely can't be loaded land in a quarantine sidecar instead of being dropped. For changes that need intent -- a field rename, a custom value transform -- archetypes declare their history in a [`__jac_schema__` hook](#declared-drift-rules-__jac_schema__) and the runtime repairs old rows on load.
 
 ---
 
-## What gets persisted
+## What gets persisted, and where
 
-Every Jac archetype instance has a backing **anchor** that the runtime tracks. When an anchor is reachable from `root` (directly or via edges) and marked `persistent`, the runtime writes it to the configured storage backend on `commit()` (and at process exit).
+Every Jac archetype instance has a backing **anchor** that the runtime tracks. When an anchor is reachable from `root` (directly or via edges) and marked `persistent`, the runtime writes it to the store when the unit of work commits (each served request commits at its end; a `jac run` commits at process exit).
 
 ```jac
 node Person { has name: str; }
@@ -22,9 +22,12 @@ walker create {
 }
 ```
 
-After `jac run --entry create app.jac`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac run --entry dump app.jac` (with a walker that traverses `[-->]`) sees them.
+**The store is Postgres, always.** There is exactly one persistence stack:
 
-**Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
+- **Local development**: the runtime provisions an **embedded Postgres server** automatically, one database per project, under a shared data directory. No installation, no configuration, no daemon to manage -- `jac run` and `jac start` just work. `jac db status` shows the server state and row counts; `jac db stop` shuts it down.
+- **External server**: set the `JAC_DB_URL` environment variable (or `[scale.database] url` in `jac.toml`) to a `postgresql://user:pass@host:port/db` URL and the runtime connects there instead. Kubernetes deploys provision a Postgres StatefulSet and inject `JAC_DB_URL` into every pod.
+
+Anchors live in an `anchors` table with `jsonb` payloads; the same database also carries the `quarantine` sidecar, a `kv_state` utility table, and (under jac-scale) the `jac_docs` table for scheduler jobs and webhook API keys. `jac db inspect` summarizes anchors by kind and archetype; `jac db sql "..."` runs one SQL statement against the project store when you need to look closer.
 
 !!! info "Why reachability? Persistence is a predicate, not an event"
     In the I/O conception, persistence is something a program *does* at a moment -- open a session, call save -- and forgetting to do it is a bug. Jac makes persistence a *predicate*: a datum is durable exactly while it stands in a reachable position, the same way a value is live under garbage collection exactly while it's reachable from the collector's roots. One rule serves both temporal directions -- reachability decides what survives the past (collection) and what survives into the future (persistence). The idea has a research lineage (it is the identification rule of *orthogonal persistence*, pioneered in PS-algol in the 1980s), with one deliberate restriction that makes it practical: Jac persists the **topology** (nodes and edges), not the whole language heap -- closures, walker-local state, and ordinary objects stay transient, because they are the moving parts, not the remembered world.
@@ -48,18 +51,13 @@ walker ensure_profile {
 }
 ```
 
-Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->[?:UserProfile]]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
+Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->[?:UserProfile]]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **the database transaction itself**, so the pattern above is safe without app-level locks.
 
-**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->[?:UserProfile]]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
+**How it works.** Each request runs its reads and writes inside one Postgres transaction at the `SERIALIZABLE` isolation level, and **the transaction is the single source of truth**: what commits is what happened. When two requests race on overlapping data, Postgres lets one commit and aborts the other with a serialization conflict before it can write a duplicate.
 
-**Convergence (default).** A rejected request does not error. The server aborts its uncommitted work, reloads the node, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
+**Convergence (default).** A rejected request does not error. The server rolls back its uncommitted work, discards its in-memory view, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
 
-**The losing unit of work is atomic.** A walker's writes are staged child-node-first, then its edge, then the edge-list link onto the parent that carries the compare-and-swap -- so a naive flush could persist the loser's child *before* the link fails, stranding it. The runtime does not allow that:
-
-- On **SQLite** (the default local store), `apply()` runs the whole unit in one transaction and **rolls it back** on a conflict. A lost race leaves the store byte-for-byte unchanged -- no orphan.
-- On **Mongo** (multi-pod), there is no cross-document rollback, so `apply()` runs a **version precheck before staging any write**: a read-gated node whose stored version already moved aborts the unit before the child/edge docs are written. The common case (the winner committed first) leaves no orphan. In the narrow window where the winner commits *during* the loser's `apply()`, the in-line CAS still rejects the link, leaving the loser's child reachable only by a *half-linked* edge (cited by the child, refused by the parent). That residual is invisible to traversal and is reclaimed by [`jac db fsck`](cli/index.md#database-operations), which now sweeps half-linked edges and the nodes they strand.
-
-**Blind appends stay lock-free.** The compare-and-swap only fires on nodes the request *read*. A walker that appends without first reading -- `here ++> LogEntry(...)` with no preceding `[-->...]` -- takes no dependency, so concurrent appends to the same node merge instead of serializing. Only check-then-create pays the conflict-and-replay cost, and only on the node it actually checked.
+**The losing unit of work is atomic.** Because everything a request staged rides in one transaction, a lost race rolls back completely -- no orphan child rows, no half-linked edges. This holds identically for a single local process and a multi-pod deployment sharing one database.
 
 **Side effects and replay: `on_commit`.** Because a losing request replays from scratch, an *external* side effect in the body (charging a card, sending mail, registering a token) would otherwise run more than once. Defer such effects with the `on_commit(...)` ambient builtin (no import needed): it registers a callback that runs only after the unit of work commits successfully, and is discarded on abort/replay -- so it fires exactly once, for the attempt that wins.
 
@@ -81,8 +79,6 @@ walker me {
 | `on_conflict` | `"retry"` | `"retry"` converges via replay; `"fail"` returns a typed `409 write_conflict` immediately (for clients that handle conflicts themselves) |
 | `conflict_max_attempts` | `5` | Max attempts under `"retry"` before giving up with a `409` |
 | `conflict_backoff_ms` | `0` | Linear backoff (ms x attempt) between replay attempts |
-
-**Scope.** Conflict detection lives in the `MongoBackend` and `SqliteMemory` backends, so it holds on both the local SQLite store and a multi-pod Mongo deployment. Granularity is per node: two *different* find-or-creates on the same node (say a `UserProfile` and a `Settings` both attached to `root`) may each trigger one extra replay even though they don't truly duplicate -- harmless, since the replay re-confirms and proceeds.
 
 ---
 
@@ -115,7 +111,7 @@ node Person {
 # Person.__jac_fingerprint__ = "dd9dfc47a9284086"  (was 2231007f4104e5bd)
 ```
 
-Every persisted row (or document) is **stamped with the fingerprint at save time**. On load, the runtime compares the stored fingerprint against the live class's current fingerprint:
+Every persisted row is **stamped with the fingerprint at save time**. On load, the runtime compares the stored fingerprint against the live class's current fingerprint:
 
 - **Match** → fast path, deserialize normally.
 - **Mismatch** → log a drift notice at INFO and proceed with best-effort load (next sections).
@@ -171,7 +167,7 @@ Handled by the **coercion table**. `Serializer.coerce(value, target_type)` runs 
 
 If a field is declared as `A \| B \| C`, the coercer tries each variant in order and accepts the first that succeeds.
 
-When coercion **fails** (e.g. `str("abc")` → `int`), the raw stored value is kept, a debug-level log is emitted, and the anchor still loads. Downstream code that uses the field will see the wrong type and may fail at use site -- but no data is lost. (This bias toward "load with bad value" over "block load" is deliberate; you can always inspect the row with `jac db quarantine show` if you've forced it into quarantine via stricter validation, but the default is to keep the data alive.)
+When coercion **fails** (e.g. `str("abc")` → `int`), the raw stored value is kept, a debug-level log is emitted, and the anchor still loads. Downstream code that uses the field will see the wrong type and may fail at use site -- but no data is lost. This bias toward "load with bad value" over "block load" is deliberate: the default is to keep the data alive.
 
 ---
 
@@ -180,44 +176,41 @@ When coercion **fails** (e.g. `str("abc")` → `int`), the raw stored value is k
 Some changes can't be auto-handled:
 
 - The archetype class was renamed or moved (and no alias is registered).
-- The stored data is corrupt JSON.
+- The stored payload is corrupt.
 - A required field is missing and has no default.
 - The Serializer raises during reconstruction.
 
-In every such case, the row is **moved to a quarantine sidecar**:
+In every such case, the row is recorded in the **`quarantine` sidecar table** in the project database, carrying the missing/broken anchor id, the citing row (if any), and the failure kind. **Nothing is ever silently deleted** -- that's the contract. Inspect it directly:
 
-- SQLite: `anchors_quarantine` table.
-- MongoDB: `<collection>_quarantine` collection.
+```bash
+jac db sql "SELECT * FROM quarantine"
+```
 
-The quarantine row carries the full original payload, the timestamp, the error message, and the source format version. **Nothing is ever silently deleted** -- that's the contract. Inspect with `jac db quarantine list` / `jac db quarantine show <id>`. Recover (after you fix the cause) with `jac db recover` / `jac db recover-all`.
+A recoverable quarantine (say, a class-missing row) heals on a later load once the cause is fixed -- deploy the code with the right [`@archetype_alias`](#class-renames-the-alias-decorator) or [`__jac_schema__`](#declared-drift-rules-__jac_schema__) declarations and touch the data again.
 
-On the Mongo backend, quarantined documents additionally carry a machine-readable `reason_code` and are [auto-retried at startup](#scale-lazy-read-repair-and-self-healing-quarantine) when a new deploy plausibly fixes them.
-
-If you've used Jac before and remember "delete `.jac/data/` to run again after editing a node," that workflow is no longer required. Schema edits don't wipe data; they at worst move data to quarantine where you can rescue it.
+If you've used Jac before and remember "delete the data directory to run again after editing a node," that workflow is no longer required. Schema edits don't wipe data; they at worst quarantine rows until the fixed code loads them.
 
 ---
 
 ## Dangling references and read-path healing
 
-Quarantine handles a document that *exists* but can't be loaded. A **dangling reference** is the opposite failure: a document that cites another document which is *gone*. A node's edge list names an edge that no longer exists; an edge names an endpoint node that no longer exists.
+Quarantine handles a row that *exists* but can't be loaded. A **dangling reference** is the opposite failure: a row that cites another row which is *gone*. A node's edge list names an edge that no longer exists; an edge names an endpoint node that no longer exists.
 
-Each graph mutation flushes as one [crash-atomic unit of work](#what-gets-persisted) in referential-integrity order, so a crash can only ever leave an unreferenced *orphan*, never a dangling reference. Danglers therefore come from history, not from new writes: data corrupted before that ordering shipped, or a backend bug. They still need handling, because the citing document is live and a naive traversal that touched the missing referent would raise on every read.
+Because every unit of work commits in one transaction, a crash cannot create a dangling reference -- danglers come from history (data corrupted before the transactional model shipped) or an operator's manual surgery. They still need handling, because the citing row is live and a naive traversal that touched the missing referent would raise on every read.
 
 **The read path heals them automatically.** When a traversal resolves a reference whose target is genuinely gone, it does not raise. Instead it:
 
-1. files the missing referent into the quarantine store under the `DANGLING_REF` reason code (so it surfaces in `jac db quarantine list`),
-2. prunes the stale citation from the citing document, staged as a normal edge-list write so the repair persists on the request's commit -- even a read-only request self-heals,
+1. files the missing referent into the `quarantine` table (with the citing row recorded),
+2. prunes the stale citation from the citing row, staged as a normal write so the repair persists on the request's commit -- even a read-only request self-heals,
 3. skips the dead reference and continues, so the rest of the traversal returns normally.
 
-`DANGLING_REF` is deliberately distinct from the recoverable reasons (class-missing, schema-drift, cascade). A recoverable quarantine is left untouched on the read path -- its citations stay intact so `jac db recover` can restore the connection once you fix the cause. Only a referent that is absent *everywhere* (no live row, no recoverable quarantine) is treated as a genuine dangler and healed. Direct attribute access on a stale handle still raises: that is a programmer error, not a storage state, and only graph traversal heals.
-
-**`jac db fsck` is the offline backstop.** Read-path healing only fixes references a live request actually touches. `jac db fsck` scans the whole store for dangling references and orphans, and `jac db fsck repair` heals every dangler (filing it under `DANGLING_REF`) and collects orphan garbage in one transaction -- useful as a monitoring probe and for cleaning references no traversal has reached yet. See [CLI → `jac db fsck`](cli/index.md#jac-db-fsck).
+A *recoverable* quarantine is left untouched on the read path -- its citations stay intact so the connection can be restored once you fix the cause. Only a referent that is absent everywhere is treated as a genuine dangler and healed. Direct attribute access on a stale handle still raises: that is a programmer error, not a storage state, and only graph traversal heals.
 
 ---
 
 ## Class renames: the alias decorator
 
-A renamed class is the most common reason rows go to quarantine: the stored row says `arch_module=__main__, arch_type=LegacyPerson`, but the live registry only has `__main__.Person`. Lookup fails, row quarantines.
+A renamed class is the most common reason rows quarantine: the stored row says `arch_module=__main__, arch_type=LegacyPerson`, but the live registry only has `__main__.Person`. Lookup fails, row quarantines.
 
 The fix is the `@archetype_alias` decorator, an ambient Jac builtin (no import needed):
 
@@ -228,7 +221,7 @@ node Person {
 }
 ```
 
-At class-definition time the decorator records `"__main__.LegacyPerson" → "__main__.Person"` in `Serializer._aliases`. On the next load, `_get_class("__main__", "LegacyPerson")` misses in the main registry, finds the alias, and returns the new class. Deserialization proceeds against `Person`. The old data flows in.
+At class-definition time the decorator records `"__main__.LegacyPerson" → "__main__.Person"` in the Serializer's alias map. On the next load, the lookup for `__main__.LegacyPerson` misses in the main registry, finds the alias, and returns the new class. Deserialization proceeds against `Person`. The old data flows in.
 
 **Stack the decorator** when a class has been renamed multiple times in its history:
 
@@ -242,17 +235,7 @@ node User {
 
 **The argument is the fully-qualified old name as it appeared in stored data** -- i.e. `__module__ + "." + __name__` of the class at the time it was persisted. For files run via `jac run --entry ... app.jac`, the module is `__main__`.
 
-### Code-resident vs. DB-resident aliases
-
-The decorator above is **code-resident**: lives in source, travels through git, applies wherever the code runs. That's the normal path.
-
-For emergency operator rescue without a code deploy, aliases can also be added directly to the database:
-
-```bash
-jac db alias add "__main__.LegacyPerson" "__main__.Person"
-```
-
-DB-resident aliases live in an `aliases` table (SQLite) or `<collection>_aliases` companion collection (Mongo, e.g. `_anchors_aliases` for the default `_anchors` collection) and are loaded into the same in-process `Serializer._aliases` map at backend connect time. After adding one, run `jac db recover-all --app app.jac` to retry any rows currently quarantined for that class.
+Aliases are **code-resident**: they live in source, travel through git, and apply wherever the code runs (`schema_was` inside `__jac_schema__` is the same machinery in declaration form).
 
 ---
 
@@ -301,7 +284,7 @@ The four builders are ambient Jac builtins (no import needed) and are only calla
 
 Rules are **shape-matched, not version-matched**: there are no version integers to maintain. A rename applies to any stored row that still carries the old key and lacks the new one, which keeps repair robust when dev, staging, and production saw different intermediate schemas. Every rule application is idempotent, so re-repairing an already-repaired row is a no-op.
 
-The engine runs in the core Serializer, **before** field deserialization -- so SQLite, Mongo, and any plugin backend repair identically, and coercion/defaults still apply to the repaired values afterward.
+The engine runs in the core Serializer, **before** field deserialization -- so every deployment shape (embedded local server, external Postgres, multi-pod) repairs identically, and coercion/defaults still apply to the repaired values afterward.
 
 ### Validation at startup
 
@@ -338,14 +321,6 @@ On load, a row with *both* keys is recognized as dual-written, not drifted: an e
 | `repair` (default) | Rules applied, attic written, dual-write active |
 | `detect` | Drift is detected and logged (`steps not applied: [...]`) but nothing is mutated -- a production dry-run |
 | `off` | Legacy load behavior (no renames, no upgrades, no new atticing). Previously written attics still round-trip so data is never lost |
-
-### scale: lazy read-repair and self-healing quarantine
-
-With the [scale](plugins/jac-scale.md) Mongo backend, repair goes one step further:
-
-- **Read-repair write-back.** When a load applies repair steps, the upgraded document is written back with compare-and-set on the originally stored fingerprint. A concurrent writer on an older app version cleanly wins the race; the document simply repairs again on its next read. The L2 Redis cache is invalidated on write-back. (SQLite repairs in memory on every load; the write-back optimization is Mongo-only.)
-- **Quarantine reason codes.** Quarantined documents are stamped with a machine-readable `reason_code` -- `CLASS_MISSING`, `FIELD_RECONSTRUCT`, `DESER_ERROR`, or `CASCADE` -- visible via `jac db quarantine show`.
-- **Startup auto-retry.** After a deploy registers its classes, aliases, and drift rules, the backend automatically re-attempts a capped batch of quarantined documents the deploy plausibly fixed (a `CLASS_MISSING` doc whose class now resolves, or any doc whose class now declares rules). Failed attempts increment a `retry_count` and give up loudly after 5. Deploy the fix and the data heals itself; `jac db recover-all` remains the manual override.
 
 ### Worked example: a field rename end to end
 
@@ -387,40 +362,6 @@ ada / attic: {'bio': {'value': 'first programmer', 'reason': 'dropped'}}
 ```
 
 The old value flowed into the renamed field, the deleted field's value is preserved, and no row went anywhere near quarantine.
-
-### Inspecting rules
-
-`jac db schema rules` lists every registered rule (the app is imported first, so its `__jac_schema__` hooks run):
-
-```text
-Registered schema drift rules
-[INFO] JAC_SCHEMA_REPAIR mode: repair
-┏━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
-┃ archetype       ┃ rule  ┃ detail           ┃
-┡━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
-│ __main__.Person │ alias │ username -> name │
-│ __main__.Person │ drop  │ bio              │
-└─────────────────┴───────┴──────────────────┘
-```
-
----
-
-## Backend portability
-
-Everything above is **backend-agnostic**. The `PersistentMemory` interface defines the contract; both `SqliteMemory` and the built-in scale `MongoBackend` implement it, and so will any future plugin-provided backend (Postgres, DynamoDB, whatever).
-
-That means the same set of guarantees holds regardless of where your data lives:
-
-- Fingerprints are stamped on every persisted row/document.
-- Drift detection runs on every load.
-- [`__jac_schema__` drift rules](#declared-drift-rules-__jac_schema__) repair rows identically on every backend (the engine lives in the core Serializer, ahead of field deserialization).
-- Quarantine sidecars exist for every backend.
-- Aliases (both decorator and CLI-managed) work the same way.
-- The `jac db` CLI talks to the live backend through the abstract interface -- same commands, same output, different storage underneath.
-
-(Backend-specific extras layer on top: the Mongo backend adds read-repair write-back, quarantine reason codes, and startup auto-retry.)
-
-**Custom persistence backends.** `TieredMemory` resolves its L3 store through `JacRuntime.get_persistent_memory(config)`, which returns `None` by default (so core falls back to `SqliteMemory`). To supply a custom backend, for example in an ejected standalone backend, call `JacRuntime.set_persistent_memory_provider(fn)` with a callable that takes the config dict and returns a `PersistentMemory` implementation.
 
 ---
 
@@ -483,32 +424,25 @@ Three forms of drift handled automatically: class rename via alias, type change 
 
 ---
 
-## Inspecting and rescuing data
+## Inspecting the store
 
-When something goes wrong (un-aliased rename, malformed stored value, an exception during deserialization), data ends up in quarantine. The full operator workflow:
+The [`jac db`](cli/index.md#database-operations) command talks to the project's Postgres store, embedded or external:
 
 ```bash
-# 1. See the state of the world.
-jac db inspect --app app.jac
+# Server state and row counts (anchors, quarantine, kv_state).
+jac db status
 
-# 2. List what's quarantined.
-jac db quarantine list --app app.jac
+# Summarize anchors by kind and archetype.
+jac db inspect
 
-# 3. Show one row in full to understand why it failed.
-jac db quarantine show <row-id-prefix> --app app.jac
+# Arbitrary SQL against the project database.
+jac db sql "SELECT * FROM quarantine"
+jac db sql "SELECT count(*) FROM anchors WHERE kind = 'node'"
 
-# 4. Add a rescue alias if it's a class-rename problem.
-jac db alias add "__main__.OldName" "__main__.NewName" --app app.jac
-
-# 5. Re-attempt every quarantined row.
-jac db recover-all --app app.jac
-
-# 6. Scan for referential-integrity violations (dangling refs, orphans);
-#    add `repair` to heal danglers and collect orphans.
-jac db fsck --app app.jac
+# Run the embedded server in the foreground (pods/containers), stop it locally.
+jac db serve
+jac db stop
 ```
-
-Full subcommand reference: [CLI → Database Operations](cli/index.md#database-operations). For the dangling-reference model behind step 6, see [Dangling references and read-path healing](#dangling-references-and-read-path-healing).
 
 ---
 
@@ -518,9 +452,8 @@ Currently out of scope (planned follow-on work):
 
 - **Contract phase** -- attic data and dual-written shadow fields persist indefinitely; the census-gated cleanup that strips them once no old-version reader remains is future work. Until then they cost a little storage but are harmless.
 - **Rename auto-inference** -- the runtime won't guess that a removed field and an added field of the same type are a rename; you declare it with `schema_alias`. (A schema registry that proposes such inferences is future work.)
-- **Background sweep** -- repair is lazy (on read) plus startup auto-retry; cold documents that are never read stay at their old shape until touched. They repair correctly whenever that happens.
+- **Background sweep** -- repair is lazy (on read); cold rows that are never read stay at their old shape until touched. They repair correctly whenever that happens.
 - **Compiler enforcement** -- there's no build-time lint yet that detects an undeclared breaking change against a schema lockfile.
 - **Deep container coercion** -- `list[int] → list[str]` doesn't recurse into elements (a `schema_upgrade` callback covers this case today).
-- **Redis cache parity** -- the L2 cache (`RedisBackend` in the scale subsystem) still uses pickle. Since it's a cache (the L3 backend is the source of truth), the impact is bounded; the same machinery could be ported when needed.
 
 For arbitrary transforms the escape hatch is `schema_upgrade` -- a `dict -> dict` callback with full control over the raw stored document. If something still can't be expressed, the quarantine sidecar preserves the original payload for manual handling.

@@ -25,6 +25,8 @@ def owner_sym(table: UniScopeNode) -> Optional[Symbol];
 
 def create_range(loc: CodeLocInfo) -> lspt.Range;
 
+def find_dts_decl_range(dts_path: str, name: str) -> Optional[lspt.Range];
+
 def kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind;
 
 def add_unique_text_edit(

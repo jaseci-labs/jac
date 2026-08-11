@@ -28,7 +28,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Debug or visualize a graph | `jac run --debug` · `jac dot` · `jac browse` |
 | Have an AI agent write or edit code in my project | `jac ai` |
 | Query code structure (definitions, uses, walkers) | `jac code` |
-| Inspect or recover the persistence DB | `jac db` |
+| Inspect or manage the project's Postgres store | `jac db` |
 | Manage config or profiles | `jac config` |
 | Manage byLLM local models | `jac model` |
 | Use Jac from an AI assistant | `jac guide` · `jac mcp` |
@@ -70,7 +70,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac guide` | Show curated Jac reference guides |
 | `jac lsp` | Language server |
 | `jac setup` | Setup client build target (jac-client) |
-| `jac db` | Inspect persistence DB, manage rescue aliases, recover quarantined data |
+| `jac db` | Manage the project's Postgres store (embedded or external): status, inspect, sql, serve, stop |
 
 ---
 
@@ -255,7 +255,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. Use `--scale` to deploy to Kubernetes (handled by the built-in `scale` subsystem; the first `--scale` run resolves its deploy deps via `jac install`). Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no-client] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-t TARGET] [--enable-tls] [--no-enable-tls] [--dry-run] [--no-dry-run] [--show-yaml] [--no-show-yaml] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no-client] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-t TARGET] [--enable-tls] [--no-enable-tls] [--dry-run] [--no-dry-run] [--show-yaml] [--no-show-yaml] [--takeover] [--no-takeover] [filename]
 ```
 
 | Option | Description | Default |
@@ -276,6 +276,7 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--enable-tls` | Enable HTTPS via Let's Encrypt (with `--scale`) | `False` |
 | `--dry-run` | Print the manifests that would be applied; change nothing (with `--scale`) | `False` |
 | `--show-yaml` | With `--dry-run`: dump the raw YAML stream | `False` |
+| `--takeover` | Evict any other session holding this project's database before starting | `False` |
 
 **Examples:**
 
@@ -969,218 +970,52 @@ Local model cache: /home/you/.cache/jac/models
 
 ## Database Operations
 
-The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), the built-in scale `MongoBackend`, or any custom backend that implements the interface -- through the same set of subcommands.
+The `jac db` command group manages the project's Postgres store -- the embedded per-project server the runtime provisions automatically, or the external database `JAC_DB_URL` / `[scale.database].url` points at.
 
 For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
 
-### Backend dispatch
+### jac db status
 
-`jac db` always operates on the backend the user's app is configured to use:
-
-- Pass `--app PATH` to point at the entry `.jac` file.
-- Or run the command from the app's directory; if there's exactly one `.jac` in the current directory, it's picked automatically.
-
-The command imports the user's app to set up the runtime context, then talks to whatever `PersistentMemory` backend the configuration installs -- SQLite locally, Mongo in production, etc. There is no separate mode for each backend.
+Show the store's server state and row counts.
 
 ```bash
-# Explicit
-jac db inspect --app path/to/app.jac
-
-# Implicit when there's one .jac in cwd
-cd my_app/
-jac db inspect
+jac db status
 ```
+
+Prints the data directory, whether the embedded server is running, the PostgreSQL major version, and per-kind row counts (nodes, edges, quarantine).
 
 ### jac db inspect
 
-Print a one-line summary of the live persistence backend plus per-archetype count tables for both anchors and quarantine.
+Summarize anchors by kind and archetype, plus the quarantined-row count.
 
 ```bash
 jac db inspect
 ```
 
-**Output:**
+### jac db sql
 
-```
-Jac DB: /tmp/myapp/.jac/data/anchor_store.db
-[INFO] format_version=1   anchors=5   quarantined=0   aliases=0
-        Anchors
-┏━━━━━━━━━━━━━┳━━━━━━━┓
-┃ arch_type   ┃ count ┃
-┡━━━━━━━━━━━━━╇━━━━━━━┩
-│ Person      │ 2     │
-│ GenericEdge │ 2     │
-│ Root        │ 1     │
-└─────────────┴───────┘
-```
-
-The summary line covers: storage format version, total live anchor count, total quarantined count, and total alias count. Quarantine + Anchors tables only print when non-empty.
-
-### jac db quarantine list
-
-List the most recent quarantined anchors with their class, fingerprint, error, and timestamp.
+Run one SQL statement against the project database -- the escape hatch for anything the summaries don't show, including the quarantine sidecar.
 
 ```bash
-jac db quarantine list           # default limit: 50
-jac db quarantine list -n 200    # raise limit
+jac db sql "SELECT count(*) FROM anchors"
+jac db sql "SELECT * FROM quarantine"
 ```
 
-Sorted newest first. UUID columns are truncated to a recognizable prefix; pass any unique prefix to `quarantine show` or `recover`.
+### jac db serve
 
-### jac db quarantine show \<id-prefix\>
-
-Dump one quarantined row in full (parsed JSON), including the original `data` payload -- useful for understanding why a row failed to load.
+Run Postgres in the foreground. This is how pods and containers host the database when `[scale.database].deploy_mode = "embedded"` -- the app's own image runs `jac db serve`.
 
 ```bash
-jac db quarantine show 86092d34
+jac db serve --port 5432 --data_dir /var/lib/jac/pgdata
 ```
 
-A unique prefix is sufficient. If the prefix is ambiguous, the command tells you and asks for a longer prefix.
+### jac db stop
 
-### jac db alias add / list / remove
-
-DB-resident rescue aliases. Persisted in an `aliases` table (SQLite) or `<collection>_aliases` companion collection (Mongo, e.g. `_anchors_aliases`) and merged into the in-process `Serializer._aliases` map at backend connect time. Survives across process restarts; affects every consumer of that database.
+Stop the project's embedded server.
 
 ```bash
-# List current aliases.
-jac db alias list
-
-# Register a rescue alias for a class rename / module move.
-jac db alias add "old.module.LegacyName" "new.module.NewName"
-
-# Remove one.
-jac db alias remove "old.module.LegacyName"
+jac db stop
 ```
-
-Both arguments to `alias add` are fully-qualified `module.ClassName` strings -- the `module` part is what would have appeared in the stored row's `arch_module` field. For files run via `jac run app.jac`, the module is `__main__`.
-
-> **When to use this vs. the decorator.** The [`@archetype_alias`](../persistence.md#class-renames-the-alias-decorator) decorator is the normal path: it's code-resident, travels through git, applies wherever the code runs. `jac db alias add` is the rescue path: emergency recovery in production without a code deploy. Decorator first, CLI as the safety net.
-
-### jac db recover \<id-prefix\>
-
-Re-attempt deserialization on one quarantined row. On success, the row is moved back to the live anchors collection and **re-stamped with the live class's identity + fingerprint** so subsequent reads bypass alias resolution and drift detection.
-
-```bash
-jac db recover 86092d34 --app app.jac
-```
-
-Recovery only succeeds when the user's archetype classes (and any `@archetype_alias` decorators) are registered, so the user app must be discoverable -- via `--app PATH` or the cwd auto-discovery described above. Without it, every quarantined row will be reported as `class X.Y still unresolvable`.
-
-### jac db recover-all
-
-Batch variant. Re-attempts every quarantined row and reports counts, plus a per-row reason for whatever still can't be recovered.
-
-```bash
-jac db recover-all --app app.jac
-```
-
-Typical output:
-
-```
-✔ Recovered 2 of 2 quarantined rows.
-```
-
-Or, when some rows are still stuck (often because the class involved isn't covered by any alias yet):
-
-```
-✔ Recovered 3 of 5 quarantined rows.
-[WARN] 2 rows still quarantined.
-                Still quarantined
-┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ id        ┃ reason                                          ┃
-┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ d44e2c7a… │ class oldmod.GoneAway still unresolvable       │
-│ 902b14ee… │ deserialize raised: ValueError: bad enum value │
-└───────────┴─────────────────────────────────────────────────┘
-```
-
-### jac db fsck
-
-Scan the backend for referential-integrity violations: **dangling references** (a node citing an edge document that no longer exists, or an edge citing a missing endpoint node) and **orphans** (an unreferenced edge, or an edgeless non-root node). Read-only by default, so it is safe to run as a monitoring probe.
-
-```bash
-jac db fsck --app app.jac
-```
-
-**Output:**
-
-```
-Jac DB fsck: /tmp/myapp/.jac/data/app.db
-[INFO] dangling refs : 19   (8 document(s) cite a missing referent)
-[INFO] orphan edges  : 3
-[INFO] orphan nodes  : 11
-[INFO] Run `jac db fsck repair` to heal danglers and collect orphans.
-```
-
-Pass `repair` to act on the findings. Dangling citations are pruned and each missing referent is filed into the quarantine store under the `DANGLING_REF` reason code (visible via `jac db quarantine list`); orphans are collected. On SQLite the whole repair runs inside one `BEGIN IMMEDIATE` transaction, so a `fsck repair` is itself crash-atomic.
-
-```bash
-jac db fsck repair --app app.jac
-```
-
-**Output:**
-
-```
-✔ repaired: pruned 19 citation(s), quarantined 19 dangler(s) under DANGLING_REF, collected 14 orphan(s).
-```
-
-A clean database reports nothing to do:
-
-```
-✔ Clean: no referential-integrity violations.
-```
-
-> Most danglers are healed automatically the first time a traversal touches them (see [Persistence → Dangling references](../persistence.md#dangling-references-and-read-path-healing)). `jac db fsck` is the offline backstop: it heals references no live request has hit yet, and surfaces orphan garbage for collection.
-
-### jac db schema rules
-
-List every registered [`__jac_schema__` drift rule](../persistence.md#declared-drift-rules-__jac_schema__) along with the active `JAC_SCHEMA_REPAIR` mode. The app is imported first (same `--app` / cwd discovery as the other subcommands), which is what runs the `__jac_schema__` hooks and registers the rules.
-
-```bash
-jac db schema rules --app app.jac
-```
-
-**Output:**
-
-```
-Registered schema drift rules
-[INFO] JAC_SCHEMA_REPAIR mode: repair
-                    Rules
-┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ archetype       ┃ rule    ┃ detail                ┃
-┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
-│ __main__.User   │ was     │ myapp.models.OldUser  │
-│ __main__.User   │ alias   │ username -> name      │
-│ __main__.User   │ drop    │ legacy_bio            │
-│ __main__.User   │ upgrade │ split_tags            │
-└─────────────────┴─────────┴───────────────────────┘
-```
-
-Useful as a pre-deploy sanity check: it confirms which renames, drops, and upgrade callbacks will apply when old documents load, and which repair mode the process will run under.
-
-### Typical rescue workflow
-
-```bash
-# 1. Discover what's quarantined.
-jac db inspect --app app.jac
-jac db quarantine list --app app.jac
-
-# 2. Drill into one row to understand why.
-jac db quarantine show <prefix> --app app.jac
-
-# 3. If it's a class rename: register an alias.
-jac db alias add "__main__.OldName" "__main__.NewName"
-
-# 4. Re-attempt every stuck row.
-jac db recover-all --app app.jac
-
-# 5. Confirm.
-jac db inspect --app app.jac
-```
-
-After step 5 the quarantine count should be zero (or list only rows that genuinely need a different fix -- type changes too aggressive for the coercion table, etc.).
-
----
 
 ## Configuration Management
 

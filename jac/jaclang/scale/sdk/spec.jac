@@ -142,7 +142,7 @@ obj DeploySpec {
         }
         services = dict(ms.get('services', {}));
         if self.replicas != 1 {
-            import from jaclang.scale.deploy.target.kubernetes.microservice.manifest_builder {
+            import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
                 GATEWAY_NAME
             }
             gateway_cfg = dict(services.get(GATEWAY_NAME, {}));

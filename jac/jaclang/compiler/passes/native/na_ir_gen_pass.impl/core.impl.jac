@@ -1,13 +1,14 @@
 impl NaIRGenPass.postinit -> None {
     import os as _ni_os;
 
-    self._rc_debug_codegen = bool(_ni_os.environ.get("JAC_RC_DEBUG_CODEGEN", ""));
+    _ni_opts = self.prog._compile_options;
+    self._rc_debug_codegen = bool(_ni_opts.rc_debug_codegen);
     _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
     import jaclang.compiler.passes.native.llvm.binding as _llvm_bind;
 
-    _ni_target_ovr = _ni_os.environ.get("JAC_NATIVE_TARGET", "");
+    _ni_target_ovr = _ni_opts.native_target or "";
     if _ni_target_ovr {
         _llvm_bind.initialize_all_targets();
         _llvm_bind.initialize_all_asmprinters();
@@ -21,7 +22,7 @@ impl NaIRGenPass.postinit -> None {
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
 
-    if _ni_src and _ni_os.environ.get("JAC_NATIVE_DEBUG", "") {
+    if _ni_src and _ni_opts.native_debug {
         _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
         try {
             self.di_file = self.llvm_module.add_debug_info(
@@ -69,6 +70,9 @@ impl NaIRGenPass.postinit -> None {
         self.type_map["str"] = _spec_map["i8*"];
     }
 
+    if "wasm" not in str(self.llvm_module.triple or "") {
+        self.type_map["str"] = self._str_desc_type();
+    }
     self.type_map["LiteralString"] = self.type_map.get("str", _spec_map["i8*"]);
     self.type_map["Region"] = _spec_map["i8*"];
 
@@ -150,7 +154,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         self.ir_in.gen.llvm_ir = self.llvm_module;
 
         import os;
-        if os.environ.get("JAC_RC_STATS", "") {
+        if self.prog._compile_options.rc_stats {
             _rc_total = self.rc_retains_emitted + self.rc_releases_emitted;
             _rc_known = _rc_total + self.rc_ops_elided;
             _rc_pct = (100.0 * self.rc_ops_elided / _rc_known) if _rc_known else 0.0;
@@ -159,15 +163,20 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             _rc_arena = (
                 f" arena={self.rc_region_allocs}" if self.rc_region_allocs else ""
             );
+            _rc_stk = (
+                f" promoted={self.rc_stack_promotions}"
+                    if self.rc_stack_promotions
+                    else ""
+            );
             sys.stderr.write(
                 f"rc-stats [{os.path.basename(self.ir_in.loc.mod_path)}] "
                 f"gc={self._gc_mode()} retains={self.rc_retains_emitted} "
                 f"releases={self.rc_releases_emitted} "
                 f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%"
-                f"{_rc_arena}{_rc_free}\n"
+                f"{_rc_stk}{_rc_arena}{_rc_free}\n"
             );
         }
-        _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
+        _ir_dump_path = self.prog._compile_options.dump_ir_path or "";
         if _ir_dump_path {
             with open(_ir_dump_path, "w") as _f {
                 _f.write(str(self.llvm_module));
@@ -180,6 +189,13 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
 }
 
 impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
+    _opt_pt = self._opt_payload_of(ty);
+    if _opt_pt is not None {
+        return "opt." + self._llvm_type_str(_opt_pt);
+    }
+    if self._str_desc_ty is not None and ty == self._str_desc_ty {
+        return self._str_desc_kind();
+    }
     if isinstance(ty, ir.IntType) {
         if ty.width == 64 {
             return "i64";
@@ -255,12 +271,13 @@ impl NaIRGenPass._export_native_layout -> None {
         NativeTupleLayout,
         NativeTestLayout
     }
-    layout = NativeModuleLayout();
+    layout = NativeModuleLayout(str_headerless=self._nogc_headerless());
 
     for (arch_name, field_indices) in self.struct_field_indices.items() {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         enum_types = self.struct_field_enum_type.get(arch_name, {});
+        elem_keys = self.struct_field_elem_keys.get(arch_name, {});
         for (fname, idx) in sorted(field_indices.items(), key=lambda (x) { x[1]; }) {
             ftype = field_types.get(fname);
             llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
@@ -285,7 +302,8 @@ impl NaIRGenPass._export_native_layout -> None {
                     enum_type=enum_types.get(fname),
                     is_func_ptr=is_fn_ptr,
                     func_param_types=fn_param_types,
-                    func_ret_type=fn_ret_type
+                    func_ret_type=fn_ret_type,
+                    elem_keys=elem_keys.get(fname)
                 )
             );
         }
@@ -349,10 +367,21 @@ impl NaIRGenPass._export_native_layout -> None {
         }
 
         ret_enum: (str | None) = None;
-        if ret_type == "i64" {
+        if ret_type in ("i64", "opt.i64") {
             _rkey = self.func_ret_type_key.get(fname);
-            if _rkey is not None and _rkey in self.enum_types {
-                ret_enum = _rkey;
+            if _rkey is not None {
+                if _rkey in self.enum_types {
+                    ret_enum = _rkey;
+                } elif "|" in _rkey {
+                    _rnon = [
+                        s.strip()
+                        for s in _rkey.split("|")
+                        if s.strip() not in ("None", "NoneType")
+                    ];
+                    if len(_rnon) == 1 and _rnon[0] in self.enum_types {
+                        ret_enum = _rnon[0];
+                    }
+                }
             }
         }
 
@@ -457,12 +486,14 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         for _s in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE)
     };
     _has_native_code: bool = len(_native_ids) > 0;
+    _nested_native = ModuleCodegenPass.iter_nested_imports(
+        self.ir_in, CodeContext.NATIVE
+    );
+    for _nested_imp in _nested_native {
+        _native_ids.add(id(_nested_imp));
+    }
     wq: list = [];
-    for imp in [
-        s
-        for s in ModuleCodegenPass.iter_context_stmts(self.ir_in)
-        if isinstance(s, uni.Import)
-    ] {
+    for imp in ModuleCodegenPass.iter_module_imports(self.ir_in) + _nested_native {
         mod_name = self._extract_import_module_name(imp);
         if not mod_name {
             continue;
@@ -544,11 +575,8 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         imported_mods.append((src_mod_str, imported_mod));
 
         sub_base = os.path.dirname(os.path.abspath(full_path));
-        for sub_imp in [
-            s
-            for s in ModuleCodegenPass.iter_context_stmts(imported_mod)
-            if isinstance(s, uni.Import)
-        ] {
+        for sub_imp in ModuleCodegenPass.iter_module_imports(imported_mod)
+            + ModuleCodegenPass.iter_nested_imports(imported_mod, CodeContext.NATIVE) {
             sub_name = self._extract_import_module_name(sub_imp);
             if sub_name {
                 wq.append((sub_name, sub_base, src_mod_str));
@@ -589,6 +617,8 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
+    imported_mods = self._permuted_walk_order(imported_mods);
+
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
     }
@@ -608,6 +638,23 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_abilities(imported_mod);
     }
+}
+
+impl NaIRGenPass._permuted_walk_order(mods: list) -> list {
+    _spec = self.prog._compile_options.native_module_walk_order or "";
+    if not _spec {
+        return mods;
+    }
+    if _spec == "reverse" {
+        return list(reversed(mods));
+    }
+    if _spec.startswith("shuffle:") {
+        import random as _wo_random;
+        _out = list(mods);
+        _wo_random.Random(int(_spec.split(":", 1)[1])).shuffle(_out);
+        return _out;
+    }
+    raise ValueError(f"unknown native_module_walk_order: {_spec!r}");
 }
 
 impl NaIRGenPass._ensure_imported_module_inferred(imported_mod: uni.Module) -> None {
@@ -924,11 +971,8 @@ impl NaIRGenPass._forward_declare_imported_ability(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
-    imports = [
-        s
-        for s in ModuleCodegenPass.iter_context_stmts(module)
-        if isinstance(s, uni.Import)
-    ];
+    imports = ModuleCodegenPass.iter_module_imports(module)
+        + ModuleCodegenPass.iter_nested_imports(module, CodeContext.NATIVE);
     for stmt in imports {
         if not stmt.clib_decls {
             if stmt.items {
@@ -1154,6 +1198,8 @@ impl NaIRGenPass._dispatch_primitive_method(
     kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
+    target = self._str_norm(target);
+    args = [self._str_norm(_a) for _a in args];
     _emitter = self._native_emitters.get(type_name);
     if _emitter is None {
         return None;
@@ -1182,9 +1228,18 @@ impl NaIRGenPass._dispatch_builtin(
     args: list[ir.Value],
     kwargs: (dict | None) = None,
     kw_node: (uni.UniNode | None) = None,
-    type_key: str = ""
+    type_key: str = "",
+    arg_nodes: (list | None) = None
 ) -> (ir.Value | None) {
+    args = [self._str_norm(_a) for _a in args];
     self._ensure_emitters();
+    if (
+        func_name == "str"
+        and len(args) == 1
+        and self._opt_payload_of(args[0].type) is not None
+    ) {
+        return self._emit_optional_str(args[0], None);
+    }
     _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
     if _emit_fn is None {
         return None;
@@ -1199,7 +1254,10 @@ impl NaIRGenPass._dispatch_builtin(
         return None;
     }
     _ctx = self._native_emit_ctx_class(
-        pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {})
+        pass_ref=self,
+        type_key=type_key,
+        call_kwargs=(kwargs or {}),
+        arg_nodes=(arg_nodes or [])
     );
     return _emit_fn(_ctx, args);
 }

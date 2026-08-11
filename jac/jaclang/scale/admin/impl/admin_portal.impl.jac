@@ -1,19 +1,19 @@
 import logging;
 import from collections.abc { Callable }
-import from fastapi { Request }
-import from fastapi.responses {
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes {
+    FileResponse,
     HTMLResponse,
     JSONResponse,
-    Response,
-    FileResponse,
-    RedirectResponse
+    RedirectResponse,
+    Response
 }
 import mimetypes;
 import subprocess;
 import from pathlib { Path }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jaclang.runtimelib.server { JsonValue }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -45,17 +45,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Admin username',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Admin password',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -65,7 +65,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
         )
     );
 
-    import from fastapi { Request }
+    import from jaclang.runtimelib.serving.datatypes { Request }
     async def reset_password_handler(
         request: Request, current_password: str, new_password: str
     ) -> TransportResponse {
@@ -82,17 +82,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='current_password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Current password',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='new_password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='New password',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -118,17 +118,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='limit',
                     data_type='integer',
                     required=False,
-                    default=100,
+                    default_value=100,
                     description='Max users to return',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 ),
                 APIParameter(
                     name='offset',
                     data_type='integer',
                     required=False,
-                    default=0,
+                    default_value=0,
                     description='Offset for pagination',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -151,9 +151,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username to get',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -178,25 +178,25 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username for new user',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='password',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Password for new user',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='role',
                     data_type='string',
                     required=False,
-                    default='user',
+                    default_value='user',
                     description='Role for new user (admin, user)',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -226,25 +226,25 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username to update',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 ),
                 APIParameter(
                     name='role',
                     data_type='string',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='New role (admin, user)',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='requires_password_reset',
                     data_type='boolean',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Force password reset on next login',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 )
             ],
             response_model=None,
@@ -269,15 +269,48 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username to delete',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
             tags=['Admin'],
             summary='Delete user',
             description='Delete a user (admin only)'
+        )
+    );
+    async def expire_legacy_credentials_handler(
+        request: Request, username: str | None = None
+    ) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.admin_expire_legacy_credentials(username, authorization);
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/admin/users/expire-legacy-credentials',
+            callback=expire_legacy_credentials_handler,
+            parameters=[
+                APIParameter(
+                    name='username',
+                    data_type='string',
+                    required=False,
+                    default_value=None,
+                    description='Limit to one user; omit to sweep every account',
+                    kind=ParameterType.BODY
+                )
+            ],
+            response_model=None,
+            tags=['Admin'],
+            summary='Expire pre-scrypt credentials',
+            description=(
+                'Flag accounts whose stored password hash predates the 0.36 '
+                'scrypt migration (bcrypt format) as requiring a password '
+                'reset, so operators can drive the reset flow instead of '
+                'users silently failing to log in. Bulk by default; pass '
+                'username to target one account (admin only).'
+            )
         )
     );
 
@@ -313,9 +346,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Username',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -341,9 +374,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='profile',
                     data_type='string',
                     required=False,
-                    default='default',
+                    default_value='default',
                     description='Config profile (default, development, production)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -368,17 +401,17 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='content',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='TOML configuration content',
-                    type=ParameterType.BODY
+                    kind=ParameterType.BODY
                 ),
                 APIParameter(
                     name='profile',
                     data_type='string',
                     required=False,
-                    default='default',
+                    default_value='default',
                     description='Config profile (default, development, production)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -404,9 +437,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='username',
                     data_type='string',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Username to view graph for (defaults to all users)',
-                    type=ParameterType.QUERY
+                    kind=ParameterType.QUERY
                 )
             ],
             response_model=None,
@@ -472,9 +505,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
                     name='path',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Asset path',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -776,6 +809,26 @@ impl JacAPIServerAdmin.admin_update_user(
     return TransportResponse.success(
         data={'message': 'User updated', 'updates': updates, 'username': username},
         meta=Meta(extra={'http_status': 200})
+    );
+}
+
+impl JacAPIServerAdmin.admin_expire_legacy_credentials(
+    username: str | None = None, Authorization: str | None = None
+) -> TransportResponse {
+    error = self.require_admin(Authorization);
+    if error {
+        return error;
+    }
+    result = self.user_manager.expire_legacy_credentials(username);
+    if 'error' in result {
+        return TransportResponse.fail(
+            code='NOT_FOUND',
+            message=str(result.get('error', 'User not found')),
+            meta=Meta(extra={'http_status': 404})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
     );
 }
 

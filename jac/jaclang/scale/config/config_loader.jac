@@ -28,12 +28,15 @@ class JacScaleConfig(PluginConfigBase) {
     def get_microservices_config(self: JacScaleConfig) -> dict[str, any];
 }
 
-def normalize_microservices_config(ms_config: dict[str, any]) -> dict[str, any];
+def normalize_microservices_config(
+    ms_config: dict[str, any], env_routes_fallback: bool = True
+) -> dict[str, any];
 
-glob _scale_config_instance: JacScaleConfig | None = None;
+glob _scale_config_instance: JacScaleConfig | None = None,
+     _ms_enabled_deprecation_warned: bool = False;
 
 def _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float;
 def get_scale_config(project_dir: Path | None = None) -> JacScaleConfig;
 def reset_scale_config -> None;
 
-def resolve_password_hash_rounds(configured_rounds: int) -> int;
+def resolve_password_hash_cost(configured_cost: int) -> int;

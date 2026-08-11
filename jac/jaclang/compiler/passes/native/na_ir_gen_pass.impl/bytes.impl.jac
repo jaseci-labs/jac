@@ -284,19 +284,25 @@ impl NaIRGenPass._emit_bytes_contains(
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     memmem_fn = self._get_or_declare_extern("memmem", i8p, [i8p, i64, i8p, i64]);
+    _needle_len = self._bytes_len_val(needle);
     found = self.builder.call(
         memmem_fn,
         [
             self._bytes_data_ptr(haystack),
             self._bytes_len_val(haystack),
             self._bytes_data_ptr(needle),
-            self._bytes_len_val(needle)
+            _needle_len
         ],
         name="by.in.memmem"
     );
-    return self.builder.icmp_unsigned(
+    _hit = self.builder.icmp_unsigned(
         "!=", found, ir.Constant(i8p, None), name="by.in.found"
     );
+
+    _empty = self.builder.icmp_signed(
+        "==", _needle_len, ir.Constant(i64, 0), name="by.in.empty"
+    );
+    return self.builder.or_(_hit, _empty, name="by.in.res");
 }
 
 impl NaIRGenPass._emit_bytes_cmp(

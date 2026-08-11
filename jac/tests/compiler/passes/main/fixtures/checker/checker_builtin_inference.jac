@@ -28,3 +28,11 @@ def clone_toggle(c: dict[str, bool], k: str) -> dict[str, bool] {
 def combine(a: dict[str, int], b: dict[str, int]) -> dict[str, int] {
     return {**a, **b, "extra": 1};
 }
+
+def divmod_quot(a: int, b: int) -> int {
+    return divmod(a, b)[0];
+}
+
+def divmod_rem(a: int, b: int) -> int {
+    return divmod(a, b)[1];
+}

@@ -85,7 +85,7 @@ e2e_timing_init
 
 echo "# phase timings printed as [TIMING +Ns] markers; full report at the end"
 _t "deploy start"
-echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
+echo "=== deploy via KubernetesTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 # node-exporter + Alloy mount /proc, /sys, and /var/log/pods, which PodSecurity
 # `baseline` rejects - label the namespace privileged before any manifest lands.
@@ -105,7 +105,7 @@ cd "${PROJECT_DIR}"
 export JAC_PROFILE=preview
 jac - <<PYEOF
 import logging, os, sys, jaclang  # noqa: F401
-from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
+from jaclang.scale.deploy.target.kubernetes.target import KubernetesTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
 from jaclang.scale.config.dev_config import BINARY_PATH_ENV
@@ -139,7 +139,7 @@ class StderrLogger:
 # Empty python_image = the plain default base; the official-image e2e leg
 # sets E2E_POD_BASE_IMAGE to an image built from this PR's binary so the
 # baked-cache path (container-local runtime site) is exercised too.
-target = KubernetesMicroserviceTarget(
+target = KubernetesTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
         namespace="${NAMESPACE}",

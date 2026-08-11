@@ -125,7 +125,24 @@ def native_default_path_ok(path: str) -> bool {
 }
 
 def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
-    import from jaclang.jac0core.compiler { _is_demoted_native }
+    import from jaclang.jac0core.compiler {
+        _is_demoted_native,
+        native_pipeline_available
+    }
+
+    try {
+        import from jaclang.project.config { get_config }
+        _cfg = get_config();
+        if (_cfg is not None and getattr(_cfg?.project, 'kind', '') == 'web-app') {
+            return (False, "web-app project: native is opt-in");
+        }
+    } except Exception {
+        ;
+    }
+    (env_ok, env_reason) = native_pipeline_available();
+    if not env_ok {
+        return (False, env_reason);
+    }
     mod_path = module.loc.mod_path if module.loc is not None else '';
     if not mod_path {
         return (False, "no module path");
@@ -185,7 +202,10 @@ def _pullable_by_client_reference(
 ) -> bool {
     import from jaclang.jac0core.compiler { is_server_anchored_module }
     if isinstance(elem, uni.Archetype) and elem.arch_kind is not None {
-        return False;
+        import from jaclang.jac0core.placement { module_has_root_access }
+        if module_has_root_access(elem) {
+            return False;
+        }
     }
     if isinstance(elem, uni.Import) {
         if elem.has_string_path {
@@ -330,7 +350,10 @@ def _closure_pullable(
     }
     import from jaclang.jac0core.compiler { is_server_anchored_module }
     if isinstance(top, uni.Archetype) and top.arch_kind is not None {
-        return False;
+        import from jaclang.jac0core.placement { module_has_root_access }
+        if module_has_root_access(top) {
+            return False;
+        }
     }
     if (
         isinstance(top, uni.Ability)

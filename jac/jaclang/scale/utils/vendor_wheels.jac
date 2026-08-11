@@ -14,7 +14,8 @@ import from jaclang.runtimelib.jab_vendor {
 
 obj WheelVendor {
     has config: JacConfig,
-        app_dir: Path;
+        app_dir: Path,
+        platform_tag: str = "";
 
     def resolve_specs -> list[str] {
         plan = resolve_plan(self.config, include_dev=False);
@@ -43,16 +44,21 @@ obj WheelVendor {
     def run {
         specs = self.resolve_specs();
         if specs {
-            (ok, err) = download_wheels(specs, wheels_dir(self.app_dir));
+            (ok, err) = download_wheels(
+                specs, wheels_dir(self.app_dir), platform_tag=self.platform_tag
+            );
             if not ok {
                 console.error(f"Wheel download failed:\n{err}");
                 sys.exit(1);
             }
         }
-        write_vendor_manifest(self.app_dir, specs, python_tag=python_tag());
+        write_vendor_manifest(
+            self.app_dir, specs, python_tag=python_tag(), platform_tag=self.platform_tag
+        );
         wd = wheels_dir(self.app_dir);
         count = len(list(wd.glob("*.whl"))) if wd.is_dir() else 0;
-        console.print(f"  Vendored {count} wheel(s) for {len(specs)} spec(s).");
+        target = f" targeting {self.platform_tag}" if self.platform_tag else "";
+        console.print(f"  Vendored {count} wheel(s) for {len(specs)} spec(s){target}.");
     }
 }
 
@@ -60,16 +66,17 @@ obj WheelVendor {
 def main {
     args = sys.argv[1:];
     if not args {
-        console.error("usage: jac run vendor_wheels.jac <app_dir>");
+        console.error("usage: jac run vendor_wheels.jac <app_dir> [platform_tag]");
         sys.exit(2);
     }
     app_dir = Path(args[0]).resolve();
+    platform_tag = args[1] if len(args) > 1 else "";
     config = get_config_for_path(app_dir);
     if config is None {
         console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
         sys.exit(1);
     } else {
-        WheelVendor(config=config, app_dir=app_dir).run();
+        WheelVendor(config=config, app_dir=app_dir, platform_tag=platform_tag).run();
     }
 }
 

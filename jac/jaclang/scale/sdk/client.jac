@@ -8,12 +8,7 @@ import from jaclang.scale.deploy.target.factory {
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
-    KubernetesTarget
-}
-import from jaclang.scale.deploy.target.kubernetes.microservice.target {
-    KubernetesMicroserviceTarget
-}
+import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.models.resource_status { ResourceStatusInfo }
 import from jaclang.scale.models.progress {
@@ -25,9 +20,6 @@ import from jaclang.scale.models.progress {
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.sdk.spec { DeploySpec }
 import from jaclang.scale.sdk.events { EventLogger }
-
-glob FLEET_GATEWAY_SELECTOR: str = 'managed=jac-scale,jac-scale.role=gateway';
-
 
 def deploy(
     path: str, config: (dict[str, any] | None) = None, on_event: any = None
@@ -87,16 +79,7 @@ obj ScaleClient {
     }
 
     def preview(spec: DeploySpec) -> dict[str, any] {
-        if spec.resolved_target() != 'kubernetes-microservice' {
-            raise ValueError(
-                "preview() needs the kubernetes-microservice target: declare "
-                "microservices routes on the spec (or set "
-                "target='kubernetes-microservice'). The plain kubernetes "
-                "target applies resources imperatively and has no "
-                "manifest-preview seam."
-            );
-        }
-        target = self._ms_target(spec, dry_run=True);
+        target = self._make_target(spec, dry_run=True);
         return target.generate_manifests(self._app_config(spec));
     }
 
@@ -165,25 +148,7 @@ obj ScaleClient {
         return KubernetesConfig.from_dict(KubernetesConfig, config);
     }
 
-    def _ms_target(
-        spec: DeploySpec,
-        sink: EventSink = NoopSink(),
-        dry_run: bool = False,
-        use_event_logger: bool = False
-    ) -> KubernetesMicroserviceTarget {
-        return KubernetesMicroserviceTarget(
-            config=self._target_config(spec, dry_run),
-            logger=self._pick_logger(sink, use_event_logger),
-            dry_run=dry_run,
-            secrets=dict(spec.secrets),
-            env=dict(spec.env),
-            events=sink,
-            no_image=True,
-            microservices_config=spec.to_microservices_config()
-        );
-    }
-
-    def _plain_target(
+    def _make_target(
         spec: DeploySpec,
         sink: EventSink = NoopSink(),
         dry_run: bool = False,
@@ -195,60 +160,15 @@ obj ScaleClient {
             dry_run=dry_run,
             secrets=dict(spec.secrets),
             env=dict(spec.env),
-            events=sink
+            events=sink,
+            microservices_config=spec.to_microservices_config()
         );
-    }
-
-    def _make_target(
-        spec: DeploySpec,
-        sink: EventSink = NoopSink(),
-        dry_run: bool = False,
-        use_event_logger: bool = False
-    ) -> KubernetesTarget {
-        if spec.resolved_target() == 'kubernetes-microservice' {
-            return self._ms_target(
-                spec, sink=sink, dry_run=dry_run, use_event_logger=use_event_logger
-            );
-        }
-        return self._plain_target(
-            spec, sink=sink, dry_run=dry_run, use_event_logger=use_event_logger
-        );
-    }
-
-    def _namespace_has_fleet(spec: DeploySpec) -> bool {
-        try {
-            import from jaclang.scale._optdeps.kubernetes {
-                client as k8s_client,
-                config as k8s_cluster_config,
-                ConfigException
-            }
-
-            kube_config: any = k8s_cluster_config;
-            kube_client: any = k8s_client;
-            try {
-                kube_config.load_kube_config(
-                    context=(spec.kube_context or self.kube_context or None)
-                );
-            } except ConfigException {
-                kube_config.load_incluster_config();
-            }
-            apps_v1 = kube_client.AppsV1Api();
-            items = apps_v1.list_namespaced_deployment(
-                namespace=spec.namespace, label_selector=FLEET_GATEWAY_SELECTOR, limit=1
-            ).items;
-            return bool(items);
-        } except Exception {
-            return False;
-        }
     }
 
     def _lifecycle_target(
         app_name: str, namespace: str, target: str = 'auto'
     ) -> KubernetesTarget {
         spec = DeploySpec(app_name=app_name, namespace=namespace, target=target);
-        if target == 'auto' and self._namespace_has_fleet(spec) {
-            spec.target = 'kubernetes-microservice';
-        }
         return self._make_target(spec);
     }
 
@@ -256,10 +176,6 @@ obj ScaleClient {
         (code_folder, file_name) = spec.resolve_entry();
 
         posix_folder = pathlib.Path(os.path.relpath(code_folder)).as_posix();
-        return AppConfig(
-            code_folder=posix_folder,
-            file_name=file_name,
-            no_image=(spec.resolved_target() == 'kubernetes-microservice')
-        );
+        return AppConfig(code_folder=posix_folder, file_name=file_name);
     }
 }
