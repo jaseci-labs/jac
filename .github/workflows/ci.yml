@@ -223,7 +223,13 @@ jobs:
           set -uxo pipefail
           WORK="$(mktemp -d)"
           rc=0
-          HOME="$WORK" JAC_TEST_JOBS=auto jac test tests/compiler | tee /tmp/compiler.log || rc=$?
+          # Per-test timings: --durations prints every test's time in the log;
+          # junitxml uploads the same data as a structured artifact. Under
+          # JAC_TEST_JOBS=auto these times include contention from the other
+          # xdist workers — compare distributions across runs, not solo cost.
+          HOME="$WORK" JAC_TEST_JOBS=auto \
+            PYTEST_ADDOPTS="--durations=0 --durations-min=0.001 --junitxml=/tmp/compiler-times.xml -o junit_family=xunit2" \
+            jac test tests/compiler | tee /tmp/compiler.log || rc=$?
           {
             echo "## binary compiler-suite result"
             echo '```'
@@ -231,6 +237,13 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+      - name: Upload compiler-suite per-test timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-suite-timings
+          path: /tmp/compiler-times.xml
+          if-no-files-found: warn
       - name: Cross-backend equivalence suite (py/es/native congruence)
         working-directory: jac
         # The suite's cross-module tests build fixture paths under jac/tests/
@@ -244,7 +257,9 @@ jobs:
           set -uxo pipefail
           WORK="$(mktemp -d)"
           rc=0
-          HOME="$WORK" JAC_TEST_JOBS=auto jac test jaclang/compiler/tests | tee /tmp/equivalence.log || rc=$?
+          HOME="$WORK" JAC_TEST_JOBS=auto \
+            PYTEST_ADDOPTS="--durations=0 --durations-min=0.001 --junitxml=/tmp/equivalence-times.xml -o junit_family=xunit2" \
+            jac test jaclang/compiler/tests | tee /tmp/equivalence.log || rc=$?
           {
             echo "## binary equivalence-suite result"
             echo '```'
@@ -252,6 +267,13 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+      - name: Upload equivalence-suite per-test timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: equivalence-suite-timings
+          path: /tmp/equivalence-times.xml
+          if-no-files-found: warn
 
 
   # Native lowering unavailable (LLVM shim absent): user programs must compile
