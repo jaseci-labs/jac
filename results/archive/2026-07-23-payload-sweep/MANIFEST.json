@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "logical_name": "payload-sweep",
+  "source_file": "payload_sweep_results.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/payload_sweep_results.json",
+  "captured_utc": "2026-07-23T22:07:44Z",
+  "captured_utc_source": "file_mtime",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "751ea8b4bf3e8f968508b360909116b40465c9dd",
+      "date": "2026-07-21T20:44:19-04:00",
+      "subject": "fix(interopbench): pin scalar-cell reference side to server with sv {} blocks"
+    },
+    "next_commit_after": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": null,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "none (no provenance block)",
+  "feeds_paper_claims": [
+    "paper.tex L580-600, L766, L849-851: 934 ns/element slope, break-even N~20810, the 27479x..39x ratio table"
+  ],
+  "analysis": "Payload sweep (9 samples/point). No provenance block. The 934 ns/element slope and N~20810 break-even are FITTED values, not directly measured -- STEPS.md items 23-25 require re-fitting with fixed design points + per-point round resampling, and renaming 'break-even'. Retain, but flag as needing re-analysis before any payload claim is trusted.",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "payload_sweep_results.json",
+  "raw_file_sha256": "d579229620950d44fcc30abd0e091d922dfdf24debad8b5b982612dd7eab4ce3"
+}

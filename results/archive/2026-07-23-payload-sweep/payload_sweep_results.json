@@ -1,0 +1,524 @@
+{
+  "schema": "payload_cardinality_sweep_v2_ci",
+  "kernel": "xop_feed_payload",
+  "scenario": "loopback sv-to-sv RPC returning list[N] ints vs in-process direct dispatch; N swept 1..100000",
+  "bootstrap": {
+    "B": 10000,
+    "seed": 0,
+    "method": "percentile",
+    "ratio": "paired round resample",
+    "fits": "pairs bootstrap over points"
+  },
+  "sizes_N": [
+    1,
+    10,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    40000,
+    50000,
+    75000,
+    100000
+  ],
+  "all_digests_identical": true,
+  "points": [
+    {
+      "n": 1,
+      "direct": {
+        "per_call_ns": 689,
+        "per_call_ns_ci95": [
+          656.0,
+          756.0
+        ],
+        "samples": 9,
+        "digest": "ddabd54999341244"
+      },
+      "rpc": {
+        "per_call_ns": 18933410,
+        "per_call_ns_ci95": [
+          15674182.0,
+          20793254.0
+        ],
+        "samples": 9,
+        "digest": "ddabd54999341244"
+      },
+      "ratio": 27479.55007256894,
+      "ratio_ci95": [
+        23570.198496240602,
+        31697.033536585364
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 10,
+      "direct": {
+        "per_call_ns": 3537,
+        "per_call_ns_ci95": [
+          3461.0,
+          3679.0
+        ],
+        "samples": 9,
+        "digest": "24594036179049db"
+      },
+      "rpc": {
+        "per_call_ns": 19694205,
+        "per_call_ns_ci95": [
+          17309491.0,
+          24828311.0
+        ],
+        "samples": 9,
+        "digest": "24594036179049db"
+      },
+      "ratio": 5568.053435114503,
+      "ratio_ci95": [
+        4893.834040147017,
+        6980.126792240652
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 50,
+      "direct": {
+        "per_call_ns": 15544,
+        "per_call_ns_ci95": [
+          15143.0,
+          16618.0
+        ],
+        "samples": 9,
+        "digest": "0ee8ee335ebd4f96"
+      },
+      "rpc": {
+        "per_call_ns": 17019635,
+        "per_call_ns_ci95": [
+          14734407.0,
+          19466040.0
+        ],
+        "samples": 9,
+        "digest": "0ee8ee335ebd4f96"
+      },
+      "ratio": 1094.9327714873907,
+      "ratio_ci95": [
+        947.9160447761194,
+        1246.0353958924916
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 100,
+      "direct": {
+        "per_call_ns": 30078,
+        "per_call_ns_ci95": [
+          29707.0,
+          30739.0
+        ],
+        "samples": 9,
+        "digest": "0926bd61cbe66d3d"
+      },
+      "rpc": {
+        "per_call_ns": 20249846,
+        "per_call_ns_ci95": [
+          17888431.0,
+          21543678.0
+        ],
+        "samples": 9,
+        "digest": "0926bd61cbe66d3d"
+      },
+      "ratio": 673.2444311456878,
+      "ratio_ci95": [
+        592.4298448225381,
+        706.9759459193384
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 250,
+      "direct": {
+        "per_call_ns": 74120,
+        "per_call_ns_ci95": [
+          73584.0,
+          75669.0
+        ],
+        "samples": 9,
+        "digest": "7a3785785282f8da"
+      },
+      "rpc": {
+        "per_call_ns": 16068756,
+        "per_call_ns_ci95": [
+          15036773.0,
+          21142705.0
+        ],
+        "samples": 9,
+        "digest": "7a3785785282f8da"
+      },
+      "ratio": 216.79379384781436,
+      "ratio_ci95": [
+        203.5489691768305,
+        285.24966270912034
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 500,
+      "direct": {
+        "per_call_ns": 148883,
+        "per_call_ns_ci95": [
+          147393.0,
+          152486.0
+        ],
+        "samples": 9,
+        "digest": "22b506b9726b1f95"
+      },
+      "rpc": {
+        "per_call_ns": 17661349,
+        "per_call_ns_ci95": [
+          13806472.0,
+          21687831.0
+        ],
+        "samples": 9,
+        "digest": "22b506b9726b1f95"
+      },
+      "ratio": 118.62569265799318,
+      "ratio_ci95": [
+        90.67992512561163,
+        146.5502908999993
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 1000,
+      "direct": {
+        "per_call_ns": 299409,
+        "per_call_ns_ci95": [
+          297251.0,
+          300553.0
+        ],
+        "samples": 9,
+        "digest": "8e15acd27491e486"
+      },
+      "rpc": {
+        "per_call_ns": 18301284,
+        "per_call_ns_ci95": [
+          15515473.0,
+          19984569.0
+        ],
+        "samples": 9,
+        "digest": "8e15acd27491e486"
+      },
+      "ratio": 61.12469565043135,
+      "ratio_ci95": [
+        52.04124600017442,
+        66.60990120790336
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 2000,
+      "direct": {
+        "per_call_ns": 597080,
+        "per_call_ns_ci95": [
+          592860.0,
+          605830.0
+        ],
+        "samples": 9,
+        "digest": "07e71995f3c6795a"
+      },
+      "rpc": {
+        "per_call_ns": 23105189,
+        "per_call_ns_ci95": [
+          19270751.0,
+          26303342.0
+        ],
+        "samples": 9,
+        "digest": "07e71995f3c6795a"
+      },
+      "ratio": 38.696973604877066,
+      "ratio_ci95": [
+        32.504724555544314,
+        43.71933096314912
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 5000,
+      "direct": {
+        "per_call_ns": 1494784,
+        "per_call_ns_ci95": [
+          1477763.0,
+          1504607.0
+        ],
+        "samples": 9,
+        "digest": "e0be7f2d226c1b1e"
+      },
+      "rpc": {
+        "per_call_ns": 28830003,
+        "per_call_ns_ci95": [
+          24069303.0,
+          30414448.0
+        ],
+        "samples": 9,
+        "digest": "e0be7f2d226c1b1e"
+      },
+      "ratio": 19.287069569917794,
+      "ratio_ci95": [
+        16.238213461443753,
+        20.329738773322138
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 10000,
+      "direct": {
+        "per_call_ns": 2969337,
+        "per_call_ns_ci95": [
+          2956814.0,
+          2989382.0
+        ],
+        "samples": 9,
+        "digest": "ec790d50d8aeb546"
+      },
+      "rpc": {
+        "per_call_ns": 29305711,
+        "per_call_ns_ci95": [
+          27973448.0,
+          34813909.0
+        ],
+        "samples": 9,
+        "digest": "ec790d50d8aeb546"
+      },
+      "ratio": 9.869445940289028,
+      "ratio_ci95": [
+        9.374520733501855,
+        11.740307324778474
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 20000,
+      "direct": {
+        "per_call_ns": 5931120,
+        "per_call_ns_ci95": [
+          5898491.0,
+          5995574.0
+        ],
+        "samples": 9,
+        "digest": "502676aa713edcf2"
+      },
+      "rpc": {
+        "per_call_ns": 40151207,
+        "per_call_ns_ci95": [
+          36447446.0,
+          43621554.0
+        ],
+        "samples": 9,
+        "digest": "502676aa713edcf2"
+      },
+      "ratio": 6.769582642064231,
+      "ratio_ci95": [
+        6.1658640613374756,
+        7.275625986769573
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 30000,
+      "direct": {
+        "per_call_ns": 8889142,
+        "per_call_ns_ci95": [
+          8869450.0,
+          8964715.0
+        ],
+        "samples": 9,
+        "digest": "b24dde2bfda6af95"
+      },
+      "rpc": {
+        "per_call_ns": 47962922,
+        "per_call_ns_ci95": [
+          42443133.0,
+          52911317.0
+        ],
+        "samples": 9,
+        "digest": "b24dde2bfda6af95"
+      },
+      "ratio": 5.395675083152007,
+      "ratio_ci95": [
+        4.769887665299977,
+        5.9516252110462835
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 40000,
+      "direct": {
+        "per_call_ns": 11821696,
+        "per_call_ns_ci95": [
+          11784675.0,
+          12081413.0
+        ],
+        "samples": 9,
+        "digest": "29e0240d7bd92a7f"
+      },
+      "rpc": {
+        "per_call_ns": 58414764,
+        "per_call_ns_ci95": [
+          49351557.0,
+          61852961.0
+        ],
+        "samples": 9,
+        "digest": "29e0240d7bd92a7f"
+      },
+      "ratio": 4.941318403044707,
+      "ratio_ci95": [
+        4.1877741218998406,
+        5.209357815890316
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 50000,
+      "direct": {
+        "per_call_ns": 14810078,
+        "per_call_ns_ci95": [
+          14755379.0,
+          14949023.0
+        ],
+        "samples": 9,
+        "digest": "bc73fb0d571ee305"
+      },
+      "rpc": {
+        "per_call_ns": 66608500,
+        "per_call_ns_ci95": [
+          65071079.0,
+          72319477.0
+        ],
+        "samples": 9,
+        "digest": "bc73fb0d571ee305"
+      },
+      "ratio": 4.497511761923199,
+      "ratio_ci95": [
+        4.3885315617996765,
+        4.877378894352525
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 75000,
+      "direct": {
+        "per_call_ns": 22318661,
+        "per_call_ns_ci95": [
+          22212825.0,
+          22721464.0
+        ],
+        "samples": 9,
+        "digest": "3e1c39c527c4f48e"
+      },
+      "rpc": {
+        "per_call_ns": 88694946,
+        "per_call_ns_ci95": [
+          85160229.0,
+          99323777.0
+        ],
+        "samples": 9,
+        "digest": "3e1c39c527c4f48e"
+      },
+      "ratio": 3.9740263091948034,
+      "ratio_ci95": [
+        3.8289534737542943,
+        4.459898249746731
+      ],
+      "digest_identical": true
+    },
+    {
+      "n": 100000,
+      "direct": {
+        "per_call_ns": 29888315,
+        "per_call_ns_ci95": [
+          29761779.0,
+          30130178.0
+        ],
+        "samples": 9,
+        "digest": "39b7c0b7042acda8"
+      },
+      "rpc": {
+        "per_call_ns": 111592625,
+        "per_call_ns_ci95": [
+          108723134.0,
+          126389622.0
+        ],
+        "samples": 9,
+        "digest": "39b7c0b7042acda8"
+      },
+      "ratio": 3.7336539380021927,
+      "ratio_ci95": [
+        3.642037373086763,
+        4.194785108803539
+      ],
+      "digest_identical": true
+    }
+  ],
+  "fits_per_call_ns": {
+    "direct_full": {
+      "fixed_ns": -13776.988181950152,
+      "fixed_ns_ci95": [
+        -31839.042319101005,
+        4927.040759732138
+      ],
+      "slope_ns_per_el": 298.0222418875425,
+      "slope_ns_per_el_ci95": [
+        295.81154979703393,
+        298.8059005394768
+      ],
+      "r2": 0.9999783739956509,
+      "note": "in-process twin, all points"
+    },
+    "rpc_full": {
+      "fixed_ns": 19428457.936299063,
+      "fixed_ns_ci95": [
+        18080577.00051637,
+        20854941.314262275
+      ],
+      "slope_ns_per_el": 933.5991477346208,
+      "slope_ns_per_el_ci95": [
+        911.8134894537965,
+        998.8358763172646
+      ],
+      "r2": 0.9948172384106712,
+      "note": "crossing, all points"
+    },
+    "rpc_N_ge_1000": {
+      "fixed_ns": 21059638.02867047,
+      "fixed_ns_ci95": [
+        18978795.39647202,
+        23107487.709267825
+      ],
+      "slope_ns_per_el": 908.0203324723577,
+      "slope_ns_per_el_ci95": [
+        874.0319343704292,
+        957.5334625234068
+      ],
+      "r2": 0.9967588279068237,
+      "note": "crossing, N>=1000"
+    },
+    "rpc_N_ge_30000": {
+      "fixed_ns": 21625569.594720505,
+      "fixed_ns_ci95": [
+        19994554.999999996,
+        23741672.673913043
+      ],
+      "slope_ns_per_el": 898.7996916149065,
+      "slope_ns_per_el_ci95": [
+        865.1480571428574,
+        932.2789000000008
+      ],
+      "r2": 0.999531587557151,
+      "note": "post-crossing observed-slope regime"
+    }
+  },
+  "break_even_N_slope_overtakes_fixed": 20810.278140722636
+}

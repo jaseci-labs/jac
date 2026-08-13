@@ -1,0 +1,55 @@
+name: Provenance & Methodology Audit
+
+# Catches the result-integrity regressions a green bridges test does NOT
+# (interop-bench#1,#4,#5,#7,#8): unmatched cross-tool FFI, decimated sweep
+# cells, single-rep "canonical" payloads, discarded raw samples, tampered
+# manifests, and false break-even framing. These are cheap, hermetic Python
+# checks -- no jac binary required.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'results/paper-canonical/**'
+      - 'paper.tex'
+      - '.github/workflows/provenance.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'results/paper-canonical/**'
+      - 'paper.tex'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install comparand toolchain (cffi + pytest; gcc ships on the runner)
+        run: python -m pip install --quiet cffi pytest pybind11
+
+      - name: FFI harness is matched (one TU, struct-by-value agrees across tools)
+        run: python -m pytest scripts/test_xtool_ffi_matched.py -q --noconftest -p no:cacheprovider
+
+      - name: Audit invariants fire on the known regressions
+        run: python -m pytest scripts/test_audit.py -q --noconftest -p no:cacheprovider
+
+      - name: Audit the committed canonical bundle
+        # Skips cleanly (exit 0) until the bundle is committed; fails loudly on
+        # any provenance/methodology violation once it is.
+        run: |
+          if [ -d results/paper-canonical/aggregate ]; then
+            python3 scripts/audit.py --dir results/paper-canonical
+          else
+            echo "no canonical bundle committed yet; skipping bundle audit"
+          fi

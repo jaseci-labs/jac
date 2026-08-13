@@ -1,0 +1,92 @@
+name: Portability re-capture (arm64)
+
+# Second-machine portability evidence with ZERO hardware to provision: runs the
+# paper's re-capture harness on GitHub's free arm64 hosted runner (ubuntu-24.04-arm,
+# the same runner the linux-aarch64 binary is built on in build-binaries.yml).
+#
+# SCOPE (read results/portability/README.md): the deliverable is the RATIOS
+# (placement sv/na slope, payload rpc/direct slope, svc_split/feed floors) and
+# their CV, NOT the absolute nanoseconds. The wasm/native ratio is a fourth,
+# TARGET-DEPENDENT family: the hosted arm64 release binary omits the wasm32 LLVM
+# backend, so that one cell stays x86-only and is captured as absent here (the
+# script's wasm leg is non-fatal). A hosted runner is shared and virtualized -- its
+# CPU governor is unpinned and turbo is uncontrolled -- so the absolutes are
+# noise. That is exactly the point: if the ratios reproduce on a different uarch
+# (Neoverse) despite an uncontrolled clock, the "ratios port, absolutes don't"
+# claim holds on a second machine. The harness already accepts governor
+# 'unknown' (portability_recapture.sh) precisely so it can run here.
+#
+# REPS is raised to 40 (vs the canonical 20) to tame the extra jitter of a
+# shared runner; every output still carries raw per-invocation samples so the CV
+# is reconstructible.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly drift check (Mondays 06:00 UTC). Cheap, keeps the arm64 point fresh.
+    - cron: '0 6 * * 1'
+  # Fork-friendly trigger: the fork's default branch is main, so workflow_dispatch
+  # is not dispatchable for a workflow that lives only on interop-bench. A path-
+  # scoped push trigger runs the re-capture whenever the harness itself changes
+  # (and on the commit that first adds this file), without rebuilding jac on every
+  # unrelated push to the branch.
+  push:
+    branches: [interop-bench]
+    paths:
+      - '.github/workflows/portability-arm64.yml'
+      - 'scripts/portability_recapture.sh'
+      - 'scripts/sweep_controlled.py'
+      - 'scripts/payload_sweep_controlled.py'
+
+permissions:
+  contents: read
+
+# Only one arm64 re-capture in flight per ref; a newer push cancels a stale build.
+concurrency:
+  group: portability-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recapture:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      # Builds (or restores) the native jac binary for this runner's arch.
+      - name: Set up jac (arm64 binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Warm compiler cache
+        run: jac --version
+
+      # node is needed for the wasm/cross-runtime legs.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Record runner conditions (absolutes are disclaimed)
+        run: |
+          echo "arch: $(uname -m)"
+          echo "governor: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unknown)"
+          nproc && node --version
+
+      - name: Portability re-capture (ratios, elevated reps)
+        # JOBS=4 == the runner's cores: each measurement mostly owns a core, so
+        # the tiny, jitter-sensitive cells are not preempted mid-timing the way the
+        # 8-way default (oversubscribed on 4 cores) starved them. The bounded
+        # re-measure in sweep_controlled.py backstops any residual drop. REPS=40
+        # still absorbs the shared-clock jitter.
+        run: REPS=40 XRUN_INV=20 JOBS=4 scripts/portability_recapture.sh ci-arm64-neoverse
+
+      # Always upload whatever captured. The placement (sweep) and payload legs
+      # run and write their JSON BEFORE the cross-runtime leg, so even a late
+      # failure must not discard them. The wasm leg is already non-fatal in the
+      # script; if:always() backstops any other unexpected late error.
+      - name: Upload re-capture bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portability-ci-arm64-neoverse
+          path: results/portability/ci-arm64-neoverse/
+          if-no-files-found: warn

@@ -1,0 +1,130 @@
+{
+ "schema_version": 1,
+ "kind": "cross_tool_rpc",
+ "captured_utc": "2026-07-29T16:50:08.132709+00:00",
+ "work": 5000,
+ "calls": 200,
+ "isolated_work": 1,
+ "reps": 3,
+ "provider_host": "127.0.0.1",
+ "loopback": true,
+ "two_box_mode": false,
+ "provider_port": null,
+ "minimal_port": null,
+ "jac_sv_url": null,
+ "reference_digest": "charge:1453621668",
+ "machine_control": {
+  "governor": "performance",
+  "turbo_disabled": "1"
+ },
+ "oracle_all_comparands_agree": true,
+ "note": "matched = per-call at real work; isolated = per-call at work=1 (framework dispatch + client marshalling). rtt = median TCP-connect to the provider (the wire term; ~tens of us on loopback, a real RTT when --provider-host is a second machine). jac_sv is the shipped path (jac start app server + sv import); fastapi_* are hand-written/generated-client comparands; minimal_http is the RPC-physics floor. Digest identity across all comparands is the oracle.",
+ "comparands": {
+  "direct_inproc": {
+   "matched": {
+    "per_call_ns": 1029728.595,
+    "digest": "charge:1453621668"
+   },
+   "isolated": {
+    "per_call_ns": 390.825,
+    "digest": "charge:1447776956"
+   },
+   "rtt": null
+  },
+  "jac_direct": {
+   "matched": {
+    "per_call_ns": 1069321,
+    "samples": [
+     1041323,
+     1110735,
+     1069321
+    ],
+    "digest": "charge:1453621668"
+   },
+   "isolated": {
+    "per_call_ns": 447,
+    "samples": [
+     447,
+     438,
+     452
+    ],
+    "digest": "charge:1447776956"
+   },
+   "rtt": null
+  },
+  "jac_sv": {
+   "matched": {
+    "per_call_ns": 5360803,
+    "samples": [
+     5360803,
+     5834851,
+     5319018
+    ],
+    "digest": "charge:1453621668"
+   },
+   "isolated": {
+    "per_call_ns": 3608578,
+    "samples": [
+     3569346,
+     3608578,
+     3714048
+    ],
+    "digest": "charge:1447776956"
+   },
+   "rtt": {
+    "median_ns": 69031.0,
+    "min_ns": 61280,
+    "max_ns": 1016144791,
+    "n": 50
+   }
+  },
+  "fastapi_httpx": {
+   "matched": {
+    "per_call_ns": 3365600.805,
+    "digest": "charge:1453621668"
+   },
+   "isolated": {
+    "per_call_ns": 1783628.275,
+    "digest": "charge:1447776956"
+   },
+   "rtt": {
+    "median_ns": 61212.5,
+    "min_ns": 59503,
+    "max_ns": 165201,
+    "n": 50
+   }
+  },
+  "fastapi_openapi": {
+   "matched": {
+    "per_call_ns": 3174589.175,
+    "digest": "charge:1453621668"
+   },
+   "isolated": {
+    "per_call_ns": 2005982.42,
+    "digest": "charge:1447776956"
+   },
+   "rtt": {
+    "median_ns": 61212.5,
+    "min_ns": 59503,
+    "max_ns": 165201,
+    "n": 50
+   }
+  },
+  "minimal_http": {
+   "matched": {
+    "per_call_ns": 1933115.675,
+    "digest": "charge:1453621668"
+   },
+   "isolated": {
+    "per_call_ns": 379834.265,
+    "digest": "charge:1447776956"
+   },
+   "rtt": {
+    "median_ns": 70065.0,
+    "min_ns": 60200,
+    "max_ns": 1016124084,
+    "n": 50
+   }
+  }
+ }
+}

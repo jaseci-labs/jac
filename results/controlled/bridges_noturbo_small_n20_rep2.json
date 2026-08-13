@@ -1,0 +1,1193 @@
+{
+  "schema_version": 2,
+  "suite": "interopbench",
+  "family": "native_bridges",
+  "provenance": {
+    "captured_utc": "2026-07-25T02:33:52.192163+00:00",
+    "host": "zaitop",
+    "platform": "Linux-6.18.39-1-lts-x86_64-with-glibc2.43",
+    "machine": "x86_64",
+    "processor": "",
+    "cpu_count": 16,
+    "python": "CPython 3.14.6",
+    "executable": "/home/jac/.local/bin/jac"
+  },
+  "cells": {
+    "iop_call": {
+      "scenario": "scalar checksum call churn",
+      "source": "kernels/iop_call.jac",
+      "reference": "free",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "free",
+          "bridge"
+        ],
+        "canonical_digest": "call:263997602",
+        "identical": true
+      },
+      "variants": {
+        "free": {
+          "samples": 20,
+          "median_ns": 827958,
+          "min_ns": 785563,
+          "max_ns": 959373,
+          "stdev_ns": 47280,
+          "iqr_ns": 67964,
+          "canonical_digest": "call:263997602",
+          "digest": "7f45123e672f105b",
+          "metrics": {
+            "per_call_ns": 41397
+          },
+          "samples_ns": [
+            854381,
+            786953,
+            867426,
+            827372,
+            793704,
+            959373,
+            918271,
+            832836,
+            808945,
+            806524,
+            793283,
+            829798,
+            901428,
+            785563,
+            873452,
+            792859,
+            822102,
+            803690,
+            828545,
+            830065
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              42719,
+              39347,
+              43371,
+              41368,
+              39685,
+              47968,
+              45913,
+              41641,
+              40447,
+              40326,
+              39664,
+              41489,
+              45071,
+              39278,
+              43672,
+              39642,
+              41105,
+              40184,
+              41427,
+              41503
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_call.jac",
+            "free",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "bridge": {
+          "samples": 20,
+          "median_ns": 94638,
+          "min_ns": 91656,
+          "max_ns": 117083,
+          "stdev_ns": 6691,
+          "iqr_ns": 4423,
+          "canonical_digest": "call:263997602",
+          "digest": "7f45123e672f105b",
+          "metrics": {
+            "per_call_ns": 4731
+          },
+          "samples_ns": [
+            94720,
+            113787,
+            94088,
+            97656,
+            99069,
+            99559,
+            96765,
+            96681,
+            97272,
+            92680,
+            94556,
+            94882,
+            93126,
+            117083,
+            92720,
+            92633,
+            93169,
+            93992,
+            91656,
+            94399
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              4736,
+              5689,
+              4704,
+              4882,
+              4953,
+              4977,
+              4838,
+              4834,
+              4863,
+              4634,
+              4727,
+              4744,
+              4656,
+              5854,
+              4636,
+              4631,
+              4658,
+              4699,
+              4582,
+              4719
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_call.jac",
+            "bridge",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    },
+    "iop_cb": {
+      "scenario": "scalar native-to-server callback churn",
+      "source": "kernels/iop_cb.jac",
+      "reference": "free",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "free",
+          "bridge"
+        ],
+        "canonical_digest": "callback:263997602",
+        "identical": true
+      },
+      "variants": {
+        "free": {
+          "samples": 20,
+          "median_ns": 798094,
+          "min_ns": 783323,
+          "max_ns": 847858,
+          "stdev_ns": 20057,
+          "iqr_ns": 29319,
+          "canonical_digest": "callback:263997602",
+          "digest": "972d19b31ac714f8",
+          "metrics": {
+            "invoke_ns": 39904
+          },
+          "samples_ns": [
+            787499,
+            796868,
+            823963,
+            847858,
+            825430,
+            795636,
+            835025,
+            791588,
+            796067,
+            797117,
+            814748,
+            798265,
+            806503,
+            792861,
+            847572,
+            797924,
+            797477,
+            821367,
+            833457,
+            783323
+          ],
+          "metric_samples": {
+            "invoke_ns": [
+              39374,
+              39843,
+              41198,
+              42392,
+              41271,
+              39781,
+              41751,
+              39579,
+              39803,
+              39855,
+              40737,
+              39913,
+              40325,
+              39643,
+              42378,
+              39896,
+              39873,
+              41068,
+              41672,
+              39166
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_cb.jac",
+            "free",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "bridge": {
+          "samples": 20,
+          "median_ns": 915009,
+          "min_ns": 880063,
+          "max_ns": 1005886,
+          "stdev_ns": 33311,
+          "iqr_ns": 49363,
+          "canonical_digest": "callback:263997602",
+          "digest": "972d19b31ac714f8",
+          "metrics": {
+            "invoke_ns": 45750
+          },
+          "samples_ns": [
+            901855,
+            920123,
+            886462,
+            946568,
+            940276,
+            917551,
+            1005886,
+            977571,
+            951464,
+            880063,
+            885335,
+            910057,
+            940370,
+            922940,
+            928699,
+            906833,
+            891667,
+            912467,
+            880717,
+            890755
+          ],
+          "metric_samples": {
+            "invoke_ns": [
+              45092,
+              46006,
+              44323,
+              47328,
+              47013,
+              45877,
+              50294,
+              48878,
+              47573,
+              44003,
+              44266,
+              45502,
+              47018,
+              46147,
+              46434,
+              45341,
+              44583,
+              45623,
+              44035,
+              44537
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_cb.jac",
+            "bridge",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    },
+    "iop_symmetric": {
+      "scenario": "symmetric sv\u2194na scalar calls with callee-side LCG work",
+      "source": "kernels/iop_symmetric.jac",
+      "reference": "sv_local",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "sv_local",
+          "sv_to_na",
+          "na_local",
+          "na_to_sv"
+        ],
+        "canonical_digest": "symmetric:263997602",
+        "identical": true
+      },
+      "variants": {
+        "sv_local": {
+          "samples": 20,
+          "median_ns": 811917,
+          "min_ns": 792660,
+          "max_ns": 852197,
+          "stdev_ns": 19335,
+          "iqr_ns": 39809,
+          "canonical_digest": "symmetric:263997602",
+          "digest": "75fb0e0451bab41d",
+          "metrics": {
+            "per_call_ns": 40595
+          },
+          "samples_ns": [
+            814554,
+            801146,
+            816832,
+            801732,
+            838983,
+            806594,
+            843690,
+            801866,
+            818881,
+            808982,
+            845535,
+            792660,
+            844255,
+            805216,
+            809281,
+            852197,
+            799275,
+            809058,
+            825496,
+            849901
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              40727,
+              40057,
+              40841,
+              40086,
+              41949,
+              40329,
+              42184,
+              40093,
+              40944,
+              40449,
+              42276,
+              39633,
+              42212,
+              40260,
+              40464,
+              42609,
+              39963,
+              40452,
+              41274,
+              42495
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_symmetric.jac",
+            "sv_local",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "sv_to_na": {
+          "samples": 20,
+          "median_ns": 97517,
+          "min_ns": 93238,
+          "max_ns": 121450,
+          "stdev_ns": 8883,
+          "iqr_ns": 13486,
+          "canonical_digest": "symmetric:263997602",
+          "digest": "75fb0e0451bab41d",
+          "metrics": {
+            "per_call_ns": 4875
+          },
+          "samples_ns": [
+            100509,
+            116172,
+            99992,
+            95625,
+            95266,
+            112584,
+            112183,
+            102039,
+            96678,
+            100903,
+            93238,
+            98089,
+            96190,
+            96945,
+            121450,
+            96151,
+            94744,
+            96734,
+            96839,
+            119041
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              5025,
+              5808,
+              4999,
+              4781,
+              4763,
+              5629,
+              5609,
+              5101,
+              4833,
+              5045,
+              4661,
+              4904,
+              4809,
+              4847,
+              6072,
+              4807,
+              4737,
+              4836,
+              4841,
+              5952
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_symmetric.jac",
+            "sv_to_na",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "na_local": {
+          "samples": 20,
+          "median_ns": 25592,
+          "min_ns": 24752,
+          "max_ns": 29751,
+          "stdev_ns": 1068,
+          "iqr_ns": 667,
+          "canonical_digest": "symmetric:263997602",
+          "digest": "75fb0e0451bab41d",
+          "metrics": {
+            "per_call_ns": 1279
+          },
+          "samples_ns": [
+            25813,
+            25313,
+            25471,
+            25839,
+            25345,
+            26444,
+            25590,
+            26618,
+            24846,
+            24752,
+            25239,
+            24795,
+            25009,
+            25851,
+            25161,
+            25623,
+            25797,
+            25962,
+            25595,
+            29751
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              1290,
+              1265,
+              1273,
+              1291,
+              1267,
+              1322,
+              1279,
+              1330,
+              1242,
+              1237,
+              1261,
+              1239,
+              1250,
+              1292,
+              1258,
+              1281,
+              1289,
+              1298,
+              1279,
+              1487
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_symmetric.jac",
+            "na_local",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "na_to_sv": {
+          "samples": 20,
+          "median_ns": 810182,
+          "min_ns": 800572,
+          "max_ns": 926466,
+          "stdev_ns": 31890,
+          "iqr_ns": 35602,
+          "canonical_digest": "symmetric:263997602",
+          "digest": "75fb0e0451bab41d",
+          "metrics": {
+            "per_call_ns": 40508
+          },
+          "samples_ns": [
+            838256,
+            802556,
+            807218,
+            841402,
+            814604,
+            826245,
+            800572,
+            824674,
+            806185,
+            809452,
+            806587,
+            801889,
+            804124,
+            807670,
+            926466,
+            864069,
+            804623,
+            873318,
+            810912,
+            844725
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              41912,
+              40127,
+              40360,
+              42070,
+              40730,
+              41312,
+              40028,
+              41233,
+              40309,
+              40472,
+              40329,
+              40094,
+              40206,
+              40383,
+              46323,
+              43203,
+              40231,
+              43665,
+              40545,
+              42236
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_symmetric.jac",
+            "na_to_sv",
+            "200",
+            "20"
+          ],
+          "command_adapter": "mixed_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    },
+    "iop_ffi_scalar": {
+      "scenario": "libm sqrt extern call churn over perfect-square inputs",
+      "source": "kernels/iop_ffi_scalar.na.jac",
+      "reference": "ref",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "ref",
+          "ffi"
+        ],
+        "canonical_digest": "sqrt:402000",
+        "identical": true
+      },
+      "variants": {
+        "ref": {
+          "samples": 20,
+          "median_ns": 11594,
+          "min_ns": 11534,
+          "max_ns": 11744,
+          "stdev_ns": 49,
+          "iqr_ns": 40,
+          "canonical_digest": "sqrt:402000",
+          "digest": "1e6dd999d6244e2f",
+          "metrics": {
+            "per_ffi_call_ns": 2
+          },
+          "samples_ns": [
+            11534,
+            11612,
+            11599,
+            11641,
+            11545,
+            11616,
+            11608,
+            11607,
+            11744,
+            11590,
+            11618,
+            11708,
+            11584,
+            11589,
+            11569,
+            11577,
+            11617,
+            11576,
+            11586,
+            11556
+          ],
+          "metric_samples": {
+            "per_ffi_call_ns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_ffi_scalar.na.jac",
+            "ref",
+            "200",
+            "20"
+          ],
+          "command_adapter": "clib_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "ffi": {
+          "samples": 20,
+          "median_ns": 14129,
+          "min_ns": 13888,
+          "max_ns": 14347,
+          "stdev_ns": 113,
+          "iqr_ns": 143,
+          "canonical_digest": "sqrt:402000",
+          "digest": "1e6dd999d6244e2f",
+          "metrics": {
+            "per_ffi_call_ns": 3
+          },
+          "samples_ns": [
+            14254,
+            14138,
+            14153,
+            13940,
+            14026,
+            14016,
+            14081,
+            14161,
+            14201,
+            14040,
+            13888,
+            14347,
+            14161,
+            14299,
+            14095,
+            14172,
+            14104,
+            14248,
+            14120,
+            14093
+          ],
+          "metric_samples": {
+            "per_ffi_call_ns": [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_ffi_scalar.na.jac",
+            "ffi",
+            "200",
+            "20"
+          ],
+          "command_adapter": "clib_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    },
+    "iop_ffi_struct": {
+      "scenario": "C ABI struct-by-value churn across INTEGER and MEMORY classes",
+      "source": "kernels/iop_ffi_struct.na.jac",
+      "reference": "ref",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "ref",
+          "ffi"
+        ],
+        "canonical_digest": "struct:21396320",
+        "identical": true
+      },
+      "variants": {
+        "ref": {
+          "samples": 20,
+          "median_ns": 104128,
+          "min_ns": 103669,
+          "max_ns": 135653,
+          "stdev_ns": 7035,
+          "iqr_ns": 938,
+          "canonical_digest": "struct:21396320",
+          "digest": "cd4319b4fb147f9b",
+          "metrics": {
+            "per_ffi_call_ns": 2
+          },
+          "samples_ns": [
+            103792,
+            105635,
+            104170,
+            105492,
+            135653,
+            104765,
+            104208,
+            103800,
+            103669,
+            104005,
+            103847,
+            104087,
+            104006,
+            103908,
+            104176,
+            103953,
+            103897,
+            104863,
+            105069,
+            104234
+          ],
+          "metric_samples": {
+            "per_ffi_call_ns": [
+              2,
+              2,
+              2,
+              2,
+              3,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_ffi_struct.na.jac",
+            "ref",
+            "200",
+            "20"
+          ],
+          "command_adapter": "clib_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "ffi": {
+          "samples": 20,
+          "median_ns": 710993,
+          "min_ns": 704295,
+          "max_ns": 781239,
+          "stdev_ns": 19693,
+          "iqr_ns": 24415,
+          "canonical_digest": "struct:21396320",
+          "digest": "cd4319b4fb147f9b",
+          "metrics": {
+            "per_ffi_call_ns": 17
+          },
+          "samples_ns": [
+            781239,
+            723762,
+            708480,
+            712591,
+            734991,
+            739760,
+            709229,
+            704912,
+            726891,
+            705553,
+            711187,
+            704295,
+            710799,
+            737267,
+            710729,
+            709110,
+            750870,
+            724926,
+            705567,
+            708761
+          ],
+          "metric_samples": {
+            "per_ffi_call_ns": [
+              19,
+              18,
+              17,
+              17,
+              18,
+              18,
+              17,
+              17,
+              18,
+              17,
+              17,
+              17,
+              17,
+              18,
+              17,
+              17,
+              18,
+              18,
+              17,
+              17
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_ffi_struct.na.jac",
+            "ffi",
+            "200",
+            "20"
+          ],
+          "command_adapter": "clib_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    },
+    "iop_ffi_vtable": {
+      "scenario": "C-invoked Jac callback through a __clibcb trampoline",
+      "source": "kernels/iop_ffi_vtable.na.jac",
+      "reference": "ref",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "ref",
+          "ffi"
+        ],
+        "canonical_digest": "vtable:4036000",
+        "identical": true
+      },
+      "variants": {
+        "ref": {
+          "samples": 20,
+          "median_ns": 11886,
+          "min_ns": 11835,
+          "max_ns": 11968,
+          "stdev_ns": 30,
+          "iqr_ns": 32,
+          "canonical_digest": "vtable:4036000",
+          "digest": "9e0a3c866e37fb3f",
+          "metrics": {
+            "trampoline_call_ns": 2
+          },
+          "samples_ns": [
+            11852,
+            11931,
+            11875,
+            11968,
+            11930,
+            11920,
+            11904,
+            11876,
+            11896,
+            11887,
+            11893,
+            11885,
+            11887,
+            11862,
+            11891,
+            11878,
+            11868,
+            11885,
+            11867,
+            11835
+          ],
+          "metric_samples": {
+            "trampoline_call_ns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_ffi_vtable.na.jac",
+            "ref",
+            "200",
+            "20"
+          ],
+          "command_adapter": "clib_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "ffi": {
+          "samples": 20,
+          "median_ns": 13283,
+          "min_ns": 13053,
+          "max_ns": 13525,
+          "stdev_ns": 148,
+          "iqr_ns": 281,
+          "canonical_digest": "vtable:4036000",
+          "digest": "9e0a3c866e37fb3f",
+          "metrics": {
+            "trampoline_call_ns": 3
+          },
+          "samples_ns": [
+            13449,
+            13053,
+            13226,
+            13083,
+            13525,
+            13139,
+            13472,
+            13465,
+            13315,
+            13053,
+            13164,
+            13433,
+            13201,
+            13227,
+            13311,
+            13421,
+            13143,
+            13317,
+            13256,
+            13372
+          ],
+          "metric_samples": {
+            "trampoline_call_ns": [
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3,
+              3
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command": [
+            "/home/jac/.local/bin/jac",
+            "-m",
+            "jaclang",
+            "run",
+            "/home/jac/repos/interop-bench/jac/examples/interopbench/kernels/iop_ffi_vtable.na.jac",
+            "ffi",
+            "200",
+            "20"
+          ],
+          "command_adapter": "clib_jit_jac_run",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "schema": "xruntime_floors_v2_ci",
+  "bootstrap": {
+    "B": 10000,
+    "seed": 0,
+    "method": "percentile",
+    "ratio": "paired round resample"
+  },
+  "cells": {
+    "xop_svc_split": {
+      "variants": {
+        "direct": {
+          "per_call_ns": 34819.5,
+          "per_call_ns_ci95": [
+            34578.0,
+            35268.5
+          ],
+          "samples": 30,
+          "digest": "charge:263997602"
+        },
+        "rpc": {
+          "per_call_ns": 17924200.0,
+          "per_call_ns_ci95": [
+            16840619.5,
+            18704725.0
+          ],
+          "samples": 30,
+          "digest": "charge:263997602"
+        }
+      },
+      "ratio_cross_over_direct": 514.7747670127371,
+      "ratio_ci95": [
+        481.68711045336823,
+        536.94466169889
+      ],
+      "digest_identical": true
+    },
+    "xop_feed": {
+      "variants": {
+        "direct": {
+          "per_call_ns": 35154.5,
+          "per_call_ns_ci95": [
+            34706.0,
+            35850.5
+          ],
+          "samples": 30,
+          "digest": "feed:263997602"
+        },
+        "client": {
+          "per_call_ns": 11567312.0,
+          "per_call_ns_ci95": [
+            10838945.5,
+            12508361.0
+          ],
+          "samples": 30,
+          "digest": "feed:263997602"
+        }
+      },
+      "ratio_cross_over_direct": 329.04214254220653,
+      "ratio_ci95": [
+        307.73225540855145,
+        355.6841601979975
+      ],
+      "digest_identical": true
+    },
+    "xop_wasm_call": {
+      "variants": {
+        "native": {
+          "per_call_ns": 844.0,
+          "per_call_ns_ci95": [
+            843.5,
+            845.0
+          ],
+          "samples": 30,
+          "digest": "wasm:263997602"
+        },
+        "wasm": {
+          "per_call_ns": 7717.5,
+          "per_call_ns_ci95": [
+            7346.0,
+            7884.5
+          ],
+          "samples": 30,
+          "digest": "wasm:263997602"
+        }
+      },
+      "ratio_cross_over_direct": 9.143957345971565,
+      "ratio_ci95": [
+        8.708580577138385,
+        9.341824644549764
+      ],
+      "digest_identical": true
+    }
+  }
+}

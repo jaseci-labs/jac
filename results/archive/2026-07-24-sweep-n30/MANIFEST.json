@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "logical_name": "sweep-n30",
+  "source_file": "sweep_results_n30.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/sweep_results_n30.json",
+  "captured_utc": "2026-07-24T02:41:27Z",
+  "captured_utc_source": "file_mtime",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "next_commit_after": null,
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": 30,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "none (no provenance block)",
+  "feeds_paper_claims": [
+    "(not currently cited; contradicts sweep-n5)"
+  ],
+  "analysis": "CONTRADICTS sweep-n5. iop_cb slope 87.8/90.4 ns/work (vs 182/183), bridge fixed cost 9 ns (vs 4471). The callback crossing is unresolvable above noise in this capture. Note iop_call/free consistency with these ~88 ns/work slopes suggests the n30 slopes are internally coherent -- so the n5 slopes (not these) are the outlier. Either way the two captures cannot be averaged.",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "sweep_results_n30.json",
+  "raw_file_sha256": "57bb5c28e575d83ab035124120cdb98bd9c292b4f7809af351ddfab7e1f43d61"
+}

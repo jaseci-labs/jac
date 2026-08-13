@@ -1,0 +1,552 @@
+{
+  "calls": 40,
+  "works": [
+    25,
+    50,
+    100,
+    200,
+    400,
+    800,
+    1600,
+    3200
+  ],
+  "timed_samples": 5,
+  "cells": {
+    "iop_call": {
+      "source": "kernels/iop_call.jac",
+      "variants": {
+        "free": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 2181.625,
+              "min": 2162.275,
+              "max": 2495.9,
+              "stdev": 128.73275709779543,
+              "digest": "call:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 4462.575,
+              "min": 4007.55,
+              "max": 5349.375,
+              "stdev": 468.37975900971634,
+              "digest": "call:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 8237.425,
+              "min": 8057.975,
+              "max": 14213.0,
+              "stdev": 2387.7073035340827,
+              "digest": "call:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 16508.95,
+              "min": 16044.05,
+              "max": 18186.975,
+              "stdev": 734.1407168247783,
+              "digest": "call:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 33683.5,
+              "min": 33259.775,
+              "max": 34988.275,
+              "stdev": 671.8250435195165,
+              "digest": "call:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 67279.175,
+              "min": 66392.4,
+              "max": 69414.575,
+              "stdev": 1075.2437527602744,
+              "digest": "call:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 141901.575,
+              "min": 134905.0,
+              "max": 155632.75,
+              "stdev": 7562.006275906546,
+              "digest": "call:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 275885.425,
+              "min": 271680.875,
+              "max": 297975.75,
+              "stdev": 9561.968921900974,
+              "digest": "call:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": -312.2032339271973,
+            "slope_ns_per_work": 86.68829425434001,
+            "r2": 0.9997218018256856
+          }
+        },
+        "bridge": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 1434.95,
+              "min": 1385.175,
+              "max": 1494.6,
+              "stdev": 40.82366776760753,
+              "digest": "call:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 1449.0,
+              "min": 1444.6,
+              "max": 1493.075,
+              "stdev": 19.08497445636227,
+              "digest": "call:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 1640.425,
+              "min": 1513.875,
+              "max": 1707.45,
+              "stdev": 64.76654730646062,
+              "digest": "call:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 1788.725,
+              "min": 1721.15,
+              "max": 1867.425,
+              "stdev": 55.03393634840229,
+              "digest": "call:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 2160.4,
+              "min": 2092.3,
+              "max": 2222.575,
+              "stdev": 42.400673933323176,
+              "digest": "call:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 2986.25,
+              "min": 2935.3,
+              "max": 3077.775,
+              "stdev": 50.90182560576783,
+              "digest": "call:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 4583.6,
+              "min": 4534.175,
+              "max": 5266.45,
+              "stdev": 275.8893623357014,
+              "digest": "call:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 17179.75,
+              "min": 17130.7,
+              "max": 19771.75,
+              "stdev": 1039.742962779744,
+              "digest": "call:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": 461.09136328427576,
+            "slope_ns_per_work": 4.632842210780517,
+            "r2": 0.9117492419907501
+          }
+        }
+      }
+    },
+    "iop_cb": {
+      "source": "kernels/iop_cb.jac",
+      "variants": {
+        "free": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 4848.95,
+              "min": 4699.875,
+              "max": 5017.45,
+              "stdev": 112.75311414768099,
+              "digest": "callback:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 9074.875,
+              "min": 8688.475,
+              "max": 9411.725,
+              "stdev": 297.6494340663188,
+              "digest": "callback:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 17498.375,
+              "min": 17221.55,
+              "max": 17582.9,
+              "stdev": 124.7258479626422,
+              "digest": "callback:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 34909.85,
+              "min": 34325.575,
+              "max": 35641.2,
+              "stdev": 490.5510399030878,
+              "digest": "callback:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 70793.85,
+              "min": 69108.825,
+              "max": 74002.975,
+              "stdev": 1733.4246757791361,
+              "digest": "callback:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 144781.675,
+              "min": 143394.675,
+              "max": 147577.75,
+              "stdev": 1453.398130468733,
+              "digest": "callback:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 289466.375,
+              "min": 286008.275,
+              "max": 292354.45,
+              "stdev": 2423.8128167723685,
+              "digest": "callback:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 582795.225,
+              "min": 576987.925,
+              "max": 591789.475,
+              "stdev": 4922.498081045823,
+              "digest": "callback:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": -901.1549380325305,
+            "slope_ns_per_work": 182.1770061967467,
+            "r2": 0.9999797276892519
+          }
+        },
+        "bridge": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 8396.725,
+              "min": 8222.575,
+              "max": 9687.175,
+              "stdev": 532.6202640249427,
+              "digest": "callback:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 12664.525,
+              "min": 12515.775,
+              "max": 13762.325,
+              "stdev": 453.6959466426831,
+              "digest": "callback:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 22499.4,
+              "min": 21160.625,
+              "max": 24504.45,
+              "stdev": 1195.7036909912092,
+              "digest": "callback:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 39148.425,
+              "min": 37912.1,
+              "max": 41713.8,
+              "stdev": 1321.2087348901396,
+              "digest": "callback:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 78011.4,
+              "min": 73070.025,
+              "max": 81932.05,
+              "stdev": 3007.6142493012658,
+              "digest": "callback:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 152377.7,
+              "min": 146115.925,
+              "max": 154248.025,
+              "stdev": 3381.305577975763,
+              "digest": "callback:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 303943.15,
+              "min": 294539.875,
+              "max": 315283.025,
+              "stdev": 8456.110891695427,
+              "digest": "callback:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 588717.0,
+              "min": 581768.975,
+              "max": 596976.675,
+              "stdev": 6035.878226418275,
+              "digest": "callback:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": 4470.904725019354,
+            "slope_ns_per_work": 183.52801367840706,
+            "r2": 0.9998267469485637
+          }
+        }
+      }
+    },
+    "iop_symmetric": {
+      "source": "kernels/iop_symmetric.jac",
+      "variants": {
+        "sv_local": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 4714.025,
+              "min": 4657.225,
+              "max": 4984.575,
+              "stdev": 127.92285624547313,
+              "digest": "symmetric:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 9123.425,
+              "min": 8933.375,
+              "max": 10587.575,
+              "stdev": 618.6774219251906,
+              "digest": "symmetric:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 17638.175,
+              "min": 17442.375,
+              "max": 18404.65,
+              "stdev": 352.0874722991437,
+              "digest": "symmetric:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 35522.025,
+              "min": 34734.775,
+              "max": 36711.95,
+              "stdev": 732.3526877468239,
+              "digest": "symmetric:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 71526.85,
+              "min": 70931.3,
+              "max": 75209.825,
+              "stdev": 1566.8757926683252,
+              "digest": "symmetric:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 148424.2,
+              "min": 145151.275,
+              "max": 152148.125,
+              "stdev": 2321.685042453005,
+              "digest": "symmetric:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 294559.525,
+              "min": 290287.25,
+              "max": 307172.975,
+              "stdev": 6034.712213759644,
+              "digest": "symmetric:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 587219.475,
+              "min": 580350.375,
+              "max": 598339.875,
+              "stdev": 6074.930519499794,
+              "digest": "symmetric:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": -387.11822230828693,
+            "slope_ns_per_work": 183.81563071034765,
+            "r2": 0.999972453320456
+          }
+        },
+        "sv_to_na": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 3404.625,
+              "min": 3118.375,
+              "max": 3423.25,
+              "stdev": 128.65770925210816,
+              "digest": "symmetric:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 3425.825,
+              "min": 3279.325,
+              "max": 4648.425,
+              "stdev": 522.6485985822598,
+              "digest": "symmetric:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 3519.25,
+              "min": 3454.675,
+              "max": 3640.7,
+              "stdev": 63.52521743370881,
+              "digest": "symmetric:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 4034.3,
+              "min": 3930.175,
+              "max": 4251.3,
+              "stdev": 111.90778748594755,
+              "digest": "symmetric:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 5006.9,
+              "min": 4864.025,
+              "max": 5988.6,
+              "stdev": 411.38672177161993,
+              "digest": "symmetric:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 6665.6,
+              "min": 6634.2,
+              "max": 7742.05,
+              "stdev": 426.71184059034505,
+              "digest": "symmetric:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 10272.775,
+              "min": 10179.325,
+              "max": 11849.725,
+              "stdev": 638.8769749724903,
+              "digest": "symmetric:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 17347.85,
+              "min": 17166.7,
+              "max": 18787.575,
+              "stdev": 594.353164246646,
+              "digest": "symmetric:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": 3184.370333075137,
+            "slope_ns_per_work": 4.4238686016312005,
+            "r2": 0.9998121846161658
+          }
+        },
+        "na_local": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 223.275,
+              "min": 201.45,
+              "max": 230.3,
+              "stdev": 10.040037350528142,
+              "digest": "symmetric:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 347.325,
+              "min": 325.125,
+              "max": 361.025,
+              "stdev": 13.661149292793771,
+              "digest": "symmetric:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 593.75,
+              "min": 561.1,
+              "max": 639.55,
+              "stdev": 25.67610951838302,
+              "digest": "symmetric:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 1014.425,
+              "min": 971.8,
+              "max": 1170.525,
+              "stdev": 68.13864065271633,
+              "digest": "symmetric:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 1931.075,
+              "min": 1877.35,
+              "max": 2415.875,
+              "stdev": 203.9818784843399,
+              "digest": "symmetric:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 3632.85,
+              "min": 3608.375,
+              "max": 4442.25,
+              "stdev": 326.3067586642974,
+              "digest": "symmetric:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 7174.85,
+              "min": 7124.175,
+              "max": 7218.675,
+              "stdev": 31.90330547137714,
+              "digest": "symmetric:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 14343.675,
+              "min": 14141.425,
+              "max": 15517.275,
+              "stdev": 535.2283947064094,
+              "digest": "symmetric:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": 123.1001161890008,
+            "slope_ns_per_work": 4.435517501253019,
+            "r2": 0.9999628581677836
+          }
+        },
+        "na_to_sv": {
+          "per_work": {
+            "25": {
+              "median_per_call_ns": 5206.3,
+              "min": 5013.15,
+              "max": 5253.6,
+              "stdev": 91.15314805315302,
+              "digest": "symmetric:941810220"
+            },
+            "50": {
+              "median_per_call_ns": 9632.025,
+              "min": 9245.125,
+              "max": 11051.925,
+              "stdev": 621.6954463400868,
+              "digest": "symmetric:1928120556"
+            },
+            "100": {
+              "median_per_call_ns": 18563.95,
+              "min": 18259.175,
+              "max": 19774.6,
+              "stdev": 557.2623687725551,
+              "digest": "symmetric:994638788"
+            },
+            "200": {
+              "median_per_call_ns": 35180.2,
+              "min": 34654.975,
+              "max": 35260.2,
+              "stdev": 223.38062214525246,
+              "digest": "symmetric:756507860"
+            },
+            "400": {
+              "median_per_call_ns": 74398.5,
+              "min": 71444.3,
+              "max": 79527.425,
+              "stdev": 2755.7854429091535,
+              "digest": "symmetric:50473076"
+            },
+            "800": {
+              "median_per_call_ns": 147026.15,
+              "min": 143778.225,
+              "max": 150228.2,
+              "stdev": 2162.858931865414,
+              "digest": "symmetric:945477044"
+            },
+            "1600": {
+              "median_per_call_ns": 295930.35,
+              "min": 293106.85,
+              "max": 298124.225,
+              "stdev": 1842.1079073577623,
+              "digest": "symmetric:2014824500"
+            },
+            "3200": {
+              "median_per_call_ns": 604402.625,
+              "min": 582465.0,
+              "max": 632357.875,
+              "stdev": 19228.049358303353,
+              "digest": "symmetric:1509428532"
+            }
+          },
+          "fit": {
+            "fixed_ns": -1408.1883423702675,
+            "slope_ns_per_work": 188.48715399826855,
+            "r2": 0.9998704695660008
+          }
+        }
+      }
+    }
+  },
+  "wall_s": 1213.6
+}

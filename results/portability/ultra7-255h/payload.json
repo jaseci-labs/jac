@@ -1,0 +1,324 @@
+{
+ "schema_version": 1,
+ "kind": "controlled_payload_sweep",
+ "captured_utc": "2026-07-25T18:04:14.495649+00:00",
+ "invocations": 20,
+ "reps": 1,
+ "sizes": [
+  "p1",
+  "p10",
+  "p50",
+  "p100",
+  "p250",
+  "p500",
+  "p1000",
+  "p2000",
+  "p5000",
+  "p10000",
+  "p20000",
+  "p30000",
+  "p40000",
+  "p50000",
+  "p75000",
+  "p100000"
+ ],
+ "machine_control": {
+  "governor": "performance",
+  "turbo_disabled": "1"
+ },
+ "note": "CPU governor pinned to performance, turbo disabled. See results/controlled/env.json for full provenance.",
+ "cells": {
+  "xop_feed_payload": {
+   "per_size": {
+    "p1": {
+     "N": 1,
+     "direct": {
+      "per_call_ns": 744,
+      "reps_per_call_ns": [
+       744
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 13767469,
+      "reps_per_call_ns": [
+       13767469
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p10": {
+     "N": 10,
+     "direct": {
+      "per_call_ns": 4009,
+      "reps_per_call_ns": [
+       4009
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 14534468,
+      "reps_per_call_ns": [
+       14534468
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p50": {
+     "N": 50,
+     "direct": {
+      "per_call_ns": 17802,
+      "reps_per_call_ns": [
+       17802
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 13623435,
+      "reps_per_call_ns": [
+       13623435
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p100": {
+     "N": 100,
+     "direct": {
+      "per_call_ns": 34370,
+      "reps_per_call_ns": [
+       34370
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 13465542,
+      "reps_per_call_ns": [
+       13465542
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p250": {
+     "N": 250,
+     "direct": {
+      "per_call_ns": 86146,
+      "reps_per_call_ns": [
+       86146
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 14729561,
+      "reps_per_call_ns": [
+       14729561
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p500": {
+     "N": 500,
+     "direct": {
+      "per_call_ns": 172007,
+      "reps_per_call_ns": [
+       172007
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 14045636,
+      "reps_per_call_ns": [
+       14045636
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p1000": {
+     "N": 1000,
+     "direct": {
+      "per_call_ns": 346722,
+      "reps_per_call_ns": [
+       346722
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 15224064,
+      "reps_per_call_ns": [
+       15224064
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p2000": {
+     "N": 2000,
+     "direct": {
+      "per_call_ns": 689288,
+      "reps_per_call_ns": [
+       689288
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 15970082,
+      "reps_per_call_ns": [
+       15970082
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p5000": {
+     "N": 5000,
+     "direct": {
+      "per_call_ns": 1704406,
+      "reps_per_call_ns": [
+       1704406
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 17449510,
+      "reps_per_call_ns": [
+       17449510
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p10000": {
+     "N": 10000,
+     "direct": {
+      "per_call_ns": 3409233,
+      "reps_per_call_ns": [
+       3409233
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 23899985,
+      "reps_per_call_ns": [
+       23899985
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p20000": {
+     "N": 20000,
+     "direct": {
+      "per_call_ns": 6808603,
+      "reps_per_call_ns": [
+       6808603
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 30576277,
+      "reps_per_call_ns": [
+       30576277
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p30000": {
+     "N": 30000,
+     "direct": {
+      "per_call_ns": 10167621,
+      "reps_per_call_ns": [
+       10167621
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 41669357,
+      "reps_per_call_ns": [
+       41669357
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p40000": {
+     "N": 40000,
+     "direct": {
+      "per_call_ns": 13608495,
+      "reps_per_call_ns": [
+       13608495
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 52290537,
+      "reps_per_call_ns": [
+       52290537
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p50000": {
+     "N": 50000,
+     "direct": {
+      "per_call_ns": 17029685,
+      "reps_per_call_ns": [
+       17029685
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 58823386,
+      "reps_per_call_ns": [
+       58823386
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p75000": {
+     "N": 75000,
+     "direct": {
+      "per_call_ns": 25527183,
+      "reps_per_call_ns": [
+       25527183
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 90647657,
+      "reps_per_call_ns": [
+       90647657
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    },
+    "p100000": {
+     "N": 100000,
+     "direct": {
+      "per_call_ns": 34111883,
+      "reps_per_call_ns": [
+       34111883
+      ],
+      "n_reps": 1
+     },
+     "rpc": {
+      "per_call_ns": 105107530,
+      "reps_per_call_ns": [
+       105107530
+      ],
+      "n_reps": 1
+     },
+     "identical": true
+    }
+   }
+  }
+ }
+}

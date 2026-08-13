@@ -70,6 +70,18 @@ demo/
 .zig-cache/
 zig-out/
 
+# LaTeX build artifacts
+paper.aux
+paper.out
+paper.log
+missfont.log
+
+# Benchmark probe scratch
+jac/examples/interopbench/_probe_codespace.jac
+
+# Agent sub-agent working dirs
+.pi-subagents/
+
 # Agent / IDE working notes (not repo artifacts)
 AGENTS.md
 PLAN.md
@@ -92,3 +104,7 @@ jactastic/**
 
 # Zig 0.16 project-local package cache (fetched, hash-pinned deps)
 zig-pkg/
+paper.pdf
+
+# cross-tool comparand venv (scripts/xtool_*.py); reproducible via python -m venv --system-site-packages
+scripts/.xtool-venv/

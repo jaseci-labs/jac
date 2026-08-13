@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "suite": "interopbench",
+  "audit": "native_interop_manifest_and_wrappers",
+  "cells": {
+    "iop_call": {
+      "audit_kind": "native_manifest",
+      "source": "kernels/iop_call.jac",
+      "expected": {
+        "native_imports": [],
+        "native_exports": [
+          "native_checksum"
+        ],
+        "baseline_without_native_binding": "sv_checksum"
+      },
+      "actual": {
+        "native_imports": [],
+        "native_exports": [
+          "native_checksum"
+        ]
+      },
+      "generated_wrapper_markers": {
+        "export_address_lookup:native_checksum": {
+          "text": "get_function_address('native_checksum')",
+          "expected_occurrences": 1,
+          "actual_occurrences": 1,
+          "matches": true
+        },
+        "export_cfunctype:native_checksum": {
+          "text": "ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(_addr)",
+          "expected_occurrences": 1,
+          "actual_occurrences": 1,
+          "matches": true
+        },
+        "baseline_address_lookup:sv_checksum": {
+          "text": "get_function_address('sv_checksum')",
+          "expected_occurrences": 0,
+          "actual_occurrences": 0,
+          "matches": true
+        }
+      }
+    },
+    "iop_cb": {
+      "audit_kind": "native_manifest",
+      "source": "kernels/iop_cb.jac",
+      "expected": {
+        "native_imports": [
+          "sv_callback_checksum"
+        ],
+        "native_exports": [
+          "native_invoke_callback"
+        ],
+        "baseline_without_native_binding": "sv_direct_checksum"
+      },
+      "actual": {
+        "native_imports": [
+          "sv_callback_checksum"
+        ],
+        "native_exports": [
+          "native_invoke_callback"
+        ]
+      },
+      "generated_wrapper_markers": {
+        "export_address_lookup:native_invoke_callback": {
+          "text": "get_function_address('native_invoke_callback')",
+          "expected_occurrences": 1,
+          "actual_occurrences": 1,
+          "matches": true
+        },
+        "export_cfunctype:native_invoke_callback": {
+          "text": "ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64, ctypes.c_int64)(_addr)",
+          "expected_occurrences": 1,
+          "actual_occurrences": 1,
+          "matches": true
+        },
+        "import_registration:sv_callback_checksum": {
+          "text": "__jac_interop_py_funcs__['sv_callback_checksum'] = sv_callback_checksum",
+          "expected_occurrences": 1,
+          "actual_occurrences": 1,
+          "matches": true
+        },
+        "baseline_address_lookup:sv_direct_checksum": {
+          "text": "get_function_address('sv_direct_checksum')",
+          "expected_occurrences": 0,
+          "actual_occurrences": 0,
+          "matches": true
+        }
+      }
+    }
+  }
+}

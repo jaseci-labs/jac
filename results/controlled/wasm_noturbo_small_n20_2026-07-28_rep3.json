@@ -1,0 +1,167 @@
+{
+  "schema_version": 2,
+  "suite": "interopbench",
+  "family": "cross_runtime",
+  "provenance": {
+    "captured_utc": "2026-07-29T01:32:57.094418+00:00",
+    "host": "zaitop",
+    "platform": "Linux-6.18.39-1-lts-x86_64-with-glibc2.43",
+    "machine": "x86_64",
+    "processor": "",
+    "cpu_count": 16,
+    "python": "CPython 3.14.6",
+    "executable": "/home/jac/.local/bin/jac"
+  },
+  "cells": {
+    "xop_wasm_call": {
+      "scenario": "wasm32 export under a JS host loop vs native sv\u2192na bridge under a Python host loop (asymmetric host loops, not same-source native-vs-wasm)",
+      "source": "kernels/xop_wasm_call/bench_compute.na.jac",
+      "reference": "native",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "native",
+          "wasm"
+        ],
+        "canonical_digest": "wasm:263997602",
+        "identical": true
+      },
+      "variants": {
+        "native": {
+          "samples": 20,
+          "median_ns": 19447,
+          "min_ns": 19337,
+          "max_ns": 19556,
+          "stdev_ns": 54,
+          "iqr_ns": 71,
+          "canonical_digest": "wasm:263997602",
+          "digest": "8295c4aed690444d",
+          "metrics": {
+            "per_call_ns": 972
+          },
+          "samples_ns": [
+            19453,
+            19390,
+            19362,
+            19495,
+            19463,
+            19441,
+            19345,
+            19443,
+            19459,
+            19480,
+            19337,
+            19411,
+            19458,
+            19373,
+            19413,
+            19483,
+            19467,
+            19452,
+            19410,
+            19556
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              972,
+              969,
+              968,
+              974,
+              973,
+              972,
+              967,
+              972,
+              972,
+              974,
+              966,
+              970,
+              972,
+              968,
+              970,
+              974,
+              973,
+              972,
+              970,
+              977
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command_adapter": "wasm_node_driver",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "wasm": {
+          "samples": 20,
+          "median_ns": 135049,
+          "min_ns": 130771,
+          "max_ns": 189497,
+          "stdev_ns": 14424,
+          "iqr_ns": 13500,
+          "canonical_digest": "wasm:263997602",
+          "digest": "8295c4aed690444d",
+          "metrics": {
+            "per_call_ns": 6752
+          },
+          "samples_ns": [
+            146496,
+            161025,
+            138122,
+            146400,
+            132953,
+            131523,
+            143585,
+            133026,
+            133191,
+            130771,
+            139891,
+            131271,
+            189497,
+            135133,
+            133758,
+            134070,
+            132180,
+            159614,
+            134965,
+            149024
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              7324,
+              8051,
+              6906,
+              7320,
+              6647,
+              6576,
+              7179,
+              6651,
+              6659,
+              6538,
+              6994,
+              6563,
+              9474,
+              6756,
+              6687,
+              6703,
+              6609,
+              7980,
+              6748,
+              7451
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command_adapter": "wasm_node_driver",
+          "timing_source": "host_node_performance_now",
+          "rss_scope": "not_recorded"
+        }
+      }
+    }
+  }
+}

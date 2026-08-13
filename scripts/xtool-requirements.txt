@@ -1,0 +1,14 @@
+# Comparand toolchain for the cross-tool producers (scripts/xtool_ffi.py,
+# scripts/xtool_rpc.py). Reproduce the gitignored venv with:
+#
+#   python -m venv --system-site-packages scripts/.xtool-venv
+#   scripts/.xtool-venv/bin/pip install -r scripts/xtool-requirements.txt
+#
+# --system-site-packages inherits numpy/cffi already present system-wide.
+# The FFI producer additionally needs gcc/g++ (ctypes/cffi/cext/pybind11) and
+# cargo/rustc (PyO3, built abi3 so it works on CPython newer than PyO3's cap).
+pybind11
+fastapi
+uvicorn
+httpx
+pydantic

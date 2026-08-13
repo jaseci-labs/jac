@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "logical_name": "xruntime-n7",
+  "source_file": "xruntime_results_n7.json",
+  "source_path_relativeto_repo": "jac/examples/interopbench/results/xruntime_results_n7.json",
+  "captured_utc": "2026-07-22T22:26:23.673416+00:00",
+  "captured_utc_source": "provenance.captured_utc",
+  "git_attribution": {
+    "head_at_capture": {
+      "sha": "751ea8b4bf3e8f968508b360909116b40465c9dd",
+      "date": "2026-07-21T20:44:19-04:00",
+      "subject": "fix(interopbench): pin scalar-cell reference side to server with sv {} blocks"
+    },
+    "next_commit_after": {
+      "sha": "367a786cca4e9ea65b3b1f247b0bb77c0e1467ad",
+      "date": "2026-07-23T20:04:05-04:00",
+      "subject": "feat(interopbench): payload sweep to N=100k with bootstrap CIs + paper"
+    },
+    "caveat": "Assumes a CLEAN worktree at capture time. Captures were likely run from a dirty tree, so this is an upper bound on the SHA, not exact."
+  },
+  "sample_count": 7,
+  "machine_controlled": false,
+  "machine_control_notes": "governor=powersave, turbo=on, no CPU pinning; NOT controlled",
+  "provenance_completeness": "partial (missing: cc, git_sha, jac, llvm, node)",
+  "feeds_paper_claims": [
+    "paper.tex L576-600: svc_split 135x, feed 213x (the SELECTED table)",
+    "abstract / conclusion cross-runtime superiority claims"
+  ],
+  "analysis": "CONTRADICTED. This 7-sample capture (2026-07-22) is the source of the paper's 135x (svc_split) and 213x (feed) ratios. The 30-sample capture (xruntime-n30, 2026-07-23) gives 515x and 329x instead. The direct side is stable across both (690k->696k ns); only the RPC/client side inflated ~3.9x, so this is a systematic change in the RPC path across commit 367a786cc, NOT random variance. STEPS.md item 30: replace this selected table with controlled multi-session results before any cross-runtime claim is trusted.",
+  "publication_status": "excluded",
+  "publication_reason": "Timing capture without full provenance AND contradicted by a counterpart capture (see analysis). Excluded until reproduced from a frozen revision under controlled conditions (STEPS.md items 1,9,15,30).",
+  "raw_file": "xruntime_results_n7.json",
+  "raw_file_sha256": "744f343cc71b8375733697f29286b21dc32ab414f7f57aa0e144df85883cf69b"
+}

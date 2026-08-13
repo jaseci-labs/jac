@@ -1,0 +1,317 @@
+{
+  "schema_version": 2,
+  "suite": "interopbench",
+  "family": "cross_runtime",
+  "provenance": {
+    "captured_utc": "2026-07-25T01:02:59.068464+00:00",
+    "host": "zaitop",
+    "platform": "Linux-6.18.39-1-lts-x86_64-with-glibc2.43",
+    "machine": "x86_64",
+    "processor": "",
+    "cpu_count": 16,
+    "python": "CPython 3.14.6",
+    "executable": "/home/jac/.local/bin/jac"
+  },
+  "cells": {
+    "xop_svc_split": {
+      "scenario": "serial loopback sv-to-sv RPC floor vs in-process dispatch",
+      "source": "kernels/xop_svc_split",
+      "reference": "direct",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "direct",
+          "rpc"
+        ],
+        "canonical_digest": "charge:263997602",
+        "identical": true
+      },
+      "variants": {
+        "direct": {
+          "samples": 20,
+          "median_ns": 807111,
+          "min_ns": 785899,
+          "max_ns": 833043,
+          "stdev_ns": 14739,
+          "iqr_ns": 27914,
+          "canonical_digest": "charge:263997602",
+          "digest": "9a623206d4d296a5",
+          "metrics": {
+            "per_call_ns": 40355
+          },
+          "samples_ns": [
+            790225,
+            806523,
+            810556,
+            789250,
+            802824,
+            833043,
+            830243,
+            795587,
+            785899,
+            807706,
+            807699,
+            814433,
+            797433,
+            822672,
+            824390,
+            821162,
+            798648,
+            789570,
+            812846,
+            786731
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              39511,
+              40326,
+              40527,
+              39462,
+              40141,
+              41652,
+              41512,
+              39779,
+              39294,
+              40385,
+              40384,
+              40721,
+              39871,
+              41133,
+              41219,
+              41058,
+              39932,
+              39478,
+              40642,
+              39336
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command_adapter": "sv_microservice_driver",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "rpc": {
+          "samples": 20,
+          "median_ns": 300949052,
+          "min_ns": 235850354,
+          "max_ns": 391381541,
+          "stdev_ns": 51543227,
+          "iqr_ns": 84752736,
+          "canonical_digest": "charge:263997602",
+          "digest": "9a623206d4d296a5",
+          "metrics": {
+            "per_call_ns": 15047452
+          },
+          "samples_ns": [
+            368321319,
+            259050858,
+            391381541,
+            381291629,
+            337192477,
+            340796193,
+            243005389,
+            235850354,
+            309487945,
+            235981281,
+            327366282,
+            360158864,
+            254945596,
+            305287080,
+            321792712,
+            268589364,
+            255733324,
+            257981347,
+            296611025,
+            245678204
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              18416065,
+              12952542,
+              19569077,
+              19064581,
+              16859623,
+              17039809,
+              12150269,
+              11792517,
+              15474397,
+              11799064,
+              16368314,
+              18007943,
+              12747279,
+              15264354,
+              16089635,
+              13429468,
+              12786666,
+              12899067,
+              14830551,
+              12283910
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command_adapter": "sv_microservice_driver",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        }
+      }
+    },
+    "xop_feed": {
+      "scenario": "serial scalar generated-client RPC floor vs direct provider dispatch (not a typed-feed or serialisation-scaling workload)",
+      "source": "kernels/xop_feed",
+      "reference": "direct",
+      "size_set": "small",
+      "oracle": {
+        "variants": [
+          "direct",
+          "client"
+        ],
+        "canonical_digest": "feed:263997602",
+        "identical": true
+      },
+      "variants": {
+        "direct": {
+          "samples": 20,
+          "median_ns": 802660,
+          "min_ns": 783309,
+          "max_ns": 834897,
+          "stdev_ns": 14534,
+          "iqr_ns": 24244,
+          "canonical_digest": "feed:263997602",
+          "digest": "bf16fa458ed094bf",
+          "metrics": {
+            "per_call_ns": 40132
+          },
+          "samples_ns": [
+            797143,
+            817745,
+            832263,
+            803549,
+            792883,
+            817799,
+            834897,
+            801772,
+            793724,
+            817870,
+            784540,
+            800021,
+            813660,
+            796269,
+            792686,
+            783309,
+            811058,
+            816906,
+            803649,
+            793146
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              39857,
+              40887,
+              41613,
+              40177,
+              39644,
+              40889,
+              41744,
+              40088,
+              39686,
+              40893,
+              39227,
+              40001,
+              40683,
+              39813,
+              39634,
+              39165,
+              40552,
+              40845,
+              40182,
+              39657
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command_adapter": "cl_sv_node_driver",
+          "timing_source": "kernel_perf_counter_ns",
+          "rss_scope": "not_recorded"
+        },
+        "client": {
+          "samples": 20,
+          "median_ns": 193703449,
+          "min_ns": 159332087,
+          "max_ns": 269834895,
+          "stdev_ns": 31136232,
+          "iqr_ns": 42076358,
+          "canonical_digest": "feed:263997602",
+          "digest": "bf16fa458ed094bf",
+          "metrics": {
+            "per_call_ns": 9685172
+          },
+          "samples_ns": [
+            191982087,
+            159332087,
+            170298843,
+            208561033,
+            240243108,
+            172446216,
+            204932711,
+            209119675,
+            195424811,
+            187602337,
+            219997481,
+            176926985,
+            230000148,
+            213835414,
+            172511806,
+            264672095,
+            269834895,
+            179955889,
+            176198479,
+            182316525
+          ],
+          "metric_samples": {
+            "per_call_ns": [
+              9599104,
+              7966604,
+              8514942,
+              10428051,
+              12012155,
+              8622310,
+              10246635,
+              10455983,
+              9771240,
+              9380116,
+              10999874,
+              8846349,
+              11500007,
+              10691770,
+              8625590,
+              13233604,
+              13491744,
+              8997794,
+              8809923,
+              9115826
+            ]
+          },
+          "args": [
+            "200",
+            "20"
+          ],
+          "invocations": 20,
+          "command_adapter": "cl_sv_node_driver",
+          "timing_source": "host_node_performance_now",
+          "rss_scope": "not_recorded"
+        }
+      }
+    }
+  }
+}

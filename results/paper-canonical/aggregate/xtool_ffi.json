@@ -1,0 +1,183 @@
+{
+ "schema_version": 1,
+ "kind": "cross_tool_ffi",
+ "captured_utc": "2026-07-29T12:46:30.830618+00:00",
+ "matched_n": 2000,
+ "isolated_n": 2000000,
+ "reps": 5,
+ "python": "3.14.6",
+ "machine_control": {
+  "governor": "performance",
+  "turbo_disabled": "1"
+ },
+ "oracle_all_toolchains_agree": true,
+ "one_translation_unit": true,
+ "matched_signatures": {
+  "sqrt": "double -> long",
+  "struct": "ib_dot(Vec3, Vec3) -> double, both structs BY VALUE",
+  "bytes": "ib_fnv1a(const uint8_t*, size_t) -> uint64"
+ },
+ "skipped_toolchains": {},
+ "jac_na": {
+  "sqrt": {
+   "per_ffi_call_ns": 3,
+   "samples": [
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   "digest": "sqrt:1956282704"
+  },
+  "struct": {
+   "per_ffi_call_ns": 18,
+   "samples": [
+    19,
+    17,
+    18,
+    17,
+    18
+   ],
+   "digest": "struct:962603376"
+  },
+  "bytes": {
+   "per_ffi_call_ns": 12,
+   "samples": [
+    12,
+    12,
+    12,
+    12,
+    12
+   ],
+   "digest": "bytes:640131808"
+  },
+  "note": "Jac's own native FFI kernels; separate workloads/digests from the Python-side cross-tool oracle -- reported as anchors, not folded into the toolchain digest-identity check."
+ },
+ "note": "One C translation unit (ib_fixture.o) is bound five ways: ctypes/cffi dlopen a .so built from it; the C-extension and pybind11 link that object; PyO3 static-links its archive via extern \"C\". Every toolchain runs the identical foreign machine code and every kernel uses the SAME signature across toolchains (struct = two Vec3 passed BY VALUE) -- only the boundary marshalling differs. matched = per foreign call under the kernel loop (warmed, digest-verified); isolated = tight call loop minus empty loop (boundary+conversion only). overhead_above_ref = matched minus the pure-Python no-FFI floor. Digest identity across all toolchains is the cross-tool oracle. jac_na = Jac's own native FFI kernels as anchors (separate workload/digest, not in the oracle).",
+ "cells": {
+  "sqrt": {
+   "reference_digest": "sqrt:2001000",
+   "python_ref_per_call_ns": 200.74,
+   "toolchains": {
+    "ctypes": {
+     "matched_per_call_ns": 751.72,
+     "isolated_per_call_ns": 366.14,
+     "overhead_above_ref_ns": 550.98,
+     "digest": "sqrt:2001000",
+     "digest_ok": true
+    },
+    "cffi": {
+     "matched_per_call_ns": 301.9,
+     "isolated_per_call_ns": 184.3,
+     "overhead_above_ref_ns": 101.17,
+     "digest": "sqrt:2001000",
+     "digest_ok": true
+    },
+    "cext": {
+     "matched_per_call_ns": 131.22,
+     "isolated_per_call_ns": 26.14,
+     "overhead_above_ref_ns": -69.52,
+     "digest": "sqrt:2001000",
+     "digest_ok": true
+    },
+    "pybind11": {
+     "matched_per_call_ns": 157.49,
+     "isolated_per_call_ns": 51.22,
+     "overhead_above_ref_ns": -43.25,
+     "digest": "sqrt:2001000",
+     "digest_ok": true
+    },
+    "pyo3": {
+     "matched_per_call_ns": 176.95,
+     "isolated_per_call_ns": 63.07,
+     "overhead_above_ref_ns": -23.79,
+     "digest": "sqrt:2001000",
+     "digest_ok": true
+    }
+   }
+  },
+  "struct": {
+   "reference_digest": "struct:8006001000",
+   "python_ref_per_call_ns": 139.29,
+   "toolchains": {
+    "ctypes": {
+     "matched_per_call_ns": 1543.96,
+     "isolated_per_call_ns": 1302.09,
+     "overhead_above_ref_ns": 1404.67,
+     "digest": "struct:8006001000",
+     "digest_ok": true
+    },
+    "cffi": {
+     "matched_per_call_ns": 1908.18,
+     "isolated_per_call_ns": 1631.56,
+     "overhead_above_ref_ns": 1768.89,
+     "digest": "struct:8006001000",
+     "digest_ok": true
+    },
+    "cext": {
+     "matched_per_call_ns": 310.17,
+     "isolated_per_call_ns": 117.12,
+     "overhead_above_ref_ns": 170.88,
+     "digest": "struct:8006001000",
+     "digest_ok": true
+    },
+    "pybind11": {
+     "matched_per_call_ns": 520.82,
+     "isolated_per_call_ns": 329.13,
+     "overhead_above_ref_ns": 381.53,
+     "digest": "struct:8006001000",
+     "digest_ok": true
+    },
+    "pyo3": {
+     "matched_per_call_ns": 336.38,
+     "isolated_per_call_ns": 138.88,
+     "overhead_above_ref_ns": 197.09,
+     "digest": "struct:8006001000",
+     "digest_ok": true
+    }
+   }
+  },
+  "bytes": {
+   "reference_digest": "bytes:10590496350863620352",
+   "python_ref_per_call_ns": 2414.87,
+   "toolchains": {
+    "ctypes": {
+     "matched_per_call_ns": 898.81,
+     "isolated_per_call_ns": 592.07,
+     "overhead_above_ref_ns": -1516.05,
+     "digest": "bytes:10590496350863620352",
+     "digest_ok": true
+    },
+    "cffi": {
+     "matched_per_call_ns": 715.88,
+     "isolated_per_call_ns": 361.84,
+     "overhead_above_ref_ns": -1698.98,
+     "digest": "bytes:10590496350863620352",
+     "digest_ok": true
+    },
+    "cext": {
+     "matched_per_call_ns": 293.23,
+     "isolated_per_call_ns": 63.6,
+     "overhead_above_ref_ns": -2121.64,
+     "digest": "bytes:10590496350863620352",
+     "digest_ok": true
+    },
+    "pybind11": {
+     "matched_per_call_ns": 389.23,
+     "isolated_per_call_ns": 150.82,
+     "overhead_above_ref_ns": -2025.63,
+     "digest": "bytes:10590496350863620352",
+     "digest_ok": true
+    },
+    "pyo3": {
+     "matched_per_call_ns": 322.89,
+     "isolated_per_call_ns": 102.37,
+     "overhead_above_ref_ns": -2091.97,
+     "digest": "bytes:10590496350863620352",
+     "digest_ok": true
+    }
+   }
+  }
+ }
+}
