@@ -79,7 +79,7 @@ Env vars take precedence over `api_key` in `jac.toml`; `BYLLM_DEFAULT_MODEL=...`
 ## Multi-turn chat & streaming
 
 ```jac
-glob history: list[dict] = [];
+glob history: list[dict[str, any]] = [];
 def chat(message: str) -> str by llm(
     conversation=history,                        # caller-owned list; byLLM appends each turn IN PLACE as plain dicts
     system_prompt="You are a terse assistant."   # EXTENDS the base/system default - never replaces it

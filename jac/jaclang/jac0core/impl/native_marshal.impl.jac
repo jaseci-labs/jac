@@ -338,7 +338,7 @@ impl NativeAccessorBridge.write_through(
     }
     (fn, ml) = bound;
     vt = ml.param_types[1] if len(ml.param_types) > 1 else "";
-    c_args: list = [view.addr];
+    c_args: list[any] = [view.addr];
     if vt in ("jacstr3", "jacstr2") and isinstance(value, (str, bytes)) {
         sp_fn = self._str_new_fn();
         if sp_fn is None {

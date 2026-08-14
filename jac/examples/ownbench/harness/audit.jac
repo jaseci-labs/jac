@@ -35,7 +35,7 @@ def mode_flags(mode: str) -> list[str] {
 }
 
 """Compile one cell with IR dumping and count the RC machinery."""
-def audit(kernel: str, mode: str) -> dict {
+def audit(kernel: str, mode: str) -> dict[str, any] {
     src = BENCH / "kernels" / f"{kernel}.jac";
     out = BENCH / "bin" / f"audit_{kernel}_{mode}";
     out.parent.mkdir(exist_ok=True);
@@ -59,8 +59,8 @@ def audit(kernel: str, mode: str) -> dict {
 }
 
 """Parse --flag value CLI options into a dict, with defaults."""
-def parse_opts(argv: list[str]) -> dict {
-    opts: dict = {
+def parse_opts(argv: list[str]) -> dict[str, str] {
+    opts: dict[str, str] = {
         "kernels": ",".join(KERNELS),
         "modes": ",".join(MODES),
         "out": str(BENCH / "results" / "ir_audit.json"),
@@ -80,8 +80,8 @@ def parse_opts(argv: list[str]) -> dict {
 }
 
 """Audit every requested cell; fail if an enforced build has RC machinery."""
-def main(opts: dict) {
-    census: dict = {};
+def main(opts: dict[str, str]) {
+    census: dict[str, dict[str, any]] = {};
     bad = False;
     for kernel in [
         k

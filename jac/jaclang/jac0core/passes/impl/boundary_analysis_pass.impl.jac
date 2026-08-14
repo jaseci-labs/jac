@@ -596,7 +596,7 @@ impl BoundaryAnalysisPass._extract_walker_has_fields(
         if isinstance(walker_nd.body, list)
         else [walker_nd.body];
     for item in body_items {
-        has_vars: list = [];
+        has_vars: list[uni.UniNode] = [];
         if isinstance(item, uni.HasVar) {
             has_vars = [item];
         } elif isinstance(item, uni.ArchHas) {
@@ -1003,7 +1003,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 if isinstance(arch_node.body, list)
                 else [arch_node.body];
             for item in body_items {
-                has_vars: list = [];
+                has_vars: list[uni.UniNode] = [];
                 if isinstance(item, uni.HasVar) {
                     has_vars = [item];
                 } elif isinstance(item, uni.ArchHas) {

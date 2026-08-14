@@ -1911,7 +1911,7 @@ impl DeleteStmt.postinit -> None {
 }
 
 
-impl DeleteStmt.py_ast_targets.getter -> list {
+impl DeleteStmt.py_ast_targets.getter -> list[any] {
     return [i.gen.py_ast[0] for i in self.target.values]
         if (isinstance(self.target, TupleVal) and self.target.values)
         else self.target.gen.py_ast;

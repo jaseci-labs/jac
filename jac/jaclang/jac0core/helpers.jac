@@ -298,7 +298,7 @@ class MalformedJacTomlError(tomllib.TOMLDecodeError) {
 }
 
 
-def read_toml_with_encoding(file_path: str) -> dict {
+def read_toml_with_encoding(file_path: str) -> dict[str, any] {
     try {
         return tomllib.loads(read_file_with_encoding(file_path));
     } except tomllib.TOMLDecodeError as exc {
@@ -317,7 +317,7 @@ def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
 
 
 def path_matches_exclude(
-    file_path: str, patterns: list, project_root: str = ""
+    file_path: str, patterns: list[str], project_root: str = ""
 ) -> bool {
     import from fnmatch { fnmatch }
     if not patterns {
@@ -357,7 +357,7 @@ def path_matches_exclude(
 glob JACIGNORE_FILENAME: str = '.jacignore';
 
 
-def normalize_exclude_patterns(patterns: list) -> list[str] {
+def normalize_exclude_patterns(patterns: list[str]) -> list[str] {
     normalized: list[str] = [];
     for raw in (patterns or []) {
         stripped = raw.strip();
@@ -465,7 +465,7 @@ def evaluate_version_condition(condition: 'uni.Expr') -> bool | None {
     }
 
     current = (sys.version_info.major, sys.version_info.minor);
-    op_map: dict = {
+    op_map: dict[str, any] = {
         ">=": operator.ge,
         "GtE": operator.ge,
         ">": operator.gt,

@@ -7,7 +7,7 @@ envelope from `api.get`.
 
 import from .api { get }
 
-async def:pub getLogServices(token: str) -> dict {
+async def:pub getLogServices(token: str) -> dict[str, any] {
     return await get("/admin/logs/services", token);
 }
 
@@ -20,7 +20,7 @@ async def:pub getLogs(
     since: str = "15m",
     limit: int = 200,
     before: str = ""
-) -> dict {
+) -> dict[str, any] {
     params: str = f"since={encodeURIComponent(since)}&limit={limit}";
     if service {
         params += f"&service={encodeURIComponent(service)}";
@@ -43,6 +43,6 @@ async def:pub getLogs(
     return await get("/admin/logs?" + params, token);
 }
 
-async def:pub getTraceLogs(token: str, traceId: str) -> dict {
+async def:pub getTraceLogs(token: str, traceId: str) -> dict[str, any] {
     return await get("/admin/logs/trace/" + encodeURIComponent(traceId), token);
 }

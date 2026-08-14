@@ -14,7 +14,7 @@ glob SCRYPT_N: int = 16384,
      SCRYPT_DKLEN: int = 64,
      SCRYPT_SALT_BYTES: int = 16,
      SCRYPT_MAXMEM: int = 48 * 1024 * 1024,
-     _BCRYPT_PREFIXES: tuple = ('$2a$', '$2b$', '$2y$'),
+     _BCRYPT_PREFIXES: tuple[str, ...] = ('$2a$', '$2b$', '$2y$'),
      _legacy_warned: set[str] = set(),
      logger = logging.getLogger(__name__);
 

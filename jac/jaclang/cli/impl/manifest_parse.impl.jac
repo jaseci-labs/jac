@@ -5,7 +5,7 @@ import from jaclang.cli.manifest { ArgMeta, CommandMeta }
 impl add_argument(parser: argparse.ArgumentParser, arg: ArgMeta) -> None {
     kind = arg.kind;
     typ = resolve_arg_typ(arg.typ);
-    kwargs: dict = {"help": arg.help};
+    kwargs: dict[str, any] = {"help": arg.help};
     if arg.choices {
         kwargs["choices"] = arg.choices;
     }

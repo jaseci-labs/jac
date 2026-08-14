@@ -48,7 +48,7 @@ def _opts(gc_mode: str | None = None, enforce: bool = False) -> object {
 }
 
 
-def _compile(fixture: str, options: object | None = None) -> tuple {
+def _compile(fixture: str, options: object | None = None) -> tuple[object, any] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)),
@@ -294,14 +294,14 @@ test "hetero nogc fixture passes under headerless --gc none --enforce-nogc (AOT)
         proc.stderr or proc.stdout or '(empty)'
     )[-600:]}";
     out = proc.stdout.strip().split("\n");
-    assert out == ["1200", "1200", "done"] , f"hetero nogc output mismatch: {out}";
+    assert out == ["600", "400", "done"] , f"hetero nogc output mismatch: {out}";
 }
 
 test "mixed dict keys and mixed set elements are stable diagnostics" {
     import tempfile as _tf;
     for (src_text, label) in [
         (
-            "def bad_keys -> int { d: dict = {1: \"a\", \"b\": 2}; return len(d); }",
+            "def bad_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
             "dict-mixed-keys"
         ),
         (

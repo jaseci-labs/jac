@@ -1,6 +1,6 @@
 import inspect;
 
-glob MANUAL_FIELDS: dict[str, list] = {
+glob MANUAL_FIELDS: dict[str, list[any]] = {
          "SpecialVarRef": [
              'FieldDesc(name="name", kind=0)',
              'FieldDesc(name="is_enum_stmt", kind=2)',
@@ -15,7 +15,7 @@ glob MANUAL_FIELDS: dict[str, list] = {
          ],
 
      },
-     BODY_NODE_LIST_CLASSES: set = {"Archetype", "Ability", "Enum"},
+     BODY_NODE_LIST_CLASSES: set[str] = {"Archetype", "Ability", "Enum"},
      FIELD_KINDS: dict[str, int] = {
          "STRING": 0,
          "INT": 1,
@@ -31,14 +31,14 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "OPT_NODE_LIST": 11,
 
      },
-     ENUM_TYPES: set = {
+     ENUM_TYPES: set[str] = {
          "SymbolType",
          "SymbolAccess",
          "EdgeDir",
          "CodeContext",
          "OwnershipKind"
      },
-     SKIP_PARAMS: set = {"self", "kid", "parent"};
+     SKIP_PARAMS: set[str] = {"self", "kid", "parent"};
 
 def classify_type(ann_str: str) -> int {
     ann = ann_str.strip();
@@ -103,17 +103,17 @@ def generate -> str {
         }
     }
 
-    scope_set: set = {
+    scope_set: set[str] = {
         n
         for (n, c) in all_classes
         if issubclass(c, UniScopeNode)
     };
-    cfg_set: set = {
+    cfg_set: set[str] = {
         n
         for (n, c) in all_classes
         if issubclass(c, UniCFGNode)
     };
-    name_atom_set: set = {
+    name_atom_set: set[str] = {
         n
         for (n, c) in all_classes
         if "NameAtom" in [base.__name__ for base in c.__mro__]
@@ -154,18 +154,18 @@ def generate -> str {
     lines.append('        is_scope: bool,');
     lines.append('        is_cfg: bool,');
     lines.append('        is_name_atom: bool,');
-    lines.append('        fields: tuple;');
+    lines.append('        fields: tuple[FieldDesc, ...];');
     lines.append('}');
     lines.append('');
     lines.append('');
     lines.append('"""Registry data: node specs, name/index lookup tables."""');
-    lines.append('glob NODE_SPECS: tuple = (');
+    lines.append('glob NODE_SPECS: tuple[NodeSpec, ...] = (');
 
     for (idx, entry) in enumerate(all_classes) {
         (name, cls) = entry;
         sig = inspect.signature(cls.__init__);
-        field_parts: list = [];
-        seen_fields: set = set();
+        field_parts: list[str] = [];
+        seen_fields: set[str] = set();
 
         for (pname, param) in sig.parameters.items() {
             if pname in SKIP_PARAMS {

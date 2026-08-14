@@ -93,12 +93,14 @@ impl QHop.add_node_constraint(node_type: (type | None)) -> None {
 }
 
 
-impl QHop.only_ids -> (set | None) {
+impl QHop.only_ids -> (set[any] | None) {
     if self.only is None {
         return None;
     }
-    sel = self.only if isinstance(self.only, (list, tuple, set)) else [self.only];
-    out: set = set();
+    sel: list[any] = list(self.only)
+        if isinstance(self.only, (list, tuple, set))
+        else [self.only];
+    out: set[any] = set();
     for item in sel {
         anch = item?.__jac__;
         if isinstance(anch, Anchor) {

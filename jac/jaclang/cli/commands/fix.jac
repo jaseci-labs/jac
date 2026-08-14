@@ -44,5 +44,5 @@ glob registry = get_registry();
     group="analysis"
 )
 def fix(
-    target: str, paths: list, dry_run: bool = False, strip_only: bool = False
+    target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
 ) -> int;

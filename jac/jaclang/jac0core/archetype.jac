@@ -26,7 +26,7 @@ def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
     if isinstance(val, str) {
         val = val.upper();
     }
-    _map: dict = {
+    _map: dict[any, AccessLevel] = {
         -1: AccessLevel.NO_ACCESS,
         0: AccessLevel.READ,
         1: AccessLevel.CONNECT,
@@ -217,5 +217,5 @@ obj ObjectSpatialFunction {
 obj JsxElement {
     has tag: object,
         `props: dict[(str, object)],
-        children: list;
+        children: list[object];
 }

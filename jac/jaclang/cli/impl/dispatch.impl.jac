@@ -46,7 +46,7 @@ impl split_remainder_argv(
         for a in all_args
         if a.kind == ArgKind.POSITIONAL
     );
-    value_flags: set = set();
+    value_flags: set[str] = set();
     for arg in all_args {
         if not arg_consumes_value(arg.kind, arg.typ) {
             continue;
@@ -96,7 +96,7 @@ def _extract_script_args(meta: CommandMeta) -> list[str] {
     return script_args;
 }
 
-def _apply_profile(meta: CommandMeta, args_dict: dict) {
+def _apply_profile(meta: CommandMeta, args_dict: dict[str, any]) {
     import from jaclang.cli.console { console }
     try {
         import from jaclang.project.config { get_config }
@@ -149,7 +149,7 @@ def _config_value(config: any, config_key: str) -> tuple[str, str, any] | None {
     return (section, key, getattr(section_obj, key, None));
 }
 
-def _apply_config_defaults(config: any, meta: CommandMeta, args_dict: dict) {
+def _apply_config_defaults(config: any, meta: CommandMeta, args_dict: dict[str, any]) {
     for arg in meta.args {
         if not arg.config_key {
             continue;

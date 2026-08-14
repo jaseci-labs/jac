@@ -49,7 +49,7 @@ import from "@jac/wasm_host" { set_na_env }
 
 import from .arena { init }              # arena.jac (native-placed)
 
-async def launch(shim: any, env_fns: dict) {
+async def launch(shim: any, env_fns: dict[str, any]) {
     set_na_env("arena", shim, {"env": env_fns});   # stem, host shim, import object
     game = await init();                           # instantiates, then calls the export
 }

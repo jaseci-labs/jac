@@ -30,7 +30,7 @@ def cluster_node_archs -> list[str] {
     } except ImportError {
         return [];
     }
-    nodes: list = [];
+    nodes: list[any] = [];
     try {
         nodes = list(client.CoreV1Api().list_node(_request_timeout=10).items);
     } except Exception as e {
@@ -233,7 +233,7 @@ def _pick_stable_assets(meta: any, suffix: str) -> tuple[str, str] {
 }
 
 
-glob _deploy_version_memo: dict = {};
+glob _deploy_version_memo: dict[str, any] = {};
 
 
 def resolve_deploy_version(project_dir: str, channel: str) -> str {
@@ -295,7 +295,7 @@ def host_seal_platform -> str {
 }
 
 
-def stable_release_meta(version: str = "") -> dict {
+def stable_release_meta(version: str = "") -> dict[str, any] {
     api = f"https://api.github.com/repos/{GH_REPO}/releases/tags/v{version}"
         if version
         else f"https://api.github.com/repos/{GH_REPO}/releases/latest";
@@ -313,7 +313,7 @@ def stable_release_meta(version: str = "") -> dict {
 }
 
 
-def _no_asset_message(meta: dict, suffix: str, version: str) -> str {
+def _no_asset_message(meta: dict[str, any], suffix: str, version: str) -> str {
     tag = str(meta.get("tag_name", version or "latest"));
     return (
         f"No `jac-*{suffix}` asset on the {GH_REPO} release ({tag}). The node "

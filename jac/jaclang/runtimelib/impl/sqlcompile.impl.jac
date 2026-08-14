@@ -32,7 +32,7 @@ def _pushable_value(v: any) -> bool {
 }
 
 
-def _type_cond(alias: str, tname: str, params: dict, pfx: str) -> str {
+def _type_cond(alias: str, tname: str, params: dict[str, any], pfx: str) -> str {
     key = f"{pfx}t";
     params[key] = tname;
     return (
@@ -56,7 +56,7 @@ def _sql_type_of(v: any) -> str {
 }
 
 
-def _pred_cond(alias: str, p: QPred, params: dict, pfx: str) -> (str | None) {
+def _pred_cond(alias: str, p: QPred, params: dict[str, any], pfx: str) -> (str | None) {
     if not _ident_ok(p.field) or not _pushable_value(p.value) {
         return None;
     }
@@ -118,7 +118,7 @@ def _other_expr(alias: str, fid: str) -> str {
 }
 
 
-def _nd_types(hop: QHop) -> list {
+def _nd_types(hop: QHop) -> list[type] {
     nd = hop.nd;
     if nd is None {
         return [];
@@ -129,7 +129,7 @@ def _nd_types(hop: QHop) -> list {
 
 impl compile_query(q: GraphQuery, upto: int) -> CompiledQuery {
     out = CompiledQuery();
-    params: dict = {};
+    params: dict[str, any] = {};
     params['origin'] = [];
     joins: list[str] = [];
     order: list[str] = [];

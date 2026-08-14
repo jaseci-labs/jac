@@ -107,10 +107,10 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
     def _gen_native_interop_stubs(nd: uni.UniNode) -> None;
-    def _native_import_registration_map -> dict;
+    def _native_import_registration_map -> dict[str, list[ast3.stmt]];
     def _top_level_bound_names(py_ast: object) -> list[str];
     def _is_native_ext_module -> bool;
-    def _native_test_shim_stmts(nd: uni.Test) -> list;
+    def _native_test_shim_stmts(nd: uni.Test) -> list[ast3.AST];
     def _generate_sv_to_sv_stubs(nd: uni.Import) -> bool;
     def _gen_py_sv_func_stub(
         local_name: str,
@@ -133,7 +133,10 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def builtin_name(name: str) -> ast3.Name;
     def _is_edge_ref_target(target: uni.UniNode) -> bool;
     def _cmp_op_str(op: object) -> (str | None);
-    def _query_filter_kws(fc: uni.FilterCompr, type_arg: str, preds_arg: str) -> list;
+    def _query_filter_kws(
+        fc: uni.FilterCompr, type_arg: str, preds_arg: str
+    ) -> list[ast3.keyword];
+
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
     def needs_enum_kind(kind: str) -> None;
     def _next_temp_name(prefix: str) -> str;
@@ -246,7 +249,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
-    def scope_directive_stmts(scopes: list) -> list[ast3.AST];
+    def scope_directive_stmts(scopes: list[any]) -> list[ast3.AST];
     def exit_assignment(nd: uni.Assignment) -> None;
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def translate_jac_bin_op(nd: uni.BinaryExpr) -> list[ast3.AST];

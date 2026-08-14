@@ -31,7 +31,7 @@ obj Info {
 }
 
 obj VarInfo(Info) {
-    has type_info: (ClassInfo | str | tuple | None) = None;
+    has type_info: (ClassInfo | str | tuple[any, ...] | None) = None;
 }
 
 obj ParamInfo(VarInfo) {}
@@ -52,7 +52,7 @@ obj ClassInfo(Info) {
 
 obj FunctionInfo(Info) {
     has params: (list[ParamInfo] | None) = None,
-        return_type: (str | ClassInfo | tuple | None) = None,
+        return_type: (str | ClassInfo | tuple[any, ...] | None) = None,
         tools: (list[MethodInfo] | None) = None,
         by_call: bool = False;
 
@@ -63,15 +63,15 @@ obj MethodInfo(FunctionInfo) {
     has parent_class: (ClassInfo | None) = None;
 }
 
-def mk_list(inner: object) -> tuple {
+def mk_list(inner: object) -> tuple[any, ...] {
     return ('list', inner);
 }
 
-def mk_dict(key: object, val: object) -> tuple {
+def mk_dict(key: object, val: object) -> tuple[any, ...] {
     return ('dict', key, val);
 }
 
-def mk_tuple(*types: object) -> tuple {
+def mk_tuple(*types: object) -> tuple[any, ...] {
     return (('tuple', ) + `tuple(types));
 }
 

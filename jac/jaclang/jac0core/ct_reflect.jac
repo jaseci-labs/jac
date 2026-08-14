@@ -176,7 +176,7 @@ def _field_infos(stmt: ArchHas) -> list[CtFieldInfo] {
 def _init_param_infos(abil: Ability) -> list[CtFieldInfo] {
     out: list[CtFieldInfo] = [];
     sig = abil.signature;
-    params: list = list(sig?.params or []);
+    params: list[any] = list(sig?.params or []);
     for pv in params {
         if not isinstance(pv, ParamVar) {
             continue;

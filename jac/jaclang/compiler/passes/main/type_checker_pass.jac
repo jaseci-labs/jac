@@ -1,4 +1,5 @@
 import jaclang.jac0core.unitree as uni;
+import from jaclang.compiler.type_system.type_utils { BARE_GENERIC_REQUIRED }
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics {
@@ -30,7 +31,7 @@ import from jaclang.jac0core.diagnostics {
     E1117,
     E1119,
     E5095,
-    W1036,
+    E1036,
     W1037,
     W1052,
     W2014,

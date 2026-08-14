@@ -506,7 +506,7 @@ def:pub AuthProvider(children: any = None) -> JsxElement {
     </AuthContext.Provider>
 }
 
-def useAuth() -> dict {
+def useAuth() -> dict[str, any] {
     return useContext(AuthContext);
 }
 ```

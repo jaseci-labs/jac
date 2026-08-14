@@ -972,7 +972,7 @@ impl JirReader._read_scope_overlay(
     return pos;
 }
 
-impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
+impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple[any, int] {
     import from jaclang.jac0core.unitree { Symbol, NameAtom }
     import from jaclang.jac0core.constant { SymbolAccess }
 

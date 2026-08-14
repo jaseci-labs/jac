@@ -25,8 +25,8 @@ glob logger = logging.getLogger(__name__),
          "void": None
      };
 
-def _c_arg_types(param_types: any) -> list {
-    out: list = [];
+def _c_arg_types(param_types: any) -> list[any] {
+    out: list[any] = [];
     for pt in (param_types or []) {
         if pt == "jacstr3" {
             out.extend([ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64]);
@@ -140,7 +140,7 @@ def decode_native_str(addr: any, header_stamped: bool = False) -> str {
 
 
 def elem_hints_for(
-    elem_key: str, keys: any, ctypes_classes: dict
+    elem_key: str, keys: any, ctypes_classes: dict[str, any]
 ) -> tuple[(str | None, str | None)] {
     if (elem_key != "ptr" or not keys or len(keys) != 1 or not keys[0]) {
         return (None, None);
@@ -190,7 +190,9 @@ def decode_jacval(tag: int, payload: int, header_stamped: bool = False) -> any {
 }
 
 
-def _decode_jacval_at(addr: any, slots: list, header_stamped: bool = False) -> list {
+def _decode_jacval_at(
+    addr: any, slots: list[int], header_stamped: bool = False
+) -> list[any] {
     if (not slots or not addr) {
         return [];
     }
@@ -232,13 +234,13 @@ obj NativeStructView {
         ct_cls: any = None,
         struct_name: str = "",
         layout: any = None,
-        ctypes_classes: dict = field(default_factory=`dict),
-        enum_maps: dict = field(default_factory=`dict),
+        ctypes_classes: dict[str, any] = field(default_factory=`dict),
+        enum_maps: dict[str, any] = field(default_factory=`dict),
         _native: any = field(default=None, repr=False),
-        _field_meta: dict = field(default_factory=`dict, repr=False),
-        _view_memo: dict = field(default_factory=`dict, repr=False),
+        _field_meta: dict[str, any] = field(default_factory=`dict, repr=False),
+        _view_memo: dict[str, any] = field(default_factory=`dict, repr=False),
         _acc_cls: (str | None) = field(default=None, repr=False),
-        _py_overlay: dict = field(default_factory=`dict, repr=False);
+        _py_overlay: dict[str, any] = field(default_factory=`dict, repr=False);
 
     def postinit -> None;
     def __getattr__(name: str) -> any;
@@ -255,8 +257,8 @@ obj NativeStructView {
 obj NativeListView {
     has list_ptr: int = 0,
         elem_key: str = "",
-        ctypes_classes: dict = field(default_factory=`dict),
-        enum_maps: dict = field(default_factory=`dict),
+        ctypes_classes: dict[str, any] = field(default_factory=`dict),
+        enum_maps: dict[str, any] = field(default_factory=`dict),
         layout: any = None,
         struct_hint: (str | None) = None,
         elem_hint: (str | None) = None,
@@ -264,7 +266,7 @@ obj NativeListView {
         _arr: any = field(default=None, repr=False),
         _ct_cls: any = field(default=None, repr=False),
         _struct_name: (str | None) = field(default=None, repr=False),
-        _view_memo: dict = field(default_factory=`dict, repr=False);
+        _view_memo: dict[str, any] = field(default_factory=`dict, repr=False);
 
     def postinit -> None;
     @classmethod
@@ -283,12 +285,12 @@ obj NativeListView {
 obj NativeAccessorBridge {
     has engine: any,
         layout: any,
-        _bound: dict = field(default_factory=`dict, repr=False),
-        _cls_names: dict = field(default_factory=`dict, repr=False),
+        _bound: dict[str, any] = field(default_factory=`dict, repr=False),
+        _cls_names: dict[str, any] = field(default_factory=`dict, repr=False),
         _str_new: any = field(default=None, repr=False);
 
     def runtime_class(struct_name: str, addr: int) -> str;
-    def read_through(view: NativeStructView, name: str) -> tuple;
+    def read_through(view: NativeStructView, name: str) -> tuple[bool, any];
     def write_through(view: NativeStructView, name: str, value: any) -> bool;
     def _accessor_symbol(view: NativeStructView, name: str, kind: str) -> (str | None);
     def _binding(symbol: str) -> any;
@@ -336,9 +338,9 @@ def get_struct_view(
     ct_cls: any,
     struct_name: str,
     layout: any,
-    ctypes_classes: dict,
-    enum_maps: dict,
-    view_memo: (dict | None) = None
+    ctypes_classes: dict[str, any],
+    enum_maps: dict[str, any],
+    view_memo: (dict[str, any] | None) = None
 ) -> NativeStructView {
     if view_memo is None {
         view_memo = {};
@@ -374,12 +376,12 @@ def get_struct_view(
 def get_list_view(
     list_ptr: int,
     elem_key: str,
-    ctypes_classes: dict,
-    enum_maps: dict,
+    ctypes_classes: dict[str, any],
+    enum_maps: dict[str, any],
     layout: any = None,
     struct_hint: (str | None) = None,
     elem_hint: (str | None) = None,
-    view_memo: (dict | None) = None
+    view_memo: (dict[str, any] | None) = None
 ) -> NativeListView {
     if (list_ptr is None or list_ptr == 0) {
         return NativeListView.empty();
@@ -413,7 +415,7 @@ def _decode_scalar_array(
     type_name: str,
     as_str: bool = False,
     header_stamped: bool = False
-) -> list {
+) -> list[any] {
     if (count <= 0 or not addr) {
         return [];
     }
@@ -439,11 +441,11 @@ def _decode_scalar_array(
 
 def _decode_scalar_at(
     addr: any,
-    slots: list,
+    slots: list[int],
     type_name: str,
     as_str: bool = False,
     header_stamped: bool = False
-) -> list {
+) -> list[any] {
     if (not slots or not addr) {
         return [];
     }
@@ -566,8 +568,8 @@ def _marshal_set(
 }
 
 
-glob _OPT_CTYPES: dict = {},
-     _ACCESSOR_CLASSES: dict = {};
+glob _OPT_CTYPES: dict[str, any] = {},
+     _ACCESSOR_CLASSES: dict[str, any] = {};
 
 def _opt_ctype(payload_type: str) -> type {
     cached = _OPT_CTYPES.get(payload_type);
@@ -587,10 +589,10 @@ def _opt_ctype(payload_type: str) -> type {
     return cls;
 }
 
-def build_ctypes_classes(layout: any) -> dict {
-    classes: dict = {};
+def build_ctypes_classes(layout: any) -> dict[str, any] {
+    classes: dict[str, any] = {};
     for (name, struct_layout) in layout.structs.items() {
-        fields: list = [];
+        fields: list[tuple[str, any]] = [];
         next_slot = 0;
         for f in struct_layout.fields {
             while next_slot < f.index {
@@ -617,8 +619,8 @@ def build_ctypes_classes(layout: any) -> dict {
 }
 
 
-def build_enum_maps(layout: any, module_ns: dict) -> dict {
-    maps: dict = {};
+def build_enum_maps(layout: any, module_ns: dict[str, any]) -> dict[str, any] {
+    maps: dict[str, any] = {};
     for (enum_name, enum_layout) in layout.enums.items() {
         py_enum_cls = module_ns.get(enum_name);
         if py_enum_cls is None {
@@ -626,7 +628,7 @@ def build_enum_maps(layout: any, module_ns: dict) -> dict {
         }
 
         max_ord = max((m[2] for m in enum_layout.members), default=-1);
-        ordinal_map: list = [None] * (max_ord + 1);
+        ordinal_map: list[any] = [None] * (max_ord + 1);
         for (member_name, _value, ordinal) in enum_layout.members {
             member = getattr(py_enum_cls, member_name, None);
             if member is not None {
@@ -642,13 +644,13 @@ def build_enum_maps(layout: any, module_ns: dict) -> dict {
 def marshal_value(
     raw: any,
     llvm_type: str,
-    ctypes_classes: dict,
-    enum_maps: dict,
-    py_classes: dict,
+    ctypes_classes: dict[str, any],
+    enum_maps: dict[str, any],
+    py_classes: dict[str, any],
     field_info: any = None,
     func_layout: any = None,
     layout: any = None,
-    view_memo: (dict | None) = None
+    view_memo: (dict[str, any] | None) = None
 ) -> any {
     if (field_info and field_info.is_func_ptr) {
         if (raw is None or raw == 0) {
@@ -814,16 +816,16 @@ def marshal_value(
 def _marshal_tuple(
     tuple_ptr: int,
     tuple_layout: any,
-    ctypes_classes: dict,
-    enum_maps: dict,
-    py_classes: dict,
+    ctypes_classes: dict[str, any],
+    enum_maps: dict[str, any],
+    py_classes: dict[str, any],
     layout: any = None,
-    view_memo: (dict | None) = None
-) -> tuple {
+    view_memo: (dict[str, any] | None) = None
+) -> tuple[any, ...] {
     elem_types = tuple_layout.element_types;
     struct_hints = tuple_layout.element_struct_hints or [];
 
-    fields: list = [];
+    fields: list[tuple[str, any]] = [];
     for (i, et) in enumerate(elem_types) {
         ct = LLVM_TO_CTYPES.get(et, ctypes.c_void_p);
         fields.append((f"e{i}", ct));
@@ -833,7 +835,7 @@ def _marshal_tuple(
     ptr = ctypes.cast(tuple_ptr, ctypes.POINTER(TupleStruct));
     native = ptr.contents;
 
-    result: list = [];
+    result: list[any] = [];
     for (i, et) in enumerate(elem_types) {
         raw_val = getattr(native, f"e{i}");
         hint = struct_hints[i] if i < len(struct_hints) else None;
@@ -871,9 +873,9 @@ def _marshal_tuple(
 def wrap_native_function(
     engine: any,
     func_layout: any,
-    ctypes_classes: dict,
-    enum_maps: dict,
-    py_classes: dict,
+    ctypes_classes: dict[str, any],
+    enum_maps: dict[str, any],
+    py_classes: dict[str, any],
     layout: any = None
 ) -> any {
     install_accessor_bridge(engine, layout);
@@ -904,8 +906,8 @@ def wrap_native_function(
     }
 
     def wrapper(*args: any) -> any {
-        c_args: list = [];
-        _keepalive: list = [];
+        c_args: list[any] = [];
+        _keepalive: list[any] = [];
         for (arg, pt) in zip(args, param_types) {
             if pt in ("jacstr3", "jacstr2") and isinstance(arg, (str, bytes)) {
                 _b = arg.encode("utf-8") if isinstance(arg, str) else arg;
@@ -979,7 +981,7 @@ def init_native_globals(engine: any, manifest: any) {
 }
 
 def install_native_wrappers(
-    module: any, engine: any, layout: any, py_classes: (dict | None) = None
+    module: any, engine: any, layout: any, py_classes: (dict[str, any] | None) = None
 ) -> int {
     module_ns = module.__dict__;
 

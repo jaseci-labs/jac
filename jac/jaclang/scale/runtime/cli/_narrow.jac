@@ -1,7 +1,7 @@
 import from typing { Any }
 
 
-def dget(blob: Any, key: str) -> dict {
+def dget(blob: Any, key: str) -> dict[str, any] {
     if not isinstance(blob, dict) {
         return {};
     }
@@ -10,7 +10,7 @@ def dget(blob: Any, key: str) -> dict {
 }
 
 
-def lget(blob: Any, key: str) -> list {
+def lget(blob: Any, key: str) -> list[any] {
     if not isinstance(blob, dict) {
         return [];
     }
@@ -53,7 +53,7 @@ def iget(blob: Any, key: str, fallback: int) -> int {
 }
 
 
-def pod_spec(deployment: Any) -> dict {
+def pod_spec(deployment: Any) -> dict[str, any] {
     return dget(dget(dget(deployment, "spec"), "template"), "spec");
 }
 

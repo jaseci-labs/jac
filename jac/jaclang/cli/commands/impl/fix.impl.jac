@@ -2,7 +2,7 @@ import os;
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.parser.tokens { LexToken }
 
-glob _ELEMENT_KEYWORDS: tuple = (
+glob _ELEMENT_KEYWORDS: tuple[str, ...] = (
          'import',
          'include',
          'def',
@@ -21,7 +21,7 @@ glob _ELEMENT_KEYWORDS: tuple = (
          'async',
          'let'
      ),
-     _NAMED_ELEMENT_KEYWORDS: tuple = (
+     _NAMED_ELEMENT_KEYWORDS: tuple[str, ...] = (
          'def',
          'obj',
          'class',
@@ -36,7 +36,7 @@ glob _ELEMENT_KEYWORDS: tuple = (
          'let'
      ),
      _MARKER_SPACES: dict[str, str] = {'sv': 'server', 'cl': 'client', 'na': 'native'},
-     _PRUNE_DIRS: tuple = (
+     _PRUNE_DIRS: tuple[str, ...] = (
          'node_modules',
          '__pycache__',
          'dist',
@@ -274,7 +274,7 @@ def _strip_markers(src: str, file_path: str) -> StripResult {
 }
 
 
-def _iter_migration_files(paths: list) -> list[str] {
+def _iter_migration_files(paths: list[str]) -> list[str] {
     files: list[str] = [];
     for p in paths {
         if os.path.isfile(p) {
@@ -326,7 +326,7 @@ def _append_toml_entries(
     } except Exception {
         doc = {};
     }
-    section: dict = doc;
+    section: dict[str, any] = doc;
     for part in header.strip('[]').split('.') {
         nxt_section = section.get(part, {}) if isinstance(section, dict) else {};
         section = nxt_section;
@@ -445,7 +445,7 @@ def _verify_claims(
         unverified.append(f"{file_path} (compile errors)");
         return;
     }
-    stamped: dict[str, tuple] = {};
+    stamped: dict[str, tuple[str, bool]] = {};
     for stmt in mod.body {
         try {
             nm = element_display_name(stmt);
@@ -488,7 +488,7 @@ impl fix(
         return 1;
     }
     changed_files: list[str] = [];
-    renamed: list[tuple] = [];
+    renamed: list[tuple[str, str]] = [];
     claims_by_file: dict[str, list[MarkerClaim]] = {};
     sv_imports_by_file: dict[str, list[str]] = {};
     skipped: list[str] = [];

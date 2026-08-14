@@ -50,7 +50,7 @@ def _get_gradle_task(release: bool = False, bundle: bool = False) -> str {
     return "assembleDebug";
 }
 
-def _build_android(project_dir: Path, mobile_cfg: dict) -> Path {
+def _build_android(project_dir: Path, mobile_cfg: dict[str, any]) -> Path {
     release = mobile_cfg.get("release", False);
     bundle_aab = mobile_cfg.get("bundle", False);
     gradle_task = _get_gradle_task(release=release, bundle=bundle_aab);
@@ -86,7 +86,7 @@ def _find_xcode_workspace(project_dir: Path) -> Path | None {
     return None;
 }
 
-def _build_ios(project_dir: Path, mobile_cfg: dict) -> Path {
+def _build_ios(project_dir: Path, mobile_cfg: dict[str, any]) -> Path {
     release = mobile_cfg.get("release", False);
     ios_dir = project_dir / "ios" / "App";
 

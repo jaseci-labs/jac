@@ -19,7 +19,7 @@ class PgWireError(Exception) {}
 def _encode_param(v: any) -> (bytes | None);
 def _array_literal(vals: any) -> str;
 def _decode_value(oid: int, raw: bytes) -> any;
-def _named_to_positional(sql: str, params: dict) -> tuple[str, list];
+def _named_to_positional(sql: str, params: dict[str, any]) -> tuple[str, list[any]];
 
 
 obj PgWireConnection {
@@ -37,7 +37,7 @@ obj PgWireConnection {
         _closed: bool postinit;
 
     def postinit -> None;
-    def run(sql: str, **params: any) -> list;
+    def run(sql: str, **params: any) -> list[tuple[any, ...]];
     def close -> None;
     def _connect_socket -> None;
     def _startup -> None;

@@ -54,7 +54,7 @@ impl _decode_value(oid: int, raw: bytes) -> any {
 impl _named_to_positional(sql: str, params: dict) -> tuple[str, list] {
     out: list[str] = [];
     order: dict[str, int] = {};
-    args: list = [];
+    args: list[any] = [];
     i = 0;
     n = len(sql);
     in_squote = False;
@@ -390,9 +390,9 @@ impl PgWireConnection.run(sql: str, **params: any) -> list {
             + _frame('S', b'')
     );
 
-    rows: list = [];
+    rows: list[tuple[any, ...]] = [];
     oids: list[int] = [];
-    err: (dict | None) = None;
+    err: (dict[str, any] | None) = None;
     while True {
         (mtype, payload) = self._read_message();
         if self._handle_async(mtype, payload) {
@@ -416,7 +416,7 @@ impl PgWireConnection.run(sql: str, **params: any) -> list {
         if mtype == 'D' {
             ncols = struct.unpack(_INT16, payload[:2])[0];
             pos = 2;
-            row: list = [];
+            row: list[any] = [];
             for ci in range(ncols) {
                 vlen = struct.unpack(_INT32, payload[pos:pos + 4])[0];
                 pos += 4;

@@ -19,7 +19,7 @@ glob GATEWAY_NAME: str = "__gateway__",
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
-     _TRANSIENT_CLIENT_BUILD_MARKERS: tuple = (
+     _TRANSIENT_CLIENT_BUILD_MARKERS: tuple[str, ...] = (
          "dependency installation failed",
          "failed to install dependencies",
          "bun install failed",
@@ -77,7 +77,7 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
-def _is_named_list(items: list) -> bool {
+def _is_named_list(items: list[any]) -> bool {
     if not items {
         return False;
     }
@@ -107,7 +107,7 @@ def merge_manifest_overlay(base: any, overlay: any) -> any {
         and _is_named_list(overlay)
     ) {
         overlay_by_name = {item["name"]: item for item in overlay};
-        merged_list: list = [];
+        merged_list: list[any] = [];
         for item in base {
             item_name = item["name"];
             if item_name in overlay_by_name {
@@ -685,7 +685,7 @@ obj ManifestBuilder {
             env.append({"name": "JAC_SV_FILE", "value": svc_file});
         }
 
-        ms_trace_cfg: dict = dict(self._ms_cfg().get("tracing", {}));
+        ms_trace_cfg: dict[str, any] = dict(self._ms_cfg().get("tracing", {}));
         if ms_trace_cfg.get("enabled", False) {
             env.append(
                 {

@@ -197,7 +197,9 @@ impl PgStore._ensure_ready -> None {
 
 
 impl SessionConflictError.init(
-    self: SessionConflictError, database: str = '', blockers: (list[dict] | None) = None
+    self: SessionConflictError,
+    database: str = '',
+    blockers: (list[dict[str, any]] | None) = None
 ) -> None {
     self.database = database;
     self.blockers = list(blockers or []);
@@ -533,7 +535,7 @@ impl PgStore._schema_stamp -> (str | None) {
 }
 
 
-impl PgStore._peer_sessions -> list[dict] {
+impl PgStore._peer_sessions -> list[dict[str, any]] {
     rows = self._run(
         """
         SELECT pid, application_name, state, backend_start::text
@@ -542,7 +544,7 @@ impl PgStore._peer_sessions -> list[dict] {
         """,
         {}
     );
-    out: list[dict] = [];
+    out: list[dict[str, any]] = [];
     for (pid, app, state, started) in rows {
         app_s = str(app or '');
         owner: (int | None) = None;
@@ -590,7 +592,7 @@ impl PgStore._reap_dead_sessions -> int {
 }
 
 
-impl PgStore._live_blockers -> list[dict] {
+impl PgStore._live_blockers -> list[dict[str, any]] {
     peers = [
         p
         for p in self._peer_sessions()
@@ -599,7 +601,7 @@ impl PgStore._live_blockers -> list[dict] {
     held = [
         p
         for p in peers
-        if 'idle in transaction' in p['state']
+        if 'idle in transaction' in str(p['state'])
     ];
     return held or peers;
 }
@@ -693,7 +695,7 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
     );
     for r in rows {
         raw_props = r[9];
-        props: dict = (
+        props: dict[str, any] = (
             raw_props if isinstance(raw_props, dict) else json.loads(str(raw_props))
         );
         adjacency: (list[UUID] | None) = None;
@@ -739,7 +741,7 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     for start in range(0, len(rows), chunk) {
         batch = rows[start:start + chunk];
         values: list[str] = [];
-        params: dict = {};
+        params: dict[str, any] = {};
         for (i, row) in enumerate(batch) {
             values.append(
                 f"(CAST(:id{i} AS uuid), :kind{i}, :arch_type{i}, "
@@ -798,7 +800,7 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
     }
     if pairs {
         tvals: list[str] = [];
-        tparams: dict = {};
+        tparams: dict[str, any] = {};
         for (i, pair) in enumerate(pairs) {
             tvals.append(f"(:t{i}, :a{i})");
             tparams[f"t{i}"] = pair[0];
@@ -1031,7 +1033,7 @@ impl PgStore._listen_loop -> None {
         return;
     }
     while not stop.is_set() {
-        pending: list = [];
+        pending: list[any] = [];
         sock: Any = None;
         try {
             with self._lock {

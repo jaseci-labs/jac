@@ -200,6 +200,7 @@ Emitted by the type checker and type evaluator.
 | `E1033` | Member "{member}" not found on type "{type}" |
 | `E1034` | Cannot perform assignment comprehension on type "{type}" |
 | `E1035` | Type "{src}" is not assignable to type "{dest}" |
+| `E1036` | Generic type "{type}" requires explicit type arguments |
 
 ### Subscript / Await
 
@@ -316,7 +317,6 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac n
 
 | Code | Message |
 |------|---------|
-| `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
 | `W1037` | Explicit 'any' type annotation disables type checking here; consider a more specific type |
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |

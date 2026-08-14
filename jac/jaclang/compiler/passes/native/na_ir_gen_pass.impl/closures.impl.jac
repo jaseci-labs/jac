@@ -22,7 +22,7 @@ impl NaIRGenPass._scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) ->
     if not body {
         return;
     }
-    direct_names: list = [];
+    direct_names: list[uni.Name] = [];
     for nm in nd.get_all_sub_nodes(typ=uni.Name) {
         if nearest_scope(nm) is nd {
             direct_names.append(nm);
@@ -68,7 +68,7 @@ impl NaIRGenPass._scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) ->
     }
 }
 
-impl NaIRGenPass._closure_sig_struct(fnty: ir.FunctionType) -> tuple {
+impl NaIRGenPass._closure_sig_struct(fnty: ir.FunctionType) -> tuple[str, any, any] {
     key = str(fnty);
     _existing = self._closure_sig_keys.get(key);
     if _existing is not None {
@@ -168,14 +168,14 @@ impl NaIRGenPass._emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Val
 }
 
 impl NaIRGenPass._emit_closure_thunk(
-    target_fn: ir.Function, declared_count: int, cap_info: list
+    target_fn: ir.Function, declared_count: int, cap_info: list[tuple[str, str, any]]
 ) -> ir.Function {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     self._closure_uid += 1;
     env_name = f"JacClosureEnv.{self._closure_uid}";
-    field_names: list = [];
-    field_types: list = [];
+    field_names: list[str] = [];
+    field_types: list[any] = [];
     for (cname, cmode, hidden_ty) in cap_info {
         _ht: any = hidden_ty;
         slot_ty = _ht.pointee if cmode == "ptr" else _ht;
@@ -226,7 +226,9 @@ impl NaIRGenPass._emit_closure_thunk(
 }
 
 impl NaIRGenPass._emit_closure_pair(
-    target_fn: ir.Function, declared_fnty: ir.FunctionType, cap_info: list
+    target_fn: ir.Function,
+    declared_fnty: ir.FunctionType,
+    cap_info: list[tuple[str, str, any]]
 ) -> (ir.Value | None) {
     for (cname, _cmode, _ht) in cap_info {
         if cname not in self.closure_cell_handles {
@@ -282,14 +284,14 @@ impl NaIRGenPass._emit_closure_value(
         return None;
     }
     fn: any = cap_entry[0];
-    caps: any = cap_entry[1];
+    caps: list[tuple[str, str]] = cap_entry[1];
     declared_count = len(fn.args) - len(caps);
     if declared_count < 0 {
         return None;
     }
     fnty = fn.function_type;
     declared_fnty = ir.FunctionType(fnty.return_type, list(fnty.args)[:declared_count]);
-    cap_info: list = [];
+    cap_info: list[tuple[str, str, any]] = [];
     for (i, (cname, cmode)) in enumerate(caps) {
         cap_info.append((cname, cmode, fnty.args[declared_count + i]));
     }
@@ -312,14 +314,14 @@ impl NaIRGenPass._codegen_closure_call(
     (_st, fnty_env) = self.closure_sig_registry[struct_name];
     i32 = ir.IntType(32);
     declared = list(fnty_env.args)[:-1];
-    raw_args: list = [];
+    raw_args: list[any] = [];
     for p in (nd.params or []) {
         v = self._codegen_expr(p);
         if v is not None {
             raw_args.append(v);
         }
     }
-    coerced: list = [];
+    coerced: list[any] = [];
     for (i, a) in enumerate(raw_args) {
         if i < len(declared) {
             coerced.append(self._coerce_type(a, declared[i]));

@@ -56,7 +56,7 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
         return False;
     }
 
-    def status -> dict[str, dict] {
+    def status -> dict[str, dict[str, any]] {
         return {};
     }
 

@@ -74,7 +74,7 @@ impl Tool.get_json_schema -> dict[str, object] {
 
 impl Tool.parse_arguments(args_json: dict) -> dict {
     args = {};
-    annotations: dict = {};
+    annotations: dict[str, any] = {};
     try {
         annotations = self.func.__annotations__;
     } except AttributeError {

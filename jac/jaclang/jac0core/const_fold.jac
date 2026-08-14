@@ -1,6 +1,6 @@
 import jaclang.jac0core.unitree as uni;
 
-def fold_const(expr: (uni.UniNode | None)) -> tuple {
+def fold_const(expr: (uni.UniNode | None)) -> tuple[bool, any] {
     if expr is None {
         return (False, None);
     }

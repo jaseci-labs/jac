@@ -28,6 +28,6 @@ obj ServiceRegistry {
     def register(service_entry: ServiceEntry) -> None;
     def deregister(name: str) -> bool;
     def match_route(path: str) -> ServiceEntry | None;
-    def health_summary -> dict[str, dict];
+    def health_summary -> dict[str, dict[str, any]];
     def _rebuild_prefix_index -> None;
 }

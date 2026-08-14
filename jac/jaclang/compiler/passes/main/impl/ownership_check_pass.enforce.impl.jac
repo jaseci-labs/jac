@@ -8,7 +8,7 @@ import from jaclang.jac0core.diagnostics {
     E1406
 }
 
-glob _NOGC_SCALARS: tuple = (
+glob _NOGC_SCALARS: tuple[str, ...] = (
          "int",
          "float",
          "bool",
@@ -61,8 +61,12 @@ impl OwnershipCheckPass._nogc_resolve_provenance -> (str | None) {
     if _cli_target and _cli_target in _nogc_name_candidates(self.ir_in.name) {
         return "enforced by --enforce-nogc";
     }
-    _pats = list(getattr(opts, "nogc_enforce_modules", []) or []) if opts else [];
-    _grand = list(getattr(opts, "nogc_grandfathered", []) or []) if opts else [];
+    _pats: list[str] = list(getattr(opts, "nogc_enforce_modules", []) or [])
+        if opts
+        else [];
+    _grand: list[str] = list(getattr(opts, "nogc_grandfathered", []) or [])
+        if opts
+        else [];
     if not _pats {
         try {
             import from jaclang.project { get_config }
@@ -360,8 +364,12 @@ impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
     if opts is not None and getattr(opts, "nogc_cli_target", "") == mod_name {
         return True;
     }
-    _pats = list(getattr(opts, "nogc_enforce_modules", []) or []) if opts else [];
-    _grand = list(getattr(opts, "nogc_grandfathered", []) or []) if opts else [];
+    _pats: list[str] = list(getattr(opts, "nogc_enforce_modules", []) or [])
+        if opts
+        else [];
+    _grand: list[str] = list(getattr(opts, "nogc_grandfathered", []) or [])
+        if opts
+        else [];
     if not _pats {
         try {
             import from jaclang.project { get_config }
@@ -460,7 +468,7 @@ impl OwnershipCheckPass._nogc_check_call(call: uni.FuncCall, prov: str) -> None 
             and isinstance(_a.target, uni.Name)
             and _a.target.sym_name == "managed" {
             if _hl_c {
-                _m_params = list(_a.params or []);
+                _m_params: list[uni.Expr] = list(_a.params or []);
                 _m_root = self._place_of(_m_params[0]) if _m_params else None;
                 if _m_root is not None
                     and _m_root.sym is not None

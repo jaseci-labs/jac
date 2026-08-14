@@ -5,7 +5,7 @@ enum Color: int { RED, GREEN, BLUE }
 enum Mix: int { A = 5, B, C = 10, D }
 enum Status: int { OK = 0, PENDING, FAILED }
 
-def enums_py() -> dict {
+def enums_py() -> dict[str, any] {
     return {
         "red": int(Color.RED),
         "green": int(Color.GREEN),
@@ -23,7 +23,7 @@ def enums_py() -> dict {
     };
 }
 
-def enums_cl() -> dict {
+def enums_cl() -> dict[str, any] {
     return {
         "red": int(Color.RED),
         "green": int(Color.GREEN),
@@ -41,6 +41,6 @@ def enums_cl() -> dict {
     };
 }
 
-def enums_na() -> dict {
+def enums_na() -> dict[str, any] {
     return {};
 }

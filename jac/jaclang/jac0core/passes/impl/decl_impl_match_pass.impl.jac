@@ -84,7 +84,7 @@ impl DeclImplMatchPass._connect_one_impl(
     target_sym_tab: UniScopeNode
 ) -> None {
     arch_refs = sym_name.split('.')[1:];
-    name_of_links: list = [];
+    name_of_links: list[any] = [];
     lookup = target_sym_tab.lookup(arch_refs[0]);
     if (lookup and not isinstance(lookup.decl.name_of, uni.AstImplNeedingNode)) {
         lookup = target_sym_tab.parent_scope.lookup(arch_refs[0])

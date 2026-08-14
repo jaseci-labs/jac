@@ -11,7 +11,7 @@ import from jaclang.jac0core.placement {
     summarize_module
 }
 
-glob _na_scan_memo: dict[str, tuple] = {},
+glob _na_scan_memo: dict[str, tuple[any, any, any]] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -34,7 +34,7 @@ def _native_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
     files = [path]
         + discover_annex_files(path, '.impl.jac')
         + discover_annex_files(path, '.test.jac');
-    fresh_parts: list[tuple] = [];
+    fresh_parts: list[tuple[str, int, int]] = [];
     for f in files {
         try {
             st = os.stat(f);
@@ -932,7 +932,7 @@ obj PlacementApplyPass(Transform[uni.Module, uni.Module]) {
         prog: any,
         cancel_token: any = None;
 
-    static has PROVIDES: tuple = ('codespace-pull', );
+    static has PROVIDES: tuple[str, ...] = ('codespace-pull', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

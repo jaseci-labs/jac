@@ -20,7 +20,7 @@ glob logger = logging.getLogger(__name__),
 def register_py_callbacks(
     manifest: InteropManifest,
     py_func_table: dict[(str, Callable[(..., object)])],
-    callbacks_list: list
+    callbacks_list: list[any]
 ) {
     import jaclang.compiler.passes.native.llvm.binding as llvm;
     for binding in manifest.native_imports {

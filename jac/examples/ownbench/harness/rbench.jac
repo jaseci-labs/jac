@@ -44,7 +44,7 @@ def compile_src(src: Path, mode: str, out: Path) -> Path {
 }
 
 """One invocation: digest, internal ns, parsed m: metrics, max RSS."""
-def run_once(binary: Path, args: list[str]) -> dict {
+def run_once(binary: Path, args: list[str]) -> dict[str, any] {
     r = subprocess.run(
         ["/usr/bin/time", "-v", str(binary)] + args,
         capture_output=True,
@@ -61,7 +61,7 @@ def run_once(binary: Path, args: list[str]) -> dict {
         }
     }
     ns: int | None = None;
-    metrics: dict = {};
+    metrics: dict[str, int] = {};
     digest_lines: list[str] = [];
     for line in r.stdout.splitlines() {
         if line.startswith("ns=") {
@@ -78,7 +78,7 @@ def run_once(binary: Path, args: list[str]) -> dict {
 }
 
 """Run `invocations` times; aggregate medians, keep last metrics."""
-def measure(binary: Path, args: list[str], invocations: int) -> dict {
+def measure(binary: Path, args: list[str], invocations: int) -> dict[str, any] {
     runs = [run_once(binary, args) for _ in range(invocations)];
     digests = {r["digest"] for r in runs};
     if len(digests) != 1 {
@@ -89,8 +89,8 @@ def measure(binary: Path, args: list[str], invocations: int) -> dict {
         for r in runs
         if r["ns"] is not None
     ];
-    med: dict = {};
-    first_metrics: dict = runs[0]["metrics"];
+    med: dict[str, int] = {};
+    first_metrics: dict[str, int] = runs[0]["metrics"];
     for key in first_metrics.keys() {
         med[key] = int(statistics.median([r["metrics"][key] for r in runs]));
     }
@@ -106,8 +106,8 @@ def measure(binary: Path, args: list[str], invocations: int) -> dict {
 }
 
 """Parse CLI options."""
-def parse_opts(argv: list[str]) -> dict {
-    opts: dict = {
+def parse_opts(argv: list[str]) -> dict[str, any] {
+    opts: dict[str, any] = {
         "invocations": 10,
         "quick": False,
         "out": str(BENCH / "results" / "regions_results.json"),
@@ -153,9 +153,9 @@ def make_bare(src: Path, dst: Path) -> Path {
     return dst;
 }
 
-def main(opts: dict) {
+def main(opts: dict[str, any]) {
     inv = int(opts["invocations"]);
-    results: dict = {};
+    results: dict[str, dict[str, any]] = {};
     fail = False;
 
     rgraph_args = ["50", "20"] if opts["quick"] else ["200", "500"];
@@ -165,7 +165,7 @@ def main(opts: dict) {
     results["reg_graph"] = {};
     for cfg in ["acyclic", "cyclic"] {
         back = "0" if cfg == "acyclic" else "10";
-        cells: dict = {};
+        cells: dict[str, dict[str, any]] = {};
         for (variant, src) in [
             ("region", BENCH / "kernels" / "reg_graph.jac"),
             ("bare", bare_src),
@@ -196,7 +196,7 @@ def main(opts: dict) {
 
     wspawn_args = ["20", "200"] if opts["quick"] else ["50", "20000"];
     results["reg_wspawn"] = {};
-    wdigs: set = set();
+    wdigs: set[str] = set();
     for mode in MODES {
         out = BENCH / "bin" / f"reg_wspawn_{mode}";
         compile_src(BENCH / "kernels" / "reg_wspawn.jac", mode, out);
@@ -230,7 +230,7 @@ def main(opts: dict) {
             treps = "5";
             tinv = max(3, inv // 3);
         }
-        row: dict = {};
+        row: dict[str, dict[str, any]] = {};
         for strategy in ["move", "copy", "serial"] {
             cell = measure(out, [strategy, size, treps], tinv);
             row[strategy] = cell;

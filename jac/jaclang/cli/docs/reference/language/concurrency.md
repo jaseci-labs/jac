@@ -56,7 +56,7 @@ Prefix a function definition with `async` to declare it as a coroutine. Inside a
     The examples below use `http_get` as a placeholder for an async HTTP client. In practice, import an async library (e.g., `import from aiohttp { ClientSession }`) or define your own async helper.
 
 ```jac
-async def fetch_data(url: str) -> dict {
+async def fetch_data(url: str) -> dict[str, any] {
     response = await http_get(url);
     return await response.json();
 }
@@ -157,15 +157,15 @@ with entry {
 The real power of `flow/wait` emerges when you launch multiple tasks that each spend their time *blocked*. Each `flow` call starts a new background task immediately, so all tasks run concurrently. You then collect results with `wait` -- when the tasks are blocked on I/O (like the fetches below), the total wall-clock time is roughly the duration of the slowest task, not the sum of all tasks. (If the tasks were instead crunching numbers in pure Jac, the GIL would serialize them and you would get the sum, not the max -- see the warning above.)
 
 ```jac
-def fetch_users -> list {
+def fetch_users -> list[any] {
     return [];
 }
 
-def fetch_orders -> list {
+def fetch_orders -> list[any] {
     return [];
 }
 
-def fetch_inventory -> list {
+def fetch_inventory -> list[any] {
     return [];
 }
 

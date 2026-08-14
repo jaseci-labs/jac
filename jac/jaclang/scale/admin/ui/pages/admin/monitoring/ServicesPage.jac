@@ -29,10 +29,10 @@ def:pub ServicesPage -> JsxElement {
     has isLoading: bool = True,
         metricsAvailable: bool = True,
         unavailableReason: str = "",
-        summary: dict = {},
-        services: list[dict] = [],
-        pods: list[dict] = [],
-        series: list[dict] = [],
+        summary: dict[str, any] = {},
+        services: list[dict[str, any]] = [],
+        pods: list[dict[str, any]] = [],
+        series: list[dict[str, any]] = [],
         selectedService: str = "",
         autoRefresh: bool = True;
 
@@ -43,19 +43,19 @@ def:pub ServicesPage -> JsxElement {
         listRes = await getWorkloadsList(auth["authToken"]);
         podsRes = await getWorkloadsPods(auth["authToken"]);
         tsRes = await getWorkloadsTimeseries(auth["authToken"], 60);
-        sumData = {};
+        sumData: dict[str, any] = {};
         if sumRes["ok"] and sumRes["data"] {
             sumData = sumRes["data"];
         }
-        listData = {};
+        listData: dict[str, any] = {};
         if listRes["ok"] and listRes["data"] {
             listData = listRes["data"];
         }
-        podsData = {};
+        podsData: dict[str, any] = {};
         if podsRes["ok"] and podsRes["data"] {
             podsData = podsRes["data"];
         }
-        tsData = {};
+        tsData: dict[str, any] = {};
         if tsRes["ok"] and tsRes["data"] {
             tsData = tsRes["data"];
         }

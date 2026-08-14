@@ -29,9 +29,9 @@ def _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object {
     return _run;
 }
 
-impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
-    result_holder: list = [None];
-    error_holder: list = [None];
+impl run_with_timeout(func: object, timeout: int = 10) -> tuple[bool, any] {
+    result_holder: list[any] = [None];
+    error_holder: list[any] = [None];
     def _worker {
         try {
             result_holder[0] = func();
@@ -51,9 +51,9 @@ impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
     return (True, result_holder[0]);
 }
 
-def _cap_read(stream: object, holder: list, cap: int) {
+def _cap_read(stream: object, holder: list[any], cap: int) {
     try {
-        chunks: list = [];
+        chunks: list[str] = [];
         total: int = 0;
         while True {
             want: int = min(4096, cap - total);
@@ -483,8 +483,8 @@ impl CompilerBridge.run_snippet(
                 start_new_session=True,
             );
         }
-        out_buf: list = [None];
-        err_buf: list = [None];
+        out_buf: list[any] = [None];
+        err_buf: list[any] = [None];
         t_out = threading.Thread(
             target=_cap_read, args=(proc.stdout, out_buf, MAX_OUTPUT_SIZE), daemon=True
         );

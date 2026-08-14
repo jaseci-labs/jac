@@ -73,13 +73,13 @@ class ASTValidationPass(UniPass) {
     def enter_jsx_slot(self: ASTValidationPass, nd: uni.JsxSlot) -> None;
     def enter_expr_stmt(self: ASTValidationPass, nd: uni.ExprStmt) -> None;
     def _check_slot_body(
-        self: ASTValidationPass, stmts: list, in_loop: bool, loop_kw: str
+        self: ASTValidationPass, stmts: list[any], in_loop: bool, loop_kw: str
     ) -> None;
 
     def _check_slot_else(
         self: ASTValidationPass, else_body: object, in_loop: bool, loop_kw: str
     ) -> None;
 
-    def _slot_emits_keyless_jsx(self: ASTValidationPass, stmts: list) -> bool;
+    def _slot_emits_keyless_jsx(self: ASTValidationPass, stmts: list[any]) -> bool;
     def _slot_has_key_attr(self: ASTValidationPass, el: uni.JsxElement) -> bool;
 }

@@ -62,7 +62,7 @@ impl NaIRGenPass._repr_call_elem_fn(elem_fn: ir.Function, elem: ir.Value) -> ir.
     return self._mark_owned(res);
 }
 
-impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple | None) {
+impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple[str, any] | None) {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     _parts = self._split_type_args(elem_key, "|");
@@ -632,8 +632,8 @@ impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
     if not _fkeys or _fkeys == [""] {
         return None;
     }
-    _ffns: list = [];
-    _ftys: list = [];
+    _ffns: list[any] = [];
+    _ftys: list[any] = [];
     for fk in _fkeys {
         _f = self._repr_fn_for_type_key(fk);
         if _f is None {

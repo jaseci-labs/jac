@@ -16,7 +16,7 @@ import from jaclang.runtimelib.client.targets.desktop.native.oauth_broker {
 }
 
 
-glob PLUGIN_BOOTSTRAP_MODULES: list = [
+glob PLUGIN_BOOTSTRAP_MODULES: list[str] = [
          "manifest",
          "desktop_plugin",
          "webview_lib",
@@ -98,7 +98,7 @@ def _apply_extra_deps {
 }
 
 
-def _bootstrap_plugin_host(plugin_configs: dict) -> any {
+def _bootstrap_plugin_host(plugin_configs: dict[str, any]) -> any {
     import jaclang;
     pdir = os.path.join(
         os.path.dirname(str(jaclang.__file__)),

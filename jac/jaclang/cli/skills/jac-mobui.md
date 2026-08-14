@@ -79,7 +79,7 @@ Handlers are usually inline `lambda`; close over row data: `onPress={lambda { op
 
 **Lists** - comprehension in a JSX slot with a `key`: `{[<Card key={p["id"]} p={p}/> for p in items]}`.
 **Conditionals** - Jac ternary; empty branch is `<View/>`: `{(<Progress/>) if busy else <View/>}`.
-**Components** declare props as typed params: `def Card(p: dict) -> JsxElement {...}`, called `<Card p={p}/>`.
+**Components** declare props as typed params: `def Card(p: dict[str, any]) -> JsxElement {...}`, called `<Card p={p}/>`.
 **Backend** - call walkers as usual: `result = root spawn create(name=txt); fresh = result.reports[0];` or import the server function + `await fn(arg)` (positional). Auth: `import from "@jac/runtime" { jacLogin, jacSignup, jacLogout }` (backed by `expo-secure-store` on native).
 
 ## Styling - React Native `StyleSheet` only
@@ -98,7 +98,7 @@ glob:pub S = {xs: 4, sm: 8, md: 12, lg: 16, xl: 20};        # spacing
 glob:pub R = {sm: 8, md: 12, lg: 16, pill: 999};            # radii
 glob:pub F = {sm: 14, md: 16, lg: 20, xl: 26};              # font sizes
 
-def:pub buildStyles(C: dict) -> dict {
+def:pub buildStyles(C: dict[str, any]) -> dict[str, any] {
     return StyleSheet.create({
         screen: {flex: 1, backgroundColor: C.bg},
         card:   {backgroundColor: C.surface, borderRadius: R.md, padding: S.lg, gap: S.sm},

@@ -7,7 +7,7 @@ glob OP_TEXT: int = 0x1,
      OP_PING: int = 0x9,
      OP_PONG: int = 0xA;
 
-glob INTERACTIVE_ROLES: set = {
+glob INTERACTIVE_ROLES: set[str] = {
          "button",
          "link",
          "textbox",
@@ -57,7 +57,7 @@ function() {
 }
 """;
 
-glob KEY_CODES: dict = {
+glob KEY_CODES: dict[str, any] = {
          "Enter": 13,
          "Tab": 9,
          "Escape": 27,
@@ -97,7 +97,7 @@ obj WebSocket {
     def _read_until(delim: bytes) -> bytes;
     def _recv_exact(n: int) -> bytes;
     def send(data: (str | bytes), opcode: int = OP_TEXT);
-    def _read_frame -> tuple;
+    def _read_frame -> tuple[bool, int, bytes];
     def recv -> (str | bytes);
     def close;
 }
@@ -107,15 +107,18 @@ obj CDP {
     has ws_url: str,
         _id: int = 0,
         ws: WebSocket postinit,
-        events: list postinit;
+        events: list[dict[str, any]] postinit;
 
     def postinit {
         self.ws = WebSocket(url=self.ws_url);
         self.events = [];
     }
 
-    def call(method: str, params: (dict | None) = None, timeout: float = 30.0) -> dict;
-    def drain_events(idle: float = 0.25) -> list;
+    def call(
+        method: str, params: (dict[str, any] | None) = None, timeout: float = 30.0
+    ) -> dict[str, any];
+
+    def drain_events(idle: float = 0.25) -> list[dict[str, any]];
     def close;
 }
 
@@ -129,25 +132,27 @@ def _http_json(port: int, path: str) -> any;
 
 def _page_ws(port: int) -> str;
 
-def load_state(session: str) -> (dict | None);
+def load_state(session: str) -> (dict[str, any] | None);
 
-def _parse_viewport(spec: str) -> tuple;
+def _parse_viewport(spec: str) -> tuple[int, int];
 
-def _chrome_args(chrome: str, profile: Path, viewport: str) -> list;
+def _chrome_args(chrome: str, profile: Path, viewport: str) -> list[str];
 
 def _calibrate_viewport(port: int, w: int, h: int);
 
-def launch(session: str = "default", viewport: str = "1280x720") -> dict;
+def launch(session: str = "default", viewport: str = "1280x720") -> dict[str, any];
 
 def connect(session: str = "default") -> CDP;
 
 
 def _eval(cdp: CDP, expr: str) -> any;
-def _load_refs(session: str) -> dict;
+def _load_refs(session: str) -> dict[str, any];
 
 def _resolve_object_id(cdp: CDP, session: str, selector: str) -> (str | None);
 
-def _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tuple;
+def _locate(
+    cdp: CDP, session: str, selector: str, timeout: float = 10.0
+) -> tuple[float, float];
 
 def _real_click(cdp: CDP, x: float, y: float);
 
@@ -170,9 +175,9 @@ def cmd_press(session: str, key: str) -> str;
 def cmd_get(session: str, what: str, selector: (str | None)) -> any;
 def cmd_screenshot(session: str, path: (str | None)) -> str;
 
-def _format_console_event(method: str, params: dict) -> (str | None);
+def _format_console_event(method: str, params: dict[str, any]) -> (str | None);
 
-def _remote_obj_str(ro: dict) -> str;
+def _remote_obj_str(ro: dict[str, any]) -> str;
 
 def cmd_console(session: str, clear: bool = False) -> str;
 
@@ -180,11 +185,17 @@ def cmd_wait(session: str, arg: str, timeout: float = 30.0) -> str;
 
 def cmd_scroll(session: str, target: str, amount: (int | None) = None) -> str;
 
-def _walk_ax(ax: dict, by_id: dict, depth: int, lines: list, refs: dict);
+def _walk_ax(
+    ax: dict[str, any],
+    by_id: dict[str, any],
+    depth: int,
+    lines: list[str],
+    refs: dict[str, any]
+);
 
 def cmd_snapshot(session: str) -> str;
 
-def _cookie_param(ck: dict) -> dict;
+def _cookie_param(ck: dict[str, any]) -> dict[str, any];
 
 def cmd_state(session: str, sub: str, path: str) -> str;
 
@@ -193,7 +204,7 @@ def cmd_sessions(session: str) -> str;
 def cmd_close(session: str) -> str;
 
 
-def main(argv: list) -> int;
+def main(argv: list[str]) -> int;
 
 with entry:__main__ {
     sys.exit(main(sys.argv[1:]));

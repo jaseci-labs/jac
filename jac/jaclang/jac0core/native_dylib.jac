@@ -79,7 +79,7 @@ def layout_from_dict(data: any) -> any {
             f"this runtime expects {NATIVE_ABI_VERSION}"
         );
     }
-    structs: dict = {};
+    structs: dict[str, any] = {};
     structs_raw: any = data.get("structs") or {};
     for (name, s) in structs_raw.items() {
         sd: any = s;
@@ -90,7 +90,7 @@ def layout_from_dict(data: any) -> any {
             fields=[_field_info(f) for f in (sd.get("fields") or [])]
         );
     }
-    enums: dict = {};
+    enums: dict[str, any] = {};
     enums_raw: any = data.get("enums") or {};
     for (name, e) in enums_raw.items() {
         ed: any = e;
@@ -103,17 +103,17 @@ def layout_from_dict(data: any) -> any {
             ]
         );
     }
-    functions: dict = {};
+    functions: dict[str, any] = {};
     functions_raw: any = data.get("functions") or {};
     for (n, f) in functions_raw.items() {
         functions[n] = _func_layout(f);
     }
-    methods: dict = {};
+    methods: dict[str, any] = {};
     methods_raw: any = data.get("methods") or {};
     for (n, f) in methods_raw.items() {
         methods[n] = _func_layout(f);
     }
-    tuples: dict = {};
+    tuples: dict[str, any] = {};
     tuples_raw: any = data.get("tuples") or {};
     for (k, t) in tuples_raw.items() {
         tuples[k] = _tuple_layout(t);

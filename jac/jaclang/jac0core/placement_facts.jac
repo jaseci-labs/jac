@@ -5,8 +5,8 @@ glob SPACE_SERVER: str = 'server',
      SPACE_CLIENT: str = 'client',
      SPACE_NATIVE: str = 'native';
 
-glob TOOLCHAIN_NATIVE_ONLY_REL: tuple = ("runtimelib", "na_stdlib"),
-     TOOLCHAIN_MIXED_NATIVE_REL: tuple = (
+glob TOOLCHAIN_NATIVE_ONLY_REL: tuple[str, ...] = ("runtimelib", "na_stdlib"),
+     TOOLCHAIN_MIXED_NATIVE_REL: tuple[str, ...] = (
          "runtimelib",
          "client",
          "targets",

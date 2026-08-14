@@ -146,7 +146,7 @@ def sum_all(*values: int) -> int {
 }
 
 # **kwargs collects extra keyword arguments
-def build_config(**options: object) -> dict {
+def build_config(**options: object) -> dict[str, any] {
     return dict(options);
 }
 
@@ -420,7 +420,7 @@ with entry {
 
 ```jac
 with entry {
-    config = (def () -> dict {
+    config = (def () -> dict[str, any] {
         host = "localhost";
         port = 8080;
         return {"host": host, "port": port, "url": f"http://{host}:{port}"};

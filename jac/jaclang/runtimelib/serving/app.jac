@@ -148,7 +148,7 @@ obj ServingApp {
         docs_url: (str | None) = '/docs',
         openapi_url: (str | None) = '/openapi.json',
         openapi_security: dict[str, any] = {},
-        openapi_cache: (dict | None) = None,
+        openapi_cache: (dict[str, any] | None) = None,
         state: dict[str, any] = {};
 
     def add_endpoint(ep: JEndPoint) {

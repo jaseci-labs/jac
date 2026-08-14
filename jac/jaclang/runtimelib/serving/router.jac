@@ -70,7 +70,7 @@ def compile_route(path: str) -> CompiledRoute {
     return route;
 }
 
-def route_sort_key(route: CompiledRoute) -> tuple {
+def route_sort_key(route: CompiledRoute) -> tuple[int, int, int, str] {
     path = '';
     if route.endpoint is not None {
         path = route.endpoint.path;

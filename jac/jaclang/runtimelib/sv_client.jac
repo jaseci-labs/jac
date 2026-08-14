@@ -75,13 +75,15 @@ def _ensure_available(module_name: str) -> None {
     jaclang.JacRuntime.ensure_sv_service(module_name, base_path);
 }
 
-def call(module_name: str, func_name: str, args: dict) -> any {
+def call(module_name: str, func_name: str, args: dict[str, any]) -> any {
     _ensure_available(module_name);
     import jaclang;
     return jaclang.JacRuntime.sv_service_call(module_name, func_name, args);
 }
 
-def spawn_walker(module_name: str, walker_name: str, args: dict, stub_cls: any) -> any {
+def spawn_walker(
+    module_name: str, walker_name: str, args: dict[str, any], stub_cls: any
+) -> any {
     _ensure_available(module_name);
     import jaclang;
     return jaclang.JacRuntime.sv_walker_call(module_name, walker_name, args, stub_cls);

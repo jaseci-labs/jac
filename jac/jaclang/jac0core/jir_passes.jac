@@ -160,7 +160,7 @@ obj JirReader {
         data: (bytes | memoryview), pos: int, scope_node: UniScopeNode
     ) -> int;
 
-    def _read_symbol(data: (bytes | memoryview), pos: int) -> tuple;
+    def _read_symbol(data: (bytes | memoryview), pos: int) -> tuple[any, int];
     def _read_cfg_overlay(
         data: (bytes | memoryview), pos: int, cfg_node: UniCFGNode
     ) -> int;

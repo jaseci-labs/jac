@@ -1578,7 +1578,7 @@ def build_osp_core_js -> str {
         options=CompileOptions(force_codespace='client', no_cgen=True, type_check=True)
     );
     program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
-    kept: list = [];
+    kept: list[any] = [];
     if isinstance(program, es.Program) {
         for stmt in program.body {
             is_jac_rt = (

@@ -12,7 +12,7 @@ import from jaclang.runtimelib.serving.endpoint {
 
 
 obj RequestValidationError(Exception) {
-    has errors: list[dict] = [];
+    has errors: list[dict[str, any]] = [];
 
     def __str__ -> str {
         return f"{len(self.errors)} validation error(s)";
@@ -86,7 +86,7 @@ def _construct_object(value: any, target: any) -> any {
     return target(**kwargs);
 }
 
-def _as_item_list(value: any) -> list {
+def _as_item_list(value: any) -> list[any] {
     if isinstance(value, (list, tuple, set)) {
         return list(value);
     }
@@ -171,7 +171,7 @@ def coerce_value(value: any, target: any = None) -> any {
     return value;
 }
 
-def _coerce_union(value: any, options: tuple) -> any {
+def _coerce_union(value: any, options: tuple[any, ...]) -> any {
     none_type = type(None);
     if value is None {
         for opt in options {
@@ -283,7 +283,7 @@ def _fresh_default(value: any) -> any {
 
 def bind_parameters(ep: JEndPoint, request: Request, body_json: any) -> dict[str, Any] {
     kwargs: dict[str, Any] = {};
-    errors: list[dict] = [];
+    errors: list[dict[str, any]] = [];
     declared: set[str] = set();
     for param in (ep.parameters or []) {
         declared.add(param.name);

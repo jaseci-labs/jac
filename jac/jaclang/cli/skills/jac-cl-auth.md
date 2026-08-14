@@ -30,7 +30,7 @@ async def handle_register(name: str, email: str, password: str) -> str {
     # Pre-declare every var that holds an `await` result. `let` scoping in the
     # generated JS can otherwise leave them undefined at the if-check.
     # Note the per-helper types: jacSignup -> dict, jacLogin -> bool.
-    signup_result: dict | None = None;
+    signup_result: dict[str, any] | None = None;
     login_ok: bool = False;
     profile_result: any = None;
 
@@ -74,7 +74,7 @@ async def try_login(email: str, password: str) -> str {
 
 # Signup is usually followed by a login to establish the session.
 async def try_signup(email: str, password: str) -> str {
-    signup_result: dict | None = None;       # jacSignup returns dict
+    signup_result: dict[str, any] | None = None;       # jacSignup returns dict
     login_ok: bool = False;                  # jacLogin returns bool
     try {
         signup_result = await jacSignup(email, password);

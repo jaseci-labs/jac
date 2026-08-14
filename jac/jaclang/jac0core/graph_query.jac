@@ -22,30 +22,30 @@ obj QPred {
 obj QHop {
     has dir: int,
         `edge: (type | None) = None,
-        nd: (type | tuple | None) = None,
+        nd: (type | tuple[type, ...] | None) = None,
         epreds: list[QPred] = [],
         preds: list[QPred] = [],
         only: any = None;
 
     def add_node_constraint(node_type: (type | None)) -> None;
-    def only_ids -> (set | None);
+    def only_ids -> (set[any] | None);
     def repr -> str;
 }
 
 
 obj GraphQuery {
-    has origin: list,
+    has origin: list[any],
         hops: list[QHop] = [],
         edges_only: bool = False,
         from_visit: bool = False,
-        slc: (slice | None) = None,
+        slc: (slice[int, int, int] | None) = None,
         level: str = 'default';
 
     def init(
         origin: any,
         hops: (list[QHop] | None) = None,
         edges_only: bool = False,
-        slc: (slice | None) = None,
+        slc: (slice[int, int, int] | None) = None,
         level: str = 'default'
     ) -> None;
 

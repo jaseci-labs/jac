@@ -77,8 +77,8 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
         _node_use: dict[int, set[SymId]] = {},
         _node_def: dict[int, set[SymId]] = {};
 
-    static has PROVIDES: tuple = ('rc-facts', ),
-        REQUIRES: tuple = ('cfg', );
+    static has PROVIDES: tuple[str, ...] = ('rc-facts', ),
+        REQUIRES: tuple[str, ...] = ('cfg', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
@@ -95,7 +95,10 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
     def _stamp_last_use(ir_in: uni.Module) -> None;
     def _stamp_move_in(ir_in: uni.Module) -> None;
     def _stamp_anon_regions(ir_in: uni.Module) -> None;
-    def _scan_anon_region_block(body: Sequence[uni.UniNode]) -> list[tuple];
+    def _scan_anon_region_block(
+        body: Sequence[uni.UniNode]
+    ) -> list[tuple[int, int, list[str]]];
+
     def _arch_of_call(expr: (uni.UniNode | None)) -> (uni.Archetype | None);
     def _connect_chain_leaves(expr: uni.UniNode) -> (list[uni.Name] | None);
     def _blessed_arch_call(fc: uni.FuncCall, member_sids: set[int]) -> bool;

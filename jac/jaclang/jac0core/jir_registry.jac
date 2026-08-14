@@ -41,12 +41,12 @@ obj NodeSpec {
         is_scope: bool,
         is_cfg: bool,
         is_name_atom: bool,
-        fields: tuple;
+        fields: tuple[FieldDesc, ...];
 }
 
 
 """Registry data: node specs, name/index lookup tables."""
-glob NODE_SPECS: tuple = (
+glob NODE_SPECS: tuple[NodeSpec, ...] = (
          NodeSpec(
              type_idx=0,
              class_name="Ability",

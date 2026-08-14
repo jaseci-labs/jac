@@ -16,9 +16,13 @@ import from "lucide-react" { ChevronLeft, Boxes, Activity, Gauge }
 import from ....utils.format { formatBytes, formatCores, formatAge }
 
 def:pub ServiceDetail(
-    service: dict, pods: list[dict], cpu: list[dict], memory: list[dict], onBack: any
+    service: dict[str, any],
+    pods: list[dict[str, any]],
+    cpu: list[dict[str, any]],
+    memory: list[dict[str, any]],
+    onBack: any
 ) -> JsxElement {
-    def maxOf(points: list[dict]) -> float {
+    def maxOf(points: list[dict[str, any]]) -> float {
         mv = 0.0;
         for p in points {
             v = p["v"] or 0;
@@ -29,7 +33,7 @@ def:pub ServiceDetail(
         return mv;
     }
 
-    def lastOf(points: list[dict]) -> float {
+    def lastOf(points: list[dict[str, any]]) -> float {
         n = len(points);
         if n == 0 {
             return 0.0;
@@ -38,7 +42,7 @@ def:pub ServiceDetail(
     }
 
     # Drawing area inside the 900x240 viewBox: x:[90,880] y:[20,210].
-    def chartLine(points: list[dict], maxV: float) -> str {
+    def chartLine(points: list[dict[str, any]], maxV: float) -> str {
         n = len(points);
         if n == 0 {
             return "";
@@ -64,7 +68,7 @@ def:pub ServiceDetail(
         return out;
     }
 
-    def chartArea(points: list[dict], maxV: float) -> str {
+    def chartArea(points: list[dict[str, any]], maxV: float) -> str {
         line = chartLine(points, maxV);
         if not line {
             return "";

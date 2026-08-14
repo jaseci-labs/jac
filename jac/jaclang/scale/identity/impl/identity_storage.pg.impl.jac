@@ -246,7 +246,9 @@ impl PgIdentityStorage._add_identity(user_id: str, identity: dict[str, any]) -> 
         }
         raise;
     }
-    identities = list(_pg_load_doc(rows[0][0]).get('identities') or []);
+    identities: list[dict[str, any]] = list(
+        _pg_load_doc(rows[0][0]).get('identities') or []
+    );
     identities.append(identity);
     patch = {'identities': identities, 'updated_at': datetime.now(UTC).isoformat()};
     self.store.rows(
@@ -265,7 +267,9 @@ impl PgIdentityStorage._set_identity_verified(
     if not rows {
         return False;
     }
-    identities = list(_pg_load_doc(rows[0][0]).get('identities') or []);
+    identities: list[dict[str, any]] = list(
+        _pg_load_doc(rows[0][0]).get('identities') or []
+    );
     changed = False;
     for identity in identities {
         if identity.get('value_normalized') == value_normalized {
@@ -293,7 +297,9 @@ impl PgIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> bool
     if not rows {
         return False;
     }
-    identities = list(_pg_load_doc(rows[0][0]).get('identities') or []);
+    identities: list[dict[str, any]] = list(
+        _pg_load_doc(rows[0][0]).get('identities') or []
+    );
     filtered = [
         i
         for i in identities

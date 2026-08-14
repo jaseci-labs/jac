@@ -48,7 +48,7 @@ def resolve_client_target_name(config: JacConfig) -> str {
 
 
 def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
-    npm_plugin_deps: dict = dict(config.plugin_dependencies.get("npm", {}));
+    npm_plugin_deps: dict[str, str] = dict(config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};
     key1 = str(target_name or "").strip();
     key2 = key1.replace("_", "-");

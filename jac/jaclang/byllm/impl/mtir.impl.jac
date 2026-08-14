@@ -319,7 +319,7 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
     return None;
 }
 
-impl MTRuntime.get_tool_list -> list[dict] {
+impl MTRuntime.get_tool_list -> list[dict[str, any]] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 

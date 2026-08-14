@@ -35,7 +35,7 @@ with entry {
     }
 
     # Case 4: List comprehension over enum
-    color_names: list = [c.name for c in Color];
+    color_names: list[str] = [c.name for c in Color];
 
     # Case 5: Enum in conditional iteration
     for d in Direction {

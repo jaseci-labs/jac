@@ -21,7 +21,7 @@ import from jaclang.cli.browser_engine {
     cmd_close
 }
 
-def _need(args: list, n: int, usage: str) {
+def _need(args: list[str], n: int, usage: str) {
     if len(args) < n {
         raise ValueError(f"usage: jac browse {usage}");
     }

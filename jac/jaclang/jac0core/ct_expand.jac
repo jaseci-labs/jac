@@ -24,6 +24,8 @@ import from jaclang.jac0core.unitree {
     Name,
     Null,
     Source,
+    ElementStmt,
+    EmptyToken,
     String,
     Token,
     TupleVal,
@@ -33,7 +35,7 @@ import from jaclang.jac0core.unitree {
 import jaclang.jac0core.ct_reflect as ct_reflect;
 
 glob CT_FUEL_DEFAULT: int = 50000000,
-     _CT_SKIP_FIELDS: tuple = (
+     _CT_SKIP_FIELDS: tuple[str, ...] = (
          "parent",
          "kid",
          "loc",
@@ -145,17 +147,17 @@ obj CtEval {
         file_path: str = "<input>",
         cur_dir: str = "",
         fuel: int = 50000000,
-        frames: list[dict] = [],
+        frames: list[dict[str, any]] = [],
         frame_barriers: list[bool] = [],
         module_defs: dict[str, Ability] = {},
         module_glob_ids: dict[str, UniNode] = {},
         module_globals: dict[str, any] = {},
         targets: list[str] = [],
         loc_stack: list[UniNode] = [],
-        _call_memo: dict = {},
+        _call_memo: dict[Ability, any] = {},
         _ret: any = None,
-        _builtins: dict = {},
-        _ns: dict = {};
+        _builtins: dict[str, any] = {},
+        _ns: dict[str, any] = {};
 
     def postinit {
         if not self.targets {
@@ -227,7 +229,7 @@ obj CtEval {
         return self.req(self.node_arg(i, pname), f"'{pname}' on {type(i).__name__}");
     }
 
-    def list_arg(i: (UniNode | None), pname: str) -> list {
+    def list_arg(i: (UniNode | None), pname: str) -> list[UniNode] {
         got = getattr(i, pname, None);
         if got is None or isinstance(got, UniNode) {
             return [];
@@ -235,7 +237,7 @@ obj CtEval {
         return list(got);
     }
 
-    def poly_arg(i: UniNode, pname: str) -> list {
+    def poly_arg(i: UniNode, pname: str) -> list[UniNode] {
         got = getattr(i, pname, None);
         if got is None {
             return [];
@@ -258,7 +260,7 @@ obj CtEval {
         return self.str_arg(i, "value");
     }
 
-    def loc_of(i: (UniNode | None)) -> tuple {
+    def loc_of(i: (UniNode | None)) -> tuple[int, int, int, int] {
         if i is None {
             return (0, 0, 0, 0);
         }
@@ -474,7 +476,7 @@ obj CtEval {
             return {self.eval(v) for v in self.list_arg(i, "values")};
         }
         if cn == "DictVal" {
-            out2: dict = {};
+            out2: dict[any, any] = {};
             for kv in self.list_arg(i, "kv_pairs") {
                 key = self.node_arg(kv, "key");
                 if key is None {
@@ -495,7 +497,7 @@ obj CtEval {
         if cn == "DictCompr" {
             kvp = self.node_arg(i, "kv_pair");
             pairs = self._compr_items(self.list_arg(i, "compr"), 0, None, kvp);
-            out3: dict = {};
+            out3: dict[any, any] = {};
             for entry in pairs {
                 out3[entry[0]] = entry[1];
             }
@@ -511,11 +513,11 @@ obj CtEval {
     }
 
     def _compr_items(
-        comprs: list,
+        comprs: list[UniNode],
         depth: int,
         out_expr: (UniNode | None),
         kv_pair: (UniNode | None) = None
-    ) -> list {
+    ) -> list[any] {
         if depth >= len(comprs) {
             if kv_pair is not None {
                 k = self.eval(self.req_arg(kv_pair, "key"));
@@ -528,7 +530,7 @@ obj CtEval {
         coll = self.eval(self.req_arg(c, "collection"));
         conds = self.list_arg(c, "conditional");
         tgt = self.req_arg(c, "target");
-        out: list = [];
+        out: list[any] = [];
         for item in coll {
             self.push_frame();
             self._bind_target(tgt, item);
@@ -674,9 +676,9 @@ obj CtEval {
         _ct_err(f"'{rcn}' trailer not supported in comptime");
     }
 
-    def _call_args(call: UniNode) -> tuple {
-        args: list = [];
-        kwargs: dict = {};
+    def _call_args(call: UniNode) -> tuple[list[any], dict[str, any]] {
+        args: list[any] = [];
+        kwargs: dict[str, any] = {};
         for p in self.list_arg(call, "params") {
             if self.cls_name(p) == "KWPair" {
                 key = self.node_arg(p, "key");
@@ -730,7 +732,7 @@ obj CtEval {
         _ct_err(f"'{tcn}' call target not supported in comptime");
     }
 
-    def call_def(abil: Ability, args: list, kwargs: dict) -> any {
+    def call_def(abil: Ability, args: list[any], kwargs: dict[str, any]) -> any {
         self.burn(20);
         if not args and not kwargs and abil in self._call_memo {
             return self._call_memo[abil];
@@ -770,7 +772,7 @@ obj CtEval {
         return out;
     }
 
-    def exec_block(ids: list) -> int {
+    def exec_block(ids: list[UniNode]) -> int {
         for i in ids {
             sig = self.exec_stmt(i);
             if sig != 0 {
@@ -946,7 +948,7 @@ obj CtEval {
 
 obj CtExpander {
     has ev: CtEval,
-        subst: dict[int, tuple] = {},
+        subst: dict[int, tuple[UniNode, list[UniNode]]] = {},
         _visited: dict[int, UniNode] = {};
 
     def sweep_kids {
@@ -984,7 +986,9 @@ obj CtExpander {
         }
     }
 
-    def _tok(mk_name: str, tok_name: str, text: str, loc: tuple) -> Expr {
+    def _tok(
+        mk_name: str, tok_name: str, text: str, loc: tuple[int, int, int, int]
+    ) -> Expr {
         (line, end_line, cs, ce) = (loc[0], loc[1], loc[2], loc[3]);
         src = self.ev.source();
         if mk_name == "NAME" {
@@ -1068,7 +1072,7 @@ obj CtExpander {
         raise RuntimeError(f"comptime: internal: unknown token builder {mk_name}");
     }
 
-    def value_to_nodes(v: any, loc: tuple) -> Expr {
+    def value_to_nodes(v: any, loc: tuple[int, int, int, int]) -> Expr {
         self.ev.burn(2);
         if isinstance(v, CtFragment) {
             frag_node = self.parse_frag(v, loc);
@@ -1130,11 +1134,11 @@ obj CtExpander {
         );
     }
 
-    def _minus_tok(loc: tuple) -> Token {
+    def _minus_tok(loc: tuple[int, int, int, int]) -> Token {
         return self._punct("MINUS", "-", loc);
     }
 
-    def _punct(name: str, text: str, loc: tuple) -> Token {
+    def _punct(name: str, text: str, loc: tuple[int, int, int, int]) -> Token {
         return Token(
             orig_src=self.ev.source(),
             name=name,
@@ -1148,7 +1152,7 @@ obj CtExpander {
         );
     }
 
-    def parse_frag(f: CtFragment, loc: tuple) -> UniNode {
+    def parse_frag(f: CtFragment, loc: tuple[int, int, int, int]) -> UniNode {
         self.ev.burn(50);
         if f.kind == "name" {
             if not _is_ident(f.text) {
@@ -1187,7 +1191,7 @@ obj CtExpander {
         }
         self.ev.burn();
         import copy as pycopy;
-        memo: dict = {};
+        memo: dict[int, any] = {};
         if i.parent is not None {
             memo[id(i.parent)] = i.parent;
         }
@@ -1265,7 +1269,7 @@ obj CtExpander {
                     self.expand_node(val);
                 }
             } elif isinstance(val, (list, tuple)) {
-                ids: list = [
+                ids: list[UniNode] = [
                     x
                     for x in val
                     if isinstance(x, UniNode)
@@ -1294,8 +1298,8 @@ obj CtExpander {
         }
     }
 
-    def expand_items(ids: list, parent: UniNode) -> list {
-        out: list = [];
+    def expand_items(ids: list[UniNode], parent: UniNode) -> list[UniNode] {
+        out: list[UniNode] = [];
         for x in ids {
             if isinstance(x, CtFor) {
                 news = self.expand_ct_for(x);
@@ -1317,27 +1321,29 @@ obj CtExpander {
         return out;
     }
 
-    def expand_ct_for(i: UniNode) -> list {
+    def expand_ct_for(i: UniNode) -> list[UniNode] {
         ev = self.ev;
         tgt = ev.node_arg(i, "target");
         tname = ev.tok_value(tgt);
         coll = ev.eval(ev.req_arg(i, "iter"));
         body = ev.list_arg(i, "body");
-        out: list = [];
+        out: list[UniNode] = [];
         for v in coll {
             ev.burn(5);
             ev.push_frame();
             ev.bind(tname, v);
             for b in body {
                 nb = self.copy_tree(b);
-                out.extend(self.expand_items([nb], i));
+                if nb is not None {
+                    out.extend(self.expand_items([nb], i));
+                }
             }
             ev.pop_frame();
         }
         return out;
     }
 
-    def expand_ct_if(i: UniNode, parent: UniNode) -> list {
+    def expand_ct_if(i: UniNode, parent: UniNode) -> list[UniNode] {
         ev = self.ev;
         if ev.eval(ev.req_arg(i, "condition")) {
             return self.expand_items(ev.list_arg(i, "body"), i);
@@ -1354,7 +1360,7 @@ obj CtExpander {
 
     def strip_ct_only(mod: Module) {
         removed: dict[int, bool] = {};
-        kept: list = [];
+        kept: list[ElementStmt | String | EmptyToken] = [];
         for b in mod.body {
             if isinstance(b, Ability) and b.is_ct_only {
                 removed[id(b)] = True;
@@ -1439,9 +1445,9 @@ def _jac_str_lit(s: str) -> str {
 
 
 def _refresh_locs(mod: Module) {
-    stack: list = [(mod, False)];
+    stack: list[tuple[UniNode, bool]] = [(mod, False)];
     while stack {
-        entry: tuple = stack.pop();
+        entry: tuple[UniNode, bool] = stack.pop();
         nd: UniNode = entry[0];
         expanded: bool = entry[1];
         if expanded {
@@ -1482,7 +1488,7 @@ def expand_module(
     file_path: str = "<input>",
     targets: (list[str] | None) = None,
     fuel: int = 50000000
-) -> list {
+) -> list[tuple[int, int, int, int, str]] {
     import os;
     ev = CtEval(
         mod=mod,

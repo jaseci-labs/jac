@@ -82,7 +82,7 @@ class JacClientPluginConfig {
         };
     }
 
-    static def register_ecosystem_providers -> list {
+    static def register_ecosystem_providers -> list[NpmProvider] {
         import from jaclang.runtimelib.client.npm_provider { NpmProvider }
         return [NpmProvider()];
     }

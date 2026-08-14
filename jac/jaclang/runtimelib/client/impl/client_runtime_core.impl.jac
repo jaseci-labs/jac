@@ -6,7 +6,7 @@ impl __jacRegisterRenderer(renderer: any) -> None {
     globalThis.__jacRenderer__ = renderer;
 }
 
-impl JacAwaiting(props: dict) -> JsxElement {
+impl JacAwaiting(props: dict[str, any]) -> JsxElement {
     return React.createElement(
         React.Suspense, {"fallback": props.fallback}, props.children
     );
@@ -32,7 +32,7 @@ impl __createJacSchema(zodLib: any) -> any {
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
-impl __getEndpointEffects -> dict {
+impl __getEndpointEffects -> dict[str, any] {
     if not globalThis.__jacEndpointEffects__ {
         seed_fn = globalThis.__jacSeedEndpointEffects__;
         if seed_fn {
@@ -44,7 +44,7 @@ impl __getEndpointEffects -> dict {
     return globalThis.__jacEndpointEffects__;
 }
 
-impl __getCacheState -> dict {
+impl __getCacheState -> dict[str, any] {
     if not globalThis.__jacCacheState__ {
         globalThis.__jacCacheState__ = {
             "cache": {},
@@ -56,7 +56,7 @@ impl __getCacheState -> dict {
     return globalThis.__jacCacheState__;
 }
 
-impl __isFresh(`entry: dict) -> bool {
+impl __isFresh(`entry: dict[str, any]) -> bool {
     if not `entry {
         return False;
     }
@@ -64,7 +64,7 @@ impl __isFresh(`entry: dict) -> bool {
     return age < `entry["ttl"];
 }
 
-impl __cacheGet(key: str) -> dict {
+impl __cacheGet(key: str) -> dict[str, any] {
     state = __getCacheState();
     entry = state["cache"][key];
     if not entry {
@@ -103,7 +103,7 @@ impl __evictOldest -> None {
     }
 }
 
-impl __overlaps(list1: list, list2: list) -> bool {
+impl __overlaps(list1: list[any], list2: list[any]) -> bool {
     for item in list1 {
         if list2.includes(item) {
             return True;
@@ -270,14 +270,14 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     );
 }
 
-impl __normalizeIdentity(x: any) -> dict {
+impl __normalizeIdentity(x: any) -> dict[str, any] {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-impl __normalizeCredential(x: any) -> dict {
+impl __normalizeCredential(x: any) -> dict[str, any] {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }

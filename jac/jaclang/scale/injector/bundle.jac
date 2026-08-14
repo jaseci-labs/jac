@@ -45,7 +45,7 @@ glob _EXCLUDE_FILES: set[str] = {
          "id_ecdsa",
          "id_ed25519"
      };
-glob _EXCLUDE_SUFFIXES: tuple = (
+glob _EXCLUDE_SUFFIXES: tuple[str, ...] = (
          ".pem",
          ".key",
          ".crt",

@@ -91,7 +91,7 @@ def _generate_host_source(
     height: int,
     app_name: str,
     cache_path: str,
-    plugin_configs: dict = {},
+    plugin_configs: dict[str, any] = {},
     entry_rel: str = "",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,

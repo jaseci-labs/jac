@@ -36,7 +36,9 @@ class EndpointEffectPass(UniPass) {
         ] = self._classify(self._resolved_body(nd));
     }
 
-    def _classify(self: EndpointEffectPass, body_nodes: list) -> dict {
+    def _classify(
+        self: EndpointEffectPass, body_nodes: list[uni.UniNode]
+    ) -> dict[str, any] {
         self._is_writer = False;
         self._touches = set();
         self._visited = set();
@@ -146,7 +148,9 @@ class EndpointEffectPass(UniPass) {
         return None;
     }
 
-    def _callee_body(self: EndpointEffectPass, call: uni.FuncCall) -> list {
+    def _callee_body(
+        self: EndpointEffectPass, call: uni.FuncCall
+    ) -> list[uni.UniNode] {
         sym = self._call_target_symbol(call);
         if not sym or not sym.defn {
             return [];
@@ -164,7 +168,9 @@ class EndpointEffectPass(UniPass) {
         return [];
     }
 
-    def _resolved_body(self: EndpointEffectPass, owner: uni.UniNode) -> list {
+    def _resolved_body(
+        self: EndpointEffectPass, owner: uni.UniNode
+    ) -> list[uni.UniNode] {
         resolver: any = owner?._get_impl_resolved_body;
         if resolver is not None {
             try {

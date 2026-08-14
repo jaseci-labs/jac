@@ -922,7 +922,7 @@ obj DeleteStmt(CodeBlockStmt) {
 
     def postinit -> None;
 
-    has py_ast_targets: list { getter; }
+    has py_ast_targets: list[any] { getter; }
 }
 
 obj ReportStmt(CodeBlockStmt) {

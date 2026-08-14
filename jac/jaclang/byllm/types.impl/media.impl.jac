@@ -1,8 +1,8 @@
-impl Media.to_dict -> list[dict] {
+impl Media.to_dict -> list[dict[str, any]] {
     raise NotImplementedError("Subclasses must implement this method.");
 }
 
-impl Text.to_dict -> list[dict] {
+impl Text.to_dict -> list[dict[str, any]] {
     return [{"type": "text", "text": self.text}];
 }
 
@@ -124,7 +124,7 @@ impl Image._data_url_from_bytes(data: bytes, fmt: str | None) -> str {
     return f"data:{mime};base64,{b64}";
 }
 
-impl Image.to_dict -> list[dict] {
+impl Image.to_dict -> list[dict[str, any]] {
     image_url = {"url": self.url};
     if self.mime_type {
         image_url["format"] = self.mime_type;
@@ -166,7 +166,7 @@ impl Video.load_frames -> None {
     }
 }
 
-impl Video.to_dict -> list[dict] {
+impl Video.to_dict -> list[dict[str, any]] {
     if self._base64frames is None {
         self.load_frames();
     }

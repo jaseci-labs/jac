@@ -8,7 +8,7 @@ import from jaclang.jac0core.passes.transform { Alert }
 import type from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.unitree { CommentToken, Module, Source, Token as UniToken }
 
-glob _NATIVE_PARSE_MEMO: list = [];
+glob _NATIVE_PARSE_MEMO: list[any] = [];
 
 def _native_parse -> any {
     if _NATIVE_PARSE_MEMO {
@@ -36,7 +36,7 @@ def _native_parse -> any {
 
             import jaclang.jac0core.unitree as _sc_unitree;
             import jaclang.jac0core.srcloc as _sc_srcloc;
-            pc: dict = {};
+            pc: dict[str, any] = {};
             for sn in layout.structs {
                 for _sc_ns in (ns, _sc_unitree.__dict__, _sc_srcloc.__dict__) {
                     if _sc_ns.get(sn) is not None {
@@ -64,7 +64,7 @@ def _native_parse -> any {
 }
 
 
-glob _CANARY_LINES: tuple = (
+glob _CANARY_LINES: tuple[str, ...] = (
          "import os;",
          "glob G: int = 42, H: str = 'control-flow harness (Branch 4)';",
          "enum E { A = 1, B = 2 }",
@@ -155,7 +155,9 @@ def _replay_diags(diags: any, from_pass: type, prog: JacProgram, diag_src: Sourc
     }
 }
 
-def parse_diags(source: str, file_path: str = "<input>") -> tuple[(bool, list, list)] {
+def parse_diags(
+    source: str, file_path: str = "<input>"
+) -> tuple[(bool, list[any], list[any])] {
     _np = _native_parse();
     if _np is not None {
         (_mod, p_errs, p_diags, _comments, lex_diags, lex_errs) = _np(
@@ -194,7 +196,7 @@ def parse(
         p_diags = parser.diags;
     }
 
-    ct_errs: list = [];
+    ct_errs: list[tuple[int, int, int, int, str]] = [];
     if expand and p_errs == 0 and lex_errs == 0 {
         import from jaclang.jac0core.ct_expand { expand_module, module_has_ct }
         if module_has_ct(module) {

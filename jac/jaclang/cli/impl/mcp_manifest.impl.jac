@@ -19,14 +19,14 @@ impl get_command(
         return {'error': f"Command not found: {name}"};
     }
 
-    args: list[dict[str, str | bool | list | None]] = [];
+    args: list[dict[str, str | bool | list[any] | None]] = [];
     seen: set[str] = set();
     for arg in meta.args {
         if arg.name in seen {
             continue;
         }
         seen.add(arg.name);
-        info: dict[str, str | bool | list | None] = {
+        info: dict[str, str | bool | list[any] | None] = {
             'name': arg.name,
             'kind': arg.kind.name,
             'type': arg.typ,

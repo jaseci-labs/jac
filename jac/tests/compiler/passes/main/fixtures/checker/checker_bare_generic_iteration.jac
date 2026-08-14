@@ -1,6 +1,6 @@
-"""Bare generic types (e.g. list without type args) should be treated as
-list[Any] per PEP 484, allowing attribute access on iteration variables
-instead of producing Unknown type errors."""
+"""Bare generic types (e.g. list without type args) are an E1036 error and
+their value type recovers as Unknown, so reads through them are reported
+rather than silently permitted."""
 
 obj Item {
     has name: str,
@@ -11,8 +11,8 @@ with entry {
     # Bare list (no type args) - iterating should yield Any, not Unknown
     items: list = [];
     for item in items {
-        x = item.name;       # <-- Should be OK (Any allows attribute access)
-        y = item.whatever;   # <-- Should be OK (Any allows any attribute)
+        x = item.name;  # <-- Should be OK (Any allows attribute access)
+        y = item.whatever;  # <-- Should be OK (Any allows any attribute)
     }
 
     # Bare dict - iterating should yield Any, not Unknown
@@ -32,7 +32,7 @@ with entry {
     # Typed list should still catch errors
     typed: list[int] = [1, 2, 3];
     for t in typed {
-        a: int = t;   # <-- OK
-        b: str = t;   # <-- Error (int not assignable to str)
+        a: int = t;  # <-- OK
+        b: str = t;  # <-- Error (int not assignable to str)
     }
 }

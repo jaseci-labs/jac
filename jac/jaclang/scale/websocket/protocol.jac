@@ -17,36 +17,38 @@ glob logger = logging.getLogger(__name__),
      SEND_TIMEOUT_SECONDS: float = 5.0,
      AUTH_HANDSHAKE_TIMEOUT_SECONDS: float = 10.0;
 
-def ws_error_frame(code: str, message: any, reason: any = None) -> dict;
+def ws_error_frame(code: str, message: any, reason: any = None) -> dict[str, any];
 
-def _auth_fail(status: str, reason: str) -> dict;
+def _auth_fail(status: str, reason: str) -> dict[str, any];
 
 async def _ws_send_then_close(
-    websocket: WebSocket, frame: dict, close_code: int, close_reason: str
+    websocket: WebSocket, frame: dict[str, any], close_code: int, close_reason: str
 ) -> None;
 
 def ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any;
 
-async def ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict);
+async def ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict[str, any]);
 
 async def ws_authenticate(
     websocket: WebSocket, user_manager: Any, handshake_timeout: float, max_bytes: int
-) -> (dict, dict | None);
+) -> (dict[str, any], dict[str, any] | None);
 
 async def ws_heartbeat_loop(
     ctx: ConnectionContext, heartbeat_seconds: float, missed_allowed: int
 ) -> None;
 
-async def ws_reject_auth(websocket: WebSocket, auth_detail: dict);
+async def ws_reject_auth(websocket: WebSocket, auth_detail: dict[str, any]);
 
 async def ws_reject_registration(websocket: WebSocket, rejection: str);
 
-async def ws_receive_frame(websocket: WebSocket, max_bytes: int) -> (str, dict | None);
+async def ws_receive_frame(
+    websocket: WebSocket, max_bytes: int
+) -> (str, dict[str, any] | None);
 
 async def ws_handle_control(
     websocket: WebSocket,
     ctx: ConnectionContext,
-    data: dict,
+    data: dict[str, any],
     user_manager: Any,
     requires_auth: bool,
     msgs_per_sec: float,

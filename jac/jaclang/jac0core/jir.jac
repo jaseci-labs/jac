@@ -131,7 +131,7 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return result;
 }
 
-glob _client_kind_probe: dict = {"active": False};
+glob _client_kind_probe: dict[str, bool] = {"active": False};
 
 def _module_codespace_mode(source_path: str) -> str {
     try {
@@ -171,7 +171,7 @@ def schema_digest -> str {
         h.update(ti_txt.encode());
         cn_txt: str = getattr(spec, 'class_name', '');
         h.update(cn_txt.encode());
-        flds: tuple = getattr(spec, 'fields', ()) or ();
+        flds: tuple[any, ...] = getattr(spec, 'fields', ()) or ();
         for fd in flds {
             fn_txt: str = getattr(fd, 'name', '');
             h.update(fn_txt.encode());

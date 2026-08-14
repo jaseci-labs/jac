@@ -141,7 +141,7 @@ glob smart_model   = Model(model_name="gpt-4o");
 glob summarizer    = Model(model_name="claude-sonnet-4-6");
 
 def quick_label(text: str) -> str by fast_model();
-def deep_analyze(text: str) -> dict by smart_model();
+def deep_analyze(text: str) -> dict[str, any] by smart_model();
 def tldr(article: str) -> str by summarizer();
 ```
 
@@ -919,7 +919,7 @@ sem analyze_code.code = "The source code to analyze";
 sem analyze_code.language = "Programming language (python, javascript, etc.)";
 sem analyze_code.return = "A structured analysis with issues and suggestions";
 
-def analyze_code(code: str, language: str) -> dict by llm;
+def analyze_code(code: str, language: str) -> dict[str, any] by llm;
 ```
 
 ### Complex Semantic Types
@@ -1301,7 +1301,7 @@ glob llm = Model(model_name="gpt-4o", ctx_window=128000);
 Replace the built-in summarisation with your own logic by passing `on_compaction`. The hook receives the full serialised message list and `keep_recent`, and must return the compacted list:
 
 ```jac
-def my_compactor(messages: list, keep_recent: int) -> list {
+def my_compactor(messages: list, keep_recent: int) -> list[any] {
     # messages[0] = system, messages[1] = original user task - always preserve
     # messages[2:] = tool-call history to summarise
     summary = my_domain_summariser(messages[2:]);

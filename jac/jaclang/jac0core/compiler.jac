@@ -57,11 +57,11 @@ glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', default=False),
          'jac_typecheck_sched_loading', default=False
      );
 
-def pass_requires(p: type[Transform[uni.Module, uni.Module]]) -> tuple {
+def pass_requires(p: type[Transform[uni.Module, uni.Module]]) -> tuple[str, ...] {
     return getattr(p, 'REQUIRES', ()) or ();
 }
 
-def pass_provides(p: type[Transform[uni.Module, uni.Module]]) -> tuple {
+def pass_provides(p: type[Transform[uni.Module, uni.Module]]) -> tuple[str, ...] {
     return getattr(p, 'PROVIDES', ()) or ();
 }
 
@@ -833,8 +833,8 @@ def import_binds_client_native(nd: uni.Import, manifest: object) -> bool {
     return False;
 }
 
-glob _na_demotion_memo: dict[str, tuple] = {},
-     _na_census: dict[str, dict] = {},
+glob _na_demotion_memo: dict[str, tuple[int, int]] = {},
+     _na_census: dict[str, dict[str, any]] = {},
      _na_census_state: dict[str, bool] = {"enabled": False},
      _na_cap_noted: dict[str, bool] = {};
 
@@ -877,7 +877,7 @@ def na_census_seam(path: str, reason: str) {
     rec['seams'].append(reason);
 }
 
-def na_census_end -> dict {
+def na_census_end -> dict[str, any] {
     snap = dict(_na_census);
     _na_census_state["enabled"] = False;
     return snap;
@@ -1008,7 +1008,7 @@ obj JacCompiler {
     ) -> (bytes | None);
 
     def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
-    def _build_interop_dict(result: uni.Module) -> dict;
+    def _build_interop_dict(result: uni.Module) -> dict[str, any];
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(
         source_str: str,

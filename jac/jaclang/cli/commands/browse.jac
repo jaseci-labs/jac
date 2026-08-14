@@ -49,5 +49,8 @@ glob registry = get_registry();
     group="tools"
 )
 def browse(
-    action: str, args: list = [], session: str = "default", viewport: str = "1280x720"
+    action: str,
+    args: list[str] = [],
+    session: str = "default",
+    viewport: str = "1280x720"
 ) -> int;

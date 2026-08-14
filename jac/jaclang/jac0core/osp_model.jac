@@ -243,9 +243,9 @@ obj OspAnalysis {
     static def _uses_construct(
         module: uni.Module, context: (CodeContext | None)
     ) -> bool {
-        roots: list = list(ModuleCodegenPass.iter_context_stmts(module, context));
+        roots: list[any] = list(ModuleCodegenPass.iter_context_stmts(module, context));
         for stmt in roots {
-            work: list = [stmt];
+            work: list[any] = [stmt];
             while work {
                 nd = work.pop();
                 if isinstance(nd, (uni.ConnectOp, uni.VisitStmt, uni.EdgeOpRef)) {

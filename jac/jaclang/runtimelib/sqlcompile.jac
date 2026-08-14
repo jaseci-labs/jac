@@ -10,7 +10,7 @@ glob logger = logging.getLogger(__name__),
 
 obj CompiledQuery {
     has sql: str = '',
-        params: dict = {},
+        params: dict[str, any] = {},
         residual: dict[int, list[QPred]] = {};
 }
 

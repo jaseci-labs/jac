@@ -413,11 +413,11 @@ def _arg_field_value(arg: Arg, field: str) -> any {
     return getattr(arg, field);
 }
 
-def _arg_signature(arg: Arg) -> tuple {
+def _arg_signature(arg: Arg) -> tuple[any, ...] {
     return tuple(_arg_field_value(arg, field) for field in _arg_meta_field_names());
 }
 
-def _meta_arg_signature(arg: ArgMeta) -> tuple {
+def _meta_arg_signature(arg: ArgMeta) -> tuple[any, ...] {
     return tuple(getattr(arg, field) for field in _arg_meta_field_names());
 }
 
@@ -439,13 +439,13 @@ def _spec_field_value(cmd: CommandSpec, field: str) -> any {
     return getattr(cmd, field);
 }
 
-def _spec_signature(cmd: CommandSpec) -> tuple {
+def _spec_signature(cmd: CommandSpec) -> tuple[any, ...] {
     return tuple(
         _spec_field_value(cmd, field) for field in _command_meta_field_names()
     );
 }
 
-def _meta_signature(cmd: CommandMeta) -> tuple {
+def _meta_signature(cmd: CommandMeta) -> tuple[any, ...] {
     return tuple(
         [_meta_arg_signature(a) for a in cmd.args]
             if field == "args"
@@ -462,8 +462,10 @@ def verify_drift -> list[str] {
         return errors;
     }
 
-    fresh: dict[str, tuple] = {cmd.name: _spec_signature(cmd) for cmd in specs};
-    committed: dict[str, tuple] = {};
+    fresh: dict[str, tuple[any, ...]] = {
+        cmd.name: _spec_signature(cmd) for cmd in specs
+    };
+    committed: dict[str, tuple[any, ...]] = {};
     try {
         import from jaclang.cli.manifest { _command_routes }
 

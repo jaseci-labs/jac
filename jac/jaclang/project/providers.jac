@@ -282,7 +282,7 @@ obj PythonProvider(EcosystemProvider) {
         return run_pip(self._project_venv(config), args, verbose);
     }
 
-    def _snapshot_installed(config: JacConfig) -> tuple[bool, set[tuple]] {
+    def _snapshot_installed(config: JacConfig) -> tuple[bool, set[tuple[str, str]]] {
         import json;
         try {
             (rc, out, _) = self._run_project_pip(config, ["list", "--format=json"]);
@@ -322,7 +322,7 @@ obj PythonProvider(EcosystemProvider) {
                 }
                 return True;
             }
-            newly_installed: list[tuple] = [];
+            newly_installed: list[tuple[str, str]] = [];
             (after_ok, after_set) = self._snapshot_installed(config);
             if after_ok and before_snapshot_ok {
                 newly_installed = sorted(after_set - before_set);

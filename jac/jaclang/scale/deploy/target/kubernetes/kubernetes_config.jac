@@ -32,7 +32,7 @@ obj KubernetesConfig(BaseConfig) {
         autoscaler_polling_interval: int = 30,
         autoscaler_cooldown: int = 300,
         autoscaler_initial_cooldown: int = 0,
-        extra_triggers: list[dict] = [],
+        extra_triggers: list[dict[str, any]] = [],
         health_check_path: str = '/docs',
         python_image: str = '',
         wait_image: str = 'busybox',

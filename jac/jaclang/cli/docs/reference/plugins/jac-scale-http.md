@@ -288,12 +288,12 @@ Parameters are classified as: **path** (matches `{name}` in path) → **file** (
 
 ```jac
 @restspec(method=HTTPMethod.GET)
-def :pub health_check() -> dict {
+def :pub health_check() -> dict[str, any] {
     return {"status": "healthy"};
 }
 
 @restspec(method=HTTPMethod.GET, path="/custom/status")
-def :pub app_status() -> dict {
+def :pub app_status() -> dict[str, any] {
     return {"status": "running", "version": "1.0.0"};
 }
 ```
@@ -361,7 +361,7 @@ when a third-party client expects a bare JSON document:
 ```jac
 @restspec(method=HTTPMethod.GET, path="/.well-known/jac.json",
           produces="application/json", envelope=False)
-def :pub well_known() -> dict {
+def :pub well_known() -> dict[str, any] {
     return {"version": "1.0"};   # body is exactly {"version": "1.0"}
 }
 ```

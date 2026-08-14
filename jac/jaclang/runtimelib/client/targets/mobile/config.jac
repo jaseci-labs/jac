@@ -10,7 +10,7 @@ import from jaclang.runtimelib.client.targets.mobile.common {
     SUPPORTED_PLATFORMS
 }
 
-def _load_mobile_config(project_dir: Path) -> dict {
+def _load_mobile_config(project_dir: Path) -> dict[str, any] {
     try {
         import tomllib;
         toml_path = project_dir / "jac.toml";

@@ -338,7 +338,7 @@ impl RcFactsPass._stamp_anon_regions(ir_in: uni.Module) -> None {
     close_map: dict[int, int] = {};
     locals_map: dict[int, list[str]] = {};
     gidx = 0;
-    blocks: list = [];
+    blocks: list[Sequence[uni.UniNode]] = [];
     for ab in ir_in.get_all_sub_nodes(uni.Ability) {
         if isinstance(ab.signature, uni.FuncSignature)
             and isinstance(ab.body, (list, tuple)) {
@@ -452,12 +452,14 @@ impl RcFactsPass._anon_extent_poisoned(
     return False;
 }
 
-impl RcFactsPass._scan_anon_region_block(body: Sequence[uni.UniNode]) -> list[tuple] {
+impl RcFactsPass._scan_anon_region_block(
+    body: Sequence[uni.UniNode]
+) -> list[tuple[int, int, list[str]]] {
     stmt_idx: dict[int, int] = {};
     for (i, s) in enumerate(body) {
         stmt_idx[id(s)] = i;
     }
-    members: dict[int, tuple] = {};
+    members: dict[int, tuple[uni.Symbol, int, str]] = {};
     order: list[int] = [];
     bad: set[int] = set();
     for (i, s) in enumerate(body) {
@@ -583,8 +585,8 @@ impl RcFactsPass._scan_anon_region_block(body: Sequence[uni.UniNode]) -> list[tu
         }
         groups[lb].append(sid);
     }
-    out: list[tuple] = [];
-    used_ranges: list[tuple] = [];
+    out: list[tuple[int, int, list[str]]] = [];
+    used_ranges: list[tuple[int, int]] = [];
     for (lb, sids) in groups.items() {
         if any([(s in bad) for s in sids]) {
             continue;

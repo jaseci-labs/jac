@@ -113,7 +113,7 @@ node Person {
 impl Person.__jac_schema__ -> None {
     schema_alias("name", stored="username"); # field rename: old value flows into new field
     schema_drop("legacy_bio");               # deleted field: preserve remains in the attic
-    schema_upgrade(fix_tags, when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); }));
+    schema_upgrade(fix_tags, when=(lambda (doc: dict[str, any]) { isinstance(doc.get("tags"), str); }));
 }
 ```
 

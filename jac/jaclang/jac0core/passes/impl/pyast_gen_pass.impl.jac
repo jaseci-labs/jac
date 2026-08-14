@@ -191,7 +191,7 @@ impl PyastGenPass._gen_native_interop_stubs(nd: uni.UniNode) -> None {
             );
         }
     }
-    out: list = [];
+    out: list[ast3.AST] = [];
     if parts {
         src = '\n'.join(parts);
         parsed = ast3.parse(src);
@@ -928,12 +928,12 @@ impl PyastGenPass._top_level_bound_names(py_ast: object) -> list[str] {
 }
 
 
-impl PyastGenPass._native_import_registration_map -> dict {
+impl PyastGenPass._native_import_registration_map -> dict[str, list[ast3.stmt]] {
     manifest = self.ir_in.gen.interop_manifest;
     if not (manifest and manifest.bindings and manifest.native_imports) {
         return {};
     }
-    reg_map: dict[str, list] = {};
+    reg_map: dict[str, list[ast3.stmt]] = {};
     for binding in manifest.native_imports {
         if binding.name in reg_map {
             continue;
@@ -1172,7 +1172,7 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
         )
     );
 
-    jac_test_keywords: list = [];
+    jac_test_keywords: list[ast3.keyword] = [];
     if nd.description {
         jac_test_keywords.append(
             self.sync(
@@ -1211,7 +1211,7 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
     nd.gen.py_ast = [func];
 }
 
-impl PyastGenPass._native_test_shim_stmts(nd: uni.Test) -> list {
+impl PyastGenPass._native_test_shim_stmts(nd: uni.Test) -> list[ast3.AST] {
     import from jaclang.jac0core.codeinfo { native_test_symbol, native_safe_sym }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
@@ -1591,7 +1591,7 @@ impl PyastGenPass.exit_enum(nd: uni.Enum) -> None {
     }
 
     trailing_kind: str = "Enum";
-    extra_bases: list = [];
+    extra_bases: list[ast3.expr] = [];
     if nd.value_type {
         if isinstance(nd.value_type, uni.Name) and nd.value_type.value == "int" {
             trailing_kind = "IntEnum";
@@ -2174,7 +2174,7 @@ impl PyastGenPass.exit_has_var(nd: uni.HasVar) -> None {
     annotation = self.py_ast_val(nd.type_tag) if nd.type_tag else None;
 
     if (nd.accessors is not None) and (len(nd.accessors) > 0) {
-        result_stmts: list = [];
+        result_stmts: list[ast3.AST] = [];
         for acc in nd.accessors {
             if acc.gen.py_ast {
                 for stmt in acc.gen.py_ast {
@@ -2732,9 +2732,9 @@ impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
     nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
-impl PyastGenPass.scope_directive_stmts(scopes: list) -> list[ast3.AST] {
-    global_names: list = [];
-    nonlocal_names: list = [];
+impl PyastGenPass.scope_directive_stmts(scopes: list[any]) -> list[ast3.AST] {
+    global_names: list[str] = [];
+    nonlocal_names: list[str] = [];
     seen: set = set();
     for scope in scopes {
         if scope is None {
@@ -2753,7 +2753,7 @@ impl PyastGenPass.scope_directive_stmts(scopes: list) -> list[ast3.AST] {
             }
         }
     }
-    stmts: list = [];
+    stmts: list[ast3.AST] = [];
     if global_names {
         stmts.append(self.sync(ast3.Global(names=sorted(global_names))));
     }
@@ -3861,9 +3861,9 @@ impl PyastGenPass._cmp_op_str(op: object) -> (str | None) {
 
 impl PyastGenPass._query_filter_kws(
     fc: uni.FilterCompr, type_arg: str, preds_arg: str
-) -> list {
+) -> list[ast3.keyword] {
     p = self;
-    kws: list = [];
+    kws: list[ast3.keyword] = [];
     if fc.f_type {
         kws.append(
             p.sync(
@@ -3873,7 +3873,7 @@ impl PyastGenPass._query_filter_kws(
             )
         );
     }
-    preds: list = [];
+    preds: list[ast3.expr] = [];
     for x in fc.compares {
         cmp_ast = p.py_ast_val(x);
         reason: (str | None) = None;
@@ -3945,7 +3945,7 @@ impl PyastGenPass.exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None {
         cur = cast(uni.EdgeOpRef, chomp.pop(0));
     }
     origin_ast = cast(ast3.expr, (origin or self.py_ast_val(cur)));
-    hops: list = [];
+    hops: list[ast3.expr] = [];
     while True {
         keywords = [
             self.sync(

@@ -466,7 +466,9 @@ impl OwnershipCheckPass._is_deep_immutable_scalar(nm: uni.Name) -> bool {
     return _mangled in ("int", "float", "bool", "str", "bytes");
 }
 
-impl OwnershipCheckPass._chunks_shape_of(expr: uni.Expr | None) -> (tuple | None) {
+impl OwnershipCheckPass._chunks_shape_of(
+    expr: uni.Expr | None
+) -> (tuple[any, any] | None) {
     if not isinstance(expr, uni.FuncCall) {
         return None;
     }

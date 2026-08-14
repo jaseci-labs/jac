@@ -26,7 +26,7 @@ obj _ContextStack {
         self._var = ContextVar('osp_walk_stack', default=None);
     }
 
-    def _list -> list {
+    def _list -> list[any] {
         v = self._var.get();
         return v if v is not None else [];
     }
@@ -223,7 +223,7 @@ async def _run_untyped_async(slots: list[Slot], a: any, b: any) -> None {
 async def _visit_recursive_async(
     rt: OspRuntime, scope: WalkScope, wdesc: WalkerDesc, loc: any
 ) -> bool {
-    stack: list = [(loc, 0)];
+    stack: list[tuple[any, int]] = [(loc, 0)];
     while stack {
         (cur, phase) = stack.pop();
         if scope.disengaged {
@@ -282,7 +282,7 @@ async def _visit_recursive_async(
 }
 
 async def osp_spawn_async(
-    rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list
+    rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[any]
 ) -> any {
     scope = WalkScope(
         wlk=wlk,

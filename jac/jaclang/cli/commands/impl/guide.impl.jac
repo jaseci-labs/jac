@@ -103,7 +103,7 @@ def _search_guides(query: str, as_json: bool) -> int {
     return 0;
 }
 
-def _index_payload -> list[dict] {
+def _index_payload -> list[dict[str, any]] {
     payload = [
         {
             "name": g.name,

@@ -91,13 +91,13 @@ def parse_sse(line_iter: any) -> Iterator[tuple[str, str]] {
     }
 }
 
-def consume_sse_events(line_iter: any, func_label: str) -> Iterator[dict] {
+def consume_sse_events(line_iter: any, func_label: str) -> Iterator[dict[str, any]] {
     for (event_name, data_text) in parse_sse(line_iter) {
         if event_name == 'end' {
             return;
         }
         if event_name == 'error' {
-            payload: dict = {};
+            payload: dict[str, any] = {};
             try {
                 payload = loads(data_text) if data_text else {};
             } except Exception {

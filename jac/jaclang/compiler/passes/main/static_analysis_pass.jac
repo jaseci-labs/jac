@@ -24,7 +24,7 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
         prog: any,
         cancel_token: any = None;
 
-    static has PROVIDES: tuple = ('static-checks', );
+    static has PROVIDES: tuple[str, ...] = ('static-checks', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

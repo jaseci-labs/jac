@@ -42,7 +42,7 @@ impl SemanticAnalysisPass._check_archetype(
                 }
             }
         }
-        post_init_vars: list = [];
+        post_init_vars: list[any] = [];
         postinit_method: (uni.Ability | None) = None;
         for item in nd.body {
             if isinstance(item, uni.ArchHas) {

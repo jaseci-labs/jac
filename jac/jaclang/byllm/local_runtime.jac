@@ -1,6 +1,6 @@
 import json;
 
-glob LOCAL_MODELS: dict[str, dict] = {
+glob LOCAL_MODELS: dict[str, dict[str, any]] = {
          "gemma-4-e4b": {
              "repo": "unsloth/gemma-4-E4B-it-GGUF",
              "file": "gemma-4-E4B-it-Q4_K_M.gguf",
@@ -36,7 +36,7 @@ def list_local_aliases -> list[str] {
     return sorted(list(LOCAL_MODELS.keys()));
 }
 
-def wrap_tool_call(tc: dict) -> object {
+def wrap_tool_call(tc: dict[str, any]) -> object {
     import from types { SimpleNamespace }
     fn = tc.get("function", {});
     return SimpleNamespace(
@@ -48,7 +48,7 @@ def wrap_tool_call(tc: dict) -> object {
     );
 }
 
-def _flatten_message_content(msg: dict) -> dict {
+def _flatten_message_content(msg: dict[str, any]) -> dict[str, any] {
     content = msg.get("content");
     if not isinstance(content, list) {
         return msg;
@@ -65,19 +65,19 @@ def _flatten_message_content(msg: dict) -> dict {
     if has_non_text {
         return msg;
     }
-    new_msg: dict = dict(msg);
+    new_msg: dict[str, any] = dict(msg);
     new_msg["content"] = "\n".join(text_chunks);
     return new_msg;
 }
 
-def _coerce_tool_calls(msg: dict) -> dict {
+def _coerce_tool_calls(msg: dict[str, any]) -> dict[str, any] {
     tcs = msg.get("tool_calls");
     if not isinstance(tcs, list) or not tcs {
         return msg;
     }
     changed = False;
-    coerced: list = [];
-    for tc in tcs {
+    coerced: list[any] = [];
+    for tc in (tcs as list[any]) {
         if isinstance(tc, dict) {
             coerced.append(tc);
             continue;
@@ -102,13 +102,13 @@ def _coerce_tool_calls(msg: dict) -> dict {
     if not changed {
         return msg;
     }
-    new_msg: dict = dict(msg);
+    new_msg: dict[str, any] = dict(msg);
     new_msg["tool_calls"] = coerced;
     return new_msg;
 }
 
-def normalize_messages(messages: list) -> list {
-    out: list = [];
+def normalize_messages(messages: list[dict[str, any]]) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
     for m in messages {
         if isinstance(m, dict) {
             out.append(_coerce_tool_calls(_flatten_message_content(m)));
@@ -119,14 +119,14 @@ def normalize_messages(messages: list) -> list {
     return out;
 }
 
-def normalize_response_format(rf: dict | None) -> dict | None {
+def normalize_response_format(rf: dict[str, any] | None) -> dict[str, any] | None {
     if not isinstance(rf, dict) {
         return rf;
     }
     if rf.get("type") == "json_schema" {
         js = rf.get("json_schema") or {};
         schema = js.get("schema") if isinstance(js, dict) else None;
-        translated: dict = {"type": "json_object"};
+        translated: dict[str, any] = {"type": "json_object"};
         if isinstance(schema, dict) {
             translated["schema"] = schema;
         }
@@ -135,7 +135,7 @@ def normalize_response_format(rf: dict | None) -> dict | None {
     return rf;
 }
 
-def filter_params(params: dict) -> dict {
+def filter_params(params: dict[str, any]) -> dict[str, any] {
     accepted: set[str] = {
         "messages",
         "tools",
@@ -151,7 +151,7 @@ def filter_params(params: dict) -> dict {
         "repeat_penalty",
         "seed"
     };
-    out: dict = {};
+    out: dict[str, any] = {};
     for (k, v) in params.items() {
         if k in accepted and v is not None {
             out[k] = v;

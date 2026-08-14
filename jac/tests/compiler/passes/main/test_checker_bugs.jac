@@ -618,7 +618,7 @@ test "bug_impl1_has_var_shadow_in_impl_body" {
     #   - `x: list[dict] = tasks` is a sound assignment
     assert len(program.errors_had) == 0 , (
         "Bug #IMPL-1: has var `tasks` in impl body should resolve to the "
-        "parent HasVar (type list[dict]), not a local shadow (type Unknown). "
+        "parent HasVar (type list[dict[str, any]]), not a local shadow (type Unknown). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

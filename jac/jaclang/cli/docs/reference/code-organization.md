@@ -562,7 +562,7 @@ def _ensure_jac_runtime -> None {
     # ... helper logic
 }
 
-def _proc_file(filename: str) -> tuple {
+def _proc_file(filename: str) -> tuple[any] {
     # ... helper logic
 }
 

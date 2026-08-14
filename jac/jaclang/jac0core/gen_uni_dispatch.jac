@@ -1,4 +1,4 @@
-glob DISPATCH_PASSES: list = [
+glob DISPATCH_PASSES: list[tuple[str, str]] = [
          ("jaclang.jac0core.passes.ast_validation_pass", "ASTValidationPass"),
          ("jaclang.jac0core.passes.boundary_analysis_pass", "BoundaryAnalysisPass"),
          ("jaclang.jac0core.passes.semantic_analysis_pass", "SemanticAnalysisPass"),
@@ -105,7 +105,7 @@ def surface_decls_block(
     enter: list[str], exits: list[str], snake_map: dict[str, str]
 ) -> str {
     n2s = {v: k for (k, v) in snake_map.items()};
-    lines: list = [SURFACE_BEGIN];
+    lines: list[str] = [SURFACE_BEGIN];
     for entry in [("enter", enter), ("exit", exits)] {
         (verb, kinds) = entry;
         for node in kinds {
@@ -132,7 +132,7 @@ def abs_path(rel: str) -> str {
     return str(Path(jaclang.__file__).parent / rel);
 }
 
-def missing_accept_decls(enter: list[str], exits: list[str]) -> list {
+def missing_accept_decls(enter: list[str], exits: list[str]) -> list[str] {
     import re;
     src = open(abs_path(UNITREE_SRC), encoding="utf-8").read();
     missing: list = [];
@@ -152,11 +152,11 @@ def missing_accept_decls(enter: list[str], exits: list[str]) -> list {
     return missing;
 }
 
-def write_all -> list {
+def write_all -> list[str] {
     import os;
     snake_map = node_snake_map();
     (enter, exits) = handled_kinds();
-    msgs: list = [];
+    msgs: list[str] = [];
 
     for entry in [
         (ACCEPT_ANNEX, accept_annex_src(enter, exits, snake_map)),
@@ -191,10 +191,10 @@ def write_all -> list {
     return msgs;
 }
 
-def verify_all -> list {
+def verify_all -> list[str] {
     snake_map = node_snake_map();
     (enter, exits) = handled_kinds();
-    stale: list = [];
+    stale: list[str] = [];
     for entry in [
         (ACCEPT_ANNEX, accept_annex_src(enter, exits, snake_map)),
         (SURFACE_ANNEX, surface_annex_src(enter, exits, snake_map)),

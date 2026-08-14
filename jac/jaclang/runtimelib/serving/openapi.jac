@@ -27,7 +27,9 @@ glob _NAME_SCHEMAS: dict[str, dict[str, str]] = {
      };
 
 
-def _schema_for_type(target: any, schemas: (dict | None) = None) -> dict[str, any] {
+def _schema_for_type(
+    target: any, schemas: (dict[str, any] | None) = None
+) -> dict[str, any] {
     if target is None {
         return {};
     }
@@ -72,7 +74,7 @@ def _schema_for_type(target: any, schemas: (dict | None) = None) -> dict[str, an
     return {};
 }
 
-def _object_schema(target: type, schemas: (dict | None)) -> dict[str, any] {
+def _object_schema(target: type, schemas: (dict[str, any] | None)) -> dict[str, any] {
     if schemas is None {
         return {'type': 'object', 'title': target.__name__};
     }
@@ -110,7 +112,7 @@ def _object_schema(target: type, schemas: (dict | None)) -> dict[str, any] {
 }
 
 def _param_schema(
-    param: APIParameter, schemas: (dict | None) = None
+    param: APIParameter, schemas: (dict[str, any] | None) = None
 ) -> dict[str, any] {
     if param.type_obj is not None {
         return _schema_for_type(param.type_obj, schemas);
@@ -166,7 +168,7 @@ def build_openapi(app: ServingApp) -> dict[str, any] {
         if ep.tags {
             entry['tags'] = list(ep.tags);
         }
-        params_out: list[dict] = [];
+        params_out: list[dict[str, any]] = [];
         body_props: dict[str, any] = {};
         body_required: list[str] = [];
         has_file = False;

@@ -30,8 +30,8 @@ def post_tweet(content: str) -> str {
 # CROSS-USER READ - allroots() surfaces every root even from a per-user
 # endpoint; you still only see nodes that were granted. NOTE: this scan is
 # O(number of users) per request - for a public feed prefer root.shared below.
-def global_feed() -> list[dict] {
-    feed: list[dict] = [];
+def global_feed() -> list[dict[str, any]] {
+    feed: list[dict[str, any]] = [];
     for r in allroots() {
         for prof in [r --> [?:Profile]] {
             for tw in [prof ->:Posted:-> [?:Tweet]] {

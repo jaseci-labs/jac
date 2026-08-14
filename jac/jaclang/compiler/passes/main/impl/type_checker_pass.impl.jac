@@ -885,13 +885,19 @@ impl TypeCheckPass._check_bare_generic(
         }
         return;
     }
+    if not isinstance(ty, types.ClassType) or not ty.shared {
+        return;
+    }
     if (
-        isinstance(ty, types.ClassType)
-        and ty.shared
-        and ty.shared.type_params
+        ty.shared.type_params
+        and ty.is_builtin(BARE_GENERIC_REQUIRED)
         and (not ty.private or not ty.private.type_args)
     ) {
-        self.emit(W1036, node_override=ann_node, type=ty.shared.class_name);
+        self.emit(E1036, node_override=ann_node, type=ty.shared.class_name);
+        return;
+    }
+    for arg in (ty.private.type_args if ty.private else None) or [] {
+        self._check_bare_generic(ann_node, arg);
     }
 }
 

@@ -1,4 +1,4 @@
-glob _NA_FMT_KERNEL_MOD: list = [];
+glob _NA_FMT_KERNEL_MOD: list[any] = [];
 
 def _load_native_fmt_kernel_module -> (uni.Module | None) {
     if _NA_FMT_KERNEL_MOD {

@@ -109,7 +109,7 @@ def _run_cap_run_live_reload(
     return result.returncode;
 }
 
-def _describe_cap_run_completion(rc: int, dev_url: str) -> dict {
+def _describe_cap_run_completion(rc: int, dev_url: str) -> dict[str, any] {
     if rc == 0 {
         return {
             "ok": True,

@@ -9,7 +9,7 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
-    self._native_cache: dict = {};
+    self._native_cache: dict[str, any] = {};
 
     self._hub_cache_times: dict[str, float] = {};
 
@@ -19,11 +19,11 @@ impl JacProgram.init(
 
     self._inferred_mods: set = set();
 
-    self._analyses_run: dict = {};
+    self._analyses_run: dict[str, any] = {};
 
-    self._placement_summaries: dict = {};
+    self._placement_summaries: dict[str, any] = {};
 
-    self._placement_state: dict = {};
+    self._placement_state: dict[str, any] = {};
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
@@ -355,7 +355,7 @@ impl JacProgram.release_compile_closure(
         return;
     }
 
-    retained_stubs: dict = {};
+    retained_stubs: dict[str, any] = {};
     retained_times: dict[str, float] = {};
     if keep_stubs {
         for path in self.mod.hub.keys() {

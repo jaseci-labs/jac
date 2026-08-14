@@ -349,7 +349,7 @@ Create reusable state logic:
 import from react { useEffect }
 
 # Custom hook
-def use_local_storage(key: str, initial_value: any) -> tuple {
+def use_local_storage(key: str, initial_value: any) -> tuple[any] {
     has value: any = initial_value;
 
     # Load from localStorage on mount

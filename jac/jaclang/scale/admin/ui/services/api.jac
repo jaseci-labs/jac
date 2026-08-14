@@ -2,11 +2,13 @@
 
 glob:pub baseUrl = window.location.origin;
 
-async def _jsonBody(resp: any) -> dict {
+async def _jsonBody(resp: any) -> dict[str, any] {
     return await resp.json();
 }
 
-async def:pub fetchApi(endpoint: str, options: dict = {}, token: str = "") -> dict {
+async def:pub fetchApi(
+    endpoint: str, options: dict[str, any] = {}, token: str = ""
+) -> dict[str, any] {
     headers = options["headers"] or {};
     if token {
         headers["Authorization"] = "Bearer " + token;
@@ -26,22 +28,26 @@ async def:pub fetchApi(endpoint: str, options: dict = {}, token: str = "") -> di
     }
 }
 
-async def:pub get(endpoint: str, token: str = "") -> dict {
+async def:pub get(endpoint: str, token: str = "") -> dict[str, any] {
     return await fetchApi(endpoint, {}, token);
 }
 
-async def:pub post(endpoint: str, body: dict, token: str = "") -> dict {
+async def:pub post(
+    endpoint: str, body: dict[str, any], token: str = ""
+) -> dict[str, any] {
     return await fetchApi(
         endpoint, {"method": "POST", "body": JSON.stringify(body)}, token
     );
 }
 
-async def:pub put(endpoint: str, body: dict, token: str = "") -> dict {
+async def:pub put(
+    endpoint: str, body: dict[str, any], token: str = ""
+) -> dict[str, any] {
     return await fetchApi(
         endpoint, {"method": "PUT", "body": JSON.stringify(body)}, token
     );
 }
 
-async def:pub del(endpoint: str, token: str = "") -> dict {
+async def:pub del(endpoint: str, token: str = "") -> dict[str, any] {
     return await fetchApi(endpoint, {"method": "DELETE"}, token);
 }

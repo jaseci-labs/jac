@@ -75,13 +75,13 @@ glob logger = getLogger(__name__),
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
          'request_context', default=None
      ),
-     _default_base_path_dir: list = [os.getcwd()],
-     _default_full_target_path: list = [None],
-     _shared_root_resolver: list = [None, None];
+     _default_base_path_dir: list[str] = [os.getcwd()],
+     _default_full_target_path: list[str | None] = [None],
+     _shared_root_resolver: list[any] = [None, None];
 
-glob _scale_provider_cache: list = [];
+glob _scale_provider_cache: list[any] = [];
 
-glob _persistent_memory_provider: list = [None];
+glob _persistent_memory_provider: list[any] = [None];
 
 def _scale_provider -> any {
     if _scale_provider_cache {
@@ -180,7 +180,7 @@ class JacPersistence {
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
     static def get_user_manager(base_path: str) -> UserManager;
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
-    static def get_persistent_memory(config: dict) -> any;
+    static def get_persistent_memory(config: dict[str, any]) -> any;
     static def set_persistent_memory_provider(provider: Callable | None) -> None;
 }
 
@@ -237,7 +237,7 @@ class JacGraph {
         right: (NodeArchetype | list[NodeArchetype]),
         `edge: type[EdgeArchetype] | EdgeArchetype | None = None,
         undir: bool = False,
-        conn_assign: (tuple[(tuple, tuple)] | None) = None,
+        conn_assign: (tuple[(tuple[str], tuple[any])] | None) = None,
         edges_only: bool = False
     ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]);
 
@@ -257,7 +257,7 @@ class JacGraph {
     static def build_edge(
         is_undirected: bool,
         conn_type: type[EdgeArchetype] | EdgeArchetype | None,
-        conn_assign: (tuple[(tuple, tuple)] | None)
+        conn_assign: (tuple[(tuple[str], tuple[any])] | None)
     ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)];
 }
 
@@ -343,12 +343,14 @@ class JacIntrospection {
     static def list_nodes(module_name: str) -> list[str];
     static def list_edges(module_name: str) -> list[str];
     static def spawn_node(
-        node_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
+        node_name: str,
+        attributes: (dict[str, any] | None) = None,
+        module_name: str = '__main__'
     ) -> NodeArchetype;
 
     static def spawn_walker(
         walker_name: str,
-        attributes: (dict | None) = None,
+        attributes: (dict[str, any] | None) = None,
         module_name: str = '__main__'
     ) -> WalkerArchetype;
 
@@ -386,9 +388,12 @@ class JacServe {
 
     static def get_api_server_class -> type;
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
+    static def sv_service_call(
+        module_name: str, func_name: str, args: dict[str, any]
+    ) -> any;
+
     static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: any
+        module_name: str, walker_name: str, args: dict[str, any], stub_cls: any
     ) -> any;
 
     static def get_sv_registry -> dict[str, str];

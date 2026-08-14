@@ -17,13 +17,13 @@ import type from jaclang.compiler.passes.native.llvm.binding {
 }
 
 obj ClientManifest {
-    has exports: list = [],
-        globals: list = [],
-        params: dict[(str, list)] = field(default_factory=`dict),
+    has exports: list[str] = [],
+        globals: list[str] = [],
+        params: dict[(str, list[str])] = field(default_factory=`dict),
         globals_values: dict[(str, Any)] = field(default_factory=`dict),
         has_client: bool = False,
         imports: dict[(str, str)] = field(default_factory=`dict),
-        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        endpoint_effects: dict[(str, dict[str, any])] = field(default_factory=`dict),
         tests: list[dict[(str, str)]] = field(default_factory=`list),
         server_imports: list[str] = field(default_factory=`list),
         page_export: (str | None) = None,
@@ -35,8 +35,8 @@ enum InteropContext { SERVER = 'server', NATIVE = 'native', CLIENT = 'client' }
 obj NativeFunctionInfo {
     has name: str,
         ret_type: str = 'int',
-        param_types: list = [],
-        param_names: list = [];
+        param_types: list[str] = [],
+        param_names: list[str] = [];
 }
 
 obj NativeModuleInfo {
@@ -61,7 +61,7 @@ glob HDR_MAGIC: int = 44061,
 glob STR_LEN_TAG_BIT: int = 1,
      STR_LEN_TAG_SHIFT: int = 1;
 
-glob JACSTR_DESC_FIELDS: dict[(str, tuple)] = {
+glob JACSTR_DESC_FIELDS: dict[(str, tuple[str, ...])] = {
          'jacstr3': ('root', 'data', 'len'),
          'jacstr2': ('data', 'len')
      };
@@ -78,7 +78,7 @@ obj NativeFieldInfo {
         is_func_ptr: bool = False,
         func_param_types: (list[str] | None) = None,
         func_ret_type: (str | None) = None,
-        elem_keys: (list | None) = None,
+        elem_keys: (list[str] | None) = None,
         foreign: bool = False;
 }
 
@@ -92,13 +92,13 @@ obj NativeStructLayout {
 obj NativeEnumLayout {
     has name: str,
         is_string_valued: bool = False,
-        members: list = field(default_factory=`list);
+        members: list[tuple[str, any, int]] = field(default_factory=`list);
 }
 
 obj NativeTupleLayout {
     has key: str,
         element_types: list[str] = field(default_factory=`list),
-        element_struct_hints: list = field(default_factory=`list);
+        element_struct_hints: list[str | None] = field(default_factory=`list);
 }
 
 obj NativeFuncLayout {
@@ -109,7 +109,7 @@ obj NativeFuncLayout {
         ret_struct_name: (str | None) = None,
         ret_tuple_layout: (NativeTupleLayout | None) = None,
         ret_enum_type: (str | None) = None,
-        ret_elem_keys: (list | None) = None;
+        ret_elem_keys: (list[str] | None) = None;
 }
 
 obj NativeTestLayout {
@@ -221,7 +221,7 @@ def is_native_by_location(file_path: str) -> bool {
     return ap.startswith(os.path.join(pkg, "runtimelib", "na_stdlib") + os.sep);
 }
 
-glob CLIENT_RUNTIME_SOURCE_PATHS: tuple = (
+glob CLIENT_RUNTIME_SOURCE_PATHS: tuple[str, ...] = (
          ("runtimelib", "client_runtime.jac"),
          ("runtimelib", "client_runtime_core.jac"),
          ("runtimelib", "solid_runtime.jac"),
@@ -373,7 +373,7 @@ obj NativeModuleLayout {
         str_headerless: (bool | None) = None;
 }
 
-def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict | None) {
+def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None) {
     if t is None {
         return None;
     }
@@ -384,7 +384,7 @@ def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict | None) {
     };
 }
 
-def _func_layout_to_dict(f: NativeFuncLayout) -> dict {
+def _func_layout_to_dict(f: NativeFuncLayout) -> dict[str, any] {
     return {
         "name": f.name,
         "param_types": list(f.param_types),
@@ -399,7 +399,7 @@ def _func_layout_to_dict(f: NativeFuncLayout) -> dict {
     };
 }
 
-def native_layout_to_dict(layout: NativeModuleLayout) -> dict {
+def native_layout_to_dict(layout: NativeModuleLayout) -> dict[str, any] {
     return {
         "abi_version": layout.abi_version,
         "structs": {
@@ -475,7 +475,7 @@ obj InteropBinding {
 obj InteropManifest {
     has bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
         boundary_types: dict[(str, BoundaryTypeInfo)] = field(default_factory=`dict),
-        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        endpoint_effects: dict[(str, dict[str, any])] = field(default_factory=`dict),
         func_access: dict[(str, bool)] = field(default_factory=`dict),
         walker_access: dict[(str, bool)] = field(default_factory=`dict),
         native_module_imports: dict[(str, NativeModuleInfo)] = field(
@@ -505,7 +505,7 @@ obj CodeGenTarget {
         js: str = '',
         css: str = '',
         _client_manifest: (ClientManifest | None) = None,
-        py_ast: list = field(default_factory=`list),
+        py_ast: list[any] = field(default_factory=`list),
         py_bytecode: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
         llvm_ir: (ModuleRef | None) = None,

@@ -8,7 +8,7 @@ LLM-trace service; this one surfaces the generic span waterfall.
 
 import from .api { get }
 
-async def:pub getTraceServices(token: str) -> dict {
+async def:pub getTraceServices(token: str) -> dict[str, any] {
     return await get("/admin/traces/services", token);
 }
 
@@ -19,7 +19,7 @@ async def:pub searchTraces(
     minDurationMs: int = 0,
     since: str = "1h",
     limit: int = 20
-) -> dict {
+) -> dict[str, any] {
     params: str = f"since={encodeURIComponent(since)}&limit={limit}";
     if service {
         params += f"&service={encodeURIComponent(service)}";
@@ -33,6 +33,6 @@ async def:pub searchTraces(
     return await get("/admin/traces?" + params, token);
 }
 
-async def:pub getTrace(token: str, traceId: str) -> dict {
+async def:pub getTrace(token: str, traceId: str) -> dict[str, any] {
     return await get("/admin/traces/" + encodeURIComponent(traceId), token);
 }

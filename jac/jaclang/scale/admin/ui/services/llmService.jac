@@ -2,7 +2,7 @@
 
 import from .api { get }
 
-async def:pub getLLMSummary(token: str) -> dict {
+async def:pub getLLMSummary(token: str) -> dict[str, any] {
     return await get("/admin/llm/telemetry/summary", token);
 }
 
@@ -14,7 +14,7 @@ async def:pub getLLMTraces(
     model: str = "",
     status: str = "",
     root_only: bool = False
-) -> dict {
+) -> dict[str, any] {
     params = f"limit={limit}&offset={offset}";
     if caller {
         params += f"&caller={encodeURIComponent(caller)}";
@@ -31,12 +31,12 @@ async def:pub getLLMTraces(
     return await get("/admin/llm/telemetry/traces?" + params, token);
 }
 
-async def:pub getLLMTraceDetail(token: str, invocationId: str) -> dict {
+async def:pub getLLMTraceDetail(token: str, invocationId: str) -> dict[str, any] {
     return await get(
         "/admin/llm/telemetry/traces/" + encodeURIComponent(invocationId), token
     );
 }
 
-async def:pub getLLMFilters(token: str) -> dict {
+async def:pub getLLMFilters(token: str) -> dict[str, any] {
     return await get("/admin/llm/telemetry/filters", token);
 }

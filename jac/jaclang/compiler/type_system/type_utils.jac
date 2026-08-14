@@ -4,6 +4,8 @@ import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.unitree { Symbol }
 import from . { types }
 
+glob BARE_GENERIC_REQUIRED: list[str] = ["dict", "list", "tuple"];
+
 class PropertyWriteKind(Enum) {
     with entry {
         NOT_PROPERTY = 0;

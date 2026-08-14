@@ -49,7 +49,7 @@ obj MTRuntime {
     def write_back_conversation -> None;
     def parse_response(response: str) -> object;
     def get_tool(tool_name: str) -> Tool | McpTool | None;
-    def get_tool_list -> list[dict];
+    def get_tool_list -> list[dict[str, any]];
     def get_output_schema -> dict | None;
     def get_typed_output_schema -> dict | None;
 }

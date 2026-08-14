@@ -90,7 +90,13 @@ impl OwnershipCheckPass._process_partition_sugar -> None {
     }
 }
 
-glob _REGION_SCALARS: tuple = ("int", "float", "bool", "None", "NoneType"),
+glob _REGION_SCALARS: tuple[str, ...] = (
+         "int",
+         "float",
+         "bool",
+         "None",
+         "NoneType"
+     ),
      _REGION_SAFE_CALLEES: frozenset[str] = frozenset(
          {
              "print",

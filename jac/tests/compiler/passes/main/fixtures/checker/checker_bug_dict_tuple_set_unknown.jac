@@ -10,12 +10,12 @@ Expected: dict literals should infer as dict, tuple as tuple, set as set.
 with entry {
     # Dict literal should be dict[str, int]
     d = {"a": 1, "b": 2};
-    check_d: dict = d;  # <-- Should be Ok (dict -> dict)
+    check_d: dict[str, int] = d;  # <-- Should be Ok (dict -> dict)
     check_d_wrong: str = d;  # <-- Should be Error (dict not assignable to str)
 
     # Tuple literal should be tuple[int, str, ...]
     t = (1, "hello", 3.14);
-    check_t: tuple = t;  # <-- Should be Ok
+    check_t: tuple[int, str, float] = t;  # <-- Should be Ok
     check_t_wrong: str = t;  # <-- Should be Error (tuple not assignable to str)
 
     # Set literal should be set[int]

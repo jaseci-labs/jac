@@ -798,9 +798,9 @@ glob TOKEN_MAP: dict[str, str] = {
          '#F0FFFF'
      ];
 
-glob NON_ESCAPED_KEYWORDS: set = {'float', 'int', 'str', 'bool', 'self'};
+glob NON_ESCAPED_KEYWORDS: set[str] = {'float', 'int', 'str', 'bool', 'self'};
 
-glob RESERVED_IDENT_NAMES: set = {
+glob RESERVED_IDENT_NAMES: set[str] = {
          v
          for v in TOKEN_MAP.values()
          if v not in NON_ESCAPED_KEYWORDS

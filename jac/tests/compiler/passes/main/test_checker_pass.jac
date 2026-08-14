@@ -4320,10 +4320,9 @@ test "scope_narrowing_isolation_between_impl_bodies" {
         + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-test "bare_generic_iteration_yields_any" {
-    # Bare generic types like `list` (no type args) should be treated as
-    # list[Any] per PEP 484, so iterating yields Any (not Unknown).
-    # Only the typed list[int] assignment mismatch should error.
+test "bare_generic_iteration_is_a_hard_error" {
+    # A bare generic no longer defaults to [any]; each bare annotation is an
+    # E1036, and its value type recovers as Unknown rather than any.
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_bare_generic_iteration.jac"),
@@ -4331,36 +4330,54 @@ test "bare_generic_iteration_yields_any" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 1 , f"Expected 1 error (int->str), got {len(
-        program.errors_had
-    )}:\n"
-        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
     assert_error_pretty_found(
         """
-        b: str = t;   # <-- Error (int not assignable to str)
+        b: str = t;  # <-- Error (int not assignable to str)
         ^^^^^^^^^^^
     """,
-        program.errors_had[0].pretty_print()
+        "\n".join(e.pretty_print() for e in program.errors_had)
     );
 
-    # Bare generics should produce W1036 warnings nudging toward explicit type args
-    bare_generic_warnings = [
-        w
-        for w in program.warnings_had
-        if "W1036" in w.pretty_print()
+    # Bare generics are a hard error; each site reports E1036
+    bare_generic_errors = [
+        e
+        for e in program.errors_had
+        if "E1036" in e.pretty_print()
     ];
-    assert len(bare_generic_warnings) == 3 , f"Expected 3 W1036 warnings (list, dict, list), got {len(
-        bare_generic_warnings
+    assert len(bare_generic_errors) == 3 , f"Expected 3 E1036 errors (list, dict, list), got {len(
+        bare_generic_errors
     )}:\n"
-        + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+        + "\n---\n".join(e.pretty_print() for e in bare_generic_errors);
 }
 
-test "bare_generic_any_propagates_through_operations" {
-    # A bare generic's value type is any, so subscripting, attribute access,
-    # binary ops and iteration on it must yield any rather than Unknown.
+test "bare_generic_hard_error_at_every_site" {
+    # Every generic written without type arguments is an E1036, whether it
+    # appears in a return type, a param type, a local annotation, or nested
+    # inside an otherwise-parameterised generic (list[dict], dict[str, list]).
     program = JacProgram();
     mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_any_propagation.jac"),
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_hard_error.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    bare_generic_errors = [
+        e
+        for e in program.errors_had
+        if "E1036" in e.pretty_print()
+    ];
+    assert len(bare_generic_errors) == 8 , f"Expected 8 E1036 errors, got {len(
+        bare_generic_errors
+    )}:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "explicit_any_propagates_through_operations" {
+    # Explicitly parameterised generics propagate any through chained
+    # subscripts, attribute access and iteration into typed targets.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_any_propagation.jac"),
         options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
@@ -4371,9 +4388,9 @@ test "bare_generic_any_propagates_through_operations" {
         + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-test "bare_generic_in_signatures_emits_w1036" {
+test "bare_generic_in_signatures_emits_e1036" {
     # Bare generics in function/method return types and parameter types should
-    # also produce W1036 — same as in `has` fields and assignments.
+    # also produce E1036 — same as in `has` fields and assignments.
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_bare_generic_signatures.jac"),
@@ -4381,25 +4398,25 @@ test "bare_generic_in_signatures_emits_w1036" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    bare_generic_warnings = [
-        w
-        for w in program.warnings_had
-        if "W1036" in w.pretty_print()
+    bare_generic_errors = [
+        e
+        for e in program.errors_had
+        if "E1036" in e.pretty_print()
     ];
     # Expected sites (8 total):
     #   1. `-> list`              return type
     #   2. `x: dict`               param type
     #   3. `-> list | None`        union branch in return type
-    #   4. `x: list`, `y: dict`,   two params + return type on `both_bare`
-    #      `-> set`
+    #   4. `x: list`, `y: dict`    two params on `both_bare`
     #   5. `-> tuple`              decl method return type
-    #   6. `items: frozenset`      decl method param type
+    # `-> set` and `items: frozenset` are out of scope: only dict/list/tuple
+    # require explicit type arguments.
     # Properly-parameterized signatures and impl-side annotations (deduped
     # against the decl) should NOT warn.
-    assert len(bare_generic_warnings) == 8 , f"Expected 8 W1036 warnings (signatures), got {len(
-        bare_generic_warnings
+    assert len(bare_generic_errors) == 6 , f"Expected 6 E1036 errors (signatures), got {len(
+        bare_generic_errors
     )}:\n"
-        + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+        + "\n---\n".join(e.pretty_print() for e in bare_generic_errors);
 }
 
 test "explicit_any_annotations_emit_w1037" {

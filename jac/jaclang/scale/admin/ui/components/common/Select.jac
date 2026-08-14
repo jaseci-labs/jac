@@ -1,7 +1,7 @@
 """Reusable select dropdown component."""
 
 def:pub Select(
-    value: str, onChange: any, options: list, label: str = "", className: str = ""
+    value: str, onChange: any, options: list[any], label: str = "", className: str = ""
 ) -> JsxElement {
     selectClass = "w-full px-3 py-2 bg-surface-2 border border-line rounded-md text-fg text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent transition-colors";
 
@@ -19,7 +19,7 @@ def:pub Select(
     </div>
 }
 
-def:pub SmallSelect(value: str, onChange: any, options: list) -> JsxElement {
+def:pub SmallSelect(value: str, onChange: any, options: list[any]) -> JsxElement {
     <select
         value={value}
         onChange={onChange}

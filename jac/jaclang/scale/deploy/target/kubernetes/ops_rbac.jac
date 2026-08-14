@@ -1,4 +1,4 @@
-glob OPS_READ_RULES: list = [
+glob OPS_READ_RULES: list[dict[str, any]] = [
          {
              "apiGroups": [""],
              "resources": [
@@ -32,7 +32,7 @@ glob OPS_READ_RULES: list = [
              "verbs": ["get", "list", "watch"]
          }
      ],
-     OPS_MUTATE_RULES: list = [
+     OPS_MUTATE_RULES: list[dict[str, any]] = [
          {
              "apiGroups": ["apps"],
              "resources": ["deployments", "deployments/scale"],
@@ -59,9 +59,9 @@ def ops_role_name(app_name: str) -> str {
 
 def build_ops_rbac(
     app_name: str, namespace: str, sa_name: str, mutations: bool
-) -> dict {
+) -> dict[str, any] {
     name = ops_role_name(app_name);
-    rules: list = list(OPS_READ_RULES);
+    rules: list[dict[str, any]] = list(OPS_READ_RULES);
     if mutations {
         rules = rules + list(OPS_MUTATE_RULES);
     }

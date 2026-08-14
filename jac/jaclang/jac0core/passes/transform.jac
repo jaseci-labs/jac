@@ -51,8 +51,8 @@ obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
             default_factory=`dict
         );
 
-    static has PROVIDES: tuple = (),
-        REQUIRES: tuple = ();
+    static has PROVIDES: tuple[str, ...] = (),
+        REQUIRES: tuple[str, ...] = ();
 
     def postinit -> None;
     def emit(

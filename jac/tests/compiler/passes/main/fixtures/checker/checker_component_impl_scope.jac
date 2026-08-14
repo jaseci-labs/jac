@@ -5,7 +5,7 @@ Verifies that impl app.update can see has items: list[dict] declared in app.
 """
 
 def app -> str {
-    has items: list[dict] = [],
+    has items: list[dict[str, any]] = [],
         label: str = "";
 
     def update -> None;

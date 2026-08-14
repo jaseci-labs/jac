@@ -178,10 +178,10 @@ impl JacWalker.`visit(
     if not isinstance(`walker, WalkerArchetype) {
         raise TypeError('Invalid walker object');
     }
-    items: list = `list(expr)
+    items: list[any] = `list(expr)
         if isinstance(expr, `list)
         else ([expr] if isinstance(expr, (NodeArchetype, EdgeArchetype)) else []);
-    targets: list = [];
+    targets: list[NodeAnchor | EdgeAnchor] = [];
     for arch in items {
         anchor = arch.__jac__;
         if not isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
@@ -433,7 +433,7 @@ impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
     ranchor = root_node.__jac__ if root_node else ctx.user_root;
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
-    cand_map: dict = {};
+    cand_map: dict[any, any] = {};
     store = mem?.store;
     if store is not None {
         mem.read_barrier();
@@ -1498,7 +1498,7 @@ impl JacLLM.default_llm -> LLMModel {
         }
     }
 
-    merged_config: dict = dict(model_config);
+    merged_config: dict[str, any] = dict(model_config);
     if chosen.startswith("local:") {
         for (k, v) in local_config.items() {
             merged_config[k] = v;

@@ -539,7 +539,7 @@ Create reusable state logic by defining functions that use `has`:
 ```jac
 import from react { useEffect }
 
-def use_local_storage(key: str, initial_value: any) -> tuple {
+def use_local_storage(key: str, initial_value: any) -> tuple[any] {
     has value: any = initial_value;
 
     useEffect(lambda -> None {

@@ -211,7 +211,7 @@ impl ASTValidationPass._returns_jsx(
     if ret is None {
         return False;
     }
-    stack: list = [ret];
+    stack: list[any] = [ret];
     while stack {
         probe = stack.pop();
         if isinstance(probe, uni.Name)
@@ -363,7 +363,7 @@ impl ASTValidationPass.enter_archetype(
         }
     }
 
-    body: list = [];
+    body: list[any] = [];
     if isinstance(nd.body, (list, tuple)) {
         body = list(nd.body);
     } elif isinstance(nd.body, uni.ImplDef)

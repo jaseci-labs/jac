@@ -367,8 +367,8 @@ impl JacCompiler._load_native_from_cache(
         import from jaclang.jac0core.codeinfo { CodeGenTarget }
         gen = CodeGenTarget();
         gen.native_engine = engine;
-        py_func_table: dict = {};
-        callbacks_list: list = [];
+        py_func_table: dict[str, any] = {};
+        callbacks_list: list[any] = [];
         gen.interop_py_funcs = py_func_table;
         gen._interop_callbacks = callbacks_list;
         if cached_interop {
@@ -429,8 +429,8 @@ impl JacCompiler._load_native_from_bitcode(
     import from jaclang.jac0core.codeinfo { CodeGenTarget }
     gen = CodeGenTarget();
     gen.native_engine = engine;
-    py_func_table: dict = {};
-    callbacks_list: list = [];
+    py_func_table: dict[str, any] = {};
+    callbacks_list: list[any] = [];
     gen.interop_py_funcs = py_func_table;
     gen._interop_callbacks = callbacks_list;
     if cached_interop {
@@ -607,7 +607,7 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
     if manifest is None {
         return {};
     }
-    interop_data: dict = {'bindings': {}};
+    interop_data: dict[str, any] = {'bindings': {}};
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
             'source_context': binding.source_context.value,
@@ -1103,7 +1103,7 @@ impl JacCompiler._compile_once(
     ) {
         import os as _cb_os;
         cb_seen: set[str] = set();
-        cb_worklist: list = [mod_targ];
+        cb_worklist: list[uni.Module] = [mod_targ];
 
         cb_opts = CompileOptions(
             type_check=False,

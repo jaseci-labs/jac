@@ -31,7 +31,7 @@ def _host_boot_py(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: dict = None
+    plugin_configs: (dict[str, any] | None) = None
 ) -> str {
     config = {
         "app_name": app_name,
@@ -63,7 +63,7 @@ def _generate_host_source(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: dict = None
+    plugin_configs: (dict[str, any] | None) = None
 ) -> str {
     boot_py = _host_boot_py(
         app_name,

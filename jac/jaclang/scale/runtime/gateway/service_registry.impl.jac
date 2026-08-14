@@ -22,7 +22,7 @@ impl ServiceRegistry.match_route(path: str) -> ServiceEntry | None {
 }
 
 impl ServiceRegistry.health_summary -> dict[str, dict] {
-    result: dict[str, dict] = {};
+    result: dict[str, dict[str, any]] = {};
     for (name, entry) in self.entries.items() {
         result[name] = {
             "file": entry.file,

@@ -4,8 +4,8 @@ import html;
 import jaclang.jac0core.unitree as uni;
 import type from jaclang.jac0core.unitree { UniNode, UniScopeNode }
 
-glob id_bag: dict = {},
-     id_state: dict = {"used": 0},
+glob id_bag: dict[int, any] = {},
+     id_state: dict[str, int] = {"used": 0},
      CLASS_COLOR_MAP: dict[(str, str)] = {
          'Expr': '#fbeb93',
          'AtomExpr': '#fbeb93',

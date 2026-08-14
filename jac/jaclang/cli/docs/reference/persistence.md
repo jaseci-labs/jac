@@ -262,7 +262,7 @@ node User {
 
 ```jac
 # impl/models.impl.jac -- the ledger of the past
-def split_tags(doc: dict) -> dict {
+def split_tags(doc: dict) -> dict[str, any] {
     doc["tags"] = [t.strip() for t in doc["tags"].split(",") if t.strip()];
     return doc;
 }
