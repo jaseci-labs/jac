@@ -455,7 +455,9 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
+    def _lambda_args_of(expr: uni.FuncCall) -> list[uni.LambdaExpr];
     def _unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None;
+    def _unresolved_lambda_body(expr: uni.FuncCall) -> uni.LambdaExpr | None;
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: uni.UniNode) -> TypeBase;
@@ -466,6 +468,7 @@ obj TypeEvaluator {
         solved_type_vars: (dict[str, TypeBase] | None) = None
     ) -> bool;
 
+    def _non_lambda_args_type_check(args: MatchArgsToParamsResult) -> bool;
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
     ) -> dict[str, types.Parameter];
