@@ -25,6 +25,30 @@ bundled one. A bundled module links through the existing cross-module machinery
 (binding population, then extern forward-decl, then `link_in`), on both the AOT
 (`jac nacompile`) and JIT execution paths.
 
+## A narrow operand is refused, not reinterpreted
+
+The type checker reads **typeshed** for a stdlib name; the native lane lowers
+against the **shim**. Where a shim's signature is narrower than the typeshed
+one, the two disagree and the checker has nothing to complain about, so the
+disagreement lands in codegen. A *missing member* has always failed loudly
+there (the member does not exist on the type). A *narrower parameter* did not:
+an operand arrived as a pointer, the declared parameter was some other type,
+and under opaque pointers the coercion was a bit-level no-op -- so
+`Path("a") / Path("b")` compiled clean and printed garbage instead of `a/b`.
+
+`NaIRGenPass._emit_arch_dunder_binop` now checks the operand against the
+dunder's *declared* operand type before dispatching. If the operand is a known
+archetype and every declared name is a known archetype or primitive and none of
+them is the operand's type or one of its bases, the dispatch is refused. Python's
+own binary-operator protocol still applies: the reflected method gets its turn,
+and only when both sides refuse does the compile fail with `E5092` naming the
+declared type and the operand type. The gate stays silent whenever it cannot
+resolve both sides confidently, so an unknown or gradual type never trips it.
+
+This makes a shim's operand types load-bearing. Keep them as wide as the
+typeshed signature the checker reads, or the native lane will refuse calls the
+checker accepts.
+
 ## Shipped modules
 
 - **`os/path.jac`** (#6940 Phase 0, extended #8201) -- pure-string POSIX path
@@ -222,6 +246,12 @@ bundled one. A bundled module links through the existing cross-module machinery
   `.exists()`, `.is_dir()`. Anything outside it does not exist on the type, so
   a native compile that reaches for one fails with "Type `Path` has no
   attribute ..." rather than silently answering wrong.
+  `/` takes a `str` or a `Path` on either side -- `__truediv__` and
+  `__rtruediv__` both accept both -- because CPython's does. A shim operand
+  type *narrower* than the typeshed signature the checker reads is not caught
+  by the checker, so the native lane refuses the dispatch rather than
+  reinterpreting the operand's bits; see "A narrow operand is refused, not
+  reinterpreted" below.
   `.stem` follows `os.path.splitext`, which is what CPython's own `stem`
   reduces to: the last `.` splits the name only when some non-`.` character
   precedes it, so `.bashrc` and `..` are entirely stem, while a trailing dot

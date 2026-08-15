@@ -530,6 +530,10 @@ impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
+    if t.is_special_form("TypeIs") or t.is_special_form("TypeGuard") {
+        return self.type_map.get("bool");
+    }
+
     cname = t.shared.class_name;
 
     if cname in self.type_map {
@@ -2112,13 +2116,13 @@ impl NaIRGenPass._codegen_float_floor_mod(left: ir.Value, right: ir.Value) -> ir
 }
 
 impl NaIRGenPass._emit_binary_op(
-    op: str, left: ir.Value, right: ir.Value
+    op: str, left: ir.Value, right: ir.Value, nd: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     left = self._str_norm(left);
     right = self._str_norm(right);
     if isinstance(left.type, ir.PointerType)
         or isinstance(right.type, ir.PointerType) {
-        _dunder_res = self._emit_arch_dunder_binop(op, left, right);
+        _dunder_res = self._emit_arch_dunder_binop(op, left, right, nd);
         if _dunder_res is not None {
             return _dunder_res;
         }
@@ -2619,7 +2623,7 @@ impl NaIRGenPass._emit_binary_op(
 }
 
 impl NaIRGenPass._emit_arch_dunder_binop(
-    op: str, left: ir.Value, right: ir.Value
+    op: str, left: ir.Value, right: ir.Value, nd: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     import from jaclang.compiler.type_system.operations { BINARY_OPERATOR_MAP }
     _pair = BINARY_OPERATOR_MAP.get(op);
@@ -2627,6 +2631,8 @@ impl NaIRGenPass._emit_arch_dunder_binop(
         return None;
     }
     (magic, rmagic) = _pair;
+
+    _refused: list = [];
 
     def _try_dispatch(
         pass_ref: NaIRGenPass, recv: ir.Value, arg: ir.Value, mname: str
@@ -2642,6 +2648,11 @@ impl NaIRGenPass._emit_arch_dunder_binop(
         if mfn is None or len(mfn.args) != 2 {
             return None;
         }
+        _declared = pass_ref._dunder_operand_declared_names(arch, mname);
+        if not pass_ref._operand_admitted_by(arg, _declared) {
+            _refused.append((arch, mname, _declared, pass_ref._infer_type_name(arg)));
+            return None;
+        }
         _dargs = [
             pass_ref._coerce_type(recv, mfn.args[0].type),
             pass_ref._coerce_type(arg, mfn.args[1].type)
@@ -2655,7 +2666,112 @@ impl NaIRGenPass._emit_arch_dunder_binop(
     if _res is not None {
         return _res;
     }
-    return _try_dispatch(self, right, left, rmagic);
+    _res = _try_dispatch(self, right, left, rmagic);
+    if _res is not None {
+        return _res;
+    }
+    if _refused {
+        (_r_arch, _r_mname, _r_declared, _r_operand) = _refused[0];
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="operand",
+            name=f"{_r_arch}.{_r_mname}",
+            help_text=(
+                f"`{_r_arch}.{_r_mname}` declares its operand as "
+                f"`{' | '.join(sorted(_r_declared))}`, and a `{_r_operand}` is "
+                "neither that nor a subclass of it. Dispatching anyway would "
+                "reinterpret the operand's bits, so the call is refused. Widen "
+                "the declared operand type, or convert at the call site."
+            )
+        );
+    }
+    return None;
+}
+
+impl NaIRGenPass._arch_method_sig_of(
+    type_name: str, mname: str
+) -> (uni.FuncSignature | None) {
+    for _cand in self._mro_of(type_name) {
+        arch = self.arch_ast_map.get(_cand);
+        if not isinstance(arch, uni.Archetype) or arch.body is None {
+            continue;
+        }
+        for stmt in arch.body {
+            if isinstance(stmt, uni.Ability)
+                and stmt.name_ref is not None
+                and stmt.name_ref.sym_name == mname
+                and isinstance(stmt.signature, uni.FuncSignature) {
+                return stmt.signature;
+            }
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._type_expr_names(nd: (uni.UniNode | None)) -> (set[str] | None) {
+    if nd is None {
+        return None;
+    }
+    if isinstance(nd, uni.SubTag) {
+        return self._type_expr_names(nd.tag);
+    }
+    if isinstance(nd, uni.AtomUnit) {
+        return self._type_expr_names(nd.value);
+    }
+    if isinstance(nd, uni.BinaryExpr)
+        and isinstance(nd.op, uni.Token)
+        and nd.op.name == Tok.BW_OR {
+        _l = self._type_expr_names(nd.left);
+        _r = self._type_expr_names(nd.right);
+        if _l is None or _r is None {
+            return None;
+        }
+        return _l | _r;
+    }
+    if isinstance(nd, uni.Name) {
+        return {nd.value};
+    }
+    return None;
+}
+
+impl NaIRGenPass._dunder_operand_declared_names(
+    type_name: str, mname: str
+) -> (set[str] | None) {
+    sig = self._arch_method_sig_of(type_name, mname);
+    if sig is None {
+        return None;
+    }
+    _params = [
+        p
+        for p in sig.get_parameters()
+        if self._get_name(p.name) != "self"
+    ];
+    if len(_params) != 1 or _params[0].type_tag is None {
+        return None;
+    }
+    return self._type_expr_names(_params[0].type_tag);
+}
+
+impl NaIRGenPass._operand_admitted_by(
+    arg: ir.Value, declared: (set[str] | None)
+) -> bool {
+    if not declared {
+        return True;
+    }
+    if declared & {"any", "Any", "object"} {
+        return True;
+    }
+    _arg_arch = self._infer_type_name(arg);
+    if _arg_arch is None {
+        return True;
+    }
+    for _name in declared {
+        if _name not in self.struct_types and _name not in self.type_map {
+            return True;
+        }
+    }
+    return bool(set(self._mro_of(_arg_arch)) & declared);
 }
 
 impl NaIRGenPass._opt_membership_operand(left: ir.Value, slot_type: ir.Type) -> tuple {

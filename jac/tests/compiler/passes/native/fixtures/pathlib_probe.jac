@@ -46,6 +46,16 @@ with entry {
     print(str(Path("a") / "b/c"));
     print(str(Path("/tmp") / "jac_pathlib_probe.txt"));
 
+    print(str(Path("a") / Path("b")));
+    print(str(Path("a") / Path("/b")));
+    print(str(Path("a") / Path("")));
+    print(str(Path("/") / Path("b")));
+    print(str(Path("a/b") / Path("c/d")));
+    print(str(Path("a") / Path("b") / "c" / Path("d")));
+    print(str("a" / Path("b")));
+    print(str("/a" / Path("b")));
+    print(str("a" / Path("/b")));
+
     print(Path("/tmp/jac_pathlib_probe.txt").exists());
     print(Path("/tmp/jac_pathlib_probe_dir").exists());
     print(Path("/tmp/jac_pathlib_missing_zz").exists());

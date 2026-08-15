@@ -592,6 +592,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _erased_generic_ctor(nd: uni.FuncCall) -> (str | None);
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
     def _arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None);
+    def _arch_method_sig_of(type_name: str, mname: str) -> (uni.FuncSignature | None);
+
+    def _type_expr_names(nd: (uni.UniNode | None)) -> (set[str] | None);
+    def _dunder_operand_declared_names(
+        type_name: str, mname: str
+    ) -> (set[str] | None);
+
+    def _operand_admitted_by(arg: ir.Value, declared: (set[str] | None)) -> bool;
     def _codegen_call_args(nd: uni.FuncCall) -> list;
     def _coerce_narrowed_arg(
         nd: (uni.UniNode | None), val: (ir.Value | None)
@@ -656,9 +664,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
         left: ir.Value, right: ir.Value
     ) -> tuple[(ir.Value, ir.Value)];
 
-    def _emit_binary_op(op: str, left: ir.Value, right: ir.Value) -> (ir.Value | None);
+    def _emit_binary_op(
+        op: str, left: ir.Value, right: ir.Value, nd: (uni.UniNode | None) = None
+    ) -> (ir.Value | None);
+
     def _emit_arch_dunder_binop(
-        op: str, left: ir.Value, right: ir.Value
+        op: str, left: ir.Value, right: ir.Value, nd: (uni.UniNode | None) = None
     ) -> (ir.Value | None);
 
     def _emit_comparison(

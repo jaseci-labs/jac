@@ -3690,7 +3690,7 @@ impl TypeEvaluator.postinit -> None {
     self.ambient_typing_names_by_module = raw_groups;
     self.ambient_typing_names_by_module["typing"] = typing_ambient_flat;
     for typing_name in typing_ambient_flat {
-        typing_sym = self.typing_module.names_in_scope.get(typing_name);
+        typing_sym = lookup_symtab(self.typing_module, typing_name, self.typing_module);
         if typing_sym is None {
             continue;
         }

@@ -10,6 +10,19 @@ introspect annotations (typing.get_type_hints, pydantic, FastAPI, ...).
 
 Editing this file is the *only* place to grow or shrink the ambient set.
 
+A name listed here is installed by resolving it through the typing module's
+symbol table with `lookup_symtab`, which descends into the live branch of a
+`if sys.version_info >= (...)` guard the way typeshed writes one. Without
+that, every name typeshed declares under a version guard was dropped in
+silence: `TypeGuard` sits under `>= (3, 10)` and `TypeIs` under `>= (3, 13)`,
+so neither was ever reachable no matter what this file listed.
+
+The interpreter is jac's own -- the `jac` binary bundles CPython 3.14 and
+there is no pip-installed jaclang -- so the guard walk resolves against 3.14.
+The one standing constraint on a new entry is that PyastGenPass emits a real
+`from typing import <name>`: the name has to exist in that bundled runtime,
+not merely in typeshed.
+
 Skipped on purpose:
   * Any            — Jac uses the lowercase `any` BuiltinType keyword.
   * Optional/Union — write `X | None` / `X | Y` (PEP 604).
@@ -45,6 +58,8 @@ from typing import (
     Generic,
     Literal,
     Protocol,
+    TypeGuard,
+    TypeIs,
     TypeVar,
 )
 
@@ -65,5 +80,7 @@ __all__ = [
     "MutableSequence",
     "Protocol",
     "Sequence",
+    "TypeGuard",
+    "TypeIs",
     "TypeVar",
 ]

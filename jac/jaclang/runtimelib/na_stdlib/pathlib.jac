@@ -74,14 +74,23 @@ obj:pub Path {
         return self._p;
     }
 
-    def __truediv__(other: str) -> Path {
-        if other.startswith("/") {
-            return Path(other);
+    def __truediv__(other: (str | Path)) -> Path {
+        return self._join(other);
+    }
+
+    def __rtruediv__(other: (str | Path)) -> Path {
+        return Path(other)._join(self);
+    }
+
+    def _join(other: (str | Path)) -> Path {
+        rhs: str = other._p if isinstance(other, Path) else other;
+        if rhs.startswith("/") {
+            return Path(rhs);
         }
         if self._p.endswith("/") {
-            return Path(self._p + other);
+            return Path(self._p + rhs);
         }
-        return Path(self._p + "/" + other);
+        return Path(self._p + "/" + rhs);
     }
 
     def exists -> bool {

@@ -1876,3 +1876,27 @@ test "bug_andpol1_licensed_edges_still_narrow" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# =========================================================================
+# Bug #AMBIENT-1 / #8201: a name typeshed declares inside a
+# `if sys.version_info >= (...)` guard never became ambient. The installer
+# read `typing_module.names_in_scope` directly, and that dict holds only the
+# module's own top-level bindings -- it does not descend into a guard's live
+# branch the way `lookup_symtab` does. `TypeGuard` (guarded at 3.10) and
+# `TypeIs` (guarded at 3.13) were therefore skipped in silence, so writing
+# either without an import resolved to Unknown and narrowed nothing.
+#
+# The install now goes through `lookup_symtab`, which walks the live branch,
+# and stays honest about the interpreter in hand: a name newer than the
+# running Python still resolves to nothing, which is the same answer the
+# runtime gives when PyastGenPass emits `from typing import <name>`.
+# =========================================================================
+test "bug_ambient1_ambient_type_guard_narrows_without_import" {
+    program = compile_and_check("checker_bug_ambient_type_guard.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #AMBIENT-1: `TypeGuard` is listed in typing_ambient.pyi, so it "
+        "must narrow without an explicit import from typing. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
