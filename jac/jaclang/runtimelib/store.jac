@@ -130,7 +130,8 @@ obj PgStore(Store) {
         _listen_stop: (Any | None) postinit,
         _booted: bool postinit,
         _ready: bool postinit,
-        _readying: (int | None) postinit;
+        _readying: (int | None) postinit,
+        _schema_lock_id: (int | None) postinit;
 
     def postinit -> None;
     def is_available -> bool;
@@ -174,6 +175,11 @@ obj PgStore(Store) {
     def _join_listen_thread(parked: Any) -> None;
     def _schema_fingerprint -> str;
     def _schema_stamp -> (str | None);
+    def _schema_lock_key -> int;
+    def _acquire_schema_lock -> bool;
+    def _release_schema_lock -> None;
+    def _run_schema_ddl(fingerprint: str) -> None;
+    def _run_schema_stmt(sql: str) -> None;
     def _apply_schema_ddl -> None;
     def _load_known_types -> None;
     def _peer_sessions -> list[dict];

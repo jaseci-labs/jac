@@ -60,9 +60,20 @@ impl PgBackplane.start -> None {
     if self._store is not None {
         return;
     }
-    import from jaclang.scale.persistence.pg { shared_store }
+    import from jaclang.scale.persistence.pg {
+        masked_db_url,
+        shared_store,
+        shared_store_error
+    }
     store = await asyncio.to_thread(shared_store);
     if store is None {
+        cause = shared_store_error();
+        if cause is not None {
+            raise RuntimeError(
+                f"PgBackplane selected but {masked_db_url() or 'the embedded server'}"
+                f" could not be prepared: {cause!r}."
+            ) from cause;
+        }
         raise RuntimeError(
             "PgBackplane selected but no database is reachable "
             "(set JAC_DB_URL or [plugins.scale.database] url)."

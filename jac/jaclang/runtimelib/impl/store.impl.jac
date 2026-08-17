@@ -58,6 +58,13 @@ glob _SCHEMA_SQL = [
     """
      ];
 
+glob _SCHEMA_LOCK_SPACE = 'jaclang.schema',
+     _SCHEMA_LOCK_WAIT_SECONDS = 120.0,
+     _SCHEMA_LOCK_POLL_SECONDS = 0.05,
+     _SCHEMA_LOCK_POLL_MAX_SECONDS = 0.5,
+     _SCHEMA_DDL_ATTEMPTS = 3,
+     _CONCURRENT_DDL_STATES = ('23505', '42P07', '42710');
+
 
 impl ConnInfo.dsn -> str {
     if self.unix_socket_dir {
@@ -168,6 +175,7 @@ impl PgStore.postinit -> None {
     self._booted = False;
     self._ready = False;
     self._readying = None;
+    self._schema_lock_id = None;
 }
 
 
@@ -407,30 +415,113 @@ impl PgStore.ensure_schema(promotions: dict[str, list[str]]) -> None {
             self._load_known_types();
             return;
         }
+        held = self._acquire_schema_lock();
+        try {
+            if self._schema_stamp() == fp {
+                self._load_known_types();
+                return;
+            }
+            self._run_schema_ddl(fp);
+            self.kv_put(SCHEMA_STAMP_KEY, fp);
+            self._load_known_types();
+        } finally {
+            if held {
+                self._release_schema_lock();
+            }
+        }
+    }
+}
+
+
+impl PgStore._schema_lock_key -> int {
+    if self._schema_lock_id is not None {
+        return self._schema_lock_id;
+    }
+    import hashlib;
+    schema = 'public';
+    try {
+        got = self._run('SELECT current_schema()', {});
+        if got and got[0] and got[0][0] is not None {
+            schema = str(got[0][0]);
+        }
+    } except Exception as e {
+        logger.debug(f"schema lock namespace lookup failed: {e}");
+    }
+    digest = hashlib.sha256(f"{_SCHEMA_LOCK_SPACE}:{schema}".encode('utf-8')).digest();
+    self._schema_lock_id = int.from_bytes(digest[:8], 'big', signed=True);
+    return self._schema_lock_id;
+}
+
+
+impl PgStore._acquire_schema_lock -> bool {
+    import time;
+    key = self._schema_lock_key();
+    deadline = time.monotonic() + _SCHEMA_LOCK_WAIT_SECONDS;
+    pause = _SCHEMA_LOCK_POLL_SECONDS;
+    while True {
+        try {
+            got = self._run(f"SELECT pg_try_advisory_lock({key})", {});
+        } except Exception as e {
+            logger.warning(f"schema lock unavailable ({e}); applying DDL unguarded");
+            return False;
+        }
+        if got and got[0] and bool(got[0][0]) {
+            return True;
+        }
+        if time.monotonic() >= deadline {
+            logger.warning(
+                f"another session held the schema lock for "
+                f"{_SCHEMA_LOCK_WAIT_SECONDS}s; applying DDL unguarded"
+            );
+            return False;
+        }
+        time.sleep(pause);
+        pause = min(pause * 2, _SCHEMA_LOCK_POLL_MAX_SECONDS);
+    }
+}
+
+
+impl PgStore._release_schema_lock -> None {
+    key = self._schema_lock_id;
+    if key is None {
+        return;
+    }
+    try {
+        self._run(f"SELECT pg_advisory_unlock({key})", {});
+    } except Exception as e {
+        logger.debug(f"schema lock release failed: {e}");
+    }
+}
+
+
+impl PgStore._run_schema_ddl(fingerprint: str) -> None {
+    attempt = 0;
+    while True {
+        attempt += 1;
         try {
             self._apply_schema_ddl();
+            return;
         } except PgWireError as e {
-            if _sqlstate(e) != '55P03' {
+            state = _sqlstate(e);
+            if state in _CONCURRENT_DDL_STATES {
+                if self._schema_stamp() == fingerprint {
+                    return;
+                }
+                if attempt >= _SCHEMA_DDL_ATTEMPTS {
+                    raise;
+                }
+                logger.debug(f"schema ddl lost a create race ({state}); retrying");
+                continue;
+            }
+            if state != '55P03' {
                 raise;
             }
-            if self._reap_dead_sessions() == 0 {
+            if self._reap_dead_sessions() == 0 or attempt >= _SCHEMA_DDL_ATTEMPTS {
                 raise SessionConflictError(
                     database=self.conninfo.database, blockers=self._live_blockers()
                 ) from e;
             }
-            try {
-                self._apply_schema_ddl();
-            } except PgWireError as e2 {
-                if _sqlstate(e2) != '55P03' {
-                    raise;
-                }
-                raise SessionConflictError(
-                    database=self.conninfo.database, blockers=self._live_blockers()
-                ) from e2;
-            }
         }
-        self.kv_put(SCHEMA_STAMP_KEY, fp);
-        self._load_known_types();
     }
 }
 
@@ -473,11 +564,24 @@ impl PgStore.reset_data -> None {
 }
 
 
+impl PgStore._run_schema_stmt(sql: str) -> None {
+    try {
+        self._run(sql, {});
+    } except PgWireError as e {
+        state = _sqlstate(e);
+        if state not in _CONCURRENT_DDL_STATES {
+            raise;
+        }
+        logger.debug(f"schema object was created by a peer first ({state})");
+    }
+}
+
+
 impl PgStore._apply_schema_ddl -> None {
     self._run("SET lock_timeout = '5s'", {});
     try {
         for stmt in _SCHEMA_SQL {
-            self._run(stmt, {});
+            self._run_schema_stmt(stmt);
         }
         has_seq = bool(
             self._run(
@@ -489,7 +593,9 @@ impl PgStore._apply_schema_ddl -> None {
             )
         );
         if not has_seq {
-            self._run('ALTER TABLE anchors ADD COLUMN IF NOT EXISTS seq bigserial', {});
+            self._run_schema_stmt(
+                'ALTER TABLE anchors ADD COLUMN IF NOT EXISTS seq bigserial'
+            );
         }
         self._apply_promotions();
         self._property_graph_ddl();

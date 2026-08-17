@@ -1,6 +1,6 @@
 import logging;
 import from jaclang.scale.state.state_backend { StateBackend, InProcessStateBackend }
-import from jaclang.scale.persistence.pg { shared_store }
+import from jaclang.scale.persistence.pg { shared_store, shared_store_error }
 import from jaclang.scale.state.pg_state_backend { PgStateBackend }
 
 glob logger = logging.getLogger(__name__),
@@ -13,7 +13,9 @@ def get_state_backend(scale_enabled: bool = False) -> StateBackend {
         if scale_enabled {
             try {
                 store = shared_store();
-                assert store is not None , "no reachable database";
+                assert store is not None , (
+                    f"no reachable database: {shared_store_error()!r}"
+                );
                 backend = PgStateBackend(store=store);
             } except Exception as e {
                 logger.warning(
