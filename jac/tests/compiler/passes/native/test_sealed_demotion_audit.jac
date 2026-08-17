@@ -44,9 +44,10 @@ called from a root's live entry surface, so every stub this audit
 tolerates ships dead.
 
 Running the audit prints the report to stderr, grouped by root and
-family, so a reviewer can read the whole debt in one place. Under
-`jac test` a passing test's output is hidden; run it through pytest with
-`-s` to see the report.
+family, so a reviewer can read the whole debt in one place. `jac test`
+captures a test's output at fd level and replays it only on failure, so
+a passing run keeps the report hidden; break an assertion (or read the
+waiver table directly) to see it.
 
 The measurement is a source-lane one: under a sealed jaclang image the
 census reads the image's trust boundary instead of each unit's own
@@ -55,7 +56,6 @@ coupling, so the audit skips there.
 
 import os;
 import sys;
-import pytest;
 import jaclang;
 import from pathlib { Path }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -92,7 +92,7 @@ def _root_module_name(rel: str) -> str {
 """Skip when this runtime is itself sealed; the census would measure it."""
 def _require_source_lane {
     if _jaclang_image() is not None {
-        pytest.skip(
+        testskip(
             "this runtime is a sealed jaclang image; a source census here "
             "measures the image's trust boundary, not each unit's own seams"
         );

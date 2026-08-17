@@ -63,7 +63,6 @@ coupling, so `_root_census` skips there (both gates below).
 """
 
 import os;
-import pytest;
 import jaclang;
 import from pathlib { Path }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -129,13 +128,13 @@ def _root_module_name(rel: str) -> str {
 """Compile the root the way seal_native_artifacts does, up to the census."""
 def _root_census(rel: str) -> tuple {
     if _jaclang_image() is not None {
-        pytest.skip(
+        testskip(
             "this runtime is a sealed jaclang image; a source census here "
             "measures the image's trust boundary, not the unit's own seams"
         );
     }
     if native_artifact_for(_root_module_name(rel)) is not None {
-        pytest.skip(
+        testskip(
             f"{rel} is served from this runtime's native seal; the census "
             "gated the build via seal_demotion_report"
         );

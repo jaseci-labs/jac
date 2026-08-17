@@ -3,6 +3,7 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
              "APIProtocol",
              "AccessLevel",
              "JacListView",
+             "RaisesContext",
              "Region",
              "ScheduleTrigger",
              "_jac_chunks",
@@ -31,6 +32,9 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
              "schema_upgrade",
              "schema_was",
              "store",
+             "testfail",
+             "testraises",
+             "testskip",
              "unsafe_html"
          }
      ),

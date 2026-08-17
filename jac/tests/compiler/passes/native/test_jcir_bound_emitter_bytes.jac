@@ -49,7 +49,6 @@ import os;
 import shutil;
 import tempfile;
 import types;
-import pytest;
 import jaclang;
 import jaclang.jac0core.parser.frontend as frontend;
 import jaclang.jac0core.sealed as sealed;
@@ -117,7 +116,7 @@ def native_true_image -> bool {
 """Build the jcir artifact once for the whole file; (tmpdir, artifacts)."""
 def _built -> tuple {
     if native_true_image() {
-        pytest.skip(
+        testskip(
             "this runtime already serves jcir from its own native seal, so "
             "both sides of the comparison would be the sealed lane"
         );

@@ -35,9 +35,9 @@ lower time bound would only catch a binary that exits early, and the printed
 result tally catches that directly and without a threshold to argue about.
 
 Every report is written to `<jac cache root>/timing/*.txt` as well as printed,
-because `jac test` offers no way to turn pytest's capture off and a report that
-only survives a failure is not much of a report. `jac -m pytest
-tests/compiler/test_compile_timing.jac -s` shows the same tables live.
+because `jac test` captures a test's output at fd level and replays it only on
+failure -- and a report that only survives a failure is not much of a report.
+The file under the cache root is the copy that always survives.
 """
 
 import json;
@@ -48,8 +48,6 @@ import subprocess;
 import sys;
 import tempfile;
 import time;
-
-import pytest;
 
 import from pathlib { Path }
 import from tests.support { JAC_ROOT, TESTS_DIR }
@@ -131,10 +129,9 @@ def head_cache -> str {
 
 """Print a report and leave a copy on disk, because `jac test` swallows stdout.
 
-`jac test` exposes no `--capture=no`, so a passing report would otherwise be
-invisible -- and a report nobody can read is not a report. The file under the
-jac cache root is the copy that survives; `jac -m pytest <file> -s` is the way
-to watch it live.
+`jac test` exposes no way to turn capture off, so a passing report would
+otherwise be invisible -- and a report nobody can read is not a report. The file
+under the jac cache root is the copy that survives either way.
 """
 def publish(name: str, text: str) {
     print(text);
@@ -239,7 +236,7 @@ def baseline_tree -> str {
         return str(tree);
     }
     if shutil.which("git") is None {
-        pytest.skip("git is not on PATH; cannot materialize the baseline ref");
+        testskip("git is not on PATH; cannot materialize the baseline ref");
     }
     known = subprocess.run(
         ["git", "-C", REPO_ROOT, "cat-file", "-e", BASELINE_REF + "^{commit}"],
@@ -247,7 +244,7 @@ def baseline_tree -> str {
         text=True
     );
     if known.returncode != 0 {
-        pytest.skip(
+        testskip(
             f"baseline ref {BASELINE_REF[:12]} is not in this clone; fetch it "
             "(a shallow or fork clone may not carry it) to run the comparison"
         );
@@ -378,7 +375,7 @@ test "warm-compile phase timings for the corpus" {
 
 test "warm-compile phase timings against the pinned baseline" {
     if os.environ.get("JAC_TIMING_BASELINE", "") != "1" {
-        pytest.skip(
+        testskip(
             "set JAC_TIMING_BASELINE=1 to measure against "
             f"{BASELINE_REF[:12]}; the first run extracts that ref and "
             "bootstraps its compiler, which takes minutes"
