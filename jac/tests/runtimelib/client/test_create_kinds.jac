@@ -18,13 +18,22 @@ glob _tmp_dirs: list[str] = [],
      _orig_cwd: str = os.getcwd();
 
 def _scaffold(kind: str) -> Path {
+    prev_skip = os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL");
     os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
     initialize_template_registry();
     d = tempfile.mkdtemp(prefix="jacclientkind_");
     _tmp_dirs.append(d);
     os.chdir(d);
-    rc = project.create(name="app", kind=kind, force=True);
-    os.chdir(_orig_cwd);
+    try {
+        rc = project.create(name="app", kind=kind, force=True);
+    } finally {
+        os.chdir(_orig_cwd);
+        if prev_skip is None {
+            os.environ.pop("JAC_CLIENT_SKIP_NPM_INSTALL", None);
+        } else {
+            os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = prev_skip;
+        }
+    }
     assert rc == 0 , f"create --kind {kind} returned {rc}";
     return Path(d) / "app";
 }
