@@ -351,6 +351,10 @@ test "sum over a generator expression agrees across native and server lanes" {
     "}\n"
     "def source_values() -> int {\n"
     "    return sum((len(k) for k in (\"a\", \"bb\", \"ccc\")));\n"
+    "}\n"
+    "def empty_source() -> int {\n"
+    "    values: list[int] = [x for x in ()];\n"
+    "    return len(values);\n"
     "}\n";
     (prog, ir, log) = compile_na_inline_demote("sum_genexpr", src);
     assert not prog.errors_had , f"the generator expression must compile clean, got: {fmt_errors(
@@ -373,6 +377,30 @@ test "sum over a generator expression agrees across native and server lanes" {
     );
     assert source_native == source_server , (
         f"the lanes disagree when the generator reads its loop variable: native {source_native}, server {source_server}"
+    );
+    assert "empty_source" in layout.functions , (
+        f"the empty tuple source must stay native:\n{log}"
+    );
+    empty_native = native_answer(ir.gen.native_engine, "empty_source");
+    empty_server = server_answer("sum_genexpr", src, "empty_source");
+    assert empty_native == empty_server == 0 , (
+        f"the lanes disagree on an empty tuple source: native {empty_native}, server {empty_server}"
+    );
+}
+
+test "guardrail: unsupported generator iterable is diagnosed" {
+    (prog, ir, log) = compile_na_inline_demote(
+        "genexpr_enumerate",
+        "def run() -> int {\n" "    return sum((x for x in enumerate([1, 2])));\n" "}\n"
+    );
+    assert not prog.errors_had , f"the function-owned refusal must demote, got: {fmt_errors(
+        prog
+    )}";
+    layout = ir.gen.native_layout;
+    assert layout is not None , "whole-module native compile aborted";
+    assert "run" not in layout.functions , "the unsupported iterable must demote";
+    assert "comprehension iterable 'FuncCall'" in log , (
+        f"the demotion must name the unsupported iterable, got:\n{log}"
     );
 }
 

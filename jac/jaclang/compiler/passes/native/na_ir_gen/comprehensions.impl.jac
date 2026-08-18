@@ -379,27 +379,37 @@ impl NaIRGenComprehensions._codegen_compr_walk(
         }
     }
 
+    _compr_errs0 = len(self.errors_had);
     coll_val = self._opt_unwrap_iterable(self._codegen_expr(collection));
-    if coll_val is None {
-        return;
-    }
-
     coll_elem_type_name: (str | None) = None;
     tuple_elem_type: (ir.Type | None) = None;
     if self._tuple_iter_shape(collection, coll_val) {
         tuple_seq = self._tuple_iter_seq(collection, coll_val);
         if tuple_seq is None {
-            self.emit(
-                E5092,
-                node_override=collection,
-                kind="comprehension iterable",
-                name="tuple with mixed element storage",
-                help_text="Every element of an iterated tuple must share one storage width. Use a list literal when the element types differ."
-            );
+            if len(self.errors_had) == _compr_errs0 {
+                self.emit(
+                    E5092,
+                    node_override=collection,
+                    kind="comprehension iterable",
+                    name="tuple with mixed element storage",
+                    help_text="Every element of an iterated tuple must share one storage width. Use a list literal when the element types differ."
+                );
+            }
             return;
         }
         (coll_val, coll_elem_type_name, tuple_elem_type, _) = tuple_seq;
     } else {
+        if coll_val is None {
+            if len(self.errors_had) == _compr_errs0 {
+                self.emit(
+                    E5092,
+                    node_override=collection,
+                    kind="comprehension iterable",
+                    name=type(collection).__name__
+                );
+            }
+            return;
+        }
         coll_elem_type_name = self._infer_list_elem_type(coll_val);
         if coll_elem_type_name is None {
             coll_elem_type_name = self._elem_spec_of(collection);
@@ -409,10 +419,26 @@ impl NaIRGenComprehensions._codegen_compr_walk(
         }
     }
     if coll_elem_type_name is None {
+        if len(self.errors_had) == _compr_errs0 {
+            self.emit(
+                E5092,
+                node_override=collection,
+                kind="comprehension iterable",
+                name="unknown element storage"
+            );
+        }
         return;
     }
     coll_helpers = self.list_helpers.get(coll_elem_type_name);
     if coll_helpers is None {
+        if len(self.errors_had) == _compr_errs0 {
+            self.emit(
+                E5092,
+                node_override=collection,
+                kind="comprehension iterable",
+                name=f"unsupported element storage '{coll_elem_type_name}'"
+            );
+        }
         return;
     }
     _coll_want = coll_helpers["len"].function_type.args[0];
@@ -431,6 +457,14 @@ impl NaIRGenComprehensions._codegen_compr_walk(
     }
     loop_var_name = self._get_name(loop_target);
     if loop_var_name is None {
+        if len(self.errors_had) == _compr_errs0 {
+            self.emit(
+                E5092,
+                node_override=loop_target,
+                kind="comprehension target",
+                name=type(loop_target).__name__
+            );
+        }
         return;
     }
     i64 = ir.IntType(64);
