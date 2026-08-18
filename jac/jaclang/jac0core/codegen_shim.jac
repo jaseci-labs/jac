@@ -369,7 +369,9 @@ def compile_ir(ir_bytes: bytes) -> CirResult {
     for m in container.modules {
         built_root: ast.Module = transcribe_module(m, classes, keys, container);
         try {
-            code_obj: types.CodeType = compile(built_root, m.mod_path, "exec");
+            code_obj: types.CodeType = compile(
+                built_root, m.mod_path, "exec", flags=0, dont_inherit=True
+            );
         } except (ValueError, SyntaxError, TypeError) as e {
             diags.append(
                 CirDiag(
