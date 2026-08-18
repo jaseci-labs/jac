@@ -342,11 +342,8 @@ test "for-loop over a set lowers, and both lanes answer the same sum" {
     );
 }
 
-# A generator expression is lowered through the comprehension machinery on
-# native.  Its loop variable has a comprehension-local binding, but the output
-# expression may also read a value from the enclosing function.  The tuple
-# source in this shape used to produce an empty native accumulator, so `sum`
-# returned 0 while the server lane returned the real total.
+# Issue #8318: tuple-backed generator expressions must preserve enclosing
+# captures and bind each tuple element to the loop variable on native.
 test "sum over a generator expression agrees across native and server lanes" {
     src = "def run() -> int {\n"
     "    x: int = 4;\n"
