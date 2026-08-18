@@ -87,6 +87,12 @@ obj BrowseTools {
     def _browse_shutdown;
 }
 
+obj SubagentTools {
+    has ws: Workspace = Workspace();
+
+    def spawn_subagent(task: str) -> str;
+}
+
 glob _THINK_WIDTH = 40;
 
 obj TurnRenderer {
@@ -171,6 +177,7 @@ obj AgentRuntime {
         semantic: SemanticTools = SemanticTools(),
         guides: GuideTools = GuideTools(),
         web: BrowseTools = BrowseTools(),
+        subagent: SubagentTools = SubagentTools(),
         view: TurnRenderer = TurnRenderer(),
         phase_tools: list = [],
         phase_ctx: list = [];
@@ -203,7 +210,9 @@ def resolve_model_name(model_override: str = "") -> str;
 def _byllm_config -> any;
 def build_model(model_override: str = "", n_ctx: int = 0) -> Model;
 
-glob agent_model = build_model();
+glob agent_model = build_model(),
+     _subagent_model = build_model(),
+     _SUBAGENT_TOOLS: list = [];
 
 def truncate(text: str, limit: int = 12000) -> str;
 def confirm(action: str) -> bool;
@@ -442,6 +451,9 @@ glob TOOL_SPECS: list[ToolSpec] = [
              category=ToolCat.Read,
              serialize=True,
              phases={Plan, Build, QA}
+         ),
+         ToolSpec(
+             fn=agent.subagent.spawn_subagent, category=ToolCat.Read, phases={Plan}
          )
      ];
 
@@ -464,6 +476,16 @@ with entry {
     }
 }
 
+glob _subagent_skip = {agent.subagent.spawn_subagent, agent.note};
+
+with entry {
+    for t in TOOL_SPECS {
+        if t.category == ToolCat.Read and t.fn not in _subagent_skip {
+            _SUBAGENT_TOOLS.append(t.fn);
+        }
+    }
+}
+
 def build_pipeline -> Plan;
 
 
@@ -476,6 +498,19 @@ walker AgentSession {
         build_nudges: int = 0;
 
     can begin with Root entry;
+}
+
+walker SubAgent {
+    has task: str,
+        result: str = "";
+
+    def investigate(task: str) -> str by _subagent_model(
+        tools=_SUBAGENT_TOOLS, max_react_iterations=20, max_tool_result_length=4000
+    );
+
+    can run with Root entry {
+        self.result = self.investigate(self.task);
+    }
 }
 
 
