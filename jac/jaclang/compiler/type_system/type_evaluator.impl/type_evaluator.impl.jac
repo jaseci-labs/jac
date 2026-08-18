@@ -1878,6 +1878,23 @@ impl TypeEvaluator._get_type_of_expression_core(
 
             if scope := self._resolution_scope_for(expr) {
                 symbol = lookup_symtab(scope, expr.value, self.builtins_module);
+                is_attr_name = (
+                    isinstance(expr.parent, AtomTrailer)
+                    and expr.parent.is_attr
+                    and expr.parent.right is expr
+                );
+                if (
+                    symbol is not None
+                    and symbol.sym_type == SymbolType.HAS_VAR
+                    and isinstance(symbol.parent_tab, Archetype)
+                    and not is_attr_name
+                ) {
+                    # A field found through the enclosing archetype is not a
+                    # runtime lexical binding. Retry while skipping archetype
+                    # scopes so a same-named local/global can still win.
+                    expr.sym = None;
+                    symbol = self._lookup_bare_runtime_name(scope, expr.value);
+                }
 
                 if self._in_native_context()
                     and (symbol is None or symbol.parent_tab is self.builtins_module) {

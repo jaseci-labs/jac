@@ -850,6 +850,27 @@ impl TypeEvaluator._resolution_scope_for(expr: UniNode) -> UniScopeNode | None {
     return scope;
 }
 
+impl TypeEvaluator._lookup_bare_runtime_name(
+    scope: UniScopeNode, name: str
+) -> Symbol | None {
+    cur: UniScopeNode | None = scope;
+    while cur is not None {
+        # Python lexical lookup skips class bodies when resolving names used
+        # inside methods. Archetype fields therefore require an explicit
+        # receiver (`self.field`) and must not mask a module global.
+        if not isinstance(cur, Archetype) {
+            if isinstance(cur, Module) {
+                return lookup_symtab(cur, name, self.builtins_module);
+            }
+            if found := collect_member_syms(cur, name) {
+                return found[0];
+            }
+        }
+        cur = cur.parent_scope;
+    }
+    return None;
+}
+
 impl TypeEvaluator._is_expr_self(expr: Expr) -> bool {
     if (
         isinstance(expr, Name)

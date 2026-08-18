@@ -92,6 +92,9 @@ Bug index:
                 declaration now binds the function local, so its annotation
                 also holds after the block and a sibling block redeclaring
                 the name collides with it (#8060)
+  #BAREFIELD-1 - bare names colliding with archetype fields resolved as if
+                 `self.` were implicit even though runtime lexical scope does
+                 not include archetype members (#8276)
   #TYPEIS-1 - a user-defined predicate returning TypeIs[T] or TypeGuard[T]
               narrowed nothing at its call sites; the checker knew the two
               names but resolved the annotation to nothing, and the CFG's
@@ -1983,6 +1986,28 @@ test "bug_tvarmeth1_method_type_param_shadows_class_param" {
     assert len(program.errors_had) == 0 , (
         "Bug #TVARMETH-1: a method's own type parameter shadows the class "
         "parameter of the same name. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #BAREFIELD-1 / #8276: archetype fields are members, not lexical names.
+# A bare field collision in an inline or annex method must remain Unknown so
+# the existing attribute-access diagnostic catches code that would otherwise
+# fail with NameError. A module global with the same name as a field remains a
+# valid lexical binding and is the negative control.
+# =========================================================================
+test "bug_barefield1_archetype_fields_require_self" {
+    program = compile_and_check("checker_bug_bare_field_name.jac");
+
+    e1032_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032" and e.loc
+    ];
+    assert e1032_lines == [8, 20] , (
+        "Bug #BAREFIELD-1: inline and annex bare field reads must be Unknown, "
+        "while a same-named module global must still resolve. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
