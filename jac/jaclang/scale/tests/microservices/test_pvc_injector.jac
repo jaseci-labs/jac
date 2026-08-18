@@ -16,7 +16,9 @@ import from jaclang.scale.injector.pvc_injector {
     build_loader_pod,
     BUNDLE_MOUNT_PATH,
     LOADER_UID,
-    LOADER_GID
+    LOADER_GID,
+    build_pvc_init_container,
+    bundle_keys_from_pod_spec
 }
 
 
@@ -224,4 +226,31 @@ test "mutate_pod_spec wires the pvc, an init container, and the app mount" {
     assert len(result["initContainers"]) == 1;
     mount_names = [mount["name"] for mount in result["containers"][0]["volumeMounts"]];
     assert "jac-app" in mount_names;
+}
+
+
+# Bundle retention (#8089): the keep-set has to be derived from what a pod
+# template actually mounts, so the reader is driven by the writer's own output
+# rather than a hand-written arg string. A consumer that reimplements this
+# parsing hardcodes the container name and the mount layout.
+test "bundle keys round-trip from the init container the injector builds" {
+    keys = ["bundles/orders/aaa.jab", "toolchain/orders/bbb.tar.gz"];
+    pod_spec = {
+        "initContainers": [
+            build_pvc_init_container(
+                "python:3.12-slim", [f"{BUNDLE_MOUNT_PATH}/{k}" for k in keys]
+            )
+        ]
+    };
+
+    assert bundle_keys_from_pod_spec(pod_spec) == keys;
+}
+
+
+test "a pod spec with no bootstrap container references no bundles" {
+    assert bundle_keys_from_pod_spec({}) == [];
+    assert bundle_keys_from_pod_spec(
+        {"initContainers": [{"name": "wait-for-postgres", "args": ["sleep 1"]}]}
+    )
+        == [];
 }

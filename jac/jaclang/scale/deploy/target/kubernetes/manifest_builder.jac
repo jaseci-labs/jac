@@ -14,6 +14,7 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
 
 
 glob GATEWAY_NAME: str = "__gateway__",
+     CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _UVICORN_EXIT_CUSHION_S: int = 5,
      _RFC1123_MAX_LEN: int = 253,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
@@ -126,6 +127,27 @@ def merge_manifest_overlay(base: any, overlay: any) -> any {
         return merged_list;
     }
     return overlay;
+}
+
+
+def with_config_revision(manifest: dict[str, any], revision: str) -> dict[str, any] {
+    if not revision {
+        return manifest;
+    }
+    return dict(
+        merge_manifest_overlay(
+            manifest,
+            {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {CONFIG_REVISION_ANNOTATION: str(revision)}
+                        }
+                    }
+                }
+            }
+        )
+    );
 }
 
 
@@ -844,6 +866,7 @@ obj ManifestBuilder {
             },
             "spec": {
                 "replicas": replicas,
+                "revisionHistoryLimit": self.k8s_config.revision_history_limit,
                 "strategy": {
                     "type": "RollingUpdate",
                     "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}

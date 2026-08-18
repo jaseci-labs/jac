@@ -13,7 +13,8 @@ import from jaclang.scale.injector.bundle {
 glob logger = logging.getLogger(__name__);
 
 glob BUNDLE_VOLUME_NAME: str = "jac-bundles",
-     BUNDLE_MOUNT_PATH: str = "/jac-bundles";
+     BUNDLE_MOUNT_PATH: str = "/jac-bundles",
+     PVC_BOOTSTRAP_NAME: str = "jac-pvc-bootstrap";
 
 glob LOADER_UID: int = 1000,
      LOADER_GID: int = 1000;
@@ -26,6 +27,29 @@ def bundle_pvc_name(app_name: str) -> str {
 
 def bundle_pvc_path(object_key: str) -> str {
     return f"{BUNDLE_MOUNT_PATH}/{object_key}";
+}
+
+
+def bundle_keys_from_pod_spec(pod_spec: dict[str, any]) -> list[str] {
+    prefix = f"{BUNDLE_MOUNT_PATH}/";
+    keys: list[str] = [];
+    for raw in list(pod_spec.get("initContainers") or []) {
+        container = dict(raw);
+        if container.get("name") != PVC_BOOTSTRAP_NAME {
+            continue;
+        }
+        for arg in list(container.get("args") or []) {
+            for token in str(arg).replace(";", " ").split() {
+                if token.startswith(prefix) {
+                    key = token[len(prefix):];
+                    if key and key not in keys {
+                        keys.append(key);
+                    }
+                }
+            }
+        }
+    }
+    return keys;
 }
 
 
@@ -144,7 +168,7 @@ def build_pvc_init_container(
     untars = "".join([f"tar xzf {p} -C {APP_MOUNT_PATH}; " for p in bundle_paths]);
     script = "set -eu; " + untars + ensure_jac_toml_cmd();
     return {
-        "name": "jac-pvc-bootstrap",
+        "name": PVC_BOOTSTRAP_NAME,
         "image": base_image,
         "command": ["sh", "-c"],
         "args": [script],

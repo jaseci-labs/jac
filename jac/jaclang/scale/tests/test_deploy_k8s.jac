@@ -58,6 +58,24 @@ def _request_with_retry(
     return response;
 }
 
+# A single replica Deployment as the apiserver reports it. "Not ready" is a pod
+# that exists on the current template but has not become available, which is
+# what a starting or crash-looping replica actually looks like.
+def _dep(ready: int) -> object {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(generation=1),
+        spec=SimpleNamespace(replicas=1),
+        status=SimpleNamespace(
+            observed_generation=1,
+            replicas=1,
+            updated_replicas=1,
+            available_replicas=ready,
+            ready_replicas=ready
+        )
+    );
+}
+
+
 test "early exit" {
     config.load_kube_config();
 
@@ -206,11 +224,7 @@ test "fleet rollout ignores crash-looping pod from a stale replica set" {
         stale_rs,
         current_rs
     ];
-    fake_apps_v1.read_namespaced_deployment.side_effect = [
-        SimpleNamespace(status=SimpleNamespace(ready_replicas=0)),
-        SimpleNamespace(status=SimpleNamespace(ready_replicas=1)),
-
-    ];
+    fake_apps_v1.read_namespaced_deployment.side_effect = [_dep(0), _dep(1), ];
 
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
@@ -250,9 +264,7 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
 
     fake_apps_v1 = unittest.mock.MagicMock();
     fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
-    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=0)
-    );
+    fake_apps_v1.read_namespaced_deployment.return_value = _dep(0);
 
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
@@ -281,9 +293,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
 
     fake_apps_v1 = unittest.mock.MagicMock();
     fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
-    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=0)
-    );
+    fake_apps_v1.read_namespaced_deployment.return_value = _dep(0);
 
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
@@ -327,9 +337,7 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     fake_apps_v1.list_namespaced_replica_set.side_effect = Exception(
         "RS API unavailable"
     );
-    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=0)
-    );
+    fake_apps_v1.read_namespaced_deployment.return_value = _dep(0);
 
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
