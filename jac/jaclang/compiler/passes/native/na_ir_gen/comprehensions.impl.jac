@@ -384,12 +384,29 @@ impl NaIRGenComprehensions._codegen_compr_walk(
         return;
     }
 
-    coll_elem_type_name = self._infer_list_elem_type(coll_val);
-    if coll_elem_type_name is None {
-        coll_elem_type_name = self._elem_spec_of(collection);
-    }
-    if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
-        coll_elem_type_name = "ptr";
+    coll_elem_type_name: (str | None) = None;
+    tuple_elem_type: (ir.Type | None) = None;
+    if self._tuple_iter_shape(collection, coll_val) {
+        tuple_seq = self._tuple_iter_seq(collection, coll_val);
+        if tuple_seq is None {
+            self.emit(
+                E5092,
+                node_override=collection,
+                kind="comprehension iterable",
+                name="tuple with mixed element storage",
+                help_text="Every element of an iterated tuple must share one storage width. Use a list literal when the element types differ."
+            );
+            return;
+        }
+        (coll_val, coll_elem_type_name, tuple_elem_type, _) = tuple_seq;
+    } else {
+        coll_elem_type_name = self._infer_list_elem_type(coll_val);
+        if coll_elem_type_name is None {
+            coll_elem_type_name = self._elem_spec_of(collection);
+        }
+        if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
+            coll_elem_type_name = "ptr";
+        }
     }
     if coll_elem_type_name is None {
         return;
@@ -421,9 +438,9 @@ impl NaIRGenComprehensions._codegen_compr_walk(
     idx_alloca = self._entry_alloca(i64, "compr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
 
-    actual_elem_type = coll_helpers["elem_type"];
+    actual_elem_type = tuple_elem_type or coll_helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
-    if coll_elem_type_name == "ptr" {
+    if tuple_elem_type is None and coll_elem_type_name == "ptr" {
         inner_type = self._list_elem_llvm_of(collection);
         if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
             inner_type = None;
