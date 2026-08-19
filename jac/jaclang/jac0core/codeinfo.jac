@@ -188,6 +188,16 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
      ),
      _closure_cap_ctx: ContextVar[int] = ContextVar("jac_native_closure_cap");
 
+glob NATIVE_UNLOWERABLE_BUILTINS: set[str] = {
+         "callable",
+         "delattr",
+         "dir",
+         "getattr",
+         "hasattr",
+         "setattr",
+         "vars"
+     };
+
 glob NATIVE_ERASED_ABC_BASES: frozenset = frozenset({"ABC"});
 
 glob NATIVE_ERASED_RIM_BASES: frozenset = frozenset({"PassRim"});

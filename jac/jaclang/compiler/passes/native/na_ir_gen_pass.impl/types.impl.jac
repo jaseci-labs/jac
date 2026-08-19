@@ -1949,27 +1949,32 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
 
     if isinstance(val.type, ir.PointerType)
         and isinstance(target_type, ir.PointerType) {
-        _lc_src = self._spec_from_list_slot_type(val.type);
-        _lc_dst = self._spec_from_list_slot_type(target_type);
+        _cf_src = self._container_flavor_of(val.type);
+        _cf_dst = self._container_flavor_of(target_type);
         if (
-            _lc_src is not None
-            and _lc_dst is not None
-            and _lc_src != _lc_dst
-            and (_lc_src == "jacval") != (_lc_dst == "jacval")
+            _cf_src is not None
+            and _cf_dst is not None
+            and _cf_src[0] == _cf_dst[0]
+            and _cf_src[1] != _cf_dst[1]
+            and self._flavor_is_jacval(_cf_src[0], _cf_src[1])
+                != self._flavor_is_jacval(_cf_dst[0], _cf_dst[1])
         ) {
-            _lc_re = self._reflavor_list(val, _lc_src, _lc_dst);
-            if _lc_re is not None {
-                return _lc_re;
+            (_cf_kind, _cf_s) = _cf_src;
+            _cf_d = _cf_dst[1];
+            _cf_re = self._reflavor_container(val, _cf_kind, _cf_s, _cf_d);
+            if _cf_re is not None {
+                return _cf_re;
             }
             self.emit(
                 E5092,
                 node_override=self.ir_in,
                 kind="coercion",
-                name=f"list[{_lc_src}] -> list[{_lc_dst}]",
+                name=f"{_cf_kind}[{_cf_s}] -> {_cf_kind}[{_cf_d}]",
                 help_text=(
-                    "These list layouts store elements at different slot "
+                    "These container layouts store elements at different slot "
                     "widths, so a cast would corrupt the elements; construct "
-                    "the list with the destination's element flavor instead."
+                    "the container with the destination's element flavor "
+                    "instead."
                 )
             );
             return val;

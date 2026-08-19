@@ -40,7 +40,10 @@ import from jaclang.jac0core.passes.module_codegen_pass {
 }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.diagnostics { E5090, E5096, W6001, W6002, W6003, W6004 }
-import from jaclang.jac0core.codeinfo { NATIVE_SUPPORTED_STDLIB }
+import from jaclang.jac0core.codeinfo {
+    NATIVE_SUPPORTED_STDLIB,
+    NATIVE_UNLOWERABLE_BUILTINS
+}
 
 glob NATIVE_REJECT_NODES: tuple[type[PyInlineCode]] = (PyInlineCode, );
 

@@ -88,6 +88,13 @@ glob JS_GLOBALS: dict[str, str] = {
          "the undecorated body; remove the decorator or move the definition "
          "to a @sv/Python context."
      ),
+     _NATIVE_REFLECTION_HELP: str = (
+         "Runtime attribute reflection has no native representation: native "
+         "lowers `has` fields to fixed struct offsets and keeps no name table "
+         "beside them, so an attribute named by a runtime value has nothing "
+         "to index. Read or write the field directly (`obj.field`), or move "
+         "the reflecting code to a @sv/Python context."
+     ),
      _NATIVE_UNPACK_HELP: str = (
          "Unpacking arguments at a native call site is not lowered yet; "
          "pass the elements explicitly or move the call to a @sv/Python "
@@ -260,6 +267,7 @@ impl native_capability_violations(
     mod: Module
 ) -> list[tuple[(UniNode, str, str, (str | None))]] {
     import from jaclang.jac0core.constant { CodeContext, ExprCtx, Tokens as Tok }
+    import from jaclang.compiler.symbol_utils { CallKind, classify_call }
     out: list[tuple[(UniNode, str, str, (str | None))]] = [];
     _stdlib_help: (str | None) = None;
 
@@ -420,6 +428,15 @@ impl native_capability_violations(
                         )
                     );
                 }
+            }
+
+            if isinstance(nd, FuncCall)
+                and isinstance(nd.target, Name)
+                and nd.target.sym_name in NATIVE_UNLOWERABLE_BUILTINS
+                and classify_call(nd) == CallKind.BUILTIN {
+                out.append(
+                    (nd, "builtin", nd.target.sym_name, _NATIVE_REFLECTION_HELP)
+                );
             }
 
             if isinstance(nd, ParamVar) and nd.unpack is not None {

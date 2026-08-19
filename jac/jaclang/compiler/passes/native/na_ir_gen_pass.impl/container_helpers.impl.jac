@@ -313,6 +313,108 @@ impl NaIRGenPass._emit_spread_copy(
     }
 }
 
+impl NaIRGenPass._emit_dict_spread_copy(
+    src: ir.Value, src_helpers: dict, dest: ir.Value, dest_helpers: dict, loc: str
+) -> None {
+    i64 = ir.IntType(64);
+    _fn = self.builder.function;
+    _loop_bb = _fn.append_basic_block("dspread.loop");
+    _body_bb = _fn.append_basic_block("dspread.body");
+    _done_bb = _fn.append_basic_block("dspread.done");
+    _len = self.builder.call(src_helpers["len"], [src], name="dspread.len");
+    _pre_bb = self.builder.block;
+    self.builder.branch(_loop_bb);
+
+    self._builder = ir.IRBuilder(_loop_bb);
+    _idx = self.builder.phi(i64, name="dspread.i");
+    _idx.add_incoming(ir.Constant(i64, 0), _pre_bb);
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(">=", _idx, _len, name="dspread.atend"),
+        _done_bb,
+        _body_bb
+    );
+
+    self._builder = ir.IRBuilder(_body_bb);
+    _k = self.builder.call(src_helpers["get_key"], [src, _idx], name="dspread.k");
+    _v = self.builder.call(src_helpers["get_val"], [src, _idx], name="dspread.v");
+    _k = self._coerce_type(_k, dest_helpers["key_type"]);
+    _v = self._coerce_type(_v, dest_helpers["val_type"]);
+    self._rc_call_with_ctx(
+        dest_helpers["set"], [dest, _k, _v], op="dict_init", loc=loc
+    );
+    _next = self.builder.add(_idx, ir.Constant(i64, 1), name="dspread.i1");
+    _idx.add_incoming(_next, self.builder.block);
+    self.builder.branch(_loop_bb);
+
+    self._builder = ir.IRBuilder(_done_bb);
+    if isinstance(src.type, ir.PointerType)
+        and self._is_owned(src)
+        and self._gc_mode() != "none" {
+        self._emit_rc_release_simple(src, op="dspread", loc=loc);
+    }
+}
+
+impl NaIRGenPass._container_flavor_of(t: (ir.Type | None)) -> (tuple | None) {
+    if t is None {
+        return None;
+    }
+    _pl = self._opt_payload_of(t);
+    if _pl is not None {
+        return self._container_flavor_of(_pl);
+    }
+    if not isinstance(t, ir.PointerType) {
+        return None;
+    }
+    for (_kind, _tbl) in (
+        ("list", self.list_types),
+        ("set", self.set_types),
+        ("dict", self.dict_types)
+    ) {
+        for (_spec, _ty) in _tbl.items() {
+            if _ty.as_pointer() == t {
+                return (_kind, _spec, );
+            }
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._flavor_is_jacval(kind: str, spec: str) -> bool {
+    if kind == "dict" {
+        return spec.split(":")[-1] == "jacval";
+    }
+    return spec == "jacval";
+}
+
+impl NaIRGenPass._reflavor_container(
+    val: ir.Value, kind: str, src_spec: str, dst_spec: str
+) -> (ir.Value | None) {
+    if self._builder is None or self.builder.function is None {
+        return None;
+    }
+    if kind == "list" {
+        _tbl = self.list_helpers;
+    } elif kind == "set" {
+        _tbl = self.set_helpers;
+    } else {
+        _tbl = self.dict_helpers;
+    }
+    _src_h = _tbl.get(src_spec);
+    _dst_h = _tbl.get(dst_spec);
+    if _src_h is None or _dst_h is None {
+        return None;
+    }
+    _out = self.builder.call(
+        _dst_h["new"], [], name=f"{kind}.{dst_spec.replace(':', '.')}.reflavor"
+    );
+    if kind == "dict" {
+        self._emit_dict_spread_copy(val, _src_h, _out, _dst_h, "dict_reflavor");
+    } else {
+        self._emit_spread_copy(val, _src_h, _out, _dst_h, kind, f"{kind}_reflavor");
+    }
+    return self._mark_owned(_out);
+}
+
 impl NaIRGenPass._container_managed_fields(layout: dict) -> list {
     _kinds = layout["elem_kinds"];
     return [

@@ -659,8 +659,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _zero_const(ty: ir.Type) -> ir.Constant;
     def _spec_from_list_slot_type(t: (ir.Type | None)) -> (str | None);
-    def _reflavor_list(
-        val: ir.Value, src_spec: str, dst_spec: str
+    def _container_flavor_of(t: (ir.Type | None)) -> (tuple | None);
+    def _flavor_is_jacval(kind: str, spec: str) -> bool;
+    def _reflavor_container(
+        val: ir.Value, kind: str, src_spec: str, dst_spec: str
     ) -> (ir.Value | None);
 
     def _cast_to_list_elem(
@@ -1157,6 +1159,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         dest_helpers: dict,
         dest_kind: str,
         loc: str
+    ) -> None;
+
+    def _emit_dict_spread_copy(
+        src: ir.Value, src_helpers: dict, dest: ir.Value, dest_helpers: dict, loc: str
     ) -> None;
 
     def _emit_elem_retain(b: ir.IRBuilder, elem_type: ir.Type, val: ir.Value) -> None;

@@ -145,22 +145,6 @@ impl NaIRGenPass._cast_to_list_elem(
     return val;
 }
 
-impl NaIRGenPass._reflavor_list(
-    val: ir.Value, src_spec: str, dst_spec: str
-) -> (ir.Value | None) {
-    if self._builder is None or self.builder.function is None {
-        return None;
-    }
-    _src_h = self.list_helpers.get(src_spec);
-    _dst_h = self.list_helpers.get(dst_spec);
-    if _src_h is None or _dst_h is None {
-        return None;
-    }
-    _out = self.builder.call(_dst_h["new"], [], name=f"list.{dst_spec}.reflavor");
-    self._emit_spread_copy(val, _src_h, _out, _dst_h, "list", "list_reflavor");
-    return self._mark_owned(_out);
-}
-
 impl NaIRGenPass._spec_from_list_slot_type(t: (ir.Type | None)) -> (str | None) {
     if t is None {
         return None;
