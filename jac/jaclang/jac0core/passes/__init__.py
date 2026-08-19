@@ -17,6 +17,7 @@ from jaclang.jac0core.passes.ast_validation_pass import ASTValidationPass
 from jaclang.jac0core.passes.boundary_analysis_pass import BoundaryAnalysisPass
 from jaclang.jac0core.passes.decl_impl_match_pass import DeclImplMatchPass
 from jaclang.jac0core.passes.endpoint_effect_pass import EndpointEffectPass
+from jaclang.jac0core.passes.graph_schema_pass import GraphSchemaPass
 from jaclang.jac0core.passes.jcir_bc_gen_pass import JcirBytecodeGenPass
 from jaclang.jac0core.passes.jcir_gen_pass import JcirGenPass
 from jaclang.jac0core.passes.module_codegen_pass import ModuleCodegenPass
@@ -47,5 +48,6 @@ __all__ = [
     "BoundaryAnalysisPass",
     "PlacementApplyPass",
     "EndpointEffectPass",
+    "GraphSchemaPass",
     "ModuleCodegenPass",
 ]

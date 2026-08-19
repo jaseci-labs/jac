@@ -552,6 +552,7 @@ obj InteropManifest {
     has bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
         boundary_types: dict[(str, BoundaryTypeInfo)] = field(default_factory=`dict),
         endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
+        graph_schema: dict = field(default_factory=`dict),
         func_access: dict[(str, bool)] = field(default_factory=`dict),
         walker_access: dict[(str, bool)] = field(default_factory=`dict),
         native_module_imports: dict[(str, NativeModuleInfo)] = field(

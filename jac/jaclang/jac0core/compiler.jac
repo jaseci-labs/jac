@@ -33,6 +33,7 @@ import from jaclang.jac0core.passes {
     BoundaryAnalysisPass,
     DeclImplMatchPass,
     EndpointEffectPass,
+    GraphSchemaPass,
     JacAnnexPass,
     JcirBytecodeGenPass,
     JcirGenPass,
@@ -420,7 +421,8 @@ def import_error_re_enters(err: BaseException, file_path: str) -> (str | None) {
 
 def get_boundary_analysis_sched -> list[type[Transform]] {
     return validate_schedule(
-        [BoundaryAnalysisPass, EndpointEffectPass], origin='boundary-analysis schedule'
+        [BoundaryAnalysisPass, EndpointEffectPass, GraphSchemaPass],
+        origin='boundary-analysis schedule'
     );
 }
 
