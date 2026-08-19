@@ -887,6 +887,15 @@ jobs:
     needs: changes
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
     runs-on: ubuntu-latest
+    # The apt step below has twice hung until GitHub's 6h job ceiling killed it
+    # (runs 32084692251 and 32233728853, both stuck on `apt-get`). Nothing here
+    # legitimately runs longer than ~10 min. The ceiling is not just wasted
+    # runner time: push-to-main serializes on the `ci-refs/heads/main`
+    # concurrency group, so a 6h job holds the group for 6h, and GitHub keeps
+    # only one pending run per group -- every commit merged in that window is
+    # dropped with zero jobs. Bound it here so the blast radius of an apt stall
+    # is one red lane, not a morning of untested commits.
+    timeout-minutes: 30
     # Dev lane: run THIS checkout's compiler (see test-compiler).
     env:
       JAC_NO_DEV_SOURCE: ""
