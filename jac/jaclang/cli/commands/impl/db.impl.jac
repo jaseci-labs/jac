@@ -15,7 +15,9 @@ enum DbAction(StrEnum) {
     FETCH = 'fetch',
     LIST = 'list',
     DROP = 'drop',
-    PRUNE = 'prune'
+    PRUNE = 'prune',
+    SCHEMA = 'schema',
+    PARITY = 'parity'
 }
 
 
@@ -175,6 +177,32 @@ def _db_sql(data_dir: str, query: str) -> int {
         store.close();
     }
     return 0;
+}
+
+
+def _db_parity(data_dir: str) -> int {
+    rt = _runtime_for(data_dir);
+    store = _open_store(rt);
+    try {
+        import from jaclang.runtimelib.relational { relational_parity }
+        store.begin(TxnIsolation.READ_COMMITTED);
+        probs = relational_parity(store, limit=100000);
+        store.commit();
+        if not probs {
+            console.success('relational parity clean');
+            return 0;
+        }
+        for p in probs[:50] {
+            console.error(p);
+        }
+        if len(probs) > 50 {
+            console.error(f"... and {len(probs) - 50} more");
+        }
+        console.error(f"{len(probs)} parity problem(s)");
+        return 1;
+    } finally {
+        store.close();
+    }
 }
 
 
@@ -383,6 +411,136 @@ def _db_drop(data_dir: str, database: str, yes: bool) -> int {
 }
 
 
+def _schema_col(f: dict) -> str {
+    import from jaclang.jac0core.passes.graph_schema_pass { SCALAR_SQL }
+    tier = f.get('tier', 'json');
+    opt = '' if f.get('optional') else ' NOT NULL';
+    if tier == 'scalar' {
+        return f"{SCALAR_SQL.get(f.get('type'), 'text')}{opt}";
+    }
+    if tier == 'enum' {
+        return f"text{opt}  -- enum {f.get('target')}";
+    }
+    if tier == 'node_ref' {
+        return f"uuid{opt} REFERENCES nodes(id)  -- {f.get('target')}";
+    }
+    if tier == 'node_ref_list' {
+        return f"uuid[]{opt}  -- ordered {f.get('target')} refs";
+    }
+    if tier == 'scalar_list' {
+        return f"jsonb{opt}  -- {f.get('type')}";
+    }
+    if tier in ['obj', 'obj_list'] {
+        return f"jsonb{opt}  -- {f.get('target')} (side-table candidate)";
+    }
+    return f"jsonb{opt}";
+}
+
+
+def _render_edge_line(name: str, spec: dict) -> str {
+    declared = spec.get('declared');
+    observed = spec.get('observed') or [];
+    parts: list[str] = [];
+    if declared {
+        parts.append(
+            f"declared {declared.get('src') or '?'} -> {declared.get('dst') or '?'}"
+        );
+    }
+    if observed {
+        obs = ", ".join(f"{s or '?'} -> {d or '?'}" for (s, d) in observed);
+        parts.append(f"observed {obs}");
+    }
+    if not parts {
+        parts.append("no endpoints known");
+    }
+    open_mark = '';
+    if any((s is None or d is None) for (s, d) in observed) {
+        open_mark = '  [open]';
+    }
+    und = '  [undirected seen]' if spec.get('undirected_seen') else '';
+    return f"  {name}: {'; '.join(parts)}{open_mark}{und}";
+}
+
+
+def _db_schema(target: str) -> int {
+    import json;
+    if not target {
+        console.error("usage: jac db schema <file.jac>");
+        return 1;
+    }
+    path = str(Path(target).expanduser().resolve());
+    if not Path(path).is_file() {
+        console.error(f"no such file: {target}");
+        return 1;
+    }
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.compiler { get_boundary_analysis_sched }
+    prog = JacProgram();
+    prev_errors = len(prog.errors_had);
+    try {
+        prog.compile(path);
+    } except Exception as e {
+        console.error(f"compile failed: {e}");
+        return 1;
+    }
+    if len(prog.errors_had) > prev_errors {
+        for e in prog.errors_had[prev_errors:] {
+            console.error(str(e));
+        }
+        return 1;
+    }
+    mod = prog.find_module(path);
+    if mod is None {
+        console.error(f"module not found after compile: {path}");
+        return 1;
+    }
+    man = mod.gen.interop_manifest;
+    if man and not man.graph_schema {
+        try {
+            prog.run_schedule(mod, get_boundary_analysis_sched());
+        } except Exception {
+            ;
+        }
+    }
+    gs = man.graph_schema if man else {};
+    if not gs {
+        console.print("no graph schema (module declares no archetypes)");
+        return 0;
+    }
+    nodes = gs.get('nodes', {});
+    edges = gs.get('edges', {});
+    objs = gs.get('objs', {});
+    console.print(f"Graph schema for {target} (module {gs.get('module')})");
+    console.print(f"\nNode tables ({len(nodes)}):");
+    for (name, spec) in nodes.items() {
+        bases = spec.get('bases') or [];
+        suffix = f"  -- extends {', '.join(bases)}" if bases else '';
+        console.print(f"  n_{name.lower()} (id uuid PK -> nodes(id)){suffix}");
+        for f in spec.get('fields', []) {
+            console.print(f"    {f.get('name'):<20} {_schema_col(f)}");
+        }
+    }
+    console.print(f"\nEdge relations ({len(edges)}) -> one edges table:");
+    for (name, spec) in edges.items() {
+        console.print(_render_edge_line(name, spec));
+        for f in spec.get('fields', []) {
+            console.print(f"    {f.get('name'):<20} {_schema_col(f)} (props)");
+        }
+    }
+    if objs {
+        console.print(f"\nEmbedded objects ({len(objs)}):");
+        for (name, spec) in objs.items() {
+            kind = 'flat scalar -> side table' if spec.get('flat_scalar') else 'jsonb';
+            console.print(f"  {name} ({kind})");
+            for f in spec.get('fields', []) {
+                console.print(f"    {f.get('name'):<20} {_schema_col(f)}");
+            }
+        }
+    }
+    return 0;
+}
+
+
 impl db(
     action: str = "status",
     query: str = "",
@@ -395,6 +553,9 @@ impl db(
     if verb is None {
         console.error(f"unknown action: {action}");
         return 1;
+    }
+    if verb == DbAction.SCHEMA {
+        return _db_schema(query);
     }
     if verb == DbAction.SERVE {
         return _db_serve(data_dir, port);
@@ -411,6 +572,9 @@ impl db(
     }
     if verb == DbAction.SQL {
         return _db_sql(dd, query);
+    }
+    if verb == DbAction.PARITY {
+        return _db_parity(dd);
     }
     if verb == DbAction.LIST {
         return _db_list(dd);

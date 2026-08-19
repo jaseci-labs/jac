@@ -12,13 +12,16 @@ glob registry = get_registry();
             "action",
             kind=ArgKind.POSITIONAL,
             default="status",
-            help="Action: status, serve, stop, inspect, sql, fetch, list, drop, prune"
+            help="Action: status, serve, stop, inspect, sql, fetch, list, drop, prune, schema, parity"
         ),
         Arg.create(
             "query",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="SQL text (for `jac db sql`) or database name (for `jac db drop`)"
+            help=(
+                "SQL text (for `jac db sql`), database name (for `jac db drop`), "
+                "or .jac file (for `jac db schema`)"
+            )
         ),
         Arg.create(
             "data_dir",
@@ -55,6 +58,14 @@ glob registry = get_registry();
     examples=[
         ("jac db status", "Show the project store's server state and row counts"),
         ("jac db inspect", "Summarize anchors by kind and archetype"),
+        (
+            "jac db schema app.jac",
+            "Show the relational schema derived from the program's archetypes"
+        ),
+        (
+            "jac db parity",
+            "Check the relational shadow tables against the anchors table"
+        ),
         ("jac db sql \"SELECT count(*) FROM anchors\"", "Run one SQL statement"),
         ("jac db list", "List every jac database in the shared cluster"),
         ("jac db prune", "Report databases whose project is gone (drops nothing)"),

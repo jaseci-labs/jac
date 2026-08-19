@@ -814,6 +814,8 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             self._known_types.add(pair[0]);
         }
     }
+    import from jaclang.runtimelib.relational { relational_after_upsert }
+    relational_after_upsert(self, rows);
 }
 
 
@@ -825,6 +827,8 @@ impl PgStore.delete(ids: list[UUID]) -> None {
         'DELETE FROM anchors WHERE id = ANY(CAST(:ids AS uuid[]))',
         {'ids': [str(i) for i in ids]}
     );
+    import from jaclang.runtimelib.relational { relational_after_delete }
+    relational_after_delete(self, ids);
 }
 
 
