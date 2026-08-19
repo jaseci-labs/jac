@@ -421,7 +421,12 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         if i in self._deleted {
             continue;
         }
-        if (hit := self.__mem__.get(i)) is not None {
+        # the resident map is the fetch skip-list: a node already loaded is
+        # never re-read from the store. Only fully-populated residents count -
+        # a bare stub (a node resolved as an edge endpoint) carries no archetype
+        # or adjacency, so it must still be fetched, not returned as-is.
+        hit = self.__mem__.get(i);
+        if hit is not None and hit.is_populated() {
             out[i] = hit;
         } else {
             missing.append(i);

@@ -445,6 +445,13 @@ impl PgStore.ensure_schema_once(promotions: dict[str, list[str]]) -> None {
             return;
         }
         self.ensure_schema(promotions);
+        import from jaclang.runtimelib.relational {
+            relational_read_enabled,
+            relational_backfill_once
+        }
+        if relational_read_enabled() {
+            relational_backfill_once(self);
+        }
         _schema_ready.add(ns);
     }
 }
@@ -679,6 +686,37 @@ impl PgStore.load_full(ids: list[UUID]) -> dict[UUID, AnchorRow] {
         return {};
     }
     out: dict[UUID, AnchorRow] = {};
+    import from jaclang.runtimelib.relational {
+        relational_read_enabled,
+        relational_load_full
+    }
+    if relational_read_enabled() {
+        (found, still_missing) = relational_load_full(self, ids);
+        for (rid, d) in found.items() {
+            row = AnchorRow(
+                id=UUID(rid),
+                kind=d['kind'],
+                arch_type=d['arch_type'],
+                arch_module=d['arch_module'],
+                root_id=UUID(d['root_id']) if d.get('root_id') else None,
+                props=d['props'],
+                src=UUID(d['src']) if d.get('src') else None,
+                dst=UUID(d['dst']) if d.get('dst') else None,
+                undirected=bool(d.get('undirected', False)),
+                version=int(d.get('version', 0)),
+                adjacency=(
+                    [UUID(e) for e in d['adjacency']]
+                        if d.get('adjacency') is not None
+                        else None
+                )
+            );
+            out[row.id] = row;
+        }
+        ids = still_missing;
+        if not ids {
+            return out;
+        }
+    }
     rows = self._run(
         """
         SELECT a.id, a.kind, a.arch_type, a.arch_module, a.fingerprint,
@@ -814,6 +852,8 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             self._known_types.add(pair[0]);
         }
     }
+    import from jaclang.runtimelib.relational { relational_after_upsert }
+    relational_after_upsert(self, rows);
 }
 
 
@@ -825,6 +865,8 @@ impl PgStore.delete(ids: list[UUID]) -> None {
         'DELETE FROM anchors WHERE id = ANY(CAST(:ids AS uuid[]))',
         {'ids': [str(i) for i in ids]}
     );
+    import from jaclang.runtimelib.relational { relational_after_delete }
+    relational_after_delete(self, ids);
 }
 
 
