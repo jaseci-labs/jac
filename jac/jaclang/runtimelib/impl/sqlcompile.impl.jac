@@ -32,13 +32,18 @@ def _pushable_value(v: any) -> bool {
 }
 
 
-def _type_cond(alias: str, tname: str, params: dict, pfx: str) -> str {
+def _type_cond_col(col: str, tname: str, params: dict, pfx: str) -> str {
     key = f"{pfx}t";
     params[key] = tname;
     return (
-        f"({alias}.arch_type = :{key} OR {alias}.arch_type IN "
+        f"({col} = :{key} OR {col} IN "
         f"(SELECT type_name FROM graph_types WHERE ancestor = :{key}))"
     );
+}
+
+
+def _type_cond(alias: str, tname: str, params: dict, pfx: str) -> str {
+    return _type_cond_col(f"{alias}.arch_type", tname, params, pfx);
 }
 
 
@@ -127,7 +132,22 @@ def _nd_types(hop: QHop) -> list {
 }
 
 
-impl compile_query(q: GraphQuery, upto: int) -> CompiledQuery {
+impl chain_relational_ok(q: GraphQuery, upto: int) -> bool {
+    # the relational traversal covers type-filtered chains; field predicates
+    # would silently widen results if demoted (residuals are not re-applied
+    # to SQL rows), so any pred sends the whole chain to the legacy path
+    for hop in q.hops[:upto] {
+        if hop.epreds or hop.preds {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+impl compile_query(
+    q: GraphQuery, upto: int, relational: bool = False
+) -> CompiledQuery {
     out = CompiledQuery();
     params: dict = {};
     params['origin'] = [];
@@ -135,28 +155,42 @@ impl compile_query(q: GraphQuery, upto: int) -> CompiledQuery {
     order: list[str] = [];
     fid = 'f0.id';
     n = 0;
+    edge_tbl = 'edges' if relational else 'anchors';
+    node_tbl = 'nodes' if relational else 'anchors';
+    etype_col = 'edge_type' if relational else 'arch_type';
     for (i, hop) in enumerate(q.hops[:upto]) {
         n = i + 1;
         e = f"e{n}";
         nd_alias = f"n{n}";
         pfx_e = f"h{n}e";
-        econds = [f"{e}.kind = 'EdgeAnchor'", _dir_cond(e, fid, hop.dir)];
+        econds = [_dir_cond(e, fid, hop.dir)];
+        if not relational {
+            econds.insert(0, f"{e}.kind = 'EdgeAnchor'");
+        }
         if hop.`edge is not None {
-            econds.append(_type_cond(e, hop.`edge.__name__, params, pfx_e));
+            econds.append(
+                _type_cond_col(f"{e}.{etype_col}", hop.`edge.__name__, params, pfx_e)
+            );
         }
         for (j, p) in enumerate(hop.epreds) {
-            cond = _pred_cond(e, p, params, f"{pfx_e}p{j}");
+            cond = None if relational else _pred_cond(e, p, params, f"{pfx_e}p{j}");
             if cond is None {
                 out.residual.setdefault(i, []).append(p);
             } else {
                 econds.append(cond);
             }
         }
-        joins.append(f"JOIN anchors {e} ON {' AND '.join(econds)}");
-        nconds = [
-            f"{nd_alias}.id = {_other_expr(e, fid)}",
-            f"{nd_alias}.kind = 'NodeAnchor'"
-        ];
+        joins.append(f"JOIN {edge_tbl} {e} ON {' AND '.join(econds)}");
+        if relational {
+            # anchors stays the source of truth pre-cutover: a cheap pkey
+            # semi-join keeps the dangling-ref heal contract (rows surgically
+            # removed from anchors never surface via a stale mirror row)
+            joins.append(f"JOIN anchors ea{n} ON ea{n}.id = {e}.id");
+        }
+        nconds = [f"{nd_alias}.id = {_other_expr(e, fid)}"];
+        if not relational {
+            nconds.append(f"{nd_alias}.kind = 'NodeAnchor'");
+        }
         for (k, nt) in enumerate(_nd_types(hop)) {
             tname = str(getattr(nt, '__name__', ''));
             if tname {
@@ -164,7 +198,9 @@ impl compile_query(q: GraphQuery, upto: int) -> CompiledQuery {
             }
         }
         for (j, p) in enumerate(hop.preds) {
-            cond = _pred_cond(nd_alias, p, params, f"h{n}np{j}");
+            cond = (
+                None if relational else _pred_cond(nd_alias, p, params, f"h{n}np{j}")
+            );
             if cond is None {
                 out.residual.setdefault(i, []).append(p);
             } else {
@@ -177,7 +213,10 @@ impl compile_query(q: GraphQuery, upto: int) -> CompiledQuery {
             params[key] = [str(x) for x in want];
             nconds.append(f"{nd_alias}.id = ANY(CAST(:{key} AS uuid[]))");
         }
-        joins.append(f"JOIN anchors {nd_alias} ON {' AND '.join(nconds)}");
+        joins.append(f"JOIN {node_tbl} {nd_alias} ON {' AND '.join(nconds)}");
+        if relational {
+            joins.append(f"JOIN anchors an{n} ON an{n}.id = {nd_alias}.id");
+        }
         order.append(f"{e}.seq");
         order.append(f"{e}.id");
         fid = f"{nd_alias}.id";
@@ -192,7 +231,7 @@ impl compile_query(q: GraphQuery, upto: int) -> CompiledQuery {
     out.sql = (
         f"SELECT n{n}.id, e{n}.id "
         f"FROM unnest(CAST(:origin AS uuid[])) WITH ORDINALITY AS f0(id, ord) "
-        f"LEFT JOIN anchors s1 ON s1.id = f0.id "
+        f"LEFT JOIN {node_tbl} s1 ON s1.id = f0.id "
         + ' '.join(joins)
         + ' ORDER BY f0.ord, '
         + ', '.join(order)

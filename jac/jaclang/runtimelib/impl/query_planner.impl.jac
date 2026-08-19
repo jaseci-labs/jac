@@ -40,7 +40,10 @@ impl _sql_pairs(
         return [];
     }
     mem.read_barrier();
-    cq = compile_query(q, upto);
+    import from jaclang.runtimelib.relational { relational_read_enabled }
+    import from jaclang.runtimelib.sqlcompile { chain_relational_ok }
+    use_rel = relational_read_enabled() and chain_relational_ok(q, upto);
+    cq = compile_query(q, upto, relational=use_rel);
     if cq.residual {
         logger.warning(
             f"graph query has non-pushable predicates at hops "

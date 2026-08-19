@@ -644,6 +644,7 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
     interop_data['func_access'] = dict(manifest.func_access);
     interop_data['walker_access'] = dict(manifest.walker_access);
     interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
+    interop_data['graph_schema'] = dict(manifest.graph_schema);
     return interop_data;
 }
 
@@ -672,6 +673,7 @@ impl JacCompiler._deserialize_interop_table(
     manifest.func_access.update(cached_interop.get('func_access', {}));
     manifest.walker_access.update(cached_interop.get('walker_access', {}));
     manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
+    manifest.graph_schema.update(cached_interop.get('graph_schema', {}));
     return manifest;
 }
 
