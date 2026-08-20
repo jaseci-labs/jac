@@ -640,6 +640,38 @@ test "codespace stamps invalidate stale module codegen" {
     );
 }
 
+test "demotion re-lowers importer pages with their injected runtime imports" {
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+    import from jaclang.jac0core.placement_solver { demote_client_pulled_elements }
+    prog = JacProgram();
+    app = prog.compile(
+        os.path.join(FIXTURE_DIR, "demote_cache_app.jac"), no_cgen=False
+    );
+    assert 'useJacState' in (app.gen.js or '') , (
+        "page `has` state must lower through useJacState"
+    );
+    util = hub_module(prog, "demote_cache_util.jac");
+    assert util is not None , "imported module missing from hub";
+    demoted = demote_client_pulled_elements(
+        util, prog, len(prog.errors_had), len(prog.warnings_had)
+    );
+    assert demoted , "pulled helper must demote";
+    assert not (app.gen.js or '') , (
+        "demoting a dep must invalidate the client importer's module JS"
+    );
+    EsastGenPass(ir_in=app, prog=prog);
+    js = app.gen.js or '';
+    assert 'useJacState(' in js , "re-lowered page must still lower its state";
+    hook_imported = any(
+        ln.strip().startswith('import ') and 'useJacState' in ln
+        for ln in js.splitlines()
+    );
+    assert hook_imported , (
+        "stale node fragments reused after demotion: useJacState referenced "
+        + f"but never imported; got:\n{js}"
+    );
+}
+
 test "client call to endpoint with function-typed param warns W6005" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_rpc_callable.jac"), no_cgen=False);
