@@ -1209,7 +1209,65 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     if module_name in sv_client._registry {
         return;
     }
-    if module_name in sv_client._test_clients {
+    import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
+    import from jaclang.runtimelib.test_sv_host { prepare_test_sv_service, get_test_adapter }
+    import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
+    import from jaclang.runtimelib.client { get_bun }
+    import from pathlib { Path }
+    import subprocess;
+    host_kind = resolve_sv_service_host(module_name, base_path);
+    if host_kind == 'test' {
+        if get_test_adapter(module_name) is not None {
+            sv_client.register(module_name, f"test://{module_name}");
+            return;
+        }
+        module_file = str(Path(base_path) / f"{module_name}.jac");
+        base_url = prepare_test_sv_service(module_name, module_file, base_path);
+        sv_client.register(module_name, base_url);
+        return;
+    }
+    if host_kind == 'bun' {
+        bun = get_bun();
+        if not bun {
+            raise RuntimeError("Bundled bun runtime is required for Bun-hosted sv services");
+        }
+        artifact = build_bun_service_artifact(module_name, base_path);
+        base_port = 18000 + (hash(module_name) % 1000);
+        child_env = dict(os.environ);
+        child_env['PORT'] = str(base_port);
+        child_env['JAC_PORT'] = str(base_port);
+        proc = subprocess.Popen(
+            [bun, str(artifact)],
+            cwd=base_path,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        );
+        base_url = f"http://127.0.0.1:{base_port}";
+        deadline = time.time() + 10.0;
+        healthy = False;
+        while time.time() < deadline {
+            if proc.poll() is not None {
+                break;
+            }
+            try {
+                with urllib.request.urlopen(f"{base_url}/functions", timeout=1) as resp {
+                    if resp.status < 500 {
+                        healthy = True;
+                        break;
+                    }
+                }
+            } except Exception {
+                time.sleep(0.05);
+            }
+        }
+        if not healthy {
+            proc.terminate();
+            raise RuntimeError(
+                f"Bun sv service '{module_name}' did not become healthy at {base_url}"
+            );
+        }
+        sv_client.register(module_name, base_url);
         return;
     }
     base_port = 18000 + (hash(module_name) % 1000);
@@ -1247,95 +1305,15 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
 }
 
 impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
-    _sp = _scale_provider();
-    if _sp is not None and _sp.sv_transport_available() {
-        return _sp.sv_service_call(module_name, func_name, args);
-    }
-    import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.serving.client { post_stream_aware_sync }
-    import from jaclang.runtimelib.serving.sse { consume_sse_events }
-
-    func_label = f"{module_name}.{func_name}";
-
-    if module_name in sv_client._test_clients {
-        client = sv_client._test_clients[module_name];
-        resp = client.post(f"/function/{func_name}", json=args);
-        ct = str(resp.headers.get("Content-Type") or "");
-        if ct.startswith("text/event-stream") {
-            return consume_sse_events(str(resp.text).splitlines(), func_label);
-        }
-        data = resp.json();
-    } else {
-        url = sv_client.resolve_url(module_name);
-        (kind, payload) = post_stream_aware_sync(
-            f"{url}/function/{func_name}", json_body=args, label=func_label
-        );
-        if kind == 'sse' {
-            return payload;
-        }
-        data = payload;
-    }
-
-    if isinstance(data, dict) and data.get("ok") {
-        result_envelope = data.get("data");
-        if isinstance(result_envelope, dict) and ("result" in result_envelope) {
-            return result_envelope["result"];
-        }
-        return result_envelope;
-    }
-
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
-    raise RuntimeError(
-        f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
-    );
+    import from jaclang.scale.runtime.rpc.rpc { service_call }
+    return service_call(module_name, func_name, args);
 }
 
 impl JacServe.sv_walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any
 ) -> any {
-    _sp = _scale_provider();
-    if _sp is not None and _sp.sv_transport_available() {
-        return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
-    }
-    import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.serving.client { request_sync }
-
-    label = f"{module_name}.{walker_name}";
-
-    if module_name in sv_client._test_clients {
-        client = sv_client._test_clients[module_name];
-        resp = client.post(f"/walker/{walker_name}", json=args);
-        data = resp.json();
-    } else {
-        url = sv_client.resolve_url(module_name);
-        data = request_sync(
-            'POST', f"{url}/walker/{walker_name}", json_body=args
-        ).json();
-    }
-
-    if isinstance(data, dict) and data.get("ok") {
-        envelope = data.get("data") or {};
-        result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
-        reports = envelope.get("reports") if isinstance(envelope, dict) else None;
-        instance = stub_cls._from_wire(result_dict)
-            if (stub_cls is not None and result_dict is not None)
-            else result_dict;
-        if instance is not None and reports is not None {
-            try {
-                instance.reports = reports;
-            } except Exception {
-                pass;
-            }
-        }
-        return instance;
-    }
-
-    err = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
-    raise RuntimeError(
-        f"sv-to-sv walker spawn '{label}' failed: {msg or 'unknown error'}"
-    );
+    import from jaclang.scale.runtime.rpc.rpc { walker_call }
+    return walker_call(module_name, walker_name, args, stub_cls);
 }
 
 

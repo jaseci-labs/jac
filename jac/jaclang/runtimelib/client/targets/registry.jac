@@ -1,64 +1,26 @@
 import from typing { Optional }
 import from pathlib { Path }
 
-enum TargetType {
-    WEB = "web",
-    DESKTOP = "desktop",
-    DESKTOP_CEF = "cef",
-    PWA = "pwa",
-    STATIC = "static",
-    MOBILE = "mobile",
-    REACT_NATIVE = "react-native"
-}
-
-def get_target_type(name: str) -> TargetType {
-    name_lower = name.lower().strip();
-    if name_lower == "" or name_lower == "web" {
-        return TargetType.WEB;
-    }
-    if name_lower == "desktop" {
-        return TargetType.DESKTOP;
-    }
-    if name_lower == "cef" {
-        return TargetType.DESKTOP_CEF;
-    }
-    if name_lower == "pwa" {
-        return TargetType.PWA;
-    }
-    if name_lower == "static" {
-        return TargetType.STATIC;
-    }
-    if name_lower == "mobile" {
-        return TargetType.MOBILE;
-    }
-
-    if name_lower in ("react-native", "react_native", "rn") {
-        return TargetType.REACT_NATIVE;
-    }
-    raise ValueError(
-        f"Unknown target: {name}. Available: {', '.join([t.value for t in TargetType])}"
-    );
-}
-
-class ClientTarget {
+class Host {
     has name: str,
+        host_kind: str = 'browser',
         project_dir: Optional[Path] = None,
         `default: bool = False,
         requires_setup: bool = False,
-        config_section: str = "",
+        config_section: str = '',
         required_dependencies: list[str] = [],
         output_dir: Optional[Path] = None;
 
-    def setup(self: ClientTarget, project_dir: Path) -> None abst;
+    def setup(self: Host, project_dir: Path) -> None abst;
     def build(
-        self: ClientTarget,
+        self: Host,
         entry_file: Path,
         project_dir: Path,
         platform: Optional[str] = None
     ) -> Path abst;
 
     def dev(
-        self: ClientTarget,
+        self: Host,
         entry_file: Path,
         project_dir: Path,
         port: int = 8000,
@@ -66,43 +28,51 @@ class ClientTarget {
     ) -> None abst;
 
     def start(
-        self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+        self: Host, entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None abst;
 }
 
-obj TargetRegistry {
-    has _targets: dict[str, ClientTarget] = {};
+obj HostRegistry {
+    has _hosts: dict[str, Host] = {};
 
-    def register(target: ClientTarget) -> None;
-    def get(name: str) -> Optional[ClientTarget];
-    def get_all -> list[ClientTarget];
+    def register(host: Host) -> None;
+    def get(name: str) -> Optional[Host];
+    def get_all -> list[Host];
     def clear -> None;
 }
 
-obj TargetFactory {
-    def create(name: str, project_dir: Path) -> ClientTarget;
-    def create_by_type(target_type: TargetType, project_dir: Path) -> ClientTarget;
+obj HostFactory {
+    def create(name: str, project_dir: Path) -> Host;
+    def get_available_host_names -> list[str];
     def get_available_target_names -> list[str];
 }
 
-glob _registry: TargetRegistry | None = None,
-     _factory: TargetFactory | None = None;
+glob _registry: HostRegistry | None = None,
+     _factory: HostFactory | None = None;
 
-def get_target_registry -> TargetRegistry {
-    import from jaclang.runtimelib.client.targets.registry { TargetRegistry }
+def get_host_registry -> HostRegistry {
+    import from jaclang.runtimelib.client.targets.registry { HostRegistry }
     if _registry is None {
-        _registry = TargetRegistry();
+        _registry = HostRegistry();
 
-        import from jaclang.runtimelib.client.targets.register { register_targets }
-        register_targets();
+        import from jaclang.runtimelib.client.targets.register { register_hosts }
+        register_hosts();
     }
     return _registry;
 }
 
-def get_target_factory -> TargetFactory {
-    import from jaclang.runtimelib.client.targets.registry { TargetFactory }
+def get_host_factory -> HostFactory {
+    import from jaclang.runtimelib.client.targets.registry { HostFactory }
     if _factory is None {
-        _factory = TargetFactory();
+        _factory = HostFactory();
     }
     return _factory;
+}
+
+def get_target_registry -> HostRegistry {
+    return get_host_registry();
+}
+
+def get_target_factory -> HostFactory {
+    return get_host_factory();
 }

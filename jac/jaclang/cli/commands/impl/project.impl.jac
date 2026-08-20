@@ -555,6 +555,7 @@ impl install(
     no_save: bool = False,
     git: str = "",
     npm: bool | None = None,
+    server: bool = False,
     shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,
@@ -596,6 +597,27 @@ impl install(
         return run_shadcn_add(packages);
     }
     if npm {
+        if server {
+            import from jaclang.runtimelib.client.server_npm_provider {
+                install_server_npm
+            }
+            import from jaclang.project.config { get_config }
+            cfg = get_config();
+            if cfg is None or cfg.project_root is None {
+                console.error(
+                    "No jac.toml found", hint="Run 'jac create' to create a project."
+                );
+                return 1;
+            }
+            try {
+                install_server_npm(Path(str(cfg.project_root)));
+                console.success("Installed server npm dependencies");
+                return 0;
+            } except Exception as e {
+                console.error(f"Failed to install server npm dependencies: {e}");
+                return 1;
+            }
+        }
         import from jaclang.runtimelib.client.cli { run_npm_add }
         return run_npm_add(packages, dev, install_global);
     }

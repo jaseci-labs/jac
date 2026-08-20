@@ -390,6 +390,10 @@ def _module_externally_pinned(mod_path: str) -> bool {
 
 def _seed_from_summary(module: uni.Module, prog: any) -> int {
     import from jaclang.jac0core.compiler { _stamp_context_element }
+    import from jaclang.jac0core.host {
+        CAPABILITY_SEED_ORDER,
+        seed_codespace_for_req
+    }
     mod_path = module.loc.mod_path or '';
     ps = get_module_summary(module, prog);
     seeded = 0;
@@ -418,35 +422,29 @@ def _seed_from_summary(module: uni.Module, prog: any) -> int {
         target_ctx: (CodeContext | None) = None;
         why = '';
         ctx_label = '';
+        req_by_cap: dict[str, str] = {};
         for req in es.reqs {
-            if len(req) < 2 {
+            if len(req) >= 2 {
+                req_by_cap[req[0]] = req[1];
+            }
+        }
+        for cap in CAPABILITY_SEED_ORDER {
+            reason = req_by_cap.get(cap, '');
+            if not reason {
                 continue;
             }
-            (cap, reason) = (req[0], req[1]);
-            if cap == 'FFI' {
-                target_ctx = CodeContext.NATIVE;
-                ctx_label = 'native';
-                why = reason;
-                break;
+            seeded_ctx = seed_codespace_for_req(cap, reason);
+            if seeded_ctx is None {
+                continue;
             }
-            if cap == 'DOM' {
-                target_ctx = CodeContext.CLIENT;
-                ctx_label = 'client';
-                why = reason;
-                break;
-            }
-            if cap == 'NPM'
-                and reason
-                    in (
-                        'string-path import',
-                        'virtual @jac import',
-                        'npm dependency'
-                    ) {
-                target_ctx = CodeContext.CLIENT;
-                ctx_label = 'client';
-                why = reason;
-                break;
-            }
+            target_ctx = seeded_ctx;
+            ctx_label = (
+                'native'
+                    if seeded_ctx == CodeContext.NATIVE
+                    else 'client'
+            );
+            why = reason;
+            break;
         }
         if target_ctx is None {
             continue;

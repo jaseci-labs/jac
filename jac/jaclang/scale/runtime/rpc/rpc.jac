@@ -54,21 +54,25 @@ def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
 
 
 def service_call(module_name: str, func_name: str, args: dict) -> any {
+    import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
     import from jaclang.runtimelib { sv_client }
+    import from jaclang.runtimelib.test_sv_host { get_test_adapter }
     import from jaclang.scale.runtime.context.auth_ctx { get_current_auth }
     import from jaclang.scale.runtime.context.trace_ctx { get_current_trace }
 
     func_label = f"{module_name}.{func_name}";
 
-    if module_name in sv_client._test_clients {
-        tc = sv_client._test_clients[module_name];
-        resp = tc.post(f"/function/{func_name}", json=args);
-        ct = str(resp.headers.get("Content-Type") or "");
-        if ct.startswith("text/event-stream") {
-            return _iter_sse_text(str(resp.text), func_label);
+    if resolve_sv_service_host(module_name) == 'test' {
+        adapter = get_test_adapter(module_name);
+        if adapter is not None {
+            resp = adapter.post(f"/function/{func_name}", json=args);
+            ct = str(resp.headers.get("Content-Type") or "");
+            if ct.startswith("text/event-stream") {
+                return _iter_sse_text(str(resp.text), func_label);
+            }
+            data = resp.json();
+            return _unwrap_sv_envelope(data, module_name, func_name);
         }
-        data = resp.json();
-        return _unwrap_sv_envelope(data, module_name, func_name);
     }
 
     if breaker_should_skip(module_name) {
@@ -126,17 +130,21 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
 def walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any = None
 ) -> any {
+    import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
     import from jaclang.runtimelib { sv_client }
+    import from jaclang.runtimelib.test_sv_host { get_test_adapter }
     import from jaclang.scale.runtime.context.auth_ctx { get_current_auth }
     import from jaclang.scale.runtime.context.trace_ctx { get_current_trace }
 
     label = f"{module_name}.{walker_name}";
 
-    if module_name in sv_client._test_clients {
-        tc = sv_client._test_clients[module_name];
-        resp = tc.post(f"/walker/{walker_name}", json=args);
-        data = resp.json();
-        return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+    if resolve_sv_service_host(module_name) == 'test' {
+        adapter = get_test_adapter(module_name);
+        if adapter is not None {
+            resp = adapter.post(f"/walker/{walker_name}", json=args);
+            data = resp.json();
+            return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+        }
     }
 
     if breaker_should_skip(module_name) {

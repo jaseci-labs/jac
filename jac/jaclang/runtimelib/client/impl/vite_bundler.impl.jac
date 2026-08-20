@@ -448,9 +448,9 @@ impl ViteBundler._generate_vite_config_content(
     framework_plugin_call = 'react()';
     try {
         import from jaclang.compiler.passes.ecmascript.backends.registry {
-            resolve_active_backend
+            resolve_module_backend
         }
-        active_backend = resolve_active_backend();
+        active_backend = resolve_module_backend();
         for (k, v) in active_backend.vite_aliases().items() {
             framework_alias_str += f'\n      "{k}": "{v}",';
         }

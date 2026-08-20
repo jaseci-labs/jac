@@ -8,7 +8,7 @@ import from jaclang.runtimelib.client.mobile_setup_env {
 import os;
 
 import from jaclang.runtimelib.client.targets.register { sync_client_target_choices }
-import from jaclang.runtimelib.client.targets.registry { ClientTarget }
+import from jaclang.runtimelib.client.targets.registry { Host }
 import from pathlib { Path }
 
 glob registry = get_registry();
@@ -440,7 +440,7 @@ def _auto_client_target(config: JacConfig, requested: str, project_dir: Path) ->
 }
 
 def _target_setup_missing(
-    target_name: str, target: ClientTarget, project_dir: Path
+    target_name: str, target: Host, project_dir: Path
 ) -> bool {
     if not target.requires_setup {
         return False;

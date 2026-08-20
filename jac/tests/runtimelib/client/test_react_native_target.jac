@@ -38,8 +38,8 @@ test "react native target files exist" {
     );
 
     content = target_jac.read_text();
-    assert "obj ReactNativeTarget(ClientTarget)" in content , (
-        "ReactNativeTarget must extend ClientTarget directly (D3), not WebTarget"
+    assert "obj ReactNativeTarget(Host)" in content , (
+        "ReactNativeTarget must extend Host directly (D3), not WebTarget"
     );
     # D3 belt-and-suspenders: no `WebTarget` in any import/inheritance position.
     # Docstrings explaining the decision are fine, so we don't ban the literal
@@ -51,20 +51,34 @@ test "react native target files exist" {
     assert 'config_section: str = "react_native"' in content;
 }
 
+test "react native host is DOM-free via capability table" {
+    import from jaclang.jac0core.host {
+        HOST_RN,
+        HOST_DOM,
+        HOST_JS_GLOBALS,
+        host_provides_kind
+    }
+    assert not host_provides_kind(HOST_RN, HOST_DOM) , (
+        "RN must not provide DOM; looseness must emerge from the host table"
+    );
+    assert host_provides_kind(HOST_RN, HOST_JS_GLOBALS) , (
+        "RN is still a JS host and must expose js_globals ambient types"
+    );
+}
+
 test "target factory resolves react-native by canonical name" {
     import from jaclang.runtimelib.client.targets.registry {
-        get_target_factory,
-        get_target_type,
-        TargetType
+        get_host_factory
     }
+    import from jaclang.jac0core.host { HOST_RN, host_kind_for_target }
 
-    assert get_target_type("react-native") == TargetType.REACT_NATIVE;
-    assert get_target_type("react_native") == TargetType.REACT_NATIVE;
-    assert get_target_type("rn") == TargetType.REACT_NATIVE;
-    assert get_target_type("REACT-NATIVE") == TargetType.REACT_NATIVE;
+    assert host_kind_for_target("react-native") == HOST_RN;
+    assert host_kind_for_target("react_native") == HOST_RN;
+    assert host_kind_for_target("rn") == HOST_RN;
+    assert host_kind_for_target("REACT-NATIVE") == HOST_RN;
 
     _register_client_targets();
-    factory = get_target_factory();
+    factory = get_host_factory();
     target = factory.create("react-native", Path.cwd());
     assert target.name == "react-native";
     assert target.requires_setup == True;

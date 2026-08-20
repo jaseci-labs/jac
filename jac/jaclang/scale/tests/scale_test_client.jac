@@ -70,8 +70,7 @@ obj ScaleTestClient {
             self._jac_file,
             self._base_path,
             endpoint_profile="test",
-            setup_background_services=False,
-            transport_kind="testclient"
+            setup_background_services=False
         );
         self._server = self._runtime.server;
         self._client = self._runtime.client;

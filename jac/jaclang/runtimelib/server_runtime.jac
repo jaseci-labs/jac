@@ -1,0 +1,228 @@
+"""JS server runtime for Bun-hosted sv services (stateless tier, P1)."""
+
+async def parseJsonBody(req: any) -> (dict | None) {
+    try {
+        return await req.json();
+    } except Exception {
+        return None;
+    }
+}
+
+def deserializeWireValue(val: any) -> any {
+    if val is None or typeof val != 'object' {
+        return val;
+    }
+    if Array.isArray(val) {
+        mapped: list = [];
+        for item in val {
+            mapped.push(deserializeWireValue(item));
+        }
+        return mapped;
+    }
+    if val.__type__ and val.__type__.__from_wire {
+        return val.__type__.__from_wire(val);
+    }
+    if val.__type__ {
+        ctor = globalThis[val.__type__];
+        if ctor and ctor.__from_wire {
+            return ctor.__from_wire(val);
+        }
+    }
+    return val;
+}
+
+def deserializeWireArgs(args: dict) -> dict {
+    out: dict = {};
+    for key in Object.keys(args) {
+        out[key] = deserializeWireValue(args[key]);
+    }
+    return out;
+}
+
+def serializeApiValue(val: any) -> any {
+    if val is None {
+        return None;
+    }
+    t = typeof val;
+    if t == 'string' or t == 'number' or t == 'boolean' {
+        return val;
+    }
+    if Array.isArray(val) {
+        mapped: list = [];
+        for item in val {
+            mapped.push(serializeApiValue(item));
+        }
+        return mapped;
+    }
+    if val.__to_wire {
+        return val.__to_wire();
+    }
+    if typeof val == 'object' {
+        out: dict = {};
+        for key in Object.keys(val) {
+            if not key.startsWith('_') {
+                out[key] = serializeApiValue(val[key]);
+            }
+        }
+        if val.constructor and val.constructor.name {
+            out['_jac_type'] = val.constructor.name;
+            out['_jac_archetype'] = 'walker';
+        }
+        return out;
+    }
+    return String(val);
+}
+
+def finalizeCallResponse(result: any, reports: any = []) -> dict {
+    return {
+        'result': serializeApiValue(result),
+        'reports': serializeApiValue(reports)
+    };
+}
+
+def okEnvelope(data: any) -> dict {
+    return {'ok': True, 'data': data};
+}
+
+def errorEnvelope(message: str) -> dict {
+    return {'ok': False, 'error': {'message': message}};
+}
+
+async def execWalker(walkerCls: any, fields: dict) -> any {
+    inst = Object.assign(new walkerCls(), fields);
+    runner = globalThis.__jacServerSpawnWalker;
+    if runner {
+        return await runner(inst);
+    }
+    if inst.__jac_run {
+        return await inst.__jac_run();
+    }
+    raise Exception('No walker runtime available for Bun host');
+}
+
+async def handleFunctionCall(req: any, name: str, handlers: dict) -> dict {
+    fn = handlers[name];
+    if not fn {
+        return errorEnvelope(f"Unknown function '{name}'");
+    }
+    body = await parseJsonBody(req);
+    if body is None {
+        return errorEnvelope('Invalid JSON');
+    }
+    args = deserializeWireArgs(body);
+    try {
+        result = fn(args);
+        if result and typeof result == 'object' and result.then {
+            result = await result;
+        }
+        return okEnvelope(finalizeCallResponse(result, []));
+    } except Exception as e {
+        msg = e.message if e.message else String(e);
+        return errorEnvelope(msg);
+    }
+}
+
+async def handleWalkerSpawn(
+    req: any, name: str, nodeId: str, handlers: dict
+) -> dict {
+    spawnFn = handlers[name];
+    if not spawnFn {
+        return errorEnvelope(f"Unknown walker '{name}'");
+    }
+    body = await parseJsonBody(req);
+    if body is None {
+        return errorEnvelope('Invalid JSON');
+    }
+    fields = deserializeWireArgs(body);
+    if nodeId {
+        fields['_jac_spawn_node'] = nodeId;
+    }
+    try {
+        result = await spawnFn(fields);
+        reports = result?.reports || [];
+        if result and result.result is not None {
+            payload = finalizeCallResponse(result.result, reports);
+        } else {
+            payload = finalizeCallResponse(result, reports);
+        }
+        return okEnvelope(payload);
+    } except Exception as e {
+        msg = e.message if e.message else String(e);
+        return errorEnvelope(msg);
+    }
+}
+
+def startBunServer(opts: dict) -> None {
+    project = opts.project || 'jac-service';
+    walkers = opts.walkers || [];
+    functions = opts.functions || [];
+    handlers = opts.handlers || {};
+    port = Number(opts.port || 8000);
+    walkerFns = handlers.walkers || {};
+    functionFns = handlers.functions || {};
+    restspec = handlers.restspec || [];
+
+    Bun.serve({
+        port: port,
+        hostname: '0.0.0.0',
+        fetch: async (req: any) => {
+            url = new URL(req.url);
+            path = url.pathname;
+            method = req.method;
+
+            if method == 'GET' and path == '/functions' {
+                return Response.json(functions);
+            }
+            if method == 'GET' and path == '/walkers' {
+                return Response.json(walkers);
+            }
+            if method == 'GET' and (path == '/healthz' or path == '/__health') {
+                return Response.json(
+                    {'project': project, 'walkers': walkers, 'functions': functions}
+                );
+            }
+
+            fnMatch = path.match(/^\/function\/([^/]+)$/);
+            if fnMatch and method == 'POST' {
+                name = decodeURIComponent(fnMatch[1]);
+                payload = await handleFunctionCall(req, name, functionFns);
+                return Response.json(payload);
+            }
+
+            walkerMatch = path.match(/^\/walker\/([^/]+)(?:\/([^/]+))?$/);
+            if walkerMatch and method == 'POST' {
+                name = decodeURIComponent(walkerMatch[1]);
+                nodeId = '';
+                if walkerMatch[2] {
+                    nodeId = decodeURIComponent(walkerMatch[2]);
+                }
+                payload = await handleWalkerSpawn(req, name, nodeId, walkerFns);
+                return Response.json(payload);
+            }
+
+            for carrier in restspec {
+                spec = carrier.fn?.restspec;
+                if not spec {
+                    continue;
+                }
+                specPath = String(spec.path || '');
+                if specPath == '' {
+                    continue;
+                }
+                if not specPath.startsWith('/') {
+                    specPath = '/' + specPath;
+                }
+                specMethod = String(spec.method || 'POST').toUpperCase();
+                if path == specPath and method == specMethod {
+                    payload = await handleFunctionCall(
+                        req, carrier.name, {carrier.name: carrier.handler}
+                    );
+                    return Response.json(payload);
+                }
+            }
+
+            return new Response('Not Found', {status: 404});
+        }
+    });
+    console.log(`Bun sv service '${project}' listening on http://0.0.0.0:${port}`);
+}

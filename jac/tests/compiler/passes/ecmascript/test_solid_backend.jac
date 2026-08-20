@@ -15,7 +15,7 @@ import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.compiler.passes.ecmascript.backends.registry {
-    resolve_active_backend,
+    resolve_module_backend,
     resolve_framework_backend
 }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
@@ -64,11 +64,11 @@ test "registry resolves the solid backend" {
     assert backend.import_source("__jacJsx") == "@jac/runtime";
 }
 
-test "resolve_active_backend reads solid from project config" {
+test "resolve_module_backend reads solid from project config" {
     cfg = JacConfig();
     cfg.client = ClientConfig(framework="solid");
     set_config(cfg);
-    backend = resolve_active_backend();
+    backend = resolve_module_backend();
     assert backend.name() == "solid";
 }
 

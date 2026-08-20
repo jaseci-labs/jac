@@ -107,9 +107,9 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> No
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
     import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_active_backend
+        resolve_module_backend
     }
-    backend = resolve_active_backend();
+    backend = resolve_module_backend();
 
     entry_file = self.compiled_dir / '_entry.js';
     if self._has_pages {
@@ -132,7 +132,7 @@ impl ViteCompiler._create_pages_entry_content(
     self: ViteCompiler, module_path: Path
 ) -> str {
     import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_active_backend
+        resolve_module_backend
     }
     auth_redirect = "/login";
     try {
@@ -151,7 +151,7 @@ impl ViteCompiler._create_pages_entry_content(
     app_module = self.compiled_dir / f"{module_path.stem}.js";
     has_app_wrapper = app_module.exists();
 
-    backend = resolve_active_backend();
+    backend = resolve_module_backend();
     return backend.build_pages_entry_script(
         module_path.stem, auth_redirect, has_app_wrapper
     );

@@ -57,10 +57,10 @@ test "targets register lazily before sync reads them" {
     assert "register_targets();" not in cli_content;
 
     registry_content = _registry_jac.read_text().replace("\r\n", "\n");
-    # Lazy self-registration: register_targets() runs on first access, before
+    # Lazy self-registration: register_hosts() runs on first access, before
     # the registry is handed back to any caller (so before sync reads it).
-    assert "register_targets();" in registry_content;
-    reg_idx = registry_content.index("register_targets();");
+    assert "register_hosts();" in registry_content;
+    reg_idx = registry_content.index("register_hosts();");
     ret_idx = registry_content.index("return _registry;");
-    assert reg_idx < ret_idx , "register_targets must run before get_target_registry returns";
+    assert reg_idx < ret_idx , "register_hosts must run before get_host_registry returns";
 }

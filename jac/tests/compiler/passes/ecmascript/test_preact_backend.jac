@@ -8,7 +8,7 @@ import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.backends.preact { PreactBackend }
 import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.compiler.passes.ecmascript.backends.registry {
-    resolve_active_backend,
+    resolve_module_backend,
     resolve_framework_backend
 }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
@@ -135,11 +135,11 @@ test "conditional jsx fixture compiles under preact backend" {
     assert 'from "react"' not in js;
 }
 
-test "resolve_active_backend reads preact from project config" {
+test "resolve_module_backend reads preact from project config" {
     cfg = JacConfig();
     cfg.client = ClientConfig(framework="preact");
     set_config(cfg);
-    backend = resolve_active_backend();
+    backend = resolve_module_backend();
     assert backend.name() == "preact";
 }
 

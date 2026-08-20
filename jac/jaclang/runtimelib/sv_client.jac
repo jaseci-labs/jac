@@ -1,7 +1,13 @@
 import os;
 
+import from jaclang.jac0core.sv_service_host { sv_host_env_key }
+import from jaclang.runtimelib.test_sv_host {
+    register_test_adapter,
+    clear_test_adapters,
+    close_all_test_sv_services
+}
+
 glob _registry: dict[str, str] = {},
-     _test_clients: dict[str, any] = {},
      _consumer_providers: dict[str, list[str]] = {};
 
 def headless_start_args(entry_file: str, port: int) -> list[str] {
@@ -18,12 +24,16 @@ def unregister(module_name: str) {
     }
 }
 
-def register_test_client(module_name: str, client: any) {
-    _test_clients[module_name] = client;
+def register_test_client(module_name: str, client: any = None) -> None {
+    os.environ[sv_host_env_key(module_name)] = 'test';
+    if client is not None {
+        register_test_adapter(module_name, client);
+    }
 }
 
 def clear_test_clients {
-    _test_clients.clear();
+    clear_test_adapters();
+    close_all_test_sv_services();
 }
 
 def _declare_consumer_provider(consumer_name: str, provider_name: str) {
@@ -66,9 +76,6 @@ def resolve_url(module_name: str) -> str {
 }
 
 def _ensure_available(module_name: str) -> None {
-    if module_name in _test_clients {
-        return;
-    }
     if module_name in _registry {
         return;
     }
@@ -99,7 +106,7 @@ def ensure_all(module_names: list[str]) -> None {
     pending: list[str] = [
         n
         for n in module_names
-        if n not in _registry and n not in _test_clients
+        if n not in _registry
     ];
     if not pending {
         return;

@@ -72,7 +72,7 @@ test "eager spawn: ensure_all no-op when all already resolved" {
 
     __jac_sv.ensure_all(["already_registered", "already_test_client"]);
     assert __jac_sv._registry.get("already_registered") == "http://somewhere";
-    assert "already_test_client" in __jac_sv._test_clients;
+    assert __jac_sv._registry.get("already_test_client") == "test://already_test_client";
 
     __jac_sv.clear_test_clients();
     del __jac_sv._registry["already_registered"];
@@ -150,7 +150,8 @@ test "eager spawn: non-sibling consumer resolves declared providers" {
         assert srv.is_sv_sibling == False;
 
         srv._ensure_sv_siblings();
-        assert "math_service" in __jac_sv._test_clients;
+        import from jaclang.runtimelib.test_sv_host { get_test_adapter }
+        assert get_test_adapter("math_service") is not None;
     } finally {
         done(tmp);
     }

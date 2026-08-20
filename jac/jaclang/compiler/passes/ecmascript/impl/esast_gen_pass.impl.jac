@@ -10,10 +10,10 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
 impl EsastGenPass._ensure_backend -> None {
     if self.backend is None {
         import from jaclang.compiler.passes.ecmascript.backends.registry {
-            resolve_active_backend
+            resolve_module_backend
         }
         try {
-            self.backend = resolve_active_backend();
+            self.backend = resolve_module_backend(self.ir_in);
         } except ValueError {
             import from jaclang.project.config { get_config }
             import from jaclang.jac0core.diagnostics { E5081 }

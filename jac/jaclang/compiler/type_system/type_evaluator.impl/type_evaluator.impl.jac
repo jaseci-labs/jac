@@ -1888,9 +1888,26 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
 
                 if symbol is None or symbol.parent_tab is self.builtins_module {
+                    if self.host_provides(expr, 'DOM') {
+                        dom_sym = self.dom_types_module.names_in_scope.get(
+                            expr.value
+                        );
+                        if dom_sym is not None {
+                            symbol = dom_sym;
+                        }
+                    }
                     js_sym = self.js_globals_module.names_in_scope.get(expr.value);
-                    if js_sym is not None and expr.in_client_context() {
-                        symbol = js_sym;
+                    if js_sym is not None and self.host_provides(expr, 'JS_GLOBALS') {
+                        import from jaclang.jac0core.host { js_global_requires_dom }
+                        if (
+                            js_global_requires_dom(expr.value)
+                            and not self.host_provides(expr, 'DOM')
+                        ) {
+                            js_sym = None;
+                        }
+                        if js_sym is not None {
+                            symbol = js_sym;
+                        }
                     }
                 }
                 if symbol {
@@ -2816,6 +2833,11 @@ impl TypeEvaluator._in_native_context -> bool {
     return mod is not None and mod.decided_codespace == 'native';
 }
 
+impl TypeEvaluator.host_provides(node_: UniNode, cap: str) -> bool {
+    import from jaclang.jac0core.host { host_provides_node }
+    return host_provides_node(node_, cap);
+}
+
 impl TypeEvaluator._is_typing_special_form(ty: TypeBase, name: str) -> bool {
     return (
         isinstance(ty, ClassType)
@@ -3666,13 +3688,6 @@ impl TypeEvaluator.postinit -> None {
             continue;
         }
         self.builtins_module.names_in_scope[name] = sym;
-    }
-
-    for (name, sym) in self.dom_types_module.names_in_scope.items() {
-        existing = self.builtins_module.names_in_scope.get(name);
-        if existing is None or existing.imported {
-            self.builtins_module.names_in_scope[name] = sym;
-        }
     }
 
     raw_groups = self._read_ambient_imports_by_module(

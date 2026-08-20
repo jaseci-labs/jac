@@ -86,8 +86,7 @@ def _boot_impl(entry_file: str, graph_path: str) {
         entry_file,
         graph_path,
         endpoint_profile="desktop",
-        setup_background_services=False,
-        transport_kind="testclient"
+        setup_background_services=False
     );
     _tc = _runtime.client;
 

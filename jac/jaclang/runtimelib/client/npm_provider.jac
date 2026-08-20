@@ -34,6 +34,15 @@ def resolve_client_target_name(config: JacConfig) -> str {
     client_config = config.get_plugin_config("client");
     raw = str(client_config.get("target", "") or "").strip();
     if raw == "" {
+        plugin_table = config.get_section("plugin");
+        if isinstance(plugin_table, dict) {
+            nested = plugin_table.get("client", {});
+            if isinstance(nested, dict) {
+                raw = str(nested.get("target", "") or "").strip();
+            }
+        }
+    }
+    if raw == "" {
         raw = str(os.environ.get("JAC_CLIENT_TARGET", "") or "").strip();
     }
     if raw == "" {

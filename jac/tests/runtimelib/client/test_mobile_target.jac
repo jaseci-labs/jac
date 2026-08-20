@@ -36,13 +36,12 @@ test "mobile target files exist" {
     assert "def start" in mobile_content;
 }
 
-test "target type parser supports mobile" {
-    registry_path = _client_dir / "targets" / "registry.jac";
+test "host registry declares mobile host kind" {
+    registry_path = _client_dir / "targets" / "mobile_target.jac";
     content = registry_path.read_text();
 
-    assert 'MOBILE = "mobile"' in content;
-    assert 'if name_lower == "mobile"' in content;
-    assert "return TargetType.MOBILE" in content;
+    assert 'name: str = "mobile"' in content;
+    assert "host_kind" in content;
 }
 
 test "target factory resolves mobile via registry" {
@@ -51,8 +50,8 @@ test "target factory resolves mobile via registry" {
     impl_content = impl_path.read_text();
     register_content = register_path.read_text();
 
-    assert "return self.create(target_type.value, project_dir)" in impl_content;
-    assert "registry.get(target_name)" in impl_content;
+    assert "return self.create(target_type.value, project_dir)" not in impl_content;
+    assert "registry.get(target_name)" in impl_content or "registry.get(host_name)" in impl_content;
     assert "registry.register(MobileTarget())" in register_content;
     assert "MobileTarget" in register_content;
 }

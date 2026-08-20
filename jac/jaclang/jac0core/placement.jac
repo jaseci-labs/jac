@@ -5,12 +5,6 @@ import from dataclasses { field }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 
 glob PLACEMENT_SCHEMA: int = 1,
-     PLACEMENT_SV_SIGNAL_NODES: tuple = (
-         ("TypedCtxBlock", uni.TypedCtxBlock),
-         ("PyInlineCode", uni.PyInlineCode),
-         ("JsxElement", uni.JsxElement)
-     ),
-     PLACEMENT_NATIVE_REJECT_NODES: tuple = (),
      PLACEMENT_INFERENCE_HELD: dict[str, str] = {
          "jac0core/codeinfo.jac": "13 own seams, and a closure that reaches uni_pass (#8201 wave work)"
      };
@@ -247,6 +241,23 @@ def module_has_root_access(stmt: uni.UniNode) -> bool {
             break;
         }
     }
+    if not found {
+        for ab in mod.get_all_sub_nodes(uni.Ability) {
+            sig = ab.signature;
+            if not isinstance(sig, uni.EventSignature) {
+                continue;
+            }
+            for n in sig.get_all_sub_nodes(uni.Name) {
+                if n.value == 'Root' {
+                    found = True;
+                    break;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+    }
     mod.gen.has_root_access = found;
     return found;
 }
@@ -441,6 +452,31 @@ def _element_glob_write_ids(module: uni.Module, elem: uni.UniNode) -> set[int] {
     return writes;
 }
 
+def _module_native_capability_blocker(module: uni.Module) -> str {
+    import from jaclang.jac0core.host { native_unmet_capability }
+    for stmt in module.body {
+        if isinstance(stmt, uni.TypedCtxBlock) {
+            return "contains TypedCtxBlock";
+        }
+    }
+    for stmt in module.body {
+        if not isinstance(stmt, uni.UniNode) {
+            continue;
+        }
+        for req in _element_reqs(stmt) {
+            if len(req) < 1 {
+                continue;
+            }
+            cap = req[0];
+            if native_unmet_capability(cap) {
+                detail = req[1] if len(req) >= 2 else cap;
+                return f"requires {cap}: {detail}";
+            }
+        }
+    }
+    return '';
+}
+
 def _references_browser_seed_global(elem: uni.UniNode) -> str {
     import from jaclang.jac0core.constant { BROWSER_SEED_GLOBALS }
     for nm in elem.get_all_sub_nodes(uni.Name) {
@@ -551,16 +587,9 @@ def scan_native_blockers(
             return (f"inference held: {_held_why}", deps);
         }
     }
-    for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
-        if module.get_all_sub_nodes(typ) {
-            return (f"contains {nd_name}", deps);
-        }
-    }
-
-    for (nd_name, typ) in PLACEMENT_NATIVE_REJECT_NODES {
-        if module.get_all_sub_nodes(typ) {
-            return (f"native-unsupported {nd_name}", deps);
-        }
+    cap_blocker = _module_native_capability_blocker(module);
+    if cap_blocker {
+        return (cap_blocker, deps);
     }
     for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {
         if svr.orig.name == Tok.KW_ROOT {

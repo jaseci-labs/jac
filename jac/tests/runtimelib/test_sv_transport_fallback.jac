@@ -62,6 +62,6 @@ test "sv_service_call resolves with no third-party HTTP library installed" {
             f"sv call must resolve on the native transport, got {got!r}"
         );
     } finally {
-        sv_client._test_clients.pop("fallback_probe", None);
+        sv_client.clear_test_clients();
     }
 }

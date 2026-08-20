@@ -659,7 +659,19 @@ class JacScalePlugin {
         if module_name in sv_client._registry {
             return;
         }
-        if module_name in sv_client._test_clients {
+        import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
+        import from jaclang.runtimelib.test_sv_host { prepare_test_sv_service, get_test_adapter }
+        import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
+        import from jaclang.runtimelib.client { get_bun }
+        host_kind = resolve_sv_service_host(module_name, base_path);
+        if host_kind == 'test' {
+            if get_test_adapter(module_name) is not None {
+                sv_client.register(module_name, f"test://{module_name}");
+                return;
+            }
+            module_file = str(Path(base_path) / f"{module_name}.jac");
+            base_url = prepare_test_sv_service(module_name, module_file, base_path);
+            sv_client.register(module_name, base_url);
             return;
         }
 
@@ -695,6 +707,56 @@ class JacScalePlugin {
 
         with _sv_spawn_lock(module_name) {
             if module_name in sv_client._registry {
+                return;
+            }
+            host_kind = resolve_sv_service_host(module_name, str(base_dir));
+            if host_kind == 'bun' {
+                bun = get_bun();
+                if not bun {
+                    raise RuntimeError(
+                        "Bundled bun runtime is required for Bun-hosted sv services"
+                    );
+                }
+                artifact = build_bun_service_artifact(module_name, str(base_dir));
+                port = pick_free_port(module_name);
+                base_url = f"http://127.0.0.1:{port}";
+                child_env = dict(os.environ);
+                child_env["JAC_SV_SIBLING"] = "1";
+                child_env["PORT"] = str(port);
+                child_env["JAC_PORT"] = str(port);
+                log_dir = base_dir / '.jac' / 'logs';
+                log_dir.mkdir(parents=True, exist_ok=True);
+                log_path = log_dir / f"{module_name}.log";
+                log_file = open(log_path, 'ab');
+                try {
+                    proc = subprocess.Popen(
+                        [bun, str(artifact)],
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        env=child_env,
+                        cwd=str(base_dir)
+                    );
+                } finally {
+                    log_file.close();
+                }
+                _sv_sibling_procs[module_name] = proc;
+                budget = boot_health_timeout();
+                healthy = wait_for_health(
+                    base_url,
+                    lambda { proc.poll() is None; },
+                    timeout=budget
+                );
+                if not healthy {
+                    stop_sv_sibling(module_name);
+                    raise RuntimeError(
+                        f"Bun sv service '{module_name}' did not become healthy at {base_url}"
+                    );
+                }
+                sv_client.register(module_name, base_url);
+                def _cleanup_bun {
+                    stop_sv_sibling(module_name);
+                }
+                atexit.register(_cleanup_bun);
                 return;
             }
             port: int = pick_free_port(module_name);

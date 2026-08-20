@@ -179,8 +179,11 @@ test "sv_service_call returns a generator when downstream emits SSE" {
 
     ];
 
-    sv_client._test_clients["stream_mod"] = _StubClient(
-        body_text=_sse_body(events_in), content_type="text/event-stream"
+    sv_client.register_test_client(
+        "stream_mod",
+        _StubClient(
+            body_text=_sse_body(events_in), content_type="text/event-stream"
+        )
     );
     try {
         gen = JacScalePlugin.sv_service_call("stream_mod", "stream_events", {});
@@ -190,14 +193,17 @@ test "sv_service_call returns a generator when downstream emits SSE" {
         }
         assert out == events_in;
     } finally {
-        sv_client._test_clients.pop("stream_mod", None);
+        sv_client.clear_test_clients();
     }
 }
 
 test "sv_service_call SSE path surfaces producer error as RuntimeError" {
-    sv_client._test_clients["stream_err_mod"] = _StubClient(
-        body_text=_sse_body([{"type": "agent_started"}], trailer="error"),
-        content_type="text/event-stream"
+    sv_client.register_test_client(
+        "stream_err_mod",
+        _StubClient(
+            body_text=_sse_body([{"type": "agent_started"}], trailer="error"),
+            content_type="text/event-stream"
+        )
     );
     try {
         gen = JacScalePlugin.sv_service_call("stream_err_mod", "stream_events", {});
@@ -212,18 +218,21 @@ test "sv_service_call SSE path surfaces producer error as RuntimeError" {
         assert "stream_err_mod.stream_events" in raised_msg;
         assert "boom" in raised_msg;
     } finally {
-        sv_client._test_clients.pop("stream_err_mod", None);
+        sv_client.clear_test_clients();
     }
 }
 
 test "sv_service_call still unwraps JSON envelope when not SSE" {
-    sv_client._test_clients["json_mod"] = _StubClient(
-        body_text=json.dumps({"ok": True, "data": {"result": "plain_json_ok"}})
+    sv_client.register_test_client(
+        "json_mod",
+        _StubClient(
+            body_text=json.dumps({"ok": True, "data": {"result": "plain_json_ok"}})
+        )
     );
     try {
         result = JacScalePlugin.sv_service_call("json_mod", "echo", {});
         assert result == "plain_json_ok";
     } finally {
-        sv_client._test_clients.pop("json_mod", None);
+        sv_client.clear_test_clients();
     }
 }
