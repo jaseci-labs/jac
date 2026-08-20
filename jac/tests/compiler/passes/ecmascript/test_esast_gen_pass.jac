@@ -697,6 +697,22 @@ test "stale has read emits W3041" {
     );
 }
 
+test "routing return annotations lower through the props protocol" {
+    js = es_to_js(compile_to_esast(fixture_path("component_routing_return_types.jac")));
+
+    # `JsxPage`, `JsxLayout` and unions lower through the props protocol just
+    # as `JsxElement` does, and `TypeCheckPass` reads component-hood off the
+    # same predicate (`jaclang.compiler.jsx_component`).
+    for name in ["PageComp", "LayoutComp", "UnionComp", "ElementComp"] {
+        assert f"function {name}(props)" in js , (
+            f"{name} should be emitted with the props-protocol signature:\n{js}"
+        );
+    }
+    assert js.count("const {title} = props;") == 4 , (
+        f"Expected all four components to destructure `title` out of props:\n{js}"
+    );
+}
+
 test "single-`props` component definition warns W5015" {
     fixture = fixture_path("component_props_idiom.jac");
     prog = JacProgram();

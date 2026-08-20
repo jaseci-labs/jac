@@ -25,11 +25,13 @@ import from tempfile { TemporaryDirectory }
 
 import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.runtimelib.client.bun_installer { get_bun }
+import from jaclang.runtimelib.react_entry { build_pages_react_entry_script }
 import from .react_jsdom_harness {
     bun_install,
     compile_page,
     require_client_integration,
     run_harness,
+    wire_jac_runtime,
     write_runtime
 }
 
@@ -178,6 +180,105 @@ test "react AuthGuard renders children, child routes, and nothing -- in jsdom" {
                 ["/bare", "loggedOut"]
             ],
             "manual-routing"
+        );
+    }
+}
+
+glob PAGES_FIXTURES = str(Path(__file__).parent / "fixtures" / "react_pages_auth"),
+     _PAGES_HARNESS: str = "const mountId = \"root\";\n"
+         + _JSDOM_BOOT
+         + """
+const EXPECT = {
+  // A wrapper that ignores `children` renders `shell` and nothing else.
+  "/|loggedOut": { present: ["shell", "home"], absent: ["dashboard", "signin"], path: "/" },
+  "/|loggedIn": { present: ["shell", "home"], absent: ["dashboard", "signin"], path: "/" },
+  // `auth_redirect` is "/signin" here; a guard that drops it falls back to
+  // "/login", which is not a route in this project, so nothing renders.
+  "/dashboard|loggedOut": { present: ["shell", "signin"], absent: ["dashboard"], path: "/signin" },
+  "/dashboard|loggedIn": { present: ["shell", "dashboard"], absent: ["signin"], path: "/dashboard" },
+};
+
+let entryError = null;
+try {
+  await import("./_entry.js");
+} catch (e) {
+  entryError = String((e && e.stack) || e);
+}
+check("generated _entry.js imports and mounts", entryError === null, entryError || "");
+if (entryError) finish();
+
+await sleep(150);
+
+const mount = document.getElementById(mountId);
+const expect = EXPECT[`${startUrl}|${authState}`];
+if (!expect) {
+  check(`known scenario ${startUrl}|${authState}`, false, "no expectation row");
+  finish();
+}
+assertExpectation(expect, () => mount.innerHTML);
+finish();
+""";
+
+test "react pages/ entry renders the route tree through `app` and honors auth_redirect" {
+    # Drives the REAL generated `pages/` entry, covering two things no
+    # source-level assertion can: `auth_redirect` reaching the guard as props
+    # rather than positionally, and `app` rendering the children it is handed.
+    require_client_integration("React pages/ routing");
+    bun = get_bun();
+    if bun is None {
+        testskip("bun is required but could not be located/installed");
+    }
+
+    backend = ReactBackend();
+    app_js = compile_page(os.path.join(PAGES_FIXTURES, "app_wrapper.jac"), backend);
+    home_js = compile_page(os.path.join(PAGES_FIXTURES, "home_page.jac"), backend);
+    signin_js = compile_page(os.path.join(PAGES_FIXTURES, "signin_page.jac"), backend);
+    dash_js = compile_page(os.path.join(PAGES_FIXTURES, "dashboard_page.jac"), backend);
+
+    # Built as `ViteCompiler._create_pages_entry_content` builds it; only the
+    # `@jac/runtime` specifier is rewired to the harness's flat sibling.
+    entry_js = wire_jac_runtime(
+        build_pages_react_entry_script("main", "/signin", True)
+    );
+    # Same shape `_generate_routes_manifest` emits.
+    manifest = "\n".join(
+        [
+            'import { page as PagesHome } from "./home_page.js";',
+            'import { page as PagesSignin } from "./signin_page.js";',
+            'import { page as PagesDashboard } from "./dashboard_page.js";',
+            '',
+            'export const routes = [',
+            '\t{ path: "/", element: PagesHome, auth: false },',
+            '\t{ path: "/signin", element: PagesSignin, auth: false },',
+            '\t{ path: "/dashboard", element: PagesDashboard, auth: true },',
+            '];',
+            '',
+            'export const layouts = {};',
+            ''
+        ]
+    );
+
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        (work / "main.js").write_text(app_js, encoding="utf-8");
+        (work / "home_page.js").write_text(home_js, encoding="utf-8");
+        (work / "signin_page.js").write_text(signin_js, encoding="utf-8");
+        (work / "dashboard_page.js").write_text(dash_js, encoding="utf-8");
+        (work / "_routes.js").write_text(manifest, encoding="utf-8");
+        (work / "_entry.js").write_text(entry_js, encoding="utf-8");
+        write_runtime(work);
+        (work / "harness.mjs").write_text(_PAGES_HARNESS, encoding="utf-8");
+        bun_install(bun, work, "react-pages-jsdom-test");
+        _run_scenarios(
+            bun,
+            work,
+            [
+                ["/", "loggedOut"],
+                ["/", "loggedIn"],
+                ["/dashboard", "loggedOut"],
+                ["/dashboard", "loggedIn"]
+            ],
+            "pages-routing"
         );
     }
 }

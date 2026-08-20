@@ -587,6 +587,32 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " runtime value (int, float, str, bool, bytes). For richer types,"
          " declare an archetype that wraps the value instead."
      ),
+     E1108 = _err(
+         "E1108",
+         Category.TYPE,
+         "Client entry '{name}' declares no 'children' parameter, so this"
+         " project's `pages/` routes are all discarded",
+         help="The generated entry renders `app` with the whole route tree as"
+         " its children, from JavaScript the checker never sees, so an `app`"
+         " without 'children' drops every route. Declare"
+         " `def:pub {name}(children: any) -> JsxElement` and render them"
+         " (`<Theme>{{children}}</Theme>`); a single `props` parameter works"
+         " too, as `props.children`.",
+         blocks_codegen=True
+     ),
+     E1109 = _err(
+         "E1109",
+         Category.TYPE,
+         "Component '{name}' declares a 'props' bundle alongside other"
+         " parameters; the bundle must be the only parameter",
+         help="'props' is the whole call-site object, so it cannot share a"
+         " signature: positionally the emitted destructure redeclares it and"
+         " does not parse; keyword-only the renderer never passes the rest,"
+         " which keep their defaults. Name the props you take"
+         " ('def {name}(title: str, tone: str)') or take the bundle alone"
+         " ('def {name}(props: MyProps)').",
+         blocks_codegen=True
+     ),
      E1110 = _err(
          "E1110",
          Category.TYPE,
@@ -919,6 +945,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "JSX component '{component}' uses an untyped props bag ('props: any');"
          " its JSX props cannot be type-checked",
          "Declare explicit typed parameters (e.g. 'def MyComp(title: str, count: int) -> JsxElement'), or annotate 'props' with a typed object. An untyped 'props: any' parameter opts the component out of all prop name and type validation."
+     ),
+     W1053 = _warn(
+         "W1053",
+         Category.TYPE,
+         "Component '{component}' declares no 'children' parameter, so the"
+         " children passed here are discarded",
+         "The codegen destructures declared parameter names out of 'props'"
+         " with no rest element, so children handed to a component that"
+         " declares none are dropped silently. Declare"
+         " 'children: any = None' on '{component}' and render it"
+         " ('<>{{children}}</>'), or drop them from this call site. A single"
+         " 'props' parameter receives them as 'props.children'."
      ),
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W1101 = _warn(

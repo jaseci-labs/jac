@@ -1,4 +1,5 @@
 import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
+import from jaclang.compiler.jsx_component { is_jsx_runtime_helper, return_type_is_jsx }
 import from jaclang.compiler.passes.ecmascript.reactive_intent {
     StateField,
     RefField,
@@ -1028,21 +1029,6 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     return None;
 }
 
-impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
-    if (
-        isinstance(rt, uni.BinaryExpr)
-        and isinstance(rt.op, uni.Token)
-        and rt.op.name == Tok.BW_OR
-    ) {
-        return (
-            self._return_type_includes_jsx_element(rt.left)
-            or self._return_type_includes_jsx_element(rt.right)
-        );
-    }
-    return isinstance(rt, uni.Name)
-        and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
-}
-
 impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
     if (
         isinstance(rt, uni.BinaryExpr)
@@ -1071,7 +1057,7 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
         return None;
     }
     rt = nd.signature.return_type;
-    if rt is None or not self._return_type_includes_jsx_element(rt) {
+    if not return_type_is_jsx(rt) {
         return None;
     }
     name = nd.name_ref.sym_name;
@@ -1097,11 +1083,10 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
         if sig.get_parameters() {
             rt = sig.return_type;
 
-            if rt is not None and self._return_type_includes_jsx_element(rt) {
+            if return_type_is_jsx(rt) {
                 if (
                     ability_node.name_ref
-                    and ability_node.name_ref.sym_name
-                    and ability_node.name_ref.sym_name.startswith('__jac')
+                    and is_jsx_runtime_helper(ability_node.name_ref.sym_name)
                 ) {
                     abi = 'direct';
                 } else {
@@ -4826,7 +4811,7 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             if (
                 isinstance(nd.signature, uni.FuncSignature)
                 and nd.signature.return_type is not None
-                and self._return_type_includes_jsx_element(nd.signature.return_type)
+                and return_type_is_jsx(nd.signature.return_type)
             ) {
                 self.component_export_names.add(name);
             }

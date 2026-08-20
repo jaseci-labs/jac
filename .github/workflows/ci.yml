@@ -704,7 +704,9 @@ jobs:
       # Every suite here skips itself unless JAC_CLIENT_INTEGRATION is set, so
       # this step is the ONLY place they actually execute -- the ungated
       # `jac test tests/` lane collects them and skips. A jsdom suite not named
-      # here is a suite that never runs.
+      # here is a suite that never runs; that is now enforced rather than
+      # merely stated, by tests/runtimelib/test_client_integration_ci_coverage.jac,
+      # which fails when a gated suite is named by no workflow.
       env:
         JAC_CLIENT_INTEGRATION: "1"
       run: |

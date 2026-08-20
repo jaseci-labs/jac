@@ -2,13 +2,14 @@ import re;
 import from pathlib { Path }
 import from operator { attrgetter }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
+import from jaclang.project.pages_routing { has_pages_dir, pages_dir_in }
 
 impl RouteScanner.postinit{
-    self.pages_dir = self.project_root / self.PAGES_DIR_NAME;
+    self.pages_dir = pages_dir_in(self.project_root);
 }
 
 impl RouteScanner.has_pages_dir -> bool {
-    return self.pages_dir.exists() and self.pages_dir.is_dir();
+    return has_pages_dir(self.project_root);
 }
 
 impl RouteScanner.scan -> list[RouteEntry] {

@@ -1220,3 +1220,194 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
         );
     }
 }
+
+"""Manual-routing auth harness: mount the compiled app in jsdom at `argv[2]`
+with auth state `argv[3]`, then assert one expectation row. Plain (non-f) string
+so JS `${}` needs no escaping."""
+glob _MANUAL_AUTH_HARNESS: str = _BABEL_BUILD
+         + """
+import { JSDOM } from "jsdom";
+
+const startUrl = process.argv[2] || "/";
+const authState = process.argv[3] || "loggedOut";
+const loggedIn = authState === "loggedIn";
+const tag = `[${startUrl} ${authState}]`;
+
+const dom = new JSDOM(
+  '<!DOCTYPE html><html><body><div id="__jac_root"></div></body></html>',
+  { url: "http://localhost" + startUrl, pretendToBeVisual: true }
+);
+const { window } = dom;
+globalThis.window = window;
+for (const k of [
+  "document", "navigator", "HTMLElement", "Element", "SVGElement", "Node",
+  "Text", "Comment", "DocumentFragment", "Event", "CustomEvent", "MouseEvent",
+  "KeyboardEvent", "getComputedStyle", "DOMParser", "history", "location",
+]) {
+  if (window[k] === undefined) continue;
+  try { globalThis[k] = window[k]; } catch {}
+}
+globalThis.localStorage = window.localStorage;
+globalThis.requestAnimationFrame =
+  window.requestAnimationFrame || ((cb) => setTimeout(() => cb(Date.now()), 0));
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame || clearTimeout;
+window.scrollTo = () => {};
+globalThis.scrollTo = () => {};
+
+if (loggedIn) window.localStorage.setItem("jac_token", "test-token");
+else window.localStorage.removeItem("jac_token");
+
+const failures = [];
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${tag} ${label}${detail ? "  -- " + detail : ""}`);
+  if (!ok) failures.push(label);
+};
+const finish = () => {
+  console.log(`\\n${tag} ${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
+    (failures.length ? `: ${failures.join(", ")}` : ""));
+  process.exit(failures.length ? 1 : 0);
+};
+
+const EXPECT = {
+  // Children baked into the element expression itself -- the guard has always
+  // received these.
+  "/wrapped|loggedIn": { present: ["chrome", "dashboard"], absent: ["login"] },
+  "/wrapped|loggedOut": { present: ["chrome"], absent: ["dashboard"] },
+  // The matched child route arrives from the router as `props.children` of the
+  // `element=` route's component. `Route` wrapped that element in a
+  // props-ignoring lambda, so it never reached the guard and nothing rendered.
+  "/nested|loggedIn": { present: ["chrome", "nested"], absent: ["login"] },
+  "/nested|loggedOut": { present: ["chrome"], absent: ["nested"] },
+  // Same delivery path, one level further: the guard's own children are the
+  // user's `<Outlet/>`, which must resolve to the matched child route.
+  "/layout-guarded|loggedIn": { present: ["chrome", "dashboard"], absent: ["login"] },
+  "/layout-guarded|loggedOut": { present: ["chrome"], absent: ["dashboard"] },
+  // Neither children nor child routes: renders nothing, must not crash.
+  "/bare|loggedIn": { present: ["chrome"], absent: ["dashboard", "nested", "login"] },
+  "/bare|loggedOut": { present: ["chrome"], absent: ["dashboard"] },
+};
+
+let render, app;
+try {
+  ({ render } = await import("solid-js/web"));
+  ({ app } = await import("./component.js"));
+} catch (e) {
+  check("runtime modules import (jsdom + --conditions=browser)", false,
+    String((e && e.stack) || e));
+  finish();
+}
+
+const root = document.getElementById("__jac_root");
+try {
+  render(() => app(), root);
+} catch (e) {
+  check("render() mounts without throwing", false, String((e && e.stack) || e));
+  finish();
+}
+await Promise.resolve();
+await Promise.resolve();
+
+const present = (testid) => !!document.querySelector(`[data-testid="${testid}"]`);
+const expect = EXPECT[`${startUrl}|${authState}`];
+if (!expect) {
+  check(`known scenario ${startUrl}|${authState}`, false, "no expectation row");
+  finish();
+}
+for (const id of expect.present) {
+  check(`renders [data-testid="${id}"]`, present(id), `html=${root.innerHTML}`);
+}
+for (const id of expect.absent) {
+  check(`does not render [data-testid="${id}"]`, !present(id), `html=${root.innerHTML}`);
+}
+// Logged out, every guarded shape must leave the protected content unrendered.
+if (!loggedIn && startUrl !== "/wrapped") {
+  check("logged out leaves the guarded subtree empty",
+    !present("dashboard") && !present("nested"), `html=${root.innerHTML}`);
+}
+finish();
+""";
+
+test "solid AuthGuard renders children on every manual-routing shape in jsdom" {
+    # Issue #8260 task 3: `Route` wrapped an `element=` route in a props-ignoring
+    # lambda, so a parent route's matched child never reached the guard.
+    _require_client_integration();
+    bun = get_bun();
+    if bun is None {
+        testskip("bun is required but could not be located/installed");
+    }
+
+    backend = SolidBackend();
+    component_js = _compile_page(
+        os.path.join(FIXTURES, "solid_auth", "manual_routing_app.jac"), backend
+    );
+    runtime_path = resolve_client_runtime_cl_path("solid");
+    runtime_js = _rewrite_core_specifier(_compile_solid(runtime_path));
+    core_js = _compile_solid(
+        str(Path(runtime_path).parent / "client_runtime_core.jac")
+    );
+
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
+        (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
+        (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        (work / "harness.mjs").write_text(_MANUAL_AUTH_HARNESS, encoding="utf-8");
+        (work / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "solid-authguard-jsdom-test",
+                    "private": True,
+                    "type": "module",
+                    "dependencies": _DEPS
+                }
+            ),
+            encoding="utf-8"
+        );
+        install = subprocess.run(
+            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+        );
+        assert install.returncode == 0 , (
+            f"bun install failed (exit {install.returncode}):\n"
+            f"{install.stdout}\n{install.stderr}"
+        );
+        node_bin = shutil.which("node");
+        # One fresh process per scenario: own URL, auth state, module graph.
+        for sc in [
+            ["/wrapped", "loggedIn"],
+            ["/wrapped", "loggedOut"],
+            ["/nested", "loggedIn"],
+            ["/nested", "loggedOut"],
+            ["/layout-guarded", "loggedIn"],
+            ["/layout-guarded", "loggedOut"],
+            ["/bare", "loggedIn"],
+            ["/bare", "loggedOut"]
+        ] {
+            if node_bin {
+                cmd = [
+                    node_bin,
+                    "--conditions=browser",
+                    str(work / "harness.mjs"),
+                    sc[0],
+                    sc[1]
+                ];
+            } else {
+                cmd = [
+                    bun,
+                    "--conditions=browser",
+                    "run",
+                    str(work / "harness.mjs"),
+                    sc[0],
+                    sc[1]
+                ];
+            }
+            run = subprocess.run(
+                cmd, cwd=str(work), capture_output=True, text=True, timeout=120
+            );
+            detail = (run.stdout or "") + "\n" + (run.stderr or "");
+            assert run.returncode == 0 , (
+                f"manual-routing auth harness {sc} failed "
+                f"(exit {run.returncode}):\n{detail}"
+            );
+        }
+    }
+}

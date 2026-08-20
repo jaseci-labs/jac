@@ -42,13 +42,18 @@ impl Routes(props: dict) -> JsxElement {
 
 impl Route(props: dict) -> JsxElement {
     routeProps = {};
+    prop_names = Object.keys(props);
     if props.path != undefined {
         routeProps["path"] = props.path;
     }
     if props.component != undefined {
         routeProps["component"] = props.component;
-    } elif props.element != undefined {
-        routeProps["component"] = lambda -> any { return props.element; };
+    } elif "element" in prop_names {
+        routeProps["component"] = lambda (matched: any) -> any { return (
+            <__JacOutletContext.Provider value={matched}>
+                {props.element}
+            </__JacOutletContext.Provider>
+        ); };
     }
     if props.children != undefined {
         routeProps["children"] = props.children;
@@ -77,13 +82,10 @@ impl Navigate(props: dict) -> JsxElement {
 
 impl Outlet(props: dict = {}) -> JsxElement {
     ctx = solidUseContext(__JacOutletContext);
-    if ctx != None and ctx != undefined {
+    if ctx != undefined and ctx != None {
         return ctx.children;
     }
-    if props != undefined {
-        return props.children;
-    }
-    return None;
+    return props.children;
 }
 
 impl __jacMakeLayoutRoot(layout_component: any) -> any {
@@ -112,10 +114,13 @@ impl useRouter -> dict {
 }
 
 impl AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement {
-    if jacIsLoggedIn() {
+    if not jacIsLoggedIn() {
+        return Navigate({"to": redirect, "replace": True});
+    }
+    if children != undefined and children != None {
         return children;
     }
-    return Navigate({"to": redirect, "replace": True});
+    return Outlet({});
 }
 
 impl JacClientErrorBoundary(props: dict) -> JsxElement {
