@@ -24,32 +24,15 @@ impl _ensure_js_generated(mod: Module, program: any) -> None {
         import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
         import from jaclang.jac0core.compiler { run_pass }
         _err_mark = len(program.errors_had);
-        _warn_mark = len(program.warnings_had);
         run_pass(EsastGenPass, mod, program);
         if len(program.errors_had) > _err_mark {
-            try {
-                import sys;
-                import from jaclang.cli.console { console as _demote_console }
-                for _e in program.errors_had[_err_mark:] {
-                    _first = _e.pretty_print().split('\n')[0];
-                    _demote_console.print(
-                        f"note: client pull of {os.path.basename(
-                            mod.loc.mod_path or ''
-                        )} "
-                        f"demoted after ES lowering error ({_first})",
-                        style="dim",
-                        file=sys.stderr
-                    );
-                }
-            } except Exception {
-                ;
-            }
-            import from jaclang.jac0core.placement_solver {
-                demote_client_pulled_elements
-            }
-            if demote_client_pulled_elements(mod, program, _err_mark, _warn_mark) {
-                run_pass(EsastGenPass, mod, program);
-            }
+            _detail = '\n\n'.join(
+                _e.pretty_print() for _e in program.errors_had[_err_mark:]
+            );
+            raise ClientBundleError(
+                f"'{os.path.basename(mod.loc.mod_path or '')}' is used by client code "
+                f"but does not lower to the client:\n\n{_detail}"
+            );
         }
     }
 }
@@ -66,7 +49,7 @@ impl _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | 
     if dist is None {
         return None;
     }
-    candidates = sorted(dist.glob('client.*.js'));
+    candidates = sorted(dist.`glob('client.*.js'));
     if not candidates {
         return None;
     }

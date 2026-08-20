@@ -95,7 +95,7 @@ impl AuthTokenStore._persist(record: dict[str, any]) -> None {
                 """,
                 {
                     'k': f"authtok:{record['token_hash']}",
-                    'v': json.dumps(dict(record), default=str),
+                    'v': json.dumps(dict(record), `default=str),
                     'ttl': max(1.0, ttl.total_seconds())
                 }
             );

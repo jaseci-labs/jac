@@ -4230,6 +4230,7 @@ impl TypeEvaluator.create_key_for_reference(expr: Expr) -> str | None {
         }
     }
     if isinstance(expr, AtomTrailer) and not expr.is_attr {
+        import from jaclang.compiler.symbol_utils { int_subscript_suffix }
         base_key = self.create_key_for_reference(expr.target);
         if base_key and isinstance(expr.right, IndexSlice) {
             suffix = int_subscript_suffix(expr.right);
@@ -5053,6 +5054,7 @@ impl TypeEvaluator._isinstance_tuple_alternatives(
 ) -> list[TypeBase] | None {
     if (
         not isinstance(arg_type, ClassType)
+        or not arg_type.is_instance()
         or not self.prefetch
         or self.prefetch.tuple_class is None
         or arg_type.shared != self.prefetch.tuple_class.shared

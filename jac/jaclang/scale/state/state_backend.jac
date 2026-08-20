@@ -42,9 +42,9 @@ obj InProcessStateBackend(StateBackend) {
         _locks: dict[str, float] = {};
 
     def _purge_if_expired(key: str, now: float) {
-        entry = self._values.get(key);
-        if entry is not None {
-            (_, expiry) = entry;
+        `entry = self._values.get(key);
+        if `entry is not None {
+            (_, expiry) = `entry;
             if expiry != 0.0 and now >= expiry {
                 self._values.pop(key, None);
             }
@@ -55,11 +55,11 @@ obj InProcessStateBackend(StateBackend) {
         now = time.time();
         with _state_lock {
             self._purge_if_expired(key, now);
-            entry = self._values.get(key);
-            if entry is None {
+            `entry = self._values.get(key);
+            if `entry is None {
                 return None;
             }
-            (value, _) = entry;
+            (value, _) = `entry;
             return value;
         }
     }
@@ -83,9 +83,9 @@ obj InProcessStateBackend(StateBackend) {
         now = time.time();
         with _state_lock {
             self._purge_if_expired(key, now);
-            entry = self._values.get(key);
-            if entry is not None {
-                (raw, keep_expiry) = entry;
+            `entry = self._values.get(key);
+            if `entry is not None {
+                (raw, keep_expiry) = `entry;
                 current = float(raw);
             } else {
                 current = 0.0;

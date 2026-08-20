@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from pathlib { Path }
 import from jaclang.project.template_registry { ProjectTemplate }
 

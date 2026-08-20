@@ -11,7 +11,6 @@ import from jaclang.scale.runtime.cli.diagnostics {
     _mem_to_bytes
 }
 import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
-import jaclang.scale.runtime.cli.plan as plan_mod;
 
 
 def _validate(bundle: dict, ms_cfg: dict, svc_configs: dict) -> list {
@@ -243,19 +242,52 @@ test "render smoke: realistic bundle prints every section" {
     assert "Cluster-wide" in out;
     assert "app-secrets" in out and "2 keys" in out;
     assert "Totals" in out;
+}
 
-    # Rate-limit line is produced by the real _render_cluster_wide renderer.
-    # Exercise it directly rather than through _load_ms_cfg: the config loader
-    # normalizes rate_limit to `per_ip_rpm`, a key the renderer does not read,
-    # so a loader-sourced rate_limit never reaches this branch.
-    rl_buf = io.StringIO();
-    with redirect_stdout(rl_buf) {
-        plan_mod._render_cluster_wide(
-            {}, {"rate_limit": {"enabled": True, "requests_per_minute": 120}}
-        );
-    }
-    rl_out = rl_buf.getvalue();
-    assert "Cluster-wide" in rl_out and "120/min" in rl_out;
+
+def _rate_limit_toml(enabled: str, extra: str = "") -> str {
+    return (
+        "[scale.microservices.routes]\napi = \"/api\"\n"
+        "\n[scale.microservices.rate_limit]\n"
+        + f"enabled = {enabled}\nper_ip_rpm = 120\nper_user_rpm = 30\n"
+        + extra
+    );
+}
+
+
+test "an enabled rate limit reaches the plan from jac.toml, both tiers" {
+    (out, _) = _run_plan(
+        {"deployments": {"api": _dep()}, "services": {"api": {}}},
+        ms_toml=_rate_limit_toml("true", extra="burst_multiplier = 3.0\n")
+    );
+    assert "Cluster-wide" in out , f"no cluster-wide block in plan:\n{out}";
+    assert "120/min per IP" in out , f"per-IP limit missing from plan:\n{out}";
+    assert "30/min per user" in out , f"per-user limit missing from plan:\n{out}";
+    assert "burst x3" in out;
+}
+
+
+test "a rate limit with both tiers at 0 renders as configured-but-inert" {
+    (out, _) = _run_plan(
+        {"deployments": {"api": _dep()}, "services": {"api": {}}},
+        ms_toml=(
+            "[scale.microservices.routes]\napi = \"/api\"\n"
+            "\n[scale.microservices.rate_limit]\n"
+            "enabled = true\nper_ip_rpm = 0\nper_user_rpm = 0\n"
+        )
+    );
+    assert "rate_limit:" in out , f"an inert limit rendered nothing:\n{out}";
+    assert "no limit" in out;
+}
+
+
+test "a disabled rate limit renders no rate-limit line" {
+    (out, _) = _run_plan(
+        {"deployments": {"api": _dep()}, "services": {"api": {}}},
+        ms_toml=_rate_limit_toml("false")
+    );
+    assert "rate_limit:" not in out , f"disabled limit rendered a line:\n{out}";
+    assert "120/min" not in out;
 }
 
 

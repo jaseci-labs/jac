@@ -28,7 +28,7 @@ into the anchor store as a **storage segment** and load it back.
   through its seal anchor, so today it would persist as ordinary
   per-anchor rows -- one row and one UUID per node, all arena locality
   lost at the store boundary.
-- **The arena** (`na_ir_gen_pass.impl/arena.impl.jac`): a sealed
+- **The arena** (`na_ir_gen/arena.impl.jac`): a sealed
   region's memory is a chunk list of bump-allocated pages; objects
   reference each other by raw pointer. This is the locality the store
   currently throws away.

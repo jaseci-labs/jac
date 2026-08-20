@@ -10,9 +10,9 @@ impl npm_settings(config: JacConfig) -> dict[str, any] {
 
 impl npm_package_name(config: JacConfig) -> str {
     npm = npm_settings(config);
-    override = npm.get("name", "");
-    if override {
-        return override;
+    `override = npm.get("name", "");
+    if `override {
+        return `override;
     }
     if not config.project.name {
         raise ValueError(
@@ -34,9 +34,9 @@ impl npm_dependencies(config: JacConfig) -> dict[str, str] {
     (result, _dev) = manifest_plugin_deps(config, "npm");
 
     npm = npm_settings(config);
-    override = npm.get("dependencies", {});
-    if isinstance(override, dict) {
-        for (key, value) in override.items() {
+    `override = npm.get("dependencies", {});
+    if isinstance(`override, dict) {
+        for (key, value) in `override.items() {
             if isinstance(value, str) {
                 result[key] = value;
             }

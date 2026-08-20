@@ -5,7 +5,7 @@ import os;
 import time;
 import uuid;
 import from threading { Thread, Event as _ThreadStop }
-import from typing { Callable, cast }
+import from typing { cast }
 import from jaclang.runtimelib.store { TxnIsolation }
 import from jaclang.scale.events.broker {
     EventStreamBroker,
@@ -109,7 +109,7 @@ obj PgEventStream(EventStreamBroker) {
             INSERT INTO jac_events (topic, payload)
             VALUES (:t, CAST(:p AS jsonb))
             """,
-            {'t': topic, 'p': json.dumps(payload, default=_jsonable)}
+            {'t': topic, 'p': json.dumps(payload, `default=_jsonable)}
         );
     }
 
@@ -278,7 +278,7 @@ obj PgEventStream(EventStreamBroker) {
                 } except Exception as e {
                     _logger.warning(f"PgEventStream consume error on {topic}: {e}");
                 }
-                self._stop_event.wait(_POLL_SECONDS);
+                self._stop_event.`wait(_POLL_SECONDS);
             }
         }
         t = Thread(target=_loop, daemon=True, name=f"jac-events-{topic}");

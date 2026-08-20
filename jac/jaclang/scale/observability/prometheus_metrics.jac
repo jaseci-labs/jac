@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale._optdeps.prometheus {
     Counter,

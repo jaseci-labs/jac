@@ -154,12 +154,12 @@ test "rule with multiple paths expands into one OR-grouped match block per path"
     ];
     result = keda._build_routing_rules(rules);
     assert len(result) == 2;
-    path_values = [entry["path"]["value"] for entry in result];
+    path_values = [`entry["path"]["value"] for `entry in result];
     assert "/app" in path_values;
     assert "/api" in path_values;
-    for entry in result {
-        assert entry["hosts"] == ["preview.jac.dev"];
-        assert entry["headers"][0]["name"] == "x-preview-id";
+    for `entry in result {
+        assert `entry["hosts"] == ["preview.jac.dev"];
+        assert `entry["headers"][0]["name"] == "x-preview-id";
     }
 }
 

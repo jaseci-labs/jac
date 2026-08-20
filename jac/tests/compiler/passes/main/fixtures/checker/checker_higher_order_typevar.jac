@@ -4,8 +4,6 @@ Expected: 0 errors. `apply` returns T inferred from the passed callable's
 return type, so `n + 1` typechecks as int arithmetic.
 """
 
-import from typing { Callable, TypeVar }
-
 glob T = TypeVar("T");
 
 def apply(f: Callable[[], T]) -> T {

@@ -50,7 +50,7 @@ def _project_database -> str {
     base = str(Path.cwd());
     jacs = sorted(
         p
-        for p in Path.cwd().glob("*.jac")
+        for p in Path.cwd().`glob("*.jac")
         if p.is_file()
     );
     target = str(jacs[0]) if len(jacs) == 1 else None;

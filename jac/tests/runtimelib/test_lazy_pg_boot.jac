@@ -213,7 +213,7 @@ test "first-use schema DDL runs once per database, even from many threads" {
     ready = threading.Barrier(racers);
 
     def race {
-        ready.wait(10);
+        ready.`wait(10);
         store.ensure_schema_once({});
     }
     threads = [

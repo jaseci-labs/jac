@@ -36,8 +36,8 @@ def:pub app -> JsxElement {
         {
             email: JacSchema.string().email("Invalid email"),
             agree: JacSchema.boolean(),
-            plan: JacSchema.enum(["free", "pro", "enterprise"]),
-            role: JacSchema.enum(["admin", "user"])
+            plan: JacSchema.`enum(["free", "pro", "enterprise"]),
+            role: JacSchema.`enum(["admin", "user"])
         }
     );
 

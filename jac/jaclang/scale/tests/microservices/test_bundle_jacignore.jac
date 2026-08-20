@@ -6,6 +6,7 @@ import from jaclang.scale.injector.bundle {
     _stage_app,
     add_source_members,
     bundle_source_files,
+    partition_bundle_sources,
     content_address,
     nested_sanitized_tomls,
     open_det_tar,
@@ -137,4 +138,76 @@ test "a sealed .jab carries no tree that .jacignore parks" {
     assert ".jacignore" in names , names;
     assert not any([n.startswith("docsite/") for n in names]) , names;
     assert not any([n.startswith("evaluation/") for n in names]) , names;
+}
+
+
+def _tree_with_build_dirs -> Path {
+    d = Path(tempfile.mkdtemp(prefix="jac-prunelog-"));
+    (d / "jac.toml").write_text("[project]\nname = \"mini\"\n");
+    (d / "svc.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
+    (d / "dist").mkdir();
+    (d / "dist" / "handler.jac").write_text("def:pub go -> str { return \"x\"; }\n");
+    (d / "svc").mkdir();
+    (d / "svc" / "build").mkdir();
+    (d / "svc" / "build" / "gen.jac").write_text("def gen -> str { return \"y\"; }\n");
+    (d / "node_modules").mkdir();
+    (d / "node_modules" / "pkg.js").write_text("//\n");
+    return d;
+}
+
+
+test "a source directory the build-output heuristic eats is named at deploy time" {
+    base = _tree_with_build_dirs();
+
+    (kept, pruned) = partition_bundle_sources(base);
+
+    rels = sorted([p.relative_to(base).as_posix() for p in kept]);
+    assert "dist/handler.jac" not in rels , rels;
+    assert "svc/build/gen.jac" not in rels , rels;
+    assert "svc.jac" in rels , rels;
+    assert pruned == ["dist", "node_modules", "svc/build"] , (
+        f"every directory the heuristic drops has to be reportable, nested ones "
+        f"at their full path: {pruned}"
+    );
+}
+
+
+test "a directory the bundle requires is never reported as pruned" {
+    # .jac and dist are both in the exclude set, but .jac/client/dist is force
+    # included, so reporting it would tell an operator their client build was
+    # dropped when it shipped.
+    base = _tree_with_build_dirs();
+    ((base / ".jac") / "client" / "dist").mkdir(parents=True);
+    ((base / ".jac") / "client" / "dist" / "app.js").write_text("//\n");
+
+    (kept, pruned) = partition_bundle_sources(base);
+
+    rels = [p.relative_to(base).as_posix() for p in kept];
+    assert ".jac/client/dist/app.js" in rels , rels;
+    assert ".jac" not in pruned , pruned;
+    assert ".jac/client/dist" not in pruned , pruned;
+}
+
+
+test "a tree with no build-output directories reports nothing" {
+    d = Path(tempfile.mkdtemp(prefix="jac-prunelog-clean-"));
+    (d / "jac.toml").write_text("[project]\nname = \"clean\"\n");
+    (d / "svc.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
+
+    (kept, pruned) = partition_bundle_sources(d);
+
+    assert pruned == [] , pruned;
+    assert sorted([p.relative_to(d).as_posix() for p in kept]) == ["svc.jac"];
+}
+
+
+test "the reported set does not change which files ship" {
+    base = _tree_with_build_dirs();
+
+    (kept, _pruned) = partition_bundle_sources(base);
+
+    assert sorted([p.relative_to(base).as_posix() for p in kept])
+        == sorted(
+            [p.relative_to(base).as_posix() for p in bundle_source_files(base)]
+        ) , "reporting is observation only";
 }

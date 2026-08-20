@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.cli.command { CommandSpec }
 
 obj ExecutionResult {

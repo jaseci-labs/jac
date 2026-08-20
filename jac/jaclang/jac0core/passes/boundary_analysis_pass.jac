@@ -54,6 +54,10 @@ class BoundaryAnalysisPass(UniPass) {
         self: BoundaryAnalysisPass, name_node: (UniNode | None)
     ) -> (Ability | None);
 
+    def _na_target_decl(
+        self: BoundaryAnalysisPass, source_mod: (Module | None), name: str
+    ) -> (UniNode | None);
+
     def _signature_of_decl(
         self: BoundaryAnalysisPass, decl: (Ability | None)
     ) -> tuple[(str, list[str], list[str])];

@@ -61,7 +61,7 @@ def build_spec -> HTTPActivationSpec {
 with entry {
     if len(sys.argv) < 2 or sys.argv[1] not in ("apply", "destroy") {
         print("usage: jac run keda_http_activation_verify.jac [apply|destroy]");
-        sys.exit(1);
+        sys.`exit(1);
     }
 
     load_config();
@@ -74,7 +74,7 @@ with entry {
         ok = keda.apply_http_activation(build_spec());
         if not ok {
             print("apply_http_activation returned False (HTTP Add-on CRDs missing?)");
-            sys.exit(1);
+            sys.`exit(1);
         }
         print(f"apply_http_activation -> {ok}");
         print(f"InterceptorRoute: {keda.interceptor_route_name_for(DEPLOYMENT)}");

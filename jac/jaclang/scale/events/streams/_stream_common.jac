@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.scale.events.broker { Event, RetryPolicy, StreamPosition }
 import time;
 
@@ -33,7 +32,7 @@ def wait_or_stop(broker: any, seconds: float) -> bool {
     deadline = time.time() + seconds;
     while time.time() < deadline {
         chunk = min(deadline - time.time(), 1.0);
-        if broker._stop_event.wait(timeout=chunk) {
+        if broker._stop_event.`wait(timeout=chunk) {
             return True;
         }
     }

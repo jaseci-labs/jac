@@ -7,7 +7,7 @@ name: Build jac native binaries
 #     GITHUB_TOKEN-created release emits no release.published event); the
 #     release event is the safety net for releases published by a real user.
 #   - channel=dev: cache-accelerated host-native builds re-published under the
-#     rolling `dev` prerelease. Called by release-dev.yml on pushes to main.
+#     rolling `dev` prerelease. Called by release-dev.yml on its nightly cron.
 
 on:
   workflow_call:
@@ -20,6 +20,17 @@ on:
         description: "release: cold + glibc-pinned; dev: cached + host-native."
         required: false
         default: release
+        type: string
+      only:
+        # Diagnostic lane: build ONE leg instead of the whole matrix, so a
+        # single red platform can be iterated on without burning three other
+        # runners per attempt. Empty (the default) keeps the channel's full
+        # leg list. `plan` rejects a non-empty filter whenever `tag` is set,
+        # so a release can never ship a partial matrix by mistake -- that
+        # guard is what lets workflow_dispatch expose this too.
+        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list."
+        required: false
+        default: ""
         type: string
     # Called workflows do not see the caller's repo secrets unless passed
     # explicitly; without these the docker-image job skips its push steps.
@@ -37,6 +48,21 @@ on:
         # duplicate release. Empty = build the artifact only, attach nothing.
         description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
         required: false
+        type: string
+      # `channel` and `only` mirror the workflow_call inputs so a one-leg
+      # diagnostic build is a dispatch away. This replaces macos-seal-probe.yml,
+      # a wrapper whose whole body was a workflow_call with only=macos-aarch64
+      # and which was never run once.
+      channel:
+        description: "release: cold + glibc-pinned; dev: cached + host-native."
+        required: false
+        default: release
+        type: choice
+        options: [release, dev]
+      only:
+        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list. Rejected when `tag` is set."
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -66,8 +92,8 @@ jobs:
   # floor for versioned releases, and on the dev channel it was the
   # critical path (~24 min/merge on the slow Intel runners) for a
   # rolling prerelease Intel users don't consume. Versioned releases
-  # still ship macos-x86_64: inputs.channel is empty on release/dispatch
-  # events, so those keep the full list.
+  # still ship macos-x86_64: inputs.channel is empty on the release event and
+  # defaults to `release` on dispatch, so those keep the full list.
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -77,6 +103,8 @@ jobs:
         id: legs
         env:
           CHANNEL: ${{ inputs.channel }}
+          ONLY: ${{ inputs.only }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           LEGS='[
@@ -87,6 +115,24 @@ jobs:
           ]'
           if [ "$CHANNEL" = "dev" ]; then
             LEGS="$(jq -c 'map(select(.platform != "macos-x86_64"))' <<<"$LEGS")"
+          fi
+          # `only` is a diagnostic lane, never a release path: uploading a
+          # filtered matrix to a real tag would publish a release missing
+          # assets for the legs it dropped. workflow_call never pairs them;
+          # this guard is what makes the dispatch input safe to expose.
+          if [ -n "${ONLY:-}" ] && [ -n "${TAG:-}" ]; then
+            echo "::error::platform filter '$ONLY' cannot be combined with tag '$TAG': a filtered matrix would publish a release missing assets."
+            exit 1
+          fi
+          if [ -n "${ONLY:-}" ]; then
+            LEGS="$(jq -c --arg only "$ONLY" \
+              '($only | split(",") | map(ltrimstr(" ") | rtrimstr(" "))) as $want
+               | map(select(.platform as $p | $want | index($p)))' <<<"$LEGS")"
+            # A typo in the filter must not green-light an empty matrix.
+            [ "$(jq -c 'length' <<<"$LEGS")" -gt 0 ] || {
+              echo "::error::platform filter '$ONLY' matched no leg on channel '${CHANNEL:-release}'"
+              exit 1
+            }
           fi
           echo "include=$(jq -c . <<<"$LEGS")" >> "$GITHUB_OUTPUT"
 
@@ -281,7 +327,6 @@ jobs:
 
       - name: Read version (from jac.toml)
         id: ver
-        working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # The native backend statically links a pinned LLVM; fetch it per target
@@ -353,6 +398,24 @@ jobs:
           free -h
           swapon --show
 
+      # The seal loads every artifact it emits and calls into it, so a
+      # miscompiled artifact kills the worker in native code with nothing but a
+      # signal number (#8313). ReportCrash turns that into a symbolicated .ips
+      # report, which the on-failure step below prints -- but only if the agent
+      # is loaded, and the hosted image does not guarantee that. Best-effort and
+      # before the build, because a report is only written for a crash that
+      # happens after the agent is up.
+      - name: Arm macOS crash reporting (so a native abort names itself)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          set +e
+          launchctl load -w /System/Library/LaunchAgents/com.apple.ReportCrash.plist
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.ReportCrash.Root.plist
+          defaults write com.apple.CrashReporter DialogType none
+          launchctl list | grep -i reportcrash
+          exit 0
+
       - name: Build the jac binary (one command)
         working-directory: jac
         env:
@@ -378,6 +441,139 @@ jobs:
             SHIM_ARG=(-Dshim-bin="${{ steps.shim-fetch.outputs.file }}")
           fi
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
+
+      # A macOS leg that dies inside a sealed artifact must say WHERE. On any
+      # failure of the build above this (1) prints every crash report the OS
+      # wrote -- the .ips carries the aborting thread's frames plus dyld's or
+      # malloc's own message, neither of which reaches the worker's stderr on
+      # modern macOS -- and (2) reproduces the artifact load standalone under
+      # lldb for a symbolicated backtrace. Gated on failure(), so a green leg
+      # pays nothing. This stays after #8313 is closed: #8302, #8307 and #8313
+      # each cost a release cycle to a bare signal number, and the next one
+      # should name itself on the first red run.
+      - name: Name the native crash (macOS crash reports + lldb replay)
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        working-directory: jac
+        run: |
+          set +e
+          # ReportCrash writes asynchronously; the failing step can beat it.
+          sleep 25
+
+          echo "::group::macOS crash reports"
+          FOUND=0
+          for d in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            [ -d "$d" ] || continue
+            for f in "$d"/*; do
+              case "$f" in *.ips|*.crash) ;; *) continue ;; esac
+              [ -f "$f" ] || continue
+              FOUND=1
+              echo "===== $f"
+              cat "$f"
+              echo
+            done
+          done
+          if [ "$FOUND" = 0 ]; then
+            echo "(no crash report on this runner -- ReportCrash is not loaded on the image;"
+            echo " the lldb replay below is then the only naming mechanism)"
+          fi
+          echo "::endgroup::"
+
+          # python-build-standalone's interpreter is the one the seal worker
+          # runs, so the replay loads each artifact into the same process image
+          # the abort happened in. Not -type f: pbs ships bin/python3 as a
+          # symlink, and /usr/bin/python3 is SIP-protected -- lldb cannot debug
+          # it, so falling back to it silently turns the replay into a no-op.
+          PY="$(ls "$PWD"/.pbs-build/*/python/install/bin/python3.* 2>/dev/null | head -1)"
+          [ -n "$PY" ] || PY="$(ls "$PWD"/.pbs-build/*/python/install/bin/python3 2>/dev/null | head -1)"
+          [ -n "$PY" ] || PY=/usr/bin/python3
+          echo "replay interpreter: $PY"
+
+          cat > "$RUNNER_TEMP/jac-load-probe.py" <<'PROBE'
+          import ctypes, sys
+
+          path = sys.argv[1]
+          print("dlopen: %s" % path, flush=True)
+          lib = ctypes.CDLL(path)
+          print("dlopen ok", flush=True)
+          init = ctypes.cast(getattr(lib, "__jac_shared_init"), ctypes.c_void_p).value
+          print("calling __jac_shared_init", flush=True)
+          ctypes.CFUNCTYPE(None)(init)()
+          print("__jac_shared_init returned", flush=True)
+          try:
+              probe = ctypes.cast(getattr(lib, "jac_str_new"), ctypes.c_void_p).value
+          except AttributeError:
+              probe = 0
+          if probe:
+              print("calling jac_str_new", flush=True)
+              made = ctypes.CFUNCTYPE(
+                  ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64
+              )(probe)(b"jac", 3)
+              print("jac_str_new -> %r" % (made,), flush=True)
+          print("LOAD PROBE OK", flush=True)
+          PROBE
+
+          echo "::group::lldb replay of every sealed artifact this build emitted"
+          find "$PWD" "$GITHUB_WORKSPACE/.zig-cache" -name 'libjac_*.dylib' -type f 2>/dev/null \
+            | sort -u > "$RUNNER_TEMP/jac-dylibs.txt"
+          if ! [ -s "$RUNNER_TEMP/jac-dylibs.txt" ]; then
+            echo "(no libjac_*.dylib on the runner: the seal died before it emitted one)"
+          fi
+          : > "$RUNNER_TEMP/jac-dylibs-bad.txt"
+          while IFS= read -r dl; do
+            [ -n "$dl" ] || continue
+            echo "===== $dl ($(wc -c < "$dl") bytes)"
+            # Plain run first: the artifact's own diagnostics (an uncaught
+            # native exception prints its message before aborting) reach this
+            # step's stdout directly, which the build tool's captured-stdio
+            # view of the seal never shows.
+            perl -e 'alarm 240; exec @ARGV' \
+              "$PY" "$RUNNER_TEMP/jac-load-probe.py" "$dl" 2>&1 | tail -40
+            rc="${PIPESTATUS[0]:-1}"
+            echo "----- exit: $rc"
+            [ "$rc" = 0 ] || echo "$dl" >> "$RUNNER_TEMP/jac-dylibs-bad.txt"
+            perl -e 'alarm 240; exec @ARGV' \
+              lldb --batch -o run -k "thread backtrace all" -k "image list -o -f" \
+                   -k quit -- "$PY" "$RUNNER_TEMP/jac-load-probe.py" "$dl" 2>&1 | tail -80
+          done < "$RUNNER_TEMP/jac-dylibs.txt"
+          echo "::endgroup::"
+          exit 0
+
+      # The .ips reports and a symbol dump per artifact, so an abort that the
+      # log only shows as an address can be symbolicated after the run.
+      - name: Collect the crash evidence
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/jac-crash-evidence"
+          mkdir -p "$OUT"
+          for d in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            [ -d "$d" ] && cp -f "$d"/*.ips "$d"/*.crash "$OUT"/ 2>/dev/null
+          done
+          while IFS= read -r dl; do
+            [ -n "$dl" ] || continue
+            nm -n "$dl" > "$OUT/$(basename "$dl").nm" 2>/dev/null
+            otool -l "$dl" > "$OUT/$(basename "$dl").otool" 2>/dev/null
+          done < "$RUNNER_TEMP/jac-dylibs.txt"
+          # The artifacts that actually failed their standalone load ride along
+          # whole: a miscompiled artifact is only diagnosable with its bytes,
+          # and the runner is gone by the time anyone reads this.
+          while IFS= read -r dl; do
+            [ -n "$dl" ] || continue
+            cp -f "$dl" "$OUT"/ 2>/dev/null
+          done < "$RUNNER_TEMP/jac-dylibs-bad.txt"
+          ls -la "$OUT"
+          exit 0
+
+      - name: Upload the crash evidence
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-crash-evidence-${{ matrix.platform }}
+          path: ${{ runner.temp }}/jac-crash-evidence
+          if-no-files-found: ignore
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
@@ -590,7 +786,6 @@ jobs:
 
       - name: Read version (from jac.toml)
         id: ver
-        working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # Dev-channel legs keep no workflow artifact; that path pulls the
@@ -667,7 +862,6 @@ jobs:
 
       - name: Read version (from jac.toml)
         id: ver
-        working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # Dev-channel legs keep no workflow artifact; that path pulls the

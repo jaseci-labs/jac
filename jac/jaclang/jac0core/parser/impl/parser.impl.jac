@@ -137,6 +137,13 @@ impl Parser.check_name -> bool {
     return self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME);
 }
 
+impl Parser.is_name_usable_token -> bool {
+    if self.check_any(TokenKind.KW_ROOT, TokenKind.KW_SUPER) {
+        return False;
+    }
+    return is_special_var_kind(self.current().kind) or self.is_builtin_type_token();
+}
+
 impl Parser.is_keyword_token -> bool {
     return self.check_any(
         TokenKind.KW_ABSTRACT,
@@ -262,8 +269,19 @@ impl Parser.is_builtin_type_token -> bool {
     );
 }
 
-impl Parser.expect_name -> LexToken {
+impl Parser.expect_name(context: str = "identifier") -> LexToken {
     if self.check_name() {
+        return self.advance();
+    }
+    if self.is_name_usable_token() {
+        return self.advance();
+    }
+    if self.is_keyword_token() {
+        kw = self.current().value;
+        self.emit_diag(
+            f"'{kw}' is a keyword and cannot be used as a {context} name (prefix with backtick to escape: `{kw})",
+            "E0013"
+        );
         return self.advance();
     }
     self.emit_diag(f"Expected identifier, got '{self.current().kind.value}'", "E0003");
@@ -1284,11 +1302,18 @@ impl Parser.parse_atomic_chain -> Expr {
 
             attr: UniNode | None = None;
             if self.check_name() {
-                name_tok = self.expect_name();
+                name_tok = self.expect_name("attribute");
                 attr = self.make_name(name_tok);
-            } elif self.is_keyword_token() {
+            } elif is_special_var_kind(self.current().kind) {
                 name_tok = self.advance();
                 attr = self._make_attr_from_keyword(name_tok);
+            } elif self.check_any(
+                TokenKind.KW_GETTER, TokenKind.KW_SETTER, TokenKind.KW_DELETER
+            ) {
+                attr = self.make_special_name(self.advance());
+            } elif self.is_keyword_token() {
+                name_tok = self.expect_name("attribute");
+                attr = self.make_name(name_tok);
             }
             if not attr {
                 dot_tok = first_consumed_tok;
@@ -1564,24 +1589,13 @@ impl Parser.parse_call_args(kid: list[UniNode]) -> list[Expr | KWPair] {
 impl Parser.parse_call_arg -> Expr | KWPair {
     if (self.check_name() or self.is_keyword_token())
         and self.check_peek(TokenKind.EQ) {
-        name_tok = self.advance();
         name: Name;
-        if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME {
-            name = self.make_name(name_tok);
-        } elif name_tok.kind
-            in [
-                TokenKind.KW_SELF,
-                TokenKind.KW_PROPS,
-                TokenKind.KW_SUPER,
-                TokenKind.KW_ROOT,
-                TokenKind.KW_HERE,
-                TokenKind.KW_VISITOR
-            ] {
+        if is_special_var_kind(self.current().kind) {
             name = SpecialVarRef(
-                var=self.make_special_name(name_tok), is_enum_stmt=False
+                var=self.make_special_name(self.advance()), is_enum_stmt=False
             );
         } else {
-            name = self.make_special_name(name_tok);
+            name = self.make_name(self.expect_name("keyword argument"));
         }
         eq_uni = self.consume_uni(TokenKind.EQ);
         value = self.parse_expression();
@@ -1994,7 +2008,10 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.NAME)
         or self.check(TokenKind.KWESC_NAME)
         or self.is_keyword_token() {
-        tok = self.advance();
+        if is_special_var_kind(self.current().kind) {
+            return self.make_special_name(self.advance());
+        }
+        tok = self.expect_name("variable");
         if tok.kind != TokenKind.NAME and tok.kind != TokenKind.KWESC_NAME {
             return self.make_special_name(tok);
         }
@@ -3655,6 +3672,28 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
         }
     }
 
+    if self.is_keyword_token()
+        and not self.is_name_usable_token()
+        and self.check_peek_any(
+            TokenKind.EQ,
+            TokenKind.ADD_EQ,
+            TokenKind.SUB_EQ,
+            TokenKind.MUL_EQ,
+            TokenKind.DIV_EQ,
+            TokenKind.FLOOR_DIV_EQ,
+            TokenKind.MOD_EQ,
+            TokenKind.STAR_POW_EQ,
+            TokenKind.MATMUL_EQ,
+            TokenKind.BW_AND_EQ,
+            TokenKind.BW_OR_EQ,
+            TokenKind.BW_XOR_EQ,
+            TokenKind.LSHIFT_EQ,
+            TokenKind.RSHIFT_EQ
+        ) {
+        kw_target = self.make_name(self.expect_name("variable"));
+        return self.parse_assignment_with_target(kw_target);
+    }
+
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
         return self.parse_import_stmt();
     }
@@ -4460,8 +4499,11 @@ impl Parser.parse_name_pattern -> MatchPattern {
     }
 
     if self.is_keyword_token() {
-        tok = self.advance();
-        name = self.make_special_name(tok);
+        if is_special_var_kind(self.current().kind) {
+            name = self.make_special_name(self.advance());
+        } else {
+            name = self.make_name(self.expect_name("pattern"));
+        }
         if self.check(TokenKind.LPAREN) {
             return self.parse_class_pattern_args([name]);
         }
@@ -4726,21 +4768,21 @@ impl Parser.parse_raise_stmt -> RaiseStmt {
 
 impl Parser.parse_assert_stmt -> AssertStmt {
     assert_uni = self.consume_uni(TokenKind.KW_ASSERT);
-    test = self.parse_expression();
+    `test = self.parse_expression();
     msg = None;
     comma_uni: Token | None = None;
     if self.match_tok(TokenKind.COMMA) {
         comma_uni = self.make_uni_token(self.previous());
         msg = self.parse_expression();
     }
-    kid: list[UniNode] = [assert_uni, test];
+    kid: list[UniNode] = [assert_uni, `test];
     if msg is not None and comma_uni is not None {
         kid.append(comma_uni);
         kid.append(msg);
     }
     self.expect(TokenKind.SEMI);
     kid.append(self.make_semi());
-    return AssertStmt(condition=test, error_msg=msg, kid=kid);
+    return AssertStmt(condition=`test, error_msg=msg, kid=kid);
 }
 
 impl Parser.parse_delete_stmt -> DeleteStmt {
@@ -4966,8 +5008,12 @@ impl Parser.parse_import_stmt -> Import {
                 path_names.append(str_node);
                 path_kid.append(str_node);
             } elif self.check_name() or self.is_keyword_token() {
-                name_tok = self.advance();
-                nm = self.make_name_or_special(name_tok);
+                if self.check_name() or self.is_keyword_token() {
+                    name_tok = self.advance();
+                } else {
+                    name_tok = self.expect_name("module path");
+                }
+                nm = self.make_name(name_tok);
                 path_names.append(nm);
                 path_kid.append(nm);
                 while self.match_tok(TokenKind.DOT) {
@@ -4975,9 +5021,9 @@ impl Parser.parse_import_stmt -> Import {
                     if self.check_name() or self.is_keyword_token() {
                         name_tok = self.advance();
                     } else {
-                        name_tok = self.expect_name();
+                        name_tok = self.expect_name("module path");
                     }
-                    nm = self.make_name_or_special(name_tok);
+                    nm = self.make_name(name_tok);
                     path_names.append(nm);
                     path_kid.append(nm);
                 }
@@ -5044,19 +5090,22 @@ impl Parser.parse_from_path -> tuple[(ModulePath | None, bool)] {
         path_kid.append(str_node);
         is_clib_import = True;
     } elif self.check_name() or self.is_keyword_token() {
-        name_tok = self.advance();
-        nm = self.make_name_or_special(name_tok);
+        if self.check_name() or self.is_keyword_token() {
+            name_tok = self.advance();
+        } else {
+            name_tok = self.expect_name("module path");
+        }
+        nm = self.make_name(name_tok);
         path_names.append(nm);
         path_kid.append(nm);
         while self.match_tok(TokenKind.DOT) {
             path_kid.append(self.make_uni_token(self.previous()));
             if self.check_name() or self.is_keyword_token() {
                 name_tok = self.advance();
-                nm = self.make_name_or_special(name_tok);
             } else {
-                name_tok = self.expect(TokenKind.NAME);
-                nm = self.make_name(name_tok);
+                name_tok = self.expect_name("module path");
             }
+            nm = self.make_name(name_tok);
             path_names.append(nm);
             path_kid.append(nm);
         }
@@ -5109,14 +5158,8 @@ impl Parser.parse_import_items(
                 if self.check(TokenKind.KW_DEFAULT) {
                     item_name_tok = self.expect(TokenKind.KW_DEFAULT);
                     item_name = self.make_uni_token(item_name_tok);
-                } elif self.check_name() {
-                    item_name_tok = self.expect_name();
-                    item_name = self.make_name(item_name_tok);
-                } elif self.is_keyword_token() {
-                    item_name_tok = self.advance();
-                    item_name = self.make_name_or_special(item_name_tok);
                 } else {
-                    item_name_tok = self.expect_name();
+                    item_name_tok = self.expect_name("import item");
                     item_name = self.make_name(item_name_tok);
                 }
             }
@@ -5168,15 +5211,8 @@ impl Parser.parse_archetype -> Archetype {
     );
     arch_type = self.make_uni_token(arch_tok);
     access = self.parse_access_tag();
-    name_tok: LexToken;
-    if self.check_name() {
-        name_tok = self.expect_name();
-    } elif self.is_keyword_token() {
-        name_tok = self.advance();
-    } else {
-        name_tok = self.expect_name();
-    }
-    name = self.make_name_or_special(name_tok);
+    name_tok = self.expect_name("archetype");
+    name = self.make_name(name_tok);
 
     tp_list: (list | None) = None;
     tp_lb_uni: Token | None = None;
@@ -5196,24 +5232,24 @@ impl Parser.parse_archetype -> Archetype {
     if self.match_tok(TokenKind.LPAREN) {
         lp_uni = self.make_uni_token(self.previous());
         if not self.check(TokenKind.RPAREN) {
-            entry = self.parse_call_arg();
-            inherit_items.append(entry);
-            if isinstance(entry, KWPair) {
-                keywords.append(entry);
+            `entry = self.parse_call_arg();
+            inherit_items.append(`entry);
+            if isinstance(`entry, KWPair) {
+                keywords.append(`entry);
             } else {
-                base_classes.append(entry);
+                base_classes.append(`entry);
             }
             while self.match_tok(TokenKind.COMMA) {
                 arch_comma_unis.append(self.make_uni_token(self.previous()));
                 if self.check(TokenKind.RPAREN) {
                     break;
                 }
-                entry = self.parse_call_arg();
-                inherit_items.append(entry);
-                if isinstance(entry, KWPair) {
-                    keywords.append(entry);
+                `entry = self.parse_call_arg();
+                inherit_items.append(`entry);
+                if isinstance(`entry, KWPair) {
+                    keywords.append(`entry);
                 } else {
-                    base_classes.append(entry);
+                    base_classes.append(`entry);
                 }
             }
         }
@@ -5536,30 +5572,8 @@ impl Parser.parse_has_stmt -> ArchHas {
 }
 
 impl Parser.parse_has_var -> HasVar {
-    name_tok: LexToken;
-    if self.check_name() {
-        name_tok = self.expect_name();
-    } elif self.is_keyword_token() {
-        name_tok = self.advance();
-    } else {
-        name_tok = self.expect_name();
-    }
-    name: Name;
-    if name_tok.kind
-        in [
-            TokenKind.KW_SELF,
-            TokenKind.KW_PROPS,
-            TokenKind.KW_SUPER,
-            TokenKind.KW_ROOT,
-            TokenKind.KW_HERE,
-            TokenKind.KW_VISITOR
-        ] {
-        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
-    } elif name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME {
-        name = self.make_name(name_tok);
-    } else {
-        name = self.make_special_name(name_tok);
-    }
+    name_tok = self.expect_name("field");
+    name: Name = self.make_name(name_tok);
     colon_uni = self.consume_uni(TokenKind.COLON);
     type_expr = self.parse_pipe();
     type_tag = SubTag(tag=type_expr, kid=[colon_uni, type_expr]);
@@ -5743,11 +5757,14 @@ impl Parser.parse_ability -> Ability {
     name: NameAtom | None = None;
 
     if self.check_name() {
-        name_tok = self.expect_name();
+        name_tok = self.expect_name("ability");
         name = self.make_name(name_tok);
-    } elif self.is_keyword_token() and not (is_can and self.check(TokenKind.KW_WITH)) {
+    } elif is_special_var_kind(self.current().kind) {
         name_tok = self.advance();
-        name = self._make_attr_from_keyword(name_tok);
+        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
+    } elif self.is_keyword_token() and not (is_can and self.check(TokenKind.KW_WITH)) {
+        name_tok = self.expect_name("ability");
+        name = self.make_name(name_tok);
     }
 
     tp_list: (list | None) = None;
@@ -6038,8 +6055,8 @@ impl Parser.parse_param_var -> ParamVar | None {
     }
 
     if self.check_name() {
-        name_tok = self.expect_name();
-        name = self.make_name_or_special(name_tok);
+        name_tok = self.expect_name("parameter");
+        name = self.make_name(name_tok);
     } elif self.check(TokenKind.KW_SELF) {
         name_tok = self.expect(TokenKind.KW_SELF);
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
@@ -6076,13 +6093,8 @@ impl Parser.parse_param_var -> ParamVar | None {
         );
         name = self.make_name_or_special(name_tok);
     } elif self.is_keyword_token() {
-        kw = self.current().value;
-        self.emit_diag(
-            f"'{kw}' is a keyword and cannot be used as a parameter name (prefix with backtick to escape: `{kw})",
-            "E0013"
-        );
-        name_tok = self.advance();
-        name = self.make_name_or_special(name_tok);
+        name_tok = self.expect_name("parameter");
+        name = self.make_name(name_tok);
     } else {
         return None;
     }
@@ -6128,15 +6140,8 @@ impl Parser.parse_enum -> Enum {
     }
     enum_kw_uni = self.consume_uni(TokenKind.KW_ENUM);
     access = self.parse_access_tag();
-    name_tok: LexToken;
-    if self.check_name() {
-        name_tok = self.expect_name();
-    } elif self.is_keyword_token() {
-        name_tok = self.advance();
-    } else {
-        name_tok = self.expect_name();
-    }
-    name = self.make_name_or_special(name_tok);
+    name_tok = self.expect_name("enum");
+    name = self.make_name(name_tok);
     value_type: Expr | None = None;
     enum_colon_uni: Token | None = None;
     base_classes: list[Expr] = [];
@@ -6419,18 +6424,8 @@ impl Parser.parse_global_var -> GlobalVars {
 }
 
 impl Parser.parse_global_var_assignment -> Assignment {
-    name: Expr | None = None;
-    name_tok: LexToken;
-    if self.check_name() {
-        name_tok = self.expect_name();
-    } elif self.is_keyword_token() {
-        name_tok = self.advance();
-    } else {
-        name_tok = self.expect_name();
-    }
-    if name is None {
-        name = self.make_name_or_special(name_tok);
-    }
+    name_tok: LexToken = self.expect_name("global variable");
+    name: Expr = self.make_name(name_tok);
     type_tag: SubTag | None = None;
     if self.match_tok(TokenKind.COLON) {
         gv_colon_uni = self.make_uni_token(self.previous());
@@ -6741,17 +6736,26 @@ impl Parser.parse_impl_target_name -> NameAtom {
         name_tok = self.expect_any(TokenKind.KW_INIT, TokenKind.KW_POST_INIT);
         return SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.check_any(
-        TokenKind.KW_ENTRY, TokenKind.KW_EXIT, TokenKind.KW_DEFAULT
+        TokenKind.KW_ENTRY,
+        TokenKind.KW_EXIT,
+        TokenKind.KW_DEFAULT,
+        TokenKind.KW_GETTER,
+        TokenKind.KW_SETTER,
+        TokenKind.KW_DELETER,
+        TokenKind.KW_RETURN
     ) {
         name_tok = self.expect_any(
-            TokenKind.KW_ENTRY, TokenKind.KW_EXIT, TokenKind.KW_DEFAULT
+            TokenKind.KW_ENTRY,
+            TokenKind.KW_EXIT,
+            TokenKind.KW_DEFAULT,
+            TokenKind.KW_GETTER,
+            TokenKind.KW_SETTER,
+            TokenKind.KW_DELETER,
+            TokenKind.KW_RETURN
         );
         return self.make_special_name(name_tok);
-    } elif self.is_keyword_token() {
-        name_tok = self.advance();
-        return self.make_special_name(name_tok);
     } else {
-        name_tok = self.expect(TokenKind.NAME);
+        name_tok = self.expect_name("impl target");
         return self.make_name(name_tok);
     }
 }

@@ -11,6 +11,8 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     create_k8s_secret,
     delete_if_exists,
     get_cluster_provider,
+    privileged_pss_labels,
+    PSS_ENFORCE_LABEL,
     _resolve_current_rs_hashes,
     _refresh_rs_hashes
 }
@@ -18,6 +20,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
+    with_config_revision,
     ManifestBuilder,
     GATEWAY_NAME,
     k8s_safe_name
@@ -168,6 +171,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
         }
         self._emit("rollout", "ok", "Fleet is ready");
 
+        service_url = self.get_service_url(app_name) if bundle.get("ingress") else None;
+        access_hint = None if service_url else self.port_forward_hint();
+
         svc_count = len(bundle["pod_specs"]) - 1;
         success_msg = (
             f"Applied {svc_count} service Deployment+Service pair(s) "
@@ -183,7 +189,13 @@ obj KubernetesTarget(KubernetesTargetBase) {
                 f"once the underlying issue is fixed."
             );
         }
-        return DeploymentResult(success=True, message=success_msg, details=bundle);
+        return DeploymentResult(
+            success=True,
+            service_url=service_url,
+            access_hint=access_hint,
+            message=success_msg,
+            details=bundle
+        );
     }
 
     def _scan_for_crash_loop(
@@ -595,11 +607,16 @@ obj KubernetesTarget(KubernetesTargetBase) {
         return detail;
     }
 
-    def _deploy_observability(app_name: str) -> None {
+    def _observability_requested -> bool {
         logs_cfg = self._read_microservices_logs_config();
         tracing_cfg = self._read_microservices_tracing_config();
-        if not logs_cfg.get("enabled", False)
-            and not tracing_cfg.get("enabled", False) {
+        return bool(self.k8s_config.monitoring_enabled)
+            or bool(logs_cfg.get("enabled", False))
+            or bool(tracing_cfg.get("enabled", False));
+    }
+
+    def _deploy_observability(app_name: str) -> None {
+        if not self._observability_requested() {
             return;
         }
 
@@ -671,26 +688,26 @@ obj KubernetesTarget(KubernetesTargetBase) {
         try {
             ns = core_v1.read_namespace(name=namespace);
             labels: dict = dict(getattr(ns.metadata, "labels", {}) or {});
-            current: str = labels.get("pod-security.kubernetes.io/enforce", "");
-            if current {
+            new_labels = privileged_pss_labels(labels);
+            if new_labels is None {
                 if self.logger {
+                    current = labels.get(PSS_ENFORCE_LABEL, "");
                     self.logger.warn(
                         f"namespace '{namespace}' has "
-                        f"pod-security.kubernetes.io/enforce={current}; "
+                        f"{PSS_ENFORCE_LABEL}={current} from outside jac-scale; "
                         f"hostPath DaemonSets (node-exporter, Alloy) may be "
                         f"rejected. Relabel manually with `kubectl label "
                         f"namespace {namespace} "
-                        f"pod-security.kubernetes.io/enforce=privileged "
+                        f"{PSS_ENFORCE_LABEL}=privileged "
                         f"--overwrite` if you want to enable them."
                     );
                 }
                 return;
             }
-            patch = {
-                "metadata": {
-                    "labels": {"pod-security.kubernetes.io/enforce": "privileged"}
-                }
-            };
+            if not new_labels {
+                return;
+            }
+            patch = {"metadata": {"labels": new_labels}};
             core_v1.patch_namespace(name=namespace, body=patch);
             if self.logger {
                 self.logger.info(
@@ -714,8 +731,6 @@ obj KubernetesTarget(KubernetesTargetBase) {
 
     def _build_observability_config -> KubernetesConfig {
         overrides: dict[str, any] = dict(self.k8s_config.to_dict());
-        overrides["monitoring_enabled"] = True;
-
         overrides["loki_enabled"] = self._read_microservices_logs_config().get(
             "enabled", False
         );
@@ -780,7 +795,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             env_list=list(self._deploy_context.env_list),
             init_containers=self._deploy_context.init_containers
         );
-        present = {entry.get("name") for entry in ctx.env_list};
+        present = {`entry.get("name") for `entry in ctx.env_list};
         for (env_name, env_value) in self.env.items() {
             if env_name not in present {
                 ctx.env_list.append({"name": env_name, "value": str(env_value)});
@@ -936,14 +951,24 @@ obj KubernetesTarget(KubernetesTargetBase) {
             }
         }
 
+        config_revision: str = "";
         user_secret = bundle.get("user_secret");
         if user_secret {
-            create_k8s_secret(
+            config_revision = create_k8s_secret(
                 core_v1,
                 namespace,
                 user_secret["metadata"]["name"],
                 user_secret["stringData"]
             );
+            if not config_revision {
+                raise RuntimeError(
+                    f"Applied the Secret for '{self.k8s_config.app_name}' but "
+                    "could not read the "
+                    "revision it returned, so a config change could not be made "
+                    "to reach running pods. Refusing to deploy workloads rather "
+                    "than reporting a success that leaves the old config live."
+                );
+            }
             if self.logger {
                 self.logger.info(
                     f"Applied Secret for user-defined [scale.secrets] "
@@ -970,7 +995,8 @@ obj KubernetesTarget(KubernetesTargetBase) {
             }
         }
 
-        for (svc_name, dep_manifest) in bundle["deployments"].items() {
+        for (svc_name, raw_manifest) in bundle["deployments"].items() {
+            dep_manifest = with_config_revision(raw_manifest, config_revision);
             self._apply_or_replace(
                 apps_v1,
                 "read_namespaced_deployment",

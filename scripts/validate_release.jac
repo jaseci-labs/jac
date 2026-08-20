@@ -4,7 +4,7 @@ Runs during the create-release-pr workflow BEFORE bumping versions.
 Computes and prints what the new versions would be so an invalid bump
 fails fast before any files are mutated.
 """
-import from __future__ { annotations }
+
 import argparse;
 import sys;
 import from pathlib { Path }
@@ -30,14 +30,14 @@ def main -> int {
         }
         current = get_current_version(repo_root, pkg_info.dir);
         new_version = bump_version(current, bump_type);
-        entry = {
+        `entry = {
             "name": pkg_name,
             "pypi": pkg_info.pypi,
             "current": current,
             "new": new_version,
             "bump": bump_type
         };
-        releases.append(entry);
+        releases.append(`entry);
     }
     if errors {
         print("\nValidation failed:");
@@ -58,5 +58,5 @@ def main -> int {
 }
 
 with entry:__main__ {
-    sys.exit(main());
+    sys.`exit(main());
 }

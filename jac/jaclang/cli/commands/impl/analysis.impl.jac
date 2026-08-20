@@ -6,8 +6,9 @@ import from jaclang.cli.check_report {
     print_failures,
     print_failed_summary,
     print_final_summary,
-    print_native_census,
-    print_placement_report
+    print_native_coverage,
+    print_placement_report,
+    print_compile_stats
 }
 
 def _maybe_malloc_trim {
@@ -26,8 +27,9 @@ impl check(
     nowarn: bool = False,
     lint_only: bool = False,
     fix: bool = False,
-    native_census: bool = False,
-    placements: bool = False
+    native_coverage: bool = False,
+    placements: bool = False,
+    compile_stats: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
@@ -49,9 +51,13 @@ impl check(
                 + ", ".join(unknown_codes)
         );
     }
-    if native_census {
-        import from jaclang.jac0core.compiler { na_census_begin }
-        na_census_begin();
+    if native_coverage {
+        import from jaclang.jac0core.compiler { na_coverage_begin }
+        na_coverage_begin();
+    }
+    if compile_stats {
+        import from jaclang.jac0core.prefix_flip { prefix_outcomes_reset }
+        prefix_outcomes_reset();
     }
 
     total_files = failed_files=total_errors=total_warnings=0;
@@ -122,7 +128,7 @@ impl check(
                     file_path=file_path,
                     options=CompileOptions(
                         type_check=True,
-                        no_cgen=not native_census,
+                        no_cgen=not native_coverage,
                         force_target_program=True,
                         suppress_codes=suppressed_codes
                     )
@@ -183,7 +189,9 @@ impl check(
         }
     }
     prog = JacProgram();
-    (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    (all_files, had_path_errors) = _iter_jac_files(
+        paths, ignore_list, include_annex=False
+    );
     total_to_check = len(all_files);
     for (idx, jac_file_path) in enumerate(all_files, 1) {
         process_file_result(jac_file_path, idx, total_to_check);
@@ -191,9 +199,12 @@ impl check(
         _maybe_malloc_trim();
     }
 
-    if native_census {
-        import from jaclang.jac0core.compiler { na_census_end }
-        print_native_census(na_census_end());
+    if native_coverage {
+        import from jaclang.jac0core.compiler { na_coverage_end }
+        print_native_coverage(na_coverage_end());
+    }
+    if compile_stats {
+        print_compile_stats();
     }
     if placements {
         print_placement_report(placement_report);
@@ -1229,14 +1240,14 @@ impl `test(
     if (not paths and not directory) {
         import from jaclang.project.config { get_config }
         cfg = get_config();
-        if (cfg and cfg.test.directory) {
-            directory = cfg.test.directory;
+        if (cfg and cfg.`test.directory) {
+            directory = cfg.`test.directory;
             if (cfg.project_root and not os.path.isabs(directory)) {
                 directory = os.path.join(str(cfg.project_root), directory);
             }
             if not Path(directory).is_dir() {
                 console.error(
-                    f"Error: [test] directory '{cfg.test.directory}' "
+                    f"Error: [test] directory '{cfg.`test.directory}' "
                     f"(resolved to '{directory}') does not exist."
                 );
                 return 1;
@@ -1338,19 +1349,22 @@ impl grammar(output: str = "", strict: bool = False) -> int {
 }
 
 def _iter_jac_files(
-    paths: list, ignore_list: (list | None) = None
+    paths: list, ignore_list: (list | None) = None, include_annex: bool = True
 ) -> tuple[list[str], bool] {
+    import os;
     ignore_list = ignore_list or [];
     result: list[str] = [];
+    explicit: set[str] = set();
     had_errors = False;
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
             if not _should_ignore(path, ignore_list) {
                 result.append(path);
+                explicit.add(os.path.realpath(path));
             }
         } elif path_obj.is_dir() {
-            for jac_file in path_obj.glob('**/*.jac') {
+            for jac_file in path_obj.`glob('**/*.jac') {
                 if not jac_file.is_file() {
                     continue;
                 }
@@ -1363,7 +1377,32 @@ def _iter_jac_files(
             had_errors = True;
         }
     }
+    if not include_annex {
+        result = _drop_covered_annexes(result, explicit);
+    }
     return (result, had_errors);
+}
+
+def _drop_covered_annexes(files: list[str], explicit: set[str]) -> list[str] {
+    import os;
+    import from jaclang.jac0core.bccache { discover_base_file }
+    import from jaclang.jac0core.ext_registry { is_annex }
+    modules = {
+        os.path.realpath(f)
+        for f in files
+        if not is_annex(f)
+    };
+    kept: list[str] = [];
+    for f in files {
+        if is_annex(f) and (os.path.realpath(f) not in explicit) {
+            base = discover_base_file(f);
+            if (base is not None) and (os.path.realpath(base) in modules) {
+                continue;
+            }
+        }
+        kept.append(f);
+    }
+    return kept;
 }
 
 def _normalize_ignore_patterns(ignore: list) -> list {

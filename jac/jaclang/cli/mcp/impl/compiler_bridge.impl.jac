@@ -288,7 +288,7 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
         }
 
         if fmt == "json" {
-            ast_output = json.dumps(node_to_dict(ir), default=str);
+            ast_output = json.dumps(node_to_dict(ir), `default=str);
         } else {
             ast_output = print_ast_tree(ir);
         }
@@ -496,7 +496,7 @@ impl CompilerBridge.run_snippet(
 
         try {
             try {
-                proc.wait(timeout=timeout);
+                proc.`wait(timeout=timeout);
                 _join_reader(t_out, "stdout");
                 _join_reader(t_err, "stderr");
             } except subprocess.TimeoutExpired {
@@ -511,7 +511,7 @@ impl CompilerBridge.run_snippet(
                         os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
                     }
                 } except Exception { }
-                proc.wait();
+                proc.`wait();
                 _join_reader(t_out, "stdout");
                 _join_reader(t_err, "stderr");
                 return {

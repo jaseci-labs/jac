@@ -237,7 +237,7 @@ def dispatch_sync(payload_json: str, timeout_s: float = 0.0) -> str {
     );
     th.start();
 
-    done.wait(timeout_s);
+    done.`wait(timeout_s);
     if box["v"] is not None {
         return box["v"] as str;
     }

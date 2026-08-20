@@ -414,7 +414,7 @@ def set_shadcn_section(toml_path: any, shadcn_config: dict) {
 }
 
 def _toml_key(key: str) -> str {
-    return key if re.match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
+    return key if re.`match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
 }
 
 def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {

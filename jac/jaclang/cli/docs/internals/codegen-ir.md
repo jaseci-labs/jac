@@ -29,7 +29,7 @@ this document lives there.
 Today codegen is two passes at the end of the pipeline:
 
 - `jac0core/passes/pyast_gen_pass.jac` (+impl, about 4,500 lines, 169
-  methods; census 2026-08-14: 137 of 169 methods are `ast3`-bound) walks the
+  methods; measured 2026-08-14: 137 of 169 methods are `ast3`-bound) walks the
   annotated unitree and builds a CPython `ast` tree per module.
 - `jac0core/passes/pybc_gen_pass.jac` (3 methods) calls `compile()` on each
   `ast.Module` and `marshal.dumps` the code object.
@@ -323,7 +323,7 @@ production:
 - **`py_ast` caches on unitree nodes**: `nd.gen.py_ast` is scaffolding of
   the current pass structure, not part of the crossing contract.
 
-## 8. pyast_gen behavior census: IR emission vs shim transcription
+## 8. pyast_gen behavior coverage: IR emission vs shim transcription
 
 "IR emission" means the behavior becomes producer logic whose output is
 ordinary JCIR instructions. "Shim transcription" means the behavior is
@@ -482,8 +482,8 @@ assumed away.
   the closure, never be waived. `decode_ops` was the latter: it decodes
   into heterogeneous tuples, does not lower, and now lives in
   `codegen_shim` where the reader belonged anyway.
-  `test_sealed_demotion_audit.jac` and `test_jcir_seal_census.jac` fail
-  on such a waiver now, so the finding surfaces in a census rather than
+  `test_sealed_demotion_audit.jac` and `test_jcir_seal_baseline.jac` fail
+  on such a waiver now, so the finding surfaces in the coverage report rather than
   three minutes into a link.
 - **Nested functions and the emitter's internal refusal.** Two emitter
   methods refused with an emitter-internal error rather than a named gap.
@@ -580,7 +580,7 @@ assumed away.
   (`codegen_ir`, `constant`, `diagnostics`, `jcir_facts`, `srcloc`,
   `unitree`, the `textwrap` shim, and the emitter), and the artifact
   passes a load canary and a container crossing canary before it is
-  accepted. `test_jcir_seal_census.jac` pins the closure and the seam
+  accepted. `test_jcir_seal_baseline.jac` pins the closure and the seam
   set; the residual seams are waived by family in
   `NATIVE_SEAL_WAIVER_FAMILIES`, each naming what clears it, and
   `test_sealed_demotion_audit.jac` holds the whole seal to that,
@@ -592,7 +592,7 @@ assumed away.
   cannot. This paragraph once said the pass-serving binder is the
   crossing, so that `JcirGenPass.ir_bytes()` executes inside the
   artifact once `native_artifact_for` reports it. The #8288 M1 crossing
-  census measured otherwise: `_bind_one` opens, verifies and probes the
+  measurement said otherwise: `_bind_one` opens, verifies and probes the
   artifact and then retains the engine and **no function pointer**, and
   `_require_native_pass_tier` falls through to the pass's bytecode body.
   Both sides of that comparison are the source lane.
@@ -697,7 +697,7 @@ JCIR is stable across sealed and dev lanes by construction: the codegen
 decision pass emits the same bytes whether it runs natively or in Python,
 so lane parity is byte equality on the container, and end-to-end parity is
 code object plus diagnostics equality against the bytecode pipeline, per
-the epic's canary. The pass census, waiver discipline, and payload-lane
+the epic's canary. The pass coverage, waiver discipline, and payload-lane
 proofs of #8139 carry forward unchanged; this format is the piece that
 lets Steps 3 and 4 execute as one program with nothing throwaway in
 between.

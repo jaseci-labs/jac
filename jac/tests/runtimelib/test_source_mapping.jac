@@ -363,7 +363,7 @@ test "source mapper invalidates on file change" {
         # Modify a .map file to invalidate cache
         time.sleep(0.1);
         dist_dir = Path(tmpdir) / ".jac" / "client" / "dist";
-        for f in dist_dir.glob("*.js.map") {
+        for f in dist_dir.`glob("*.js.map") {
             f.write_text(f.read_text());  # touch to change mtime
         }
         mapper2 = SourceMapper.from_bundle(tmpdir);

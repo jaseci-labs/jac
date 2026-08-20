@@ -5,6 +5,10 @@ runtime -- Python accepts a tuple of classes by value, not just as a literal
 at the call site. The checker only read the literal form, so every named
 rejection table in the compiler narrowed its subject to `tuple` instead of to
 the classes the table holds.
+
+The bare class `tuple` is the inverse trap: it shares the table type's class
+but is not a value, and reading it as an empty table silenced the guard
+entirely -- `isinstance(x, tuple)` narrowed nothing in either branch (#8330).
 """
 
 obj Base {
@@ -53,4 +57,20 @@ def erased_table(nd: Base) -> str {
         return takes_base(nd);
     }
     return "";
+}
+
+def bare_class_positive(x: (str | tuple)) -> tuple {
+    if isinstance(x, tuple) {
+        return x + ("tail", );
+    }
+    return (x, );
+}
+
+def bare_class_negative(x: (type | tuple | None)) -> str {
+    if isinstance(x, tuple) {
+        return "tuple";
+    } elif x is not None {
+        return x.__name__;
+    }
+    return "*";
 }

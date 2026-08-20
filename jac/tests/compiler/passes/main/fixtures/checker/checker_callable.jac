@@ -1,5 +1,4 @@
 """Test fixture for Callable type checking."""
-import from typing { Callable }
 
 # Basic functions for Callable tests
 def int_to_str(x: int) -> str { return str(x); }

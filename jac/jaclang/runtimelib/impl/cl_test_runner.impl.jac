@@ -9,7 +9,6 @@ import tempfile;
 import time;
 import from contextlib { suppress }
 import from pathlib { Path }
-import from collections.abc { Callable }
 import from jaclang.cli.console { console }
 
 impl compile_cl_module(filepath: str) -> tuple[str, list, dict, list] {
@@ -229,11 +228,11 @@ impl _exported_names(js: str) -> set {
     names: set = set();
     for m in re.finditer(r"export\s*\{([^}]*)\}", js) {
         for part in m.group(1).split(",") {
-            entry = part.strip();
-            if not entry {
+            `entry = part.strip();
+            if not `entry {
                 continue;
             }
-            names.add(entry.split(" as ")[-1].strip());
+            names.add(`entry.split(" as ")[-1].strip());
         }
     }
     decl_pat = (
@@ -250,11 +249,11 @@ impl find_server_entry(
     test_filepath: str, server_imports: (list[str] | None) = None
 ) -> (str | None) {
     test_dir = Path(test_filepath).resolve().parent;
-    override = os.environ.get("JAC_CL_TEST_SERVER");
-    if override {
-        cand = Path(override);
+    `override = os.environ.get("JAC_CL_TEST_SERVER");
+    if `override {
+        cand = Path(`override);
         if not cand.is_absolute() {
-            cand = test_dir / override;
+            cand = test_dir / `override;
         }
         return str(cand) if cand.exists() else None;
     }
@@ -360,7 +359,7 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
         with suppress(Exception) {
             proc.terminate();
             try {
-                proc.wait(timeout=5);
+                proc.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 proc.kill();
             }
@@ -449,9 +448,9 @@ impl _run_harness(
         dep_files: dict[str, str] = {};
         dep_imports: dict[str, str] = {};
         if source_path is not None {
-            entry = Path(source_path).resolve();
+            `entry = Path(source_path).resolve();
             (dep_files, dep_imports) = _collect_local_imports(
-                module_js, str(entry.parent), str(entry)
+                module_js, str(`entry.parent), str(`entry)
             );
         }
 

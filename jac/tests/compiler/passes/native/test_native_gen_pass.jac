@@ -4016,8 +4016,8 @@ test "enum_import cross module function call" {
 # --- Switch statement tests ---
 test "switch int match" {
     (eng, _ir) = compile_native("switch_stmt.jac");
-    entry = get_func(eng, "jac_entry", None);
-    entry();
+    `entry = get_func(eng, "jac_entry", None);
+    `entry();
     f = get_func(eng, "switch_int", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 10 , f"switch_int(1) should be 10, got {f(1)}";
     assert f(2) == 20 , f"switch_int(2) should be 20, got {f(2)}";
@@ -4027,8 +4027,8 @@ test "switch int match" {
 
 test "switch enum" {
     (eng, _ir) = compile_native("switch_stmt.jac");
-    entry = get_func(eng, "jac_entry", None);
-    entry();
+    `entry = get_func(eng, "jac_entry", None);
+    `entry();
     f = get_func(eng, "switch_enum", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 100 , f"switch_enum(RED=0) should be 100, got {f(0)}";
     assert f(1) == 200 , f"switch_enum(GREEN=1) should be 200, got {f(1)}";
@@ -4037,8 +4037,8 @@ test "switch enum" {
 
 test "switch string" {
     (eng, _ir) = compile_native("switch_stmt.jac");
-    entry = get_func(eng, "jac_entry", None);
-    entry();
+    `entry = get_func(eng, "jac_entry", None);
+    `entry();
     f = get_sfunc(eng, "switch_str", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"(") == 1 , f"switch_str('(') should be 1, got {f(b'(')}";
     assert f(b")") == 2 , f"switch_str(')') should be 2, got {f(b')')}";
@@ -4049,8 +4049,8 @@ test "switch string" {
 
 test "switch no default" {
     (eng, _ir) = compile_native("switch_stmt.jac");
-    entry = get_func(eng, "jac_entry", None);
-    entry();
+    `entry = get_func(eng, "jac_entry", None);
+    `entry();
     f = get_func(eng, "switch_no_default", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 100 , f"switch_no_default(10) should be 100, got {f(10)}";
     assert f(20) == 200 , f"switch_no_default(20) should be 200, got {f(20)}";
@@ -4549,8 +4549,8 @@ test "native_safe_sym disambiguates flat vs dotted path collision" {
     );
     # LLVM identifier safety: only [a-zA-Z0-9_].
     valid = re.compile(r'^[a-zA-Z0-9_]+$');
-    assert valid.match(sym_flat) , f"unsafe symbol: {sym_flat!r}";
-    assert valid.match(sym_dotted) , f"unsafe symbol: {sym_dotted!r}";
+    assert valid.`match(sym_flat) , f"unsafe symbol: {sym_flat!r}";
+    assert valid.`match(sym_dotted) , f"unsafe symbol: {sym_dotted!r}";
     # Deterministic: same input → same output (emit and lookup sides agree).
     assert native_safe_sym(flat) == sym_flat , "native_safe_sym must be deterministic";
     # The full glob-init symbols built from these must also differ.

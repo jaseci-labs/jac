@@ -37,7 +37,7 @@ impl to_dict(`obj: any) -> any {
     }
 
     if hasattr(`obj, "__dict__") {
-        result: dict = {};
+        result: dict[str, any] = {};
         for (key, value) in vars(`obj).items() {
             if key.startswith("_") {
                 continue;
@@ -91,7 +91,7 @@ impl from_dict(data: any, cls: any) -> any {
         }
         return data;
     }
-    if origin is list or origin is List {
+    if origin is list {
         (item_cls, ) = get_args(cls) if get_args(cls) else (any, );
         return [from_dict(item, item_cls) for item in data];
     }
@@ -99,7 +99,7 @@ impl from_dict(data: any, cls: any) -> any {
         return data;
     }
 
-    snake_data: dict = {};
+    snake_data: dict[str, any] = {};
     for (key, value) in data.items() {
         snake_data[_to_snake_case(key)] = value;
     }
@@ -109,7 +109,7 @@ impl from_dict(data: any, cls: any) -> any {
     } except Exception {
         hints = {};
     }
-    kwargs: dict = {};
+    kwargs: dict[str, any] = {};
     for (field_name, field_type) in hints.items() {
         if field_name.startswith("_") {
             continue;
@@ -455,7 +455,11 @@ impl LanguageServer.send_request(method: str, params: any = None) -> None {
         return;
     }
     self._next_request_id += 1;
-    body: dict = {"jsonrpc": "2.0", "id": self._next_request_id, "method": method};
+    body: dict[str, any] = {
+        "jsonrpc": "2.0",
+        "id": self._next_request_id,
+        "method": method
+    };
     if params is not None {
         body["params"] = to_dict(params);
     }
@@ -467,12 +471,12 @@ impl LanguageServer.shutdown -> None {
 }
 
 impl LanguageServer._send_notification(method: str, params: any) -> None {
-    body: dict = {"jsonrpc": "2.0", "method": method, "params": params};
+    body: dict[str, any] = {"jsonrpc": "2.0", "method": method, "params": params};
     self._write_message(body);
 }
 
 impl LanguageServer._send_response(msg_id: any, result: any) -> None {
-    body: dict = {"jsonrpc": "2.0", "id": msg_id, "result": to_dict(result)};
+    body: dict[str, any] = {"jsonrpc": "2.0", "id": msg_id, "result": to_dict(result)};
     self._write_message(body);
 }
 
@@ -504,7 +508,7 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
         if not line_str {
             break;
         }
-        m = RE_CONTENT_LENGTH.match(line_str);
+        m = RE_CONTENT_LENGTH.`match(line_str);
         if m {
             content_length = int(m.group(1));
         }
@@ -527,14 +531,14 @@ impl LanguageServer._handle_initialize(params: dict) -> dict {
 }
 
 impl LanguageServer._build_capabilities -> dict {
-    caps: dict = {
+    caps: dict[str, any] = {
         "textDocumentSync": {
             "openClose": True,
             "change": int(TextDocumentSyncKind.Incremental),
             "save": {"includeText": False}
         }
     };
-    _cap_map: dict = {
+    _cap_map: dict[str, str] = {
         "textDocument/completion": "completionProvider",
         "textDocument/hover": "hoverProvider",
         "textDocument/documentSymbol": "documentSymbolProvider",
@@ -560,8 +564,8 @@ impl LanguageServer._build_capabilities -> dict {
         }
     }
 
-    file_ops: dict = {};
-    file_op_map: dict = {
+    file_ops: dict[str, any] = {};
+    file_op_map: dict[str, str] = {
         "workspace/didCreateFiles": "didCreate",
         "workspace/didRenameFiles": "didRename",
         "workspace/didDeleteFiles": "didDelete"

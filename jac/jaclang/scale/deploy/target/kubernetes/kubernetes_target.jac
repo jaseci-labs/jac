@@ -12,7 +12,6 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     delete_k8s_secret,
     delete_if_exists,
     delete_namespace,
-    check_K8s_status,
     ensure_namespace_exists,
     get_cluster_provider,
     resize_pvc_if_needed
@@ -672,6 +671,19 @@ obj KubernetesTargetBase(DeploymentTarget) {
             }
         }
         return None;
+    }
+
+    def port_forward_hint -> str {
+        namespace = self.k8s_config.namespace;
+        target_port = self.k8s_config.container_port;
+        local_port = 8080;
+        return (
+            "No ingress is configured, so the gateway has no address outside "
+            "the cluster. Reach it with:\n"
+            f"  kubectl -n {namespace} port-forward svc/gateway-service "
+            f"{local_port}:{target_port}\n"
+            f"then open http://localhost:{local_port}"
+        );
     }
 
     def get_service_url(app_name: str) -> (str | None) {

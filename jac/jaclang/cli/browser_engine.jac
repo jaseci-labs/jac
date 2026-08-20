@@ -196,5 +196,5 @@ def cmd_close(session: str) -> str;
 def main(argv: list) -> int;
 
 with entry:__main__ {
-    sys.exit(main(sys.argv[1:]));
+    sys.`exit(main(sys.argv[1:]));
 }

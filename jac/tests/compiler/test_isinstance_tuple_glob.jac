@@ -62,3 +62,15 @@ test "the guarded subject keeps its own identity, not the table's" {
         "the table's own type leaked into the narrowed subject: " + joined
     );
 }
+
+
+test "the bare tuple class narrows like any other class" {
+    # `isinstance(x, tuple)` is not a table: the class shares the table
+    # type's `shared` but is class-form, not a tuple value. Misreading it as
+    # an empty table dropped the guard entirely, so neither branch narrowed
+    # (#8330). The fixture's `bare_class_positive` needs the true branch
+    # narrowed to `tuple`, `bare_class_negative` needs `tuple` subtracted in
+    # the elif.
+    errs = check_errors("isinstance_tuple_glob.jac");
+    assert not errs , f"bare tuple guard left its subject unnarrowed: {errs}";
+}

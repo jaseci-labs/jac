@@ -1,12 +1,12 @@
 """Native demotion classification (#8030 B1): a pass crash is an ICE,
-not a placement decision. ICE demotions get a distinct census outcome
+not a placement decision. ICE demotions get a distinct coverage outcome
 and a loud (non-dim) note; diagnostic demotions stay dim."""
 
 import os;
 import from jaclang.jac0core.compiler {
-    na_census_begin,
-    na_census_end,
-    na_census_record,
+    na_coverage_begin,
+    na_coverage_end,
+    na_coverage_record,
     na_demotion_note
 }
 
@@ -26,12 +26,12 @@ test "diagnostic demotion note stays dim" {
 }
 
 
-test "census records ice as a distinct sticky outcome" {
-    na_census_begin();
+test "coverage records ice as a distinct sticky outcome" {
+    na_coverage_begin();
     key = "/tmp/jac_test_ice_probe.jac";
-    na_census_record(key, "ice", "AttributeError", "boom");
-    na_census_record(key, "native");
-    snap = na_census_end();
+    na_coverage_record(key, "ice", "AttributeError", "boom");
+    na_coverage_record(key, "native");
+    snap = na_coverage_end();
     rec = snap[os.path.realpath(key)];
     assert rec["outcome"] == "ice";
     assert rec["code"] == "AttributeError";

@@ -14,7 +14,7 @@ obj CompiledRoute {
         param_count: int = 0,
         trailing_slash: bool = False;
 
-    def match(
+    def `match(
         path_segments: list[str], trailing_slash: bool = False
     ) -> (dict[(str, str)] | None) {
         if self.catchall is None and self.trailing_slash != trailing_slash {
@@ -123,7 +123,7 @@ obj Router {
         trailing = len(path) > 1 and path.endswith('/');
         lookup = 'GET' if method.upper() == 'HEAD' else method.upper();
         for route in self.routes.get(lookup, []) {
-            params = route.match(segments, trailing);
+            params = route.`match(segments, trailing);
             if params is not None and route.endpoint is not None {
                 return (route.endpoint, params, []);
             }
@@ -134,7 +134,7 @@ obj Router {
                 continue;
             }
             for route in bucket {
-                if route.match(segments, trailing) is not None {
+                if route.`match(segments, trailing) is not None {
                     allowed.append(other_method);
                     break;
                 }
@@ -151,7 +151,7 @@ obj Router {
         ];
         trailing = len(path) > 1 and path.endswith('/');
         for route in self.ws_routes {
-            params = route.match(segments, trailing);
+            params = route.`match(segments, trailing);
             if params is not None and route.ws_endpoint is not None {
                 return (route.ws_endpoint, params);
             }

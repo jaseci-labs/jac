@@ -225,12 +225,12 @@ impl EsJsxProcessor._lift_if(
             return None;
         }
     }
-    test = ternary.condition.gen.es_ast;
-    if test is None {
+    `test = ternary.condition.gen.es_ast;
+    if `test is None {
         return None;
     }
     return IfChild(
-        test=cast('Expression', test),
+        `test=cast('Expression', `test),
         consequent=consequent,
         alternate=alternate,
         js_fallback=cast('Expression', child.gen.es_ast),

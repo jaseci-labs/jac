@@ -1,4 +1,3 @@
-import from typing { List, Tuple }
 import logging;
 
 import jaclang.jac0core.unitree as uni;
@@ -10,14 +9,14 @@ glob logger = logging.getLogger("jaclang.langserve.sem_manager");
 obj SemTokManager {
     has ir: uni.Module,
         target_path: (str | None) = None,
-        sem_tokens: List[int] postinit,
+        sem_tokens: list[int] postinit,
         static_sem_tokens:
-            List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] postinit;
+            list[tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] postinit;
 
     def postinit -> None;
-    def collect_resolved_nodes(ir: uni.Module) -> list;
+    def collect_resolved_nodes(ir: uni.Module) -> list[uni.NameAtom];
     def gen_sem_tokens(ir: uni.Module) -> list[int];
     def gen_sem_tok_node(
         ir: uni.Module
-    ) -> List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]];
+    ) -> list[tuple[(lspt.Position, int, int, uni.AstSymbolNode)]];
 }

@@ -12,8 +12,8 @@ obj Bag {
     has names: list[str] = field(default_factory=`list),
         counts: dict[str, int] = field(default_factory=`dict),
         seen: set[int] = field(default_factory=`set),
-        label: str = field(default='bag'),
-        size: int = field(default=7);
+        label: str = field(`default='bag'),
+        size: int = field(`default=7);
 }
 
 

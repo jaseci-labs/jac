@@ -155,12 +155,12 @@ def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
                                             key={r["ev"].id}
                                         >
                                             <span className="tag">
-                                                {("→ " + r["ev"].node)
+                                                {("→ " + r["ev"].`node)
                                                     if r["ev"].kind == "phase"
                                                     else r["ev"].kind}
                                             </span>
                                             <span className="body">
-                                                {r["ev"].node
+                                                {r["ev"].`node
                                                     if r["ev"].kind == "phase"
                                                     else r["ev"].text}
                                             </span>

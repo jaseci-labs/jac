@@ -10,7 +10,6 @@ because TypeVarType.is_any_type() returns True. This prevented the BW_OR union
 handler from ever running, so the return type was Unknown instead of V | None.
 """
 
-import from typing { TypeVar, Generic }
 
 glob K = TypeVar('K');
 glob V = TypeVar('V');

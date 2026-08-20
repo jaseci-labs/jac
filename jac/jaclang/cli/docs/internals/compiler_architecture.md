@@ -188,7 +188,7 @@ The solver owns every placement decision, in three cooperating stages:
    the effective default codespace is `native`, the summary's blocker scan
    plus a memoized walk of the import closure decides whether the whole
    module lowers native (`_coerce_native_module`) or stays server, feeding
-   the same census and demotion memo as before. This stage runs at parse
+   the same coverage and demotion memo as before. This stage runs at parse
    time because whole-module coercion rewrites the module body and must
    precede symbol tables.
 2. **Per-module seeding and fixpoint** (`PlacementApplyPass`, scheduled in

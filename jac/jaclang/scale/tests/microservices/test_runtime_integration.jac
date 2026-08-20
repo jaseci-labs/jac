@@ -9,7 +9,6 @@ import from jaclang.scale.runtime.gateway.dispatch {
     ROUTE_PROXY,
     ROUTE_STATIC
 }
-import from jaclang.scale.runtime.planner.planner { plan_realization }
 
 
 obj AuditMiddleware(Middleware) {
@@ -115,11 +114,4 @@ test "a gate middleware short-circuits before the request reaches a service" {
     assert result == {"error": "rate_limited"};
     assert reached == [];
     assert audit == [];
-}
-
-
-test "the plan for this monolith setup selects the in-process transport" {
-    plan = plan_realization(False, 1);
-    assert plan.transport == "in_process";
-    assert plan.gateway_mode == "embedded";
 }

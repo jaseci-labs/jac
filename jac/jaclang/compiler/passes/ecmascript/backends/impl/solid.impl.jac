@@ -276,7 +276,7 @@ impl SolidBackend._jsx_show(child: any, sync_loc: any) -> es.JsxElement {
         es.JsxAttribute(
             name=sync_loc(es.JsxIdentifier(name="when"), jac_node=child.jac_node),
             value=sync_loc(
-                es.JsxExpressionContainer(expression=child.test),
+                es.JsxExpressionContainer(expression=child.`test),
                 jac_node=child.jac_node
             )
         ),

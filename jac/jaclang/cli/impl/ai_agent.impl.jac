@@ -417,11 +417,11 @@ impl FileTools.list_dir(path: str) -> str {
     try {
         target = Path(self.ws.resolve(path));
         names: list[str] = [];
-        for entry in sorted(target.iterdir()) {
-            if entry.name.startswith(".") {
+        for `entry in sorted(target.iterdir()) {
+            if `entry.name.startswith(".") {
                 continue;
             }
-            names.append(entry.name + ("/" if entry.is_dir() else ""));
+            names.append(`entry.name + ("/" if `entry.is_dir() else ""));
         }
         return "\n".join(names) or "(empty directory)";
     } except Exception as e {
@@ -2378,16 +2378,16 @@ impl ui_poll -> dict {
 
 impl ui_call_detail(call_id: int) -> dict {
     log = list(agent.bus.call_log);
-    entry: any = None;
+    `entry: any = None;
     for c in log {
         if int(c["id"]) == call_id {
-            entry = c;
+            `entry = c;
         }
     }
-    if entry is None {
+    if `entry is None {
         return {"found": False};
     }
-    convo: int = int(entry["convo"]);
+    convo: int = int(`entry["convo"]);
     msgs: list = agent.bus.convos.get(convo, []);
 
     same = [
@@ -2434,14 +2434,14 @@ impl ui_call_detail(call_id: int) -> dict {
     return {
         "found": True,
         "id": call_id,
-        "node": str(entry["node"]),
+        "node": str(`entry["node"]),
         "input": msgs[:a_k],
         "new_input": msgs[a_prev:a_k],
         "output": out_slice,
         "shared": a_prev,
         "total": a_k,
-        "tokens_in": int(entry.get("tokens_in", 0) or 0),
-        "tokens_out": int(entry.get("tokens_out", 0) or 0),
+        "tokens_in": int(`entry.get("tokens_in", 0) or 0),
+        "tokens_out": int(`entry.get("tokens_out", 0) or 0),
         "tools": tools,
         "tool_chars": tool_chars,
         "prev_id": prev_id,
@@ -2637,9 +2637,9 @@ impl _run_ui_server(r: any) -> int {
         return 1;
     }
     ui_dir = str(Path(pkg_file).parent / "cli" / "ai_ui");
-    entry = os.path.join(ui_dir, "main.jac");
-    if not os.path.exists(entry) {
-        console.error(f"bundled UI app not found at {entry}");
+    `entry = os.path.join(ui_dir, "main.jac");
+    if not os.path.exists(`entry) {
+        console.error(f"bundled UI app not found at {`entry}");
         return 1;
     }
     env = dict(os.environ);
@@ -2698,7 +2698,7 @@ impl _run_ui_server(r: any) -> int {
         webbrowser.open(url);
     } except Exception { }
     try {
-        proc.wait();
+        proc.`wait();
     } except KeyboardInterrupt {
         console.print("\n  stopping the UI server…", style="muted");
     }

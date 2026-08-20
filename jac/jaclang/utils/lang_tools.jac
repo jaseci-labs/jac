@@ -3,7 +3,6 @@ import inspect;
 import json;
 import os;
 import sys;
-import from typing { ClassVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass, es_node_to_dict }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }

@@ -88,10 +88,10 @@ test "ambient JAC_DB_URL does not decide the deployed app's database" {
 
         env_list = apis["env_list"];
         assert len(env_list) == 1 , f"expected one database env var, got {env_list}";
-        entry = env_list[0];
-        assert entry["name"] == "JAC_DB_URL";
-        assert "valueFrom" in entry , f"the deployed app was handed the deployer's own database url verbatim: {entry}";
-        assert entry.get("value") != PLATFORM_DB_URL;
+        `entry = env_list[0];
+        assert `entry["name"] == "JAC_DB_URL";
+        assert "valueFrom" in `entry , f"the deployed app was handed the deployer's own database url verbatim: {`entry}";
+        assert `entry.get("value") != PLATFORM_DB_URL;
 
         assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 1 , "no per-app postgres StatefulSet was provisioned";
         assert apis["core_v1"].create_namespaced_secret.call_count == 1 , "no per-app postgres Secret was provisioned";

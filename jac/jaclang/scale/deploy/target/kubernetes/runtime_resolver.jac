@@ -17,9 +17,9 @@ glob logger = logging.getLogger(__name__);
 
 
 def resolve_peer_url(svc_name: str, namespace: str, port: int) -> str {
-    override: str = sv_client.peer_url_from_env(svc_name);
-    if override {
-        return override;
+    `override: str = sv_client.peer_url_from_env(svc_name);
+    if `override {
+        return `override;
     }
     key: str = sv_client.peer_url_env_key(svc_name);
     if key in os.environ {

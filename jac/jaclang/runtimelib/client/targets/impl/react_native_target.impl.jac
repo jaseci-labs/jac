@@ -546,7 +546,7 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
             payload_dir = temp_root / "Payload";
             app_candidates = [
                 f
-                for f in payload_dir.glob("*.app")
+                for f in payload_dir.`glob("*.app")
                 if f.is_dir()
             ];
             if not app_candidates {

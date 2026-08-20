@@ -63,7 +63,7 @@ test "imported na modules inherit gc none: no RC in multi-module IR" {
 
 test "host-path multi-module gc none build passes assert-no-rc" {
     with tempfile.TemporaryDirectory() as tmp {
-        entry = _staged_entry(tmp);
+        `entry = _staged_entry(tmp);
         src_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
         with open(os.path.join(tmp, "jac.toml"), "w") as f {
             f.write(
@@ -78,7 +78,7 @@ test "host-path multi-module gc none build passes assert-no-rc" {
                 "-m",
                 "jaclang",
                 "nacompile",
-                entry,
+                `entry,
                 "--scrub",
                 "--gc",
                 "none",
@@ -99,10 +99,10 @@ test "host-path multi-module gc none build passes assert-no-rc" {
 
 test "gc-mode change invalidates the cross-module IR cache" {
     with tempfile.TemporaryDirectory() as tmp {
-        entry = _staged_entry(tmp);
-        cycles_ir = _compile_ir(entry, "cycles", []);
+        `entry = _staged_entry(tmp);
+        cycles_ir = _compile_ir(`entry, "cycles", []);
         assert "__rc_" in cycles_ir , "cycles-mode build should carry RC";
-        nogc_ir = _compile_ir(entry, "none", ENFORCE);
+        nogc_ir = _compile_ir(`entry, "none", ENFORCE);
         assert ("__rc_" not in nogc_ir) , "stale cycles-mode cache leaked into the gc-none build";
     }
 }

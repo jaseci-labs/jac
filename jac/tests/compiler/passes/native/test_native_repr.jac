@@ -144,7 +144,7 @@ test "obj element default repr" {
 
 test "print(list) and print(tuple) to stdout" {
     (eng, _) = compile_native("container_repr.jac");
-    entry = get_func(eng, "jac_entry", None);
-    out = capture_stdout(entry);
+    `entry = get_func(eng, "jac_entry", None);
+    out = capture_stdout(`entry);
     assert out == b"[1, 2, 3]\n(1, 2)\n" , f"got {out!r}";
 }

@@ -111,7 +111,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> None {
         }
         sys.stderr.write('usage: jac [-h] [-V] COMMAND ...\n');
         _print_error(f"unrecognized arguments: {' '.join(raw_argv)}");
-        sys.exit(2);
+        sys.`exit(2);
     }
 
     assert first is not None;
@@ -124,7 +124,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> None {
             f"'jac {first}' was removed in the CLI cleanup (#7255); "
             f"use: {TOMBSTONED_VERBS[first]}"
         );
-        sys.exit(2);
+        sys.`exit(2);
     }
 
     if first in dispatchable {
@@ -138,7 +138,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> None {
         _print_error(
             f"argument COMMAND: invalid choice: {first!r} (choose from '{choices}')"
         );
-        sys.exit(2);
+        sys.`exit(2);
     }
 
     import from jaclang.cli.dispatch { run_selected_command }

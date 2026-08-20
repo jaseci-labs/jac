@@ -263,20 +263,20 @@ impl ResourceProvider._index_examples_local(examples_dir: Path) -> None {
         "littleX": "Full-stack social app (Twitter-like), OSP graph with user profiles and NLP-based search (sklearn/TF-IDF). Real-world object-spatial design."
     };
     categories: list[str] = [];
-    for entry in sorted(examples_dir.iterdir()) {
-        if entry.is_dir()
-            and not entry.name.startswith(".")
-            and not entry.name.startswith("_") {
-            categories.append(entry.name);
+    for `entry in sorted(examples_dir.iterdir()) {
+        if `entry.is_dir()
+            and not `entry.name.startswith(".")
+            and not `entry.name.startswith("_") {
+            categories.append(`entry.name);
             desc = EXAMPLE_DESCRIPTIONS.get(
-                entry.name, f"Example Jac code for {entry.name}"
+                `entry.name, f"Example Jac code for {`entry.name}"
             );
-            self._resources[f"jac://examples/{entry.name}"] = {
-                "uri": f"jac://examples/{entry.name}",
-                "name": f"Example: {entry.name}",
+            self._resources[f"jac://examples/{`entry.name}"] = {
+                "uri": f"jac://examples/{`entry.name}",
+                "name": f"Example: {`entry.name}",
                 "description": desc,
                 "mimeType": "text/plain",
-                "path": str(entry),
+                "path": str(`entry),
                 "_is_dir": True
             };
         }

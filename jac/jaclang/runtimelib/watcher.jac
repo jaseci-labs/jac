@@ -1,7 +1,6 @@
 import threading;
 import time;
 import from pathlib { Path }
-import from typing { Callable }
 
 enum ChangeType { CREATED, MODIFIED, DELETED }
 

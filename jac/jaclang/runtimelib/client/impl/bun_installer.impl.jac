@@ -7,14 +7,14 @@ import from jaclang.cli.console { console }
 
 
 def _find_bundled_bun -> str | None {
-    override = os.environ.get("JAC_BUN", None);
-    if override {
-        if os.path.isfile(override) {
-            return override;
+    `override = os.environ.get("JAC_BUN", None);
+    if `override {
+        if os.path.isfile(`override) {
+            return `override;
         }
 
         console.warning(
-            f"JAC_BUN is set to '{override}' but no file exists there; "
+            f"JAC_BUN is set to '{`override}' but no file exists there; "
             "ignoring it and using the bundled bun.",
             emoji=False
         );

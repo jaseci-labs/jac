@@ -90,7 +90,7 @@ def:pub Home -> JsxElement {
         <UndefChildProbe/>
         <h1>Fullstack Base</h1>
         <span data-testid="build-meta" style={{"display": "none"}}>
-            {globalThis.APP_BUILD_TIME or "(unset)"}|{import.meta.env.VITE_APP_NAME
+            {globalThis.APP_BUILD_TIME or "(unset)"}|{`import.meta.env.VITE_APP_NAME
             or "(unset)"}
         </span>
         <p data-testid="server-message">{serverMessage}</p>

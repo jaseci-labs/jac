@@ -137,11 +137,11 @@ test "generate_metadata raises when package section missing" {
 # record --------------------------------------------------------------------------
 test "record_entry_from_bytes has correct sha256 and size" {
     data = b"hello jac";
-    entry = record_entry_from_bytes("pkg/main.jac", data);
-    assert entry.path == "pkg/main.jac";
-    assert entry.hash_value == sha256_b64(data);
-    assert entry.size == len(data);
-    assert "=" not in entry.hash_value[len("sha256="):];
+    `entry = record_entry_from_bytes("pkg/main.jac", data);
+    assert `entry.path == "pkg/main.jac";
+    assert `entry.hash_value == sha256_b64(data);
+    assert `entry.size == len(data);
+    assert "=" not in `entry.hash_value[len("sha256="):];
 }
 
 test "generate_record self-entry last with empty hash and unix line endings" {

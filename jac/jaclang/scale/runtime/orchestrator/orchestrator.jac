@@ -152,8 +152,8 @@ obj MicroserviceOrchestrator {
         if not isinstance(raw, list) {
             return out;
         }
-        for entry in raw {
-            ed = dict(entry) if isinstance(entry, dict) else {};
+        for `entry in raw {
+            ed = dict(`entry) if isinstance(`entry, dict) else {};
             url_prefix = str(ed.get("url_prefix", "")).strip();
             local_path = str(ed.get("local_path", "")).strip();
             if url_prefix and local_path {
@@ -242,10 +242,10 @@ obj MicroserviceOrchestrator {
             results = pm.check_all_health();
             healthy_count: int = 0;
             dead_count: int = 0;
-            for (name, entry) in registry.entries.items() {
+            for (name, `entry) in registry.entries.items() {
                 if results.get(name) {
                     healthy_count += 1;
-                } elif entry.status == ServiceStatus.STOPPED {
+                } elif `entry.status == ServiceStatus.STOPPED {
                     dead_count += 1;
                 }
             }
@@ -268,8 +268,8 @@ obj MicroserviceOrchestrator {
         }
 
         if not all_healthy {
-            for (name, entry) in registry.entries.items() {
-                if entry.status != ServiceStatus.HEALTHY {
+            for (name, `entry) in registry.entries.items() {
+                if `entry.status != ServiceStatus.HEALTHY {
                     logger.warning(f"  {name}: NOT HEALTHY");
                 }
             }
@@ -291,8 +291,8 @@ obj MicroserviceOrchestrator {
         console.print();
         console.print("  Services", style="bold");
         console.print(f"  {'-' * 48}", style="muted");
-        for (name, entry) in registry.entries.items() {
-            if entry.status == ServiceStatus.HEALTHY {
+        for (name, `entry) in registry.entries.items() {
+            if `entry.status == ServiceStatus.HEALTHY {
                 icon = "●";
                 row_style = "success";
             } else {
@@ -300,7 +300,7 @@ obj MicroserviceOrchestrator {
                 row_style = "warning";
             }
             console.print(
-                f"  {icon} {name:18s} {entry.prefix:20s} -> {entry.url}",
+                f"  {icon} {name:18s} {`entry.prefix:20s} -> {`entry.url}",
                 style=row_style
             );
         }

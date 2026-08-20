@@ -1,9 +1,10 @@
 """A flat archetype whose own module gives it no vtable slot.
 
 Nothing here subclasses `Anchor` and nothing names it in an `isinstance`, so
-`LayoutPass` lays it out with `depth` at slot 0. A consumer subclass needs a
-vtable of its own, which would have to sit at slot 0 too, and no assignment
-satisfies both units at once.
+`LayoutPass` lays it out with `depth` at slot 0. A consumer subclass used to
+claim that same slot for a vtable, which it got merely for having a base;
+where nothing is dispatched through the subclass, that header is dropped and
+both units read `depth` at slot 0.
 """
 
 obj Anchor {

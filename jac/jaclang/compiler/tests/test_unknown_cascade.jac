@@ -1,6 +1,6 @@
 """Checker regression: the Any/Unknown seams the linker modules lean on.
 
-Pins the reconciled contract behind the #7626 C7 census entries for
+Pins the reconciled contract behind the #7626 C7 coverage entries for
 wasm_linker (E1053) and macho_linker (E1055), without weakening the
 strict-Unknown discipline the checker_prod_unknown_* fixtures enforce:
 

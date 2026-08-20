@@ -88,7 +88,7 @@ test "archetype_alias resolves a renamed class back to the new class" {
         # No row should have been quarantined — the alias covers the rename.
         import sqlite3;
         data_dir = Path(tmpdir) / ".jac" / "data";
-        for db in sorted(data_dir.glob("*.db")) {
+        for db in sorted(data_dir.`glob("*.db")) {
             conn = sqlite3.connect(str(db));
             q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
             conn.close();
@@ -196,7 +196,7 @@ test "field type int->str coerces on load without quarantine" {
         # No quarantine expected for type-change handled by coercion.
         import sqlite3;
         data_dir = Path(tmpdir) / ".jac" / "data";
-        for db in sorted(data_dir.glob("*.db")) {
+        for db in sorted(data_dir.`glob("*.db")) {
             conn = sqlite3.connect(str(db));
             q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
             conn.close();

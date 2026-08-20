@@ -6,7 +6,7 @@ import time;
 import threading;
 import from collections { deque }
 import from concurrent.futures { Future }
-import from typing { Callable, Optional }
+import from typing { Optional }
 
 import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
@@ -46,7 +46,7 @@ obj Task {
 }
 
 obj JacLangServer(JacProgram, LanguageServer) {
-    has sem_managers: dict = {},
+    has sem_managers: dict[str, SemTokManager] = {},
         module_manager: ModuleManager | None postinit,
         pipe: deque = deque(maxlen=1),
         dirty_files: dict[str, bool] = {},

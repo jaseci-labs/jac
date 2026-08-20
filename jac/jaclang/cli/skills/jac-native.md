@@ -34,7 +34,7 @@ with entry {
     args = sys.argv;                    # list[str]; argv[0] = binary name
     if len(args) < 2 {
         print("Usage: tool <name> [--shout]");
-        sys.exit(1);
+        sys.`exit(1);
     }
     greeting = f"Hello, {args[1]}!";
     print(greeting.upper() if has_flag(args, "--shout") else greeting);

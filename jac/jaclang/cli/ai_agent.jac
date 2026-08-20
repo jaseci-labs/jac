@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.jac0core.archetype { Root }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.parallel { mark_serialize }

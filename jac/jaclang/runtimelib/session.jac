@@ -1,7 +1,7 @@
 import logging;
 import os;
 import threading;
-import from collections.abc { Callable, Generator, Iterable }
+import from collections.abc { Generator }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, EdgeAnchor, NodeAnchor, Root }

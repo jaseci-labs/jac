@@ -131,7 +131,7 @@ def ensure_all(module_names: list[str]) -> None {
             }
         }
     } finally {
-        executor.shutdown(wait=True);
+        executor.shutdown(`wait=True);
     }
     if first_error is not None {
         raise first_error;

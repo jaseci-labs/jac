@@ -1,5 +1,3 @@
-import from typing { Callable }
-
 obj ProgressEvent {
     has phase: str,
         step: str = "",

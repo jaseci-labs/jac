@@ -85,13 +85,13 @@ def native_true_image -> bool {
 
 def _artifact_resolver(tmp: str, arts: dict) -> any {
     def _resolve(fullname: str) -> (tuple | None) {
-        entry = arts.get(fullname);
-        if entry is None {
+        `entry = arts.get(fullname);
+        if `entry is None {
             return None;
         }
-        lib_path = os.path.join(tmp, entry["lib"]);
+        lib_path = os.path.join(tmp, `entry["lib"]);
         layout = json.loads(
-            Path(os.path.join(tmp, entry["layout"])).read_text(encoding="utf-8")
+            Path(os.path.join(tmp, `entry["layout"])).read_text(encoding="utf-8")
         );
         return (lib_path, layout, );
     }
@@ -207,9 +207,9 @@ test "a sealed pass whose artifact cannot bind refuses construction" {
     real_names = sealed.native_artifact_names;
     _reset_serving_state();
     broken = dict(arts);
-    entry = dict(broken[ANNEX_MODULE]);
-    entry["lib"] = "native/definitely/not/there.so";
-    broken[ANNEX_MODULE] = entry;
+    `entry = dict(broken[ANNEX_MODULE]);
+    `entry["lib"] = "native/definitely/not/there.so";
+    broken[ANNEX_MODULE] = `entry;
     sealed.native_artifact_for = _artifact_resolver(tmp, broken);
     sealed.native_artifact_names = lambda { list(broken.keys()); };
     try {

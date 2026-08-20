@@ -196,3 +196,47 @@ test "a suite inside a package resolves package-absolute imports" {
         f"packaged suite must import mypkg.support and pass; got exit {rc}"
     );
 }
+
+
+"""Create a temp project shaped like this repo: the package root sits one
+level below the project root (`sub/gappkg`, the `jac/tests` analog), and the
+suite is nested under a directory with *no* `__init__` (`gap/`, the
+`tests/compiler/passes` analog). Returns the project root."""
+def make_gapped_project -> str {
+    proj = tempfile.mkdtemp(prefix="jacgap-");
+    (Path(proj) / "jac.toml").write_text(
+        '[project]\nname = "r"\n\n[test]\ndirectory = "sub/gappkg"\n'
+    );
+    pkg = Path(proj) / "sub" / "gappkg";
+    (pkg / "gap").mkdir(parents=True);
+    (pkg / "__init__.py").write_text("");
+    (pkg / "support.jac").write_text("glob VALUE: int = 42;\n");
+    (pkg / "gap" / "phase1_tests.jac").write_text(
+        "import from gappkg.support { VALUE }\n\n"
+        'test "gapped" {\n    assert VALUE == 42;\n}\n'
+    );
+    return proj;
+}
+
+
+test "a suite below a non-package directory still resolves its package root" {
+    # `_package_basedir` walks up only while every ancestor carries an
+    # `__init__`, so it stops dead at `gap/` and never reaches the dir that
+    # makes `gappkg` importable. This repo's own suite is shaped exactly that
+    # way -- `tests/` and `tests/compiler/` are packages, `tests/compiler/
+    # passes/` is not -- and it resolved `import from tests.support` only
+    # because a jac.toml happened to sit in `jac/`, putting the right dir on
+    # sys.path as the "project root". Moving that jac.toml to the repo root
+    # broke 192 suites at import. The runner now adds the parent of the
+    # *outermost* package an ancestor belongs to, so the package root is found
+    # on its own evidence rather than on where a config file happens to live.
+    proj = make_gapped_project();
+    try {
+        rc = run_in(proj, []);
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    assert rc == 0 , (
+        f"gapped suite must import gappkg.support and pass; got exit {rc}"
+    );
+}

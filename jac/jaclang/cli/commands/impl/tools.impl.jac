@@ -178,7 +178,9 @@ def _extract_commands(registry: any) -> list {
             short = f"-{arg.short}" if arg.short else None;
             if arg.kind == ArgKind.FLAG or arg.typ == bool {
                 flags.append((f"--{arg.name}", short, arg.help or ""));
-                flags.append((f"--no-{arg.name}", None, f"Disable {arg.name}"));
+                if not arg.name.startswith("no-") {
+                    flags.append((f"--no-{arg.name}", None, f"Disable {arg.name}"));
+                }
             } elif arg.kind == ArgKind.OPTION {
                 if arg.choices {
                     value_opts.append(

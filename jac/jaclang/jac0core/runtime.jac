@@ -65,7 +65,7 @@ glob logger = getLogger(__name__),
          | `dict[(str, 'JsonValue')],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)],
      _request_context: ContextVar[ExecutionContext | None] = ContextVar(
-         'request_context', default=None
+         'request_context', `default=None
      ),
      _default_base_path_dir: list = [os.getcwd()],
      _default_full_target_path: list = [None],

@@ -7,10 +7,9 @@ import os;
 import secrets;
 import sqlite3;
 import threading;
-import from collections.abc { Callable }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
-import from typing { AsyncGenerator, Generator, Literal, TypeAlias, get_type_hints }
+import from typing { AsyncGenerator, Generator, TypeAlias, get_type_hints }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }

@@ -6,8 +6,6 @@ therefore answer `False` for such an archetype, which is wrong rather than
 merely incomplete -- so the backend refuses this arm instead of guessing.
 """
 
-import from collections.abc { Iterable }
-
 def chk(k: int) -> int {
     x: any = [1, 2];
     if k == 1 {

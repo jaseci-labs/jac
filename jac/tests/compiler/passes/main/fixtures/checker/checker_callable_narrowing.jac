@@ -4,7 +4,6 @@ callable(x) should narrow a union type to only its callable members
 in the true branch, and to only its non-callable members in the false branch.
 This mirrors how isinstance() narrowing works but uses callability as the predicate.
 """
-import from typing { Callable }
 
 obj Foo {
     has name: str;

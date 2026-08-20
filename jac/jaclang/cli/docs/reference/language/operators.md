@@ -382,7 +382,7 @@ edge Link {
 }
 
 walker Visitor {
-    can visit with Item entry {
+    can `visit with Item entry {
         # All outgoing edges
         neighbors = [-->];
 

@@ -1,5 +1,4 @@
 import asyncio;
-import from typing { AsyncIterator, Iterator }
 import from jaclang.runtimelib.serving.sse { sse_frame_stream }
 
 

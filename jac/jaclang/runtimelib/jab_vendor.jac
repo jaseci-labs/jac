@@ -32,7 +32,7 @@ def site_dir(img_root: Path) -> Path {
 
 def has_vendored(img_root: Path) -> bool {
     wd = wheels_dir(img_root);
-    return wd.is_dir() and any(wd.glob("*.whl"));
+    return wd.is_dir() and any(wd.`glob("*.whl"));
 }
 
 
@@ -94,7 +94,7 @@ def write_vendor_manifest(
     vd = vendor_dir(img_root);
     vd.mkdir(parents=True, exist_ok=True);
     wd = wheels_dir(img_root);
-    wheels = sorted([p.name for p in wd.glob("*.whl")]) if wd.is_dir() else [];
+    wheels = sorted([p.name for p in wd.`glob("*.whl")]) if wd.is_dir() else [];
     (vd / VENDOR_MANIFEST).write_text(
         json.dumps(
             {
@@ -117,7 +117,7 @@ def _install_offline(wheels: Path, site: Path) {
     if site.is_dir() {
         return;
     }
-    whl_files = sorted([str(p) for p in wheels.glob("*.whl")]);
+    whl_files = sorted([str(p) for p in wheels.`glob("*.whl")]);
     if not whl_files {
         return;
     }

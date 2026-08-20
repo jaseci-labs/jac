@@ -26,7 +26,7 @@ on:
         default: skip
         options: [skip, patch, minor, major]
       version:
-        description: "[create-github-release] version (reads jac/jac.toml if empty)"
+        description: "[create-github-release] version (reads jac.toml if empty)"
         required: false
         type: string
 
@@ -123,14 +123,14 @@ jobs:
         with:
           persist-credentials: false
 
-      # jac/jac.toml is the source of truth for the jaclang version.
+      # The root jac.toml is the source of truth for the jaclang version.
       - name: Resolve version
         id: ver
         run: |
           set -euo pipefail
-          VERSION="$(grep -m1 '^version' jac/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          VERSION="$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           if [ -z "$VERSION" ]; then
-            echo "::error::Could not read version from jac/jac.toml"
+            echo "::error::Could not read version from jac.toml"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -375,7 +375,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             VERSION="${{ inputs.version }}"
           else
-            VERSION="$(grep -m1 '^version' jac/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+            VERSION="$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"

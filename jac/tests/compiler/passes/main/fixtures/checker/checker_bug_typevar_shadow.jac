@@ -2,7 +2,6 @@
 
 Module-level T (bound=int) should NOT be substituted with inherited str.
 """
-import from typing { TypeVar }
 
 class Transform[T] {
     def get_input(self: Transform) -> T;

@@ -58,7 +58,7 @@ def rerase(text: str) -> str {
 with entry {
     if len(sys.argv) != 2 {
         sys.stderr.write("usage: jac run rerase.jac <kernel.jac>\n");
-        sys.exit(2);
+        sys.`exit(2);
     }
     sys.stdout.write(rerase(Path(sys.argv[1]).read_text()));
 }

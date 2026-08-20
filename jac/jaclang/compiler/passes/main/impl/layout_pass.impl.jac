@@ -1,4 +1,3 @@
-import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 
@@ -53,7 +52,7 @@ impl LayoutPass.transform(ir_in: Module) -> Module {
 
 impl LayoutPass._collect_archetypes(module: Module) -> dict[str, Archetype] {
     arch_map: dict[str, Archetype] = {};
-    for nd in UniPass.get_all_sub_nodes(module, Archetype) {
+    for nd in module.get_all_sub_nodes(Archetype) {
         aname = nd.name.value if nd.name else None;
         if aname is None {
             continue;
@@ -108,6 +107,7 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
     for (aname, arch) in archetypes.items() {
         if arch.base_classes {
             parents: list[str] = [];
+            parent_mods: list[str] = [];
             for base_expr in arch.base_classes {
                 pname: (str | None) = None;
                 if isinstance(base_expr, Name) {
@@ -119,9 +119,11 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
                     continue;
                 }
                 parents.append(pname);
+                parent_mods.append(declaring_module_path(base_expr));
             }
             if parents {
                 reg.class_parents[aname] = parents;
+                reg.parent_mods[aname] = parent_mods;
             }
         }
     }
@@ -234,6 +236,22 @@ impl LayoutPass._topo_sort(arch_map: dict[str, Archetype]) -> list[str] {
 }
 
 impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
+    """Assign an archetype's header and field slots.
+
+    `needs_vtable` folds two different questions together. `parents_set` and
+    `isinstance_targets` ask "is anything dispatched through me", which is a
+    real requirement. `bool(parents)` asks "do I have a base", which is a
+    property of the declaration and says nothing about dispatch -- and this
+    pass is per-module, so a base whose only subclass lives elsewhere is
+    nobody's parent here and comes out flat while its child, merely for
+    having a base, claims a vtable slot the base lacks. Their headers then
+    disagree and `adopt_imported_bases` declines the pair.
+
+    The build-time answer is left exactly as it was, so no existing layout
+    moves. `vtable_by_dispatch` records which of the two questions answered,
+    which is what lets adoption -- where both layouts are finally in hand --
+    tell a header the class needs from one it merely inherited the habit of.
+    """;
     reg = self.registry;
     aname = arch.name.value if arch.name else "unknown";
     mro = reg.mro_order.get(aname, [aname]);
@@ -248,9 +266,11 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
             parents_set.add(p);
         }
     }
-    needs_vtable = (
-        bool(parents) or aname in parents_set or aname in self.isinstance_targets
+
+    vtable_by_dispatch = (
+        is_osp or aname in parents_set or aname in self.isinstance_targets
     );
+    needs_vtable = bool(parents) or vtable_by_dispatch;
 
     fields: list[FieldInfo] = [];
     field_index: dict[str, int] = {};
@@ -341,14 +361,20 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         current_idx += 1;
     }
 
+    import os as _lay_os;
+    _decl_mod = arch.find_parent_of_type(Module);
+    _decl_path = _decl_mod.loc.mod_path if _decl_mod?.loc else None;
     return ArchetypeLayout(
         name=aname,
         arch_type=arch_type_str,
+        decl_mod=(_lay_os.path.realpath(_decl_path) if _decl_path else ""),
+        parent_mods=list(reg.parent_mods.get(aname, [])),
         parents=parents,
         mro=mro,
         fields=fields,
         field_index=field_index,
         has_vtable=needs_vtable,
+        vtable_by_dispatch=vtable_by_dispatch,
         parent_field_start=parent_field_start,
         is_osp=is_osp,
         vtable_ptr_slot=vtable_ptr_slot,
@@ -358,7 +384,7 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
 }
 
 impl LayoutPass._build_enum_layouts(module: Module) -> None {
-    for nd in UniPass.get_all_sub_nodes(module, Enum) {
+    for nd in module.get_all_sub_nodes(Enum) {
         ename = nd.name.value if nd.name else None;
         if ename is None or ename in self.registry.enums or nd.body is None {
             continue;

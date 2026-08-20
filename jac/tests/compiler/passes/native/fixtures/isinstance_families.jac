@@ -19,8 +19,6 @@ unrolls its arms, the second lowers to a native sequence whose length is a
 runtime value, so the compare runs as a loop.
 """
 
-import from collections.abc { Mapping, Sequence }
-
 obj Base {
     has v: int = 0;
 }

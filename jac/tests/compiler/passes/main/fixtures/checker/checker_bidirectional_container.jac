@@ -5,8 +5,6 @@ when all elements are compatible, and fall back to bottom-up inference
 (producing type errors) when elements don't match.
 """
 
-import from typing { TypeVar, Generic }
-
 obj Animal {
     has name: str = "";
 }

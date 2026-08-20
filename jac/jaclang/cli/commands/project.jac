@@ -11,99 +11,99 @@ glob registry = get_registry();
         Arg.create(
             "name",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Project name (omit to initialize the current directory)"
         ),
         Arg.create(
             "force",
             typ=bool,
-            default=False,
+            `default=False,
             help="Overwrite existing jac.toml",
             short="f"
         ),
         Arg.create(
             "kind",
-            default="",
+            `default="",
             help="Project kind to scaffold (cli, cli-native, service, web-app, ...)",
             short="k"
         ),
         Arg.create(
             "use",
-            default="default",
+            `default="default",
             help="Custom template: file path or URL to a .jacpack (or a variant name)",
             short="u"
         ),
         Arg.create(
             "list",
             typ=bool,
-            default=False,
+            `default=False,
             help="List available project kinds and named variants",
             short="l"
         ),
         Arg.create(
             "pack",
-            default="",
+            `default="",
             short="",
             help="Bundle a template directory into a .jacpack instead of creating (absorbs 'jac jacpack pack')"
         ),
         Arg.create(
             "pack_output",
-            default="",
+            `default="",
             short="",
             help="With --pack: output .jacpack file path"
         ),
         Arg.create(
             "skip",
             typ=bool,
-            default=False,
+            `default=False,
             help="Skip dependency installation (Python + npm); run 'jac install' later"
         ),
         Arg.create(
             "style",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn style preset (nova|vega|maia|lyra|mira)",
             short=""
         ),
         Arg.create(
             "baseColor",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn base palette (neutral|stone|zinc|gray)",
             short=""
         ),
         Arg.create(
             "theme",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn accent theme (e.g. rose, emerald)",
             short=""
         ),
         Arg.create(
             "font",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn font family (e.g. inter, outfit)",
             short=""
         ),
         Arg.create(
             "radius",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn border radius (none|small|medium|large)",
             short=""
         ),
         Arg.create(
             "menuAccent",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn menu accent (subtle|bold)",
             short=""
         ),
         Arg.create(
             "menuColor",
             typ=str,
-            default=None,
+            `default=None,
             help="shadcn menu color scheme",
             short=""
         ),
@@ -158,13 +158,13 @@ def create(
         Arg.create(
             "packages",
             kind=ArgKind.MULTI_POSITIONAL,
-            default=[],
+            `default=[],
             help="Package(s) to add to jac.toml and install into the project's venv (.jac/venv)"
         ),
         Arg.create(
             "editable",
             kind=ArgKind.APPEND,
-            default=[],
+            `default=[],
             help="Install the package at this path in editable mode; repeat for multiple packages",
             short="e",
             metavar="PATH"
@@ -172,94 +172,94 @@ def create(
         Arg.create(
             "dev",
             typ=bool,
-            default=False,
+            `default=False,
             help="Include dev dependencies, or record named package(s) as dev dependencies",
             short="d"
         ),
         Arg.create(
             "extras",
             kind=ArgKind.MULTI_OPTION,
-            default=[],
+            `default=[],
             help="Optional dependency groups to install (e.g. data monitoring)",
             short="x"
         ),
         Arg.create(
             "no-save",
             typ=bool,
-            default=False,
+            `default=False,
             help="Install named package(s) without recording them in jac.toml",
             short=""
         ),
         Arg.create(
             "git",
-            default="",
+            `default="",
             help="Git repository URL to install and record as a git dependency",
             short="g"
         ),
         Arg.create(
             "npm",
             typ=bool,
-            default=False,
-            help="Install npm package(s); with no names, install all npm deps from jac.toml. With --global, install standalone npm CLI tools runnable via 'jac x --global'"
+            `default=None,
+            help="Install npm package(s); with no names, install all npm deps from jac.toml. With --global, install standalone npm CLI tools runnable via 'jac x --global'. As --no-npm, skip npm dependencies during a full install"
         ),
         Arg.create(
             "shadcn",
             typ=bool,
-            default=False,
+            `default=False,
             help="Install shadcn UI component(s) from the bundled registry"
         ),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose", typ=bool, `default=False, help="Verbose output", short="v"
         ),
         Arg.create(
             "force-reinstall",
             typ=bool,
-            default=False,
+            `default=False,
             help="Reinstall all packages even if they are already up-to-date",
             short=""
         ),
         Arg.create(
             "no-cache-dir",
             typ=bool,
-            default=False,
+            `default=False,
             help="Disable the pip download cache",
             short=""
         ),
         Arg.create(
             "pre",
             typ=bool,
-            default=False,
+            `default=False,
             help="Include pre-release and development versions",
             short=""
         ),
         Arg.create(
             "dry-run",
             typ=bool,
-            default=False,
+            `default=False,
             help="Show what would be installed without actually installing anything",
             short=""
         ),
         Arg.create(
             "no-deps",
             typ=bool,
-            default=False,
+            `default=False,
             help="Don't install package dependencies",
             short=""
         ),
         Arg.create(
-            "quiet", typ=bool, default=False, help="Suppress pip output", short=""
+            "quiet", typ=bool, `default=False, help="Suppress pip output", short=""
         ),
         Arg.create(
             "prefer-binary",
             typ=bool,
-            default=False,
+            `default=False,
             help="Prefer wheel files over source distributions",
             short=""
         ),
         Arg.create(
             "global",
             typ=bool,
-            default=False,
+            `default=False,
             help="Install into the jac-owned global store shared by every project, not the project venv (Python: the global site; with --npm: global npm CLI tools)",
             short="",
             dest="install_global"
@@ -267,21 +267,21 @@ def create(
         Arg.create(
             "scale",
             typ=bool,
-            default=False,
+            `default=False,
             help="Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure",
             short=""
         ),
         Arg.create(
             "plan",
             typ=bool,
-            default=False,
+            `default=False,
             short="",
             help="Show the fully resolved dependency plan instead of installing (absorbs 'jac deps')"
         ),
         Arg.create(
             "json",
             typ=bool,
-            default=False,
+            `default=False,
             short="",
             dest="as_json",
             help="With --plan: emit the plan as JSON"
@@ -338,7 +338,7 @@ def install(
     extras: list = [],
     no_save: bool = False,
     git: str = "",
-    npm: bool = False,
+    npm: bool | None = None,
     shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,
@@ -361,21 +361,21 @@ def install(
         Arg.create(
             "packages",
             kind=ArgKind.MULTI_POSITIONAL,
-            default=[],
+            `default=[],
             help="Packages to remove"
         ),
         Arg.create(
             "dev",
             typ=bool,
-            default=False,
+            `default=False,
             help="Remove from dev dependencies",
             short="d"
         ),
         Arg.create(
-            "npm", typ=bool, default=False, help="Remove npm (client-side) dependency"
+            "npm", typ=bool, `default=False, help="Remove npm (client-side) dependency"
         ),
         Arg.create(
-            "shadcn", typ=bool, default=False, help="Remove shadcn UI component(s)"
+            "shadcn", typ=bool, `default=False, help="Remove shadcn UI component(s)"
         ),
 
     ],
@@ -399,14 +399,14 @@ def remove(
         Arg.create(
             "packages",
             kind=ArgKind.MULTI_POSITIONAL,
-            default=[],
+            `default=[],
             help="Packages to update (all if empty)"
         ),
         Arg.create(
-            "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
+            "dev", typ=bool, `default=False, help="Include dev dependencies", short="d"
         ),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose", typ=bool, `default=False, help="Verbose output", short="v"
         ),
 
     ],
@@ -431,35 +431,35 @@ def script(name: str = "", list_scripts: bool = False) -> int;
         Arg.create(
             "all",
             typ=bool,
-            default=False,
+            `default=False,
             help="Clean all .jac artifacts (data, cache, packages, client)",
             short="a"
         ),
         Arg.create(
             "data",
             typ=bool,
-            default=False,
+            `default=False,
             help="Clean data directory (.jac/data)",
             short="d"
         ),
         Arg.create(
             "cache",
             typ=bool,
-            default=False,
+            `default=False,
             help="Clean cache directory (.jac/cache)",
             short="c"
         ),
         Arg.create(
             "packages",
             typ=bool,
-            default=False,
+            `default=False,
             help="Clean virtual environment (.jac/venv)",
             short="p"
         ),
         Arg.create(
             "force",
             typ=bool,
-            default=False,
+            `default=False,
             help="Force clean without confirmation",
             short="f"
         ),

@@ -10,7 +10,7 @@ TODO: Known differences from Pyright:
    previously assigned an int type, not a TypeVar validation issue.
 """
 
-import from typing { Generic, TypeVar, Union }
+import from typing { Union }
 
 class Foo {
     has var1: int;

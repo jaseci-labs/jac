@@ -906,7 +906,7 @@ test "import from semicolons removed" {
 
     # import from {} style imports inside functions should NOT have semicolons
     # The semicolons (which become standalone Semi statements) should be removed
-    assert "import from typing { List }" in formatted;
+    assert "import from typing { Optional }" in formatted;
     assert "import from sys { argv }" in formatted;
 
     # There should be no standalone semicolons after these imports

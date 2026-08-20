@@ -24,7 +24,7 @@ def validate_profile(profile: dict[str, any] | None) -> dict[str, any] | None {
         raise ValueError(f'profile may have at most {PROFILE_MAX_KEYS} keys');
     }
     for (key, value) in profile.items() {
-        if not isinstance(key, str) or not PROFILE_KEY_PATTERN.match(key) {
+        if not isinstance(key, str) or not PROFILE_KEY_PATTERN.`match(key) {
             raise ValueError(
                 f"profile contains an invalid key - keys must start with a letter and contain only letters, digits, and underscores (max {PROFILE_MAX_KEY_LENGTH} characters)"
             );
@@ -66,7 +66,7 @@ obj IdentityInputModel(ApiModel) {
             raise ValueError("identity.type must be one of 'email' or 'username'");
         }
         value = require_str(data, 'value', 'identity.value');
-        if type_value == 'email' and not EMAIL_PATTERN.match(value) {
+        if type_value == 'email' and not EMAIL_PATTERN.`match(value) {
             raise ValueError('identity.value is not a valid email address');
         }
         return IdentityInputModel(type=type_value, value=value);

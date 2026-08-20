@@ -62,7 +62,7 @@ test "hard codegen error in one method demotes it, keeps siblings native" {
 
 `JAC_NA_DEBUG` writes `NA_DEBUG demote <method>` plus every diagnostic behind
 the demotion to stderr; that stream is the only place the full per-method
-reason list survives, since the census keeps just the first one.
+reason list survives, since the coverage keeps just the first one.
 """
 def _demotion_log(fixture: str) -> tuple {
     import contextlib;

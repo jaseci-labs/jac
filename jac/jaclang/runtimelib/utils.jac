@@ -1,5 +1,4 @@
 import platform;
-import from collections.abc { Callable }
 import from pathlib { Path }
 import from uuid { UUID }
 import type from jaclang.jac0core.constructs { NodeArchetype }

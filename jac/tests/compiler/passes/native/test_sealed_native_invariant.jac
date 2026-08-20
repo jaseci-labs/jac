@@ -62,9 +62,9 @@ def _write_image(
     if artifacts is not None {
         manifest["native_artifacts"] = artifacts;
         if make_files {
-            for entry in artifacts.values() {
+            for `entry in artifacts.values() {
                 for key in ("lib", "layout") {
-                    rel = entry.get(key);
+                    rel = `entry.get(key);
                     if rel {
                         target = pdir / rel;
                         target.parent.mkdir(parents=True, exist_ok=True);

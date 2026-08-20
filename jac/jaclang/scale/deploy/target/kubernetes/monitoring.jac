@@ -272,7 +272,7 @@ obj MonitoringDeployer {
                         'containers': [
                             {
                                 'name': 'prometheus',
-                                'image': 'prom/prometheus:latest',
+                                'image': 'prom/prometheus:v3.14.0',
                                 'securityContext': {
                                     'runAsNonRoot': True,
                                     'runAsUser': 65534,
@@ -1226,7 +1226,7 @@ obj MonitoringDeployer {
                         'containers': [
                             {
                                 'name': 'grafana',
-                                'image': 'grafana/grafana:latest',
+                                'image': 'grafana/grafana:13.2.0',
                                 'securityContext': {
                                     'runAsNonRoot': True,
                                     'runAsUser': 472,
@@ -2114,18 +2114,16 @@ obj MonitoringDeployer {
         core_v1: any,
         provider: ClusterProvider,
         scrape_target_service: str = ""
-    ) -> None {
-        if not self.k8s_config.monitoring_enabled {
-            return;
+    ) {
+        if self.k8s_config.monitoring_enabled {
+            if self.k8s_config.k8s_metrics_enabled {
+                self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
+                self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
+            }
+            self._deploy_prometheus(
+                app_name, namespace, apps_v1, core_v1, provider, scrape_target_service
+            );
         }
-
-        if self.k8s_config.k8s_metrics_enabled {
-            self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
-            self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
-        }
-        self._deploy_prometheus(
-            app_name, namespace, apps_v1, core_v1, provider, scrape_target_service
-        );
         if self.k8s_config.tracing_enabled {
             self._deploy_tempo(app_name, namespace, apps_v1, core_v1);
         }
@@ -2136,7 +2134,11 @@ obj MonitoringDeployer {
         if self.k8s_config.loki_enabled or self.k8s_config.tracing_enabled {
             self._deploy_alloy(app_name, namespace, apps_v1, core_v1);
         }
-        self._deploy_grafana(app_name, namespace, apps_v1, core_v1);
+        if self.k8s_config.monitoring_enabled
+            or self.k8s_config.loki_enabled
+            or self.k8s_config.tracing_enabled {
+            self._deploy_grafana(app_name, namespace, apps_v1, core_v1);
+        }
     }
 
     def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any) {

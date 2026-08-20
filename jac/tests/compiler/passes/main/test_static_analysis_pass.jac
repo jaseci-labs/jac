@@ -187,41 +187,88 @@ test "ambient typing names resolve in .impl.jac annex files" {
     assert len(error_msgs) == 0 , f"Expected no errors, got: {error_msgs}";
 }
 
-test "redundant typing imports warn on the import line" {
+test "ambient-name imports are refused on the import line with E1125" {
     file_path = os.path.join(FIXTURES, "redundant_typing_imports.jac");
     prog = JacProgram();
     prog.compile(file_path, type_check=True);
 
+    e1125 = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E1125"
+    ];
+    # Three ambient names imported plain:
+    #   Callable, Mapping  -- from `typing` (typing re-exports the abc names)
+    #   Iterable           -- from `collections.abc` (canonical source)
+    # Aliased Callable (as Cb), non-ambient cast and TYPE_CHECKING must not fire.
+    assert len(e1125) == 3 , f"Expected 3 E1125 errors (Callable, Mapping, Iterable), got: {[
+        str(e) for e in e1125
+    ]}";
+    e1125_msgs = [e.msg for e in e1125];
+    assert any("'Callable'" in m and "'typing'" in m for m in e1125_msgs) , f"Expected E1125 for Callable from typing, got: {e1125_msgs}";
+    assert any("'Mapping'" in m and "'typing'" in m for m in e1125_msgs) , f"Expected E1125 for Mapping from typing, got: {e1125_msgs}";
+    assert any("'Iterable'" in m and "'collections.abc'" in m for m in e1125_msgs) , f"Expected E1125 for Iterable from collections.abc (proves per-module registry), got: {e1125_msgs}";
+
+    # cast and TYPE_CHECKING are runtime, not ambient -- must not trip the refusal.
+    runtime_only = [
+        e
+        for e in e1125
+        if "'cast'" in e.msg or "'TYPE_CHECKING'" in e.msg
+    ];
+    assert len(runtime_only) == 0 , f"runtime-only typing names should not be refused, got: {[
+        str(e) for e in runtime_only
+    ]}";
+
+    # The advisory tier is fully vacated outside the bootstrap tree.
     w1103 = [
         w
         for w in prog.warnings_had
         if w.code is not None and w.code.code == "W1103"
     ];
-    # Three ambient names imported plain:
-    #   Callable, Mapping  -- from `typing` (typing re-exports the abc names)
-    #   Iterable           -- from `collections.abc` (canonical source)
-    # Aliased Callable (as Cb), non-ambient cast and TYPE_CHECKING must not warn.
-    assert len(w1103) == 3 , f"Expected 3 W1103 warnings (Callable, Mapping, Iterable), got: {[
+    assert len(w1103) == 0 , f"W1103 must not fire where E1125 does, got: {[
         str(w) for w in w1103
     ]}";
-    w1103_msgs = [w.msg for w in w1103];
-    assert any("'Callable'" in m and "'typing'" in m for m in w1103_msgs) , f"Expected W1103 for Callable from typing, got: {w1103_msgs}";
-    assert any("'Mapping'" in m and "'typing'" in m for m in w1103_msgs) , f"Expected W1103 for Mapping from typing, got: {w1103_msgs}";
-    assert any("'Iterable'" in m and "'collections.abc'" in m for m in w1103_msgs) , f"Expected W1103 for Iterable from collections.abc (proves per-module registry), got: {w1103_msgs}";
+}
 
-    # cast and TYPE_CHECKING are runtime, not ambient -- must not trip the warning.
-    runtime_only_warns = [
-        w
-        for w in w1103
-        if "'cast'" in w.msg or "'TYPE_CHECKING'" in w.msg
-    ];
-    assert len(runtime_only_warns) == 0 , f"runtime-only typing names should not warn, got: {[
-        str(w) for w in runtime_only_warns
-    ]}";
+test "bootstrap-compiled modules keep the ambient-import advisory" {
+    # jac0.py resolves names solely through real imports: for the modules it
+    # compiles (jaclang/jac0core/), an ambient-name import is load-bearing, so
+    # the escalation carves them out -- W1103 stays advisory there, E1125 never
+    # fires. The predicate is path-shaped; pin its boundary on both sides.
+    import from jaclang.compiler.passes.main.static_analysis_pass {
+        is_bootstrap_compiled_module
+    }
+    assert is_bootstrap_compiled_module("/repo/jac/jaclang/jac0core/runtime.jac");
+    assert is_bootstrap_compiled_module(
+        "/repo/jac/jaclang/jac0core/passes/uni_pass.jac"
+    );
+    assert is_bootstrap_compiled_module(
+        "C:\\repo\\jac\\jaclang\\jac0core\\runtime.jac"
+    );
+    assert not is_bootstrap_compiled_module(
+        "/repo/jac/jaclang/compiler/passes/main/layout_pass.jac"
+    );
+    assert not is_bootstrap_compiled_module("/repo/apps/jac0core/module.jac");
+    assert not is_bootstrap_compiled_module("");
+}
 
-    # No errors should be produced.
-    error_msgs = [str(e) for e in prog.errors_had];
-    assert len(error_msgs) == 0 , f"Expected no errors, got: {error_msgs}";
+test "the ambient provider module keeps its typing imports" {
+    # jaclang/runtimelib/builtin.jac is the runtime side of the ambient set,
+    # and its own typing imports are its export surface: JcirGenPass routes
+    # synthesized names (builtin_name('ClassVar'), 'override',
+    # 'abstractmethod') through `from jaclang.runtimelib.builtin import ...`,
+    # which resolves only because builtin.jac imports those names itself.
+    # Stripping them breaks every module whose codegen wraps a static field in
+    # ClassVar. The predicate mirrors JcirGenPass.exit_module's
+    # is_builtin_module test exactly.
+    import from jaclang.compiler.passes.main.static_analysis_pass {
+        is_ambient_provider_module
+    }
+    assert is_ambient_provider_module("/repo/jac/jaclang/runtimelib/builtin.jac");
+    assert is_ambient_provider_module("/x/jaclang/runtimelib/builtin.py");
+    assert not is_ambient_provider_module("/repo/jac/jaclang/runtimelib/server.jac");
+    assert not is_ambient_provider_module("/repo/apps/builtin.jac");
+    assert not is_ambient_provider_module("");
 }
 
 test "every import shape binding typing.Any is refused with E1122" {
@@ -277,6 +324,77 @@ test "module-form typing.Any stays legal as the reflection escape hatch" {
     ];
     assert len(e1122) == 0 , f"`import typing;` + `typing.Any` binds no bare 'Any' and must not be refused, got: {[
         str(e) for e in e1122
+    ]}";
+}
+
+test "every import shape binding a deprecated typing alias is refused with E1123" {
+    file_path = os.path.join(FIXTURES, "typing_alias_refused.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+
+    e1123 = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E1123"
+    ];
+
+    # Six deprecated names across five statements: a lone `{ List }`, `Dict`
+    # inside a multi-name list, the `as` alias, `Set`+`FrozenSet` from one
+    # statement, and `Type`. Each is one refusal, pointed at the name itself.
+    assert len(e1123) == 6 , f"Expected 6 E1123 errors (List, Dict, Tuple-as-alias, Set, FrozenSet, Type), got: {[
+        str(e) for e in e1123
+    ]}";
+
+    # The remedy has to be in the message the author reads, not just the help.
+    refused = {};
+    for e in e1123 {
+        for (alias, builtin) in [
+            ("List", "list"),
+            ("Dict", "dict"),
+            ("Tuple", "tuple"),
+            ("Set", "set"),
+            ("FrozenSet", "frozenset"),
+            ("Type", "type")
+        ] {
+            if f"'{alias}'" in e.msg {
+                refused[alias] = e.msg;
+                assert f"`{builtin}`" in e.msg , f"E1123 for '{alias}' must name the builtin `{builtin}`, got: {e.msg}";
+            }
+        }
+    }
+    assert len(refused) == 6 , f"Every deprecated alias must be named in its own message, got: {sorted(
+        refused.keys()
+    )}";
+
+    # `FrozenSet` must not be mistaken for `Set`: the longer name owns its own
+    # remedy, and a substring match would hand it `set` instead of `frozenset`.
+    assert "`frozenset`" in refused["FrozenSet"] , f"FrozenSet must map to `frozenset`, got: {refused[
+        'FrozenSet'
+    ]}";
+
+    # Only the deprecated aliases are refused -- the rest of typing stays importable.
+    other_refusals = [
+        e
+        for e in e1123
+        if "Optional" in str(e) or "Callable" in str(e) or "cast" in str(e)
+    ];
+    assert len(other_refusals) == 0 , f"Only deprecated aliases may be refused, got: {[
+        str(e) for e in other_refusals
+    ]}";
+}
+
+test "module-form typing.List stays legal as the runtime-object escape hatch" {
+    file_path = os.path.join(FIXTURES, "typing_alias_module_form.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+
+    e1123 = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E1123"
+    ];
+    assert len(e1123) == 0 , f"`import typing;` + `typing.List` binds no bare alias and must not be refused, got: {[
+        str(e) for e in e1123
     ]}";
 }
 

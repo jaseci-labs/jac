@@ -85,16 +85,16 @@ def _wait_for(box: list, want: int, seconds: float = 10.0) {
 
 
 test "notify reaches a listener on a channel with a namespace separator" {
-    (sub, pub) = _pair();
+    (sub, `pub) = _pair();
     got: list[str] = [];
     try {
         sub.listen('cache:invalidate', lambda (payload: str) { got.append(payload); });
         _settle();
-        pub.notify('cache:invalidate', 'A');
+        `pub.notify('cache:invalidate', 'A');
         _wait_for(got, 1);
     } finally {
         sub.close();
-        pub.close();
+        `pub.close();
     }
     assert got == ['A'] , (
         "notify('cache:invalidate') never reached its own listener, got "
@@ -106,7 +106,7 @@ test "notify reaches a listener on a channel with a namespace separator" {
 test "channels that sanitize alike never cross-deliver" {
     # The old sanitizer lowercased too, so 'CACHE:INVALIDATE' collapsed onto
     # the same identifier as the other two.
-    (sub, pub) = _pair();
+    (sub, `pub) = _pair();
     colon: list[str] = [];
     plain: list[str] = [];
     upper: list[str] = [];
@@ -121,15 +121,15 @@ test "channels that sanitize alike never cross-deliver" {
             'CACHE:INVALIDATE', lambda (payload: str) { upper.append(payload); }
         );
         _settle();
-        pub.notify('cache:invalidate', 'A');
-        pub.notify('cache_invalidate', 'B');
+        `pub.notify('cache:invalidate', 'A');
+        `pub.notify('cache_invalidate', 'B');
         _wait_for(colon, 1);
         _wait_for(plain, 1);
         # Let any stray cross-delivery land before counting.
         time.sleep(0.5);
     } finally {
         sub.close();
-        pub.close();
+        `pub.close();
     }
     assert colon == ['A'] , (
         "the 'cache:invalidate' listener saw traffic from a channel that only "
@@ -141,7 +141,7 @@ test "channels that sanitize alike never cross-deliver" {
 
 
 test "channel names past the postgres identifier limit round trip intact" {
-    (sub, pub) = _pair();
+    (sub, `pub) = _pair();
     one = _LONG_STEM + 'one';
     two = _LONG_STEM + 'two';
     got_one: list[str] = [];
@@ -150,12 +150,12 @@ test "channel names past the postgres identifier limit round trip intact" {
         sub.listen(one, lambda (payload: str) { got_one.append(payload); });
         sub.listen(two, lambda (payload: str) { got_two.append(payload); });
         _settle();
-        pub.notify(two, 'long-two');
+        `pub.notify(two, 'long-two');
         _wait_for(got_two, 1);
         time.sleep(0.5);
     } finally {
         sub.close();
-        pub.close();
+        `pub.close();
     }
     assert got_two == ['long-two'] , (
         f"a channel name of {len(two)} bytes lost its message, got {got_two}:"
@@ -170,7 +170,7 @@ test "channel names past the postgres identifier limit round trip intact" {
 test "a name postgres cannot carry verbatim still routes to one listener" {
     # A NUL byte terminates a string on the wire, so this name can never be a
     # postgres channel; it must still reach its own listener and nobody else.
-    (sub, pub) = _pair();
+    (sub, `pub) = _pair();
     one = 'cache:\x00:one';
     two = 'cache:\x00:two';
     got_one: list[str] = [];
@@ -179,12 +179,12 @@ test "a name postgres cannot carry verbatim still routes to one listener" {
         sub.listen(one, lambda (payload: str) { got_one.append(payload); });
         sub.listen(two, lambda (payload: str) { got_two.append(payload); });
         _settle();
-        pub.notify(one, 'nul-one');
+        `pub.notify(one, 'nul-one');
         _wait_for(got_one, 1);
         time.sleep(0.5);
     } finally {
         sub.close();
-        pub.close();
+        `pub.close();
     }
     assert got_one == ['nul-one'] , (
         f"the unrepresentable channel name lost its message, got {got_one}"
@@ -194,23 +194,23 @@ test "a name postgres cannot carry verbatim still routes to one listener" {
 
 
 test "unlisten stops delivery and parks the listen thread" {
-    (sub, pub) = _pair();
+    (sub, `pub) = _pair();
     got: list[str] = [];
     alive_after: bool = True;
     try {
         sub.listen('cache:invalidate', lambda (payload: str) { got.append(payload); });
         _settle();
-        pub.notify('cache:invalidate', 'first');
+        `pub.notify('cache:invalidate', 'first');
         _wait_for(got, 1);
         parked: any = sub._listen_thread;
         sub.unlisten('cache:invalidate');
         # unlisten joins the thread, so it is gone the moment it returns.
         alive_after = parked is not None and parked.is_alive();
-        pub.notify('cache:invalidate', 'second');
+        `pub.notify('cache:invalidate', 'second');
         time.sleep(1.0);
     } finally {
         sub.close();
-        pub.close();
+        `pub.close();
     }
     assert got == ['first'] , (
         f"unlisten did not stop delivery on the channel, got {got}"

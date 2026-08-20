@@ -7,7 +7,7 @@ import from jaclang.scale.runtime.cli.diagnostics {
     PlanValidator,
     has_errors
 }
-import from jaclang.scale.runtime.cli._narrow { dget, iget, lget, pod_spec, sget }
+import from jaclang.scale.runtime.cli._narrow { dget, fget, iget, lget, pod_spec, sget }
 
 
 def _diags_for(diagnostics: list[Diagnostic], service: str | None) -> list[Diagnostic] {
@@ -268,9 +268,21 @@ def _render_cluster_wide(bundle: any, ms_cfg: any) -> None {
 
     rl = dget(ms_cfg, "rate_limit");
     if isinstance(rl, dict) and rl.get("enabled") {
-        rpm = iget(rl, "requests_per_minute", 0);
-        if rpm {
-            lines.append(f"  rate_limit:  {rpm}/min per IP");
+        tiers: list[str] = [];
+        per_ip = iget(rl, "per_ip_rpm", 0);
+        if per_ip > 0 {
+            tiers.append(f"{per_ip}/min per IP");
+        }
+        per_user = iget(rl, "per_user_rpm", 0);
+        if per_user > 0 {
+            tiers.append(f"{per_user}/min per user");
+        }
+        if tiers {
+            burst = fget(rl, "burst_multiplier", 0.0);
+            suffix = f" (burst x{burst:g})" if burst > 0 else "";
+            lines.append(f"  rate_limit:  {', '.join(tiers)}{suffix}");
+        } else {
+            lines.append("  rate_limit:  enabled, but both tiers are 0 (no limit)");
         }
     }
 
@@ -317,9 +329,9 @@ def _render_totals(bundle: any) {
         ("pdbs", "PDB"),
         ("pvcs", "PVC")
     ] {
-        entry = _n(key, label);
-        if entry {
-            parts.append(entry);
+        `entry = _n(key, label);
+        if `entry {
+            parts.append(`entry);
         }
     }
     if isinstance(bundle, dict) and bundle.get("ingress") {

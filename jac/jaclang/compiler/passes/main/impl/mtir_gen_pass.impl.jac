@@ -1,7 +1,5 @@
-import from collections.abc { Sequence }
 import from pathlib { Path }
 import from jaclang.jac0core.constant { Tokens as Tok }
-import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.mtp {
@@ -21,7 +19,7 @@ impl MTIRGenPass.postinit -> None {
 }
 
 impl MTIRGenPass.transform(ir_in: Module) -> Module {
-    for nd in UniPass.get_all_sub_nodes(ir_in, Ability) {
+    for nd in ir_in.get_all_sub_nodes(Ability) {
         self._process_ability(nd);
     }
     for arch in self._collect_routing_archetypes(ir_in) {
@@ -133,7 +131,7 @@ impl MTIRGenPass._extract_type_symbol(
 impl MTIRGenPass._extract_enum_info(symbol: Symbol) -> EnumInfo {
     decl = symbol.decl;
     if not isinstance(decl.name_of, Enum) {
-        raise self.ice(f"Symbol {symbol} is not an Enum.");
+        raise RuntimeError(self.ice(f"Symbol {symbol} is not an Enum."));
     }
     enum_node = decl.name_of;
     members: list[FieldInfo] = [];
@@ -159,11 +157,13 @@ impl MTIRGenPass._extract_enum_info(symbol: Symbol) -> EnumInfo {
                             } elif isinstance(enum_stmt.value, Bool) {
                                 type_info = "bool";
                             } else {
-                                raise self.ice(
-                                    f"Enum member '{member_name}' has invalid value type: {type(
-                                        enum_stmt.value
-                                    ).__name__}. "
-                                    f"Only int, str, float, and bool literals are allowed."
+                                raise RuntimeError(
+                                    self.ice(
+                                        f"Enum member '{member_name}' has invalid value type: {type(
+                                            enum_stmt.value
+                                        ).__name__}. "
+                                        f"Only int, str, float, and bool literals are allowed."
+                                    )
                                 );
                             }
                         }
@@ -444,7 +444,7 @@ impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
     scoped: dict = {};
     widen_all = False;
     saw_routing = False;
-    for vs in UniPass.get_all_sub_nodes(ir_in, VisitStmt) {
+    for vs in ir_in.get_all_sub_nodes(VisitStmt) {
         tgt = vs.target;
         if not (
             isinstance(tgt, BinaryExpr) and tgt?.op and (tgt.op.name == Tok.KW_BY)
@@ -473,7 +473,7 @@ impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
         return [];
     }
     if widen_all {
-        for arch in UniPass.get_all_sub_nodes(ir_in, Archetype) {
+        for arch in ir_in.get_all_sub_nodes(Archetype) {
             if arch.arch_kind in ('node', 'edge') {
                 scoped[id(arch)] = arch;
             }

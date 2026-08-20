@@ -10,7 +10,7 @@ impl StaticAnalysisPass.transform(ir_in: Module) -> Module {
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
     self._check_semantic_patterns(self.ir_in);
-    self._check_typing_any_import(self.ir_in);
+    self._check_typing_import_refusals(self.ir_in);
     self._check_redundant_imports(self.ir_in);
     self._check_client_imports(self.ir_in);
     self._check_placement_warnings(self.ir_in);
@@ -477,7 +477,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
     }
 }
 
-impl StaticAnalysisPass._check_typing_any_import(mod: Module) -> None {
+impl StaticAnalysisPass._check_typing_import_refusals(mod: Module) -> None {
     for nd in mod.get_all_sub_nodes(typ=Import) {
         if nd.from_loc is None or nd.from_loc.dot_path_str != "typing" {
             continue;
@@ -489,14 +489,24 @@ impl StaticAnalysisPass._check_typing_any_import(mod: Module) -> None {
             if not isinstance(item.name, Name) {
                 continue;
             }
-            if item.name.value == "Any" {
+            nm = item.name.value;
+            if nm == "Any" {
                 self.emit(E1122, node_override=item.name);
+                continue;
+            }
+            remedy = DEPRECATED_TYPING_ALIASES.get(nm);
+            if remedy is not None {
+                self.emit(E1123, node_override=item.name, name=nm, remedy=remedy);
             }
         }
     }
 }
 
 impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
+    import from jaclang.compiler.passes.main.static_analysis_pass {
+        is_ambient_provider_module,
+        is_bootstrap_compiled_module
+    }
     if not self.prog.type_evaluator {
         return;
     }
@@ -504,6 +514,9 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
     if not registry {
         return;
     }
+    mod_path = mod.loc.mod_path or "";
+    advisory_only = is_bootstrap_compiled_module(mod_path)
+        or is_ambient_provider_module(mod_path);
     for nd in mod.get_all_sub_nodes(typ=Import) {
         if nd.from_loc is None {
             continue;
@@ -525,9 +538,15 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
             }
             nm = item.name.value;
             if nm in ambient {
-                self.emit(
-                    W1103, node_override=item.name, name=nm, module=from_mod_name
-                );
+                if advisory_only {
+                    self.emit(
+                        W1103, node_override=item.name, name=nm, module=from_mod_name
+                    );
+                } else {
+                    self.emit(
+                        E1125, node_override=item.name, name=nm, module=from_mod_name
+                    );
+                }
             }
         }
     }

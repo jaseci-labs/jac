@@ -481,13 +481,14 @@ impl schema_to_hint_text(rf: dict | None) -> str {
         if isinstance(inner2, dict) {
             schema = inner2;
         }
-    }
-    if schema is None {
+    } else {
         return "";
     }
-    props = schema.get("properties");
+
+    lead = "Respond with a single JSON object.";
+    props = schema.get("properties") if schema is not None else None;
     if not isinstance(props, dict) {
-        return "";
+        return lead;
     }
     lines: list[str] = [];
     for (name, prop) in props.items() {
@@ -496,9 +497,9 @@ impl schema_to_hint_text(rf: dict | None) -> str {
         }
     }
     if not lines {
-        return "";
+        return lead;
     }
-    return "Schema requirements:\n" + "\n".join(lines);
+    return lead + "\nSchema requirements:\n" + "\n".join(lines);
 }
 
 impl attach_schema_hint(messages: list, rf: dict | None) -> list {

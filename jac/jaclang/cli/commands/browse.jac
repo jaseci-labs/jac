@@ -16,18 +16,18 @@ glob registry = get_registry();
         Arg.create(
             "args",
             kind=ArgKind.REMAINDER,
-            default=[],
+            `default=[],
             help="Arguments for the action (selector, url, text, path, ...)"
         ),
         Arg.create(
             "session",
-            default="default",
+            `default="default",
             short="s",
             help="Session name; each session is an isolated browser instance"
         ),
         Arg.create(
             "viewport",
-            default="1280x720",
+            `default="1280x720",
             help="Browser window size as WIDTHxHEIGHT (applied at open)"
         ),
 

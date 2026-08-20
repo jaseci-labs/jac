@@ -113,7 +113,7 @@ test "N concurrent slow walkers must complete in ~1 SLOW_SEC (async honesty)" {
         if server {
             server.terminate();
             with contextlib.suppress(Exception) {
-                server.wait(timeout=2);
+                server.`wait(timeout=2);
             }
         }
         time.sleep(0.3);

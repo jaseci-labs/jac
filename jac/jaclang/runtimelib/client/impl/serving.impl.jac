@@ -106,7 +106,7 @@ impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
 
     is_pwa = dist_dir.exists() and (dist_dir / 'manifest.json').exists();
     if is_pwa {
-        for client_js in dist_dir.glob('client.*.js') {
+        for client_js in dist_dir.`glob('client.*.js') {
             return client_js.read_text(encoding='utf-8');
         }
     }

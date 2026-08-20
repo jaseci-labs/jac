@@ -25,7 +25,7 @@ import os;
 import sys;
 import from tests.support { TESTS_DIR, native_force_opts }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -34,7 +34,7 @@ glob FIXTURES = os.path.join(
      MERGED = 7;
 
 
-"""Forced-native options that skip the IR cache so the census always runs."""
+"""Forced-native options that skip the IR cache so the coverage always runs."""
 def _opts -> CompileOptions {
     return CompileOptions(
         type_check=False,
@@ -53,22 +53,22 @@ def _compile_native(fixture: str) -> tuple {
 }
 
 
-"""Compile a fixture under the demotion census; return (program, module, census)."""
-def _compile_with_census(fixture: str) -> tuple {
+"""Compile a fixture under the demotion coverage; return (program, module, coverage)."""
+def _compile_with_coverage(fixture: str) -> tuple {
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    return (prog, ir, census);
+    return (prog, ir, coverage);
 }
 
 
-"""The census seam list recorded for a fixture path."""
-def _seams_of(census: dict, fixture: str) -> list[str] {
-    rec = census.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
+"""The coverage seam list recorded for a fixture path."""
+def _seams_of(coverage: dict, fixture: str) -> list[str] {
+    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
     if rec is None {
         return [];
     }
@@ -125,7 +125,7 @@ test "a module-scope static call into a Python-side class refuses" {
 
 
 test "a body-scoped static call demotes only its owning function" {
-    (prog, ir, census) = _compile_with_census("xmod_static_pybase_seam.jac");
+    (prog, ir, coverage) = _compile_with_coverage("xmod_static_pybase_seam.jac");
     assert not prog.errors_had , (
         f"a function owns this violation, so it demotes rather than failing "
         f"the module: {[str(e) for e in prog.errors_had]}"
@@ -141,12 +141,12 @@ test "a body-scoped static call demotes only its owning function" {
     );
     seams = [
         s
-        for s in _seams_of(census, "xmod_static_pybase_seam.jac")
+        for s in _seams_of(coverage, "xmod_static_pybase_seam.jac")
         if s.startswith("probe: ")
     ];
     assert len(seams) == 1 , (
-        f"expected exactly one census seam for probe, got: {_seams_of(
-            census, 'xmod_static_pybase_seam.jac'
+        f"expected exactly one coverage seam for probe, got: {_seams_of(
+            coverage, 'xmod_static_pybase_seam.jac'
         )}"
     );
     assert "Merger.merge" in seams[0] , (

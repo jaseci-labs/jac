@@ -1,6 +1,6 @@
 """Zero reachable demotions across every sealed root (epic #8201 phase C4).
 
-The per-root census files each pin one root. This is the branch-wide
+The per-root coverage files each pin one root. This is the branch-wide
 audit: it walks every entry in `NATIVE_SEAL_ROOTS`, measures it the way
 `seal_native_artifacts` measures it, and holds the whole seal to one
 statement.
@@ -9,7 +9,7 @@ statement.
 
 Not "at most", not "fewer than last time". A seam that no waiver names
 fails, and a waiver that names no seam fails, for every root at once.
-That is the same two-way check each wave census performs, applied across
+That is the same two-way check each wave coverage performs, applied across
 the branch so a root cannot be added without its waivers or kept after
 its seams clear.
 
@@ -50,7 +50,7 @@ in-house (#8287) there is no capture-off switch to turn it back on, so
 the report is readable from a failing run.
 
 The measurement is a source-lane one: under a sealed jaclang image the
-census reads the image's trust boundary instead of each unit's own
+coverage reads the image's trust boundary instead of each unit's own
 coupling, so the audit skips there.
 """
 
@@ -59,7 +59,7 @@ import sys;
 import jaclang;
 import from pathlib { Path }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.sealed { _jaclang_image, native_artifact_for }
 import from jaclang.utils.precompile_bytecode {
@@ -75,37 +75,37 @@ glob PKG_PATH = Path(jaclang.__file__).parent;
 
 """Sealed roots plus the ones measured and refused.
 
-A refused root still carries a census and a waiver set that have to
+A refused root still carries a coverage report and a waiver set that have to
 hold; refusing it withholds the artifact, not the accounting.
 """
 glob AUDITED_ROOTS: tuple = tuple(
          list(NATIVE_SEAL_ROOTS) + sorted(NATIVE_SEAL_REFUSED_ROOTS)
      );
 
-glob _CENSUS_MEMO: dict[(str, tuple)] = {};
+glob _COVERAGE_MEMO: dict[(str, tuple)] = {};
 
 """A root's dotted module name, for the sealed-runtime skip gate."""
 def _root_module_name(rel: str) -> str {
     return "jaclang." + rel[:-4].replace("/", ".");
 }
 
-"""Skip when this runtime is itself sealed; the census would measure it."""
+"""Skip when this runtime is itself sealed; the coverage would measure it."""
 def _require_source_lane {
     if _jaclang_image() is not None {
         testskip(
-            "this runtime is a sealed jaclang image; a source census here "
+            "this runtime is a sealed jaclang image; a source coverage here "
             "measures the image's trust boundary, not each unit's own seams"
         );
     }
 }
 
-"""Compile one root the way seal_native_artifacts does, up to the census."""
-def _root_census(rel: str) -> tuple {
-    if rel in _CENSUS_MEMO {
-        return _CENSUS_MEMO[rel];
+"""Compile one root the way seal_native_artifacts does, up to the coverage."""
+def _root_coverage(rel: str) -> tuple {
+    if rel in _COVERAGE_MEMO {
+        return _COVERAGE_MEMO[rel];
     }
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         ir = prog.compile(
             file_path=str(PKG_PATH / rel),
@@ -119,20 +119,20 @@ def _root_census(rel: str) -> tuple {
             )
         );
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
     has_ir = ir is not None and ir.gen.llvm_ir is not None;
     errors = [str(e) for e in prog.errors_had];
-    result = (census, has_ir, errors, );
-    _CENSUS_MEMO[rel] = result;
+    result = (coverage, has_ir, errors, );
+    _COVERAGE_MEMO[rel] = result;
     return result;
 }
 
-"""Census seams as `<pkg-rel module>::<Type>.<method>` -> reason."""
+"""Coverage seams as `<pkg-rel module>::<Type>.<method>` -> reason."""
 def _seams_by_key(rel: str) -> dict[(str, str)] {
-    (census, _has_ir, _errors) = _root_census(rel);
+    (coverage, _has_ir, _errors) = _root_coverage(rel);
     found: dict[(str, str)] = {};
-    for (path, rec) in sorted(census.items()) {
+    for (path, rec) in sorted(coverage.items()) {
         where = Path(path).resolve().relative_to(PKG_PATH.resolve()).as_posix();
         for seam in (rec["seams"] or []) {
             (name, sep, why) = str(seam).partition(": ");
@@ -202,17 +202,17 @@ test "every sealed root's demotion report is exactly its waiver list" {
     );
     failures: list[str] = [];
     for rel in live {
-        (_census, has_ir, errors) = _root_census(rel);
+        (_coverage, has_ir, errors) = _root_coverage(rel);
         if errors {
             failures.append(
-                f"{rel}: {len(errors)} compile error(s), so its census means "
+                f"{rel}: {len(errors)} compile error(s), so its coverage means "
                 f"'not reached' rather than 'clean': {errors[:3]}"
             );
             continue;
         }
         if not has_ir {
             failures.append(
-                f"{rel}: no LLVM IR, so a zero-seam census would be vacuous"
+                f"{rel}: no LLVM IR, so a zero-seam coverage would be vacuous"
             );
             continue;
         }

@@ -57,7 +57,7 @@ obj _Spinner {
                 return;
             }
             idx += 1;
-            self._stop.wait(self.interval);
+            self._stop.`wait(self.interval);
         }
     }
 

@@ -231,8 +231,8 @@ def f(p: str) -> str {
         stmt
         for stmt in got_tree.body
         if isinstance(stmt, pyast.If)
-            and isinstance(stmt.test, pyast.Name)
-            and stmt.test.id == "TYPE_CHECKING"
+            and isinstance(stmt.`test, pyast.Name)
+            and stmt.`test.id == "TYPE_CHECKING"
     ];
     assert len(found) == 1;
 }
@@ -889,9 +889,9 @@ with entry {
     sched = get_py_code_gen(native=False);
     assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
     assert JcirBytecodeGenPass in sched;
-    for entry in sched {
-        assert "Pyast" not in entry.__name__ and "PyBytecode" not in entry.__name__ , (
-            f"a legacy emitter is back in the codegen schedule: {entry.__name__}"
+    for `entry in sched {
+        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
+            f"a legacy emitter is back in the codegen schedule: {`entry.__name__}"
         );
     }
     piped_code = marshal.loads(mod.gen.py_bytecode);

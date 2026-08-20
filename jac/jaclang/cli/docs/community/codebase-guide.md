@@ -33,7 +33,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Fix a compiler bug | `jac/jaclang/compiler/passes/main/` (Python target) |
 | Add a language feature | `jac/jaclang/jac0core/` (AST) + `compiler/passes/` (all targets) |
 | Fix type checking | `jac/jaclang/compiler/type_system/` + `passes/main/type_checker_pass.jac` |
-| Work on native compilation | `jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/` |
+| Work on native compilation | `jac/jaclang/compiler/passes/native/na_ir_gen/` |
 | Work on JS compilation | `jac/jaclang/compiler/passes/ecmascript/` |
 | Improve the CLI | `jac/jaclang/cli/commands/` |
 | Fix a runtime bug | `jac/jaclang/runtimelib/` |
@@ -129,7 +129,7 @@ See `jac0core/compiler.jac` for the authoritative ordering -- it uses re-entranc
 
 ### `compiler/passes/native/` -- Native Compilation
 
-The native backend generates LLVM IR via `llvmlite`. The main pass (`na_ir_gen_pass.jac`) delegates to implementation files in `na_ir_gen_pass.impl/`, each handling a different part of the language:
+The native backend generates LLVM IR via `llvmlite`. `na_ir_gen_pass.jac` composes `NaIRGenPass` from the sibling modules under `na_ir_gen/`, each its own compilation unit handling a different part of the language (every `<name>.jac` declares its slice, `<name>.impl.jac` implements it, and shared emitter state lives on `NaIRGenState` in `state.jac`):
 
 | File | What it covers |
 |------|---------------|
@@ -268,7 +268,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | `ci.yml` | All PR/push checks: builds the `jac` binary once, then fans out the full test suite, client/scale jobs, lint + format enforcement, docs validation, contribution checks, and the installer/k8s e2e jobs (path-gated) |
 | `release.yml` | The release lifecycle: version-bump PRs, and on merge the tag + GitHub Release + binary publish (human-approved) |
 | `build-binaries.yml` | Builds the per-platform native `jac` binaries and attaches them to a release |
-| `release-dev.yml` | Rolling `dev` prerelease binaries on every push to main |
+| `release-dev.yml` | Rolling `dev` prerelease binaries, rebuilt nightly from main |
 | `nightly.yml` | Cron canaries: notes-app CEF smoke and the live-release installer check |
 
 Local git hooks come from `jac precommit --install`: a pre-commit hook that formats and lints staged `.jac` files, and a commit-msg hook that blocks AI co-author attribution. Markdown lint and the em-dash ban run on every PR via pre-commit.ci (`.pre-commit-config.yaml`).

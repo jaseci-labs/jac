@@ -1150,8 +1150,11 @@ fn mkPayload(
     // Minimal dist-info so importlib.metadata sees jaclang -- the version keys
     // JIR (pkg_version) and the entry points back the built-in `jac.modules`
     // (desktop). Version comes from jac.toml; the build never reads
-    // pyproject.toml.
-    const toml = try Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(a, "{s}/jac.toml", .{repo_root}), a, .unlimited);
+    // pyproject.toml. The manifest lives at the REPO root (the parent of the
+    // zig build root), with a same-dir fallback for trees that keep it beside
+    // build.zig.
+    const toml = Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(a, "{s}/../jac.toml", .{repo_root}), a, .unlimited) catch
+        try Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(a, "{s}/jac.toml", .{repo_root}), a, .unlimited);
     const ver = tomlString(toml, "version") orelse die("mkpayload: no version in jac.toml", .{});
     const di = try std.fmt.allocPrint(a, "{s}/jaclang-{s}.dist-info", .{ site, ver });
     try Dir.cwd().createDirPath(io, di);

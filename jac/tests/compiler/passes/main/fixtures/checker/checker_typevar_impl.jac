@@ -7,7 +7,6 @@ Mirrors: runtime.jac line 76 (glob T = TypeVar('T')) and
 runtime.impl.jac line 1506 (impl JacBasics.assign_all(target: list[T]) -> list[T])
 """
 
-import from typing { TypeVar }
 
 glob T = TypeVar("T");
 

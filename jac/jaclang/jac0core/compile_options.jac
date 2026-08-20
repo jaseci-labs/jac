@@ -55,7 +55,7 @@ obj CompileOptions {
         gc_cfg = cfg.gc if cfg is not None else None;
         native_cfg = cfg.build.native if cfg is not None else None;
         if self.na_gc_mode is None {
-            self.na_gc_mode = gc_cfg.default if gc_cfg else "cycles";
+            self.na_gc_mode = gc_cfg.`default if gc_cfg else "cycles";
         }
         if self.nogc_enforce_modules is None {
             self.nogc_enforce_modules = list(gc_cfg.enforce.modules) if gc_cfg else [];

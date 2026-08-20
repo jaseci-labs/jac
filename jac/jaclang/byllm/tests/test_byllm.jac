@@ -805,7 +805,9 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
 # so that is the correct unit to test.
 glob _TestPerson = dataclasses.make_dataclass(
          "Person", [("name", str), ("age", int)]
-     );
+     ),
+     _TestUnionField = dataclasses.make_dataclass("UnionField", [("value", str | int)]),
+     _TestFieldless = dataclasses.make_dataclass("Fieldless", []);
 
 test "output conversion error on plain text" {
     # LLM returns a narrative string instead of JSON
@@ -1017,6 +1019,215 @@ test "finish tool error not raised for valid type" {
     result = finish_tool({"name": "Alice", "age": 30});
     assert result.name == "Alice" , f"Expected name='Alice', got '{result.name}'";
     assert result.age == 30 , f"Expected age=30, got '{result.age}'";
+}
+
+# finish_tool argument robustness (issue #8169).
+test "finish tool argument resolution heals recoverable shapes" {
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    person = {"name": "Bob", "age": 25};
+    for (sent, why) in [
+        ({"final_output": person}, "canonical name"),
+        ({"output": person}, "misnamed argument"),
+        (person, "flattened kwargs")
+    ] {
+        parsed = finish_tool.parse_arguments(sent);
+        assert parsed["final_output"].name == "Bob" , f"{why}: got {parsed}";
+    }
+    bare = Tool.make_finish_tool(str).parse_arguments("just the answer");  # type: ignore[arg-type]
+    assert bare == {"final_output": "just the answer"} , f"bare payload: got {bare}";
+    # Output type whose OWN field is named final_output, sent flattened.
+    self_named = dataclasses.make_dataclass(
+        "_SelfNamed", [("final_output", str), ("score", int)]
+    );
+    parsed = Tool.make_finish_tool(self_named).parse_arguments(
+        {"final_output": "ok", "score": 5}
+    );
+    assert parsed["final_output"].score == 5 , f"self-named flattened: got {parsed}";
+}
+
+test "unusable tool arguments raise recoverable errors" {
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    def _sample_tool(city: str) -> str {
+        return city;
+    }
+    regular = Tool(func=_sample_tool);
+    for (tool, sent, needle) in [
+        (finish_tool, {}, "final_output"),
+        (finish_tool, {"a": 1, "b": 2}, "final_output"),
+        (regular, {"location": "Paris"}, "'city'"),
+        (regular, {"return": "Paris"}, "'city'"),
+        (regular, ["Paris"], "JSON object")
+    ] {
+        raised = False;
+        try {
+            tool.parse_arguments(sent);
+        } except ValueError as e {
+            raised = True;
+            assert needle in str(e) , f"{sent}: got {e}";
+        }
+        assert raised , f"Expected ValueError for {sent}";
+    }
+}
+
+test "finish tool invocation failure raises FinishToolError not TypeError" {
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    raised = False;
+    try {
+        finish_tool();
+    } except FinishToolError as e {
+        raised = True;
+        assert "final_output" in str(e) , f"got: {e}";
+    }
+    assert raised , "Expected FinishToolError for argument-less finish call";
+}
+
+"""Model, finish_tool-only mt_run, and a fake response carrying `arguments`."""
+def _finish_env(arguments: str) -> tuple {
+    model = Model(model_name="test-model");
+    mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            Message(role=MessageRole.USER, content="Who?")
+        ],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[Tool.make_finish_tool(_TestPerson)],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    fake_fn = types.SimpleNamespace(name="finish_tool", arguments=arguments);
+    fake_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": None,
+                    "tool_calls": [types.SimpleNamespace(id="call_1", function=fake_fn)]
+                }
+            }
+        ],
+
+    };
+    return (model, mt_run, fake_response);
+}
+
+
+def _dispatch_finish_call(arguments: str) -> object {
+    (model, mt_run, fake_response) = _finish_env(arguments);
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", return_value=fake_response
+    ) {
+        return model.dispatch_no_streaming(mt_run);
+    }
+}
+
+test "misnamed finish argument is healed end to end" {
+    result = _dispatch_finish_call('{"output": {"name": "Dana", "age": 33}}');
+    finish_tc = result.tool_calls[0];
+    assert finish_tc.is_finish_call() , "Healed call should still be the finish call";
+    assert finish_tc.get_output().name == "Dana" , "Expected healed typed output";
+}
+
+# An error report that classified as the finish call would become the typed output.
+test "unusable finish arguments are recovered end to end" {
+    result = _dispatch_finish_call('{"a": 1, "b": 2}');
+    err_tc = result.tool_calls[0];
+    assert not err_tc.is_finish_call() , (
+        "Recovered error call must not masquerade as the finish call"
+    );
+    content = str(err_tc().content);
+    assert "Tool error" in content and "final_output" in content , f"got: {content}";
+}
+
+test "async dispatch heals a misnamed finish argument" {
+    import asyncio;
+    (model, mt_run, fake_response) = _finish_env(
+        '{"output": {"name": "Eli", "age": 44}}'
+    );
+
+    async def _fake_async_call(params: dict) -> object {
+        return fake_response;
+    }
+
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream_async", _fake_async_call
+    ) {
+        result = asyncio.run(model.adispatch_no_streaming(mt_run));
+    }
+    finish_tc = result.tool_calls[0];
+    assert finish_tc.is_finish_call() , "Async healed call should be the finish call";
+    assert finish_tc.get_output().name == "Eli" , "Expected healed typed output";
+}
+
+# The max-iterations terminal has no retry loop: heal or degrade, never raise.
+test "forced final answer heals or degrades without raising" {
+    for (arguments, expect_typed) in [
+        ('{"output": {"name": "Fay", "age": 51}}', True),
+        ('{"a": 1, "b": 2}', False)
+    ] {
+        (model, mt_run, fake_response) = _finish_env(arguments);
+        with unittest.mock.patch.object(
+            model, "model_call_no_stream", return_value=fake_response
+        ) {
+            out = model._force_final_answer(mt_run);
+        }
+        if expect_typed {
+            assert out.name == "Fay" , f"Expected healed typed output, got: {out}";
+        } else {
+            assert not isinstance(out, _TestPerson) , f"Expected degradation, got: {out}";
+        }
+    }
+}
+
+test "recovery re-prompt heals a misnamed finish argument" {
+    (model, mt_run, fake_response) = _finish_env(
+        '{"output": {"name": "Gus", "age": 29}}'
+    );
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", return_value=fake_response
+    ) {
+        recovery = model._attempt_recovery(mt_run);
+    }
+    assert recovery is not None , "Recovery should run for a structured resp_type";
+    finish_tc = recovery.tool_calls[0];
+    assert finish_tc.is_finish_call() , "Recovered call should be the finish call";
+    assert finish_tc.get_output().name == "Gus" , "Expected healed typed output";
+}
+
+# Some backends downgrade json_schema to json_object and reject requests whose
+# messages lack the word "json" (issue #8114).
+test "response format requests always carry the json word" {
+    def _params(resp_type: type, tools: list) -> dict {
+        model = Model(model_name="test-model");
+        mt_run = MTRuntime(
+            messages=[
+                Message(role=MessageRole.SYSTEM, content="sys"),
+                Message(role=MessageRole.USER, content="do the thing")
+            ],
+            resp_type=resp_type,
+            stream=False,
+            tools=tools,
+            call_params={},
+            mtir=None  # type: ignore[arg-type]
+        );
+        return model.make_model_params(mt_run);
+    }
+    for (label, resp_type, tools, want_rf) in [
+        ("typed no tools", _TestPerson, [], True),
+        ("scalar no tools", int, [], True),
+        # A union field compiles to anyOf with no top-level type, and a fieldless
+        # obj to empty properties: both yield no schema hint lines, so the lead
+        # sentence must not depend on those lines existing.
+        ("union field", _TestUnionField, [], True),
+        ("fieldless obj", _TestFieldless, [], True),
+        ("plain str", str, [], False),
+        ("typed with tools", _TestPerson, [Tool.make_finish_tool(_TestPerson)], False)
+    ] {
+        params = _params(resp_type, tools);
+        has_rf = params.get("response_format") is not None;
+        has_json = "json" in str(params.get("messages", [])).lower();
+        assert has_rf == want_rf , f"{label}: unexpected response_format={has_rf}";
+        assert has_json == want_rf , f"{label}: json-word={has_json} but rf={has_rf}";
+    }
 }
 
 # =============================================================================

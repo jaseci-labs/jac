@@ -5,17 +5,17 @@ for `self.prog`: it asked `native_only_import_target` whether the import
 resolved to a module the native lane owns, then asked the filesystem
 whether that module lived inside jaclang's own tree. Both are
 import-resolution questions -- they need the hub, the placement pins and
-`os.path` -- and both are the driver's, which is why the seam census
+`os.path` -- and both are the driver's, which is why the seam coverage
 waived the method for exactly that reason.
 
 The driver now answers them once and stamps the verdict on the node, the
 way `Module.access_enforced` and `Module.mobui_enforced_root` are
 stamped. The pass consumes a bool.
 
-Pinned here: the stamp lands where the census says it must (before the
+Pinned here: the stamp lands where the coverage says it must (before the
 emitter runs), it agrees with the computation it replaced, and the pass
 unit no longer names `prog` at all -- the last of the eight driver names
-`test_pass_driver_seam_census.jac` forbids.
+`test_pass_driver_seam_baseline.jac` forbids.
 """
 
 import os;
@@ -85,7 +85,7 @@ test "the emitter unit no longer names the driver" {
     );
     assert "self.prog" not in text , (
         "the JCIR emitter reaches for the compile driver again; a sealed "
-        "pass cannot, and the driver-seam census forbids the name"
+        "pass cannot, and the driver-seam coverage forbids the name"
     );
     assert "native_only_import_target" not in text , (
         "the emitter resolves import placement itself again instead of "

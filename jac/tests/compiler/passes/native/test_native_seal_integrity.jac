@@ -17,7 +17,7 @@ These tests pin the build-time gate that closes that hole:
    the waiver list and the debug gate; nothing is written to the output tree;
 3. the same holds for a demotion one hop out in the sealed closure, it survives
    a warm native IR cache, and the abort-stub scan that guarantees it reads the
-   IR that actually ships rather than the census;
+   IR that actually ships rather than the coverage;
 4. naming that exact method in the waiver list lets the seal through and says
    so on stderr -- while waiving some *other* method does not launder it, and a
    waiver matching no real demotion is reported as stale;
@@ -42,7 +42,7 @@ import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.jir { get_native_cache_dir }
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.utils.precompile_bytecode as pb;
@@ -97,7 +97,7 @@ native IR cache the seal itself refuses to read.
 """
 def _compile_native(rel: str, no_ir_cache: bool) -> tuple[str, int] {
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         ir = prog.compile(
             file_path=str(FIXTURES / rel),
@@ -111,11 +111,11 @@ def _compile_native(rel: str, no_ir_cache: bool) -> tuple[str, int] {
             )
         );
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
     assert ir is not None and ir.gen.llvm_ir is not None , f"no native IR for {rel}";
     seams = 0;
-    for rec in census.values() {
+    for rec in coverage.values() {
         seams += len(rec["seams"]);
     }
     return (str(ir.gen.llvm_ir), seams);
@@ -203,7 +203,7 @@ test "a demotion one hop out cannot hide behind a warm native IR cache" {
     # entries for seal_xmod_dep.jac, so splitting them would race across workers.
 
     # Stage 1: the demotion is in a transitive native import, not in the sealed
-    # module itself. The census loop must see more than one module.
+    # module itself. The coverage loop must see more than one module.
     (arts, err, tmp) = _seal("seal_xmod_root.jac");
     try {
         assert arts is None , (
@@ -241,19 +241,19 @@ test "a demotion one hop out cannot hide behind a warm native IR cache" {
         shutil.rmtree(tmp2, ignore_errors=True);
     }
 
-    # Stage 4: why the seal cannot rely on the census alone. Compiling with the
+    # Stage 4: why the seal cannot rely on the coverage alone. Compiling with the
     # native IR cache enabled twice makes the second compile serve the demoted
     # dependency straight from disk, so NaIRGenPass never runs for it and the
-    # census records no seam at all. The abort-stub scan reads the IR that
+    # coverage records no seam at all. The abort-stub scan reads the IR that
     # actually ships, so it still finds the stub.
     _compile_native("seal_xmod_root.jac", False);
     (warm_ir, warm_seams) = _compile_native("seal_xmod_root.jac", False);
     assert warm_seams == 0 , (
-        "expected the warm native IR cache to produce an empty census (that is "
+        "expected the warm native IR cache to produce an empty coverage report (that is "
         f"the hole the scan backstops), got {warm_seams} seam(s)"
     );
     assert "Meter.unlowerable" in seal_abort_stubs(warm_ir) , (
-        "the abort-stub scan missed a demotion the census could not see; the "
+        "the abort-stub scan missed a demotion the coverage could not see; the "
         f"gate is only as good as cache warmth. stubs={seal_abort_stubs(warm_ir)}"
     );
 
@@ -268,8 +268,8 @@ test "a demotion one hop out cannot hide behind a warm native IR cache" {
     # Stage 5: stage 4 left the dependency's demoted IR warm in the cache
     # *without* a seal having run, so this is the one point where the two
     # mechanisms are distinguishable. If the seal read that warm cache its
-    # census would be empty and only the abort-stub scan could refuse, giving
-    # the "would link N abort stub(s)" wording. Getting the per-method census
+    # coverage would be empty and only the abort-stub scan could refuse, giving
+    # the "would link N abort stub(s)" wording. Getting the per-method coverage
     # diagnostic here proves the seal recompiled the closure itself.
     assert _dep_cache_entries("seal_xmod_dep.jac") , (
         "stage 4 was expected to leave a warm native IR cache entry"
@@ -280,10 +280,10 @@ test "a demotion one hop out cannot hide behind a warm native IR cache" {
         diag3 = _seal_diag(err3);
         assert "demoted 1 method" in diag3 , (
             "the seal trusted a warm native IR cache instead of recompiling the "
-            f"closure under the census:\n{diag3}"
+            f"closure under the coverage:\n{diag3}"
         );
         assert "eval" in diag3 , (
-            f"the per-method reason is missing, so the census did not run:\n{diag3}"
+            f"the per-method reason is missing, so the coverage did not run:\n{diag3}"
         );
     } finally {
         shutil.rmtree(tmp3, ignore_errors=True);
@@ -332,11 +332,11 @@ test "waiving that exact method seals and says so; waiving another does not" {
 
 test "a waiver names one module's method and cannot silence another's" {
     # Two modules in one sealed closure demoting the *same* Type.method name.
-    # Driven through seal_demotion_report directly with a census built to the
-    # shape na_census_seam writes, because two modules defining the same symbol
+    # Driven through seal_demotion_report directly with a coverage report built to the
+    # shape na_coverage_seam writes, because two modules defining the same symbol
     # could not link into one artifact anyway -- the property under test is that
     # a waiver carries module identity, independent of that.
-    census = {
+    coverage = {
         str(FIXTURES / "seal_xmod_dep.jac"): {
             "outcome": "native",
             "code": "",
@@ -353,7 +353,7 @@ test "a waiver names one module's method and cannot silence another's" {
 
     (err, waived, stale) = pb.seal_demotion_report(
         "root.jac",
-        census,
+        coverage,
         {"root.jac": ("seal_xmod_dep.jac::Meter.unlowerable", )},
         FIXTURES
     );
@@ -373,7 +373,7 @@ test "a waiver names one module's method and cannot silence another's" {
     # Waiving both, by module, clears the seal.
     (err2, waived2, stale2) = pb.seal_demotion_report(
         "root.jac",
-        census,
+        coverage,
         {
             "root.jac": (
                 "seal_xmod_dep.jac::Meter.unlowerable",
@@ -387,7 +387,7 @@ test "a waiver names one module's method and cannot silence another's" {
 
     # A bare, unqualified name waives nothing: the module half is required.
     (err3, waived3, _stale3) = pb.seal_demotion_report(
-        "root.jac", census, {"root.jac": ("Meter.unlowerable", )}, FIXTURES
+        "root.jac", coverage, {"root.jac": ("Meter.unlowerable", )}, FIXTURES
     );
     assert err3 , "an unqualified waiver silenced a demotion";
     assert waived3 == [] , waived3;

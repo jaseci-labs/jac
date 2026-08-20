@@ -55,7 +55,7 @@ impl WebTarget.dev(
         process = bundler.start_dev_server(port=port, suppress_initial_output=False);
         if process {
             try {
-                process.wait();
+                process.`wait();
             } except KeyboardInterrupt {
                 console.print("\n  Stopping dev server...", style="muted");
                 terminate_dev_processes([process]);

@@ -1,28 +1,25 @@
 name: Release jac dev binary (rolling main)
 
-# Rolling "dev" prerelease: pushes to main that touch the binary's inputs
-# rebuild the per-platform binaries and re-publish them under the single
-# force-moved `dev` tag, so .../releases/download/dev/jac-dev-<platform>
-# always maps to the last binary-relevant commit on main. The build itself
-# is build-binaries.yml on the dev channel (cached, host-native).
+# Rolling "dev" prerelease: once a night the tip of main is rebuilt into the
+# per-platform binaries and re-published under the single force-moved `dev`
+# tag, so .../releases/download/dev/jac-dev-<platform> always maps to a recent
+# commit on main. The build itself is build-binaries.yml on the dev channel
+# (cached, host-native).
+#
+# Nightly rather than per-merge: every push to main used to spend three runners
+# on a full rebuild, and nothing downstream needs the dev binary to track main
+# commit-for-commit. Use workflow_dispatch when a specific commit has to reach
+# the dev tag before the next cron.
 
 on:
-  push:
-    branches: [main]
-    # Non-jac pushes (docs, CI plumbing, scripts) cannot change the binary;
-    # skipping them keeps the dev tag pointing at the exact commit the
-    # published binaries were built from -- and stops three full rebuilds
-    # per docs-only merge.
-    paths:
-      - "jac/**"
-      - ".github/workflows/release-dev.yml"
-      - ".github/workflows/build-binaries.yml"
+  schedule:
+    - cron: '30 6 * * *'  # rolling dev binaries from the tip of main
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# A newer push to main supersedes an in-flight dev build.
+# A manual dispatch supersedes an in-flight nightly build.
 concurrency:
   group: release-dev
   cancel-in-progress: true
@@ -44,7 +41,7 @@ jobs:
           set -euxo pipefail
           SHA="${GITHUB_SHA}"
           SHORT="${SHA:0:7}"
-          NOTES="Rolling build of \`main\` @ ${SHORT}. Auto-updated on every push to main; not a stable release."
+          NOTES="Rolling build of \`main\` @ ${SHORT}. Rebuilt nightly from the tip of main; not a stable release."
           git tag -f dev "$SHA"
           git push -f origin refs/tags/dev
           if gh release view dev >/dev/null 2>&1; then

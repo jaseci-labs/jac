@@ -271,8 +271,8 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
                 and all_single
                 and self.emit(W3003, node_override=base_glob) {
                 combined_assignments: list[uni.Assignment] = [];
-                for glob in merged_globs {
-                    combined_assignments.extend(glob.assignments);
+                for `glob in merged_globs {
+                    combined_assignments.extend(`glob.assignments);
                 }
                 new_kid: list[uni.UniNode] = [];
                 for kid in base_glob.kid {
@@ -611,58 +611,15 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     module.set_kids(nodes=new_kid if len(new_kid) else [uni.EmptyToken()]);
 }
 
-impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
-    if not self.lint_enabled {
-        return;
-    }
-    if not nd.is_kwesc or isinstance(nd, uni.SpecialVarRef) {
-        return;
-    }
-    jac_keywords = set(TOKEN_MAP.values());
-    python_keywords = set(keyword.kwlist);
-    reserved = jac_keywords | python_keywords;
-    raw_value = nd.value[1:] if nd.value.startswith("`") else nd.value;
-    if raw_value not in reserved
-        and self.emit(W3006, node_override=nd, name=raw_value)
-        and not self.report_only {
-        nd.is_kwesc = False;
-        if nd.name == Tok.KWESC_NAME {
-            nd.name = Tok.NAME;
-        }
-    }
-}
-
 impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
     if not self.lint_enabled {
         return;
-    }
-    if nd.orig.is_kwesc and self.emit(W3006, node_override=nd, name=nd.orig.value) {
-        if not self.report_only {
-            nd.orig.is_kwesc = False;
-            if nd.orig.name == Tok.KWESC_NAME {
-                nd.orig.name = Tok.NAME;
-            }
-        }
     }
     if self.report_only {
         return;
     }
     if nd.is_kwesc {
         nd.is_kwesc = False;
-    }
-}
-
-impl JacAutoLintPass.enter_builtin_type(nd: uni.BuiltinType) -> None {
-    if not self.lint_enabled {
-        return;
-    }
-    if nd.is_kwesc and self.emit(W3006, node_override=nd, name=nd.value) {
-        if not self.report_only {
-            nd.is_kwesc = False;
-            if nd.name == Tok.KWESC_NAME {
-                nd.name = Tok.NAME;
-            }
-        }
     }
 }
 
@@ -1979,12 +1936,12 @@ impl JacAutoLintPass._check_mutable_default(nd: uni.ParamVar) -> None {
     if nd.value is None {
         return;
     }
-    default = nd.value;
-    if isinstance(default, uni.ListVal) {
+    `default = nd.value;
+    if isinstance(`default, uni.ListVal) {
         self.emit(W3036, node_override=nd, type="list");
-    } elif isinstance(default, uni.DictVal) {
+    } elif isinstance(`default, uni.DictVal) {
         self.emit(W3036, node_override=nd, type="dict");
-    } elif isinstance(default, uni.SetVal) {
+    } elif isinstance(`default, uni.SetVal) {
         self.emit(W3036, node_override=nd, type="set");
     }
 }
@@ -2165,8 +2122,8 @@ impl JacAutoLintPass._body_has_return_stmt(body: list) -> bool {
             }
         }
         if isinstance(stmt, uni.MatchStmt) {
-            for case in stmt.cases {
-                if self._body_has_return_stmt(list(case.body)) {
+            for `case in stmt.cases {
+                if self._body_has_return_stmt(list(`case.body)) {
                     return True;
                 }
             }
@@ -2985,10 +2942,10 @@ impl JacAutoLintPass._property_impl_roles(
         }
     }
 
-    for getter in roles.get("property", []) {
-        if getter.signature
-            and (getter.signature.return_type is not None)
-            and not self._is_suppressed(W3043, getter.loc) {
+    for `getter in roles.get("property", []) {
+        if `getter.signature
+            and (`getter.signature.return_type is not None)
+            and not self._is_suppressed(W3043, `getter.loc) {
             return roles;
         }
     }

@@ -55,7 +55,7 @@ obj ProbeEmitPass(Transform) {
 """A pass that dies through `Transform.ice` after recording one alert."""
 obj ProbeIcePass(Transform) {
     def transform(ir_in: uni.Module) -> uni.Module {
-        raise self.ice("probe detonation");
+        raise RuntimeError(self.ice("probe detonation"));
     }
 }
 

@@ -558,17 +558,17 @@ impl KEDAAutoscaler._build_routing_rules{
 
         paths = rule.paths or [None];
         for path in paths {
-            entry: dict[str, any] = {};
+            `entry: dict[str, any] = {};
             if rule.hosts {
-                entry["hosts"] = rule.hosts;
+                `entry["hosts"] = rule.hosts;
             }
             if path is not None {
-                entry["path"] = {"value": path.value};
+                `entry["path"] = {"value": path.value};
             }
             if header_matches {
-                entry["headers"] = header_matches;
+                `entry["headers"] = header_matches;
             }
-            result.append(entry);
+            result.append(`entry);
         }
     }
     return result;

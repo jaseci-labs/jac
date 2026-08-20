@@ -2,7 +2,6 @@ import time;
 import asyncio;
 import logging;
 import mimetypes;
-import from collections.abc { Callable }
 import from datetime { datetime }
 import from pathlib { Path }
 import json;

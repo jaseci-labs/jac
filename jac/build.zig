@@ -524,7 +524,9 @@ pub fn build(b: *std.Build) void {
         }
         mk.addFileInput(b.path("_jac_finder.py"));
         mk.addFileInput(b.path("sitecustomize.py"));
-        mk.addFileInput(b.path("jac.toml"));
+        // The project manifest (version stamped into dist-info) lives at the
+        // repo root, one level above this build root.
+        mk.addFileInput(.{ .cwd_relative = b.pathFromRoot("../jac.toml") });
         mk.addFileInput(b.path("launcher/payload.zig"));
         // The slice pins (dirname/hash/size) moved here; a bump must repack.
         mk.addFileInput(b.path("launcher/llvm_release.zig"));

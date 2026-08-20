@@ -311,7 +311,7 @@ Repaired-away values are never deleted. Removed fields (declared via `schema_dro
   "__jac_attic__": { "legacy_bio": { "value": "...", "reason": "dropped" } } }
 ```
 
-The attic round-trips through loads and saves -- including under `JAC_SCHEMA_REPAIR=off`, so an emergency rollback can never destroy previously preserved data. It persists until you explicitly clean it up (a future census-gated *contract* phase will automate this).
+The attic round-trips through loads and saves -- including under `JAC_SCHEMA_REPAIR=off`, so an emergency rollback can never destroy previously preserved data. It persists until you explicitly clean it up (a future *contract* phase, gated on no old-version reader remaining, will automate this).
 
 ### Rolling deploys: dual-write
 
@@ -468,7 +468,7 @@ The official `jaseci/jaclang` image already carries everything the embedded engi
 
 Currently out of scope (planned follow-on work):
 
-- **Contract phase** -- attic data and dual-written shadow fields persist indefinitely; the census-gated cleanup that strips them once no old-version reader remains is future work. Until then they cost a little storage but are harmless.
+- **Contract phase** -- attic data and dual-written shadow fields persist indefinitely; the version-gated cleanup that strips them once no old-version reader remains is future work. Until then they cost a little storage but are harmless.
 - **Rename auto-inference** -- the runtime won't guess that a removed field and an added field of the same type are a rename; you declare it with `schema_alias`. (A schema registry that proposes such inferences is future work.)
 - **Background sweep** -- repair is lazy (on read); cold rows that are never read stay at their old shape until touched. They repair correctly whenever that happens.
 - **Compiler enforcement** -- there's no build-time lint yet that detects an undeclared breaking change against a schema lockfile.

@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.scale.events.broker { Event, RetryPolicy, StreamPosition }
 
 obj _SubscriptionEntry {

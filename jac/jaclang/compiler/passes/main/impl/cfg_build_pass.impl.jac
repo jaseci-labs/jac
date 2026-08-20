@@ -456,11 +456,11 @@ impl CFGBuildPass.exit_bool_expr(nd: BoolExpr) -> None {
         return;
     }
     if len(nd.values) >= 2 {
-        entry = self._wire_bool_operands(nd.values, _bool_is_and(nd), None, None);
+        `entry = self._wire_bool_operands(nd.values, _bool_is_and(nd), None, None);
 
         enclosing_flow = nd.find_parent_of_type(UniCFGNode);
         if enclosing_flow is not None {
-            self.link_bbs(enclosing_flow, entry);
+            self.link_bbs(enclosing_flow, `entry);
         }
     }
 }
@@ -472,11 +472,11 @@ impl CFGBuildPass.exit_if_else_expr(nd: IfElseExpr) -> None {
     unwrapped_cond = _unwrap_parens(nd.condition.expr);
     if isinstance(unwrapped_cond, BoolExpr) and len(unwrapped_cond.values) >= 2 {
         op_is_and = _bool_is_and(unwrapped_cond);
-        entry = self._wire_bool_operands(
+        `entry = self._wire_bool_operands(
             unwrapped_cond.values, op_is_and, nd.value, nd.else_value
         );
-        if entry {
-            self.link_bbs(nd.condition, entry);
+        if `entry {
+            self.link_bbs(nd.condition, `entry);
         }
     } else {
         nd.condition.sc_true_target = nd.value;
@@ -611,11 +611,11 @@ impl CFGBuildPass.exit_if_stmt(nd: IfStmt) -> None {
             false_target = self._find_next_cfg_stmt_after_branch(nd);
         }
         op_is_and = _bool_is_and(cond_bool);
-        entry = self._wire_bool_operands(
+        `entry = self._wire_bool_operands(
             cond_bool.values, op_is_and, true_target, false_target
         );
-        if entry {
-            self.link_bbs(nd, entry);
+        if `entry {
+            self.link_bbs(nd, `entry);
         }
     } else {
         if true_target is not None {
@@ -656,11 +656,11 @@ impl CFGBuildPass.exit_while_stmt(nd: WhileStmt) -> None {
 
     if cond_bool is not None and true_target {
         op_is_and = _bool_is_and(cond_bool);
-        entry = self._wire_bool_operands(
+        `entry = self._wire_bool_operands(
             cond_bool.values, op_is_and, true_target, false_target
         );
-        if entry {
-            self.link_bbs(nd, entry);
+        if `entry {
+            self.link_bbs(nd, `entry);
         }
     } else {
         if true_target {
@@ -848,8 +848,8 @@ impl CFGBuildPass.exit_finally_stmt(nd: FinallyStmt) -> None {
 }
 
 impl CFGBuildPass.exit_match_stmt(nd: MatchStmt) -> None {
-    for case in nd.cases {
-        self.link_bbs(nd, case);
+    for `case in nd.cases {
+        self.link_bbs(nd, `case);
     }
 }
 
@@ -861,8 +861,8 @@ impl CFGBuildPass.exit_match_case(nd: MatchCase) -> None {
 }
 
 impl CFGBuildPass.exit_switch_stmt(nd: SwitchStmt) -> None {
-    for case in nd.cases {
-        self.link_bbs(nd, case);
+    for `case in nd.cases {
+        self.link_bbs(nd, `case);
     }
 }
 

@@ -1,5 +1,23 @@
+# jaclang project manifest AND repo-wide config, consolidated. Config resolves
+# to the nearest ANCESTOR jac.toml (walk-up, nearest wins, no merging), so this
+# single root file covers every cwd in the repo -- including `cd jac`. The
+# single binary is built from this source tree; the build reads version/metadata
+# here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
+version = "0.36.1"
+description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
+license = "MIT"
+readme = "jac/README.md"
+requires_python = ">=3.14"
+# No runtime PyPI deps: native LLVM is the in-tree LLVMPY_* shim, statically
+# linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/jaseci-labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://www.jaclang.org/docs"
 
 # Editable dev loop: reroute `import jaclang` to the in-repo source under jac/
 # so the `jac` binary runs your latest edits with no rebuild. Enabled here so
@@ -8,6 +26,7 @@ name = "jaclang"
 # edits still self-invalidate). A one-time `zig build` is needed first, since
 # sitecustomize.py -- which reads this key -- ships inside the binary payload.
 # Comment this stanza out to fall back to the binary's bundled jaclang.
+# Set JAC_NO_DEV_SOURCE=1 to force it off for a single command.
 [dev]
 jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
 
@@ -18,6 +37,11 @@ jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
 # subprocesses), so the generic default over-subscribes here. Pin it.
 # JAC_TEST_JOBS overrides this; "0" or "1" runs everything in one process.
 test_jobs = "8"
+
+# `jac test` discovers the suite here (mirrors pytest's testpaths); relative to
+# this file, so a bare `jac test` works from any directory in the repo.
+[test]
+directory = "jac/tests"
 
 # The pre-commit hook (`jac precommit --staged --verify`) gates commits on
 # formatting/lint only: the compiler tree itself is not yet `jac check`-clean,
@@ -37,31 +61,26 @@ exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
+    # Ops scripts keep their usage docstrings; CI's fmt sweep skips ^scripts/
+    # for the same reason -- this entry keeps the precommit hook consistent
+    # with that (without it, any commit touching a script is blocked on deslop).
+    "scripts/*",
+    # Excluded for the no-print rule, not deslop (exclusion is file-level across
+    # all lint rules): console.impl.jac IS the console implementation, and
+    # cli_boot.jac is the minimal boot path that must run (e.g. `jac purge`)
+    # before the full CLI/console can load -- bare print() is their mechanism.
+    # Both were deslopped once by hand and should stay comment/docstring-free.
     "console.impl.jac",
     "cli_boot.jac",
-    # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
-    #  - jir_registry.jac is generated (jac gen-jir-registry) and must match its
-    #    commented output;
-    #  - plugin_bridge.na.jac carries functional `# --- BRIDGE ... ---` markers the
-    #    native bridge extractor reads.
-    "jir_registry.jac",
-    "plugin_bridge.na.jac",
+    # Files whose comments are load-bearing, so they are NOT deslopped:
     #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
-    #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
+    #    that `jac gen-uni-dispatch` uses to locate the region it rewrites;
+    #  - the two annexes below are generated whole by `jac gen-uni-dispatch` and
+    #    must byte-match its commented output for `--verify` to stay green
+    #    (full paths so the CLI's hand-written dispatch.impl.jac is NOT exempt).
     "uni_pass.jac",
-    #  - arena.jac carries the `# >>> generated builder surface >>>` markers that
-    #    `jac gen-unitree` rewrites; arena_schema.jac / arena_specs.jac /
-    #    builders.impl.jac are generated whole and must byte-match its output
-    #    for `jac gen-unitree --verify` to stay green.
-    "arena.jac",
-    "arena_schema.jac",
-    "arena_specs.jac",
-    "builders.impl.jac",
-    #  - dispatch.impl.jac / surface.impl.jac are generated whole by
-    #    `jac gen-uni-dispatch` and must byte-match its commented output for
-    #    `jac gen-uni-dispatch --verify` to stay green.
-    "dispatch.impl.jac",
-    "surface.impl.jac",
+    "unitree.impl/dispatch.impl.jac",
+    "uni_pass.impl/surface.impl.jac",
     #  - llvm/*.jac is the vendored llvmlite port (ir + binding); it keeps
     #    upstream's docstring/property style so diffs against llvmlite stay
     #    reviewable.

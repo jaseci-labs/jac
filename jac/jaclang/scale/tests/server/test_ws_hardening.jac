@@ -117,11 +117,11 @@ test "the websocket config block is read from [scale.websocket]" {
         'max_anonymous_per_target': 100,
         'max_message_bytes': 65536
     };
-    for (key, default) in counts.items() {
+    for (key, `default) in counts.items() {
         assert key in cfg , f"get_websocket_config() is missing '{key}'";
         value = cfg[key];
         assert isinstance(value, int) , f"'{key}' should be an int, got {value!r}";
-        assert value == default , f"'{key}' default drifted: {value} != {default}";
+        assert value == `default , f"'{key}' default drifted: {value} != {`default}";
     }
     assert cfg['messages_per_second'] == 20.0;
     assert cfg['target_timeout_seconds'] == 30.0;

@@ -1,5 +1,4 @@
 import typing;
-import from typing { TypeVar, Generic }
 
 with entry {
     tl: list[Foo] = [Foo(), Foo()];

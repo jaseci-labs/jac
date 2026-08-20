@@ -11,7 +11,7 @@ glob code: i32 = cef_execute_subprocess();
 
 with entry {
     if code >= 0 {
-        sys.exit(code);
+        sys.`exit(code);
     }
 }
 

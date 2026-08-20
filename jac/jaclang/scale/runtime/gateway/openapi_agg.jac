@@ -51,18 +51,19 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
     import asyncio;
 
     candidates: list = [
-        (name, entry)
-        for (name, entry) in registry.entries.items()
-        if entry.status in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) and entry.url
+        (name, `entry)
+        for (name, `entry) in registry.entries.items()
+        if `entry.status in (ServiceStatus.HEALTHY, ServiceStatus.STARTING)
+            and `entry.url
     ];
     docs = await asyncio.gather(
-        *[fetch_service_spec(entry) for (_, entry) in candidates],
+        *[fetch_service_spec(`entry) for (_, `entry) in candidates],
         return_exceptions=True
     );
 
     merged_paths: dict = {};
     merged_schemas: dict = {};
-    for ((name, entry), doc) in zip(candidates, docs) {
+    for ((name, `entry), doc) in zip(candidates, docs) {
         if isinstance(doc, BaseException) {
             _agg_logger.warning(f"openapi aggregate: {name} failed: {doc}");
             continue;
@@ -73,7 +74,7 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
         }
 
         paths: dict = doc.get("paths") or {};
-        for (path, op) in _prefixed_paths(paths, entry.prefix).items() {
+        for (path, op) in _prefixed_paths(paths, `entry.prefix).items() {
             if path in merged_paths {
                 _agg_logger.warning(
                     f"openapi aggregate: path collision on {path}; keeping the "

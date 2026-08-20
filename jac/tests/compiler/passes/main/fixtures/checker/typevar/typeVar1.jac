@@ -3,8 +3,6 @@
 From Pyright sample: typeVar1.py
 """
 
-import from typing { TypeVar }
-
 with entry {
     T1 = TypeVar("T1");  # Ok
 

@@ -78,7 +78,7 @@ def:pub CallDetailModal(
             onClick={lambda (e: any) { e.stopPropagation(); }}
         >
             <div className="modal-head">
-                <span className={"tok-chip tok-" + detail.node}>{detail.node}</span>
+                <span className={"tok-chip tok-" + detail.`node}>{detail.`node}</span>
                 <span className="cd-title">model call</span>
                 <span className="cd-tokens">
                     <b>{_tk(detail.tokens_in)}</b>

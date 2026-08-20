@@ -7,14 +7,14 @@ obj Slot {
 
 obj WalkerDesc {
     has type_tag: int,
-        entry: list[Slot],
-        exit: list[Slot];
+        `entry: list[Slot],
+        `exit: list[Slot];
 }
 
 obj NodeDesc {
     has type_tag: int,
-        entry: list[Slot],
-        exit: list[Slot];
+        `entry: list[Slot],
+        `exit: list[Slot];
 }
 
 obj WalkScope {
@@ -151,15 +151,15 @@ def _visit_recursive(
             scope.path.append(cur);
             loc_tag: int = rt.tag_of(cur);
             ndesc = rt.node_desc(loc_tag);
-            run_typed(rt, wdesc.entry, scope.wlk, cur);
+            run_typed(rt, wdesc.`entry, scope.wlk, cur);
             if scope.disengaged {
                 return False;
             }
-            run_untyped(ndesc.entry, cur, scope.wlk);
+            run_untyped(ndesc.`entry, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
-            run_typed(rt, ndesc.entry, cur, scope.wlk);
+            run_typed(rt, ndesc.`entry, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
@@ -181,15 +181,15 @@ def _visit_recursive(
         } else {
             loc_tag: int = rt.tag_of(cur);
             ndesc = rt.node_desc(loc_tag);
-            run_typed(rt, ndesc.exit, cur, scope.wlk);
+            run_typed(rt, ndesc.`exit, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
-            run_untyped(ndesc.exit, cur, scope.wlk);
+            run_untyped(ndesc.`exit, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
-            run_typed(rt, wdesc.exit, scope.wlk, cur);
+            run_typed(rt, wdesc.`exit, scope.wlk, cur);
             if scope.disengaged {
                 return False;
             }
@@ -213,7 +213,7 @@ def osp_spawn(rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[int]) ->
         if scope.next {
             anchor = scope.next[0];
 
-            run_untyped(wdesc.entry, wlk, anchor);
+            run_untyped(wdesc.`entry, wlk, anchor);
         }
 
         while not scope.disengaged {
@@ -227,7 +227,7 @@ def osp_spawn(rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list[int]) ->
         }
 
         if scope.path and (not scope.disengaged) {
-            run_untyped(wdesc.exit, wlk, scope.path[-1]);
+            run_untyped(wdesc.`exit, wlk, scope.path[-1]);
         }
         ok = True;
     } finally {

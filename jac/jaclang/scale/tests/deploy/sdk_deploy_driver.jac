@@ -50,17 +50,17 @@ with entry {
     action = sys.argv[1] if len(sys.argv) > 1 else "";
     if action not in ("deploy", "status", "url", "destroy") {
         print("usage: jac run sdk_deploy_driver.jac [deploy|status|url|destroy]");
-        sys.exit(2);
+        sys.`exit(2);
     }
     if action == "deploy" {
         if not SOURCE {
             print("SDK_DEPLOY_SOURCE must point at the app folder to deploy");
-            sys.exit(2);
+            sys.`exit(2);
         }
         result = deploy(SOURCE, build_config(), on_event=print_event);
         if not result.success {
             print(f"DEPLOY_FAILED: {result.message}");
-            sys.exit(1);
+            sys.`exit(1);
         }
         print(f"DEPLOY_OK service_url={result.service_url or ''}");
     } elif action == "status" {

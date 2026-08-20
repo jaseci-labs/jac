@@ -226,7 +226,7 @@ impl _find_chrome -> str {
         if not pw.exists() {
             continue;
         }
-        for d in sorted(pw.glob("chromium-*"), reverse=True) {
+        for d in sorted(pw.`glob("chromium-*"), reverse=True) {
             for rel in [
                 "chrome-linux64/chrome",
                 "chrome-linux/chrome",
@@ -562,7 +562,7 @@ impl cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> st
 }
 
 impl cmd_navigate(session: str, url: str) -> str {
-    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
+    if not re.`match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
         url = "https://" + url;
     }
     cdp = connect(session);
@@ -873,7 +873,7 @@ impl cmd_sessions(session: str) -> str {
         return "(no sessions)";
     }
     lines = [];
-    for f in sorted(cache.glob("session-*.json")) {
+    for f in sorted(cache.`glob("session-*.json")) {
         try {
             st = json.loads(f.read_text());
             status = "alive" if _pid_alive(st["pid"]) else "dead";

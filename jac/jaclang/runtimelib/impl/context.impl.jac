@@ -1,6 +1,6 @@
 import os;
 import from dataclasses { MISSING }
-import from typing { Callable, cast }
+import from typing { cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { NodeAnchor, Root }

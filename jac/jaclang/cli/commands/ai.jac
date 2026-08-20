@@ -10,33 +10,33 @@ glob registry = get_registry();
         Arg.create(
             "prompt",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Optional one-shot request; omit for an interactive session"
         ),
         Arg.create(
             "model",
-            default="",
+            `default="",
             help="Model to use, e.g. local:gemma-4-e4b or openai/gpt-4o",
             short="m"
         ),
         Arg.create(
             "n_ctx",
             typ=int,
-            default=0,
+            `default=0,
             help="Context-window size for local models (tokens)"
         ),
         Arg.create(
             "safe",
             kind=ArgKind.FLAG,
             typ=bool,
-            default=False,
+            `default=False,
             help="Confirm every file write and code execution (off by default)"
         ),
         Arg.create(
             "quiet",
             kind=ArgKind.FLAG,
             typ=bool,
-            default=False,
+            `default=False,
             help="Compact output: hide live reasoning, timings, and step detail",
             short="q"
         ),
@@ -44,7 +44,7 @@ glob registry = get_registry();
             "ui",
             kind=ArgKind.FLAG,
             typ=bool,
-            default=False,
+            `default=False,
             help="Open the agent in a web UI with a live phase-graph visualizer"
         ),
 

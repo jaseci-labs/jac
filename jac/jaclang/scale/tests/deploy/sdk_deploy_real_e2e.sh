@@ -246,6 +246,39 @@ fi
 echo "  walker journey OK"
 
 _t "journey OK"
+# The #8115 repro end to end: change only configuration and deploy again. The
+# Secret is referenced by a constant name and its sections are stripped from
+# the bundle, so before the config marker the pod template came out byte
+# identical, the patch was a no-op, and the old value kept serving while the
+# deploy reported success.
+echo "=== redeploy with only the configuration changed (#8115) ==="
+REV_PATH='{.spec.template.metadata.annotations.jac-scale\.config-revision}'
+REV_BEFORE=$(kubectl get deploy "${APP}-deployment" -n "${NAMESPACE}" -o jsonpath="${REV_PATH}")
+export SDK_DEPLOY_SECRET="${SDK_DEPLOY_SECRET}-rotated"
+if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" deploy </dev/null >/dev/null 2>&1); then
+    echo "FAIL: config-only redeploy errored" >&2
+    dump_state
+    exit 1
+fi
+REV_AFTER=$(kubectl get deploy "${APP}-deployment" -n "${NAMESPACE}" -o jsonpath="${REV_PATH}")
+if [ -z "${REV_AFTER}" ] || [ "${REV_BEFORE}" = "${REV_AFTER}" ]; then
+    echo "FAIL: the config marker did not move on a config-only redeploy (before='${REV_BEFORE}' after='${REV_AFTER}'), so the pod template is unchanged and the old configuration is still serving" >&2
+    dump_state
+    exit 1
+fi
+if ! kubectl rollout status "deployment/${APP}-deployment" -n "${NAMESPACE}" --timeout="${ROLLOUT_TIMEOUT}"; then
+    echo "FAIL: the config-only rollout did not complete" >&2
+    dump_state
+    exit 1
+fi
+POD_SECRET_ROTATED=$(kubectl exec -n "${NAMESPACE}" "deploy/${APP}-deployment" -- printenv GREETER_SECRET 2>/dev/null || echo "")
+if [ "${POD_SECRET_ROTATED}" != "${SDK_DEPLOY_SECRET}" ]; then
+    echo "FAIL: running pods report GREETER_SECRET='${POD_SECRET_ROTATED}', expected the rotated '${SDK_DEPLOY_SECRET}'" >&2
+    dump_state
+    exit 1
+fi
+echo "  config-only redeploy rolled the fleet and the new value is live"
+_t "config redeploy OK"
 echo "=== status + url through the SDK ==="
 # grep '^{': first-run compiles print "Jac setup complete" lines around the payload.
 STATUS_JSON=$(cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" status </dev/null | grep '^{' | tail -1)

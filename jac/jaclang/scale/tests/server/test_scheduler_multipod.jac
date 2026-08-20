@@ -187,8 +187,8 @@ test "two live pods fire a due job exactly once and DELETE stops both" {
         assert not pod_a._apscheduler.get_jobs();
         assert not pod_b._apscheduler.get_jobs() , 'DELETE on pod A must stop the schedule on pod B without a restart';
     } finally {
-        pod_a._apscheduler.shutdown(wait=False);
-        pod_b._apscheduler.shutdown(wait=False);
+        pod_a._apscheduler.shutdown(`wait=False);
+        pod_b._apscheduler.shutdown(`wait=False);
     }
 }
 

@@ -110,7 +110,7 @@ test "jac build --fat vendors the dependency closure into the jab" {
         );
 
         jab = proj / "dist" / "fatapp.jab";
-        assert jab.is_file() , f"no jab produced: {list((proj / 'dist').glob('*'))}";
+        assert jab.is_file() , f"no jab produced: {list((proj / 'dist').`glob('*'))}";
 
         # The vendored wheels ride inside the tarball as `_vendor/wheels/*.whl`,
         # a sibling of `_precompiled/` so the sealed manifest is untouched.

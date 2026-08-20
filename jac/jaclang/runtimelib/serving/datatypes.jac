@@ -279,7 +279,7 @@ class JSONResponse(Response) {
     }
 
     def body_bytes(self: JSONResponse) -> bytes {
-        return dumps(self.content, default=_json_default).encode('utf-8');
+        return dumps(self.content, `default=_json_default).encode('utf-8');
     }
 }
 

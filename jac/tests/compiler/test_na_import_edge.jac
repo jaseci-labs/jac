@@ -175,3 +175,112 @@ test "plain import of a native module from client code takes the na edge" {
         " server-pinned form"
     );
 }
+
+test "the injected wasm host import is registered for materialization" {
+    mod = compile_host();
+    imports = dict(mod.gen.client_manifest.imports);
+    assert "@jac/wasm_host" in imports , (
+        "the compiler injects `import { __na_bind } from '@jac/wasm_host'`, so the"
+        " specifier must join manifest.imports -- that list is what compiles"
+        " compiled/wasm_host.js and gates the vite alias, and without it rollup"
+        f" cannot resolve the bare specifier; got: {sorted(imports.keys())}"
+    );
+    assert imports["@jac/wasm_host"].endswith("wasm_host.jac") , (
+        f"expected the runtime shim source; got: {imports['@jac/wasm_host']}"
+    );
+    assert "kernel" not in imports , (
+        "registering the host shim must not drag the native module itself into"
+        " manifest.imports -- the client build would try to JS-compile it"
+    );
+}
+
+test "a non-function name cannot cross the cl->na edge" {
+    tmp = tempfile.mkdtemp(prefix="jac_na_edge_");
+    with open(os.path.join(tmp, "kernel.jac"), "w") as f {
+        f.write(KERNEL_SRC + "\nobj View {\n    has id: str = \"\";\n}\n");
+    }
+    host_path = os.path.join(tmp, "host.jac");
+    with open(host_path, "w") as f {
+        f.write(
+            "import from .kernel { View }\n"
+            "\n"
+            "def:pub show -> str {\n"
+            "    return View(id=\"1\").id;\n"
+            "}\n"
+        );
+    }
+    with open(os.path.join(tmp, "jac.toml"), "w") as f {
+        f.write(PIN_HOST_CLIENT);
+    }
+    prog = JacProgram();
+    prog.compile(host_path);
+    msgs = [e.pretty_print() for e in prog.errors_had];
+    assert any(["E5100" in m for m in msgs]) , (
+        f"a wasm module exports only functions, so binding a type through"
+        f" __na_bind would hand the client an async callable it then `new`s --"
+        f" a TypeError at first render; got: {msgs}"
+    );
+}
+
+test "na binding signatures resolve when the client module is not the entry" {
+    tmp = tempfile.mkdtemp(prefix="jac_na_edge_");
+    with open(os.path.join(tmp, "kernel.jac"), "w") as f {
+        f.write(KERNEL_SRC);
+    }
+    with open(os.path.join(tmp, "host.jac"), "w") as f {
+        f.write(HOST_SRC);
+    }
+    entry_path = os.path.join(tmp, "app.jac");
+    with open(entry_path, "w") as f {
+        f.write(
+            "import from .host { show }\n\ndef:pub go -> int {\n    return 0;\n}\n"
+        );
+    }
+    with open(os.path.join(tmp, "jac.toml"), "w") as f {
+        f.write(PIN_HOST_CLIENT + 'app = "client"\n');
+    }
+    prog = JacProgram();
+    prog.compile(entry_path);
+    host_mod = prog.find_module(os.path.join(tmp, "host.jac"));
+    assert host_mod is not None;
+    by_name = {b.name: b for b in host_mod.gen.interop_manifest.client_native_imports};
+    assert "fib" in by_name , f"expected the na binding; got: {list(by_name.keys())}";
+    assert by_name["fib"].param_types == ["int"] , (
+        "reached as a dependency the import symbol is an unlinked placeholder, so"
+        " the signature has to come off the native module itself; got:"
+        f" {by_name['fib'].param_types}"
+    );
+    assert by_name["fib"].ret_type == "int";
+}
+
+test "a native type is rejected even when only used as an annotation" {
+    tmp = tempfile.mkdtemp(prefix="jac_na_edge_");
+    with open(os.path.join(tmp, "kernel.jac"), "w") as f {
+        f.write(KERNEL_SRC + "\nobj View {\n    has id: str = \"\";\n}\n");
+    }
+    host_path = os.path.join(tmp, "host.jac");
+    with open(host_path, "w") as f {
+        f.write(
+            "import from .kernel { View, fib }\n"
+            "\n"
+            "def shape(v: View) -> str {\n"
+            "    return v.id;\n"
+            "}\n"
+            "\n"
+            "async def:pub show -> int {\n"
+            "    return await fib(3);\n"
+            "}\n"
+        );
+    }
+    with open(os.path.join(tmp, "jac.toml"), "w") as f {
+        f.write(PIN_HOST_CLIENT);
+    }
+    prog = JacProgram();
+    prog.compile(host_path);
+    msgs = [e.pretty_print() for e in prog.errors_had];
+    assert any(["E5100" in m for m in msgs]) , (
+        f"the __na_bind destructure is emitted for every imported name, so an"
+        f" annotation-only type still binds a wasm export that does not exist;"
+        f" the edge rejects it rather than carry dead bindings: {msgs}"
+    );
+}

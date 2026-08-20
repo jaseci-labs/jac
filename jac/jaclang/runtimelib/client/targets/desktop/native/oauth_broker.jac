@@ -7,7 +7,6 @@ import queue;
 import secrets;
 import time;
 import webbrowser;
-import from collections.abc { Callable }
 import from urllib.parse { parse_qs, quote, urlparse }
 
 glob _LOOPBACK_HOSTS: frozenset = frozenset({"127.0.0.1", "localhost", "::1"});

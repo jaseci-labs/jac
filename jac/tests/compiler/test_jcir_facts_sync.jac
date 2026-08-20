@@ -61,9 +61,9 @@ test "the baked ambient typing names match typing_ambient.pyi" {
     close_b = text.find("]", open_b);
     live: set[str] = set();
     for piece in text[open_b + 1:close_b].split(",") {
-        entry = piece.strip();
-        if len(entry) >= 2 and entry[0] in "'\"" and entry[-1] == entry[0] {
-            live.add(entry[1:-1]);
+        `entry = piece.strip();
+        if len(`entry) >= 2 and `entry[0] in "'\"" and `entry[-1] == `entry[0] {
+            live.add(`entry[1:-1]);
         }
     }
     baked = set(JCIR_AMBIENT_TYPING_NAMES);

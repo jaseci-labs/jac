@@ -40,7 +40,6 @@ import from jaclang.jac0core.mtp {
     type_to_str
 }
 
-import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 
 glob PRIMITIVE_TYPES: list[str] = [

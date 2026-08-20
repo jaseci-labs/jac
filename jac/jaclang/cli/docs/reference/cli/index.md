@@ -238,7 +238,7 @@ import argparse;
 
 with entry {
     parser = argparse.ArgumentParser();
-    parser.add_argument("--name", default="World");
+    parser.add_argument("--name", `default="World");
     args = parser.parse_args();
     print(f"Hello, {args.name}!");
 }
@@ -255,7 +255,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. Use `--scale` to deploy to Kubernetes (handled by the built-in `scale` subsystem; the first `--scale` run resolves its deploy deps via `jac install`). Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no-client] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-t TARGET] [--enable-tls] [--no-enable-tls] [--dry-run] [--no-dry-run] [--show-yaml] [--no-show-yaml] [--takeover] [--no-takeover] [filename]
+jac start [-h] [-p PORT] [-m | --main | --no-main] [-f | --faux | --no-faux] [-d | --dev | --no-dev] [-a API_PORT] [-n] [--profile PROFILE] [--client {web,pwa,static,mobile,desktop,cef,react-native}] [--host HOST] [--platform {auto,android,ios}] [--scale | --no-scale] [-t TARGET] [--enable-tls | --no-enable-tls] [--dry-run | --no-dry-run] [--show-yaml | --no-show-yaml] [--takeover | --no-takeover] [filename]
 ```
 
 | Option | Description | Default |

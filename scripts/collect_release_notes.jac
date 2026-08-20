@@ -9,7 +9,7 @@ Usage:
     Can also be run standalone for testing:
         jac run scripts/collect_release_notes.jac --package jaclang --version 0.13.6 --dry-run
 """
-import from __future__ { annotations }
+
 import argparse;
 import re;
 import from pathlib { Path }
@@ -28,7 +28,7 @@ def collect_fragments(package_dir: Path) -> dict[(str, list[str])] {
         "refactor": [],
         "docs": []
     };
-    for fragment in sorted(package_dir.glob("*.md")) {
+    for fragment in sorted(package_dir.`glob("*.md")) {
         if (fragment.name == "README.md") {
             continue;
         }
@@ -79,14 +79,13 @@ def build_section(
     }
     return "\n".join(lines);
 }
+
 """Insert the new version section into the release notes file.
 
     Demotes the existing (Latest Release) tag and inserts the new section
     right after the file header (title + description paragraph).
     """
-def inject_section(
-    release_notes_path: Path, display_name: str, new_section: str
-) -> None {
+def inject_section(release_notes_path: Path, display_name: str, new_section: str) {
     content = release_notes_path.read_text(encoding="utf-8");
     content = content.replace(" (Latest Release)", "");
     re_match = re.search(r"^## ", content, re.MULTILINE);
@@ -102,7 +101,7 @@ def inject_section(
 """Delete all fragment files (but keep README.md)."""
 def delete_fragments(package_dir: Path) -> list[str] {
     deleted = [];
-    for fragment in package_dir.glob("*.md") {
+    for fragment in package_dir.`glob("*.md") {
         if (fragment.name == "README.md") {
             continue;
         }
@@ -111,6 +110,7 @@ def delete_fragments(package_dir: Path) -> list[str] {
     }
     return deleted;
 }
+
 """Assemble fragments for a single package into its release notes file.
 
     Returns True if fragments were found and assembled, False if no fragments.
@@ -149,7 +149,7 @@ def assemble_package(
 }
 
 """Standalone entry point for testing."""
-def main() -> None {
+def main {
     parser = argparse.ArgumentParser(description="Collect release note fragments");
     parser.add_argument("--package", required=True, help="Package key (e.g., jaclang)");
     parser.add_argument(
@@ -162,6 +162,7 @@ def main() -> None {
     repo_root = Path(__file__).resolve().parent.parent;
     assemble_package(repo_root, args.package, args.version, args.dry_run);
 }
+
 with entry:__main__ {
     main();
 }

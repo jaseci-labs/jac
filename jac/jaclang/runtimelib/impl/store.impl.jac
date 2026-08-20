@@ -756,7 +756,7 @@ impl PgStore.upsert(rows_in: list[AnchorRow]) -> None {
             params[f"src{i}"] = str(row.src) if row.src else None;
             params[f"dst{i}"] = str(row.dst) if row.dst else None;
             params[f"undirected{i}"] = row.undirected;
-            params[f"props{i}"] = json.dumps(row.props, default=_jsonable);
+            params[f"props{i}"] = json.dumps(row.props, `default=_jsonable);
             params[f"fv{i}"] = SCHEMA_VERSION;
         }
         self._run(
@@ -1048,7 +1048,7 @@ impl PgStore._listen_loop -> None {
             }
             if not pending {
                 if sock is None {
-                    stop.wait(_LISTEN_POLL_SECONDS);
+                    stop.`wait(_LISTEN_POLL_SECONDS);
                     continue;
                 }
                 readable = select.select([sock], [], [], _LISTEN_POLL_SECONDS)[0];
@@ -1073,7 +1073,7 @@ impl PgStore._listen_loop -> None {
             }
         } except Exception as e {
             logger.debug(f"listen loop hiccup: {e}");
-            stop.wait(_LISTEN_POLL_SECONDS);
+            stop.`wait(_LISTEN_POLL_SECONDS);
         }
     }
 }

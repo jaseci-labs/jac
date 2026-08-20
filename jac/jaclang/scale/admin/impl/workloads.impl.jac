@@ -27,9 +27,9 @@ glob logger = logging.getLogger(__name__);
 
 def _index_by(rows: list, label: str, as_int: bool = False) -> dict {
     out: dict = {};
-    for entry in rows {
-        key = entry.get("metric", {}).get(label, "");
-        v = entry.get("value", [0, "0"]);
+    for `entry in rows {
+        key = `entry.get("metric", {}).get(label, "");
+        v = `entry.get("value", [0, "0"]);
         if key {
             val = float(v[1]) if len(v) > 1 else 0.0;
             if not math.isfinite(val) {
@@ -332,9 +332,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
 
     entries: list = [];
     wl_names: list = [];
-    for entry in dep_available_raw {
-        m = entry.get("metric", {});
-        v = entry.get("value", [0, "0"]);
+    for `entry in dep_available_raw {
+        m = `entry.get("metric", {});
+        v = `entry.get("value", [0, "0"]);
         name = m.get("deployment", "");
         if not name {
             continue;
@@ -351,9 +351,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         );
         wl_names.append(name);
     }
-    for entry in sts_ready {
-        m = entry.get("metric", {});
-        v = entry.get("value", [0, "0"]);
+    for `entry in sts_ready {
+        m = `entry.get("metric", {});
+        v = `entry.get("value", [0, "0"]);
         name = m.get("statefulset", "");
         if not name {
             continue;
@@ -370,9 +370,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         );
         wl_names.append(name);
     }
-    for entry in ds_ready {
-        m = entry.get("metric", {});
-        v = entry.get("value", [0, "0"]);
+    for `entry in ds_ready {
+        m = `entry.get("metric", {});
+        v = `entry.get("value", [0, "0"]);
         name = m.get("daemonset", "");
         if not name {
             continue;
@@ -393,21 +393,21 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     cpu_by_owner: dict = {};
     mem_by_owner: dict = {};
     restarts_by_owner: dict = {};
-    for entry in cpu_by_pod {
-        pod = entry.get("metric", {}).get("pod", "");
-        v = entry.get("value", [0, "0"]);
+    for `entry in cpu_by_pod {
+        pod = `entry.get("metric", {}).get("pod", "");
+        v = `entry.get("value", [0, "0"]);
         owner = match_owner(pod, wl_names);
         cpu_by_owner[owner] = cpu_by_owner.get(owner, 0.0) + _finite(v);
     }
-    for entry in mem_by_pod {
-        pod = entry.get("metric", {}).get("pod", "");
-        v = entry.get("value", [0, "0"]);
+    for `entry in mem_by_pod {
+        pod = `entry.get("metric", {}).get("pod", "");
+        v = `entry.get("value", [0, "0"]);
         owner = match_owner(pod, wl_names);
         mem_by_owner[owner] = mem_by_owner.get(owner, 0.0) + _finite(v);
     }
-    for entry in restarts_by_pod {
-        pod = entry.get("metric", {}).get("pod", "");
-        v = entry.get("value", [0, "0"]);
+    for `entry in restarts_by_pod {
+        pod = `entry.get("metric", {}).get("pod", "");
+        v = `entry.get("value", [0, "0"]);
         owner = match_owner(pod, wl_names);
         restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(_finite(v));
     }
@@ -546,8 +546,8 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     restarts = _index_by(restarts_by_pod, "pod");
     started = _index_by(started_by_pod, "pod");
     node_for: dict = {};
-    for entry in node_by_pod {
-        m = entry.get("metric", {});
+    for `entry in node_by_pod {
+        m = `entry.get("metric", {});
         pod = m.get("pod", "");
         node_name = m.get("node", "");
         if pod {
@@ -555,8 +555,8 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
         }
     }
     pods: list = [];
-    for entry in phase_by_pod {
-        m = entry.get("metric", {});
+    for `entry in phase_by_pod {
+        m = `entry.get("metric", {});
         pod = m.get("pod", "");
         phase = m.get("phase", "Unknown");
         if not pod {
@@ -587,11 +587,11 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
 
 def _rollup_range(rows: list, names: list) -> dict {
     out: dict = {};
-    for entry in rows {
-        pod = entry.get("metric", {}).get("pod", "");
+    for `entry in rows {
+        pod = `entry.get("metric", {}).get("pod", "");
         owner = match_owner(pod, names);
         series = out.get(owner, {});
-        for v in entry.get("values", []) {
+        for v in `entry.get("values", []) {
             if len(v) >= 2 {
                 try {
                     ts = float(v[0]);

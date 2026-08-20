@@ -4,7 +4,7 @@ When a type alias is defined with `TypeAlias` annotation, the type checker
 should resolve the alias to the underlying type so that narrowing (isinstance,
 callable, None checks) works correctly through the alias.
 """
-import from typing { Callable, TypeAlias }
+import from typing { TypeAlias }
 
 obj Foo {
     has value: int;

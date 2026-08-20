@@ -138,7 +138,7 @@ The compiler reads the evidence in each declaration -- JSX makes a component cli
 ```jac
 # This is backend code (runs on server)
 walker api_endpoint {
-    can visit with Root entry { report {}; }
+    can `visit with Root entry { report {}; }
 }
 
 # This is frontend code (runs in browser)
@@ -165,7 +165,7 @@ def:pub MyComponent() -> JsxElement {
 # Backend
 node User { has name: str = ""; }
 walker get_user {
-    can visit with Root entry { report {}; }
+    can `visit with Root entry { report {}; }
 }
 
 # Frontend
@@ -202,7 +202,7 @@ myapp/
 import from models { User, Todo }
 
 walker get_user {
-    can visit with Root entry { report {}; }
+    can `visit with Root entry { report {}; }
 }
 ```
 

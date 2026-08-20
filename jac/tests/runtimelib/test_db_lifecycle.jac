@@ -299,7 +299,7 @@ test "opening a scratch store reaps scratch databases of dead processes" {
     cluster = _start_cluster();
     scratch_proj = _seed_project("selfheal");
     dead = subprocess.Popen([sys.executable, "-c", "pass"]);
-    dead.wait();
+    dead.`wait();
     orphan = f"jac_scratch_{dead.pid}_crash";
     try {
         # A process killed hard (no atexit) leaves its scratch database behind.
@@ -450,7 +450,7 @@ test "db prune reaps a scratch database whose process is gone" {
     import from jaclang.runtimelib.dbcatalog { DbKind, REGISTRY_TABLE }
     cluster = _start_cluster();
     dead = subprocess.Popen([sys.executable, "-c", "pass"]);
-    dead.wait();
+    dead.`wait();
     orphan = f"jac_scratch_{dead.pid}_dead";
     try {
         _exec(cluster, f'CREATE DATABASE "{orphan}"');

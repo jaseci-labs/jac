@@ -68,10 +68,10 @@ def _stop(proc: subprocess.Popen) {
     if proc.poll() is None {
         proc.terminate();
         try {
-            proc.wait(timeout=10);
+            proc.`wait(timeout=10);
         } except subprocess.TimeoutExpired {
             proc.kill();
-            proc.wait(timeout=10);
+            proc.`wait(timeout=10);
         }
     }
 }

@@ -81,9 +81,9 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
 def floor_lib_dir(triple: str) -> (str | None) {
     import os;
     import from jaclang.jac0core.compile_options { env_floor_dir }
-    override = env_floor_dir();
-    if override and os.path.isdir(override) {
-        return override;
+    `override = env_floor_dir();
+    if `override and os.path.isdir(`override) {
+        return `override;
     }
     import jaclang;
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));

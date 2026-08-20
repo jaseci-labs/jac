@@ -6,7 +6,7 @@ constructor call that fills it. Both are wrong: the object only ever appears
 in annotations, which the backend erases, so nothing is left to lower.
 """
 
-import from typing { ParamSpec, TypeVar, TypeVarTuple }
+import from typing { ParamSpec, TypeVarTuple }
 
 
 obj Item {

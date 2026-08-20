@@ -93,12 +93,12 @@ test "cef embedded-python host compiles and links libcef_dispatch and libpython"
         "}\n"
         "with entry {\n"
         "    code: i32 = cef_execute_subprocess();\n"
-        "    if code >= 0 { sys.exit(code); }\n"
+        "    if code >= 0 { sys.`exit(code); }\n"
         "    Py_Initialize();\n"
         "    PyRun_SimpleString(\"pass\");\n"
         "    cef_queue_browser(\"about:blank\", \"t\", 640, 480);\n"
         '    rc: i32 = cef_startup("", 1);\n'
-        "    if rc != 1 { sys.exit(1); }\n"
+        "    if rc != 1 { sys.`exit(1); }\n"
         "    Py_Finalize();\n"
         "    cef_cleanup();\n"
         "}\n"
@@ -140,7 +140,7 @@ test "nacompile invokes a zero-arg function called from entry with parentheses" 
     tmp = tempfile.mkdtemp();
     try {
         with open(os.path.join(tmp, "m.jac"), "w") as f {
-            f.write("import sys;\ndef _go { sys.exit(7); }\nwith entry { _go(); }\n");
+            f.write("import sys;\ndef _go { sys.`exit(7); }\nwith entry { _go(); }\n");
         }
         comp = subprocess.run(
             [jac, "nacompile", "m.jac", "-o", "out"],

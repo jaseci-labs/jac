@@ -5,6 +5,7 @@ import from jaclang.scale.injector.binary {
     host_seal_platform,
     node_arch,
     pack_binary_bytes,
+    resolve_console_version,
     resolve_deploy_version,
     stage_admin_dist,
     toolchain_object_key
@@ -27,7 +28,11 @@ obj BinaryInjector(PvcInjector) {
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
         version = resolve_deploy_version(project_dir, self.channel.value);
-        stage_admin_dist(project_dir, self.channel.value, version);
+        stage_admin_dist(
+            project_dir,
+            self.channel.value,
+            resolve_console_version(project_dir, self.channel.value, version)
+        );
 
         pod_arch = node_arch();
         payload = download_release_binary(self.channel.value, pod_arch, version);

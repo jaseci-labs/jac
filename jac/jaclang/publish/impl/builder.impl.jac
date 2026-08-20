@@ -286,7 +286,7 @@ def _primary_package(tops: list[str], pkg_name: str) -> str {
 impl WheelBuilder._vendor_runtime_into(
     src_data: dict[str, bytes], codes: list[str]
 ) -> None {
-    needed: set = set();
+    needed: set[str] = set();
     for code in codes {
         needed |= scan_jaclang_imports(code);
     }

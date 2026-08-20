@@ -16,7 +16,6 @@ Root Cause 9: Union with Any blocks attribute access
 Root Cause 10: TypeVar in impl blocks — E1065 in impl but not in def
 """
 
-import from typing { Callable, TypeVar }
 import importlib.util;
 import from concurrent.futures { ThreadPoolExecutor, Future }
 

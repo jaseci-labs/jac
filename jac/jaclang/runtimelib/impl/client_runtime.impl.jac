@@ -91,7 +91,7 @@ impl useJacState(initial: any) -> any {
         };
         cell["getVersion"] = lambda { return cell["version"]; };
         cell["set"] = lambda (v: any) {
-            if Object.is(cell["val"], v) {
+            if Object.`is(cell["val"], v) {
                 return;
             }
             cell["val"] = v;
@@ -225,15 +225,15 @@ impl JacForm(props: dict) -> JsxElement {
             return unwrapped.options;
         }
 
-        if unwrapped.enum {
-            return Object.keys(unwrapped.enum);
+        if unwrapped.`enum {
+            return Object.keys(unwrapped.`enum);
         }
 
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
         }
-        if unwrapped.def and unwrapped.def.entries {
-            return Object.keys(unwrapped.def.entries);
+        if unwrapped.`def and unwrapped.`def.entries {
+            return Object.keys(unwrapped.`def.entries);
         }
         return [];
     }

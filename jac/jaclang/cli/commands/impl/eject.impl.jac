@@ -675,7 +675,7 @@ def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
         }
     }
 
-    for sibling in sorted(runtime_src.parent.glob("client_runtime*")) {
+    for sibling in sorted(runtime_src.parent.`glob("client_runtime*")) {
         if sibling.name in ["client_runtime.js", "client_runtime.js.map"] {
             continue;
         }
@@ -885,23 +885,23 @@ def _entry_reachable_modules(compiled: list, entry_module: str) -> (dict | None)
     for unit in compiled {
         units_by_orig[str(unit["orig"])] = unit;
     }
-    entry = "";
+    `entry = "";
     if entry_module in units_by_orig {
-        entry = entry_module;
+        `entry = entry_module;
     } else {
         for name in sorted(units_by_orig.keys()) {
             if name.endswith("." + entry_module) {
-                entry = name;
+                `entry = name;
                 break;
             }
         }
     }
-    if not entry {
+    if not `entry {
         return None;
     }
     known: set = set(units_by_orig.keys());
     reachable: set = set();
-    queue: list = [entry];
+    queue: list = [`entry];
     while queue {
         cur = str(queue.pop(0));
         if cur in reachable {
@@ -915,7 +915,7 @@ def _entry_reachable_modules(compiled: list, entry_module: str) -> (dict | None)
             }
         }
     }
-    return {"reachable": reachable, "entry": entry};
+    return {"reachable": reachable, "entry": `entry};
 }
 
 

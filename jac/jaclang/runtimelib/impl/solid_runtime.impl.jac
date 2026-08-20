@@ -224,15 +224,15 @@ impl JacForm(props: dict) -> JsxElement {
             return unwrapped.options;
         }
 
-        if unwrapped.enum {
-            return Object.keys(unwrapped.enum);
+        if unwrapped.`enum {
+            return Object.keys(unwrapped.`enum);
         }
 
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
         }
-        if unwrapped.def and unwrapped.def.entries {
-            return Object.keys(unwrapped.def.entries);
+        if unwrapped.`def and unwrapped.`def.entries {
+            return Object.keys(unwrapped.`def.entries);
         }
         return [];
     }

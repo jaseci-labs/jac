@@ -11,7 +11,6 @@ import from jaclang.scale.events.broker {
     StreamPosition,
     starts_at_earliest
 }
-import from typing { Callable }
 import from threading { Event as _ThreadStop }
 import from jaclang.scale.events.publisher { publish, set_broker }
 import from jaclang.scale.events.subscriber { subscribe, get_subscriptions }
@@ -296,7 +295,7 @@ def _param_view(fn: any) -> list[tuple] {
         if p.name == "self" {
             continue;
         }
-        view.append((p.name, p.kind.name, p.default));
+        view.append((p.name, p.kind.name, p.`default));
     }
     return view;
 }

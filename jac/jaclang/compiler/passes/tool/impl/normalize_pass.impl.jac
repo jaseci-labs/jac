@@ -1497,8 +1497,8 @@ impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None {
 impl NormalizePass.enter_match_stmt(nd: uni.MatchStmt) -> None {
     new_kid: list[uni.UniNode] = [nd.gen_token(Tok.KW_MATCH), nd.target, ];
     new_kid.append(nd.gen_token(Tok.LBRACE));
-    for case in nd.cases {
-        new_kid.append(case);
+    for `case in nd.cases {
+        new_kid.append(`case);
     }
     new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
@@ -1520,8 +1520,8 @@ impl NormalizePass.enter_match_case(nd: uni.MatchCase) -> None {
 impl NormalizePass.enter_switch_stmt(nd: uni.SwitchStmt) -> None {
     new_kid: list[uni.UniNode] = [nd.gen_token(Tok.KW_SWITCH), nd.target, ];
     new_kid.append(nd.gen_token(Tok.LBRACE));
-    for case in nd.cases {
-        new_kid.append(case);
+    for `case in nd.cases {
+        new_kid.append(`case);
     }
     new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);

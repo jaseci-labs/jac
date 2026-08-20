@@ -13,8 +13,8 @@ def resolve_node_tool_entry(project_dir: Path, tool: str) -> (Path | None) {
 
 def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
     bun = _require_bundled_bun();
-    entry = resolve_node_tool_entry(project_dir, tool);
-    if entry is None {
+    `entry = resolve_node_tool_entry(project_dir, tool);
+    if `entry is None {
         raise RuntimeError(
             f"The npm tool '{tool}' is not installed under "
             f"{project_dir / 'node_modules'}. Install the project's "
@@ -22,7 +22,7 @@ def resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
             "node, so npm tools must resolve from the local node_modules."
         );
     }
-    return [bun, str(entry)];
+    return [bun, str(`entry)];
 }
 
 def resolve_package_manager -> str {

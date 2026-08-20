@@ -3080,7 +3080,8 @@ impl NativeListEmitter.emit_sort(
     outer_next = func.append_basic_block(name="sort.outer.next");
     done_bb = func.append_basic_block(name="sort.done");
     len_m1 = b.sub(list_len, one, name="sort.lenm1");
-    b.branch(outer_bb);
+    trivial = b.icmp_unsigned("<=", list_len, one, name="sort.trivial");
+    b.cbranch(trivial, done_bb, outer_bb);
 
     b.position_at_start(outer_bb);
     oi = b.phi(i64, name="sort.oi");

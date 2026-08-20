@@ -68,7 +68,7 @@ test "target factory resolves react-native by canonical name" {
     target = factory.create("react-native", Path.cwd());
     assert target.name == "react-native";
     assert target.requires_setup == True;
-    assert target.default == False;
+    assert target.`default == False;
     assert target.config_section == "react_native";
     # The documented target surface (D11): lifecycle methods present; RN
     # computes artifact paths per platform, so the static output_dir field
@@ -419,8 +419,8 @@ def _nested_entry_project(proj: Path) -> tuple[any, Path] {
         'def:pub format_date(d: str) -> str {\n    return "on " + d;\n}\n'
     );
     (proj / "apps" / "mobile").mkdir(parents=True, exist_ok=True);
-    entry = proj / "apps" / "mobile" / "main.jac";
-    entry.write_text(
+    `entry = proj / "apps" / "mobile" / "main.jac";
+    `entry.write_text(
         'import from ...shared.utils { format_date }\n\n'
         'def:pub app() -> any {\n'
         '    return <div>{format_date("fri")}</div>;\n'
@@ -430,7 +430,7 @@ def _nested_entry_project(proj: Path) -> tuple[any, Path] {
     compiler = builder._get_compiler().jac_client_compiler;
     compiler.compiled_dir = proj / "out";
     compiler.project_dir = proj;
-    return (compiler, entry);
+    return (compiler, `entry);
 }
 
 test "nested client entry stages deps at project-relative paths, not flat" {
@@ -438,10 +438,10 @@ test "nested client entry stages deps at project-relative paths, not flat" {
 
     with tempfile.TemporaryDirectory() as tmp {
         proj = Path(str(tmp)).resolve();
-        (compiler, entry) = _nested_entry_project(proj);
-        (_, mod, _) = compiler.jac_compiler.compile_module(entry);
+        (compiler, `entry) = _nested_entry_project(proj);
+        (_, mod, _) = compiler.jac_compiler.compile_module(`entry);
         assert mod is not None;
-        compiler.compile(mod, entry, target_name="web");
+        compiler.compile(mod, `entry, target_name="web");
         out = proj / "out";
         assert (out / "apps" / "mobile" / "main.js").exists() , (
             "nested entry must compile to its project-relative path"
@@ -471,8 +471,8 @@ test "entry outside the project dir stages relative to its own folder" {
         (app / "src" / "header.jac").write_text(
             'def:pub Header() -> any {\n    return <div>hi</div>;\n}\n'
         );
-        entry = app / "main.jac";
-        entry.write_text(
+        `entry = app / "main.jac";
+        `entry.write_text(
             'import from .src.header { Header }\n\n'
             'def:pub app() -> any {\n    return <div><Header/></div>;\n}\n'
         );
@@ -481,9 +481,9 @@ test "entry outside the project dir stages relative to its own folder" {
         compiler.compiled_dir = proj / "out";
         # project_dir deliberately does not contain the entry.
         compiler.project_dir = proj / "unrelated";
-        (_, mod, _) = compiler.jac_compiler.compile_module(entry);
+        (_, mod, _) = compiler.jac_compiler.compile_module(`entry);
         assert mod is not None;
-        compiler.compile(mod, entry, target_name="web");
+        compiler.compile(mod, `entry, target_name="web");
         out = proj / "out";
         assert (out / "main.js").exists() , (
             "entry must still stage relative to its own folder"
@@ -703,7 +703,7 @@ test "stage_native_image_assets rewrites relative img src to Metro token map" {
         assert "__jac_rn_asset__:" in rewritten;
         assert "require('./jac-assets/" in registry;
         assert (rn_dir / "jac-assets").exists();
-        staged_assets = list((rn_dir / "jac-assets").glob("*"));
+        staged_assets = list((rn_dir / "jac-assets").`glob("*"));
         assert len(staged_assets) == 1;
     }
 }
@@ -871,7 +871,7 @@ test "build_expo_start_argv emits expected metro flags" {
 
     with tempfile.TemporaryDirectory() as tmp {
         rn_dir = Path(tmp);
-        entry = _stub_node_tool(rn_dir, "expo", "expo");
+        `entry = _stub_node_tool(rn_dir, "expo", "expo");
         with unittest.mock.patch(
             "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
             side_effect=_fake_get_bun
@@ -881,7 +881,7 @@ test "build_expo_start_argv emits expected metro flags" {
         }
         # Expo's own JS entry is the argument bun runs; `bun x expo` would
         # dispatch on the `.bin` shim's node shebang instead.
-        assert argv[:2] == ["/opt/jac/_bun/bun", str(entry.resolve())];
+        assert argv[:2] == ["/opt/jac/_bun/bun", str(`entry.resolve())];
     }
     assert "start" in argv;
     assert "--port" in argv;
@@ -1072,13 +1072,13 @@ plus the `node_modules/.bin` symlink, which is what carries the
 def _stub_node_tool(project_dir: Path, package: str, tool: str) -> Path {
     bin_dir = project_dir / "node_modules" / package / "bin";
     bin_dir.mkdir(parents=True, exist_ok=True);
-    entry = bin_dir / f"{tool}.js";
-    entry.write_text("#!/usr/bin/env node\n");
-    entry.chmod(0o755);
+    `entry = bin_dir / f"{tool}.js";
+    `entry.write_text("#!/usr/bin/env node\n");
+    `entry.chmod(0o755);
     shim_dir = project_dir / "node_modules" / ".bin";
     shim_dir.mkdir(parents=True, exist_ok=True);
-    (shim_dir / tool).symlink_to(entry);
-    return entry;
+    (shim_dir / tool).symlink_to(`entry);
+    return `entry;
 }
 
 test "node tooling runs installs and tools on the bundled bun only" {
@@ -1107,7 +1107,7 @@ test "node tooling runs installs and tools on the bundled bun only" {
 
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp);
-        entry = _stub_node_tool(project_dir, "expo", "expo");
+        `entry = _stub_node_tool(project_dir, "expo", "expo");
         with unittest.mock.patch("subprocess.run", side_effect=_fake_run) {
             with unittest.mock.patch(
                 "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
@@ -1119,7 +1119,7 @@ test "node tooling runs installs and tools on the bundled bun only" {
         }
         # The tool's own JS entry is named, never the `.bin` shim and never
         # `bun x`: both of those dispatch on the node shebang.
-        assert runner == ["/opt/jac/_bun/bun", str(entry.resolve())];
+        assert runner == ["/opt/jac/_bun/bun", str(`entry.resolve())];
     }
     # No system tooling is ever probed or used -- bundled bun only.
     assert ["/opt/jac/_bun/bun", "install"] in calls;
@@ -1780,7 +1780,7 @@ test "e2e: react-native android build produces APK" {
             / "apk"
             / "debug";
         assert apk_outputs.exists() , (f"Expected Gradle output dir at {apk_outputs}");
-        apks = list(apk_outputs.glob("*.apk"));
+        apks = list(apk_outputs.`glob("*.apk"));
         assert len(apks) > 0 , (
             "Gradle assembleDebug succeeded but no APK found under "
             f"{apk_outputs}. Full stdout:\n{result.stdout}"

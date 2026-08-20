@@ -164,7 +164,7 @@ obj ServingTestClient {
             (body, content_type) = _build_multipart(files, data);
             header_obj.set('Content-Type', content_type);
         } elif json is not None {
-            body = dumps(json, default=_test_json_default).encode('utf-8');
+            body = dumps(json, `default=_test_json_default).encode('utf-8');
             if header_obj.get('Content-Type') is None {
                 header_obj.set('Content-Type', 'application/json');
             }

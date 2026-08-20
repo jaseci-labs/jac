@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler }
 import from jaclang.scale.observability.logger { Logger }
 

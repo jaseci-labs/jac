@@ -27,7 +27,7 @@ with entry {
         Arg.create(
             "platform",
             typ=str,
-            default=None,
+            `default=None,
             help="Platform for mobile setup (android, ios, all)",
             choices=["android", "ios", "all"],
             short="p"
@@ -429,8 +429,8 @@ def _auto_client_target(config: JacConfig, requested: str, project_dir: Path) ->
     }
     import from jaclang.project.kinds { resolve_entry, resolve_project_kind }
     try {
-        entry = resolve_entry(config, str(project_dir));
-        if resolve_project_kind(config, entry) == "web-static" {
+        `entry = resolve_entry(config, str(project_dir));
+        if resolve_project_kind(config, `entry) == "web-static" {
             return "static";
         }
     } except Exception {

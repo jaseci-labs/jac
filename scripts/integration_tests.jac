@@ -127,8 +127,10 @@ def run_pth_tests(runner: IntegrationTestRunner) {
     # Import the .jac module from Python without 'import jaclang'
     runner.run(
         [
-            sys.executable, "-c",
+            sys.executable,
+            "-c",
             f"import sys; sys.path.insert(0, {tmpdir!r}); import hello_pth",
+
         ],
         check_contains=["pth_import_ok"],
         description=".pth finder: import .jac module without explicit 'import jaclang'",
@@ -176,7 +178,8 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         # Verify _dist directory exists with index.html in the installed package
         runner.run(
             [
-                sys.executable, "-c",
+                sys.executable,
+                "-c",
                 "from pathlib import Path;"
                 "import jaclang.scale as jac_scale;"
                 "d = Path(jac_scale.__file__).parent / 'admin' / '_dist';"
@@ -187,6 +190,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
                 "count = len([f for f in files if f.is_file()]);"
                 "print(f'Pre-built admin UI: {count} files bundled at {d}');"
                 "print(f'index.html size: {idx.stat().st_size} bytes')",
+
             ],
             check_contains=["Pre-built admin UI"],
             description="scale package includes pre-built admin UI assets",
@@ -195,7 +199,8 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         # Verify index.html is a real Vite build output (not a placeholder)
         runner.run(
             [
-                sys.executable, "-c",
+                sys.executable,
+                "-c",
                 "from pathlib import Path;"
                 "import jaclang.scale as jac_scale;"
                 "idx = Path(jac_scale.__file__).parent / 'admin' / '_dist' / 'index.html';"
@@ -203,6 +208,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
                 "assert '<html' in html.lower(), 'Not valid HTML';"
                 "assert 'script' in html.lower(), 'No script tags (not a Vite build)';"
                 "print('index.html is valid Vite build output')",
+
             ],
             check_contains=["valid Vite build output"],
             description="Pre-built admin index.html is valid Vite output",
@@ -228,9 +234,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
     );
     jac_toml = os.path.join(tmpdir, "jac.toml");
     open(jac_toml, "w").write(
-        '[project]\n'
-        'name = "admin-e2e-test"\n'
-        'version = "0.0.1"\n'
+        '[project]\n' 'name = "admin-e2e-test"\n' 'version = "0.0.1"\n'
     );
     log_file = os.path.join(tmpdir, "server.log");
     port = 18899;
@@ -263,8 +267,11 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
                 return;
             }
             probe = subprocess.run(
-                [sys.executable, "-c",
-                 f"import urllib.request; urllib.request.urlopen('http://localhost:{port}/healthz', timeout=3)"],
+                [
+                    sys.executable,
+                    "-c",
+                    f"import urllib.request; urllib.request.urlopen('http://localhost:{port}/healthz', timeout=3)"
+                ],
                 capture_output=True
             );
             if probe.returncode == 0 {
@@ -300,7 +307,9 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         check_script = (
             "import urllib.request, time, sys;"
             "start = time.monotonic();"
-            "resp = urllib.request.urlopen('http://localhost:" + str(port) + "/admin/', timeout=15);"
+            "resp = urllib.request.urlopen('http://localhost:"
+            + str(port)
+            + "/admin/', timeout=15);"
             "elapsed = int((time.monotonic() - start) * 1000);"
             "body = resp.read().decode();"
             "code = resp.status;"
@@ -312,7 +321,9 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
 
         result = subprocess.run(
             [sys.executable, "-c", check_script],
-            capture_output=True, text=True, timeout=30
+            capture_output=True,
+            text=True,
+            timeout=30
         );
 
         if result.returncode != 0 {
@@ -329,7 +340,9 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         if "Building admin client from source" in log_content {
             print("FAIL: Server built from source instead of using pre-built assets");
             runner.failed += 1;
-            runner.errors.append(f"{desc}: built from source, pre-built assets not used");
+            runner.errors.append(
+                f"{desc}: built from source, pre-built assets not used"
+            );
             return;
         }
 
@@ -337,16 +350,15 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         print(f"{result.stdout.strip()}, pre-built path: {used_prebuilt}");
         print("PASS");
         runner.passed += 1;
-
     } finally {
         # Cleanup server process
         if server_proc is not None and server_proc.poll() is None {
             server_proc.terminate();
             try {
-                server_proc.wait(timeout=5);
+                server_proc.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 server_proc.kill();
-                server_proc.wait();
+                server_proc.`wait();
             }
         }
         # Cleanup temp files
@@ -361,7 +373,7 @@ with entry {
     print("=" * 60);
 
     if not check_environment() {
-        sys.exit(1);
+        sys.`exit(1);
     }
 }
 
@@ -371,5 +383,5 @@ with entry {
     run_pth_tests(runner);
     run_cli_tests(runner);
     run_admin_prebuild_tests(runner);
-    sys.exit(runner.summary());
+    sys.`exit(runner.summary());
 }

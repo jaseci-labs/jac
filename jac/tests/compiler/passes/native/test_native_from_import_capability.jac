@@ -27,7 +27,7 @@ Where the refusal lands is #8206's partition: a module-scope import has no
 owning callable and stays module-fatal, while a body-scoped one demotes its
 function to a seam and leaves its siblings native. A property accessor is an
 owning callable too -- the native lane lowers a `{ getter; }` body as a method
-and the demotion census already names it `<Archetype>.<field>.__get__` -- so
+and the demotion coverage already names it `<Archetype>.<field>.__get__` -- so
 the partition answers for it rather than falling through to a module refusal.
 """
 
@@ -37,7 +37,7 @@ import from jaclang.compiler.passes.main.capability_check_pass {
     native_capability_violations
 }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.parser { parse as rd_parse }
 import from jaclang.jac0core.placement { scan_native_blockers }
 import from jaclang.jac0core.program { JacProgram }
@@ -67,16 +67,16 @@ def _compile_native(fixture: str) -> tuple {
 }
 
 
-"""Compile a fixture under the demotion census; return (program, module, census)."""
-def _compile_with_census(fixture: str) -> tuple {
+"""Compile a fixture under the demotion coverage; return (program, module, coverage)."""
+def _compile_with_coverage(fixture: str) -> tuple {
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    return (prog, ir, census, );
+    return (prog, ir, coverage, );
 }
 
 
@@ -129,9 +129,9 @@ def _native_int_fn(ir: any, name: str) -> any {
 }
 
 
-"""The census seam list recorded for a fixture path."""
-def _seams_of(census: dict, fixture: str) -> list[str] {
-    rec = census.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
+"""The coverage seam list recorded for a fixture path."""
+def _seams_of(coverage: dict, fixture: str) -> list[str] {
+    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
     if rec is None {
         return [];
     }
@@ -241,13 +241,13 @@ test "a mixed typing import is still judged per name" {
 
 
 test "a consumer links a ClassVar-importing dependency" {
-    (prog, ir, census) = _compile_with_census("classvar_marker_consumer.jac");
+    (prog, ir, coverage) = _compile_with_coverage("classvar_marker_consumer.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , (
         "no native IR for a module whose dependency's only compile-time "
         "import is `ClassVar`"
     );
-    members = sorted({os.path.basename(p) for p in census});
+    members = sorted({os.path.basename(p) for p in coverage});
     assert "classvar_marker_dep.jac" in members , (
         f"the dependency has to be in the consumer's native closure, not "
         f"refused at placement and left to Python: {members}"
@@ -279,7 +279,7 @@ test "a from import of an na_stdlib-shimmed module lowers" {
 
 
 test "a property accessor is an owning callable, not a module-fatal site" {
-    (prog, ir, census) = _compile_with_census("from_import_accessor_seam.jac");
+    (prog, ir, coverage) = _compile_with_coverage("from_import_accessor_seam.jac");
     assert not prog.errors_had , (
         f"a `{{ getter; }}` body is a callable the native lane lowers as a "
         f"method, so a violation written there demotes it rather than "
@@ -292,13 +292,13 @@ test "a property accessor is an owning callable, not a module-fatal site" {
     );
     seams = [
         s
-        for s in _seams_of(census, "from_import_accessor_seam.jac")
+        for s in _seams_of(coverage, "from_import_accessor_seam.jac")
         if s.startswith("Box.tagged.__get__: ")
     ];
     assert len(seams) == 1 , (
-        f"the accessor must be recorded under the name the demotion census "
+        f"the accessor must be recorded under the name the demotion coverage "
         f"and the seal waivers already use for it, got: {_seams_of(
-            census, 'from_import_accessor_seam.jac'
+            coverage, 'from_import_accessor_seam.jac'
         )}"
     );
     assert "collections" in seams[0] , (
@@ -308,7 +308,7 @@ test "a property accessor is an owning callable, not a module-fatal site" {
 
 
 test "a body-scoped from-import demotes only its owning function" {
-    (prog, ir, census) = _compile_with_census("from_import_freefn_seam.jac");
+    (prog, ir, coverage) = _compile_with_coverage("from_import_freefn_seam.jac");
     assert not prog.errors_had , (
         f"a function-owned violation must demote, not fail the module: {[
             str(e) for e in prog.errors_had
@@ -324,11 +324,11 @@ test "a body-scoped from-import demotes only its owning function" {
     );
     seams = [
         s
-        for s in _seams_of(census, "from_import_freefn_seam.jac")
+        for s in _seams_of(coverage, "from_import_freefn_seam.jac")
         if s.startswith("pyonly: ")
     ];
     assert len(seams) == 1 , (
-        f"expected exactly one census seam for pyonly, got: {seams}"
+        f"expected exactly one coverage seam for pyonly, got: {seams}"
     );
     assert "collections" in seams[0] , (
         f"the seam reason must name the blocking construct: {seams[0]}"

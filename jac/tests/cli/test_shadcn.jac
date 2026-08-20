@@ -345,7 +345,7 @@ test "add components from bundled registry" {
         ui_dir = Path(tmpdir) / "components" / "ui";
         assert ui_dir.exists();
         # Check button file was created
-        button_files = list(ui_dir.glob("button*.jac"));
+        button_files = list(ui_dir.`glob("button*.jac"));
         assert len(button_files) > 0;
         # Check utils was created
         utils_path = Path(tmpdir) / "lib" / "utils.jac";
@@ -379,7 +379,7 @@ test "add hyphenated component installs underscored file name" {
         ui_dir = Path(tmpdir) / "components" / "ui";
         assert (ui_dir / "dropdown_menu.jac").exists();
         assert not (ui_dir / "dropdown-menu.jac").exists();
-        for installed in ui_dir.glob("*.jac") {
+        for installed in ui_dir.`glob("*.jac") {
             assert "-" not in installed.name;
         }
     }
@@ -410,7 +410,7 @@ test "registry uses valid Jac module names throughout" {
     import from jaclang.cli.shadcn.shadcn_handler { _registry_dir }
     import re;
     ui_dir = _registry_dir() / "components" / "ui";
-    for source_file in ui_dir.glob("*.jac") {
+    for source_file in ui_dir.`glob("*.jac") {
         assert "-" not in source_file.name;
         for spec in re.findall(r'import from "(\.[^"]*)"', source_file.read_text()) {
             assert "-" not in spec;

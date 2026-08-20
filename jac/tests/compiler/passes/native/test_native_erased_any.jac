@@ -18,7 +18,7 @@ keep refusing `Any`, now for a reason that cannot change back.
 `codeinfo` spells its four annotations `any` and imports nothing from
 `typing`, so the import-shaped blocker is gone. Inference is still held for
 it, deliberately now rather than by accident: `PLACEMENT_INFERENCE_HELD`
-names the module and the reason, and `test_codeinfo_census.jac` carries the
+names the module and the reason, and `test_codeinfo_baseline.jac` carries the
 measurement -- letting it through takes `unitree`'s closure from 11 members
 to 19 and picks up `UniPass.transform`, `UniPass.traverse` and
 `UniPass.get_all_sub_nodes`, pass machinery a parse reaches, inside a root
@@ -115,8 +115,8 @@ test "codeinfo's hold is deliberate and names its reason" {
     assert held , (
         "codeinfo is no longer held out of native inference. If that is "
         "intended, the closure it joins has to be answered first: see "
-        "test_codeinfo_census.jac for the 21-seam measurement, and expect "
-        "test_unitree_seal_census.jac to fail loudly until it is"
+        "test_codeinfo_baseline.jac for the 21-seam measurement, and expect "
+        "test_unitree_seal_baseline.jac to fail loudly until it is"
     );
     assert "uni_pass" in held , (
         f"the hold must name what it is holding back, got {held!r}"

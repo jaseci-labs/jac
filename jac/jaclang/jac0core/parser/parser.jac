@@ -1,4 +1,11 @@
-import from .tokens { LexToken, TokenKind, SourceLoc, SrcDiag, CommentData }
+import from .tokens {
+    LexToken,
+    TokenKind,
+    SourceLoc,
+    SrcDiag,
+    CommentData,
+    is_special_var_kind
+}
 import from .lexer { tokenize_full }
 
 import from jaclang.jac0core.unitree {
@@ -393,13 +400,14 @@ obj Parser {
     def check_peek_any(*kinds: TokenKind) -> bool;
     def check_name -> bool;
     def is_keyword_token -> bool;
+    def is_name_usable_token -> bool;
     def is_builtin_type_token -> bool;
     def match_tok(kind: TokenKind) -> LexToken | None;
     def match_any(*kinds: TokenKind) -> LexToken | None;
     def expect(kind: TokenKind) -> LexToken;
     def expect_any(*kinds: TokenKind) -> LexToken;
     def consume_uni(kind: TokenKind) -> Token;
-    def expect_name -> LexToken;
+    def expect_name(context: str = "identifier") -> LexToken;
     def error(message: str);
     def emit_diag(
         message: str, code_str: str, loc: SourceLoc | None = None, help: str = ""

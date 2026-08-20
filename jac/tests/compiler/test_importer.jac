@@ -22,6 +22,7 @@ import from jaclang.jac0core.jir {
     get_module_cache_path,
     read_bytecode_only,
     SEC_LLVM_IR,
+    SEC_PLACEMENT,
     SECTIONS_MAGIC,
     HEADER_SIZE,
     read_sections
@@ -528,6 +529,79 @@ test "fresh mtime does not admit a cache written under a different environment" 
         cache_path2 = get_module_cache_path(jac_file);
         if cache_path2.exists() {
             cache_path2.unlink();
+        }
+    }
+}
+
+def _cached_pins(jir_bytes: bytes) -> dict[str, str] {
+    import from jaclang.jac0core.placement { summary_from_bytes }
+    pos = jir_bytes.find(SECTIONS_MAGIC, HEADER_SIZE);
+    if pos < 0 {
+        return {};
+    }
+    secs = read_sections(jir_bytes, pos + len(SECTIONS_MAGIC));
+    placement = secs.get(SEC_PLACEMENT);
+    if placement is None {
+        return {};
+    }
+    summary = summary_from_bytes(placement);
+    if summary is None {
+        return {};
+    }
+    return {e.name: e.pinned for e in summary.elements};
+}
+
+test "editing placement pins in jac.toml invalidates the module cache" {
+    import from jaclang.jac0core.jir { is_module_cache_valid }
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as proj {
+        toml_path = os.path.join(proj, "jac.toml");
+        jac_file = os.path.join(proj, "m.jac");
+        with open(toml_path, "w") as f {
+            f.write('[project]\nname = "pins_cache_probe"\n');
+        }
+        with open(jac_file, "w") as f {
+            f.write("def helper_fn() -> int { return 42; }\n");
+        }
+        past = time.time() - 2;
+        os.utime(jac_file, (past, past));
+        os.utime(toml_path, (past, past));
+        compiler = JacCompiler();
+        assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
+        cache_path = get_module_cache_path(jac_file);
+        try {
+            assert cache_path.exists() , "JIR cache was not written";
+            assert os.path.getmtime(cache_path) > os.path.getmtime(jac_file) , (
+                "cache must be newer than source for the mtime fast path to apply"
+            );
+            assert is_module_cache_valid(jac_file, cache_path) , (
+                "fresh cache should be valid"
+            );
+
+            stale = cache_path.read_bytes();
+            assert _cached_pins(stale).get("helper_fn", "") == "" , (
+                "the pre-edit placement summary should carry no pin"
+            );
+            with open(toml_path, "a") as f {
+                f.write('\n[placement.pins]\n"m.helper_fn" = "server"\n');
+            }
+            assert not is_module_cache_valid(jac_file, cache_path) , (
+                "a jac.toml pins edit must invalidate the module cache"
+            );
+
+            assert compiler.get_bytecode(jac_file, JacProgram()) is not None;
+            assert cache_path.read_bytes() != stale , (
+                "a recompile must overwrite the stale cache entry"
+            );
+            assert is_module_cache_valid(jac_file, cache_path) , (
+                "the rewritten cache must be valid under the new pins"
+            );
+            assert _cached_pins(cache_path.read_bytes()).get("helper_fn") == "server" , (
+                "the recompiled placement summary must honor the new pin"
+            );
+        } finally {
+            if cache_path.exists() {
+                cache_path.unlink();
+            }
         }
     }
 }

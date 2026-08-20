@@ -103,7 +103,7 @@ glob FORBIDDEN: dict[str, str] = {
              "Callable-over-RPC guard on endpoint params - the declared "
              "annotation is the consumed fact, not a resolved type"
          ),
-         ("native/na_ir_gen_pass.impl/generics.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/generics.impl.jac", "type_tag.tag"): (
              3,
              "generic-template declared-annotation reads where the "
              "declaration IS the fact: (1) the _solve_generic_call fallback "
@@ -116,7 +116,7 @@ glob FORBIDDEN: dict[str, str] = {
              "monomorphization solution - the template is uninstantiated, "
              "so the declared annotations are the only TypeVar surface"
          ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen/calls.impl.jac", "symbol_utils"): (
              2,
              "classify_call as the shadowing-aware builtin test for the "
              "`type(None)` isinstance argument form (#6957) - consuming the "
@@ -138,20 +138,20 @@ glob FORBIDDEN: dict[str, str] = {
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"
          ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen/objects.impl.jac", "symbol_utils"): (
              1,
              "collect_method_names as the central ancestor-method walk over "
              "an already-resolved archetype symbol - a symbol-FACT reader, "
              "not a re-run of member resolution"
          ),
-         ("native/na_ir_gen_pass.impl/core.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/core.impl.jac", "type_tag.tag"): (
              3,
              "declaration-surface reads at interop layout export, plus the "
              "quiet lowerability probe on imported globs (the py-side "
              "carve-out for dual-codespace modules) which reads the same "
              "declared annotation the adjacent _resolve_jac_type consumes"
          ),
-         ("native/na_ir_gen_pass.impl/calls.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/calls.impl.jac", "type_tag.tag"): (
              1,
              "declaration-surface read of foreign extern signatures: the "
              "clib membrane needs the DECLARED str params/returns of a "
@@ -159,13 +159,13 @@ glob FORBIDDEN: dict[str, str] = {
              "shims (#7870 strings step 2) - the C membrane always "
              "trafficks NUL-terminated char*"
          ),
-         ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/func.impl.jac", "type_tag.tag"): (
              4,
              "scalar LLVM materialization from declared clib annotations "
              "at the declaration site - the backend's lowering role "
              "(sysv sig planning + fixed-param lowering, #6707, #6708)"
          ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/objects.impl.jac", "type_tag.tag"): (
              1,
              "declaration-surface read during archetype field lowering: "
              "the field's declared annotation node is read once into a "
@@ -174,14 +174,14 @@ glob FORBIDDEN: dict[str, str] = {
              "- consumers of the annotation are added to the local, never "
              "by reaching for type_tag.tag again"
          ),
-         ("native/na_ir_gen_pass.impl/lists.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/lists.impl.jac", "type_tag.tag"): (
              1,
              "declared-vs-inferred bare list is a declaration-surface "
              "distinction central facts do not carry (the checker stamps "
              "unannotated empties as bare list too); the empty-literal "
              "storage-family decision must key on the explicit annotation"
          ),
-         ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
+         ("native/na_ir_gen/stmt.impl.jac", "type_tag.tag"): (
              7,
              "surface-shape dispatch on declared annotation forms "
              "(assessed train 4: legitimately kept); the "

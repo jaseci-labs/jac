@@ -1,5 +1,5 @@
 import time;
-import from jaclang.jac0core.codeinfo { CodeLocInfo }
+import from jaclang.jac0core.srcloc { CodeLocInfo }
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
     E9001,
@@ -40,6 +40,7 @@ obj DiagnosticPolicy {
 obj BaseTransform(PassRim) {
     has ir_in: UniNode,
         cancel_token: any = None,
+        cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
@@ -80,5 +81,5 @@ obj Transform(BaseTransform) {
     ) -> bool;
 
     def _is_suppressed(diag: DiagnosticInfo, loc: CodeLocInfo | None = None) -> bool;
-    def ice(msg: str = 'Something went horribly wrong!') -> RuntimeError;
+    def ice(msg: str = 'Something went horribly wrong!') -> str;
 }

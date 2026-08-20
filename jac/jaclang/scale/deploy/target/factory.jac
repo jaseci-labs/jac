@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
 import from jaclang.scale.config.base_config { BaseConfig }
 import from jaclang.scale.observability.logger { Logger }

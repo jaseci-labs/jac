@@ -9,7 +9,7 @@
 # Generated zig package fetches (jac ninja pins fetch into jac/zig-pkg/ at
 # Impl annexes of modules already baselined above by bare name (lang_tools.jac,
 # LLVM-IR builder submodules in this same category (ir.GlobalVariable/ir.Constant/
-# Native wasm/LLVM emission + na_ir_gen_pass.impl ctypes-heavy submodules: bind
+# Native wasm/LLVM emission + na_ir_gen ctypes-heavy submodules: bind
 # Path, TextIOWrapper, JacProgram, Jac runtime, AST nodes, etc.
 # Path-qualified so fixes/stubs can be shaved off file-by-file.
 # Path/file-IO false positives (e.g. Path(__file__) in template discovery). The
@@ -19,16 +19,16 @@
 # after ignore filtering runs -- so the annex paths must be listed too.
 # and other untyped third-party APIs whose values the checker sees as
 # build time; the tree-sitter-jac package ships its own examples/sample.jac).
-# class as the passes/native/llvm and na_ir_gen_pass.impl entries above.
+# class as the passes/native/llvm and na_ir_gen entries above.
 # create_target_machine) whose attrs the checker sees as Unknown, same class as
-# cycle_collector/struct/debug/trace_fn.impl.jac (#7149) are na_ir_gen_pass.impl
+# cycle_collector/struct/debug/trace_fn.impl.jac (#7149) are na_ir_gen
 # error in test_prim_equivalence.jac); #7166 fixed formatting, exposing
 # explicitly, and an .impl.jac arg resolves to its (baselined known-bad) module
 # expose false positives from incomplete Python type stubs. These files contain
 # file-by-file.
 # for `jac check`. fnmatch path-pattern -> matches every file under the package.
 # lib.jac — jac-byllm and jac-scale pass, jaclang fails
-# na_ir_gen_pass.jac / na_compile_pass.jac above. Skipped for `jac check`.
+# na_ir_gen/ / na_compile_pass.jac above. Skipped for `jac check`.
 # object/<Unknown>; they can't be made type-clean without upstream stubs, same
 # raw llvmlite/llvm-c handles (is_declaration, linkage, verify, emit_object,
 # step had been masked for weeks by the format step failing first (syntax
@@ -176,19 +176,7 @@ jac/jaclang/compiler/passes/main/impl/capability_check_pass.impl.jac
 jac/jaclang/compiler/passes/main/jsx_intrinsic_guard_pass.jac
 jac/jaclang/compiler/passes/native/impl/pe_linker.impl.jac
 jac/jaclang/compiler/passes/native/impl/primitives_native.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/bytearray_na.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/bytes.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_abi.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/clib_vtable.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/debug.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/gc_debug.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/iterators.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/math.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/os.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/osp.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/random.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/struct.impl.jac
-jac/jaclang/compiler/passes/native/na_ir_gen_pass.impl/time.impl.jac
+passes/native/na_ir_gen/*
 jac/jaclang/compiler/passes/native/pe_linker.jac
 jac/jaclang/compiler/passes/native/wasm_build.jac
 jac/jaclang/compiler/passes/native/wasm_linker.jac
@@ -445,7 +433,6 @@ mtir_gen_pass.jac
 mtp.jac
 na_compile_pass.impl.jac
 na_compile_pass.jac
-na_ir_gen_pass.jac
 nacompile.impl.jac
 nacompile.jac
 native_marshal.jac

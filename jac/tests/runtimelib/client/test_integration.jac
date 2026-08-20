@@ -1166,7 +1166,7 @@ test "client SDK commands map to host plugin commands" {
     assert len(sdk_pairs) > 0 , "no _invoke() calls found in desktop_api.jac";
     # Map host plugin name -> handled commands, parsed from each plugin source.
     host = {};
-    for pf in sorted((plugin_dir / "built_in").glob("*_plugin.jac")) {
+    for pf in sorted((plugin_dir / "built_in").`glob("*_plugin.jac")) {
         text = pf.read_text();
         nm = re.search(r'name="(jac\.[a-z]+)"', text);
         if nm is None {

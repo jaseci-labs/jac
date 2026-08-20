@@ -139,7 +139,7 @@ with entry {
     a = 4 if True else 4;
 }
 
-import from typing { Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
+import from typing { Optional, ParamSpec }
 
 import from jaclang.jac0core.constant {
     JacSemTokenModifier as SemTokMod,

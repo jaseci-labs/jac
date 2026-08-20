@@ -87,8 +87,8 @@ def _bind_one(fullname: str) {
 }
 
 def _native_merge_canary {
-    import from jaclang.jac0core.parser.frontend { _native_parse }
-    np = _native_parse();
+    import from jaclang.jac0core.native_brands { native_parser }
+    np = native_parser("pass_serve:merge_canary");
     if np is None {
         raise _serve_error(
             _ANNEX_MODULE,

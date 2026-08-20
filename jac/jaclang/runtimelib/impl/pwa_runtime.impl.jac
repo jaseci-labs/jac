@@ -7,7 +7,7 @@ impl getPlatform -> str {
     ua = navigator.userAgent;
 
     iosPattern = Reflect.construct(RegExp, ["iPad|iPhone|iPod"]);
-    if iosPattern.test(ua)
+    if iosPattern.`test(ua)
         or (navigator.platform == "MacIntel" and navigator.maxTouchPoints > 1) {
         return "ios";
     }

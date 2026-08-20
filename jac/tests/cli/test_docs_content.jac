@@ -68,7 +68,7 @@ def collect_anchors(text: str) -> set[str] {
         if fenced or not line.startswith("#") {
             continue;
         }
-        m = re.match(r"^#{1,6}\s+(.*?)\s*$", line);
+        m = re.`match(r"^#{1,6}\s+(.*?)\s*$", line);
         if not m {
             continue;
         }

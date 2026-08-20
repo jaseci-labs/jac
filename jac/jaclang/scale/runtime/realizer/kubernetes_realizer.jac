@@ -1,8 +1,8 @@
 import os;
 import pathlib;
-import from dotenv { load_dotenv }
 import from jaclang.cli.console { console }
 import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.config.project_env { load_project_env }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.config.app_config { AppConfig }
@@ -59,8 +59,7 @@ obj KubernetesRealizer {
             raise FileNotFoundError(f"File not found: '{filename}'");
         }
         code_folder = os.path.dirname(filename) or '.';
-        dotenv_path = os.path.join(code_folder, '.env');
-        load_dotenv(dotenv_path);
+        load_project_env(code_folder);
         scale_config = get_scale_config();
         logger = UtilityFactory.create_logger('standard');
 
@@ -138,6 +137,8 @@ obj KubernetesRealizer {
             console.print(
                 f"Deployment complete! Service available at: {result.service_url}"
             );
+        } elif result.access_hint {
+            console.print(f"Deployment complete! {result.access_hint}");
         }
         return 0;
     }

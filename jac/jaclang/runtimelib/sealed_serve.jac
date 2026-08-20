@@ -29,9 +29,9 @@ def _image_module_keys(img_root: str) -> set {
             if isinstance(modules, dict) {
                 keys = set(modules.keys());
             }
-            entry = data.get("entry");
-            if isinstance(entry, dict) and isinstance(entry.get("path"), str) {
-                keys.add(entry["path"]);
+            `entry = data.get("entry");
+            if isinstance(`entry, dict) and isinstance(`entry.get("path"), str) {
+                keys.add(`entry["path"]);
             }
         }
     } except Exception {
@@ -88,7 +88,7 @@ def client_dist_for(path: str) -> (Path | None) {
         return None;
     }
     dist = Path(img_root) / CLIENT_DIST_REL;
-    if dist.is_dir() and any(dist.glob("client.*.js")) {
+    if dist.is_dir() and any(dist.`glob("client.*.js")) {
         return dist;
     }
     return None;

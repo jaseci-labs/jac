@@ -1,19 +1,7 @@
-"""Implementation of console utilities for terminal output.
-
-Caller data in `Span`s (style`None`) and unstyled `print` args are never
-markup-parsed. CLI chrome uses semantic style roles on spans, or an
-explicit `style=` on `print` (ANSI prefix on string args only).
-
-`JacConsole` is the capability/routing facade; `ConsoleRenderer` is the ANSI
-drawing backend it delegates to.
-"""
 import os;
 import sys;
 import from contextlib { contextmanager }
 
-# ===============================================================================
-# ANSI Color Codes - Raw and Simple
-# ===============================================================================
 glob RESET: str = "\033[0m",
      BOLD: str = "\033[1m",
      DIM: str = "\033[2m",
@@ -28,8 +16,6 @@ glob RESET: str = "\033[0m",
      BRIGHT_WHITE: str = "\033[97m",
      BRIGHT_BLUE: str = "\033[94m";
 
-# Map semantic style roles to raw ANSI. Roles are renderer-agnostic; this table
-# is the ANSI renderer's palette.
 glob _ANSI_ROLES: dict = {
          'success': GREEN,
          'error': RED,
@@ -42,8 +28,6 @@ glob _ANSI_ROLES: dict = {
          'bright_white': BRIGHT_WHITE
      };
 
-# Rich-style token names occasionally appear in legacy console.print(style=...)
-# call sites (e.g. "bold cyan"). Parse those style expressions into ANSI.
 glob _ANSI_STYLE_TOKENS: dict = {
          'bold': BOLD,
          'dim': DIM,
@@ -59,19 +43,6 @@ glob _ANSI_STYLE_TOKENS: dict = {
          'bright_blue': BRIGHT_BLUE
      };
 
-"""Return True if `stream` is an interactive terminal.
-
-The facade's `use_color` is a process-wide master switch (NO_COLOR, TERM=dumb),
-resolved once from `sys.stdout.isatty()`. But a single process can write to
-many streams — `sys.stderr` redirected to a file, `print(file=...)` targeting
-an arbitrary sink — and ANSI escapes only render on a real TTY. Styling a
-non-TTY stream corrupts captured output (issue #6499), so each emit must
-re-check the *target* stream in addition to the master flag.
-
-Streams are not required to expose `isatty`, and it can raise (e.g. a closed
-file), so the call is guarded: anything that isn't clearly a TTY is treated as
-non-stylable.
-"""
 def _stream_is_tty(stream: any) -> bool {
     try {
         isatty = stream?.isatty;
@@ -84,7 +55,6 @@ def _stream_is_tty(stream: any) -> bool {
     }
 }
 
-"""Resolve a style role/expression to ANSI prefix code(s), or empty string."""
 def _resolve_ansi_style(style: str | None) -> str {
     if not style {
         return "";
@@ -102,11 +72,6 @@ def _resolve_ansi_style(style: str | None) -> str {
     return ''.join(codes);
 }
 
-# ===============================================================================
-# Pure-Jac Rich-parity primitives (box drawing + animated spinner)
-# ===============================================================================
-# Spinner animation frames: braille dots, with an ASCII fallback for terminals
-# that can't render the fancy glyphs.
 glob _SPINNER_FRAMES: list[str] = [
          '⠋',
          '⠙',
@@ -121,8 +86,6 @@ glob _SPINNER_FRAMES: list[str] = [
      ],
      _SPINNER_FRAMES_ASCII: list[str] = ['|', '/', '-', "\\"];
 
-# Box-drawing glyph sets for panels/tables. Unicode by default; ASCII fallback
-# when the terminal can't render the fancy glyphs (NO_EMOJI / dumb / legacy win).
 glob _BOX_UNICODE: dict[str, str] = {
          'tl': '┌',
          'tm': '┬',
@@ -158,17 +121,11 @@ glob _BOX_UNICODE: dict[str, str] = {
          'pbr': '+'
      };
 
-"""Build one horizontal box border row spanning the given column widths."""
 def _table_border(widths: list[int], left: str, mid: str, right: str, h: str) -> str {
     segs = [h * (w + 2) for w in widths];
     return left + mid.join(segs) + right;
 }
 
-"""Create an animated stdout spinner, or None when it can't animate.
-
-Animation requires color + an interactive TTY; otherwise the caller falls back to
-a static status line (so redirected/captured streams are never animated).
-"""
 def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
     if not use_color {
         return None;
@@ -187,35 +144,20 @@ def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
     );
 }
 
-# ===============================================================================
-# ConsoleRenderer (ANSI backend) Implementation
-# ===============================================================================
-"""Sync the renderer's capability flags with the facade's resolved decision."""
 impl ConsoleRenderer.configure(use_emoji: bool, use_color: bool) -> None {
     self.use_emoji = use_emoji;
     self.use_color = use_color;
 }
 
-"""Erase the live status line, if one is active, so following output starts
-fresh. A no-op when nothing is running (non-TTY, or outside a status block).
-"""
 impl ConsoleRenderer.clear_status -> None {
     if self._active_status is not None {
         self._active_status.clear();
     }
 }
 
-"""Write one composed line; colored spans wrap raw ANSI, data spans pass through.
-
-A span with `style is None` (caller data) is emitted verbatim — no styling, no
-interpretation — which is the trust boundary. Color is applied only when the
-facade resolved `use_color = True`.
-"""
 impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
     out = stream if stream is not None else sys.stdout;
-    # `use_color` is the master off-switch (NO_COLOR, TERM=dumb); the target
-    # stream must *also* be a TTY, or ANSI escapes corrupt captured output
-    # (issue #6499: `jac build 2>errors.log` with stdout a TTY at init).
+
     can_style = self.use_color and _stream_is_tty(out);
     parts: list[str] = [];
     for s in spans {
@@ -237,21 +179,14 @@ impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
     }
 }
 
-"""Emit raw print() args without markup parsing.
-
-Handles Windows console encoding (replacing unencodable chars) and broken
-pipes. When `style` is set and color is enabled, it is resolved to ANSI and
-wrapped around each string arg (prefix + RESET); non-strings pass through
-unchanged.
-"""
 impl ConsoleRenderer.emit_raw(
     args: list, stream: any, style: str | None, kwargs: dict
 ) -> None {
     out = stream if stream is not None else sys.stdout;
-    # Master switch (use_color) AND per-stream TTY check — see emit() / #6499.
+
     can_style = self.use_color and _stream_is_tty(out);
     style_prefix = _resolve_ansi_style(style) if can_style else "";
-    # Handle Windows console encoding - replace unencodable chars
+
     if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
         encoding: str = str(out?.encoding or 'cp1252');
         processed_args: list = [];
@@ -304,7 +239,6 @@ impl ConsoleRenderer.emit_raw(
     }
 }
 
-"""Print a header with optional version, framed by terminal-width rules."""
 impl ConsoleRenderer.header(title: str, version: str | None = None) -> None {
     try {
         width = os.get_terminal_size().columns;
@@ -337,7 +271,6 @@ impl ConsoleRenderer.header(title: str, version: str | None = None) -> None {
     }
 }
 
-"""Print a list of labeled URLs. Labels and URLs are caller data (verbatim)."""
 impl ConsoleRenderer.urls(items: list, symbol: str = '') -> None {
     sym = symbol or ('➜' if self.use_emoji else '>');
     for (label, url) in items {
@@ -355,11 +288,6 @@ impl ConsoleRenderer.urls(items: list, symbol: str = '') -> None {
     }
 }
 
-"""Print next steps inside a bordered panel (pure-Jac equivalent of Rich's Panel).
-
-The index prefix and box borders are chrome (styled); each step's text is caller
-data, emitted verbatim. The title is embedded in the top border.
-"""
 impl ConsoleRenderer.next_steps(steps: list[str], title: str = 'Next Steps') -> None {
     box = _BOX_UNICODE if self.use_emoji else _BOX_ASCII;
     rows: list[tuple[str, str]] = [];
@@ -369,7 +297,7 @@ impl ConsoleRenderer.next_steps(steps: list[str], title: str = 'Next Steps') -> 
         content_w = max(content_w, len(prefix) + len(str(step)));
         rows.append((prefix, str(step)));
     }
-    # Inner width must also fit the title in the top border ("h sp title sp h").
+
     inner = max(content_w + 2, len(str(title)) + 4);
     self.emit([Span("", None)]);
     fill = inner - len(str(title)) - 3;
@@ -393,11 +321,6 @@ impl ConsoleRenderer.next_steps(steps: list[str], title: str = 'Next Steps') -> 
     self.emit([Span("", None)]);
 }
 
-"""Print a box-drawn table (pure-Jac equivalent of Rich's Table).
-
-Borders are dim chrome and headers are styled; every cell value is caller data,
-emitted verbatim (never markup-parsed). An optional title is printed above.
-"""
 impl ConsoleRenderer.table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
@@ -421,7 +344,7 @@ impl ConsoleRenderer.table(
             )
         ]
     );
-    # Header row: box separators are chrome, header labels are styled.
+
     header_spans: list[Span] = [Span(box['v'], 'muted')];
     for (h, w) in zip(headers, col_widths) {
         header_spans.append(Span(" ", None));
@@ -438,7 +361,7 @@ impl ConsoleRenderer.table(
             )
         ]
     );
-    # Data rows: cells emitted verbatim, only the box separators are styled.
+
     for row in rows {
         row_spans: list[Span] = [Span(box['v'], 'muted')];
         for (i, w) in enumerate(col_widths) {
@@ -460,11 +383,6 @@ impl ConsoleRenderer.table(
     );
 }
 
-"""Animated status line during long operations (Rich `console.status` parity).
-
-Spins on a color-capable TTY; otherwise prints the message once. The `spinner=`
-kwarg Rich callers pass is accepted and ignored (dots is the only style).
-"""
 @contextmanager
 impl ConsoleRenderer.status_ctx(args: list, kwargs: dict) -> object {
     text = "";
@@ -489,7 +407,6 @@ impl ConsoleRenderer.status_ctx(args: list, kwargs: dict) -> object {
     }
 }
 
-"""Animated spinner during long operations (delegates to the status spinner)."""
 @contextmanager
 impl ConsoleRenderer.spinner_ctx(text: str) -> object {
     with self.status_ctx([text], {}) as st {
@@ -497,17 +414,6 @@ impl ConsoleRenderer.spinner_ctx(text: str) -> object {
     }
 }
 
-# ===============================================================================
-# JacConsole facade Implementation
-# ===============================================================================
-"""Detect terminal capabilities once at construction, build the renderer via
-the polymorphic factory, and push the capability decision to it.
-
-`init` is Jac's constructor (`__init__`), which runs before `postinit`
-fields are set — so all renderer setup lives here in `postinit`, which runs
-after fields are initialized. Plugins customize the backend by overriding
-`_make_renderer`, not by re-implementing this.
-"""
 impl JacConsole.postinit -> None {
     self.use_emoji = JacConsole._should_use_emoji();
     self.use_color = JacConsole._should_use_color();
@@ -515,14 +421,10 @@ impl JacConsole.postinit -> None {
     self._renderer.configure(self.use_emoji, self.use_color);
 }
 
-"""Build the rendering backend. The base console renders Rich-style output in
-pure Jac; subclasses may override this to return a different `ConsoleRenderer`.
-"""
 impl JacConsole._make_renderer -> ConsoleRenderer {
     return ConsoleRenderer();
 }
 
-"""Check if emoji should be used based on environment."""
 impl JacConsole._should_use_emoji -> bool {
     if os.environ.get('NO_EMOJI') or os.environ.get('TERM') == 'dumb' {
         return False;
@@ -533,20 +435,15 @@ impl JacConsole._should_use_emoji -> bool {
     return True;
 }
 
-"""Check if color should be used based on environment.
-
-Checks: NO_COLOR env, TERM=dumb, and isatty() for CI/pipe/server safety.
-"""
 impl JacConsole._should_use_color -> bool {
-    # Respect NO_COLOR standard (https://no-color.org/)
     if os.environ.get('NO_COLOR') {
         return False;
     }
-    # Dumb terminals don't support ANSI
+
     if os.environ.get('TERM') == 'dumb' {
         return False;
     }
-    # Not a TTY = CI, pipe, server, captured output - no colors
+
     try {
         if not sys.stdout.isatty() {
             return False;
@@ -557,23 +454,10 @@ impl JacConsole._should_use_color -> bool {
     return True;
 }
 
-"""Resolve the output stream for a `file=` kwarg.
-
-Single source of truth for stream routing: `None` means default stdout; an
-explicit stream (`sys.stderr` or an arbitrary file object) is returned as-is.
-Both the facade and plugin renderers route through this so the
-stdout/stderr/other decision can never diverge between implementations.
-"""
 impl JacConsole._resolve_stream(file: any = None) -> any {
     return file if file is not None else sys.stdout;
 }
 
-"""Print to stdout. Args are not markup-parsed; Rich `markup`/`highlight` are ignored.
-
-`Content`-wrapped args are unwrapped to their raw text. Optional `style` is
-resolved to ANSI and applied to string args only (see `emit_raw`). `file=`
-routes via the shared stream resolver.
-"""
 impl JacConsole.print(*args: any, **kwargs: any) -> None {
     style = kwargs.pop('style', None);
     file = kwargs.pop('file', None);
@@ -583,28 +467,21 @@ impl JacConsole.print(*args: any, **kwargs: any) -> None {
     self._renderer.emit_raw(processed, self._resolve_stream(file), style, kwargs);
 }
 
-"""Context manager for status during long operations."""
 impl JacConsole.status(*args: any, **kwargs: any) -> AbstractContextManager {
     return self._renderer.status_ctx(list(args), kwargs);
 }
 
-"""Print a success message with green checkmark."""
 impl JacConsole.success(message: str, emoji: bool = True) -> None {
     prefix = '✔' if emoji and self.use_emoji else '[OK]';
     self._renderer.emit([Span(f"{prefix} {message}", 'success')]);
 }
 
-"""Print an error message with optional hint."""
 impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
-    # An error may fire mid-spinner (stdout) while it prints to stderr; clear the
-    # live status line first so the two don't collide on the terminal.
     self._renderer.clear_status();
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
-    # Some callers pass a message that already carries an "Error:" prefix
-    # (e.g. a formatted runtime exception); drop it so we don't print the
-    # doubled "Error: Error:" banner.
+
     if message.startswith("Error: ") {
         message = message[len("Error: "):];
     }
@@ -617,35 +494,29 @@ impl JacConsole.error(
     }
 }
 
-"""Print a warning message in yellow."""
 impl JacConsole.warning(message: str, emoji: bool = True) -> None {
     prefix = '⚠' if emoji and self.use_emoji else '[WARNING]';
     self._renderer.emit([Span(f"{prefix} {message}", 'warning')], sys.stderr);
 }
 
-"""Print an info message in cyan."""
 impl JacConsole.info(message: str, emoji: bool = True) -> None {
     prefix = 'ℹ' if emoji and self.use_emoji else '[INFO]';
     self._renderer.emit([Span(f"{prefix} {message}", 'info')]);
 }
 
-"""Print a header with optional version."""
 impl JacConsole.print_header(title: str, version: str | None = None) -> None {
     self._renderer.header(title, version);
 }
 
-"""Print a list of labeled URLs."""
 impl JacConsole.print_urls(urls: any, symbol: str = '') -> None {
     items = list(urls.items()) if isinstance(urls, dict) else list(urls);
     self._renderer.urls(items, symbol);
 }
 
-"""Print a bordered box with next steps."""
 impl JacConsole.print_next_steps(steps: list[str], title: str = 'Next Steps') -> None {
     self._renderer.next_steps(steps, title);
 }
 
-"""Print a list of items with colored symbols. Items are caller data."""
 impl JacConsole.print_list(
     items: list[str], style: str = 'success', symbol: str = ''
 ) -> None {
@@ -655,14 +526,12 @@ impl JacConsole.print_list(
     }
 }
 
-"""Print a formatted table with colored headers."""
 impl JacConsole.print_table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
     self._renderer.table(headers, rows, title);
 }
 
-"""Context manager for spinner during long operations."""
 @contextmanager
 impl JacConsole.spinner(text: str) -> object {
     with self._renderer.spinner_ctx(text) as s {
@@ -670,7 +539,6 @@ impl JacConsole.spinner(text: str) -> object {
     }
 }
 
-"""Print elapsed time in a human-friendly format."""
 impl JacConsole.print_elapsed_time(seconds: float) -> None {
     if seconds < 1 {
         ms = seconds * 1000;
@@ -682,7 +550,6 @@ impl JacConsole.print_elapsed_time(seconds: float) -> None {
     }
 }
 
-"""Print file change notification with timestamp. Filepath is caller data."""
 impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> None {
     import from datetime { datetime }
     timestamp = datetime.now().strftime('%H:%M:%S');
@@ -699,7 +566,6 @@ impl JacConsole.print_file_change(filepath: str, action: str = 'changed') -> Non
     );
 }
 
-"""Print file watching status. Pattern is caller data."""
 impl JacConsole.print_watching(pattern: str, count: int) -> None {
     watch_emoji = '👀 ' if self.use_emoji else '[WATCHING] ';
     self._renderer.emit([Span(f"{watch_emoji}Watching for changes...", 'info')]);
@@ -712,29 +578,15 @@ impl JacConsole.print_watching(pattern: str, count: int) -> None {
     );
 }
 
-# ===============================================================================
-# Module-level function implementations
-# ===============================================================================
-"""Get the console instance using the hook system, allowing plugins to override."""
 impl _get_console -> JacConsole {
     if _console_instance is None {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        # Capability detection and renderer wiring happen in `postinit` at
-        # construction; no post-construction `init()` call is needed.
+
         _console_instance = Jac.get_console();
     }
     return _console_instance;
 }
 
-"""Switch block-buffered text streams to line buffering.
-
-A container's stdout is a pipe, so CPython block-buffers it, and a process that
-dies before the buffer fills loses everything it printed -- which is why a
-crash-looped pod shows empty `kubectl logs` unless PYTHONUNBUFFERED=1 is set.
-The long-running and crash-prone modes (`jac run`, `jac start`) call this so
-every line reaches the log as it is written. Streams that are already
-line-buffered (a TTY) or that cannot be reconfigured (a captured StringIO) are
-left untouched. Returns how many streams were switched."""
 impl use_line_buffered_output(streams: (list[any] | None) = None) -> int {
     targets = streams if streams is not None else [sys.stdout, sys.stderr];
     switched = 0;

@@ -253,7 +253,7 @@ test "the waiver table gates the build, it is not part of the content key" {
         );
 
         # But it must still force a rebuild, because the only way to re-reach
-        # the demotion verdict is to recompile under the census. Reuse would
+        # the demotion verdict is to recompile under the coverage. Reuse would
         # skip the gate and let a build through that the new table forbids.
         assert pb.seal_waiver_digest("a.jac", {})
             != pb.seal_waiver_digest("a.jac", {"a.jac": ("a.jac::A.method", )}) , "the waiver digest does not distinguish two different waiver tables";

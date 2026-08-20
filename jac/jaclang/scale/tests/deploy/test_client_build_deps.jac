@@ -76,7 +76,7 @@ test "the host client build installs the app's declared dependencies" {
         _builder(project_dir)._build_client_bundle(project_dir);
         installed = [
             p.name
-            for p in get_venv_site_packages(Path(project_dir) / ".jac" / "venv").glob(
+            for p in get_venv_site_packages(Path(project_dir) / ".jac" / "venv").`glob(
                 f"{APP_DEP}*"
             )
         ];

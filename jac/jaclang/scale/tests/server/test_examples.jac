@@ -115,10 +115,10 @@ obj JacScaleTestRunner {
         if self.server_process {
             self.server_process.terminate();
             try {
-                self.server_process.wait(timeout=5);
+                self.server_process.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 self.server_process.kill();
-                self.server_process.wait();
+                self.server_process.`wait();
             }
             if self.server_process.stdout {
                 self.server_process.stdout.close();

@@ -50,9 +50,9 @@ test "an exact pin resolves without listing releases" {
 
 
 test "a range picks the newest published release that satisfies it" {
-    pub = ["0.33.0", "0.34.1", "0.34.2", "0.34.3", "0.35.0"];
+    `pub = ["0.33.0", "0.34.1", "0.34.2", "0.34.3", "0.35.0"];
     with unittest.mock.patch.object(
-        binary_mod, "_list_release_versions", return_value=pub
+        binary_mod, "_list_release_versions", return_value=`pub
     ) {
         assert _resolve_target_version(REPO, ">=0.34,<0.35") == "0.34.3";
         assert _resolve_target_version(REPO, "<=0.34.2") == "0.34.2";

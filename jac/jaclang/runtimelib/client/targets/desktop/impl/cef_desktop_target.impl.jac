@@ -177,7 +177,7 @@ def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
             shutil.copy2(src, out_dir / name);
         }
     }
-    for pak in cef_dist.glob("*.pak") {
+    for pak in cef_dist.`glob("*.pak") {
         shutil.copy2(pak, out_dir / pak.name);
     }
     locales_src = cef_dist / "locales";

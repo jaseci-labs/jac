@@ -74,7 +74,8 @@ pipe_call ::= ("|>" | ":>") atomic_chain | atomic_chain
 
 atomic_chain ::=
     atom (
-        ("." | "?" | ".>" | "<.") ("." | ".>" | "<.")? (NAME | KWESC_NAME)?
+        ("." | "?" | ".>" | "<.") ("." | ".>" | "<.")?
+        (NAME | KWESC_NAME | "getter" | "setter" | "deleter")?
         | "(" filter_compr_inner
         | "(" assign_compr_inner
         | "(" call_args ")"
@@ -271,6 +272,7 @@ statement ::=
     ";"
     | jsx_element ";"?
     | expression ("}" ";"?)?
+    | (NAME | KWESC_NAME) assignment_with_target
     | import_stmt
     | if_stmt
     | while_stmt
@@ -352,7 +354,7 @@ literal_pattern ::= INT | FLOAT | multistring | "-" (INT | FLOAT)? | expression
 name_pattern ::=
     (NAME | KWESC_NAME)
     (("." (NAME | KWESC_NAME))* class_pattern_args? | class_pattern_args)?
-    | NAME class_pattern_args?
+    | (NAME | KWESC_NAME) class_pattern_args?
     | expression
 
 sequence_pattern ::= "[" (("*" (NAME | KWESC_NAME) | pattern) ","?)* "]"
@@ -481,7 +483,17 @@ impl_def ::=
     )? ("{" (impl_enum_body | code_block_stmts) "}" | "by" expression ";" | ";")
 
 impl_target_name ::=
-    NAME | KWESC_NAME | "init" | "postinit" | "entry" | "exit" | "default"
+    NAME
+    | KWESC_NAME
+    | "init"
+    | "postinit"
+    | "entry"
+    | "exit"
+    | "default"
+    | "getter"
+    | "setter"
+    | "deleter"
+    | "return"
 
 impl_enum_body ::= ((NAME | KWESC_NAME) (":" pipe)? ("=" expression)? ","?)*
 

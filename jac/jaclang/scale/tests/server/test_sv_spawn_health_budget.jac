@@ -128,7 +128,7 @@ test "concurrent first calls to one service spawn exactly one sibling" {
         try {
             urls = list(executor.map(_one, range(2)));
         } finally {
-            executor.shutdown(wait=True);
+            executor.shutdown(`wait=True);
         }
         assert all([u for u in urls]) , f"a caller returned unregistered: {urls}";
         assert len(set(urls)) == 1 , f"callers registered different URLs: {urls}";

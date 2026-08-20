@@ -32,7 +32,7 @@ compiles.
 
 import ctypes;
 import os;
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from tests.support { TESTS_DIR, native_force_opts }
 
@@ -43,22 +43,22 @@ glob FIXTURES = os.path.join(
 
 glob _MEMO: list = [];
 
-"""Compile the fixture once and return (census record, engine)."""
+"""Compile the fixture once and return (coverage record, engine)."""
 def measured -> tuple {
     if _MEMO {
         return _MEMO[0];
     }
     path = os.path.join(FIXTURES, FIXTURE);
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     ir = None;
     try {
         ir = prog.compile(file_path=path, options=native_force_opts());
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
     errors = [str(e) for e in (prog.errors_had or [])];
-    rec = census.get(os.path.realpath(path)) or census.get(path);
+    rec = coverage.get(os.path.realpath(path)) or coverage.get(path);
     out = (rec, errors, (ir.gen.native_engine if ir is not None else None), );
     _MEMO.append(out);
     return out;
@@ -78,7 +78,7 @@ test "a list of non-integer elements does not take the module's IR with it" {
         f"a module whose only unusual content is any()/all() over non-integer "
         f"elements must compile: {errors}"
     );
-    assert rec is not None , "the fixture produced no native census record";
+    assert rec is not None , "the fixture produced no native coverage record";
     assert rec.get("outcome") == "native" , (
         f"the fixture must lower natively, got {rec.get('outcome')}: "
         f"{rec.get('code')} {rec.get('detail')}"

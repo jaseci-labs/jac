@@ -603,8 +603,8 @@ test "bug_tvar4_generic_base_canonical_typevar_order" {
 test "bug_tvar5_module_typevar_shadowed_by_class_param" {
     program = compile_and_check("checker_bug_typevar_shadow.jac");
 
-    # Expected: 1 error (str -> int on line 29)
-    # Without fix: 2 errors (line 23 would also error because sync returned str)
+    # Expected: 1 error (str -> int on line 28)
+    # Without fix: 2 errors (line 22 would also error because sync returned str)
     assert len(program.errors_had) == 1 , f"Bug #TVAR-5: Expected 1 error but got {len(
         program.errors_had
     )}.";
@@ -614,8 +614,8 @@ test "bug_tvar5_module_typevar_shadowed_by_class_param" {
         for e in program.errors_had
         if e.loc
     ];
-    assert 29 in error_lines , f"Expected error on line 29, got {error_lines}.";
-    assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
+    assert 28 in error_lines , f"Expected error on line 28, got {error_lines}.";
+    assert 22 not in error_lines , f"Line 22 should NOT error, got {error_lines}.";
 }
 
 # Bug #TVAR-6: glob-form TypeVar not solved at free-function call sites.

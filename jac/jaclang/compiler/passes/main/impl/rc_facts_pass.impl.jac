@@ -275,9 +275,9 @@ impl RcFactsPass._collect_last_use(
             sym_last[id(sym)] = (idx, nm.sym_name);
         }
     }
-    for entry in sym_last.values() {
-        _idx: int = entry[0];
-        _name: str = entry[1];
+    for `entry in sym_last.values() {
+        _idx: int = `entry[0];
+        _name: str = `entry[1];
         key = id(body[_idx]);
         if key not in out {
             out[key] = [];

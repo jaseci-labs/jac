@@ -295,8 +295,8 @@ def lint_unmapped_tags(
         sources = read_user_js_sources(compiled_dir);
     }
     for (js_file, text) in sources {
-        for match in pattern.finditer(text) {
-            tag = match.group(1);
+        for `match in pattern.finditer(text) {
+            tag = `match.group(1);
             if tag not in supported_rn_html_tags() {
                 seen_unmapped.add(tag);
             }
@@ -650,7 +650,7 @@ def run_xcodebuild_ios(
         app_candidates.extend(
             [
                 f
-                for f in products_dir.glob("*.app")
+                for f in products_dir.`glob("*.app")
                 if f.is_dir()
             ]
         );
@@ -755,11 +755,11 @@ def run_eas_update_opt_in(rn_dir: Path, platform: str, branch: str, message: str
 }
 
 def _find_first_workspace_or_project(ios_dir: Path) -> Path | None {
-    workspaces = sorted(list(ios_dir.glob("*.xcworkspace")));
+    workspaces = sorted(list(ios_dir.`glob("*.xcworkspace")));
     if workspaces {
         return workspaces[0];
     }
-    projects = sorted(list(ios_dir.glob("*.xcodeproj")));
+    projects = sorted(list(ios_dir.`glob("*.xcodeproj")));
     if projects {
         return projects[0];
     }

@@ -3,7 +3,7 @@
 Two faults reached the IR builder with operands it could not take and raised
 there. The granular-demotion layer caught the exception and reported "native
 emitter error in <callable>", which is honest about the outcome and silent
-about the cause: nothing in the census said which operand was wrong, so the
+about the cause: nothing in the coverage said which operand was wrong, so the
 seam could not be classified or acted on.
 
 Neither construct is supported yet, and this test does not make them supported.
@@ -16,7 +16,7 @@ behaviour a stale waiver should have.
 
 import os;
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from tests.support { JAC_ROOT }
 
@@ -27,14 +27,14 @@ glob FIXTURES = os.path.join(
 
 glob _MEMO: list = [];
 
-"""Compile the fixture once and return (census record, program, ir)."""
+"""Compile the fixture once and return (coverage record, program, ir)."""
 def measured -> tuple {
     if _MEMO {
         return _MEMO[0];
     }
     path = os.path.join(FIXTURES, FIXTURE);
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         ir = prog.compile(
             file_path=path,
@@ -46,9 +46,9 @@ def measured -> tuple {
             )
         );
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    rec = census.get(os.path.realpath(path));
+    rec = coverage.get(os.path.realpath(path));
     seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
     out = (seams, prog, ir, );
     _MEMO.append(out);

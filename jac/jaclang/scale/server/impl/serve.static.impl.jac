@@ -1,5 +1,4 @@
 import mimetypes;
-import from collections.abc { Callable }
 import from pathlib { Path }
 import from jaclang.runtimelib.serving.datatypes {
     HTMLResponse,

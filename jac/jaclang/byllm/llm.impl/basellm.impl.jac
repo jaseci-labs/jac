@@ -400,14 +400,14 @@ def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
 
 
 impl BaseLLM._get_ctx_window(call_params: dict) -> int {
-    override = int(
+    `override = int(
         call_params.get("ctx_window")
             or self.ctx_window
             or get_byllm_config().get_compaction_config().get("ctx_window", 0)
             or 0
     );
-    if override > 0 {
-        return override;
+    if `override > 0 {
+        return `override;
     }
     return _litellm_ctx_window(self.model_name);
 }
@@ -1025,11 +1025,20 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
             }
 
             if finish_tc {
-                mt_run.add_message(finish_tc());
+                try {
+                    finish_msg = finish_tc();
+                    final_output = finish_tc.get_output();
+                } except FinishToolError as e {
+                    mt_run.add_message(
+                        _error_tool_call(finish_tc.call_id, "finish_tool", str(e))()
+                    );
+                    continue;
+                }
+                mt_run.add_message(finish_msg);
                 if mt_run.stream {
                     return self._stream_final_answer(mt_run);
                 }
-                return finish_tc.get_output();
+                return final_output;
             }
         } else {
             recovery_resp = self._attempt_recovery(mt_run);
@@ -1238,6 +1247,8 @@ def _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
         );
     }
     _report_error.__name__ = name;
+
+    _report_error._is_error_tool = True;
     return ToolCall(call_id=call_id, tool=Tool(func=_report_error), args={});
 }
 
@@ -2109,9 +2120,18 @@ impl BaseLLM._invoke_streaming(
                 }
 
                 if finish_tc {
-                    mt_run.add_message(finish_tc());
+                    try {
+                        finish_msg = finish_tc();
+                        final_output = finish_tc.get_output();
+                    } except FinishToolError as e {
+                        mt_run.add_message(
+                            _error_tool_call(finish_tc.call_id, "finish_tool", str(e))()
+                        );
+                        continue;
+                    }
+                    mt_run.add_message(finish_msg);
 
-                    mt_run._final_output = finish_tc.get_output();
+                    mt_run._final_output = final_output;
                     mt_run._has_final_output = True;
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}

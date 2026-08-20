@@ -66,8 +66,8 @@ impl __isFresh(`entry: dict) -> bool {
 
 impl __cacheGet(key: str) -> dict {
     state = __getCacheState();
-    entry = state["cache"][key];
-    if not entry {
+    `entry = state["cache"][key];
+    if not `entry {
         return None;
     }
     idx = state["order"].indexOf(key);
@@ -75,7 +75,7 @@ impl __cacheGet(key: str) -> dict {
         state["order"].splice(idx, 1);
     }
     state["order"].push(key);
-    return entry;
+    return `entry;
 }
 
 impl __cacheSet(key: str, data: any, ttl: int) -> None {

@@ -6,7 +6,6 @@ finds the enter/exit protocol.
 """
 
 import from contextlib { contextmanager }
-import from typing { Iterator }
 
 obj Lock {
     @contextmanager

@@ -254,6 +254,24 @@ obj PlanValidator {
 
         max_un = iget(pdb_cfg, "max_unavailable", 1);
         replicas = iget(dget(deployment, "spec"), "replicas", 1);
+        hpa_cfg = dget(svc_cfg, "hpa");
+        floor = iget(hpa_cfg, "min", 1) if bget(hpa_cfg, "enabled", True) else replicas;
+        has_min = iget(pdb_cfg, "min_available", 0) > 0;
+        if pdb_cfg and (not has_min) and max_un >= floor {
+            out.append(
+                Diagnostic(
+                    severity="warn",
+                    service=svc_name,
+                    message=(
+                        f"pdb.max_unavailable={max_un} at a replica floor of "
+                        f"{floor} permits evicting every replica, so no "
+                        "PodDisruptionBudget is emitted and a node drain takes "
+                        "this service fully down. Raise hpa.min, or set "
+                        "pdb.min_available."
+                    )
+                )
+            );
+        }
         if max_un < 1 and replicas <= 1 {
             out.append(
                 Diagnostic(

@@ -1559,7 +1559,7 @@ impl ElfLinker.build_executable -> bytes {
                 dplace[0], dplace[1] + dsym.value, text_vaddr, rodata_vaddr, data_vaddr
             );
             styp = STT_FUNC if dplace[0] == "code" else STT_OBJECT;
-            entry = (
+            `entry = (
                 dsym.name,
                 sva,
                 dsym.size,
@@ -1568,9 +1568,9 @@ impl ElfLinker.build_executable -> bytes {
                 seg_shndx.get(dplace[0], text_idx)
             );
             if dsym.bind >= STB_GLOBAL {
-                sym_globals.append(entry);
+                sym_globals.append(`entry);
             } else {
-                sym_locals.append(entry);
+                sym_locals.append(`entry);
             }
         }
         ordered_syms = sym_locals + sym_globals;
@@ -2671,7 +2671,7 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
             } else {
                 existing_def = existing_sym.shndx != SHN_UNDEF and not existing_common;
                 new_def = crt_sym.shndx != SHN_UNDEF and not new_common;
-                override = (
+                `override = (
                     existing_sym.shndx == SHN_UNDEF and crt_sym.shndx != SHN_UNDEF
                 )
                     or (existing_common and new_def)
@@ -2681,7 +2681,7 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
                         and new_def
                         and crt_sym.bind == STB_GLOBAL
                     );
-                if override {
+                if `override {
                     new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
                     linker.symbols[existing_idx] = ElfSymbol(
                         name=crt_sym.name,

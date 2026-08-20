@@ -72,7 +72,7 @@ obj AnchorReport {
 obj Anchor {
     has archetype: Archetype,
         id: UUID = field(default_factory=uuid4),
-        root: (UUID | None) = None,
+        `root: (UUID | None) = None,
         access: Permission = field(default_factory=Permission),
         persistent: bool = False,
         hash: int = 0;

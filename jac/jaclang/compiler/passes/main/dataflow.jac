@@ -1,4 +1,3 @@
-import from collections.abc { Callable }
 import from typing { TypeAlias }
 import from jaclang.jac0core.unitree { UniCFGNode }
 

@@ -20,7 +20,7 @@ impl _encode_param(v: any) -> (bytes | None) {
         def _coerce(o: object) -> str {
             return str(o);
         }
-        return json.dumps(v, default=_coerce).encode('utf-8');
+        return json.dumps(v, `default=_coerce).encode('utf-8');
     }
     return str(v).encode('utf-8');
 }

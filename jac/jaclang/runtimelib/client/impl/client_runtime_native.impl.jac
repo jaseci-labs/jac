@@ -881,8 +881,8 @@ def _getEnumOptions(field_schema: any) -> list {
     if unwrapped and unwrapped._def and unwrapped._def.entries {
         return Object.keys(unwrapped._def.entries);
     }
-    if unwrapped and unwrapped.def and unwrapped.def.entries {
-        return Object.keys(unwrapped.def.entries);
+    if unwrapped and unwrapped.`def and unwrapped.`def.entries {
+        return Object.keys(unwrapped.`def.entries);
     }
     return [];
 }

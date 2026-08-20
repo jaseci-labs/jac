@@ -1,4 +1,3 @@
-import from collections.abc { Sequence }
 import from jaclang.jac0core.diagnostics {
     E1301,
     E1302,
@@ -1144,9 +1143,9 @@ impl OwnershipCheckPass._emit_move_while_borrowed(cfg_nodes: list[UniCFGNode]) -
         if not active {
             continue;
         }
-        entry = self.in_consumed.get(id(n), set());
+        `entry = self.in_consumed.get(id(n), set());
         for owner_id in self._consumed_gen_at(n) {
-            if owner_id in entry {
+            if owner_id in `entry {
                 continue;
             }
             for borrow_id in active {

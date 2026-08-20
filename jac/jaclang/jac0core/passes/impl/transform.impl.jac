@@ -163,7 +163,7 @@ impl BaseTransform.log_info(msg: str) -> None {
 }
 
 impl BaseTransform.is_canceled -> bool {
-    return ((self.cancel_token is not None) and self.cancel_token.is_set());
+    return self.cancel_requested;
 }
 
 impl Transform.postinit -> None {
@@ -218,9 +218,7 @@ impl Transform._is_suppressed(
     return self.policy is not None and self.policy.is_suppressed(diag, loc);
 }
 
-impl Transform.ice(msg: str = 'Something went horribly wrong!') -> RuntimeError {
+impl Transform.ice(msg: str = 'Something went horribly wrong!') -> str {
     self.emit(E9001, pass_name=self.__class__.__name__, details=msg);
-    return RuntimeError(
-        f"Internal Compiler Error: Pass {self.__class__.__name__} - {msg}"
-    );
+    return f"Internal Compiler Error: Pass {self.__class__.__name__} - {msg}";
 }

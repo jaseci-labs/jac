@@ -1,6 +1,4 @@
 import unittest;
-import from collections.abc { Callable, Iterable }
-import from typing { ClassVar }
 
 obj JacTestResult(unittest.TextTestResult) {
     has stream: any,

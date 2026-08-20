@@ -52,20 +52,16 @@ obj ScaleClient {
             return DeploymentResult(success=False, message=str(e));
         }
 
-        if result.success and not result.service_url {
-            try {
-                result.service_url = target.get_service_url(spec.app_name);
-            } except Exception {
-                result.service_url = None;
-            }
-        }
         if result.success {
             self._emit(
                 sink,
                 'deploy',
                 'ok',
                 f"Deployment of '{spec.app_name}' complete",
-                detail={'service_url': result.service_url}
+                detail={
+                    'service_url': result.service_url,
+                    'access_hint': result.access_hint
+                }
             );
         } else {
             self._emit(

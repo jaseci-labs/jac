@@ -5,7 +5,7 @@ so it is demoted and emitted as an `abort()` stub. Nothing calls it. The
 importing root (`seal_xmod_root.jac`) is the module actually sealed, so this
 demotion lives one hop out in the sealed closure -- exactly the position that a
 warm native IR cache hides, because a cache hit for this module skips
-`NaIRGenPass` entirely and so records nothing in the native census.
+`NaIRGenPass` entirely and so records nothing in the native coverage.
 """
 
 obj Meter {

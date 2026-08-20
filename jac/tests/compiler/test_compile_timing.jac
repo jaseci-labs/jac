@@ -78,7 +78,7 @@ glob CORPUS: list[str] = [
 
 """The ref this branch's compile cost is measured against.
 
-Pre-cutover `main`: `f76ca633f`, the type-checker census and the pooled
+Pre-cutover `main`: `f76ca633f`, the type-checker coverage and the pooled
 native seal (#8280), which is the commit this branch forked from. The
 baseline tree therefore runs the retired Python-AST emitter and this tree
 runs the container, so the delta is exactly the cost of the codegen

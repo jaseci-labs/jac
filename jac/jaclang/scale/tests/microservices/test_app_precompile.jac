@@ -211,7 +211,7 @@ test "staging roots left by dead processes are reaped (issue 8094)" {
     import from jaclang.scale.injector.bundle { reap_stale_stage_roots }
     holder = tempfile.mkdtemp(prefix="jac-reap-");
     dead = subprocess.Popen([sys.executable, "-c", "pass"]);
-    dead.wait();
+    dead.`wait();
     saved_tempdir = tempfile.tempdir;
     tempfile.tempdir = holder;
     try {

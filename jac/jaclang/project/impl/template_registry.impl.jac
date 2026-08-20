@@ -138,9 +138,9 @@ def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
         return;
     }
     results = register_project_template();
-    for entry in _iter_template_dicts(results) {
+    for `entry in _iter_template_dicts(results) {
         try {
-            registry.register(entry);
+            registry.register(`entry);
         } except Exception as e {
             import from jaclang.cli.console { console }
             console.warning(f"Skipping invalid project template: {e}");
@@ -177,9 +177,9 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     if desktop is not None {
         entries.append(desktop);
     }
-    for entry in _iter_template_dicts(entries) {
+    for `entry in _iter_template_dicts(entries) {
         try {
-            registry.register(entry);
+            registry.register(`entry);
         } except Exception as e {
             import from jaclang.cli.console { console }
             console.warning(f"Skipping invalid client template: {e}");
@@ -199,7 +199,7 @@ def _core_template(
         "name": "{{name}}",
         "version": "0.1.0",
         "description": spec.description,
-        "entry-point": spec.entry,
+        "entry-point": spec.`entry,
         "kind": kind
     };
     config: dict[str, any] = {
@@ -216,7 +216,7 @@ def _core_template(
         "kind": kind,
         "is_default_for_kind": True,
         "config": config,
-        "files": {spec.entry: body},
+        "files": {spec.`entry: body},
         "root_gitignore_entries": [".jac/", "jac.local.toml"],
         "directories": [".jac"]
     };

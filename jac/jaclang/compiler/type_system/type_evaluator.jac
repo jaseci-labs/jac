@@ -109,8 +109,6 @@ import from jaclang.jac0core.constant {
     SymbolAccess,
     OwnershipKind,
 }
-import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system.types {
     AnyType,
     ClassDetailsPrivate,
@@ -135,6 +133,7 @@ import from jaclang.compiler.type_system.types {
     create_callable_type
 }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
+import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
 import from jaclang.compiler.type_system.operations {
@@ -165,7 +164,6 @@ import from jaclang.compiler.type_system.properties {
     is_cached_property_decorator_type,
     is_property_decorator_type
 }
-import from jaclang.compiler.symbol_utils { int_subscript_suffix }
 import from jaclang.compiler.type_system.enum_utils {
     build_enum_members,
     get_special_enum_value_type_from_bases
@@ -327,7 +325,7 @@ obj TypeEvaluator {
         _ENUM_STUB_FILE_PATH: str postinit,
         symbol_resolution_stack: list[Symbol] = [],
         prefetch: PrefetchedTypes postinit,
-        _pass: object | None = None,
+        _pass: Transform | None = None,
         builtins_module: Module | None = None,
         _flow_node_type_cache: dict[tuple[int, int], TypeBase | None] = {},
         _flow_key_type_cache: dict[tuple[int, str], TypeBase | None] = {},

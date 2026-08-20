@@ -159,7 +159,7 @@ test "a failed bundle build is retried on a later request, not cached until rest
     } finally {
         proc.terminate();
         try {
-            proc.wait(timeout=30);
+            proc.`wait(timeout=30);
         } except Exception {
             proc.kill();
         }

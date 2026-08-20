@@ -87,7 +87,7 @@ test "ar parse + symbol index + selection (synthetic GNU)" {
 """Locate a bundled libexpat.a from any pbs build, or None."""
 def _find_bundled_expat -> (str | None) {
     jac_dir = Path(__file__).resolve().parents[4];
-    hits = list(jac_dir.glob(".pbs-build/*/python/build/lib/libexpat.a"));
+    hits = list(jac_dir.`glob(".pbs-build/*/python/build/lib/libexpat.a"));
     return str(hits[0]) if hits else None;
 }
 

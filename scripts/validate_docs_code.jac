@@ -50,7 +50,7 @@ def extract_code_blocks(file_path: Path) -> list[CodeBlock] {
     skip_pattern = re.compile(r"<!--\s*jac-skip\s*-->");
     i = 0;
     while i < len(lines) {
-        m = pattern.match(lines[i]);
+        m = pattern.`match(lines[i]);
         if m {
             # Skip blocks preceded by <!-- jac-skip --> comment
             if i > 0 and skip_pattern.search(lines[i - 1]) {
@@ -139,7 +139,7 @@ def validate_code_blocks(code_blocks: list[CodeBlock]) -> list[ValidationResult]
             print(
                 "Error: jac command not found. Is jaclang installed?", file=sys.stderr
             );
-            sys.exit(2);
+            sys.`exit(2);
         }
     } finally {
         shutil.rmtree(temp_dir, ignore_errors=True);
@@ -157,7 +157,7 @@ with entry {
     parser.add_argument(
         "--docs-dir",
         type=Path,
-        default=(
+        `default=(
             Path(__file__).parent.parent / "jac" / "jaclang" / "cli" / "docs"
         ),
         help="Path to the docs corpus (default: jac/jaclang/cli/docs)",
@@ -176,26 +176,23 @@ with entry {
     if args.file {
         if not args.file.exists() {
             print(f"Error: File not found: {args.file}", file=sys.stderr);
-            sys.exit(2);
+            sys.`exit(2);
         }
         markdown_files = [args.file];
     } else {
         if not args.docs_dir.exists() {
             print(f"Error: Docs directory not found: {args.docs_dir}", file=sys.stderr);
-            sys.exit(2);
+            sys.`exit(2);
         }
         all_files = sorted(args.docs_dir.rglob("*.md"));
         markdown_files = [
             f
             for f in all_files
-            if f.name not in SKIP_FILES
-                and not any(d in f.parts for d in SKIP_DIRS)
+            if f.name not in SKIP_FILES and not any(d in f.parts for d in SKIP_DIRS)
         ];
         skipped = len(all_files) - len(markdown_files);
         if skipped > 0 {
-            print(
-                f"Skipping {skipped} file(s): {SKIP_FILES} and dirs {SKIP_DIRS}"
-            );
+            print(f"Skipping {skipped} file(s): {SKIP_FILES} and dirs {SKIP_DIRS}");
         }
     }
 
@@ -215,7 +212,7 @@ with entry {
 
     if not all_blocks {
         print("No Jac code blocks found.");
-        sys.exit(0);
+        sys.`exit(0);
     }
 
     print(f"Found {len(all_blocks)} code blocks, validating syntax...");
@@ -253,7 +250,7 @@ with entry {
     print("=" * 60);
 
     if failed > 0 {
-        sys.exit(1);
+        sys.`exit(1);
     }
     print("\n✓ All code blocks have valid syntax");
 }

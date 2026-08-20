@@ -1,5 +1,3 @@
-import from typing { Callable }
-
 with entry {
     nums: list[int] = [3, 1, 2];
 

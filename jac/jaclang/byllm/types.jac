@@ -1,4 +1,5 @@
 import base64;
+import inspect;
 import logging;
 import mimetypes;
 import os;
@@ -7,7 +8,7 @@ import from contextlib { suppress }
 glob logger: logging.Logger = logging.getLogger(__name__);
 import from enum { StrEnum }
 import from io { BytesIO }
-import from typing { Callable, TypeAlias, get_type_hints }
+import from typing { TypeAlias, get_type_hints }
 
 import from jaclang.byllm._optdeps.pillow { PILImageCls, open_image }
 import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
@@ -60,6 +61,8 @@ obj Tool {
     def is_finish_tool -> bool;
     def get_json_schema -> dict[str, object];
     def parse_arguments(args_json: dict) -> dict;
+    def _parse_finish_arguments(args_json: dict, params: dict) -> dict;
+    def _required_params(params: dict) -> list;
 }
 
 obj ToolCall {

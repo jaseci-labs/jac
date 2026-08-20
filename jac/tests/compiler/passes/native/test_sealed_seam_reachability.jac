@@ -2,8 +2,8 @@
 
 A waiver in `NATIVE_SEAL_DEMOTION_WAIVERS` ships an `abort()` stub into the
 artifact, so a waived method that turns out to be reachable trades a wrong
-answer for a process kill with no diagnostic. `test_unitree_seal_census.jac`
-and `test_pass_seal_wave1_census.jac` pin that each waiver still names a real
+answer for a process kill with no diagnostic. `test_unitree_seal_baseline.jac`
+and `test_pass_seal_wave1_baseline.jac` pin that each waiver still names a real
 seam; this pins the other half, that none of them can be called.
 
 The closure below is a deliberate over-approximation, so "not in it" is a
@@ -145,6 +145,17 @@ glob PKG_PATH = Path(jaclang.__file__).parent,
          "build_solution_from_specialized_class",
          "collect_member_syms"
      ),
+     # A third table, BASE_CHAIN_ARGUED, lived here for one wave: the four
+     # base-chain waivers (`is_canceled`, `ice`, the two generic statics)
+     # became reachable when the chain joined every sealed closure, and the
+     # table argued that the only path to them ran through a pass
+     # construction no sealed entry performs -- naming itself as the fused
+     # prefix's gate. It retired the way it promised: `is_canceled` reads
+     # the `cancel_requested` scalar now, `ice` builds the message its
+     # callers raise, and the generic-static shims were retired for the
+     # `UniNode` methods they wrapped. Nothing construction-reachable is
+     # waived anymore, so the walks below run against the plain argued
+     # tables again.
      TYPE_SYSTEM_DIR = "compiler/type_system",
      _CLOSURE_MEMO: list = [],
      _PASS_MEMO: dict[(str, tuple)] = {};
@@ -476,7 +487,7 @@ def pass_reachable(rel: str) -> tuple {
 
 """Waived seams, keyed the way `_seal_demotions` keys them, minus the module."""
 def _waived_names -> set {
-    return {entry.split("::")[-1] for entry in _CLOSURE_SEAM_WAIVERS};
+    return {`entry.split("::")[-1] for `entry in _CLOSURE_SEAM_WAIVERS};
 }
 
 """One root's findings: (reachable waivers beyond the argued set, stale argued)."""
@@ -556,8 +567,8 @@ test "no waived seam is reachable from the sealed entry points" {
         if name not in seen or name not in waived
     );
     assert not stale_argued , (
-        "passenger carve-out entries the walk no longer flags (or that "
-        "stopped being waived) -- drop them:\n"
+        "carve-out entries the walk no longer flags (or that stopped being "
+        "waived) -- drop them, and say which mechanism cleared each:\n"
         + "\n".join(f"  {name}" for name in stale_argued)
     );
 }

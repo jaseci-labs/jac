@@ -165,7 +165,7 @@ impl JacFormatPass.format_doc_ir(
             trailing_width=trailing_width
         );
     } else {
-        raise self.ice(f"Unknown DocType: {type(doc_node)}");
+        raise RuntimeError(self.ice(f"Unknown DocType: {type(doc_node)}"));
     }
 }
 
@@ -274,7 +274,7 @@ impl JacFormatPass._probe_fits(
         } elif isinstance(cur, doc.LineSuffix) {
             continue;
         } else {
-            raise self.ice(f"Unknown DocType in probe: {type(cur)}");
+            raise RuntimeError(self.ice(f"Unknown DocType in probe: {type(cur)}"));
         }
     }
     self._probe_cache[cache_key] = True;

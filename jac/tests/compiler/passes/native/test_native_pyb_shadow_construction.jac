@@ -30,7 +30,7 @@ carrying no `postinit` has no shadow-side initializer to lose.
 import os;
 import from tests.support { TESTS_DIR }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.jac0core.codeinfo {
@@ -47,10 +47,10 @@ glob FIXTURES = os.path.join(
      NO_BASE_POSTINIT = "pyb_gen_base_main.jac";
 
 
-"""The census seams a forced-native compile of a fixture recorded."""
+"""The coverage seams a forced-native compile of a fixture recorded."""
 def _seams(fixture: str) -> list[str] {
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         prog.compile(
             file_path=os.path.join(FIXTURES, fixture),
@@ -62,9 +62,9 @@ def _seams(fixture: str) -> list[str] {
             )
         );
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    rec = census.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
+    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
     return [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
 }
 

@@ -294,10 +294,16 @@ impl TypeCheckPass.exit_compare_expr(self: TypeCheckPass, nd: CompareExpr) -> No
         return;
     }
     _ord_ops = (Tok.LT, Tok.LTE, Tok.GT, Tok.GTE);
+    _mem_ops = (Tok.KW_IN, Tok.KW_NIN);
     operands: list = [nd.left];
     operands.extend(nd.rights);
     for (i, op) in enumerate(nd.ops) {
         _opname = op.name if isinstance(op, Token) else str(op);
+        if _opname in _mem_ops {
+            _optext = op.value if isinstance(op, Token) else str(op);
+            self._diag_erased_membership(nd, operands[i + 1], _optext);
+            continue;
+        }
         if _opname not in _ord_ops {
             continue;
         }
@@ -305,6 +311,28 @@ impl TypeCheckPass.exit_compare_expr(self: TypeCheckPass, nd: CompareExpr) -> No
             _side_t = self.evaluator.get_type_of_expression(side);
             self.evaluator._diag_unnarrowed_optional(nd, _side_t, "an ordered operand");
         }
+    }
+}
+
+impl TypeCheckPass._diag_erased_membership(
+    self: TypeCheckPass, nd: CompareExpr, hay: Expr, op_text: str
+) -> None {
+    if not self.evaluator._in_native_context()
+        or not self.evaluator._is_strict_site(nd) {
+        return;
+    }
+    hay_t = self.evaluator.get_type_of_expression(hay);
+
+    if hay_t is None
+        or isinstance(hay_t, UnknownType)
+        or hay_t.is_any_type()
+        or hay_t.is_any_instance() {
+        self.emit(
+            E1124,
+            node_override=hay,
+            op=op_text,
+            type=str(hay_t) if hay_t is not None else "<unknown>"
+        );
     }
 }
 

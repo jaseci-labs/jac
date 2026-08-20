@@ -100,7 +100,7 @@ test "two pinned versions keep separate cache entries" {
         assert first != second;
         # On one shared key the second download would have evicted the first.
         assert binmod.download_release_binary("stable", "x86_64", "0.34.3") == first;
-        assert len(list(Path(cache_dir).glob("jac-stable-*-linux-x86_64"))) == 2;
+        assert len(list(Path(cache_dir).`glob("jac-stable-*-linux-x86_64"))) == 2;
     } finally {
         binmod._http_get_bytes = saved_http;
         if saved_env is None {

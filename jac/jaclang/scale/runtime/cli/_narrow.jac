@@ -50,6 +50,22 @@ def iget(blob: any, key: str, fallback: int) -> int {
 }
 
 
+def fget(blob: any, key: str, fallback: float) -> float {
+    if not isinstance(blob, dict) {
+        return fallback;
+    }
+    val = blob.get(key);
+    if val is None {
+        return fallback;
+    }
+    try {
+        return float(val);
+    } except Exception {
+        return fallback;
+    }
+}
+
+
 def pod_spec(deployment: any) -> dict {
     return dget(dget(dget(deployment, "spec"), "template"), "spec");
 }

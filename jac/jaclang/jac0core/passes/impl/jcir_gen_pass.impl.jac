@@ -197,17 +197,21 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
     got: list[CgItem] = self._sink[nd] if nd in self._sink else [];
     if not got {
         loc = nd.loc;
-        raise self.ice(
-            f"Empty JCIR recipe on {type(nd).__name__} "
-            f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+        raise RuntimeError(
+            self.ice(
+                f"Empty JCIR recipe on {type(nd).__name__} "
+                f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+            )
         );
     }
     first = got[0];
     if not isinstance(first, CgNode) {
         loc = nd.loc;
-        raise self.ice(
-            f"JCIR recipe on {type(nd).__name__} is a splice, not a value "
-            f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+        raise RuntimeError(
+            self.ice(
+                f"JCIR recipe on {type(nd).__name__} is a splice, not a value "
+                f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+            )
         );
     }
     return first;
@@ -509,7 +513,7 @@ impl JcirGenPass.resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> 
             [self.val(target), [self.nod('Is', [], [])], [self.val(pattern.value)]]
         );
     } else {
-        raise self.ice('Unsupported switch pattern type');
+        raise RuntimeError(self.ice('Unsupported switch pattern type'));
     }
 }
 
@@ -622,7 +626,7 @@ impl JcirGenPass.scope_directive_stmts(
 
 impl JcirGenPass.ir_bytes -> bytes {
     if self._module_root is None {
-        raise self.ice('JCIR emitter produced no module root');
+        raise RuntimeError(self.ice('JCIR emitter produced no module root'));
     }
     return module_container_bytes(self._module_path, self._module_root);
 }
@@ -1001,7 +1005,7 @@ impl JcirGenPass.exit_import(nd: Import) -> None {
     if nd.is_absorb {
         source = nd.items[0];
         if not isinstance(source, ModulePath) {
-            raise self.ice();
+            raise RuntimeError(self.ice());
         }
         module_name_parts = [p.value for p in source.path] if source.path else [];
         module_name = '.'.join(module_name_parts) if module_name_parts else None;
@@ -2344,7 +2348,9 @@ impl JcirGenPass.exit_assignment(nd: Assignment) -> None {
             'Call', ['func', 'args', 'keywords'], [self.name_load('auto'), [], []]
         );
     } elif not nd.type_tag {
-        raise self.ice('assignment has no value, no enum default and no type tag');
+        raise RuntimeError(
+            self.ice('assignment has no value, no enum default and no type tag')
+        );
     }
     targets_ast = [self.val(t) for t in nd.target];
     if nd.type_tag {
@@ -2508,7 +2514,9 @@ impl JcirGenPass.exit_binary_expr(nd: BinaryExpr) -> None {
 
 impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list {
     if not isinstance(nd.op, Token) {
-        raise self.ice('translate_jac_bin_op reached a non-token operator');
+        raise RuntimeError(
+            self.ice('translate_jac_bin_op reached a non-token operator')
+        );
     }
     if (nd.op.name in [Tok.PIPE_FWD, Tok.A_PIPE_FWD]) {
         func_node = FuncCall(
@@ -2639,7 +2647,9 @@ impl JcirGenPass.exit_lambda_expr(nd: LambdaExpr) -> None {
         return;
     }
     if not isinstance(nd.body, Expr) {
-        raise self.ice('lambda statement body fell past the FunctionDef path');
+        raise RuntimeError(
+            self.ice('lambda statement body fell past the FunctionDef path')
+        );
     }
     self._emit_lambda_expr_body(nd, nd.body);
 }
@@ -2755,7 +2765,7 @@ impl JcirGenPass.exit_unary_expr(nd: UnaryExpr) -> None {
     } elif (nd.op.name in [Tok.STAR_POW]) {
         self.set_out(nd, self.outs(nd.operand));
     } else {
-        raise self.ice("Unknown Unary operator " + nd.op.value);
+        raise RuntimeError(self.ice("Unknown Unary operator " + nd.op.value));
     }
 }
 
@@ -2789,7 +2799,7 @@ impl JcirGenPass._multi_string_pieces(str_seq: Sequence[UniNode]) -> list {
         } elif (isinstance(i, Token) and (i.name in [Tok.LBRACE, Tok.RBRACE])) {
             continue;
         } else {
-            raise self.ice('Multi string made of something weird.');
+            raise RuntimeError(self.ice('Multi string made of something weird.'));
         }
     }
     return pieces;
@@ -3259,7 +3269,7 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[(list, list)] {
             } elif (isinstance(x, KWPair) and self.val(x).cls == 'keyword') {
                 keywords.append(self.val(x));
             } else {
-                raise self.ice('Invalid Parameter');
+                raise RuntimeError(self.ice('Invalid Parameter'));
             }
         }
     }
@@ -3539,7 +3549,7 @@ impl JcirGenPass.exit_edge_ref_trailer(nd: EdgeRefTrailer) -> None {
     hops: list[CgNode] = [];
     while True {
         if not isinstance(cur, EdgeOpRef) {
-            raise self.ice('edge ref chain hop is not an EdgeOpRef');
+            raise RuntimeError(self.ice('edge ref chain hop is not an EdgeOpRef'));
         }
         keywords = [
             self.nod(
@@ -4662,7 +4672,7 @@ impl JcirGenPass.gen_llm_body(nd: Ability) -> list {
     } elif isinstance(nd.body, Expr) {
         model_expr = self.val(nd.body);
     } else {
-        raise self.ice('gen_llm_body called without model expression');
+        raise RuntimeError(self.ice('gen_llm_body called without model expression'));
     }
     llm_name_ref = nd.name_ref;
     caller: CgNode;

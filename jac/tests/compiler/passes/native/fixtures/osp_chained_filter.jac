@@ -1,6 +1,6 @@
 """Chained node-type filters: `[node-ref][?:Type]`.
 
-The census probe over real projects showed this as the top any-receiver
+The coverage probe over real projects showed this as the top any-receiver
 source: the E5090 guidance says to narrow untyped adjacency with a
 `[?:Type]` filter, and real code overwhelmingly writes that filter in the
 chained form (`[origin-->][?:Task]`), which previously fell through the

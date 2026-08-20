@@ -554,7 +554,7 @@ impl install(
     extras: list = [],
     no_save: bool = False,
     git: str = "",
-    npm: bool = False,
+    npm: bool | None = None,
     shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,
@@ -899,6 +899,10 @@ impl install(
     plugin_failed = False;
     for provider in get_provider_registry().all() {
         if provider.name == "python" {
+            continue;
+        }
+        if provider.name == "npm" and npm is False {
+            console.print("\n  Skipping npm dependencies (--no-npm)", style="muted");
             continue;
         }
         provider_deps = plan.for_ecosystem(provider.name);
@@ -1691,7 +1695,7 @@ def _ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
         }
         return dist if dist.is_dir() else None;
     }
-    if dist.is_dir() and any(dist.glob('client.*.js')) {
+    if dist.is_dir() and any(dist.`glob('client.*.js')) {
         console.print(
             "  ⚠ bun unavailable; baking the existing client dist as-is",
             style="warning"
@@ -1923,7 +1927,7 @@ def _vendor_jab_deps(config: any, img: Path) -> bool {
     }
     write_vendor_manifest(img, specs, python_tag=python_tag());
 
-    wheels = sorted(wd.glob("*.whl"));
+    wheels = sorted(wd.`glob("*.whl"));
     total = sum([w.stat().st_size for w in wheels]);
     console.print(
         f"  ✔ Vendored {len(wheels)} wheel(s) ({total:,} bytes); "

@@ -4,7 +4,7 @@ This module provides the single source of truth for package metadata,
 version bumping logic, and GitHub Actions output helpers.
 All release-related scripts import from here to ensure consistency.
 """
-import from __future__ { annotations }
+
 import os;
 import re;
 import tomllib;
@@ -12,10 +12,10 @@ import from pathlib { Path }
 import from typing { NamedTuple }
 """Package metadata for release scripts."""
 class PackageInfo(NamedTuple) {
-    has dir: str;
-    has pypi: str;
-    has release_notes: str = "";
-    has notes_display: str = "";
+    has dir: str,
+        pypi: str,
+        release_notes: str = "",
+        notes_display: str = "";
 }
 
 glob PACKAGES: dict[(str, PackageInfo)] = {
@@ -31,16 +31,27 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
          # releases separately -- same as the earlier scale fold-in.
      };
 
-"""Read the current version from a package's manifest.
+"""Resolve a package's manifest path.
 
-    Prefers jac.toml; falls back to pyproject.toml for packages (e.g. jac/)
-    that cannot migrate because they bootstrap the jac toolchain itself.
+    Prefers the package dir's own jac.toml, then the repo-root jac.toml
+    (mirroring the compiler's nearest-ancestor config walk-up; jaclang's
+    manifest lives at the repo root), then the package dir's pyproject.toml.
     """
-def get_current_version(repo_root: Path, pkg_dir: str) -> str {
+def get_manifest_path(repo_root: Path, pkg_dir: str) -> Path {
     jac_toml = repo_root / pkg_dir / "jac.toml";
-    manifest = jac_toml
-        if jac_toml.exists()
-        else repo_root / pkg_dir / "pyproject.toml";
+    if jac_toml.exists() {
+        return jac_toml;
+    }
+    root_toml = repo_root / "jac.toml";
+    if root_toml.exists() {
+        return root_toml;
+    }
+    return repo_root / pkg_dir / "pyproject.toml";
+}
+
+"""Read the current version from a package's manifest."""
+def get_current_version(repo_root: Path, pkg_dir: str) -> str {
+    manifest = get_manifest_path(repo_root, pkg_dir);
     data = tomllib.loads(manifest.read_text());
     return str(data["project"]["version"]);
 }
@@ -55,7 +66,7 @@ def get_current_version(repo_root: Path, pkg_dir: str) -> str {
     Raises ValueError if version format is invalid or bump type is unrecognized.
     """
 def bump_version(current: str, bump_type: str) -> str {
-    if not re.match(r"^\d+\.\d+\.\d+$", current) {
+    if not re.`match(r"^\d+\.\d+\.\d+$", current) {
         raise ValueError(
             f"Invalid version format '{current}': expected X.Y.Z where X, Y, Z are integers"
         );
@@ -82,7 +93,7 @@ def bump_version(current: str, bump_type: str) -> str {
     Locally, prints the output for debugging. These outputs can be referenced
     by subsequent workflow jobs via needs.<job>.outputs.<name>.
     """
-def set_output(name: str, value: str) -> None {
+def set_output(name: str, value: str) {
     github_output = os.environ.get("GITHUB_OUTPUT");
     if github_output {
         with Path(github_output).open("a") as f {

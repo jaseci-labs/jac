@@ -70,7 +70,7 @@ obj SlotChild {
 }
 
 obj IfChild {
-    has test: es.Expression,
+    has `test: es.Expression,
         consequent:
             list[
                 TextChild

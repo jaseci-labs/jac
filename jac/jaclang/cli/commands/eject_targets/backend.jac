@@ -739,10 +739,10 @@ def _emit_main_py(
                     sig.append(pname + ": " + utype + " = File(...)");
                 } else {
                     ftype = _safe_model_type(str(p["type"]));
-                    default = _safe_model_default(str(p["default"]))
+                    `default = _safe_model_default(str(p["default"]))
                         if p["has_default"]
                         else "...";
-                    sig.append(pname + ": " + ftype + " = Form(" + default + ")");
+                    sig.append(pname + ": " + ftype + " = Form(" + `default + ")");
                 }
             }
             sig.append("authorization: str = Header(default=None)");

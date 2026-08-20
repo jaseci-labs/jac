@@ -12,20 +12,20 @@ glob registry = get_registry();
         Arg.create(
             "filename",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Path to .jac or .py file (omit to use the project's jac.toml)"
         ),
         Arg.create(
             "show",
             typ=bool,
-            default=False,
+            `default=False,
             help="Print the resolved project-kind run plan without executing it",
             short="s"
         ),
         Arg.create(
             "main",
             typ=bool,
-            default=True,
+            `default=True,
             help="Treat module as __main__",
             short="m",
             config_key="run.main"
@@ -33,41 +33,41 @@ glob registry = get_registry();
         Arg.create(
             "cache",
             typ=bool,
-            default=True,
+            `default=True,
             help="Enable compilation cache",
             short="c",
             config_key="run.cache"
         ),
         Arg.create(
             "profile",
-            default="",
+            `default="",
             short="",
             help="Configuration profile to load (e.g. prod, staging)"
         ),
         Arg.create(
             "diagnostics",
-            default="",
+            `default="",
             help="Diagnostic verbosity: error (default, fail on errors), all (errors+warnings), none (silent)",
             short="e"
         ),
         Arg.create(
             "entry",
             dest="entry_name",
-            default="",
+            `default="",
             short="",
             help="Invoke a specific function/walker entrypoint (absorbs 'jac enter')"
         ),
         Arg.create(
             "node",
             dest="nd",
-            default="",
+            `default="",
             help="Starting node ID for --entry (OSP node binding)",
             short="n"
         ),
         Arg.create(
             "root",
             dest="root_id",
-            default="",
+            `default="",
             help="Root executor ID for --entry",
             short="r"
         ),
@@ -75,7 +75,7 @@ glob registry = get_registry();
             "debug",
             dest="debug_mode",
             typ=bool,
-            default=False,
+            `default=False,
             short="",
             help="Run under the Python debugger (absorbs 'jac debug')"
         ),
@@ -124,13 +124,13 @@ def run(
         Arg.create(
             "filename",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Entry .jac file (default: [project] entry-point from jac.toml)"
         ),
         Arg.create(
             "port",
             typ=int,
-            default=8000,
+            `default=8000,
             help="Port to serve on",
             short="p",
             config_key="serve.port"
@@ -138,7 +138,7 @@ def run(
         Arg.create(
             "api_port",
             typ=int,
-            default=0,
+            `default=0,
             short="",
             help="Backend API port for client dev servers (0 = auto)"
         ),
@@ -170,13 +170,13 @@ def enter(
         Arg.create(
             "filename",
             kind=ArgKind.POSITIONAL,
-            default="main.jac",
+            `default="main.jac",
             help="Path to .jac file (default: main.jac)"
         ),
         Arg.create(
             "port",
             typ=int,
-            default=8000,
+            `default=8000,
             help="Server port",
             short="p",
             config_key="serve.port"
@@ -184,7 +184,7 @@ def enter(
         Arg.create(
             "main",
             typ=bool,
-            default=True,
+            `default=True,
             help="Treat as __main__",
             short="m",
             config_key="run.main"
@@ -192,39 +192,39 @@ def enter(
         Arg.create(
             "faux",
             typ=bool,
-            default=False,
+            `default=False,
             help="Print docs only (no server)",
             short="f"
         ),
         Arg.create(
             "dev",
             typ=bool,
-            default=False,
+            `default=False,
             help="Enable HMR (Hot Module Replacement) mode",
             short="d"
         ),
         Arg.create(
             "api_port",
             typ=int,
-            default=0,
+            `default=0,
             help="Separate API port for HMR mode (0=same as port)"
         ),
         Arg.create(
             "no-client",
             typ=bool,
-            default=False,
+            `default=False,
             help="Skip client bundling/serving (API only)"
         ),
         Arg.create(
             "profile",
-            default="",
+            `default="",
             short="",
             help="Configuration profile to load (e.g. prod, staging)"
         ),
         Arg.create(
             "client",
             typ=str,
-            default="web",
+            `default="web",
             help=(
                 "Client build target for dev server (web, pwa, mobile, desktop). "
                 "Choices reflect installed targets (desktop builds a native webview app)."
@@ -235,7 +235,7 @@ def enter(
         Arg.create(
             "host",
             typ=str,
-            default="",
+            `default="",
             help=(
                 "Mobile dev (--client mobile --dev): optional host/IP override for "
                 "Capacitor live-reload. When omitted, jac auto-selects a host."
@@ -245,7 +245,7 @@ def enter(
         Arg.create(
             "platform",
             typ=str,
-            default="auto",
+            `default="auto",
             help=(
                 "Mobile start/dev: android or ios (auto = use [client.mobile] "
                 "default_platform or android)"
@@ -256,41 +256,41 @@ def enter(
         Arg.create(
             "scale",
             typ=bool,
-            default=False,
+            `default=False,
             help="Deploy to a target platform instead of running locally",
             short=""
         ),
         Arg.create(
             "target",
             typ=str,
-            default="kubernetes",
+            `default="kubernetes",
             help="Deployment target (kubernetes, aws, gcp, etc.)"
         ),
         Arg.create(
             "enable-tls",
             typ=bool,
-            default=False,
+            `default=False,
             help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
             short=""
         ),
         Arg.create(
             "dry-run",
             typ=bool,
-            default=False,
+            `default=False,
             help="Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)",
             short=""
         ),
         Arg.create(
             "show-yaml",
             typ=bool,
-            default=False,
+            `default=False,
             help="With --dry-run: dump the raw YAML stream",
             short=""
         ),
         Arg.create(
             "takeover",
             typ=bool,
-            default=False,
+            `default=False,
             help=(
                 "Evict any other session holding this project's database "
                 "before starting (use when a previous jac process is stuck)"
@@ -349,13 +349,13 @@ def run_jab_image(
         Arg.create(
             "name",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Tool/command name to run (omit to list available tools)"
         ),
         Arg.create(
             "global",
             typ=bool,
-            default=False,
+            `default=False,
             help="Resolve from jac-owned global tools only (global python site + global npm), ignoring the project",
             short="g",
             dest="use_global"
@@ -363,7 +363,7 @@ def run_jab_image(
         Arg.create(
             "node",
             typ=bool,
-            default=False,
+            `default=False,
             help="Resolve from the project's npm tools (node_modules/.bin) only",
             short="n",
             dest="use_node"
@@ -371,7 +371,7 @@ def run_jab_image(
         Arg.create(
             "list_tools",
             typ=bool,
-            default=False,
+            `default=False,
             help="List the CLI tools available to run here",
             short="l"
         ),

@@ -41,8 +41,8 @@ def handled_kinds -> tuple[list[str], list[str]] {
     import importlib;
     snake_map = node_snake_map();
     sets: dict[str, set] = {"enter": set(), "exit": set()};
-    for entry in DISPATCH_PASSES {
-        cls = getattr(importlib.import_module(entry[0]), entry[1]);
+    for `entry in DISPATCH_PASSES {
+        cls = getattr(importlib.import_module(`entry[0]), `entry[1]);
         for attr in dir(cls) {
             for verb in ["enter", "exit"] {
                 pre = f"{verb}_";
@@ -66,8 +66,8 @@ def accept_annex_src(
         '# Auto-generated visitor accept overrides (#6942 A.1).\n'
             + '# DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.'
     ];
-    for entry in [("enter", enter), ("exit", exits)] {
-        (verb, kinds) = entry;
+    for `entry in [("enter", enter), ("exit", exits)] {
+        (verb, kinds) = `entry;
         for node in kinds {
             blocks.append(
                 f'impl {node}.accept_{verb}(v: UniPass) -> None {{\n'
@@ -87,8 +87,8 @@ def surface_annex_src(
         '# Auto-generated UniPass visitor base surface (#6942 A.1).\n'
             + '# DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.'
     ];
-    for entry in [("enter", enter), ("exit", exits)] {
-        (verb, kinds) = entry;
+    for `entry in [("enter", enter), ("exit", exits)] {
+        (verb, kinds) = `entry;
         for node in kinds {
             blocks.append(
                 f'impl UniPass.{verb}_{n2s[node]}(nd: {node}) -> None {{\n'
@@ -105,8 +105,8 @@ def surface_decls_block(
 ) -> str {
     n2s = {v: k for (k, v) in snake_map.items()};
     lines: list = [SURFACE_BEGIN];
-    for entry in [("enter", enter), ("exit", exits)] {
-        (verb, kinds) = entry;
+    for `entry in [("enter", enter), ("exit", exits)] {
+        (verb, kinds) = `entry;
         for node in kinds {
             lines.append(f'    def {verb}_{n2s[node]}(nd: {node}) -> None;');
         }
@@ -135,8 +135,8 @@ def missing_accept_decls(enter: list[str], exits: list[str]) -> list {
     import re;
     src = open(abs_path(UNITREE_SRC), encoding="utf-8").read();
     missing: list = [];
-    for entry in [("enter", enter), ("exit", exits)] {
-        (verb, kinds) = entry;
+    for `entry in [("enter", enter), ("exit", exits)] {
+        (verb, kinds) = `entry;
         for node in kinds {
             m = re.search(
                 "obj " + re.escape(node) + r"(?:\[[^\]]*\])?\([^\n]*\{([\s\S]*?)\n\}",
@@ -157,12 +157,12 @@ def write_all -> list {
     (enter, exits) = handled_kinds();
     msgs: list = [];
 
-    for entry in [
+    for `entry in [
         (ACCEPT_ANNEX, accept_annex_src(enter, exits, snake_map)),
         (SURFACE_ANNEX, surface_annex_src(enter, exits, snake_map)),
 
     ] {
-        (rel, content) = entry;
+        (rel, content) = `entry;
         out = abs_path(rel);
         os.makedirs(os.path.dirname(out), exist_ok=True);
         with open(out, "w", encoding="utf-8") as f {
@@ -194,12 +194,12 @@ def verify_all -> list {
     snake_map = node_snake_map();
     (enter, exits) = handled_kinds();
     stale: list = [];
-    for entry in [
+    for `entry in [
         (ACCEPT_ANNEX, accept_annex_src(enter, exits, snake_map)),
         (SURFACE_ANNEX, surface_annex_src(enter, exits, snake_map)),
 
     ] {
-        (rel, content) = entry;
+        (rel, content) = `entry;
         current = "";
         try {
             current = open(abs_path(rel), encoding="utf-8").read();

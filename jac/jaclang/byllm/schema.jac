@@ -1,7 +1,7 @@
 import from dataclasses { is_dataclass }
 import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
-import from typing { Callable, Union, get_args, get_origin, get_type_hints }
+import from typing { Union, get_args, get_origin, get_type_hints }
 import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from jaclang.jac0core.mtp { Info, FieldInfo, ClassInfo, ParamInfo, EnumInfo }
 import from jaclang.byllm.exceptions { ConfigurationError }

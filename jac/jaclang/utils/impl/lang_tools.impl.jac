@@ -241,8 +241,8 @@ impl AstTool.pass_template -> str {
         emit('    """Sub objects.\n');
         for kid in cls.kids {
             emit(
-                f"    {kid.name}: {kid.typ}{(' =' + str(kid.default))
-                    if kid.default
+                f"    {kid.name}: {kid.typ}{(' =' + str(kid.`default))
+                    if kid.`default
                     else ''},"
             );
         }
@@ -328,8 +328,8 @@ impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
             param_type = param.annotation
                 if (param.annotation != inspect.Parameter.empty)
                 else 'Any';
-            param_default = param.default
-                if (param.default != inspect.Parameter.empty)
+            param_default = param.`default
+                if (param.`default != inspect.Parameter.empty)
                 else None;
             self.kids.append(AstKidInfo(param_name, param_type, param_default));
         }

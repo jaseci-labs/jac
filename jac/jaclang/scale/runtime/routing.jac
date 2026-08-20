@@ -102,7 +102,7 @@ def ensure_main_service(
         try {
             import from jaclang.project.config { get_config }
             cfg = get_config();
-            entry_file = str(cfg?.entry_point or 'main.jac');
+            entry_file = str((cfg.project.entry_point if cfg else '') or 'main.jac');
         } except Exception {
             entry_file = 'main.jac';
         }

@@ -481,7 +481,7 @@ impl enter(
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)
             ) {
-                Jac.spawn(mach.entry_node.archetype, archetype);
+                Jac.`spawn(mach.entry_node.archetype, archetype);
             }
         }
     }
@@ -735,7 +735,7 @@ impl start(
         }
         for started_vite in vite_holder {
             started_vite.terminate();
-            started_vite.wait(timeout=5);
+            started_vite.`wait(timeout=5);
         }
         mach.close();
         return 0;
@@ -1016,11 +1016,11 @@ def _node_tools_in(bin_dir: object) -> list {
     if bin_dir is None or not bin_dir.exists() {
         return [];
     }
-    for entry in bin_dir.iterdir() {
-        if entry.is_dir() {
+    for `entry in bin_dir.iterdir() {
+        if `entry.is_dir() {
             continue;
         }
-        base = entry.name;
+        base = `entry.name;
         for suffix in [".cmd", ".ps1", ".exe", ".bat"] {
             if base.endswith(suffix) {
                 base = base[:-len(suffix)];

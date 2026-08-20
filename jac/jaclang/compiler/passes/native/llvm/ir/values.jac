@@ -1389,7 +1389,7 @@ class Block(NamedValue) {
 
     def _format_name(self: Block) -> object {
         name = self.name;
-        if not _SIMPLE_IDENTIFIER_RE.match(name) {
+        if not _SIMPLE_IDENTIFIER_RE.`match(name) {
             name = name.replace('\\', '\\5c').replace('"', '\\22');
             name = '"{0}"'.format(name);
         }

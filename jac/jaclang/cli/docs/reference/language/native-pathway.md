@@ -1003,7 +1003,7 @@ Each waived method is announced on every seal, and a waiver that no longer match
 The verdict must not depend on how warm the build cache is, so the gate is layered:
 
 - The seal compiles its closure with the native IR cache disabled. Transitive native imports are otherwise served straight from `<cache>/native/*.ir_cache`, which skips codegen for that module entirely, so its demotions would be recorded nowhere.
-- Independently of that, the seal scans the LLVM IR it is about to hand to the linker for the demotion stub signature (a function whose entire body is `call void @abort()` then `unreachable`) and refuses any it finds. This reads what actually ships, so it holds for every route into the artifact, not just the one the census knows about.
+- Independently of that, the seal scans the LLVM IR it is about to hand to the linker for the demotion stub signature (a function whose entire body is `call void @abort()` then `unreachable`) and refuses any it finds. This reads what actually ships, so it holds for every route into the artifact, not just the one the coverage report knows about.
 - A seal that refuses for any reason purges the native IR cache entries for its closure, so a failed build never leaves state that a later build could inherit. The cached IR itself is a faithful record of that compile, so it is not suppressed at write time -- a demoted method genuinely lowers to an abort stub in any native link, and skipping the cache write would silently disable caching for every module containing one.
 
 Before an artifact is written into `MANIFEST.json` it must also pass a load canary: the seal `dlopen`s the freshly linked library, checks that every export the layout advertises is really in it, runs `__jac_shared_init`, and calls a known-good runtime export. An artifact that cannot be loaded and called is deleted and the seal fails. The canary proves the artifact loads; it cannot prove the artifact is free of abort stubs, because an `abort()`-bodied function still resolves through `dlsym` and is never called. That is the scan's job.
@@ -1158,7 +1158,7 @@ with entry {
     args = sys.argv;
     if len(args) < 2 {
         print("Usage: greeter <name> [--shout]");
-        sys.exit(1);
+        sys.`exit(1);
     }
     name = args[1];
     shout = "--shout" in args;

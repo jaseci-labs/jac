@@ -17,8 +17,8 @@ impl generate_record(entries: list[RecordEntry], record_path: str) -> str {
 
     writer = csv.writer(buf, lineterminator="\n");
 
-    for entry in entries {
-        writer.writerow([entry.path, entry.hash_value, str(entry.size)]);
+    for `entry in entries {
+        writer.writerow([`entry.path, `entry.hash_value, str(`entry.size)]);
     }
 
     writer.writerow([record_path, "", ""]);

@@ -5,7 +5,7 @@ import from jaclang.runtimelib.client.targets.registry { TargetType }
 
 obj CefDesktopTarget(WebTarget) {
     has name: str = TargetType.DESKTOP_CEF.value,
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "desktop",
         output_dir: Path = Path(".jac/client/cef");

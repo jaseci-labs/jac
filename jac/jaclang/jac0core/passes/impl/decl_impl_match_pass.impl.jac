@@ -133,8 +133,10 @@ impl DeclImplMatchPass._connect_one_impl(
         not isinstance((valid_decl := decl_node.name_of), AstImplNeedingNode)
         or not (valid_decl.sym_tab and impl_node.sym_tab)
     ) {
-        raise self.ice(
-            f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
+        raise RuntimeError(
+            self.ice(
+                f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
+            )
         );
     }
     if not valid_decl.needs_impl and valid_decl.body {

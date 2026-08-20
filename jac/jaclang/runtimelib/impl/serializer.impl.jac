@@ -507,7 +507,7 @@ impl Serializer.fingerprint(cls: type) -> str {
     }
     field_pairs.sort(key=lambda (p: list) { p[0]; });
     payload = {'module': cls.__module__, 'name': cls.__name__, 'fields': field_pairs};
-    encoded = _json_dumps(payload, sort_keys=True, default=str).encode('utf-8');
+    encoded = _json_dumps(payload, sort_keys=True, `default=str).encode('utf-8');
     return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
 }
 
@@ -968,8 +968,8 @@ impl Serializer._deserialize_archetype(
                             if fd.default_factory is not MISSING {
                                 recovered = fd.default_factory();
                                 has_default = True;
-                            } elif fd.default is not MISSING {
-                                recovered = fd.default;
+                            } elif fd.`default is not MISSING {
+                                recovered = fd.`default;
                                 has_default = True;
                             }
                             break;
@@ -1047,7 +1047,7 @@ impl Serializer._deserialize_archetype(
             }
             if fd.default_factory is not MISSING {
                 setattr(arch, fd.name, fd.default_factory());
-            } elif fd.default is MISSING {
+            } elif fd.`default is MISSING {
                 if (
                     n
                     := Serializer._warn_occurrence(

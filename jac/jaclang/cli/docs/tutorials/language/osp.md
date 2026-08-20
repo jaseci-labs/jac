@@ -417,7 +417,7 @@ walker DataProcessor {
 
     # Runs only at the spawn location -- a generic `with entry`
     # does NOT fire on every visited node
-    can default with entry {
+    can `default with entry {
         print("At spawn location");
         visit [-->];
     }

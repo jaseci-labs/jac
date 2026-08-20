@@ -8,8 +8,6 @@ Ellipsis-only function bodies are stubs and should NOT trigger E1004
 Expected: 0 errors — stub methods with `...;` should be accepted.
 """
 
-import from typing { TypeVar }
-
 class A {
     def method(self: A, x: "A") -> "A" {
         ...;

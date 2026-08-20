@@ -777,7 +777,7 @@ test "provider registry always carries the python provider" {
     reset_provider_registry();
     try {
         registry = get_provider_registry();
-        assert registry.has("python");
+        assert registry.`has("python");
         assert get_python_provider() is not None;
         assert registry.get_by_flag("--nope") is None;
     } finally {
@@ -1134,6 +1134,41 @@ test "install npm-only project dispatches the npm provider" {
             }
             assert result == 0;
             mock_npm_install.assert_called_once();
+        } finally {
+            os.chdir(original_cwd);
+            reset_provider_registry();
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install --no-npm skips the npm provider on a full install" {
+    reset_config();
+    reset_provider_registry();
+    import from jaclang.cli.commands { project as proj_cmds }
+    import from jaclang.runtimelib.client.npm_provider { NpmProvider }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n\n[dependencies.npm]\nreact = "18.0"\n';
+        project_path = create_test_project(tmp, toml);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            get_provider_registry().register(NpmProvider());
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                NpmProvider, "install_all"
+            ) as mock_npm_install {
+                mock_pip.return_value = (0, "", "");
+                mock_npm_install.return_value = True;
+                result = proj_cmds.install(npm=False);
+            }
+            assert result == 0;
+            mock_npm_install.assert_not_called();
         } finally {
             os.chdir(original_cwd);
             reset_provider_registry();

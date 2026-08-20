@@ -1,5 +1,3 @@
-import from typing { Callable }
-
 class MetricsCollector {
     def init(self: MetricsCollector, config: dict[str, any] = {}) -> None;
     def record_request(

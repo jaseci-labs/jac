@@ -1,5 +1,4 @@
 import logging;
-import from collections.abc { Callable }
 import from jaclang.runtimelib.serving.datatypes { Request }
 import from jaclang.runtimelib.serving.datatypes {
     FileResponse,
@@ -1146,7 +1145,7 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
         } elif line.startswith('#') {
             continue;
         } else {
-            regex_match = metric_line_re.match(line);
+            regex_match = metric_line_re.`match(line);
             if regex_match {
                 metric_name = regex_match.group(1);
                 labels_str = regex_match.group(2);

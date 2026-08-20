@@ -36,7 +36,7 @@ reverted alone.
 import ctypes;
 import os;
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from tests.support { JAC_ROOT, native_force_opts }
 
@@ -107,7 +107,7 @@ test "a tuple-keyed set dedups by value" {
 
 test "compr over or lowers, and its absent arm is falsy rather than a fault" {
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         ir = prog.compile(
             file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
@@ -119,9 +119,9 @@ test "compr over or lowers, and its absent arm is falsy rather than a fault" {
             )
         );
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    rec = census.get(os.path.realpath(os.path.join(FIXTURES, "compr_or_erased.jac")));
+    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, "compr_or_erased.jac")));
     seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
     assert not seams , (
         f"the `or`-defaulted comprehension shapes all lower now, got: {seams}"

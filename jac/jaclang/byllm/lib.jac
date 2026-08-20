@@ -29,7 +29,7 @@ import from jaclang.byllm.mcp { McpClient, McpTool }
 import from jaclang.byllm.telemetry { register_agent_callback }
 import from jaclang.byllm.parallel { dispatch_batch, mark_serialize }
 
-glob by = JacRuntime.by ,
+glob `by = JacRuntime.`by,
      __all__ = [
          'by',
          'ByLLMError',

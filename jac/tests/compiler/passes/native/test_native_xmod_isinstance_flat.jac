@@ -143,40 +143,49 @@ test "a tuple arm mixes a flat and a hierarchical imported class" {
     assert f(2) == 0 , "neither arm may answer for an unrelated class";
 }
 
-test "an ancestor chain that leaves the unit refuses instead of answering False" {
+test "an ancestor chain that leaves the unit is continued, and the check answers" {
+    # This test used to pin the refusal: `DeepKid` recorded `[DeepKid,
+    # LibKid]` because nothing in this unit could see that `LibKid` has a
+    # base, and answering from that short chain would have said `False` to
+    # classes that genuinely derive from `LibBase`. `extended_mro` (#8320)
+    # continues the recorded chain through `LibKid`'s own recorded chain
+    # once the imported registry is merged, so the linearization is whole,
+    # the check lowers, and the honest pin is the ANSWER, not the refusal.
     seams = seam_report("xmod_isinstance_deep_main.jac");
-    assert "chk_deep" in seams and "LibBase" in seams , (
-        f"a check against an ancestor this unit never linearized answered anyway: {seams}"
+    assert "chk_deep" not in seams , (
+        f"chk_deep refused again -- the linearization repair stopped "
+        f"continuing the chain: {seams}"
     );
-    (eng, _) = compile_native("xmod_isinstance_deep_main.jac", expect_demotions=True);
-    assert eng.get_function_address("chk_deep") == 0 , (
-        "the refused check still reached the native image"
-    );
+    (eng, _) = compile_native("xmod_isinstance_deep_main.jac");
+    f = get_func(eng, "chk_deep", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 1 , "DeepKid must match LibBase through the continued chain";
+    assert f(1) == 1 , "a plain LibKid must match LibBase too";
+    assert f(2) == 0 , "an unrelated class must still not match LibBase";
 }
 
-test "the refusal is scoped to the targets the short chain hides" {
-    (eng, _) = compile_native("xmod_isinstance_deep_main.jac", expect_demotions=True);
+test "a target whose chain was always whole is untouched by the repair" {
+    (eng, _) = compile_native("xmod_isinstance_deep_main.jac");
     f = get_func(eng, "chk_flat", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1 , "a target whose chain is whole must still lower and match";
     assert f(1) == 0 , "and must still reject an unrelated class";
 }
 
-test "an operand that could never hold the short-chain class still answers" {
-    (eng, _) = compile_native("xmod_isinstance_deep_main.jac", expect_demotions=True);
+test "an operand that could never hold the deep class still answers" {
+    (eng, _) = compile_native("xmod_isinstance_deep_main.jac");
     f = get_func(eng, "chk_unrelated_operand", ctypes.c_int64);
     assert f() == 0 , (
-        "a statically typed operand outside the short chain's subtree must decide, not refuse"
+        "a statically typed operand outside the subtree must decide, not refuse"
     );
 }
 
-test "an operand typed as the very ancestor the short chain drops still refuses" {
-    # The narrowing may not consult the candidate's recorded MRO to decide
-    # relevance: `DeepKid` records `[DeepKid, LibKid]`, so a `LibBase`-typed
-    # operand looks unrelated to it precisely because `LibBase` is the link that
-    # went missing -- and a `DeepKid` flowing through that slot is exactly what
-    # the vtable compare would answer `False` for.
-    (eng, _) = compile_native("xmod_isinstance_deep_main.jac", expect_demotions=True);
-    assert eng.get_function_address("chk_base_typed_operand") == 0 , (
-        "an operand declared as the dropped ancestor answered from the short chain"
-    );
+test "an operand typed as the once-dropped ancestor answers correctly" {
+    # The inverse of the old pin: a `LibBase`-typed operand used to look
+    # unrelated to `DeepKid` precisely because `LibBase` was the link the
+    # short chain dropped, and lowering it would have answered `False` for
+    # a `DeepKid` flowing through that slot. With the chain continued, the
+    # table holds (DeepKid, LibBase) and the answer is the true one.
+    (eng, _) = compile_native("xmod_isinstance_deep_main.jac");
+    f = get_func(eng, "chk_base_typed_operand", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 1 , "a DeepKid behind a LibBase-typed slot must match";
+    assert f(1) == 1 , "a LibKid behind the same slot must match too";
 }

@@ -173,7 +173,7 @@ def derive_capabilities(
         if not isinstance(section, dict) {
             continue;
         }
-        keys: list = list(rule["keys"]);
+        keys: list[str] = list(rule["keys"]);
         flag = rule.get("flag");
         if flag is not None {
             for key in keys {
@@ -183,7 +183,7 @@ def derive_capabilities(
             }
             continue;
         }
-        values: dict = dict(rule.get("values", {}));
+        values: dict[str, str] = dict(rule.get("values", {}));
         for key in keys {
             raw = section.get(key);
             if isinstance(raw, str) {

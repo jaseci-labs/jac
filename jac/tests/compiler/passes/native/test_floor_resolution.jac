@@ -65,12 +65,12 @@ test "no floor anywhere resolves to None (#6978 0.2)" {
 
 
 test "JAC_NATIVE_FLOOR_DIR overrides resolution (#6978 0.2)" {
-    override = tempfile.mkdtemp();
+    `override = tempfile.mkdtemp();
     prev = os.environ.get("JAC_NATIVE_FLOOR_DIR", None);
-    os.environ["JAC_NATIVE_FLOOR_DIR"] = override;
+    os.environ["JAC_NATIVE_FLOOR_DIR"] = `override;
     try {
         got = floor_lib_dir("x86_64-unknown-linux-gnu");
-        assert got == override , f"env override ignored: {got}";
+        assert got == `override , f"env override ignored: {got}";
     } finally {
         if prev is None {
             os.environ.pop("JAC_NATIVE_FLOOR_DIR", None);
@@ -103,15 +103,15 @@ test "CA bundle is None when neither installed nor dev bundle exists (#6978 0.2)
 
 test "JAC_NATIVE_CA_BUNDLE overrides CA resolution (#6978 0.2)" {
     d = tempfile.mkdtemp();
-    override = os.path.join(d, "my-ca.pem");
-    with open(override, "w") as f {
+    `override = os.path.join(d, "my-ca.pem");
+    with open(`override, "w") as f {
         f.write("# override\n");
     }
     prev = os.environ.get("JAC_NATIVE_CA_BUNDLE", None);
-    os.environ["JAC_NATIVE_CA_BUNDLE"] = override;
+    os.environ["JAC_NATIVE_CA_BUNDLE"] = `override;
     try {
         got = _floor_ca_bundle();
-        assert got == override , f"env override ignored: {got}";
+        assert got == `override , f"env override ignored: {got}";
     } finally {
         if prev is None {
             os.environ.pop("JAC_NATIVE_CA_BUNDLE", None);

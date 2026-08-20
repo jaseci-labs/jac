@@ -28,11 +28,11 @@ def _discover_core_modules -> list[str] {
     excluded: set[str] = {"cli_helpers"};
     seen: set[str] = set();
     mods: list[str] = [];
-    for entry in sorted(cmds_dir.iterdir()) {
-        if entry.is_dir() or entry.suffix not in (".jac", ".py") {
+    for `entry in sorted(cmds_dir.iterdir()) {
+        if `entry.is_dir() or `entry.suffix not in (".jac", ".py") {
             continue;
         }
-        stem = entry.stem;
+        stem = `entry.stem;
         if stem in excluded or stem.startswith("_") or stem in seen {
             continue;
         }
@@ -169,8 +169,8 @@ def _arg_fields(arg: Arg) -> list[str] {
     if typ_name != "str" {
         fields.append(f"typ={_q(typ_name)}");
     }
-    if arg.default is not None {
-        fields.append(f"default={_value_literal(arg.default)}");
+    if arg.`default is not None {
+        fields.append(f"`default={_value_literal(arg.`default)}");
     }
     if arg.help {
         fields.append(f"help={_q(arg.help)}");

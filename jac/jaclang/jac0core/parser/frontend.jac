@@ -11,6 +11,11 @@ import from jaclang.jac0core.unitree { CommentToken, Module, Source, Token as Un
 glob _NATIVE_PARSE_MEMO: list = [];
 
 def _native_parse -> any {
+    import from jaclang.jac0core.native_brands { ensure_native_brands_bound }
+    return ensure_native_brands_bound("frontend:_native_parse");
+}
+
+def _bind_native_parser_once -> any {
     if _NATIVE_PARSE_MEMO {
         return _NATIVE_PARSE_MEMO[0];
     }
@@ -21,7 +26,8 @@ def _native_parse -> any {
         return None;
     }
     import from jaclang.jac0core.parser.materialize { bind_native_parser }
-    (lib_path, layout_dict) = found;
+    lib_path: str = found[0];
+    layout_dict: dict[str, any] = found[1];
     np = bind_native_parser(lib_path, layout_dict);
     _NATIVE_PARSE_MEMO.append(np);
     return np;

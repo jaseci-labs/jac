@@ -62,6 +62,55 @@ test "HAS flags match is_optional_available" {
     assert HAS_GCS == is_optional_available("google.cloud.storage");
 }
 
+def _import_probe(module: str) -> str {
+    import subprocess;
+    import sys;
+    probe = (
+        "import sys\n"
+        f"import {module}\n"
+        "print('dotenv-loaded=' + str('dotenv' in sys.modules))\n"
+    );
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=300
+    );
+    assert result.returncode == 0 , f"probe failed for {module}: {result.stderr[-2000:]}";
+    return result.stdout;
+}
+
+test "the deploy entry point imports without the env capability" {
+    out = _import_probe("jaclang.scale.runtime.realizer.kubernetes_realizer");
+    assert "dotenv-loaded=False" in out , f"the deploy realizer pulls dotenv at module scope, so a closure without the 'env' capability cannot reach the deploy path at all: {out}";
+}
+
+test "the kubernetes utils import without the env capability" {
+    if not HAS_KUBERNETES {
+        return;
+    }
+    out = _import_probe(
+        "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils"
+    );
+    assert "dotenv-loaded=False" in out , f"kubernetes_utils pulls dotenv at module scope: {out}";
+}
+
+test "a missing dotenv names the env capability" {
+    import os;
+    import from jaclang.scale.config.project_env {
+        PROJECT_ENV_CAPABILITY,
+        project_env_path
+    }
+
+    assert project_env_path("app") == os.path.join("app", ".env");
+    raised = False;
+    try {
+        require_optional("nonexistent_package_xyz", PROJECT_ENV_CAPABILITY);
+    } except ImportError as e {
+        raised = True;
+        assert "'env'" in str(e);
+        assert "jac install" in str(e);
+    }
+    assert raised , "Expected the env capability to be named for a missing dotenv";
+}
+
 test "retired database shims are gone (#8000)" {
     import importlib.util;
     for shim in ["pymongo", "redis", "firestore"] {

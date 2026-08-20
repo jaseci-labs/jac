@@ -48,8 +48,8 @@ impl parse_style_css(style_name: str) -> dict {
 
     pattern = re.compile(r'\.(cn-[\w-]+)\s*\{\s*@apply\s+([^;]+);');
     resolution_map: dict = {};
-    for match in pattern.findall(content) {
-        resolution_map[match[0]] = match[1].strip();
+    for `match in pattern.findall(content) {
+        resolution_map[`match[0]] = `match[1].strip();
     }
     return resolution_map;
 }
@@ -140,7 +140,7 @@ impl _update_npm_deps(config: any, npm_deps: dict) -> None {
     for key in npm_deps {
         ver = npm_deps[key];
 
-        toml_key = key if re.match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
+        toml_key = key if re.`match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
 
         if re.search(
             r'(?m)^\s*' + str(toml_key).replace('.', r'\.') + r'\s*=', content

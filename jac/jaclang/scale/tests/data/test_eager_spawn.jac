@@ -14,7 +14,7 @@ glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice"
 
 def setup_env -> str {
     tmp = tempfile.mkdtemp();
-    for f in glob.glob(str(FIXTURES / "*")) {
+    for f in `glob.`glob(str(FIXTURES / "*")) {
         if Path(f).is_file() {
             shutil.copy2(f, Path(tmp) / Path(f).name);
         }

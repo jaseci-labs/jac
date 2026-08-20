@@ -4,7 +4,7 @@ import jaclang;
 import from pathlib { Path }
 import from jaclang.publish.npm_tarball { pack_tarball }
 
-glob _api_names_cache: dict[str, set] = {},
+glob _api_names_cache: dict[str, set[str]] = {},
      _runtime_js_cache: dict[str, str] = {};
 
 def _runtime_source_path(framework: str = "") -> Path {
@@ -24,7 +24,7 @@ impl runtime_pkg_name(framework: str = "") -> str {
     return f"{RUNTIME_PKG_NAME}-{suffix}";
 }
 
-impl runtime_api_names(framework: str = "") -> set {
+impl runtime_api_names(framework: str = "") -> set[str] {
     src = _runtime_source_path(framework);
     key = str(src);
     cached = _api_names_cache.get(key);

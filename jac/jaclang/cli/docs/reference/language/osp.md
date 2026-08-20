@@ -524,7 +524,7 @@ node Item { has value: int = 0; }
 walker MyWalker {
     has param: int = 0;
 
-    can visit with Root entry {
+    can `visit with Root entry {
         visit [-->];
     }
     can collect with Item entry {
@@ -1156,7 +1156,7 @@ node Dog(Animal) {}
 node Cat(Animal) {}
 
 walker AnimalVisitor {
-    can visit with Animal entry {
+    can `visit with Animal entry {
         # Typed context block for Dog (subtype of Animal)
         ->Dog{print(f"{here.name} is a dog");}
 

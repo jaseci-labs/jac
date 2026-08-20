@@ -20,9 +20,9 @@ def _shim_name -> str {
 
 def _find_shim -> str {
     import from jaclang.jac0core.compile_options { env_llvm_shim_override }
-    override = env_llvm_shim_override();
-    if override and os.path.isfile(override) {
-        return override;
+    `override = env_llvm_shim_override();
+    if `override and os.path.isfile(`override) {
+        return `override;
     }
     shim = _shim_name();
 

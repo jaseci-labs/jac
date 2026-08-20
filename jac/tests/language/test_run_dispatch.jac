@@ -252,9 +252,9 @@ test "KIND_SPECS is the single source of truth for every kind" {
         assert spec.action in ["execute", "build", "serve"];
         assert spec.verb in ["run", "start", "nacompile", "build"];
         assert spec.description;
-        assert spec.entry;
+        assert spec.`entry;
         # kind_entry() reads the table rather than a second hardcoded list.
-        assert kind_entry(kname) == spec.entry;
+        assert kind_entry(kname) == spec.`entry;
     }
 }
 

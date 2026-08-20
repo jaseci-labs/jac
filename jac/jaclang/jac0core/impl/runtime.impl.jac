@@ -1036,7 +1036,7 @@ impl JacBuiltin.safe_subscript(`obj: any, key: any) -> any {
     }
 }
 
-impl JacGraph.root -> Root {
+impl JacGraph.`root -> Root {
     return JacRuntime.get_context().get_root();
 }
 

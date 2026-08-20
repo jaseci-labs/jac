@@ -866,8 +866,8 @@ test "routing activates when pages are created after startup" {
         assert (compiled_dir / "pages" / "about.js").exists() , "rescan should compile pages that missed their change event";
         assert index_js.stat().st_mtime_ns == index_mtime , "rescan must not recompile pages whose output already exists";
         assert compiler._has_pages;
-        entry = (compiled_dir / "_entry.js").read_text();
-        assert "BrowserRouter" in entry , "entry must upgrade to the router form without a restart";
+        `entry = (compiled_dir / "_entry.js").read_text();
+        assert "BrowserRouter" in `entry , "entry must upgrade to the router form without a restart";
     }
 }
 

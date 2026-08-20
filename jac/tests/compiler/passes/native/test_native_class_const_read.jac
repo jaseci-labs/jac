@@ -19,7 +19,7 @@ back a zero.
 
 The subprocess pair is the contract: the server pathway and a native binary
 must print the same lines, so the *values* are pinned and not merely that
-something lowered. `test_type_system_seal_census` carries the other half --
+something lowered. `test_type_system_seal_baseline` carries the other half --
 `TypeBase.category.__get__` left its waiver when this landed.
 
 The last case is the one that stays broken on purpose. A flat imported

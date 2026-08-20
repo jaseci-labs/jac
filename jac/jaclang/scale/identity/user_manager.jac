@@ -32,7 +32,7 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      SSO_HOST = _sso_config['host'],
      logger = logging.getLogger(__name__),
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
-         '_jaclang_scale_root_id_cache', default=None
+         '_jaclang_scale_root_id_cache', `default=None
      );
 
 enum UserRole { ADMIN = 'admin', SYSTEM = 'system', USER = 'user', }
@@ -40,7 +40,8 @@ enum UserRole { ADMIN = 'admin', SYSTEM = 'system', USER = 'user', }
 obj JacScaleUserManager(UserManager) {
     has SUPPORTED_PLATFORMS: dict = {},
         ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000',
-        _identity_storage: IdentityStorage postinit;
+        _identity_storage: IdentityStorage postinit,
+        _gateway_owned_identity: bool postinit;
 
     def postinit -> None;
     def create_user(username: str, password: str) -> dict[str, any];

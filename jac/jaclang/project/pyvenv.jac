@@ -226,7 +226,7 @@ def run_pip(
 
 
 def _spec_base_name(spec: str) -> str {
-    m = re.match(r"^([A-Za-z0-9._-]+)\s*(?:[<>=!~@;\[]|$)", spec.strip());
+    m = re.`match(r"^([A-Za-z0-9._-]+)\s*(?:[<>=!~@;\[]|$)", spec.strip());
     return m.group(1).lower() if m else "";
 }
 
@@ -244,7 +244,7 @@ def _extract_terminal_error(stderr: str) -> str {
         if ln.startswith("ERROR: ") {
             return ln[7:].strip();
         }
-        if re.match(r"^[\w.]+(Error|Exception|Unavailable|NotFound):", ln) {
+        if re.`match(r"^[\w.]+(Error|Exception|Unavailable|NotFound):", ln) {
             return ln;
         }
     }

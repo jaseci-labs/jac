@@ -1,4 +1,4 @@
-import from typing { Callable, cast }
+import from typing { cast }
 import from datetime { datetime, UTC }
 import uuid;
 
@@ -41,7 +41,7 @@ obj MethodParam {
     has name: str,
         kind: str,
         has_default: bool,
-        default: any = None;
+        `default: any = None;
 }
 
 def _method_params(fn: any) -> list[MethodParam] {
@@ -55,8 +55,8 @@ def _method_params(fn: any) -> list[MethodParam] {
             MethodParam(
                 name=p.name,
                 kind=p.kind.name,
-                has_default=(p.default is not inspect.Parameter.empty),
-                default=(None if p.default is inspect.Parameter.empty else p.default)
+                has_default=(p.`default is not inspect.Parameter.empty),
+                `default=(None if p.`default is inspect.Parameter.empty else p.`default)
             )
         );
     }
@@ -82,11 +82,11 @@ def _signature_faults(
             faults.append(f"{method} makes '{w.name}' positional-only");
         }
         if w.has_default and not have.has_default {
-            faults.append(f"{method} drops the default {w.default} for '{w.name}'");
-        } elif w.has_default and have.default != w.default {
+            faults.append(f"{method} drops the default {w.`default} for '{w.name}'");
+        } elif w.has_default and have.`default != w.`default {
             faults.append(
-                f"{method} defaults '{w.name}' to {have.default}, "
-                f"interface declares {w.default}"
+                f"{method} defaults '{w.name}' to {have.`default}, "
+                f"interface declares {w.`default}"
             );
         }
     }

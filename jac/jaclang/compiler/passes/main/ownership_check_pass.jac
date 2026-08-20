@@ -1,4 +1,3 @@
-import from collections.abc { Callable, Sequence }
 import from enum { Enum }
 import from typing { TypeAlias }
 import from jaclang.jac0core.unitree {

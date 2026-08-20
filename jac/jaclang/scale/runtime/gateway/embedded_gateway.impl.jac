@@ -4,9 +4,9 @@ impl EmbeddedGateway._service_prefixes -> list[str] {
 
 
 impl EmbeddedGateway._service_for_prefix(prefix: str) -> str {
-    for (_name, entry) in self.registry.entries.items() {
-        if entry.prefix == prefix {
-            return entry.name;
+    for (_name, `entry) in self.registry.entries.items() {
+        if `entry.prefix == prefix {
+            return `entry.name;
         }
     }
     return "";

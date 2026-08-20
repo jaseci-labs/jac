@@ -1,5 +1,4 @@
 """Test ClassVar type annotation support."""
-import from typing { ClassVar }
 
 obj DSFunc {
     has trigger: type | None = None;

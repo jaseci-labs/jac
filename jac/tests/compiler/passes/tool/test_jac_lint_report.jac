@@ -66,8 +66,6 @@ test "lint report path preserves every diagnostic the mutation pass emits" {
         "with entry {\n    x = 5;\n    if x > 0 {\n        print(\"p\");\n    } elif x > 0 {\n        print(\"q\");\n    }\n}\n",
         # W3005 empty parens on zero-arg function
         "def no_params() {\n    return;\n}\n",
-        # W3006 unnecessary keyword escape on a non-reserved name
-        "with entry {\n    `myvar = 5;\n}\n",
         # W3007 hasattr in boolean expression can become null-safe access
         "obj Instance {\n    has value: int = 1;\n}\n"
         "with entry {\n    instance = Instance();\n"

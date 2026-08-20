@@ -80,7 +80,7 @@ def _construct_object(value: any, target: any) -> any {
         }
         if pname in value {
             kwargs[pname] = coerce_value(value[pname], hints.get(pname));
-        } elif param.default is inspect.Parameter.empty {
+        } elif param.`default is inspect.Parameter.empty {
             raise ValueError(f"missing required field '{pname}'");
         }
     }

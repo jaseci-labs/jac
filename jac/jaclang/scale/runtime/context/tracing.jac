@@ -30,14 +30,14 @@ glob _TP_VERSION: str = "00",
      _MASK_128: int = (1 << 128) - 1,
      _MASK_64: int = (1 << 64) - 1;
 
-glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
+glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", `default="");
 
 glob _current_span: ContextVar[any] = ContextVar(
-         "_jac_current_span", default=None
+         "_jac_current_span", `default=None
      );
 
 glob _pending_trace_id: ContextVar[int] = ContextVar(
-         "_jac_pending_tid", default=0
+         "_jac_pending_tid", `default=0
      );
 
 

@@ -117,7 +117,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         req: set[str] = getattr(tp, '__required_keys__', set());
         opt: set[str] = getattr(tp, '__optional_keys__', set());
         anns = tp.__annotations__;
-        out: dict = {};
+        out: dict[str, any] = {};
         for k in req {
             out[k] = random_value_for_type(
                 anns[k], _depth=_depth + 1, _max_depth=_max_depth
@@ -152,10 +152,10 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         } except Exception {
             type_hints = {};
         }
-        kwargs: dict = {};
+        kwargs: dict[str, any] = {};
         for f in dc_fields(tp) {
             if f.init {
-                if f.default is not MISSING or f.default_factory is not MISSING {
+                if f.`default is not MISSING or f.default_factory is not MISSING {
                     if random.random() < 0.35 {
                         continue;
                     }
@@ -221,7 +221,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
     if isinstance(tp, type) {
         try {
             sig = inspect.signature(tp);
-            kwargs: dict = {};
+            kwargs: dict[str, any] = {};
             for (name, param) in sig.parameters.items() {
                 if name == 'self' {
                     continue;
@@ -229,7 +229,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
                 ann = param.annotation
                     if param.annotation is not inspect._empty
                     else typing.Any;
-                if param.default is not inspect._empty and random.random() < 0.4 {
+                if param.`default is not inspect._empty and random.random() < 0.4 {
                     continue;
                 }
                 if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD) {

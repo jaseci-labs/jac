@@ -82,14 +82,14 @@ test "nav manifest and corpus files agree exactly" {
 
     pages: list[str] = [];
     def walk(items: list[dict]) {
-        for entry in items {
-            assert entry.get("title") , f"nav entry missing a title: {entry}";
-            if "page" in entry {
-                pages.append(str(entry["page"]));
-            } elif "items" in entry {
-                walk(entry["items"]);
+        for `entry in items {
+            assert `entry.get("title") , f"nav entry missing a title: {`entry}";
+            if "page" in `entry {
+                pages.append(str(`entry["page"]));
+            } elif "items" in `entry {
+                walk(`entry["items"]);
             } else {
-                assert "url" in entry , f"nav entry is neither page nor section: {entry}";
+                assert "url" in `entry , f"nav entry is neither page nor section: {`entry}";
             }
         }
     }
@@ -196,18 +196,18 @@ test "grep_guides honors per-guide and total caps" {
 
 test "guide --json emits the full skill + doc index" {
     payload = _capture_json(lambda { guide(as_json=True); });
-    kinds = {entry["kind"] for entry in payload};
+    kinds = {`entry["kind"] for `entry in payload};
     assert kinds == {"skill", "doc"} , f"kinds: {kinds}";
     assert len(payload) == len(list_guides()) + len(list_docs());
-    for entry in payload {
-        assert entry["name"] and entry["description"] is not None;
+    for `entry in payload {
+        assert `entry["name"] and `entry["description"] is not None;
     }
 }
 
 
 test "guide <corpus> and guide <doc> JSON surfaces work" {
     listing = _capture_json(lambda { guide(topic="reference", as_json=True); });
-    assert "reference/diagnostics" in {entry["name"] for entry in listing};
+    assert "reference/diagnostics" in {`entry["name"] for `entry in listing};
 
     doc = _capture_json(lambda { guide(topic="reference/diagnostics", as_json=True); });
     assert doc["name"] == "reference/diagnostics";

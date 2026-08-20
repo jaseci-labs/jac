@@ -3,7 +3,7 @@ impl SemTokManager.postinit -> None {
     self.static_sem_tokens = self.gen_sem_tok_node(self.ir);
 }
 
-impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
+impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list[uni.NameAtom] {
     import from pathlib { Path }
 
     target: (str | None) = None;
@@ -14,7 +14,7 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
             target = self.target_path;
         }
     }
-    resolved_cache: dict = {};
+    resolved_cache: dict[str, str] = {};
     def belongs(mp: (str | None)) -> bool {
         if target is None {
             return True;
@@ -31,7 +31,7 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
         }
         return resolved_cache[mp] == target;
     }
-    nodes: list = [];
+    nodes: list[uni.NameAtom] = [];
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.NameAtom) {
             if nd.sem_token and belongs(nd.loc.mod_path) {
@@ -44,9 +44,9 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
 
 impl SemTokManager.gen_sem_tok_node(
     ir: uni.Module
-) -> List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] {
-    tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] = [];
-    seen_locs: dict = {};
+) -> list[tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] {
+    tokens: list[tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] = [];
+    seen_locs: dict[tuple[int, int], bool] = {};
     try {
         for nd in self.collect_resolved_nodes(ir) {
             (line, col_start, col_end) = (
@@ -71,7 +71,7 @@ impl SemTokManager.gen_sem_tok_node(
 
 impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
     tokens = [];
-    seen_locs: dict = {};
+    seen_locs: dict[tuple[int, int], bool] = {};
     try {
         for nd in self.collect_resolved_nodes(ir) {
             if nd.sem_token {

@@ -42,7 +42,7 @@ impl UniPass.transform(ir_in: Module) -> Module {
     }
     self.before_pass();
     if not isinstance(ir_in, UniNode) {
-        raise self.ice('Current node is not an UniNode.');
+        raise RuntimeError(self.ice('Current node is not an UniNode.'));
     }
     self.traverse(ir_in);
     self.after_pass();

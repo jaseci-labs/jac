@@ -109,7 +109,7 @@ obj ServingServer {
             on_ready(chosen);
         }
         try {
-            await self._stop_event.wait();
+            await self._stop_event.`wait();
         } finally {
             self._server.close();
             await self._drain();
@@ -192,7 +192,7 @@ obj ServingServer {
         }
         thread = threading.Thread(target=_target, daemon=True);
         thread.start();
-        ready.wait(timeout=30);
+        ready.`wait(timeout=30);
 
         def _stop {
             self.request_stop();

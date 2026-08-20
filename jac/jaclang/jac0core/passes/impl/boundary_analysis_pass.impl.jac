@@ -17,6 +17,20 @@ impl BoundaryAnalysisPass._resolved_native_decl(
     return None;
 }
 
+impl BoundaryAnalysisPass._na_target_decl(
+    self: BoundaryAnalysisPass, source_mod: (Module | None), name: str
+) -> (UniNode | None) {
+    if source_mod is None {
+        return None;
+    }
+    for decl in source_mod.body {
+        if isinstance(decl, (Ability, Archetype, Enum)) and decl.sym_name == name {
+            return decl;
+        }
+    }
+    return None;
+}
+
 impl BoundaryAnalysisPass._signature_of_decl(
     self: BoundaryAnalysisPass, decl: (Ability | None)
 ) -> tuple[(str, list[str], list[str])] {
@@ -333,7 +347,7 @@ impl BoundaryAnalysisPass._register_na_client_import(
     self: BoundaryAnalysisPass, nd: Import
 ) -> None {
     import from jaclang.jac0core.codeinfo { native_wasm_stem }
-    import from jaclang.jac0core.diagnostics { E5083 }
+    import from jaclang.jac0core.diagnostics { E5083, E5100 }
     if not nd.from_loc or not nd.items {
         return;
     }
@@ -343,6 +357,7 @@ impl BoundaryAnalysisPass._register_na_client_import(
         return;
     }
     manifest = self.ir_in.gen.interop_manifest;
+    source_mod = facts.na_source_mod if facts else None;
     stem = native_wasm_stem(resolved_path);
     for existing in manifest.client_native_imports {
         other = existing.source_module or '';
@@ -360,6 +375,16 @@ impl BoundaryAnalysisPass._register_na_client_import(
         sym_name = item.name.value;
         local_name = item.alias.sym_name if item.alias else sym_name;
         decl = self._resolved_native_decl(item.name);
+        if decl is None {
+            target = self._na_target_decl(source_mod, sym_name);
+            if isinstance(target, Ability)
+                and isinstance(target.signature, FuncSignature) {
+                decl = target;
+            } elif target is not None {
+                self.emit(E5100, node_override=item, name=sym_name, module=stem);
+                continue;
+            }
+        }
         (ret_type, param_types, param_names) = self._signature_of_decl(decl);
         manifest.bindings[local_name] = InteropBinding(
             name=sym_name,

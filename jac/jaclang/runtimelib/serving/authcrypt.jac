@@ -79,7 +79,7 @@ def jwt_encode(payload: dict[str, any], secret: str, algorithm: str = 'HS256') -
     header = {'alg': 'HS256', 'typ': 'JWT'};
     head_part = _b64url_encode(dumps(header, separators=(',', ':')).encode('utf-8'));
     body_part = _b64url_encode(
-        dumps(payload, separators=(',', ':'), default=_ac_json_default).encode('utf-8')
+        dumps(payload, separators=(',', ':'), `default=_ac_json_default).encode('utf-8')
     );
     signing_input = f"{head_part}.{body_part}".encode('ascii');
     signature = hmac.new(

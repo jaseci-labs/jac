@@ -21,7 +21,7 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
     import re;
     valid = re.compile(r"^[a-z0-9][a-z0-9.+\-]*$");
     for pkg in packages {
-        if not valid.match(pkg) {
+        if not valid.`match(pkg) {
             raise ValueError(
                 f"[dependencies.system] package name {pkg!r} is not a valid "
                 "Debian package name (allowed characters: a-z 0-9 . + -)."

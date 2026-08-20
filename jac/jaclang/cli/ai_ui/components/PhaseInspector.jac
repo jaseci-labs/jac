@@ -33,7 +33,7 @@ def:pub PhaseInspector(
                 else <div className="insp-content">
                     <div className="insp-desc">{sel.desc}</div>
                     <div className="insp-label">role</div>
-                    <div className="insp-sem">{sel.sem or "(no role prompt)"}</div>
+                    <div className="insp-sem">{sel.`sem or "(no role prompt)"}</div>
                     {<div className="insp-label">tools</div>
                         if len(sel.tools) > 0
                         else <span/>}

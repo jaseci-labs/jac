@@ -97,7 +97,7 @@ obj DrainCoordinator {
 
     def wait_for_zero(timeout_s: float | None = None) -> bool {
         t = timeout_s if timeout_s is not None else self._drain_timeout_s;
-        return bool(self._zero_event.wait(timeout=t));
+        return bool(self._zero_event.`wait(timeout=t));
     }
 
     def reset {

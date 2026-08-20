@@ -7,7 +7,6 @@ to -- is the very object these endpoints read. `ui_configure()` runs once at
 boot to point the agent at the user's project (passed via env by the launcher).
 """
 
-import from typing { Iterator }
 import from jaclang.cli.ai_agent {
     ui_configure,
     ui_send,
@@ -39,7 +38,7 @@ obj UiEvent {
         kind: str = "",
         text: str = "",
         name: str = "",
-        node: str = "",
+        `node: str = "",
         # Populated only for `call` events (one per model call): the token usage
         # the token-usage stream renders. Zero on every other kind.
         tokens_in: int = 0,
@@ -113,7 +112,7 @@ obj GraphNode {
     has id: str = "",
         label: str = "",
         desc: str = "",
-        sem: str = "",
+        `sem: str = "",
         tools: list[str] = [];
 }
 
@@ -159,7 +158,7 @@ unknown id (e.g. evicted from the bounded store)."""
 obj CallDetail {
     has found: bool = False,
         id: int = 0,
-        node: str = "",
+        `node: str = "",
         input: list[CallMessage] = [],
         output: list[CallMessage] = [],
         shared: int = 0,
@@ -187,7 +186,7 @@ def _to_poll(snap: dict) -> PollResult {
                 kind=str(e.get("kind", "")),
                 text=str(e.get("text", "")),
                 name=str(e.get("name", "")),
-                node=str(e.get("node", "")),
+                `node=str(e.get("node", "")),
                 tokens_in=int(e.get("tokens_in", 0) or 0),
                 tokens_out=int(e.get("tokens_out", 0) or 0),
                 cache_read=int(e.get("cache_read", 0) or 0),
@@ -256,7 +255,7 @@ def:pub agent_graph -> GraphData {
                 id=str(n.get("id", "")),
                 label=str(n.get("label", "")),
                 desc=str(n.get("desc", "")),
-                sem=str(n.get("sem", "")),
+                `sem=str(n.get("sem", "")),
                 tools=[str(t) for t in n.get("tools", [])]
             )
         );
@@ -333,7 +332,7 @@ def:pub agent_call_detail(call_id: int) -> CallDetail {
     return CallDetail(
         found=True,
         id=call_id,
-        node=str(d.get("node", "")),
+        `node=str(d.get("node", "")),
         input=_to_call_msgs(d.get("input", [])),
         output=_to_call_msgs(d.get("output", [])),
         shared=int(d.get("shared", 0)),

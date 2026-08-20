@@ -77,8 +77,8 @@ obj DeploySpec {
         }
         path = Path(self.source);
         if path.is_dir() {
-            entry = path / 'main.jac';
-            if not entry.is_file() {
+            `entry = path / 'main.jac';
+            if not `entry.is_file() {
                 raise FileNotFoundError(
                     f"DeploySpec.source folder '{path}' has no main.jac; "
                     f"point source at the entry .jac file instead."

@@ -108,7 +108,7 @@ test "subscribe handler receives published events" {
     time.sleep(0.1);
     b.publish("subs", Event(event_type="ping", data={"n": 7}));
 
-    assert done.wait(timeout=3.0);
+    assert done.`wait(timeout=3.0);
     assert len(received) >= 1;
     assert received[0].event_type == "ping";
     assert received[0].data["n"] == 7;
@@ -143,7 +143,7 @@ test "retry exhaustion routes to dlq stream" {
     time.sleep(0.1);
     b.publish("dlqtest", Event(event_type="boom", data={"n": 1}));
 
-    assert done.wait(timeout=5.0);
+    assert done.`wait(timeout=5.0);
     time.sleep(0.2);
 
     dlq_msgs = b.consume(

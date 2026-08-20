@@ -9,7 +9,6 @@ Known behaviors:
    previously assigned an int type, not a TypeVar validation issue.
 """
 
-import from typing { Generic, TypeVar }
 
 class Foo {
     has var1: int;

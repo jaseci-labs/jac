@@ -1,6 +1,5 @@
 import hashlib;
 import os;
-import from collections.abc { Iterable }
 import from pathlib { Path }
 import from types { ModuleType }
 import type from jaclang.jac0core.codeinfo { ClientManifest }

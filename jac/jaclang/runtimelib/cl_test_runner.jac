@@ -1,6 +1,5 @@
 import re;
 import from contextlib { contextmanager }
-import from typing { Iterator }
 
 glob _COLOR_CACHE: dict[(str, bool)] = {};
 

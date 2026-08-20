@@ -8,7 +8,7 @@ unit:
 
 * **The program handle.** `BaseTransform` declared ``prog: JacProgram`` -- a
   field typed by a class the native lane has no layout for, which is the one
-  module-fatal gap the transform census kept reporting. No sealed pass reads
+  module-fatal gap the transform coverage kept reporting. No sealed pass reads
   it: `jcir_gen_pass`'s single read became `Import.native_only_drop` (#8305),
   the same way `sym_tab_build_pass`'s became `Module` facts (#8274). What is
   left are the unsealed, Python-side passes, and for them the handle is a

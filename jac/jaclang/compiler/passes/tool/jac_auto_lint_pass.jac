@@ -3,13 +3,13 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.constant { TOKEN_MAP }
+import from jaclang.jac0core.parser.tokens { KEYWORDS }
 import from jaclang.jac0core.diagnostics {
     W3001,
     W3002,
     W3003,
     W3004,
     W3005,
-    W3006,
     W3007,
     W3008,
     W3009,
@@ -68,9 +68,7 @@ obj JacAutoLintPass(UniPass) {
     def enter_ability(ability_node: uni.Ability) -> None;
     def _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
-    def enter_name(nd: uni.Name) -> None;
     def enter_special_var_ref(nd: uni.SpecialVarRef) -> None;
-    def enter_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_func_call(nd: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _convert_getattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);

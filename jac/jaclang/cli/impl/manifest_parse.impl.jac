@@ -17,22 +17,22 @@ impl add_argument(parser: argparse.ArgumentParser, arg: ArgMeta) -> None {
     }
 
     if kind == ArgKind.POSITIONAL {
-        if arg.default is not None {
+        if arg.`default is not None {
             kwargs["nargs"] = "?";
-            kwargs["default"] = arg.default;
+            kwargs["default"] = arg.`default;
         }
         parser.add_argument(arg.name, **kwargs);
     } elif kind == ArgKind.MULTI_POSITIONAL {
         kwargs["nargs"] = "+";
-        if arg.default is not None {
-            kwargs["default"] = arg.default;
+        if arg.`default is not None {
+            kwargs["default"] = arg.`default;
             kwargs["nargs"] = "*";
         }
         parser.add_argument(arg.name, **kwargs);
     } elif kind == ArgKind.MULTI_OPTION {
         kwargs["nargs"] = "*";
-        if arg.default is not None {
-            kwargs["default"] = arg.default;
+        if arg.`default is not None {
+            kwargs["default"] = arg.`default;
         }
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
@@ -52,24 +52,20 @@ impl add_argument(parser: argparse.ArgumentParser, arg: ArgMeta) -> None {
         kwargs["nargs"] = argparse.REMAINDER;
         parser.add_argument(arg.name, **kwargs);
     } elif not arg_consumes_value(kind, arg.typ) {
-        kwargs["action"] = "store_true";
-        kwargs["default"] = arg.default if arg.default is not None else False;
-        shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
-        kwargs["dest"] = shared_dest;
+        kwargs["action"] = (
+            "store_true"
+                if arg.name.startswith("no-")
+                else argparse.BooleanOptionalAction
+        );
+        kwargs["default"] = arg.`default;
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
             parser.add_argument(f"--{arg.name}", **kwargs);
         }
-        no_kwargs = {
-            "action": "store_false",
-            "dest": shared_dest,
-            "help": f"Disable {arg.name}"
-        };
-        parser.add_argument(f"--no-{arg.name}", **no_kwargs);
     } else {
         kwargs["type"] = typ;
-        kwargs["default"] = arg.default;
+        kwargs["default"] = arg.`default;
         if arg.required {
             kwargs["required"] = True;
         }

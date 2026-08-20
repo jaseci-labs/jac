@@ -144,7 +144,7 @@ test "admin metrics endpoint returns valid response" {
     tmp = tempfile.mkdtemp();
     try {
         import glob as glob_mod;
-        for f in glob_mod.glob(str(Path(FIXTURES_DIR) / "*")) {
+        for f in glob_mod.`glob(str(Path(FIXTURES_DIR) / "*")) {
             dest = Path(tmp) / Path(f).name;
             if Path(f).is_file() {
                 shutil.copy2(f, dest);
@@ -175,7 +175,7 @@ test "admin metrics endpoint requires authentication" {
     tmp = tempfile.mkdtemp();
     try {
         import glob as glob_mod;
-        for f in glob_mod.glob(str(Path(FIXTURES_DIR) / "*")) {
+        for f in glob_mod.`glob(str(Path(FIXTURES_DIR) / "*")) {
             dest = Path(tmp) / Path(f).name;
             if Path(f).is_file() {
                 shutil.copy2(f, dest);

@@ -127,7 +127,7 @@ def _stop_server(proc: Popen) {
         proc.terminate();
     }
     try {
-        proc.wait(timeout=20);
+        proc.`wait(timeout=20);
     } except Exception {
         if not _signal_group(proc, signal.SIGKILL) {
             proc.kill();

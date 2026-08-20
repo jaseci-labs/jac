@@ -632,11 +632,11 @@ impl fix(
     for (old, new) in renamed {
         console.print(f"  rename: {old} -> {new}");
     }
-    for entry in pins_added {
-        console.print(f"  [placement.pins] {entry}");
+    for `entry in pins_added {
+        console.print(f"  [placement.pins] {`entry}");
     }
-    for entry in routes_added {
-        console.print(f"  [scale.microservices.routes] {entry}");
+    for `entry in routes_added {
+        console.print(f"  [scale.microservices.routes] {`entry}");
     }
     for msg in skipped {
         console.warning(f"  skipped: {msg}");

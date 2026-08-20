@@ -661,9 +661,9 @@ def resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) {
                 }
             }
         }
-        entry = resolve_client_npm_package(spec, base_path);
-        if entry {
-            sibling = sibling_declaration_file(entry);
+        `entry = resolve_client_npm_package(spec, base_path);
+        if `entry {
+            sibling = sibling_declaration_file(`entry);
             if sibling {
                 return sibling;
             }
@@ -763,12 +763,12 @@ def _npm_package_entry(pkg_dir: str, data: dict) -> (str | None) {
         }
     }
     entries.append(os.path.join(pkg_dir, 'index'));
-    for entry in entries {
-        resolved = _npm_file_with_ext(entry);
+    for `entry in entries {
+        resolved = _npm_file_with_ext(`entry);
         if resolved {
             return resolved;
         }
-        nested = _npm_file_with_ext(os.path.join(entry, 'index'));
+        nested = _npm_file_with_ext(os.path.join(`entry, 'index'));
         if nested {
             return nested;
         }

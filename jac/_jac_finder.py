@@ -102,10 +102,10 @@ def apply_dev_source_override() -> None:
        source is the developer's intent -- even when the running binary is a
        linked dev binary baked to a different checkout (working across two
        clones must not silently compile repo B with repo A's tree). This repo
-       ships the stanza in both the root ``jac.toml`` and ``jac/jac.toml``
-       (both pointing at the same source), so the loop holds from the repo root
-       AND from ``cd jac`` (where the suite runs); other subprojects opt in by
-       adding their own stanza.
+       ships the stanza in the single root ``jac.toml``; the nearest-ancestor
+       walk-up means the loop holds from the repo root AND from ``cd jac``
+       (where the suite runs); other subprojects opt in by adding their own
+       stanza.
     2. Otherwise, a ``jac_linked_source`` marker baked into a linked dev binary
        (``zig build -Ddev`` / ``-Djaclang-dir``; see ``_baked_source_dir``) --
        the cwd-independent "linked compiler" mode, where the binary ships no

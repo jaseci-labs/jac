@@ -66,12 +66,12 @@ def _copy_littlex_into(dest: any) {
         ".pytest_cache",
         "__pycache__"
     };
-    for entry in os.listdir(src) {
-        if entry in skip_names {
+    for `entry in os.listdir(src) {
+        if `entry in skip_names {
             continue;
         }
-        src_path = os.path.join(src, entry);
-        dst_path = os.path.join(dest, entry);
+        src_path = os.path.join(src, `entry);
+        dst_path = os.path.join(dest, `entry);
         if os.path.isdir(src_path) {
             shutil.copytree(
                 src_path,

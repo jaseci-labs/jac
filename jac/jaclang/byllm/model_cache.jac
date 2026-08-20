@@ -20,9 +20,9 @@ def _emit(msg: str) {
 }
 
 def get_cache_dir -> Path {
-    override = os.environ.get("JAC_MODELS_DIR");
-    if override {
-        return Path(override).expanduser();
+    `override = os.environ.get("JAC_MODELS_DIR");
+    if `override {
+        return Path(`override).expanduser();
     }
     home = Path(os.path.expanduser("~"));
     return home / ".cache" / "jac" / "models";

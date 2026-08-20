@@ -442,35 +442,35 @@ test "transitive import chain infers native under native default" {
     assert mod.gen.native_engine is not None;
 }
 
-test "census records demotion with first error code" {
-    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
-    na_census_begin();
+test "coverage records demotion with first error code" {
+    import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
+    na_coverage_begin();
     try {
         compile_with_default("nadefault_nolower.jac", "native", cgen=True);
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    rec = census.get(
+    rec = coverage.get(
         os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_nolower.jac"))
     );
-    assert rec is not None , "demoted module missing from census";
+    assert rec is not None , "demoted module missing from coverage";
     assert rec['outcome'] == 'demoted' , f"expected demoted, got {rec}";
     assert rec['code'] == 'E5092' , f"expected first-error code, got {rec}";
 }
 
-test "census records native and server outcomes" {
-    import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
-    na_census_begin();
+test "coverage records native and server outcomes" {
+    import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
+    na_coverage_begin();
     try {
         compile_with_default("nadefault_pure.jac", "native", cgen=True);
         compile_with_default("nadefault_root_osp.jac", "native", cgen=True);
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
-    pure = census.get(
+    pure = coverage.get(
         os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_pure.jac"))
     );
-    blocked = census.get(
+    blocked = coverage.get(
         os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_root_osp.jac"))
     );
     assert pure is not None and pure['outcome'] == 'native' , f"got {pure}";
@@ -637,6 +637,34 @@ test "codespace stamps invalidate stale module codegen" {
     );
     assert 'register' in (util.gen.js or '') , (
         "regenerated module JS must contain the pulled def"
+    );
+}
+
+test "a client-pulled module that will not lower fails loudly (#8375)" {
+    import from jaclang.runtimelib.client_bundle {
+        ClientBundleError,
+        _ensure_js_generated
+    }
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURE_DIR, "infer_unlowerable_app.jac"), no_cgen=False);
+    util = hub_module(prog, "infer_unlowerable_util.jac");
+    assert util is not None , "imported module missing from hub";
+    raised = '';
+    try {
+        _ensure_js_generated(util, prog);
+    } except ClientBundleError as e {
+        raised = str(e);
+    }
+    assert 'E5018' in raised , (
+        "an ES lowering failure in a pulled module must fail the bundle rather "
+        f"than demote it silently; got: {raised}"
+    );
+    assert "own 'case'" in raised , (
+        f"the failure must carry the actionable E5018 help; got: {raised}"
+    );
+    assert stamp_of(util, "scale_by") == 'client' , (
+        "one unlowerable element must not re-place the module's whole pulled "
+        "surface on the server"
     );
 }
 

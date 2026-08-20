@@ -9,7 +9,6 @@ BaseReader defines read(key: K) -> V2, so V2 must be transitively resolved
 through MiddleMap's base_classes entry BaseReader[K, V] to get V2=V=int.
 """
 
-import from typing { TypeVar, Generic }
 
 glob K = TypeVar('K');
 glob V = TypeVar('V');

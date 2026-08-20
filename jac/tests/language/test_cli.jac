@@ -432,7 +432,7 @@ test "jac test err" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     sys.stderr = captured_output;
-    analysis.test(fixture_path("baddy.jac"));
+    analysis.`test(fixture_path("baddy.jac"));
     sys.stdout = sys.__stdout__;
     sys.stderr = sys.__stderr__;
     stdout_value = captured_output.getvalue();
@@ -518,7 +518,7 @@ test "run test" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.test(fixture_path("run_test.jac"), maxfail=2);
+        analysis.`test(fixture_path("run_test.jac"), maxfail=2);
         out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
@@ -540,7 +540,7 @@ test "run test native codespace file" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.test(fixture_path("native_run_test.jac"), maxfail=2);
+        analysis.`test(fixture_path("native_run_test.jac"), maxfail=2);
         out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
@@ -565,7 +565,7 @@ test "run test native broken import surfaces error" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        rc = analysis.test(fixture_path("native_broken_import_test.jac"));
+        rc = analysis.`test(fixture_path("native_broken_import_test.jac"));
         out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
@@ -700,7 +700,7 @@ test "run specific test only" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.test(
+        analysis.`test(
             fixture_path("jactest_main.jac"), test_name="from 2 to 10", verbose=True
         );
         out = captured.getvalue();
@@ -2271,19 +2271,19 @@ test "jac check disable_error_code warns on unknown diagnostics" {
     assert "E9999" in combined , "unknown warning should use canonical code casing";
 }
 
-test "jac check native-census flag maps to check arg" {
+test "jac check native-coverage flag maps to check arg" {
     import from jaclang.cli.manifest { get_command_meta }
     import from jaclang.cli.manifest_parse { build_command_parser }
     parser = build_command_parser(get_command_meta("check"));
     (args, _) = parser.parse_known_args(
-        [fixture_path("warnings_only.jac"), "--native-census"]
+        [fixture_path("warnings_only.jac"), "--native-coverage"]
     );
-    assert getattr(args, "native_census", False) == True , (
-        "kebab flag should map to native_census dest"
+    assert getattr(args, "native_coverage", False) == True , (
+        "kebab flag should map to native_coverage dest"
     );
 }
 
-test "jac check native census ranks module outcomes" {
+test "jac check native coverage ranks module outcomes" {
     with tempfile.TemporaryDirectory() as td {
         with open(os.path.join(td, "pure.jac"), "w") as f {
             f.write("def add(a: int, b: int) -> int {\n    return a + b;\n}\n");
@@ -2305,14 +2305,14 @@ test "jac check native census ranks module outcomes" {
         (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
         _reset_config();
         try {
-            result = analysis.check([td], native_census=True);
+            result = analysis.check([td], native_coverage=True);
             combined = captured_stdout.getvalue() + captured_stderr.getvalue();
         } finally {
             _restore_output(old_stdout, old_stderr);
             set_config(None);
             _reset_config();
         }
-        assert "native census" in combined.lower() , "census header missing";
+        assert "native coverage" in combined.lower() , "coverage header missing";
         assert "native seams" in combined , (
             "a module whose callable demoted granularly must be reported "
             "under the native-seams section"
@@ -2327,7 +2327,7 @@ test "jac check native census ranks module outcomes" {
         assert "root access (persistent graph)" in combined , (
             "server reason strings must be real signal labels"
         );
-        assert result == 0 , "census seams must not flip exit code";
+        assert result == 0 , "coverage seams must not flip exit code";
     }
 }
 
@@ -2672,6 +2672,36 @@ test "jac check on impl file redirects to base and filters errors" {
             f"Base file errors should be filtered out when checking impl file. "
             f"Output:\n{output}"
         );
+    }
+}
+
+"""A directory walk skips annexes the base module in the same run already compiles."""
+test "jac check directory skips covered annexes" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.runtime { JacRuntime }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        with open(os.path.join(tmpdir, "mymod.jac"), "w") as f {
+            f.write("def greet(name: str) -> str;\n");
+        }
+        impl_dir = os.path.join(tmpdir, "impl");
+        os.makedirs(impl_dir);
+        with open(os.path.join(impl_dir, "mymod.impl.jac"), "w") as f {
+            f.write("impl greet(name: str) -> str { return name; }\n");
+        }
+        with open(os.path.join(tmpdir, "orphan.impl.jac"), "w") as f {
+            f.write("impl nobase.thing { return 1; }\n");
+        }
+        JacRuntime.program = JacProgram();
+        # mymod.jac plus the orphan annex no base module covers -- not
+        # mymod.impl.jac, which compiling mymod.jac already folds in.
+        assert _run_jac_check(tmpdir) == 2;
+        JacRuntime.program = JacProgram();
+        # An annex folder named directly is still walked.
+        assert _run_jac_check(impl_dir) == 1;
+        JacRuntime.program = JacProgram();
+        # So is an annex named directly.
+        assert _run_jac_check(os.path.join(impl_dir, "mymod.impl.jac")) == 1;
     }
 }
 

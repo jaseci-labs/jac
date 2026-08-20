@@ -5,7 +5,6 @@ context manager, so string concatenation typechecks.
 """
 
 import from contextlib { contextmanager }
-import from typing { Iterator }
 
 obj Lock {
     @contextmanager

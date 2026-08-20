@@ -535,7 +535,7 @@ test "jac bundle --target npm writes a tarball to dist/" {
         assert result.returncode == 0 , (
             f"exit {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         );
-        tgz_files = list((Path(tmp_path) / "dist").glob("*.tgz"));
+        tgz_files = list((Path(tmp_path) / "dist").`glob("*.tgz"));
         assert len(tgz_files) == 1;
         assert tgz_files[0].name == "mylib-1.0.0.tgz";
     } finally {

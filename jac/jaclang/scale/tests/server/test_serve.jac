@@ -131,10 +131,10 @@ def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
         try {
-            server_process.wait(timeout=5);
+            server_process.`wait(timeout=5);
         } except subprocess.TimeoutExpired {
             server_process.kill();
-            server_process.wait();
+            server_process.`wait();
         }
     }
     time.sleep(0.2);
@@ -1783,10 +1783,11 @@ test "dev mode operations" {
 }
 
 test "dev mode named endpoints and HMR refresh" {
+    greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
     sp = setup_dev_mode_server();
     try {
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-        assert response.status_code == 200;
+        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} before any HMR edit: {response.text[:300]!r}";
         paths = response.json().get("paths", {});
 
         assert "/walker/CreateTask" in paths , f"Expected /walker/CreateTask in OpenAPI paths, got: {list(
@@ -1799,7 +1800,6 @@ test "dev mode named endpoints and HMR refresh" {
         assert "/walker/{walker_name}" not in paths , "Generic /walker/{walker_name} should not exist";
         assert "/function/{function_name}" not in paths , "Generic /function/{function_name} should not exist";
 
-        greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
         with open(str(dm_test_file), 'a') as f {
             f.write(greet_walker);
         }
@@ -1810,7 +1810,7 @@ test "dev mode named endpoints and HMR refresh" {
         time.sleep(1);
 
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-        assert response.status_code == 200;
+        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} after the HMR edit: {response.text[:300]!r}";
         paths = response.json().get("paths", {});
 
         assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
@@ -1820,7 +1820,7 @@ test "dev mode named endpoints and HMR refresh" {
         response = requests.post(
             f"{dm_base_url}/walker/Greet", json={"name": "Jaseci"}, timeout=10
         );
-        assert response.status_code == 200;
+        assert response.status_code == 200 , f"POST /walker/Greet returned {response.status_code} after HMR picked the walker up: {response.text[:300]!r}";
         data = _extract_data_dev(response.json());
         assert data["reports"][0]["message"] == "Hello, Jaseci!";
     } finally {
@@ -2004,7 +2004,7 @@ test "server startup - port fallback integration" {
         if sp2 {
             sp2.terminate();
             try {
-                sp2.wait(timeout=5);
+                sp2.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 sp2.kill();
             }
@@ -2190,7 +2190,7 @@ theme_color = "#000000"
         } finally {
             server.terminate();
             try {
-                server.wait(timeout=5);
+                server.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 server.kill();
             }

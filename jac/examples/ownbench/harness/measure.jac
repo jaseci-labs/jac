@@ -67,7 +67,7 @@ def compile_kernel(kernel: str, mode: str) -> Path {
     cmd = ["jac", "nacompile", str(src)] + mode_flags(mode) + ["-o", str(out)];
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600);
     if r.returncode != 0 or not out.exists() {
-        sys.exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");
+        sys.`exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");
     }
     return out;
 }
@@ -81,7 +81,7 @@ def run_once(binary: Path, args: list[str]) -> dict {
         timeout=600,
     );
     if r.returncode != 0 {
-        sys.exit(f"run failed rc={r.returncode}: {binary} {' '.join(args)}");
+        sys.`exit(f"run failed rc={r.returncode}: {binary} {' '.join(args)}");
     }
     rss_kb = 0;
     for line in r.stderr.splitlines() {
@@ -125,11 +125,11 @@ def parse_opts(argv: list[str]) -> dict {
             opts[key] = int(argv[i + 1]) if flag == "--invocations" else argv[i + 1];
             i += 2;
         } else {
-            sys.exit(f"unknown option: {flag}\n{__doc__}");
+            sys.`exit(f"unknown option: {flag}\n{__doc__}");
         }
     }
     if opts["sizes"] not in SIZES {
-        sys.exit(f"--sizes must be one of {sorted(SIZES.keys())}");
+        sys.`exit(f"--sizes must be one of {sorted(SIZES.keys())}");
     }
     return opts;
 }
@@ -165,7 +165,7 @@ def main(opts: dict) {
             ];
             digests = {r["digest"] for r in runs};
             if len(digests) != 1 {
-                sys.exit(f"{kernel}/{mode}: nondeterministic output across runs");
+                sys.`exit(f"{kernel}/{mode}: nondeterministic output across runs");
             }
             per_mode[mode] = {
                 "args": args,
@@ -199,7 +199,7 @@ def main(opts: dict) {
     out.write_text(json.dumps(results, indent=2) + "\n");
     print(f"wrote {out}");
     if identity_fail {
-        sys.exit("differential identity FAILED");
+        sys.`exit("differential identity FAILED");
     }
 }
 

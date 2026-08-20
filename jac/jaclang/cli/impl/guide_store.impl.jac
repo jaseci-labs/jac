@@ -183,7 +183,7 @@ impl list_guides -> list[Guide] {
     }
     guides: list[Guide] = [];
 
-    for f in sorted(gdir.glob("*.md"), key=lambda (p: Path) { p.stem; }) {
+    for f in sorted(gdir.`glob("*.md"), key=lambda (p: Path) { p.stem; }) {
         g = parse_guide(f);
         if g is not None {
             guides.append(g);
@@ -239,7 +239,7 @@ def _derive_description(body: str) -> str {
             }
             continue;
         }
-        if re.match(r"^\d+\. ", stripped) or raw.startswith(("    ", "\t")) {
+        if re.`match(r"^\d+\. ", stripped) or raw.startswith(("    ", "\t")) {
             if para {
                 break;
             }

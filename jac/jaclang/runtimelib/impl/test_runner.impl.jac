@@ -164,8 +164,8 @@ impl _should_ignore(path: str, ignore: list[str]) -> bool {
         if not raw {
             continue;
         }
-        entry = os.path.abspath(raw);
-        if (target == entry) or target.startswith(entry + os.sep) {
+        `entry = os.path.abspath(raw);
+        if (target == `entry) or target.startswith(`entry + os.sep) {
             return True;
         }
     }
@@ -493,6 +493,28 @@ impl _package_basedir(start_dir: str) -> str {
     }
 }
 
+impl _outermost_package_root(start_dir: str, ceiling: str) -> str {
+    current = os.path.realpath(start_dir);
+    stop = os.path.realpath(ceiling) if ceiling else "";
+    outermost = "";
+    while True {
+        for marker in ("__init__.py", "__init__.jac") {
+            if os.path.exists(os.path.join(current, marker)) {
+                outermost = current;
+            }
+        }
+        if stop and (current == stop) {
+            break;
+        }
+        parent = os.path.dirname(current);
+        if parent == current {
+            break;
+        }
+        current = parent;
+    }
+    return os.path.dirname(outermost) if outermost else "";
+}
+
 impl _ensure_test_package(base_dir: str) -> str {
     import sys;
     import types;
@@ -534,8 +556,8 @@ impl JacTestResult._exc_info_to_string(err: any, `test: any) -> str {
         } except Exception {
             src = "";
         }
-        entry = (filename, lineno, funcname, src);
-        last = entry;
+        `entry = (filename, lineno, funcname, src);
+        last = `entry;
         vendored = False;
         for marker in (".venv/", "site-packages/", "/unittest/") {
             if marker in filename {
@@ -548,7 +570,7 @@ impl JacTestResult._exc_info_to_string(err: any, `test: any) -> str {
         if ("/jaclang/" in filename) and ("/tests/" not in filename) {
             continue;
         }
-        entries.append(entry);
+        entries.append(`entry);
     }
     lines: list[str] = [];
     for (filename, lineno, funcname, src) in entries {
@@ -638,11 +660,15 @@ impl run_file(
     if project_root {
         roots.append(project_root);
     }
+    package_root = _outermost_package_root(real_dir, project_root);
+    if package_root and (package_root not in roots) {
+        roots.append(package_root);
+    }
     injected: list[str] = [];
-    for entry in (roots + [basedir, real_dir]) {
-        if entry not in sys.path {
-            sys.path.insert(0, entry);
-            injected.append(entry);
+    for `entry in (roots + [basedir, real_dir]) {
+        if `entry not in sys.path {
+            sys.path.insert(0, `entry);
+            injected.append(`entry);
         }
     }
     import_error = "";
@@ -729,9 +755,9 @@ impl run_file(
             }
         }
     } finally {
-        for entry in injected {
+        for `entry in injected {
             try {
-                sys.path.remove(entry);
+                sys.path.remove(`entry);
             } except ValueError {
                 ;
             }

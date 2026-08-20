@@ -7,6 +7,7 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .config.config_loader { get_scale_config }
+import from .config.project_env { load_project_env }
 import from .events.streams.postgres { PgEventStream }
 
 import from .persistence.pg { shared_store as _pg_anchor }
@@ -117,10 +118,10 @@ def scale_start(
     }
 
     if scale {
-        import from jaclang.scale.runtime.realizer.kubernetes_realizer {
-            KubernetesRealizer
-        }
         try {
+            import from jaclang.scale.runtime.realizer.kubernetes_realizer {
+                KubernetesRealizer
+            }
             return KubernetesRealizer(ms_config=ms_config).realize(
                 filename, target, enable_tls, dry_run, show_yaml
             );
@@ -227,10 +228,10 @@ def stop_sv_sibling(module_name: str, timeout: float = 10.0) -> bool {
         proc.terminate();
     }
     try {
-        proc.wait(timeout=timeout);
+        proc.`wait(timeout=timeout);
     } except Exception {
         proc.kill();
-        proc.wait(timeout=5);
+        proc.`wait(timeout=5);
     }
     return True;
 }
@@ -261,9 +262,7 @@ def deploy_destroy(
     }
 
     code_folder = os.path.dirname(file_path) or '.';
-    dotenv_path = os.path.join(code_folder, '.env');
-    import from dotenv { load_dotenv }
-    load_dotenv(dotenv_path);
+    load_project_env(code_folder);
 
     scale_config = get_scale_config();
 
@@ -314,9 +313,7 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
         raise FileNotFoundError(f"File not found: '{file_path}'");
     }
     code_folder = os.path.dirname(file_path) or '.';
-    dotenv_path = os.path.join(code_folder, '.env');
-    import from dotenv { load_dotenv }
-    load_dotenv(dotenv_path);
+    load_project_env(code_folder);
 
     scale_config = get_scale_config();
 
@@ -420,25 +417,25 @@ def _scale_split(module_name: str) -> int {
         Arg.create(
             "service_name",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Service name (stop/restart/logs), module to declare as a service (split), or a .jac app file for platform status/destroy"
         ),
         Arg.create(
             "lines",
             typ=int,
-            default=50,
+            `default=50,
             help="Number of log lines to show (for 'logs' action)"
         ),
         Arg.create(
             "target",
             typ=str,
-            default="kubernetes",
+            `default="kubernetes",
             help="Platform target for .jac app status/destroy (kubernetes, aws, gcp, etc.)"
         ),
         Arg.create(
             "component",
             typ=str,
-            default="",
+            `default="",
             help="Platform destroy: component to remove (application, database, monitoring; default: entire deployment)"
         ),
 

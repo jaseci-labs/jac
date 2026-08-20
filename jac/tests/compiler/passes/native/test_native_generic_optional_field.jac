@@ -25,7 +25,7 @@ same fixture, since a dropped store is still well typed and still compiles.
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_force_opts }
-import from jaclang.jac0core.compiler { na_census_begin, na_census_end }
+import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.jac0core.codeinfo {
@@ -120,18 +120,18 @@ def _compile_src(label: str, code: str) -> tuple {
 }
 
 
-"""The census seam reasons recorded while compiling a snippet."""
+"""The coverage seam reasons recorded while compiling a snippet."""
 def _seam_reasons(label: str, code: str) -> list[str] {
     path = os.path.join(FIXTURES, f"_gen_opt_{label}.jac");
     prog = JacProgram();
-    na_census_begin();
+    na_coverage_begin();
     try {
         prog.compile(file_path=path, use_str=code, options=native_force_opts());
     } finally {
-        census = na_census_end();
+        coverage = na_coverage_end();
     }
     out: list[str] = [];
-    for rec in census.values() {
+    for rec in coverage.values() {
         for s in (rec.get("seams") or []) {
             out.append(str(s));
         }
@@ -499,7 +499,7 @@ test "a `list[T]` slot on a generic archetype stays loud" {
     "    return len(b.items);\n"
     "}\n";
     (prog, ir) = _compile_src("list_tv", _src);
-    msgs = _seam_reasons("list_tv_census", _src);
+    msgs = _seam_reasons("list_tv_coverage", _src);
     assert any([("list[T]" in m) for m in msgs]) , (
         f"a list over an unsolved type parameter must keep reporting: {msgs}"
     );

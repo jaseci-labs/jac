@@ -175,7 +175,7 @@ obj WebSocket {
 
     async def send_json(data: any) {
         await self._send_raw(
-            OP_TEXT, dumps(data, default=_ws_json_default).encode('utf-8')
+            OP_TEXT, dumps(data, `default=_ws_json_default).encode('utf-8')
         );
     }
 

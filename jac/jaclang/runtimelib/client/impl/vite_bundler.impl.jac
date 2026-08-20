@@ -19,15 +19,15 @@ def _build_vite_command(build_dir: Path, args: list[str]) -> list[str] {
     }
 
     bun = _require_bun();
-    entry = resolve_node_tool_entry(build_dir, 'vite');
-    if entry is None {
+    `entry = resolve_node_tool_entry(build_dir, 'vite');
+    if `entry is None {
         raise ClientBundleError(
             f"Vite is not installed under {build_dir / 'node_modules'}. "
             "Dependencies are installed before every build, so an absent "
             "vite means that install did not complete."
         ) from None;
     }
-    return [bun, str(entry)] + args;
+    return [bun, str(`entry)] + args;
 }
 
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
@@ -1088,7 +1088,7 @@ impl ViteBundler.find_css(self: ViteBundler) -> Optional[Path] {
 }
 
 impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
-    for file in self.output_dir.glob('client.*.js') {
+    for file in self.output_dir.`glob('client.*.js') {
         return file;
     }
     return None;
@@ -1603,7 +1603,7 @@ impl ViteBundler._start_vite_with_output_capture(
     );
     output_thread.start();
 
-    is_ready = ready_event.wait(timeout=VITE_READY_TIMEOUT_SECONDS);
+    is_ready = ready_event.`wait(timeout=VITE_READY_TIMEOUT_SECONDS);
     if is_ready {
         port_file = build_dir / '.dev-port';
         for _ in range(40) {

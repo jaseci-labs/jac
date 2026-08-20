@@ -25,7 +25,7 @@ obj AllPicksMock(MockLLM) {
                 continue;
             }
             if in_candidates {
-                m = re.match(r"\s*([A-Za-z0-9_]+)\)", line);
+                m = re.`match(r"\s*([A-Za-z0-9_]+)\)", line);
                 if m {
                     handles.append(m.group(1));
                 }

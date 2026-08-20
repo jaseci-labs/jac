@@ -282,7 +282,7 @@ obj TreeNode {
 }
 
 def _tree_depth(n: TreeNode) -> int {
-    return 1 + max([_tree_depth(c) for c in n.children], default=0);
+    return 1 + max([_tree_depth(c) for c in n.children], `default=0);
 }
 
 def _tree_count(n: TreeNode) -> int {

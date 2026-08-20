@@ -55,8 +55,8 @@ def:pub TokenStream(
                                 key={e.id}
                                 onClick={lambda { onSelect(e.id); }}
                             >
-                                <span className={"tok-chip tok-" + e.node}>
-                                    {e.node}
+                                <span className={"tok-chip tok-" + e.`node}>
+                                    {e.`node}
                                 </span>
                                 <div className="tok-inwrap">
                                     <div

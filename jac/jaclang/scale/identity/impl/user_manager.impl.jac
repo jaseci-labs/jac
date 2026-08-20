@@ -34,6 +34,19 @@ impl JacScaleUserManager.postinit -> None {
         );
     }
     self._identity_storage = PgIdentityStorage(store=store);
+    self._gateway_owned_identity = _serves_gateway_owned_identity();
+}
+
+
+def _serves_gateway_owned_identity -> bool {
+    import os;
+    sv_name = os.environ.get('JAC_SV_NAME', '').strip();
+    if not sv_name or sv_name == '__gateway__' {
+        return False;
+    }
+    ms_config = get_scale_config().get_microservices_config();
+    identity_config = dict(ms_config.get('identity', {}));
+    return bool(identity_config.get('gateway_owned', True));
 }
 
 impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, any] {
@@ -281,12 +294,21 @@ impl JacScaleUserManager.validate_jwt_token_detail(
         };
     }
     if check_existence and not self.user_exists(user_id) {
-        return {
-            'status': 'unknown_user',
-            'user_id': None,
-            'exp': decoded.get('exp'),
-            'reason': 'User associated with token no longer exists'
-        };
+        provisioned = self.ensure_user_root(user_id)
+            if self._gateway_owned_identity
+            else None;
+        if not provisioned {
+            return {
+                'status': 'unknown_user',
+                'user_id': None,
+                'exp': decoded.get('exp'),
+                'reason': 'User associated with token no longer exists'
+            };
+        }
+        logger.info(
+            f"Provisioned a local root for gateway-issued user {user_id} "
+            f"on this service"
+        );
     }
     return {
         'status': 'ok',

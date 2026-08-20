@@ -77,7 +77,7 @@ def _subprocess_main {
     args: int = cef_main_args_create();
     code: i32 = cef_execute_process(args, g_app, 0);
     if code >= 0 {
-        sys.exit(code);
+        sys.`exit(code);
     }
 }
 

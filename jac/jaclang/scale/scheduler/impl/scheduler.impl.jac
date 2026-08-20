@@ -98,7 +98,7 @@ def _where_sql(where: dict | None, params: dict) -> str {
     for (k, v) in (where or {}).items() {
         key = f"w{n}";
         n += 1;
-        params[key] = json.dumps(v, default=str);
+        params[key] = json.dumps(v, `default=str);
         sql += f" AND doc->'{k}' = CAST(:{key} AS jsonb)";
     }
     return sql;
@@ -111,7 +111,7 @@ impl PgJobStore.insert(job: dict) -> str {
         'INSERT INTO jac_docs (collection, id, doc) '
         'VALUES (:c, :i, CAST(:d AS jsonb)) '
         'ON CONFLICT (collection, id) DO UPDATE SET doc = EXCLUDED.doc',
-        {'c': self._collection, 'i': job_id, 'd': json.dumps(d, default=str)}
+        {'c': self._collection, 'i': job_id, 'd': json.dumps(d, `default=str)}
     );
     return job_id;
 }
@@ -162,7 +162,7 @@ impl PgJobStore.update(job_id: str, updates: dict, where: dict | None = None) ->
     params: dict[str, any] = {
         'c': self._collection,
         'i': job_id,
-        'u': json.dumps(dict(updates), default=str)
+        'u': json.dumps(dict(updates), `default=str)
     };
     cond = _where_sql(where, params);
     rows = self.store.rows(
@@ -193,7 +193,7 @@ impl PgJobStore.record_run(job_id: str, status: str, error: str | None = None) -
         "UPDATE jac_docs SET doc = doc || CAST(:u AS jsonb) || jsonb_build_object("
         "'run_count', COALESCE((doc->>'run_count')::bigint, 0) + 1) "
         "WHERE collection = :c AND id = :i",
-        {'c': self._collection, 'i': job_id, 'u': json.dumps(updates, default=str)}
+        {'c': self._collection, 'i': job_id, 'u': json.dumps(updates, `default=str)}
     );
 }
 
@@ -400,7 +400,7 @@ impl JacScaleScheduler.start -> None {
 impl JacScaleScheduler.stop(drain: bool = False) -> None {
     if self._apscheduler is not None and self._apscheduler.running {
         try {
-            self._apscheduler.shutdown(wait=drain);
+            self._apscheduler.shutdown(`wait=drain);
             logger.info(f"Scheduler stopped (drain={drain})");
         } except Exception as e {
             logger.debug(f"Error stopping APScheduler: {e}");

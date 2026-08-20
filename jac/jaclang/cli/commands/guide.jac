@@ -11,7 +11,7 @@ glob registry = get_registry();
         Arg.create(
             "topic",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help=(
                 "Guide or doc to print, or a doc set (reference, quick-guide, "
                 "build, tutorials, internals, community) to list; omit to "
@@ -20,13 +20,13 @@ glob registry = get_registry();
         ),
         Arg.create(
             "search",
-            default="",
+            `default="",
             help="Grep every bundled guide and doc (name:line: hits)",
             short="s"
         ),
         Arg.create(
             "export",
-            default="",
+            `default="",
             help="Export all guides as a Claude Code skills directory at this path",
             short="e"
         ),

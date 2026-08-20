@@ -39,7 +39,7 @@ def _heartbeat_column_ddl -> list[str] {
 
 
 impl this_host -> str {
-    return platform.node() or '';
+    return platform.`node() or '';
 }
 
 
@@ -403,7 +403,7 @@ def _heartbeat_once(info: ConnInfo, database: str) -> bool {
 def _heartbeat_loop(info: ConnInfo, database: str, stop: any) {
     failures = 0;
     warnings = 0;
-    while not stop.wait(SCRATCH_HEARTBEAT_SECONDS) {
+    while not stop.`wait(SCRATCH_HEARTBEAT_SECONDS) {
         if _heartbeat_once(info, database) {
             if warnings > 0 {
                 logger.warning(

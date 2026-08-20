@@ -376,7 +376,7 @@ def _output_json(settings: dict) {
             };
         }
     }
-    console.print(json.dumps(output, indent=2, default=str));
+    console.print(json.dumps(output, indent=2, `default=str));
 }
 
 def _output_toml(settings: dict, show_all: bool) {

@@ -144,7 +144,7 @@ test "k8s_safe_name only ever yields an RFC 1123 name" {
         "under__scores"
     ] {
         safe = k8s_safe_name(raw);
-        assert rfc1123.match(safe) , f"{raw!r} produced non-RFC-1123 name {safe!r}";
+        assert rfc1123.`match(safe) , f"{raw!r} produced non-RFC-1123 name {safe!r}";
         assert len(safe) <= 253 , f"{raw!r} produced a {len(safe)}-char name";
     }
 }

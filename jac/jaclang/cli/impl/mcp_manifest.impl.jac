@@ -31,7 +31,7 @@ impl get_command(
             'kind': arg.kind.name,
             'type': arg.typ,
             'required': arg.required,
-            'default': arg.default,
+            'default': arg.`default,
             'help': arg.help
         };
         if arg.short is not None {

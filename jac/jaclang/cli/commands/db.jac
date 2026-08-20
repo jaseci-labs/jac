@@ -11,18 +11,18 @@ glob registry = get_registry();
         Arg.create(
             "action",
             kind=ArgKind.POSITIONAL,
-            default="status",
+            `default="status",
             help="Action: status, serve, stop, inspect, sql, fetch, list, drop, prune"
         ),
         Arg.create(
             "query",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="SQL text (for `jac db sql`) or database name (for `jac db drop`)"
         ),
         Arg.create(
             "data_dir",
-            default="",
+            `default="",
             help=(
                 "Postgres data directory. Defaults to the shared embedded "
                 "cluster ($JAC_CACHE_HOME/pg/main, i.e. ~/.cache/jac/pg/main) "
@@ -31,19 +31,19 @@ glob registry = get_registry();
             short="d"
         ),
         Arg.create(
-            "port", typ=int, default=5432, help="TCP port for `serve`", short="p"
+            "port", typ=int, `default=5432, help="TCP port for `serve`", short="p"
         ),
         Arg.create(
             "yes",
             typ=bool,
-            default=False,
+            `default=False,
             help="Actually drop databases; `drop` and `prune` only report without it",
             short="y"
         ),
         Arg.create(
             "empty",
             typ=bool,
-            default=False,
+            `default=False,
             help=(
                 "With `prune`: also drop databases with no recorded owner that "
                 "hold no data beyond the system root"

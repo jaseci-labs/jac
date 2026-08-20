@@ -10,7 +10,9 @@ import from jaclang.jac0core.diagnostics {
     E5024,
     E5025,
     E5026,
-    E5027
+    E5027,
+    E5028,
+    E5029
 }
 
 obj DepClibMeta {
@@ -21,7 +23,8 @@ obj DepClibMeta {
         owned_symbols: list[str] = [],
         demoted_symbols: list[str] = [],
         transitive_deps: list[str] = [],
-        options_fingerprint: str = "";
+        options_fingerprint: str = "",
+        unverified_live_calls: dict[str, list[str]] = {};
 
     def to_meta -> dict;
     static def from_meta(meta: dict) -> DepClibMeta;
@@ -31,6 +34,23 @@ obj DepClibMeta {
 def native_compiler_fingerprint(options: any) -> str;
 def native_dep_cache_paths(real_path: str, options: any) -> tuple;
 def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
+def native_ir_live_externs(llvm_ir_text: str) -> set[str];
+def native_prune_live_record(pending: dict, declared: set[str]) -> dict[str, set[str]];
+def native_unit_demotions(
+    prog: any, real_path: str, options: any
+) -> (set[str] | None);
+
+def native_live_call_conflicts(
+    prog: any, pending: dict, options: any
+) -> dict[str, set[str]];
+
+glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,
+     NATIVE_LINK_COMPILE_BOUND: int = 384,
+     NATIVE_VERDICT_MISS_BOUND: int = 512;
+
+def native_verdict_blast_guard(
+    prog: any, composed: int, aot_lane: bool = False
+) -> str;
 
 
 obj NativeCompilePass(Transform) {

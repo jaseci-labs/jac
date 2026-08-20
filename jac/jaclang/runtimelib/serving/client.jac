@@ -212,7 +212,7 @@ async def arequest(
         seen.add(str(k).lower());
     }
     if json_body is not None {
-        body = dumps(json_body, default=_client_json_default).encode('utf-8');
+        body = dumps(json_body, `default=_client_json_default).encode('utf-8');
         if 'content-type' not in seen {
             header_list.append(('Content-Type', 'application/json'));
         }

@@ -14,7 +14,7 @@ with entry {
         }
         if args[i] == "--exit-code" {
             if i + 1 < len(args) {
-                sys.exit(1);
+                sys.`exit(1);
             }
         }
     }

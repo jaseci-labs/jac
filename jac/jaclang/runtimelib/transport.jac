@@ -1,5 +1,4 @@
 import json;
-import from collections.abc { Callable }
 enum MessageType {
     RESPONSE = "response",
     EVENT = "event",

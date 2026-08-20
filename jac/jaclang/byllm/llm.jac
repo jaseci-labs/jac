@@ -6,13 +6,14 @@ import json;
 import random;
 import time;
 
-import from typing { Callable, Generator }
+import from typing { Generator }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm._optdeps.litellm { litellm, _disable_debugging }
 import from jaclang.byllm._optdeps.openai { openai, OpenAI, AsyncOpenAI }
 import from jaclang.project.capabilities { require_optional }
 import from jaclang.byllm.exceptions {
     AuthenticationError,
+    FinishToolError,
     OutputConversionError,
     RateLimitError,
     ModelNotFoundError,

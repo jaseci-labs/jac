@@ -517,10 +517,10 @@ test "parse full config" {
     assert cfg.build.typecheck is True;
 
     # Test config
-    assert cfg.test.directory == "tests";
-    assert cfg.test.verbose is True;
-    assert cfg.test.fail_fast is True;
-    assert cfg.test.max_failures == 5;
+    assert cfg.`test.directory == "tests";
+    assert cfg.`test.verbose is True;
+    assert cfg.`test.fail_fast is True;
+    assert cfg.`test.max_failures == 5;
 
     # Serve config
     assert cfg.serve.port == 9000;
@@ -560,7 +560,7 @@ test "profile inheritance" {
     cfg = JacConfig.from_toml_str(toml_str);
     cfg.apply_profile("staging");
     assert cfg.serve.port == 9000;
-    assert cfg.test.verbose is True;
+    assert cfg.`test.verbose is True;
 }
 
 test "apply nonexistent profile" {
@@ -1314,8 +1314,8 @@ test "overlay priority order" {
         local_toml.write_text("[test]\nverbose = false\n");
         cfg = JacConfig.load(jac_toml);
         cfg.apply_profile_overlay("prod");
-        assert cfg.test.fail_fast is True;
-        assert cfg.test.verbose is False;
+        assert cfg.`test.fail_fast is True;
+        assert cfg.`test.verbose is False;
     }
 }
 

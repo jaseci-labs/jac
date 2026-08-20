@@ -255,14 +255,14 @@ impl ApiKeyManager.check_rate_limit(api_key_id: str, limit_per_minute: int) -> b
         return True;
     }
     window_id = int(datetime.now(UTC).timestamp() // 60);
-    entry = self._rate_window.get(api_key_id);
-    if not entry or entry[0] != window_id {
+    `entry = self._rate_window.get(api_key_id);
+    if not `entry or `entry[0] != window_id {
         self._rate_window[api_key_id] = [window_id, 1];
         return True;
     }
-    if entry[1] >= limit_per_minute {
+    if `entry[1] >= limit_per_minute {
         return False;
     }
-    entry[1] += 1;
+    `entry[1] += 1;
     return True;
 }

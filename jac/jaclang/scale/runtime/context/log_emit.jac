@@ -39,7 +39,7 @@ class _JacJsonFormatter(logging.Formatter) {
             out["exc"] = self.formatException(record.exc_info);
         }
 
-        return json.dumps(out, default=_to_str, ensure_ascii=False);
+        return json.dumps(out, `default=_to_str, ensure_ascii=False);
     }
 }
 

@@ -1,4 +1,3 @@
-import from collections.abc { Sequence }
 import from typing { cast }
 import from jaclang.jac0core.unitree {
     Ability,

@@ -225,7 +225,7 @@ def dict_param_iter_sum_fixture() -> int {
 
 # ── for k in field_access dict (struct field) ──
 obj DictContainer {
-    has props: dict[int, int];
+    has `props: dict[int, int];
 }
 
 # for k in c.props: iterate dict stored in a struct field

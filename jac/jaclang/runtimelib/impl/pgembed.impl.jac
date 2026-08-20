@@ -1,11 +1,11 @@
 impl pinned_major -> int {
-    override = os.environ.get('JAC_PG_VERSION', '');
-    if override {
+    `override = os.environ.get('JAC_PG_VERSION', '');
+    if `override {
         try {
-            return int(override.split('.')[0]);
+            return int(`override.split('.')[0]);
         } except ValueError {
             logger.warning(
-                f"JAC_PG_VERSION={override!r} is not a version; using {PG_MAJOR}"
+                f"JAC_PG_VERSION={`override!r} is not a version; using {PG_MAJOR}"
             );
         }
     }
@@ -23,8 +23,8 @@ impl dist_cache_dir -> str {
 
 
 def _effective_uid -> int {
-    getter = os?.geteuid;
-    return int(getter()) if getter is not None else -1;
+    `getter = os?.geteuid;
+    return int(`getter()) if `getter is not None else -1;
 }
 
 
@@ -182,8 +182,8 @@ impl PgRuntime._grant_dir(path: str) -> None {
         if os.stat(path).st_uid != target.uid {
             os.chown(path, target.uid, target.gid);
             for (parent, dirnames, filenames) in os.walk(path) {
-                for entry in dirnames + filenames {
-                    os.chown(os.path.join(parent, entry), target.uid, target.gid);
+                for `entry in dirnames + filenames {
+                    os.chown(os.path.join(parent, `entry), target.uid, target.gid);
                 }
             }
         }
@@ -383,8 +383,8 @@ impl PgRuntime._resolve_from_path -> (str | None) {
 
     for base in ['/usr/lib/postgresql', '/usr/pgsql', '/opt/homebrew/opt'] {
         if os.path.isdir(base) {
-            for entry in sorted(os.listdir(base), reverse=True) {
-                cand = os.path.join(base, entry, 'bin');
+            for `entry in sorted(os.listdir(base), reverse=True) {
+                cand = os.path.join(base, `entry, 'bin');
                 if os.path.isfile(os.path.join(cand, 'postgres')) {
                     candidates.append(cand);
                 }
@@ -826,5 +826,5 @@ impl PgRuntime.serve -> int {
     }
     signal.signal(int(signal.SIGTERM), _forward);
     signal.signal(int(signal.SIGINT), _forward);
-    return proc.wait();
+    return proc.`wait();
 }

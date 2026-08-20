@@ -777,7 +777,7 @@ test "parallel_hint=False suppresses hint even when parallel is on" {
 # 25. Caller context reaches tools on every dispatch path
 # ---------------------------------------------------------------------------
 glob _PROBE_VAR: contextvars.ContextVar = contextvars.ContextVar(
-         "byllm_probe", default="<unset>"
+         "byllm_probe", `default="<unset>"
      );
 
 

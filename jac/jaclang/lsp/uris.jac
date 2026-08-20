@@ -1,7 +1,7 @@
 import re;
 import sys;
 import from urllib { parse }
-import from typing { Optional, Tuple }
+import from typing { Optional }
 
 glob IS_WIN = sys.platform == "win32",
      RE_DRIVE_LETTER_PATH = re.compile(r"^\/[a-zA-Z]:");

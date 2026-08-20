@@ -361,3 +361,18 @@ def lookup_keyword(text: str) -> TokenKind | None {
     }
     return None;
 }
+
+glob SPECIAL_VAR_KINDS: set[TokenKind] = {
+         TokenKind.KW_SELF,
+         TokenKind.KW_SUPER,
+         TokenKind.KW_ROOT,
+         TokenKind.KW_HERE,
+         TokenKind.KW_VISITOR,
+         TokenKind.KW_PROPS,
+         TokenKind.KW_INIT,
+         TokenKind.KW_POST_INIT
+     };
+
+def is_special_var_kind(kind: TokenKind) -> bool {
+    return kind in SPECIAL_VAR_KINDS;
+}

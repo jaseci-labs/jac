@@ -99,8 +99,8 @@ def _global_decl(assign: any, wanted: any) -> str {
 
 impl dts_for_module(mod: Module) -> str {
     manifest = mod.gen.client_manifest if (mod and mod.gen) else None;
-    exports: set = set(manifest.exports) if manifest else set();
-    globals_set: set = set(manifest.globals) if manifest else set();
+    exports: set[str] = set(manifest.exports) if manifest else set();
+    globals_set: set[str] = set(manifest.globals) if manifest else set();
     if not exports and not globals_set {
         return "";
     }

@@ -125,10 +125,10 @@ test "the lane the canaries measure is the container, with no alternative" {
     assert JcirBytecodeGenPass in sched , (
         "the codegen schedule emits JCIR but never transcribes it"
     );
-    for entry in sched {
-        assert "Pyast" not in entry.__name__ and "PyBytecode" not in entry.__name__ , (
+    for `entry in sched {
+        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
             f"a second Python codegen emitter is back in the schedule "
-            f"({entry.__name__}); the manifest measures whichever lane runs, "
+            f"({`entry.__name__}); the manifest measures whichever lane runs, "
             "so two lanes make it ambiguous"
         );
     }

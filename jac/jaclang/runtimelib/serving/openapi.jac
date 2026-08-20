@@ -97,15 +97,15 @@ def _object_schema(target: type, schemas: (dict | None)) -> dict[str, any] {
             continue;
         }
         props[pname] = _schema_for_type(hints.get(pname), schemas);
-        if param.default is inspect.Parameter.empty {
+        if param.`default is inspect.Parameter.empty {
             required.append(pname);
         }
     }
-    entry: dict[str, any] = {'type': 'object', 'title': name, 'properties': props};
+    `entry: dict[str, any] = {'type': 'object', 'title': name, 'properties': props};
     if required {
-        entry['required'] = required;
+        `entry['required'] = required;
     }
-    schemas[name] = entry;
+    schemas[name] = `entry;
     return ref;
 }
 
@@ -149,7 +149,7 @@ def build_openapi(app: ServingApp) -> dict[str, any] {
             if isinstance(ep.method, HTTPMethod)
             else str(ep.method);
         media = ep.media_type or 'application/json';
-        entry: dict[str, any] = {
+        `entry: dict[str, any] = {
             'responses': {
                 str(ep.status_code or 200): {
                     'description': 'Success',
@@ -158,13 +158,13 @@ def build_openapi(app: ServingApp) -> dict[str, any] {
             }
         };
         if ep.summary {
-            entry['summary'] = ep.summary;
+            `entry['summary'] = ep.summary;
         }
         if ep.description {
-            entry['description'] = ep.description;
+            `entry['description'] = ep.description;
         }
         if ep.tags {
-            entry['tags'] = list(ep.tags);
+            `entry['tags'] = list(ep.tags);
         }
         params_out: list[dict] = [];
         body_props: dict[str, any] = {};
@@ -206,7 +206,7 @@ def build_openapi(app: ServingApp) -> dict[str, any] {
             }
         }
         if params_out {
-            entry['parameters'] = params_out;
+            `entry['parameters'] = params_out;
         }
         if body_props {
             schema: dict[str, any] = {'type': 'object', 'properties': body_props};
@@ -228,17 +228,17 @@ def build_openapi(app: ServingApp) -> dict[str, any] {
                 component_schemas[body_name] = schema;
                 schema = {'$ref': f"#/components/schemas/{body_name}"};
             }
-            entry['requestBody'] = {
+            `entry['requestBody'] = {
                 'content': {content_type: {'schema': schema}},
                 'required': bool(body_required)
             };
         }
         if ep.requires_auth {
-            entry['security'] = [{'BearerAuth': []}];
+            `entry['security'] = [{'BearerAuth': []}];
         }
         norm_path = _openapi_path(ep.path);
         bucket = paths.setdefault(norm_path, {});
-        bucket[method.lower()] = entry;
+        bucket[method.lower()] = `entry;
     }
     for ws_route in app.router.ws_routes {
         wsep = ws_route.ws_endpoint;

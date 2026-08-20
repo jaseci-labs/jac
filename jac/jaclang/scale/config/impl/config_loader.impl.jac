@@ -576,7 +576,9 @@ impl normalize_microservices_config(
     } else {
         try {
             import from jaclang.project.config { get_config }
-            resolved_client_entry: str = get_config().entry_point or 'main.jac';
+            cfg = get_config();
+            resolved_client_entry: str = (cfg.project.entry_point if cfg else '')
+                or 'main.jac';
         } except Exception {
             resolved_client_entry: str = 'main.jac';
         }
@@ -613,6 +615,11 @@ impl normalize_microservices_config(
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
             'base_route': client_config.get('base_route', '/'),
             'static_mounts': list(client_config.get('static_mounts', []) or [])
+        },
+        'identity': {
+            'gateway_owned': bool(
+                dict(ms_config.get('identity', {})).get('gateway_owned', True)
+            )
         },
         'ingress': dict(ms_config.get('ingress', {})),
         'shared_volumes': list(ms_config.get('shared_volumes', [])),

@@ -1,5 +1,3 @@
-import from typing { Callable }
-
 glob ARG_TYPES: dict[str, type] = {
          "str": str,
          "int": int,

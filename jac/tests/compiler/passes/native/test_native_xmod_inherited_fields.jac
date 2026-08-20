@@ -18,10 +18,15 @@ server pathway (CPython) and through a native binary must print identical
 lines, so the field *values* are pinned and not merely the fact that something
 lowered.
 
-A vtable-less imported base is the shape that stays refused. `Anchor` puts its
-first field at slot 0 because its own module gives it no vtable, while a
-subclass needs that slot for one; no assignment satisfies both, so the layout
-is left alone and the read keeps its E5092.
+A vtable-less imported base was the shape that stayed refused. `Anchor` puts
+its first field at slot 0 because its own module gives it no vtable, while a
+subclass claimed that slot for a vtable of its own -- one it received merely
+for having a base, since `needs_vtable` asked `bool(parents)` alongside the
+two disjuncts that ask whether anything is dispatched through the class. Where
+nothing is, that header is a habit rather than a requirement: adoption drops
+it, both units read the field at the same offset, and the E5092 is paid out.
+A class something IS dispatched through keeps its header and its refusal --
+that pair genuinely has no assignment satisfying both.
 """
 
 import contextlib;
@@ -188,19 +193,47 @@ test "inherited fields answer what the server pathway answers" {
     );
 }
 
-test "a vtable-less imported base keeps the inherited read refused" {
-    (prog, ir) = compile_native("xmod_inherit_flat_main.jac", expect_demotions=True);
+test "a vtable-less imported base and its subclass agree on the header" {
+    # This shape used to be refused, and the refusal was recorded here as
+    # unavoidable: `Anchor` puts `depth` at slot 0 because its own module
+    # gives it no vtable, and `FlatKid` claimed that slot for a vtable it
+    # got purely for having a base. An assignment satisfying both now
+    # exists, because nothing dispatches through `FlatKid` and the header it
+    # carried was a habit rather than a requirement.
+    (prog, ir) = compile_native("xmod_inherit_flat_main.jac");
+    reg = get_layout_registry(ir, prog);
+    anchor = reg.get_layout("Anchor");
+    kid = reg.get_layout("FlatKid");
+    assert anchor is not None and kid is not None , "layouts missing";
+    assert anchor.vtable_ptr_slot == kid.vtable_ptr_slot , (
+        f"the headers must agree or no slot assignment satisfies both: "
+        f"Anchor {anchor.vtable_ptr_slot} vs FlatKid {kid.vtable_ptr_slot}"
+    );
+    assert kid.field_index.get("depth") == anchor.field_index.get("depth") , (
+        f"`depth` must sit where the module that declared it put it: "
+        f"Anchor {anchor.field_index} vs FlatKid {kid.field_index}"
+    );
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "read_inherited" not in layout.functions , (
-        "no slot assignment satisfies both units, so the read must refuse "
-        "rather than answer from a guessed offset"
-    );
-    assert "stays_clean" in layout.functions , (
-        f"the refusal must stay this function's alone: {list(layout.functions)}"
-    );
+    for fn in ["read_inherited", "stays_clean"] {
+        assert fn in layout.functions , (
+            f"'{fn}' must lower once the headers agree: " f"{list(layout.functions)}"
+        );
+    }
     seams = seam_report("xmod_inherit_flat_main.jac");
-    assert "read_inherited" in seams and "depth" in seams , (
-        f"the refusal must name the function and the field: {seams}"
+    assert "read_inherited" not in seams , (
+        f"the inherited read must no longer demote: {seams}"
+    );
+}
+
+
+test "the flat pair answers what the server pathway answers" {
+    # The offsets agreeing is not the same as the values being right: a
+    # header fix that shifted both units consistently but wrongly would
+    # still pass the layout assertions above.
+    same_lines(
+        sv_run("xmod_inherit_flat_main.jac"),
+        na_run("xmod_inherit_flat_main.jac"),
+        "vtable-less imported base"
     );
 }

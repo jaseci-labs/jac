@@ -34,7 +34,7 @@ test "na host boots the fused runtime via libjacpyembed (no display)" {
         "with entry {\n"
         "    rc: i32 = jac_engine_boot();\n"
         "    if rc != 0 {\n"
-        "        sys.exit(1);\n"
+        "        sys.`exit(1);\n"
         "    }\n"
         "    jpy_PyRun_SimpleString(\"import jaclang; from jaclang.runtimelib.client.targets.desktop.native import oauth_broker; print('ENGINE_BOOT_OK', flush=True)\");\n"
         "    jpy_Py_Finalize();\n"

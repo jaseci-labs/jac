@@ -3,7 +3,7 @@
 A jac class in a native unit may inherit from a class that stays
 Python-side (the cross-module-trust design keeps bases like `Transform`
 and `UniPass` out of the native closure). Three seams previously failed
-there, census-verified against the compiler's own tree:
+there, coverage-verified against the compiler's own tree:
 
   1. `super.postinit();` -- E5092 "super.__post_init__", a hard abort of
      the whole module (`Transform.postinit`, chained by every pass).

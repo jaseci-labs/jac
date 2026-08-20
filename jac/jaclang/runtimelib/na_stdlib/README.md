@@ -292,7 +292,7 @@ bundled one. A bundled module links through the existing cross-module machinery
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
 intercepts, reached via the flat `import os`, not bundled here (see
-`compiler/passes/native/na_ir_gen_pass.impl/os.impl.jac`). `os.sep` and its
+`compiler/passes/native/na_ir_gen/os.impl.jac`). `os.sep` and its
 sibling module attributes (`extsep`, `pardir`, `curdir`, `pathsep`, `linesep`,
 `devnull`) resolve the same way; `os.altsep` is `None` on POSIX and is not
 provided. Note that `getmtime` / `getsize` answer `-1` for a path that cannot

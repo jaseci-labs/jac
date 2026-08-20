@@ -15,7 +15,6 @@ measure was ever reached. Chaining with `super.postinit()` is the
 supported shape and bridges.
 """
 
-import from collections.abc { Sequence }
 import from pyb_base_lib { PyBase }
 
 obj Kid(PyBase) {
