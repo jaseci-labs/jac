@@ -15,9 +15,16 @@ fields at all, and every method touching one demoted to a seam.
 
 The rule is now inherited rather than re-derived: a class carries a vtable
 when something is dispatched through it, or when an ancestor already carries
-one. Intra-module hierarchies are unchanged -- a base with a local subclass
-still gains the header and still passes it down -- and the cross-module pair
-now agrees on flat.
+one, and "is anything dispatched through me" is asked of the whole import
+closure instead of of one module.
+
+The pair therefore agrees on carrying the header rather than on flat. A base
+with a subclass is a base wherever that subclass is declared, so `SlotBase`
+gains the header here exactly as a base with a same-module subclass always
+did; the old flat answer was not a leaner decision, it was the registry
+failing to see the subclass. What this test holds the header rule to is that
+the two agree, and that a child never adopts field indices through a narrower
+header than the base assigned them behind.
 
 `inherited_slot_novt.jac` is the control that places the fault. It overrides
 nothing, so if the override were what forced the vtable it would have lowered
@@ -77,8 +84,8 @@ test "a child of a flat imported base carries the same header its base does" {
     (ir, _census) = _compile(CHILD);
     reg = ir.gen.layout_registry;
     assert reg is not None , "no layout registry was built";
-    base = reg.layouts.get("SlotBase");
-    child = reg.layouts.get("SlotChild");
+    base = reg.get_layout("SlotBase");
+    child = reg.get_layout("SlotChild");
     assert base is not None and child is not None , (
         f"both layouts must be present, got: {sorted(reg.layouts)}"
     );
@@ -87,9 +94,10 @@ test "a child of a flat imported base carries the same header its base does" {
         f"base vtable_ptr_slot={base.vtable_ptr_slot}, "
         f"child vtable_ptr_slot={child.vtable_ptr_slot}"
     );
-    assert not child.has_vtable , (
-        "nothing is dispatched through SlotChild and its base is flat, so it "
-        "must not carry a vtable its base lacks"
+    assert child.has_vtable == base.has_vtable , (
+        "the child must carry exactly the header its base does, or the "
+        "inherited field indices it adopts do not line up: "
+        f"base has_vtable={base.has_vtable}, child has_vtable={child.has_vtable}"
     );
 }
 
@@ -97,8 +105,8 @@ test "a child of a flat imported base carries the same header its base does" {
 test "the child adopts the base's slot assignment verbatim" {
     (ir, _census) = _compile(CHILD);
     reg = ir.gen.layout_registry;
-    base = reg.layouts.get("SlotBase");
-    child = reg.layouts.get("SlotChild");
+    base = reg.get_layout("SlotBase");
+    child = reg.get_layout("SlotChild");
     for finfo in base.fields {
         assert finfo.name in child.field_index , (
             f"the child's layout is missing the inherited field "
@@ -145,8 +153,8 @@ test "the no-override control lowers too, which places the fault on the header" 
     # the header decision was.
     (ir, census) = _compile(NOVT);
     reg = ir.gen.layout_registry;
-    base = reg.layouts.get("SlotBase");
-    child = reg.layouts.get("SlotChildFlat");
+    base = reg.get_layout("SlotBase");
+    child = reg.get_layout("SlotChildFlat");
     assert base.vtable_ptr_slot == child.vtable_ptr_slot , (
         f"base {base.vtable_ptr_slot} != child {child.vtable_ptr_slot}"
     );

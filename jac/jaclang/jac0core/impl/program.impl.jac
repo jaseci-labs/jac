@@ -34,6 +34,8 @@ impl JacProgram.init(
     self._placement_summaries: dict = {};
 
     self._placement_state: dict = {};
+
+    self.class_model: any = None;
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {

@@ -423,7 +423,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     if layout is None {
         return;
     }
-
     field_types: list[ir.Type] = [];
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};

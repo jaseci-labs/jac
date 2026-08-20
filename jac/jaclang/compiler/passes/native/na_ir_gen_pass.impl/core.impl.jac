@@ -712,9 +712,6 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         self._register_imported_hierarchy(imported_mod);
     }
 
-    import from jaclang.compiler.passes.main.layout_pass { adopt_imported_bases }
-    adopt_imported_bases(self.ir_in);
-
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
     }
@@ -1045,31 +1042,19 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
 }
 
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
+    """Make the imported module's archetype declarations reachable by name.
+
+    This used to also copy the imported module's layouts, mro table and
+    parent table into the consumer's registry. That merge was keyed on bare
+    names and resolved first-writer-wins in import-walk order, and it stored
+    the very same layout OBJECTS the declaring module held, so a later
+    compile could move a field under the module that owned it. There is one
+    program-scoped model now and the layouts are already in it, laid out
+    ancestors-first across the closure -- so there is nothing to merge, and
+    `adopt_imported_bases` has nothing left to repair.
+    """;
     import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
-    _imp_reg = get_layout_registry(imported_mod, self.prog);
-    _cons_reg = get_layout_registry(self.ir_in, self.prog);
-    for (_name, _parents) in _imp_reg.class_parents.items() {
-        if _name not in _cons_reg.class_parents
-            or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
-            _cons_reg.class_parents[_name] = _parents;
-        }
-    }
-    for (_name, _pmods) in _imp_reg.parent_mods.items() {
-        if _name not in _cons_reg.parent_mods {
-            _cons_reg.parent_mods[_name] = _pmods;
-        }
-    }
-    for (_name, _mro) in _imp_reg.mro_order.items() {
-        if _name not in _cons_reg.mro_order
-            or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
-            _cons_reg.mro_order[_name] = _mro;
-        }
-    }
-    for (_name, _lay) in _imp_reg.layouts.items() {
-        if _name not in _cons_reg.layouts {
-            _cons_reg.layouts[_name] = _lay;
-        }
-    }
+    get_layout_registry(imported_mod, self.prog);
 
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (

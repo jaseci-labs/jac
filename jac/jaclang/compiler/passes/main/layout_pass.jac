@@ -68,7 +68,7 @@ obj ArchetypeLayout {
     has name: str,
         arch_type: str,
         decl_mod: str = "",
-        parent_mods: list[str] = [],
+        aid: str = "",
         parents: list[str] = [],
         mro: list[str] = [],
         fields: list[FieldInfo] = [],
@@ -129,16 +129,58 @@ def archetype_accessors(arch: Archetype) -> list[tuple[(str, HasVar, Ability)]] 
     return out;
 }
 
+def class_model(prog: any) -> LayoutRegistry {
+    """The program's single class model, created on first use.
+
+    Layouts used to live on `module.gen.layout_registry`, one partial model
+    per module, merged into each other by aliasing shared layout objects.
+    "The layout of class X" then had one answer per module that asked. There
+    is now one model per program and one answer.
+    """;
+    if prog is None {
+        return LayoutRegistry();
+    }
+    model = prog?.class_model;
+    if model is None {
+        model = LayoutRegistry();
+        prog.class_model = model;
+    }
+    return model;
+}
+
 def get_layout_registry(module: Module, prog: any = None) -> LayoutRegistry {
-    reg = module.gen.layout_registry;
-    if reg is not None {
-        return reg;
+    """The program's class model, with `module`'s archetypes guaranteed in it.
+
+    "Has this module been laid out" is asked of the MODEL, not of
+    `module.gen.layout_registry`. Module IR is cached across JacProgram
+    instances, so that field outlives the program that set it: a second
+    program would find it already populated, skip the pass, and be handed a
+    model belonging to a program that no longer owns the compile -- while its
+    own `prog.class_model` stayed empty. Two models in play is the exact
+    failure the per-module registries had.
+
+    `module.gen.layout_registry` is still assigned, because consumers read it
+    directly, but it is a pointer to the shared model rather than a cache key.
+    """;
+    model = class_model(prog);
+    if prog is None {
+        reg = module.gen.layout_registry;
+        if reg is not None {
+            return reg;
+        }
+    }
+    import os;
+    path = module.loc.mod_path if module.loc else None;
+    key = os.path.realpath(path) if path else "";
+    if key and key in model.modules_done {
+        return model;
     }
 
     import from jaclang.jac0core.compiler { run_pass }
     run_pass(LayoutPass, module, prog);
-    return module.gen.layout_registry or LayoutRegistry();
+    return module.gen.layout_registry or model;
 }
+
 
 def layout_slot_count(lay: ArchetypeLayout) -> int {
     top = 0;
@@ -155,251 +197,99 @@ def layout_slot_count(lay: ArchetypeLayout) -> int {
     return top;
 }
 
-def declaring_module_path(base_expr: UniNode) -> str {
+def arch_decl_module(arch: Archetype) -> str {
+    """The realpath of the module that DECLARES this archetype.
+
+    Half of an archetype's identity. Read off the declaration itself rather
+    than off a use site, so it does not depend on who is asking or on which
+    module happens to be compiling.
+    """;
     import os;
-    sym = base_expr?.sym;
-    decl = sym.decl if sym is not None else None;
-    if decl is None {
-        return "";
-    }
-    base_arch = decl.find_parent_of_type(Archetype);
-    if base_arch is None {
-        return "";
-    }
-    decl_mod = decl.find_parent_of_type(Module);
-    path = decl_mod.loc.mod_path if decl_mod?.loc else None;
+    mod = arch.find_parent_of_type(Module);
+    path = mod.loc.mod_path if (mod is not None and mod.loc) else None;
     return os.path.realpath(path) if path else "";
 }
 
-def headers_agree(child: ArchetypeLayout, base: ArchetypeLayout) -> bool {
-    return child.vtable_ptr_slot == base.vtable_ptr_slot
-        and child.type_tag_slot == base.type_tag_slot
-        and child.reports_slot == base.reports_slot;
-}
+def archetype_id(arch: Archetype) -> str {
+    """`<declaring module realpath>::<name>` -- an archetype's identity.
 
-def relax_vtable_header(
-    lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]
-) -> bool {
-    """Drop a vtable header a class carries only for having had a base.
-
-    `needs_vtable` is decided per module, where a base's subclasses in other
-    modules are not visible. A base that is nobody's parent in its own
-    registry comes out flat; its subclass, merely for having a base, comes
-    out with a vtable pointer in header slot 0 -- so every field the base
-    declared sits one slot further along in the child, `headers_agree`
-    refuses the pair, and the inherited access stays demoted.
-
-    Here both layouts are in hand, so the question can be asked properly: is
-    anything actually dispatched through this class? `vtable_by_dispatch`
-    records the answer the defining module gave -- it is someone's parent, an
-    isinstance target, or an OSP archetype. When nothing is, and no ancestor
-    carries a header either, the child's vtable slot is a habit rather than a
-    requirement and dropping it makes the two units agree.
-
-    Every ancestor is checked, not just the primary: relaxing a child whose
-    grandparent carries a header would trade one disagreement for another.
-    A class that IS dispatched through keeps its header and its refusal --
-    that pair genuinely has no assignment satisfying both.
+    A bare name is not an identity: two modules may each declare `Config`,
+    and a model spanning the import closure holds both. Keying on the bare
+    name made that a collision resolved by import-walk order; keying here
+    makes them two entries that cannot be confused.
     """;
-    if lay.is_osp or lay.vtable_by_dispatch or not lay.has_vtable {
-        return False;
-    }
-    for anc_lay in ancestors {
-        if anc_lay.has_vtable {
-            return False;
-        }
-    }
-    lay.has_vtable = False;
-    lay.vtable_ptr_slot = None;
-    return headers_agree(lay, ancestors[0]);
+    name = arch.name.value if arch.name else "unknown";
+    return f"{arch_decl_module(arch)}::{name}";
 }
 
-def extended_mro(reg: LayoutRegistry, lay: ArchetypeLayout) -> list[str] {
-    out: list[str] = list(lay.mro or [lay.name]);
-    trusted: set[str] = set();
-    for (i, pname) in enumerate(lay.parents or []) {
-        anc_lay = reg.layouts.get(pname);
-        if anc_lay is None {
-            continue;
-        }
-        want = (lay.parent_mods or [])[i] if i < len(lay.parent_mods or []) else "";
-        if want and anc_lay.decl_mod and want == anc_lay.decl_mod {
-            trusted.add(pname);
-        }
+def base_expr_name(base_expr: UniNode) -> (str | None) {
+    """The bare name a base expression spells, or None.""";
+    if isinstance(base_expr, Name) {
+        return base_expr.value;
     }
-    idx = 1;
-    while idx < len(out) {
-        anc = out[idx];
-        anc_lay = reg.layouts.get(anc);
-        if anc_lay is not None
-            and (anc in trusted or anc not in (lay.parents or []))
-            and headers_agree(lay, anc_lay) {
-            for nxt in (reg.mro_order.get(anc) or [])[1:] {
-                if nxt not in out {
-                    out.append(nxt);
-                    trusted.add(nxt);
-                }
-            }
-        }
-        idx += 1;
+    if isinstance(base_expr, AstSymbolNode) {
+        return base_expr.sym_name;
     }
-    return out;
+    return None;
 }
 
-def adopt_imported_bases(module: Module) -> list[str] {
-    reg = module.gen.layout_registry;
-    if reg is None {
-        return [];
+def sibling_archetype(arch: Archetype, name: str) -> (Archetype | None) {
+    """An archetype of `name` declared in the SAME module as `arch`.
+
+    The symbol a base expression carries is the identity-exact answer, but it
+    is not always bound -- a module compiled as somebody's dependency can
+    reach layout with its base expressions unresolved, and then a class loses
+    the fields it inherits and every method that touches one demotes.
+
+    Falling back to the name within the declaring module is safe where a
+    fully bare-name lookup is not: one module cannot declare the same
+    archetype name twice, so there is nothing here to confuse. It never
+    reaches outside that module, which is where bare names stop being
+    identities.
+    """;
+    mod = arch.find_parent_of_type(Module);
+    if mod is None {
+        return None;
     }
-    for (name, lay) in reg.layouts.items() {
-        full = extended_mro(reg, lay);
-        if len(full) > len(lay.mro or []) {
-            lay.mro = full;
-            reg.mro_order[name] = list(full);
+    for nd in mod.get_all_sub_nodes(Archetype) {
+        if nd is not arch and nd.name and nd.name.value == name {
+            return nd;
         }
     }
-    order = sorted(
-        reg.layouts.keys(), key=lambda (n: str) { len(reg.layouts[n].mro or [n]); }
-    );
-    adopted: list[str] = [];
-    for name in order {
-        lay = reg.layouts.get(name);
-        if lay is None {
-            continue;
-        }
-        ancestors: list[ArchetypeLayout] = [];
-        for anc in (lay.mro or [])[1:] {
-            anc_lay = reg.layouts.get(anc);
-            if anc_lay is not None {
-                ancestors.append(anc_lay);
-            }
-        }
-        if not ancestors {
-            continue;
-        }
-        absent = False;
-        for anc_lay in ancestors {
-            for finfo in anc_lay.fields {
-                if finfo.name not in lay.field_index {
-                    absent = True;
-                }
-            }
-            for mslot in anc_lay.methods {
-                if mslot.name not in lay.method_index {
-                    absent = True;
-                }
-            }
-        }
-        if not absent {
-            continue;
-        }
-        if not headers_agree(lay, ancestors[0])
-            and not relax_vtable_header(lay, ancestors) {
-            continue;
-        }
-        adopt_ancestor_slots(lay, ancestors);
-        adopted.append(name);
-    }
-    return adopted;
+    return None;
 }
 
-def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]) {
-    primary = ancestors[0];
-    fields: list[FieldInfo] = [];
-    field_index: dict[str, int] = {};
-    parent_field_start: dict[str, int] = {};
-    seen: set[str] = set();
-    if lay.reports_slot is not None {
-        field_index["reports"] = lay.reports_slot;
-        seen.add("reports");
+def base_declaration(base_expr: UniNode) -> (Archetype | None) {
+    """The archetype a base expression names, through the symbol it carries.
+
+    Identity comes from the symbol the expression already resolved to, so an
+    imported base names the archetype that actually declares it. Matching a
+    base expression against a bare-name map of the current module -- the old
+    path -- silently dropped a base declared elsewhere and silently accepted
+    an unrelated class that happened to share the name.
+    """;
+    decl: (UniNode | None) = base_expr?.sym?.decl;
+    if decl is None {
+        return None;
     }
-    for finfo in primary.fields {
-        if finfo.name in seen {
-            continue;
-        }
-        seen.add(finfo.name);
-        fields.append(clone_field(finfo, finfo.index));
-        field_index[finfo.name] = finfo.index;
+    if isinstance(decl, Archetype) {
+        return decl;
     }
-    parent_field_start[primary.name] = layout_slot_count(primary) - len(primary.fields);
-    next_idx = layout_slot_count(primary);
-    for anc_lay in ancestors[1:] {
-        parent_field_start[anc_lay.name] = next_idx;
-        for finfo in anc_lay.fields {
-            if finfo.name in seen {
-                continue;
-            }
-            seen.add(finfo.name);
-            fields.append(clone_field(finfo, next_idx));
-            field_index[finfo.name] = next_idx;
-            next_idx += 1;
-        }
-    }
-    for finfo in lay.fields {
-        if finfo.name in seen {
-            continue;
-        }
-        seen.add(finfo.name);
-        fields.append(clone_field(finfo, next_idx));
-        field_index[finfo.name] = next_idx;
-        next_idx += 1;
-    }
-    lay.fields = sorted(fields, key=lambda (f) { f.index; });
-    lay.field_index = field_index;
-    lay.parent_field_start = parent_field_start;
-    adopt_ancestor_methods(lay, ancestors);
-    for anc_lay in ancestors {
-        lay.is_acyclic = lay.is_acyclic and anc_lay.is_acyclic;
-    }
+    return decl.find_parent_of_type(Archetype);
 }
 
-def clone_field(finfo: FieldInfo, index: int) -> FieldInfo {
-    return FieldInfo(
-        name=finfo.name,
-        index=index,
-        type_tag=finfo.type_tag,
-        type_node=finfo.type_node,
-        default_expr=finfo.default_expr,
-        owner=finfo.owner,
-        is_func_ptr=finfo.is_func_ptr,
-        decl_node=finfo.decl_node
-    );
+def class_type_decl(cls: any) -> (Archetype | None) {
+    """The Archetype a ClassType was built from, or None.
+
+    The type system already resolved this through the symbol table, so it is
+    the authoritative answer to "which declaration is this" -- the question
+    bare-name lookup could only guess at.
+    """;
+    shared = cls.shared if cls is not None else None;
+    decl = shared.symbol_table if shared is not None else None;
+    return decl if isinstance(decl, Archetype) else None;
 }
 
-def adopt_ancestor_methods(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]) {
-    order: list[str] = [];
-    source: dict[str, MethodSlot] = {};
-    for anc_lay in ancestors {
-        for mslot in anc_lay.methods {
-            if mslot.name not in source {
-                source[mslot.name] = mslot;
-                order.append(mslot.name);
-            }
-        }
-    }
-    for mslot in lay.methods {
-        if mslot.name not in source {
-            order.append(mslot.name);
-        }
-        source[mslot.name] = mslot;
-    }
-    methods: list[MethodSlot] = [];
-    method_index: dict[str, int] = {};
-    for (i, mname) in enumerate(order) {
-        held = source[mname];
-        methods.append(
-            MethodSlot(name=mname, index=i, owner=held.owner, signature=held.signature)
-        );
-        method_index[mname] = i;
-    }
-    lay.methods = methods;
-    lay.method_index = method_index;
-}
-
-def is_erased_base_name(name: str, archetypes: dict[str, Archetype]) -> bool {
-    import from jaclang.jac0core.codeinfo { NATIVE_ERASED_BASES }
-    return name in NATIVE_ERASED_BASES and name not in archetypes;
-}
 
 def is_enum_class_type(t: any) -> bool {
     try {
@@ -581,14 +471,19 @@ def class_form_enum_member(t: any) -> (tuple[(str, (str | int), str)] | None) {
 
 obj LayoutRegistry {
     has layouts: dict[str, ArchetypeLayout] = {},
-        class_parents: dict[str, list[str]] = {},
-        parent_mods: dict[str, list[str]] = {},
+        modules_done: set[str] = set(),
+        name_index: dict[str, list[str]] = {},
         mro_order: dict[str, list[str]] = {},
+        class_parents: dict[str, list[str]] = {},
         topo_order: list[str] = [],
-        local_names: list[str] = [],
-        enums: dict[str, EnumLayout] = {};
+        collisions: dict[str, list[str]] = {},
+        enums: dict[str, EnumLayout] = {},
+        frozen: bool = False;
 
     def get_layout(name: str) -> (ArchetypeLayout | None);
+    def resolve_id(name: str) -> (str | None);
+    def register(lay: ArchetypeLayout) -> None;
+    def freeze -> None;
     def get_enum_layout(name: str) -> (EnumLayout | None);
     def resolve_method_owner(arch_name: str, method_name: str) -> (str | None);
     def get_mro(name: str) -> list[str];
@@ -600,22 +495,33 @@ obj LayoutPass(Transform) {
     has ir_in: Module,
         cancel_token: any = None,
         registry: LayoutRegistry postinit,
-        isinstance_targets: set[str] postinit;
+        isinstance_targets: set[str] postinit,
+        _building: set[str] postinit,
+        _base_aids: set[str] postinit,
+        _closure_archs: dict[str, Archetype] postinit,
+        _registered: list[str] postinit;
 
     def postinit -> None;
     def transform(ir_in: Module) -> Module;
     def _collect_archetypes(module: Module) -> dict[str, Archetype];
     def _collect_isinstance_targets(module: Module) -> None;
-    def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;
-    def _compute_c3_mro(class_name: str) -> list[str];
-    def _topo_sort(arch_map: dict[str, Archetype]) -> list[str];
-    def _build_layout(arch: Archetype) -> ArchetypeLayout;
+    def _mark_module_done(module: Module) -> None;
+    def _class_type_of(arch: Archetype) -> any;
+    def _lays_out(arch: Archetype) -> bool;
+    def _base_archetypes(arch: Archetype) -> list[Archetype];
+    def _discover_closure(arch_map: dict[str, Archetype]) -> None;
+    def _ancestor_archetypes(arch: Archetype) -> list[Archetype];
+    def _ensure_layout(arch: Archetype) -> (str | None);
+    def _build_layout(
+        arch: Archetype, aid: str, ancestors: list[ArchetypeLayout]
+    ) -> ArchetypeLayout;
+
     def _build_enum_layouts(module: Module) -> None;
     def _compute_acyclicity -> None;
-    def _acyclic_walk(name: str, state: dict[str, int]) -> int;
+    def _acyclic_walk(aid: str, state: dict[str, int]) -> int;
     def _expand_type_keys(key: str) -> (list[str] | None);
     def _split_top_level(s: str, sep: str) -> list[str];
-    def _build_vtable_layout(arch_name: str, arch_map: dict[str, Archetype]) -> None;
+    def _build_vtable_layout(aid: str) -> None;
     def _validate_obj_fields(arch: Archetype, arch_map: dict[str, Archetype]) -> None;
     def _is_layout_compatible_type(
         type_node: (UniNode | None), arch_map: dict[str, Archetype]

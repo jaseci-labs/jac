@@ -36,7 +36,8 @@ class JacProgram {
         _inferred_mods: set,
         _analyses_run: dict,
         _placement_summaries: dict,
-        _placement_state: dict;
+        _placement_state: dict,
+        class_model: any;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
