@@ -223,13 +223,13 @@ def stop_process_group(process: any) -> None {
         process.terminate();
     }
     try {
-        process.wait(timeout=15);
+        process.`wait(timeout=15);
     } except Exception {
         if not _signal_group(process, signal.SIGKILL) {
             process.kill();
         }
         try {
-            process.wait(timeout=5);
+            process.`wait(timeout=5);
         } except Exception {
             0;
         }

@@ -132,7 +132,7 @@ def _stop_server(proc: Popen) {
         if not _signal_group(proc, signal.SIGKILL) {
             proc.kill();
         }
-        proc.wait(timeout=5);
+        proc.`wait(timeout=5);
     }
 }
 
