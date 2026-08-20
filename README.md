@@ -494,11 +494,11 @@ If Jac looks useful to you, [**star the repo**](https://github.com/jaseci-labs/j
 Jac and the Jaseci stack are [MIT licensed](LICENSE). Vendored third-party components retain their own permissive licenses.
 
 <div align="center">
-  <a href="https://star-history.com/#jaseci-labs/jaseci&Date">
+  <a href="https://star-history.dera.page/#jaseci-labs/jaseci&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date&theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date">
-      <img alt="Star history of jaseci-labs/jaseci" src="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date" width="600">
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=jaseci-labs/jaseci&type=Date&theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=jaseci-labs/jaseci&type=Date">
+      <img alt="Star history of jaseci-labs/jaseci" src="https://star-history.dera.page/svg?repos=jaseci-labs/jaseci&type=Date" width="600">
     </picture>
   </a>
 </div>
