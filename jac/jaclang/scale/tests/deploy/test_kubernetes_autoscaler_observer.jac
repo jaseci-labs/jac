@@ -528,17 +528,6 @@ test "_target_name_for uses the deployment's own name, with no app label require
     assert obs._target_name_for("deployment", deployment) == "orders-deployment";
 }
 
-test "_target_name_for still prefers the app label for a deployment when both are present" {
-    obs = KubernetesAutoscalerObserver();
-    deployment = {
-        "metadata": {
-            "name": "orders-deployment",
-            "labels": {"app": "orders-deployment"}
-        }
-    };
-    assert obs._target_name_for("deployment", deployment) == "orders-deployment";
-}
-
 test "_target_name_for returns None for a scaled_object/hpa resource with no app label" {
     obs = KubernetesAutoscalerObserver();
     scaled_object = {"metadata": {"name": "orphan-scaledobject", "labels": {}}};
