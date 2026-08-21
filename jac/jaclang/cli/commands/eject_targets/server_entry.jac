@@ -1,4 +1,5 @@
 import from pathlib { Path }
+import os;
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.bun_entry { build_bun_server_entry_script }
 
@@ -59,6 +60,13 @@ def emit_server_entry(
         runtime_js = rt_mod.gen.js;
     }
     (out_dir / 'server_runtime.js').write_text(runtime_js, encoding='utf-8');
+    import jaclang.runtimelib as _rt_pkg;
+    bun_store_src = Path(os.path.dirname(_rt_pkg.__file__)) / 'bun_store.js';
+    if bun_store_src.exists() {
+        (out_dir / 'bun_store.js').write_text(
+            bun_store_src.read_text(encoding='utf-8'), encoding='utf-8'
+        );
+    }
     handler_imports.insert(
         0, 'import { execWalker, startBunServer } from "./server_runtime.js";'
     );
@@ -74,11 +82,7 @@ def emit_server_entry(
     }
 
     entry = build_bun_server_entry_script(
-        project_name,
-        walkers,
-        functions,
-        module_imports,
-        handler_imports
+        project_name, walkers, functions, module_imports, handler_imports
     );
     (out_dir / 'server.mjs').write_text(entry, encoding='utf-8');
     return 0;

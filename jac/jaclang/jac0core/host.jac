@@ -12,13 +12,28 @@ glob HOST_DOM: str = 'DOM',
      HOST_WEBVIEW: str = 'webview',
      HOST_RN: str = 'rn',
      HOST_BUN: str = 'bun',
+     HOST_WEB_WORKER: str = 'web-worker',
+     HOST_SERVICE_WORKER: str = 'service-worker',
+     HOST_EDGE: str = 'edge',
+     HOST_CLI_JS: str = 'cli-js',
      HOST_CPYTHON: str = 'cpython',
      HOST_BARE_METAL: str = 'bare-metal',
+     P3_JS_HOST_KINDS: tuple = (
+         'web-worker',
+         'service-worker',
+         'edge',
+         'cli-js'
+     ),
+     P3_JS_HOST_CAPS: list[str] = ['NPM', 'JS_GLOBALS'],
      HOST_CAPABILITIES: dict[str, list[str]] = {
          'browser': ['DOM', 'NPM', 'JS_GLOBALS'],
          'webview': ['DOM', 'NPM', 'JS_GLOBALS'],
          'rn': ['NPM', 'JS_GLOBALS'],
-         'bun': ['NPM', 'JS_GLOBALS'],
+         'bun': ['NPM', 'JS_GLOBALS', 'PERSIST'],
+         'web-worker': ['NPM', 'JS_GLOBALS'],
+         'service-worker': ['NPM', 'JS_GLOBALS'],
+         'edge': ['NPM', 'JS_GLOBALS'],
+         'cli-js': ['NPM', 'JS_GLOBALS'],
          'cpython': ['PY', 'PERSIST'],
          'bare-metal': ['FFI']
      },
@@ -32,6 +47,15 @@ glob HOST_DOM: str = 'DOM',
          'rn': 'rn',
          'bun': 'bun',
          'server': 'bun',
+         'web-worker': 'web-worker',
+         'worker': 'web-worker',
+         'service-worker': 'service-worker',
+         'sw': 'service-worker',
+         'edge': 'edge',
+         'cloudflare': 'edge',
+         'cloudflare-workers': 'edge',
+         'cli-js': 'cli-js',
+         'cli_js': 'cli-js',
          'desktop': 'webview',
          'cef': 'webview'
      },
@@ -115,12 +139,12 @@ def host_kind_for_module(module: uni.Module) -> str {
     return HOST_CPYTHON;
 }
 
-def host_kind_for_node(node: uni.UniNode) -> str {
-    if node.in_native_context() {
+def host_kind_for_node(nd: uni.UniNode) -> str {
+    if nd.in_native_context() {
         return HOST_BARE_METAL;
     }
-    if node.in_client_context() {
-        mod = node.find_parent_of_type(uni.Module);
+    if nd.in_client_context() {
+        mod = nd.find_parent_of_type(uni.Module);
         mod_path = '';
         if mod is not None and mod.loc is not None {
             mod_path = mod.loc.mod_path or '';
@@ -135,8 +159,8 @@ def host_provides_kind(kind: str, cap: str) -> bool {
     return cap in caps;
 }
 
-def host_provides_node(node: uni.UniNode, cap: str) -> bool {
-    return host_provides_kind(host_kind_for_node(node), cap);
+def host_provides_node(nd: uni.UniNode, cap: str) -> bool {
+    return host_provides_kind(host_kind_for_node(nd), cap);
 }
 
 def js_global_requires_dom(name: str) -> bool {

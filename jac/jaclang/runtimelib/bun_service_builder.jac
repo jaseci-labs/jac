@@ -1,27 +1,25 @@
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.constant { SymbolType, CodeContext }
-import from jaclang.jac0core.placement { module_has_root_access }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.eject_targets.server_entry { emit_server_entry }
 
 
 def _bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
-    chunks: list[str] = [
-        f'// Bundled Bun sv service artifact for {module_name!r}'
-    ];
+    chunks: list[str] = [f'// Bundled Bun sv service artifact for {module_name!r}'];
     runtime_path = out_dir / 'server_runtime.js';
     if runtime_path.exists() {
         chunks.append(runtime_path.read_text(encoding='utf-8'));
+    }
+    bun_store_path = out_dir / 'bun_store.js';
+    if bun_store_path.exists() {
+        chunks.append(bun_store_path.read_text(encoding='utf-8'));
     }
     module_js = out_dir / f'{module_name}.js';
     if module_js.exists() {
         chunks.append(module_js.read_text(encoding='utf-8'));
     }
-    skip_markers = (
-        'from "./server_runtime.js"',
-        f'from "./{module_name}.js"'
-    );
+    skip_markers = ('from "./server_runtime.js"', f'from "./{module_name}.js"');
     entry_lines: list[str] = [];
     should_skip: bool = False;
     for line in (out_dir / 'server.mjs').read_text(encoding='utf-8').splitlines() {
@@ -58,13 +56,6 @@ def build_bun_service_artifact(
         errs = '\n'.join(str(e) for e in prog.errors_had);
         raise RuntimeError(f"Failed to compile {module_file}:\n{errs}");
     }
-    if module_has_root_access(ir) {
-        raise RuntimeError(
-            f"Bun hosting is opt-in and stateless: '{module_name}' touches "
-                + "root/graph persistence (module_has_root_access). Use CPython "
-                + "sv or wait for P2 PERSIST on bun."
-        );
-    }
     js_code = ir.gen.js or '';
     if not js_code.strip() {
         raise RuntimeError(f"Bun service '{module_name}' produced no JS output");
@@ -76,7 +67,8 @@ def build_bun_service_artifact(
         if item?.code_context == CodeContext.CLIENT {
             continue;
         }
-        if isinstance(item, uni.Archetype) and item.sym_category == SymbolType.WALKER_ARCH {
+        if isinstance(item, uni.Archetype)
+            and item.sym_category == SymbolType.WALKER_ARCH {
             walkers.append(
                 {
                     'name': str(item.name.sym_name),

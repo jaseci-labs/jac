@@ -18,11 +18,7 @@ import from jaclang.jac0core.sv_service_host {
 import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
 
 
-glob _STATELESS_SVC: str = (
-         'def:pub ping() -> int {\n'
-         '    return 42;\n'
-         '}\n'
-     ),
+glob _STATELESS_SVC: str = 'def:pub ping() -> int {\n' '    return 42;\n' '}\n',
      _ROOT_SVC: str = (
          'walker:pub touch_root {\n'
          '    can run with Root entry {\n'
@@ -30,9 +26,7 @@ glob _STATELESS_SVC: str = (
          '    }\n'
          '}\n'
      ),
-     _CLIENT_DIR: Path = (
-         Path(JAC_ROOT) / 'jaclang' / 'runtimelib' / 'client'
-     );
+     _CLIENT_DIR: Path = Path(JAC_ROOT) / 'jaclang' / 'runtimelib' / 'client';
 
 
 def _write_service(tmp: str, name: str, source: str) -> str {
@@ -72,18 +66,13 @@ test "build_bun_service_artifact emits Bun.serve entry with functions health rou
     }
 }
 
-test "build_bun_service_artifact rejects root-touching modules" {
+test "build_bun_service_artifact accepts root-touching modules with BunStore (P2)" {
     with tempfile.TemporaryDirectory() as tmp {
         _write_service(tmp, 'rooty', _ROOT_SVC);
-        try {
-            build_bun_service_artifact('rooty', tmp);
-            assert False , "root-touching modules must not be bun-hosted in P1";
-        } except RuntimeError as e {
-            msg = str(e);
-            assert 'root' in msg.lower() or 'persist' in msg.lower() , (
-                f"expected module_has_root_access gate message, got: {msg}"
-            );
-        }
+        artifact = build_bun_service_artifact('rooty', tmp);
+        assert artifact.exists();
+        text = artifact.read_text(encoding='utf-8');
+        assert 'Bun.serve' in text;
     }
 }
 
@@ -99,7 +88,9 @@ test "ServerNpmProvider is wired for jac install --npm --server" {
 
 test "test host registers on the host registry" {
     register = (_CLIENT_DIR / 'targets' / 'register.jac').read_text(encoding='utf-8');
-    target = (_CLIENT_DIR / 'targets' / 'test_host_target.jac').read_text(encoding='utf-8');
+    target = (_CLIENT_DIR / 'targets' / 'test_host_target.jac').read_text(
+        encoding='utf-8'
+    );
     assert 'TestHost' in register;
     assert 'registry.register(TestHost())' in register;
     assert 'host_kind: str = HOST_CPYTHON' in target;

@@ -15,12 +15,12 @@ import from jaclang.compiler.passes.ecmascript.backends.registry {
 }
 
 
-test "bun host provides NPM and JS_GLOBALS but not DOM or PERSIST" {
+test "bun host provides NPM, JS_GLOBALS, and PERSIST but not DOM" {
     assert host_provides_kind(HOST_BUN, 'NPM');
     assert host_provides_kind(HOST_BUN, 'JS_GLOBALS');
+    assert host_provides_kind(HOST_BUN, 'PERSIST');
     assert not host_provides_kind(HOST_BUN, 'DOM');
-    assert not host_provides_kind(HOST_BUN, 'PERSIST');
-    assert HOST_CAPABILITIES[HOST_BUN] == ['NPM', 'JS_GLOBALS'];
+    assert HOST_CAPABILITIES[HOST_BUN] == ['NPM', 'JS_GLOBALS', 'PERSIST'];
 }
 
 test "framework_for_host_kind maps bun to bun backend" {

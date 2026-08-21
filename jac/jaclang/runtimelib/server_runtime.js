@@ -1,4 +1,12 @@
-/** JS server runtime for Bun-hosted sv services (stateless tier, P1). */
+/** JS server runtime for Bun-hosted sv services (P1 stateless + P2 BunStore). */
+
+import {
+  __jacCommitGraph,
+  __jacEnsureRoot,
+  __jacInitBunStore,
+  __jacInstallOspPersistHooks,
+  __jacServerSpawnWalker,
+} from "./bun_store.js";
 
 export async function parseJsonBody(req) {
   try {
@@ -82,14 +90,13 @@ export function errorEnvelope(message) {
 
 export async function execWalker(walkerCls, fields) {
   const inst = Object.assign(new walkerCls(), fields);
-  const runner = globalThis.__jacServerSpawnWalker;
-  if (runner) {
-    return await runner(inst);
-  }
-  if (inst.__jac_run) {
-    return await inst.__jac_run();
-  }
-  throw new Error("No walker runtime available for Bun host");
+  return await __jacServerSpawnWalker(inst);
+}
+
+async function _preparePersistContext() {
+  __jacInstallOspPersistHooks();
+  await __jacInitBunStore();
+  __jacEnsureRoot();
 }
 
 export async function handleFunctionCall(req, name, handlers) {
@@ -103,10 +110,12 @@ export async function handleFunctionCall(req, name, handlers) {
   }
   const args = deserializeWireArgs(body);
   try {
+    await _preparePersistContext();
     let result = fn(args);
     if (result && typeof result === "object" && result.then) {
       result = await result;
     }
+    await __jacCommitGraph();
     return okEnvelope(finalizeCallResponse(result, []));
   } catch (e) {
     const msg = e.message ? e.message : String(e);
@@ -128,7 +137,9 @@ export async function handleWalkerSpawn(req, name, nodeId, handlers) {
     fields._jac_spawn_node = nodeId;
   }
   try {
+    await _preparePersistContext();
     const result = await spawnFn(fields);
+    await __jacCommitGraph();
     const reports = result?.reports || [];
     const payload =
       result && result.result != null
@@ -215,3 +226,5 @@ export function startBunServer(opts) {
     `Bun sv service '${project}' listening on http://0.0.0.0:${port}`
   );
 }
+
+export { __jacInitBunStore, __jacServerSpawnWalker };

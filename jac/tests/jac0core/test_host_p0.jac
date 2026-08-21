@@ -39,13 +39,20 @@ test "capability table matches PLAN host mapping" {
     assert HOST_CAPABILITIES[HOST_BROWSER] == [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS];
     assert HOST_CAPABILITIES[HOST_WEBVIEW] == [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS];
     assert HOST_CAPABILITIES[HOST_RN] == [HOST_NPM, HOST_JS_GLOBALS];
-    assert HOST_CAPABILITIES[HOST_BUN] == [HOST_NPM, HOST_JS_GLOBALS];
+    assert HOST_CAPABILITIES[HOST_BUN] == [HOST_NPM, HOST_JS_GLOBALS, HOST_PERSIST];
     assert HOST_CAPABILITIES[HOST_CPYTHON] == [HOST_PY, HOST_PERSIST];
     assert HOST_CAPABILITIES[HOST_BARE_METAL] == [HOST_FFI];
 }
 
 test "DOM is limited to browser and webview hosts" {
-    for kind in [HOST_BROWSER, HOST_WEBVIEW, HOST_RN, HOST_BUN, HOST_CPYTHON, HOST_BARE_METAL] {
+    for kind in [
+        HOST_BROWSER,
+        HOST_WEBVIEW,
+        HOST_RN,
+        HOST_BUN,
+        HOST_CPYTHON,
+        HOST_BARE_METAL
+    ] {
         provides_dom = host_provides_kind(kind, HOST_DOM);
         if kind in [HOST_BROWSER, HOST_WEBVIEW] {
             assert provides_dom , f"{kind} must provide DOM";
@@ -64,10 +71,11 @@ test "NPM covers every JS host in the capability table" {
     assert not host_provides_kind(HOST_BARE_METAL, HOST_NPM);
 }
 
-test "PY and PERSIST attach to CPython host only" {
+test "PY attaches to CPython host; PERSIST on Store hosts" {
     assert host_provides_kind(HOST_CPYTHON, HOST_PY);
     assert host_provides_kind(HOST_CPYTHON, HOST_PERSIST);
-    for kind in [HOST_BROWSER, HOST_RN, HOST_BUN, HOST_BARE_METAL] {
+    assert host_provides_kind(HOST_BUN, HOST_PERSIST);
+    for kind in [HOST_BROWSER, HOST_RN, HOST_BARE_METAL] {
         assert not host_provides_kind(kind, HOST_PY) , f"{kind} must not provide PY";
         assert not host_provides_kind(kind, HOST_PERSIST) , (
             f"{kind} must not provide PERSIST until its host has a Store"
@@ -87,11 +95,12 @@ test "capability to codespace lookup replaces signal-node tuples" {
     assert codespace_for_capability(HOST_NPM) == CodeContext.CLIENT;
     assert codespace_for_capability(HOST_FFI) == CodeContext.NATIVE;
     assert codespace_for_capability(HOST_PY) is None;
-    assert CAPABILITY_CODESPACE == {
-        HOST_FFI: CodeContext.NATIVE,
-        HOST_DOM: CodeContext.CLIENT,
-        HOST_NPM: CodeContext.CLIENT
-    };
+    assert CAPABILITY_CODESPACE
+        == {
+            HOST_FFI: CodeContext.NATIVE,
+            HOST_DOM: CodeContext.CLIENT,
+            HOST_NPM: CodeContext.CLIENT
+        };
 }
 
 test "seed_codespace_for_req uses the provider table not cap arm chains" {
@@ -130,8 +139,15 @@ test "framework_for_host_kind maps bun without a global backend singleton" {
 
 test "Host registry exposes target factory aliases" {
     registry = (
-        Path(JAC_ROOT) / 'jaclang' / 'runtimelib' / 'client' / 'targets' / 'registry.jac'
-    ).read_text(encoding='utf-8');
+        Path(JAC_ROOT)
+        / 'jaclang'
+        / 'runtimelib'
+        / 'client'
+        / 'targets'
+        / 'registry.jac'
+    ).read_text(
+        encoding='utf-8'
+    );
     assert 'class Host {' in registry or 'obj HostRegistry' in registry;
     assert 'def get_host_factory' in registry;
     assert 'def get_target_factory' in registry;
@@ -160,7 +176,7 @@ test "hard removal grep script passes for P0 items 1-7" {
     );
     assert result.returncode == 0 , (
         "P0 hard removals 1-7 must stay deleted:\n"
-            + (result.stdout or '')
-            + (result.stderr or '')
+        + (result.stdout or '')
+        + (result.stderr or '')
     );
 }

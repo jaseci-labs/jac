@@ -287,6 +287,101 @@ def native_stdlib_root -> (str | None) {
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
 }
 
+glob BUN_STDLIB_MODULES: tuple = (
+         'json',
+         'datetime',
+         'math',
+         'os',
+         'random',
+         'hashlib',
+         'uuid',
+         'time',
+         'urllib'
+     );
+
+
+def cl_stdlib_root -> (str | None) {
+    import os;
+    import jaclang;
+    if not jaclang?.__file__ {
+        return None;
+    }
+    stdlib_dir = os.path.join(
+        os.path.dirname(jaclang.__file__), "runtimelib", "cl_stdlib"
+    );
+    return stdlib_dir if os.path.isdir(stdlib_dir) else None;
+}
+
+
+def project_uses_bun_host(base_path: str = '') -> bool {
+    try {
+        import from jaclang.project.config { get_config, get_config_for_dir }
+        import from jaclang.runtimelib.client.npm_provider {
+            resolve_client_target_name
+        }
+        import from jaclang.jac0core.host { host_kind_for_target, HOST_BUN }
+        cfg = None;
+        if base_path.strip() {
+            cfg = get_config_for_dir(os.path.dirname(os.path.abspath(base_path)));
+        }
+        if cfg is None {
+            cfg = get_config();
+        }
+        if cfg is None {
+            return False;
+        }
+        target = resolve_client_target_name(cfg);
+        return host_kind_for_target(target) == HOST_BUN;
+    } except Exception {
+        return False;
+    }
+}
+
+
+def is_bundled_cl_module(module_name: str) -> bool {
+    import os;
+    stdlib_dir = cl_stdlib_root();
+    if stdlib_dir is None or not module_name {
+        return False;
+    }
+    clean = module_name.lstrip('.');
+    if clean.split('.')[0] not in BUN_STDLIB_MODULES {
+        return False;
+    }
+    path_name = clean.replace('.', os.sep);
+    plain = os.path.join(stdlib_dir, path_name + '.jac');
+    if os.path.isfile(plain) {
+        return True;
+    }
+    pkg_init = os.path.join(stdlib_dir, path_name, '__init__.jac');
+    return os.path.isfile(pkg_init);
+}
+
+
+def resolve_cl_module(
+    module_name: str, base_dir: str = ''
+) -> tuple[(str | None, str | None)] {
+    import os;
+    if not project_uses_bun_host(base_dir) {
+        return (None, None);
+    }
+    stdlib_dir = cl_stdlib_root();
+    if stdlib_dir is None or not module_name {
+        return (None, None);
+    }
+    clean = module_name.lstrip('.');
+    path_name = clean.replace('.', os.sep);
+    plain = os.path.join(stdlib_dir, path_name + '.jac');
+    if os.path.isfile(plain) {
+        return (path_name, plain);
+    }
+    pkg_init = os.path.join(stdlib_dir, path_name, '__init__.jac');
+    if os.path.isfile(pkg_init) {
+        return (path_name, pkg_init);
+    }
+    return (None, None);
+}
+
 def is_native_by_location(file_path: str) -> bool {
     import os;
     import jaclang;
@@ -304,6 +399,8 @@ glob CLIENT_RUNTIME_SOURCE_PATHS: list[str] = [
          "runtimelib/solid_runtime.jac",
          "runtimelib/pwa_runtime.jac",
          "runtimelib/wasm_host.jac",
+         "runtimelib/bun_store.jac",
+         "runtimelib/server_runtime.jac",
          "runtimelib/client/client_mobui.jac",
          "runtimelib/client/client_runtime_core.jac",
          "runtimelib/client/client_runtime_native.jac",
@@ -319,6 +416,10 @@ def is_client_by_location(file_path: str) -> bool {
     }
     ap = os.path.abspath(file_path);
     pkg = os.path.dirname(os.path.abspath(str(jaclang.__file__)));
+    cl_root = os.path.join(pkg, "runtimelib", "cl_stdlib");
+    if ap.startswith(cl_root + os.sep) {
+        return True;
+    }
     for rel in CLIENT_RUNTIME_SOURCE_PATHS {
         if ap == os.path.join(pkg, rel.replace("/", os.sep)) {
             return True;
