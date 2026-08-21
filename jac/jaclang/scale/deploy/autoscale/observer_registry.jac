@@ -4,6 +4,9 @@ import from jaclang.scale.deploy.autoscale.observer { AutoscalerObserver }
 import from jaclang.scale.deploy.autoscale.kubernetes_observer {
     KubernetesAutoscalerObserver
 }
+import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+    default_cluster_key
+}
 
 type ObserverFactoryFn = Callable[[], AutoscalerObserver];
 
@@ -11,22 +14,13 @@ class AutoscalerObserverRegistry {
     static has _instances: dict[str, AutoscalerObserver] = {},
         _lock: Lock = Lock();
 
-    static def _default_cluster_key -> str {
-        try {
-            import from kubernetes.client { Configuration }
-            return Configuration.get_default_copy().host or "default";
-        } except (ImportError, AttributeError) {
-            return "default";
-        }
-    }
-
     static def get_or_create(
         namespace: str,
         cluster_key: (str | None) = None,
         label_selector: (str | None) = None,
         observer_factory: (ObserverFactoryFn | None) = None
     ) -> AutoscalerObserver {
-        key = f"{cluster_key or AutoscalerObserverRegistry._default_cluster_key()}::{namespace}";
+        key = f"{cluster_key or default_cluster_key()}::{namespace}";
         with AutoscalerObserverRegistry._lock {
             existing = AutoscalerObserverRegistry._instances.get(key);
             if existing is not None {

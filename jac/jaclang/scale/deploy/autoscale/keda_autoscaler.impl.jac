@@ -26,12 +26,10 @@ impl KEDAAutoscaler._validate_triggers{
 }
 
 impl KEDAAutoscaler._get_cluster_key{
-    try {
-        import from kubernetes.client { Configuration }
-        return Configuration.get_default_copy().host or "default";
-    } except (ImportError, AttributeError) {
-        return "default";
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        default_cluster_key
     }
+    return default_cluster_key();
 }
 
 impl KEDAAutoscaler.preflight{
