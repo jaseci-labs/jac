@@ -147,30 +147,36 @@ impl KEDAAutoscaler._build_manifests{
     if spec.initial_cooldown_period > 0 {
         scaled_obj_spec["initialCooldownPeriod"] = spec.initial_cooldown_period;
     }
-    return {
-        "name": scaled_obj_name,
-        "body": {
-            "apiVersion": "keda.sh/v1alpha1",
-            "kind": "ScaledObject",
-            "metadata": {
-                "name": scaled_obj_name,
-                "namespace": spec.namespace,
-                "labels": {
-                    "app": spec.scale_target_name,
-                    ** Autoscaler._managed_labels()
-                }
-            },
-            "spec": scaled_obj_spec
-        }
+
+    scaled_object = {
+        "apiVersion": "keda.sh/v1alpha1",
+        "kind": "ScaledObject",
+        "metadata": {
+            "name": scaled_obj_name,
+            "namespace": spec.namespace,
+            "labels": {"app": spec.scale_target_name, ** Autoscaler._managed_labels()}
+        },
+        "spec": scaled_obj_spec
     };
+
+    manifests: list[dict[str, any]] = [scaled_object];
+    for (i, trigger) in enumerate(spec.triggers) {
+        auth_manifest = self._build_trigger_auth_manifest(
+            trigger, spec.namespace, app_name, i
+        );
+        if auth_manifest is not None {
+            manifests.append(auth_manifest);
+        }
+    }
+    return manifests;
 }
 
-impl KEDAAutoscaler._apply_trigger_auth{
+impl KEDAAutoscaler._build_trigger_auth_manifest{
     if not trigger.auth {
-        return;
+        return None;
     }
     if not trigger.auth.secret_refs {
-        return;
+        return None;
     }
     auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
     secret_target_refs: list[dict[str, any]] = [];
@@ -186,7 +192,7 @@ impl KEDAAutoscaler._apply_trigger_auth{
             {"parameter": param, "name": ref.get("name", ""), "key": ref.get("key", "")}
         );
     }
-    auth_body = {
+    return {
         "apiVersion": "keda.sh/v1alpha1",
         "kind": "TriggerAuthentication",
         "metadata": {
@@ -196,30 +202,29 @@ impl KEDAAutoscaler._apply_trigger_auth{
         },
         "spec": {"secretTargetRef": secret_target_refs}
     };
+}
+
+impl KEDAAutoscaler._apply_custom_object{
     try {
         api.get_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=namespace,
-            plural="triggerauthentications",
-            name=auth_name
+            group=group, version=version, namespace=namespace, plural=plural, name=name
         );
         api.patch_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
+            group=group,
+            version=version,
             namespace=namespace,
-            plural="triggerauthentications",
-            name=auth_name,
-            body=auth_body
+            plural=plural,
+            name=name,
+            body=body
         );
     } except ApiException as e {
         if e.status == 404 {
             api.create_namespaced_custom_object(
-                group="keda.sh",
-                version="v1alpha1",
+                group=group,
+                version=version,
                 namespace=namespace,
-                plural="triggerauthentications",
-                body=auth_body
+                plural=plural,
+                body=body
             );
         } else {
             raise;
@@ -251,39 +256,32 @@ impl KEDAAutoscaler.apply{
         }
     }
 
-    for (i, trigger) in enumerate(spec.triggers) {
-        self._apply_trigger_auth(api, trigger, spec.namespace, app_name, i);
-    }
     manifests = self._build_manifests(spec);
-    name = manifests["name"];
-    body = manifests["body"];
-    try {
-        api.get_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=spec.namespace,
-            plural="scaledobjects",
-            name=name
+    known_kinds = [kind for (kind, _) in KEDAAutoscaler._APPLY_ORDER];
+    unknown_kinds = [
+        manifest["kind"]
+        for manifest in manifests
+        if manifest["kind"] not in known_kinds
+    ];
+    if unknown_kinds {
+        raise ValueError(
+            f"_build_manifests returned unhandled kind(s) {unknown_kinds}; "
+            "add them to KEDAAutoscaler._APPLY_ORDER."
         );
-        api.patch_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=spec.namespace,
-            plural="scaledobjects",
-            name=name,
-            body=body
-        );
-    } except ApiException as e {
-        if e.status == 404 {
-            api.create_namespaced_custom_object(
-                group="keda.sh",
-                version="v1alpha1",
-                namespace=spec.namespace,
-                plural="scaledobjects",
-                body=body
-            );
-        } else {
-            raise;
+    }
+    for (kind, plural) in KEDAAutoscaler._APPLY_ORDER {
+        for manifest in manifests {
+            if manifest["kind"] == kind {
+                self._apply_custom_object(
+                    api,
+                    "keda.sh",
+                    "v1alpha1",
+                    spec.namespace,
+                    plural,
+                    manifest["metadata"]["name"],
+                    manifest
+                );
+            }
         }
     }
     return True;

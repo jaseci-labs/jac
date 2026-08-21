@@ -13,7 +13,7 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
 obj HPAAutoscaler(Autoscaler) {
     has logger: (Logger | None) = None;
 
-    def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
+    def _build_manifests(spec: AutoscalerSpec) -> list[dict[str, any]];
     def apply(spec: AutoscalerSpec) -> bool;
     def destroy(autoscaler_name: str, namespace: str) -> None;
     def destroy_collection(namespace: str, label_selector: str) -> None;

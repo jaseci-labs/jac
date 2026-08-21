@@ -39,26 +39,31 @@ impl HPAAutoscaler._build_manifests{
             }
         );
     }
-    return {
-        "apiVersion": "autoscaling/v2",
-        "kind": "HorizontalPodAutoscaler",
-        "metadata": {
-            "name": hpa_name,
-            "namespace": spec.namespace,
-            "labels": {"app": spec.scale_target_name, ** Autoscaler._managed_labels()}
-        },
-        "spec": {
-            "scaleTargetRef": {
-                "apiVersion": "apps/v1",
-                "kind": "Deployment",
-                "name": spec.scale_target_name
+    return [
+        {
+            "apiVersion": "autoscaling/v2",
+            "kind": "HorizontalPodAutoscaler",
+            "metadata": {
+                "name": hpa_name,
+                "namespace": spec.namespace,
+                "labels": {
+                    "app": spec.scale_target_name,
+                    ** Autoscaler._managed_labels()
+                }
             },
-            "minReplicas": spec.min_replicas,
-            "maxReplicas": spec.max_replicas,
-            "metrics": metrics,
-            "behavior": Autoscaler._build_behavior(spec)
+            "spec": {
+                "scaleTargetRef": {
+                    "apiVersion": "apps/v1",
+                    "kind": "Deployment",
+                    "name": spec.scale_target_name
+                },
+                "minReplicas": spec.min_replicas,
+                "maxReplicas": spec.max_replicas,
+                "metrics": metrics,
+                "behavior": Autoscaler._build_behavior(spec)
+            }
         }
-    };
+    ];
 }
 
 impl HPAAutoscaler.apply{
@@ -70,7 +75,7 @@ impl HPAAutoscaler.apply{
             );
         }
     }
-    manifest = self._build_manifests(spec);
+    manifest = self._build_manifests(spec)[0];
     name = manifest["metadata"]["name"];
     namespace = manifest["metadata"]["namespace"];
 
