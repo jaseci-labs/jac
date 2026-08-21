@@ -11,24 +11,43 @@ impl KubernetesAutoscalerObserver.start{
 
 impl KubernetesAutoscalerObserver.stop{
     self._stop_event.set();
-    if drain {
-        deadline = time.time() + 10.0;
+    if not drain {
         with self._lock {
-            threads = list(self._threads.values());
+            self._threads = {};
         }
-        for t in threads {
-            remaining = max(0.0, deadline - time.time());
-            try {
-                t.join(timeout=remaining);
-            } except Exception as e {
-                if self.logger {
-                    self.logger.warn(f"autoscaler observer thread join failed: {e}");
-                }
+        return;
+    }
+
+    deadline = time.time() + 10.0;
+    with self._lock {
+        threads = dict(self._threads);
+    }
+    still_running: list[str] = [];
+    for (key, t) in threads.items() {
+        remaining = max(0.0, deadline - time.time());
+        try {
+            t.join(timeout=remaining);
+        } except Exception as e {
+            if self.logger {
+                self.logger.warn(f"autoscaler observer thread join failed: {e}");
+            }
+        }
+        if t.is_alive() {
+            still_running.append(key);
+            if self.logger {
+                self.logger.warn(
+                    f"autoscaler observer thread '{key}' did not stop within the drain deadline"
+                );
             }
         }
     }
+
     with self._lock {
-        self._threads = {};
+        for key in list(self._threads.keys()) {
+            if key not in still_running {
+                self._threads.pop(key, None);
+            }
+        }
     }
 }
 
@@ -48,8 +67,8 @@ impl KubernetesAutoscalerObserver.watch_namespace{
                 daemon=True
             );
             self._threads[thread_key] = t;
+            t.start();
         }
-        t.start();
     }
 }
 
@@ -78,7 +97,12 @@ impl KubernetesAutoscalerObserver.health{
 
 impl KubernetesAutoscalerObserver._kind_config{
     if kind == "scaled_object" {
-        api = self._custom_api or client.CustomObjectsApi();
+        with self._lock {
+            if self._custom_api is None {
+                self._custom_api = client.CustomObjectsApi();
+            }
+            api = self._custom_api;
+        }
         list_fn = functools.partial(
             api.list_namespaced_custom_object,
             group="keda.sh",
@@ -88,14 +112,24 @@ impl KubernetesAutoscalerObserver._kind_config{
         return {"list_fn": list_fn, "typed": False};
     }
     if kind == "hpa" {
-        api = self._v2_api or AutoscalingV2Api();
+        with self._lock {
+            if self._v2_api is None {
+                self._v2_api = AutoscalingV2Api();
+            }
+            api = self._v2_api;
+        }
         return {
             "list_fn": api.list_namespaced_horizontal_pod_autoscaler,
             "typed": True
         };
     }
     if kind == "deployment" {
-        api = self._apps_api or client.AppsV1Api();
+        with self._lock {
+            if self._apps_api is None {
+                self._apps_api = client.AppsV1Api();
+            }
+            api = self._apps_api;
+        }
         return {"list_fn": api.list_namespaced_deployment, "typed": True};
     }
     raise ValueError(f"Unknown watch kind: {kind}");
@@ -130,6 +164,7 @@ impl KubernetesAutoscalerObserver._stream{
 }
 
 impl KubernetesAutoscalerObserver._watch_loop{
+    consecutive_failures = 0;
     while not self._stop_event.is_set() {
         try {
             (resource_version, items, list_fn) = self._list_and_seed(
@@ -154,27 +189,47 @@ impl KubernetesAutoscalerObserver._watch_loop{
                 resource = raw_obj if kind == "scaled_object" else raw_obj.to_dict();
                 self._handle_event(namespace, kind, event_type, resource);
             }
+            consecutive_failures = 0;
         } except Exception as e {
+            consecutive_failures += 1;
             if self.logger {
                 self.logger.warn(
-                    f"autoscaler observer watch loop error ({namespace}/{kind}): {e}"
+                    f"autoscaler observer watch loop error ({namespace}/{kind}, "
+                    f"attempt {consecutive_failures}): {e}"
                 );
             }
         }
         if self._stop_event.is_set() {
             return;
         }
-        wait_or_stop(self, 0.05);
+
+        backoff = min(0.05 * (2 ** consecutive_failures), 30.0);
+        wait_or_stop(self, backoff);
     }
 }
 
 impl KubernetesAutoscalerObserver._target_name_for{
-    return (resource.get("metadata") or {}).get("labels", {}).get("app");
+    label_target = (resource.get("metadata") or {}).get("labels", {}).get("app");
+    if label_target {
+        return label_target;
+    }
+    if kind == "deployment" {
+        return (resource.get("metadata") or {}).get("name");
+    }
+    return None;
 }
 
 impl KubernetesAutoscalerObserver._handle_event{
-    target_name = self._target_name_for(resource);
+    target_name = self._target_name_for(kind, resource);
     if target_name is None {
+        if self.logger {
+            resource_name = (resource.get("metadata") or {}).get("name", "<unknown>");
+            self.logger.debug(
+                f"autoscaler observer: could not correlate {kind} resource "
+                f"'{resource_name}' in namespace '{namespace}' to a scale "
+                f"target (missing 'app' label); ignoring event"
+            );
+        }
         return;
     }
     key = f"{namespace}::{target_name}";
@@ -189,6 +244,7 @@ impl KubernetesAutoscalerObserver._handle_event{
 
 impl KubernetesAutoscalerObserver._reconcile_target{
     key = f"{namespace}::{scale_target_name}";
+
     with self._lock {
         slot = self._target_cache.get(
             key, {"scaled_object": None, "hpa": None, "deployment": None}
@@ -196,51 +252,45 @@ impl KubernetesAutoscalerObserver._reconcile_target{
         scaled_object = slot.get("scaled_object");
         hpa = slot.get("hpa");
         deployment = slot.get("deployment");
-    }
-
-    if scaled_object is not None {
-        status = KEDAAutoscaler()._normalize_keda_status(
-            scaled_object, hpa, deployment
-        );
-        autoscaler_name = scaled_object.get("metadata", {}).get("name")
-            or scale_target_name;
-        resource_version = scaled_object.get("metadata", {}).get("resourceVersion")
-            or "";
-    } elif hpa is not None {
-        status = HPAAutoscaler()._normalize_hpa_status(hpa);
-        autoscaler_name = hpa.get("metadata", {}).get("name") or scale_target_name;
-        resource_version = status.resource_version or "";
-    } else {
-        status = AutoscalerRuntimeStatus(
-            state=AutoscalerState.UNKNOWN.value,
-            desired_replicas=0,
-            current_replicas=0,
-            ready_replicas=0,
-            message="no autoscaler resource found for target"
-        );
-        autoscaler_name = scale_target_name;
-        resource_version = "";
-    }
-
-    with self._lock {
+        if scaled_object is not None {
+            status = KEDAAutoscaler()._normalize_keda_status(
+                scaled_object, hpa, deployment
+            );
+            autoscaler_name = scaled_object.get("metadata", {}).get("name")
+                or scale_target_name;
+            resource_version = scaled_object.get("metadata", {}).get("resourceVersion")
+                or "";
+        } elif hpa is not None {
+            status = HPAAutoscaler()._normalize_hpa_status(hpa);
+            autoscaler_name = hpa.get("metadata", {}).get("name") or scale_target_name;
+            resource_version = status.resource_version or "";
+        } else {
+            status = AutoscalerRuntimeStatus(
+                state=AutoscalerState.UNKNOWN.value,
+                desired_replicas=0,
+                current_replicas=0,
+                ready_replicas=0,
+                message="no autoscaler resource found for target"
+            );
+            autoscaler_name = scale_target_name;
+            resource_version = "";
+        }
         previous_state = self._last_state.get(key);
         self._last_state[key] = status.state;
+        if previous_state is None or previous_state == status.state {
+            return;
+        }
+        transition = AutoscalerTransition(
+            autoscaler_name=autoscaler_name,
+            scale_target_name=scale_target_name,
+            namespace=namespace,
+            previous_state=previous_state,
+            state=status.state,
+            observed_at=datetime.now(UTC).isoformat(),
+            resource_version=str(resource_version),
+            message=status.message
+        );
     }
-
-    if previous_state is None or previous_state == status.state {
-        return;
-    }
-
-    transition = AutoscalerTransition(
-        autoscaler_name=autoscaler_name,
-        scale_target_name=scale_target_name,
-        namespace=namespace,
-        previous_state=previous_state,
-        state=status.state,
-        observed_at=datetime.now(UTC).isoformat(),
-        resource_version=str(resource_version),
-        message=status.message
-    );
     self._emit(transition);
 }
 

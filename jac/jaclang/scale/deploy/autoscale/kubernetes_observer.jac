@@ -52,7 +52,7 @@ obj KubernetesAutoscalerObserver(AutoscalerObserver) {
     ) -> any;
 
     def _watch_loop(namespace: str, kind: str, label_selector: (str | None)) -> None;
-    def _target_name_for(resource: dict[str, any]) -> (str | None);
+    def _target_name_for(kind: str, resource: dict[str, any]) -> (str | None);
     def _handle_event(
         namespace: str, kind: str, event_type: str, resource: dict[str, any]
     ) -> None;
