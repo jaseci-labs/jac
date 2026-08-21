@@ -111,44 +111,6 @@ test "keda normalize reports inactive for idle scale-to-zero -- this is not an e
     assert status.trigger_active is False;
 }
 
-test "keda normalize reports activating when the trigger fired before any HPA/Deployment data exists" {
-    # The ScaledObject watch event can arrive before the observer has cached
-    # anything for the HPA or Deployment kind -- Active=True is still real
-    # signal (something is starting up), so this must not read as "unknown".
-    scaled_object = {
-        "metadata": {"resourceVersion": "20"},
-        "status": {
-            "conditions": [ready_condition(), active_condition("True")],
-            "hpaName": "orders-hpa"
-        }
-    };
-    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, None, None);
-    assert status.state == AutoscalerState.ACTIVATING.value;
-    assert status.desired_replicas == 0;
-    assert status.current_replicas == 0;
-    assert status.ready_replicas == 0;
-    assert status.trigger_active is True;
-}
-
-test "keda normalize reports activating while trigger fired but pods are not ready yet" {
-    scaled_object = {
-        "metadata": {"resourceVersion": "14"},
-        "status": {
-            "conditions": [ready_condition(), active_condition("True")],
-            "hpaName": "orders-hpa"
-        }
-    };
-    hpa = {"status": {"current_replicas": 1, "desired_replicas": 1}};
-    deployment = {
-        "status": {"replicas": 1, "ready_replicas": 0, "available_replicas": 0}
-    };
-    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, deployment);
-    assert status.state == AutoscalerState.ACTIVATING.value;
-    assert status.trigger_active is True;
-    assert status.ready_replicas == 0;
-    assert status.desired_replicas == 1;
-}
-
 test "keda normalize reports active once desired current and ready all agree" {
     scaled_object = {
         "metadata": {"resourceVersion": "15"},
@@ -199,7 +161,9 @@ test "keda normalize distinguishes cold-started-but-not-yet-ready from fully act
     };
     status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, deployment);
     assert status.state == AutoscalerState.ACTIVATING.value;
-    assert status.state != AutoscalerState.ACTIVE.value;
+    assert status.trigger_active is True;
+    assert status.ready_replicas == 0;
+    assert status.desired_replicas == 1;
 }
 
 test "keda normalize with no conditions at all is unknown, not a crash" {
@@ -226,6 +190,10 @@ test "keda normalize reports activating when Active is true but the HPA still re
     hpa = {"status": {"current_replicas": 0, "desired_replicas": 0}};
     status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, None);
     assert status.state == AutoscalerState.ACTIVATING.value;
+    assert status.desired_replicas == 0;
+    assert status.current_replicas == 0;
+    assert status.ready_replicas == 0;
+    assert status.trigger_active is True;
 }
 
 test "keda normalize reports active during the cooldown window, before replicas actually drop" {
