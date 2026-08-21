@@ -5,17 +5,19 @@ reaches any `[dependencies]`-backed module dies with `ModuleNotFoundError`
 otherwise, and since the build is fatal that kills the whole deploy.
 
 These drive the real ManifestBuilder against real project folders, running the
-actual `jac install` and `jac build` subprocesses; no mocks."""
+actual `jac install` and `jac build` subprocesses; no mocks. Where a test needs
+to see inside the build's ephemeral stage, it goes through the codebase's own
+JAC_EXECUTABLE seam with a wrapper that hands every call to the real binary."""
 
 import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.project.pyvenv { get_venv_site_packages }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
 import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
+import from jaclang.scale.runtime.context.util { jac_executable }
 
 # Tiny, pure-python, zero-dependency package: enough to prove the host build
 # env is populated from [dependencies] without making this a download test.
@@ -70,27 +72,77 @@ def _project(dependencies: str, server_import: str) -> str {
 }
 
 
+"""A jac wrapper that runs the real binary and, once `install` has finished,
+lists what it put into the build env's venv. The stage is gone by the time the
+builder returns, so this is the only place the install's outcome is visible."""
+def _venv_probing_jac(tmp: str, record: str) -> str {
+    real_jac = jac_executable();
+    script = os.path.join(tmp, "probing-jac.sh");
+    with open(script, "w", encoding="utf-8") as f {
+        f.write(
+            "#!/bin/sh\n"
+                + f'"{real_jac}" "$@"\n'
+                + "rc=$?\n"
+                + 'if [ "$1" = "install" ] && [ "$rc" = "0" ]; then\n'
+                + f'  pwd > "{record}/install_cwd"\n'
+                + f'  ls -d .jac/venv/lib/python*/site-packages/{APP_DEP}* '
+                + f'> "{record}/installed" 2>/dev/null\n'
+                + "fi\n"
+                + 'exit "$rc"\n'
+        );
+    }
+    os.chmod(script, 0o755);
+    return script;
+}
+
+
 test "the host client build installs the app's declared dependencies" {
     project_dir = _project(f'{APP_DEP} = ">=1.10"', APP_DEP);
+    record = tempfile.mkdtemp(prefix="client-build-deps-rec-");
+    script = _venv_probing_jac(record, record);
+    saved = os.environ.get("JAC_EXECUTABLE");
+    os.environ["JAC_EXECUTABLE"] = script;
+    raised = None;
     try {
         _builder(project_dir)._build_client_bundle(project_dir);
-        installed = [
-            p.name
-            for p in get_venv_site_packages(Path(project_dir) / ".jac" / "venv").`glob(
-                f"{APP_DEP}*"
-            )
-        ];
+    } except Exception as e {
+        raised = e;
+    } finally {
+        if saved is None {
+            os.environ.pop("JAC_EXECUTABLE", None);
+        } else {
+            os.environ["JAC_EXECUTABLE"] = saved;
+        }
         built = (
             Path(project_dir) / ".jac" / "client" / "dist" / "index.html"
         ).is_file();
-    } finally {
+        install_cwd = "";
+        installed = "";
+        if os.path.isfile(os.path.join(record, "install_cwd")) {
+            with open(os.path.join(record, "install_cwd"), encoding="utf-8") as f {
+                install_cwd = f.read().strip();
+            }
+        }
+        if os.path.isfile(os.path.join(record, "installed")) {
+            with open(os.path.join(record, "installed"), encoding="utf-8") as f {
+                installed = f.read().strip();
+            }
+        }
         shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(record, ignore_errors=True);
     }
 
-    assert installed , (
-        "the deploy never installed the app's [dependencies] into the host "
-        f"build env, so any client entry reaching a {APP_DEP}-backed module "
-        "cannot build here"
+    assert install_cwd , "the deploy never ran the dependency install";
+    assert Path(install_cwd).resolve() != Path(project_dir).resolve() , (
+        "the install ran on the raw project tree, not the build stage"
+    );
+    assert APP_DEP in installed , (
+        "the deploy never installed the app's [dependencies] into the build "
+        f"env, so any client entry reaching a {APP_DEP}-backed module cannot "
+        f"build there (venv listing: {installed!r})"
+    );
+    assert raised is None , (
+        f"the client build failed even though {APP_DEP} was installed: {raised}"
     );
     assert built , "the gateway would have nothing to serve";
 }

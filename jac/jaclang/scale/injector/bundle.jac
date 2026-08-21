@@ -93,11 +93,13 @@ obj BundleSourceFilter {
         return path_matches_exclude(rel.as_posix(), self.ignore_patterns);
     }
 
+    def is_build_tree(rel: Path) -> bool {
+        return _exclude_dir_root(rel) is not None;
+    }
+
     def excludes_tree(rel: Path) -> bool {
-        for part in rel.parts {
-            if part in _EXCLUDE_DIRS {
-                return True;
-            }
+        if self.is_build_tree(rel) {
+            return True;
         }
         return self.parks(rel);
     }
@@ -117,6 +119,46 @@ obj BundleSourceFilter {
             return True;
         }
         return name.endswith(_EXCLUDE_SUFFIXES);
+    }
+
+    def matching_ignore_pattern(rel: Path) -> str {
+        import from jaclang.jac0core.helpers { path_matches_exclude }
+
+        for pattern in self.ignore_patterns {
+            if path_matches_exclude(rel.as_posix(), [pattern]) {
+                return pattern;
+            }
+        }
+        return "";
+    }
+
+    def exclusion_reason(rel: Path) -> str {
+        for part in rel.parts {
+            if part in _EXCLUDE_DIRS {
+                return f"'{part}/' is a build or cache tree the deploy never ships";
+            }
+        }
+        pattern = self.matching_ignore_pattern(rel);
+        if pattern {
+            return f"parked by the .jacignore pattern '{pattern}'";
+        }
+        name = rel.name;
+        if name == "jac.toml" {
+            return (
+                "the deploy ships a sanitized jac.toml with [scale.secrets] "
+                "and [dev] stripped"
+            );
+        }
+        if name == ".env" or name.startswith(".env.") {
+            return (
+                "'.env' files never ship; move deploy values to "
+                "[scale.secrets] or pod env"
+            );
+        }
+        if name in _EXCLUDE_FILES or name.endswith(_EXCLUDE_SUFFIXES) {
+            return f"'{name}' is key material the deploy never ships";
+        }
+        return "excluded from the bundle";
     }
 }
 
