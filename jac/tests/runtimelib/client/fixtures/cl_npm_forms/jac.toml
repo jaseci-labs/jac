@@ -1,0 +1,4 @@
+[project]
+name = "cl-npm-forms-fixture"
+version = "0.0.0"
+description = "Fixture project using the zero-config tests/__mocks__ convention"

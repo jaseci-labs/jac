@@ -1,0 +1,12 @@
+[project]
+name = "cl-npm-mock-fixture"
+version = "0.0.0"
+description = "Fixture project exercising cl test runner mock resolution"
+
+[test.client.mocks]
+"fake-editor" = "mocks/editor.js"
+"@fake/telemetry" = "mocks/telemetry.jac"
+
+# No client-only syntax of its own, so inference would place it server-side.
+[placement.pins]
+"mocks.telemetry" = "client"

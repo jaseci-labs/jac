@@ -67,12 +67,18 @@ obj BuildConfig {
         native: NativeBuildConfig = NativeBuildConfig();
 }
 
+obj ClientTestConfig {
+    has on_stub: str = "note",
+        mocks: dict[str, str] = {};
+}
+
 obj TestConfig {
     has directory: str = "",
         filter: str = "",
         verbose: bool = False,
         fail_fast: bool = False,
-        max_failures: int = 0;
+        max_failures: int = 0,
+        client: ClientTestConfig = ClientTestConfig();
 }
 
 obj ServeConfig {

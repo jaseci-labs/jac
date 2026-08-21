@@ -231,6 +231,39 @@ test "get_config_for_path uses nearest jac.toml, never merges ancestors" {
     }
 }
 
+test "get_config_for_path reuses the process config only for its own project" {
+    # Reusing too little drops the profile overlay; reusing too eagerly leaks
+    # one project's config into another.
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        mine = Path(tmpdir) / "mine";
+        mine.mkdir();
+        (mine / "jac.toml").write_text(
+            "[project]\nname = \"mine\"\n\n[test]\nverbose = false\n\n"
+            "[environments.ci.test]\nverbose = true\n"
+        );
+        (mine / "main.jac").write_text(MAIN_JAC_CONTENT);
+        other = Path(tmpdir) / "other";
+        other.mkdir();
+        (other / "jac.toml").write_text("[project]\nname = \"other\"\n");
+        (other / "main.jac").write_text(MAIN_JAC_CONTENT);
+        cfg = get_config(start_path=mine, force_discover=True);
+        assert cfg is not None;
+        cfg.apply_profile_overlay("ci");
+        own_cfg = get_config_for_path(mine / "main.jac");
+        assert own_cfg is cfg , "the accessor re-discovered its own project from disk";
+        assert own_cfg.`test.verbose is True , "the profile overlay was dropped";
+        foreign = get_config_for_path(other / "main.jac");
+        assert foreign is not cfg , "the process config leaked into another project";
+        assert foreign.project.name == "other";
+        assert foreign.`test.verbose is False , "the overlay leaked across projects";
+    }
+    config_mod._config = None;
+    config_mod._config_by_root = {};
+}
+
 test "explicit set_config overrides file-anchored resolution" {
     config_mod._config = None;
     config_mod._config_explicit = False;
@@ -561,6 +594,53 @@ test "profile inheritance" {
     cfg.apply_profile("staging");
     assert cfg.serve.port == 9000;
     assert cfg.`test.verbose is True;
+}
+
+test "a profile overlays a typed child section without replacing it" {
+    # [test] client holds a ClientTestConfig; a profile used to replace it
+    # with a plain dict, so reading on_stub raised AttributeError.
+    config_mod._config = None;
+    toml_str = "\n[project]\nname = \"nested-profile\"\n\n[test.client]\n"
+        + "on_stub = \"note\"\n\n[environments.ci]\n[environments.ci.test.client]\n"
+        + "on_stub = \"error\"\n";
+    cfg = JacConfig.from_toml_str(toml_str);
+    assert cfg.`test.client.on_stub == "note";
+    cfg.apply_profile("ci");
+    assert not isinstance(cfg.`test.client, dict) , "the typed child was replaced by a dict";
+    assert cfg.`test.client.on_stub == "error";
+}
+
+test "a profile leaves sibling keys of a typed child alone" {
+    config_mod._config = None;
+    toml_str = "\n[project]\nname = \"nested-keep\"\n\n[test.client]\n"
+        + "on_stub = \"warn\"\n\n[test.client.mocks]\nvscode = \"m/v.js\"\n\n"
+        + "[environments.ci]\n[environments.ci.test.client]\non_stub = \"error\"\n";
+    cfg = JacConfig.from_toml_str(toml_str);
+    cfg.apply_profile("ci");
+    assert cfg.`test.client.on_stub == "error";
+    assert cfg.`test.client.mocks == {"vscode": "m/v.js"} , "mocks were dropped by the overlay";
+}
+
+test "a jac.<profile>.toml overlay merges into a typed child" {
+    # merge_from_toml_file is the other overlay path; it had the same flat
+    # setattr, so a profile FILE corrupted test.client even after the
+    # [environments.*] path was fixed.
+    config_mod._config = None;
+    with TemporaryDirectory() as td {
+        Path(td, "jac.toml").write_text(
+            '[project]\nname = "overlay-file"\n\n[test.client]\non_stub = "note"\n\n'
+                + '[test.client.mocks]\nvscode = "m/v.js"\n',
+            encoding="utf-8"
+        );
+        Path(td, "jac.ci.toml").write_text(
+            '[test.client]\non_stub = "error"\n', encoding="utf-8"
+        );
+        cfg = JacConfig.load(Path(td, "jac.toml"));
+        cfg.merge_from_toml_file(Path(td, "jac.ci.toml"));
+        assert not isinstance(cfg.`test.client, dict) , "the overlay left a raw dict";
+        assert cfg.`test.client.on_stub == "error";
+        assert cfg.`test.client.mocks == {"vscode": "m/v.js"} , "a sibling key was dropped";
+    }
 }
 
 test "apply nonexistent profile" {

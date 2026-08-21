@@ -212,6 +212,32 @@ A `test` block runs in the codespace its surrounding context compiles to, so tes
 
 All of them report through the same `jac test` pass/fail pipeline, and the CLI options above apply uniformly. A test in a native-placed module compiles to native code and runs with native semantics -- a failing `assert` reports the failing source location (`file:line`). See [Native Compilation -- Testing](language/native-pathway.md#testing) for native-specific details and limitations.
 
+### Mocking npm Modules in Client Tests
+
+Client tests run in a temp directory with no `node_modules`, so any npm import that is not mocked resolves to a universal Proxy stub. The stub absorbs every call and returns nothing, which keeps imports from crashing but leaves nothing for a test to assert against.
+
+To make a dependency behave, drop a module into `tests/__mocks__/` named for the spec it replaces:
+
+```js
+// tests/__mocks__/vscode.js
+export const window = {
+  showQuickPick: async (items) => items[items.length - 1],
+};
+```
+
+```jac
+import from "vscode" { window }
+
+test "prompts with the configured interpreters" {
+    picked = await window.showQuickPick(["3.11", "3.12"]);
+    assert picked == "3.12";
+}
+```
+
+That is the whole setup -- no configuration entry required. Mocks can be written in JavaScript or in Jac, and a JavaScript mock may import helper files of its own; they are staged into the harness along with it. Any spec left unmocked keeps the Proxy and is reported at the end of the run, so a test that passes without really checking anything is visible rather than silent.
+
+See [`[test.client]`](config/index.md#testclient) for explicit mappings, scoped packages, pinning a Jac mock to the client codespace, and turning stub reports into failures.
+
 ---
 
 ## Test Output

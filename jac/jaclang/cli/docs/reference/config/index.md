@@ -331,6 +331,52 @@ When `directory` is set, `jac test` with no file argument collects tests only
 from that directory (resolved against the project root), so application modules
 whose top-level `with entry` runs on import are not pulled into test collection.
 
+#### [test.client]
+
+Defaults for client (`cl`) tests:
+
+```toml
+[test.client]
+on_stub = "note"                        # Report stubbed specs: note (default), warn, error
+
+[test.client.mocks]
+vscode = "tests/doubles/editor.js"      # Explicit spec -> mock file mapping
+```
+
+Client tests run under bun in a temp directory with no `node_modules`. `@jac/*`
+resolves to the staged Jac client runtime, a mocked spec resolves to your module,
+and every other bare specifier falls back to a universal Proxy stub that absorbs
+any call and returns nothing. All import forms resolve -- side-effect, re-export,
+and deferred `import()` alike.
+
+**Supplying a mock.** Zero config is the happy path: drop a file into
+`tests/__mocks__/`, named for the spec it stands in for, with scoped packages
+nested as directories the way jest lays them out (`tests/__mocks__/vscode.js`,
+`tests/__mocks__/@scope/telemetry.jac`). A `[test.client.mocks]` entry overrides
+anything found by the convention, and its paths are relative to the `jac.toml`
+that declares them. A JavaScript mock's own relative imports are followed and
+staged into the harness beside it, so it may keep helpers in a file or
+subdirectory of its own.
+
+Mocks may be JavaScript or Jac. A `.jac` mock compiles through the ordinary
+client pipeline, so `:pub` is what makes a name importable. (A `.jac` mock that
+imports sibling Jac modules is not supported yet, and says so.) Because
+placement is inferred, a mock containing no client-only syntax lands in the
+server codespace and compiles to no JS -- the runner detects exactly that and
+asks for a pin:
+
+```toml
+[placement.pins]
+"tests.__mocks__.telemetry" = "client"
+```
+
+**Reporting what got stubbed.** A spec that reaches the Proxy makes assertions
+against it vacuous, so the runner names the ones that did; `on_stub = "error"`
+turns an accidentally unmocked dependency into a failure rather than a test that
+passes without checking anything. One case is always worth a mock rather than a
+stub: `export * from "pkg"` has to forward names the stub cannot know, so
+importing a name through it fails at load time.
+
 ---
 
 ### [format]
