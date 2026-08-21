@@ -313,6 +313,9 @@ glob BROWSER_SEED_GLOBALS: frozenset[str] = frozenset(
          }
      );
 
+
+enum ImmutabilityKind { NONE = 0, FINAL = 1, READONLY = 2 }
+
 def is_borrow_kind(k: OwnershipKind) -> bool {
     return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;
 }

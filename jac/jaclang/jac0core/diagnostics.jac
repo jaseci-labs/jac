@@ -714,6 +714,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " ('{name} as LocalName').",
          blocks_codegen=True
      ),
+     E1126 = _err(
+         "E1126",
+         Category.TYPE,
+         "Cannot assign to '{name}': it is declared {kind}",
+         help="A binding annotated with 'Final' (or a 'readonly' member of an"
+         " imported TypeScript interface) can only be set at its declaration,"
+         " or in 'init'/'postinit' when the declaration has no initializer."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

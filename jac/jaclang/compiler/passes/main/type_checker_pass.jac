@@ -42,6 +42,7 @@ import from jaclang.jac0core.unitree {
     ReturnStmt,
     Slice,
     SpecialVarRef,
+    Symbol,
     SubTag,
     Token,
     TupleVal,
@@ -53,7 +54,7 @@ import from jaclang.jac0core.unitree {
     YieldExpr
 }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { ImmutabilityKind, Tokens as Tok }
 import from jaclang.compiler.type_system.types {
     AnyType,
     ClassType,
@@ -106,6 +107,7 @@ import from jaclang.jac0core.diagnostics {
     E1117,
     E1119,
     E1124,
+    E1126,
     E5095,
     W1036,
     W1037,
@@ -182,6 +184,12 @@ class TypeCheckPass(UniPass) {
     ) -> None;
 
     def _check_explicit_any(self: TypeCheckPass, ann_node: UniNode) -> None;
+    def _check_immutable_write(self: TypeCheckPass, target: Expr) -> None;
+    def _emit_immutable_write(
+        self: TypeCheckPass, sym: Symbol, site: UniNode, name: str
+    ) -> None;
+
+    def _in_owner_initializer(self: TypeCheckPass, target: AtomTrailer) -> bool;
     def _check_walker_reports_shape(
         self: TypeCheckPass, nd: HasVar, declared_type: object
     ) -> None;

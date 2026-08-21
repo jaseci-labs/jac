@@ -103,6 +103,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.constant {
     TOKEN_MAP,
+    ImmutabilityKind,
     SymbolType,
     Tokens as Tok,
     EdgeDir,
@@ -402,7 +403,11 @@ obj TypeEvaluator {
     ) -> (TypeBase | None);
 
     def _install_synth_member(
-        scope: UniScopeNode, synth_src: Source, mname: str, member_type: TypeBase
+        scope: UniScopeNode,
+        synth_src: Source,
+        mname: str,
+        member_type: TypeBase,
+        readonly: bool = False
     ) -> None;
 
     def _ts_synth_class_types(
@@ -484,6 +489,10 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _get_type_of_symbol(symbol: Symbol) -> TypeBase;
+    def _apply_final_qualifier(
+        annotation_type: TypeBase, symbol: (Symbol | None)
+    ) -> (TypeBase | None);
+
     def _get_enum_member_type_for_decl(node_: Name) -> (EnumMemberType | None);
     def get_type_of_member(member: ClassMember, class_type: ClassType) -> TypeBase;
     def declaring_class_of(symbol: Symbol, base_type: ClassType) -> (ClassType | None);
