@@ -1,5 +1,10 @@
 import from threading { Thread, Event as _ThreadStop, Lock }
-import from jaclang.scale._optdeps.kubernetes { client, watch, AutoscalingV2Api }
+import from jaclang.scale._optdeps.kubernetes {
+    AppsV1Api,
+    AutoscalingV2Api,
+    CustomObjectsApi,
+    Watch
+}
 import from jaclang.scale.deploy.autoscale.observer {
     AutoscalerObserver,
     AutoscalerSubscription,

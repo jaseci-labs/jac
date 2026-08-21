@@ -99,9 +99,12 @@ impl KubernetesAutoscalerObserver._kind_config{
     if kind == "scaled_object" {
         with self._lock {
             if self._custom_api is None {
-                self._custom_api = client.CustomObjectsApi();
+                self._custom_api = CustomObjectsApi();
             }
-            api = self._custom_api;
+        }
+        api: any = self._custom_api;
+        if api is None {
+            api = CustomObjectsApi();
         }
         list_fn = functools.partial(
             api.list_namespaced_custom_object,
@@ -116,7 +119,10 @@ impl KubernetesAutoscalerObserver._kind_config{
             if self._v2_api is None {
                 self._v2_api = AutoscalingV2Api();
             }
-            api = self._v2_api;
+        }
+        api = self._v2_api;
+        if api is None {
+            api = AutoscalingV2Api();
         }
         return {
             "list_fn": api.list_namespaced_horizontal_pod_autoscaler,
@@ -126,9 +132,12 @@ impl KubernetesAutoscalerObserver._kind_config{
     if kind == "deployment" {
         with self._lock {
             if self._apps_api is None {
-                self._apps_api = client.AppsV1Api();
+                self._apps_api = AppsV1Api();
             }
-            api = self._apps_api;
+        }
+        api = self._apps_api;
+        if api is None {
+            api = AppsV1Api();
         }
         return {"list_fn": api.list_namespaced_deployment, "typed": True};
     }
@@ -155,7 +164,7 @@ impl KubernetesAutoscalerObserver._stream{
             kind, list_fn, namespace, label_selector, resource_version
         );
     }
-    return watch.Watch().stream(
+    return Watch().stream(
         list_fn,
         namespace=namespace,
         label_selector=label_selector,
@@ -210,11 +219,14 @@ impl KubernetesAutoscalerObserver._watch_loop{
 
 impl KubernetesAutoscalerObserver._target_name_for{
     label_target = (resource.get("metadata") or {}).get("labels", {}).get("app");
-    if label_target {
+    if isinstance(label_target, str) {
         return label_target;
     }
     if kind == "deployment" {
-        return (resource.get("metadata") or {}).get("name");
+        name = (resource.get("metadata") or {}).get("name");
+        if isinstance(name, str) {
+            return name;
+        }
     }
     return None;
 }
