@@ -12,6 +12,12 @@ import from jaclang.runtimelib.client.targets.desktop.cef_desktop_target {
 import from jaclang.runtimelib.client.targets.react_native_target { ReactNativeTarget }
 import from jaclang.runtimelib.client.targets.bun_target { BunTarget }
 import from jaclang.runtimelib.client.targets.test_host_target { TestHost }
+import from jaclang.runtimelib.client.targets.p3_js_host_targets {
+    CliJsTarget,
+    EdgeTarget,
+    ServiceWorkerTarget,
+    WebWorkerTarget
+}
 
 def register_hosts {
     registry = get_host_registry();
@@ -23,6 +29,10 @@ def register_hosts {
     registry.register(CefDesktopTarget());
     registry.register(ReactNativeTarget());
     registry.register(BunTarget());
+    registry.register(WebWorkerTarget());
+    registry.register(ServiceWorkerTarget());
+    registry.register(EdgeTarget());
+    registry.register(CliJsTarget());
     registry.register(TestHost());
 }
 

@@ -15,16 +15,21 @@ import from jaclang.jac0core.host {
     HOST_BROWSER,
     HOST_BUN,
     HOST_CAPABILITIES,
+    HOST_CLI_JS,
     HOST_CPYTHON,
     HOST_DOM,
+    HOST_EDGE,
     HOST_FFI,
     HOST_JS_GLOBALS,
     HOST_NPM,
     HOST_PERSIST,
     HOST_PY,
     HOST_RN,
+    HOST_SERVICE_WORKER,
     HOST_WEBVIEW,
+    HOST_WEB_WORKER,
     NPM_SEED_REASONS,
+    P3_JS_HOST_KINDS,
     TARGET_HOST_KIND,
     codespace_for_capability,
     framework_for_host_kind,
@@ -50,6 +55,7 @@ test "DOM is limited to browser and webview hosts" {
         HOST_WEBVIEW,
         HOST_RN,
         HOST_BUN,
+        *P3_JS_HOST_KINDS,
         HOST_CPYTHON,
         HOST_BARE_METAL
     ] {
@@ -63,7 +69,13 @@ test "DOM is limited to browser and webview hosts" {
 }
 
 test "NPM covers every JS host in the capability table" {
-    js_hosts = [HOST_BROWSER, HOST_WEBVIEW, HOST_RN, HOST_BUN];
+    js_hosts = [
+        HOST_BROWSER,
+        HOST_WEBVIEW,
+        HOST_RN,
+        HOST_BUN,
+        *P3_JS_HOST_KINDS
+    ];
     for kind in js_hosts {
         assert host_provides_kind(kind, HOST_NPM) , f"{kind} must provide NPM";
     }
@@ -121,6 +133,10 @@ test "target names resolve to host kinds via registry table only" {
     assert host_kind_for_target('react-native') == HOST_RN;
     assert host_kind_for_target('bun') == HOST_BUN;
     assert host_kind_for_target('server') == HOST_BUN;
+    assert host_kind_for_target('worker') == HOST_WEB_WORKER;
+    assert host_kind_for_target('sw') == HOST_SERVICE_WORKER;
+    assert host_kind_for_target('cloudflare') == HOST_EDGE;
+    assert host_kind_for_target('cli_js') == HOST_CLI_JS;
     assert TARGET_HOST_KIND['react-native'] == HOST_RN;
     assert TARGET_HOST_KIND['cef'] == HOST_WEBVIEW;
 }
