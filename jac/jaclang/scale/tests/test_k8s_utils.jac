@@ -41,7 +41,7 @@ test "a node probe that fails says so instead of silently answering local" {
     # skips the load balancer wait, so an EKS deploy reports wrong URLs with no
     # diagnostic anywhere.
     class FailingApi {
-        def list_node(self) -> None {
+        def list_node(self) {
             raise ApiException(status=403, reason="Forbidden");
         }
     }
@@ -51,13 +51,15 @@ test "a node probe that fails says so instead of silently answering local" {
             self.lines = [];
         }
 
-        def print(self, *args: any, **kwargs: any) -> None {
+        def print(self, *args: any, **kwargs: any) {
             self.lines.append(" ".join(str(a) for a in args));
         }
     }
 
     recorder = Recorder();
-    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda { FailingApi(); }) {
+    with unittest.mock.patch.object(
+        utils.client, "CoreV1Api", lambda { FailingApi(); }
+    ) {
         with unittest.mock.patch.object(utils, "console", recorder) {
             answer = utils.cluster_type();
         }
@@ -103,13 +105,15 @@ test "a clean probe that finds no aws markers stays quiet" {
             self.lines = [];
         }
 
-        def print(self, *args: any, **kwargs: any) -> None {
+        def print(self, *args: any, **kwargs: any) {
             self.lines.append(" ".join(str(a) for a in args));
         }
     }
 
     recorder = Recorder();
-    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda { LocalApi(); }) {
+    with unittest.mock.patch.object(
+        utils.client, "CoreV1Api", lambda { LocalApi(); }
+    ) {
         with unittest.mock.patch.object(utils, "console", recorder) {
             answer = utils.cluster_type();
         }
