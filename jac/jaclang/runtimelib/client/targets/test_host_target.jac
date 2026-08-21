@@ -1,11 +1,11 @@
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.runtimelib.client.targets.registry { Host }
-import from jaclang.jac0core.host { HOST_CPYTHON }
+import from jaclang.jac0core.host { HOST_TEST }
 
 obj TestHost(Host) {
     has name: str = "test",
-        host_kind: str = HOST_CPYTHON,
+        host_kind: str = HOST_TEST,
         default: bool = False,
         requires_setup: bool = False,
         config_section: str = "",

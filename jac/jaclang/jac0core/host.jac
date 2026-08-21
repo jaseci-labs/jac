@@ -12,19 +12,23 @@ glob HOST_DOM: str = 'DOM',
      HOST_WEBVIEW: str = 'webview',
      HOST_RN: str = 'rn',
      HOST_BUN: str = 'bun',
+     HOST_TEST: str = 'test',
      HOST_WEB_WORKER: str = 'web-worker',
      HOST_SERVICE_WORKER: str = 'service-worker',
      HOST_EDGE: str = 'edge',
      HOST_CLI_JS: str = 'cli-js',
      HOST_CPYTHON: str = 'cpython',
      HOST_BARE_METAL: str = 'bare-metal',
-     P3_JS_HOST_KINDS: tuple = (
-         'web-worker',
-         'service-worker',
-         'edge',
-         'cli-js'
+     SV_SERVICE_HOST_KINDS: frozenset = frozenset(
+         {HOST_BUN, HOST_TEST, HOST_CPYTHON}
      ),
-     P3_JS_HOST_CAPS: list[str] = ['NPM', 'JS_GLOBALS'],
+     P3_JS_HOST_KINDS: tuple = (
+         HOST_WEB_WORKER,
+         HOST_SERVICE_WORKER,
+         HOST_EDGE,
+         HOST_CLI_JS
+     ),
+     P3_JS_HOST_CAPS: list[str] = [HOST_NPM, HOST_JS_GLOBALS],
      HOST_CAPABILITIES: dict[str, list[str]] = {
          'browser': ['DOM', 'NPM', 'JS_GLOBALS'],
          'webview': ['DOM', 'NPM', 'JS_GLOBALS'],
@@ -79,21 +83,32 @@ glob HOST_DOM: str = 'DOM',
          'screen'
      );
 
-def host_kind_for_target(name: str) -> str {
-    key = name.lower().strip().replace('_', '-');
-    if key == '' {
-        return HOST_BROWSER;
+def normalize_host_registry_name(name: str) -> str {
+    return name.lower().strip().replace('_', '-');
+}
+
+
+def resolve_registry_name(name: str, table: any) -> (str | None) {
+    key = normalize_host_registry_name(name);
+    if not key {
+        return None;
     }
-    mapped = TARGET_HOST_KIND.get(key);
-    if mapped is not None {
-        return mapped;
+    if key in table {
+        return key;
     }
     alt = key.replace('-', '_');
-    mapped = TARGET_HOST_KIND.get(alt);
-    if mapped is not None {
-        return mapped;
+    if alt != key and alt in table {
+        return alt;
     }
-    return HOST_BROWSER;
+    return None;
+}
+
+def host_kind_for_target(name: str) -> str {
+    key = resolve_registry_name(name, TARGET_HOST_KIND);
+    if key is None {
+        return HOST_BROWSER;
+    }
+    return TARGET_HOST_KIND[key];
 }
 
 def resolve_project_host_kind(mod_path: str = '') -> str {

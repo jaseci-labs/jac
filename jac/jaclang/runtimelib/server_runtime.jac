@@ -102,7 +102,9 @@ async def _preparePersistContext {
     __jacEnsureRoot();
 }
 
-async def handleFunctionCall(req: any, name: str, handlers: dict) -> dict {
+async def handleFunctionCall(
+    req: any, name: str, handlers: dict, params: (dict | None) = None
+) -> dict {
     fn = handlers[name];
     if not fn {
         return errorEnvelope(f"Unknown function '{name}'");
@@ -112,9 +114,21 @@ async def handleFunctionCall(req: any, name: str, handlers: dict) -> dict {
         return errorEnvelope('Invalid JSON');
     }
     args = deserializeWireArgs(body);
+    call_args: list = [];
+    if params is not None and name in params {
+        for pname in params[name] {
+            if pname in args {
+                call_args.append(args[pname]);
+            } else {
+                call_args.append(null);
+            }
+        }
+    } else {
+        call_args = [args];
+    }
     try {
         await _preparePersistContext();
-        result = fn(args);
+        result = Reflect.apply(fn, null, call_args);
         if result and type(result) == 'object' and result.then {
             result = await result;
         }
@@ -161,6 +175,7 @@ def startBunServer(opts: dict) {
     walkers = opts.walkers or [];
     functions = opts.functions or [];
     handlers = opts.handlers or {};
+    params = opts.params or {};
     port = Number(opts.port or 8000);
     walkerFns = handlers.walkers or {};
     functionFns = handlers.functions or {};
@@ -186,7 +201,7 @@ def startBunServer(opts: dict) {
         fnMatch = path.match('^/function/([^/]+)$');
         if fnMatch and method == 'POST' {
             name = decodeURIComponent(fnMatch[1]);
-            payload = await handleFunctionCall(req, name, functionFns);
+            payload = await handleFunctionCall(req, name, functionFns, params);
             return Response.json(payload);
         }
 
@@ -215,8 +230,10 @@ def startBunServer(opts: dict) {
             }
             specMethod = String(spec.method or 'POST').toUpperCase();
             if path == specPath and method == specMethod {
+                carrier_handlers: dict = {};
+                carrier_handlers[carrier.name] = carrier.handler;
                 payload = await handleFunctionCall(
-                    req, carrier.name, {carrier.name: carrier.handler}
+                    req, carrier.name, carrier_handlers, params
                 );
                 return Response.json(payload);
             }

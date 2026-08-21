@@ -17,19 +17,32 @@ obj UUID {
 }
 
 
-def _hex(n: int) -> str {
-    digits: str = "0123456789abcdef";
-    return digits[n];
+def _strip_dashes(s: str) -> str {
+    # UUID(hex=...) parses plain hex only; strip the UUID's canonical dashes.
+    out: str = "";
+    for ch in s {
+        if ch != "-" {
+            out += ch;
+        }
+    }
+    return out;
+}
+
+
+def _fallback_uuid4 -> str {
+    out: str = "";
+    for _ in range(32) {
+        n: int = int(Math.floor(Math.random() * 16));
+        out += hex(n)[2:];
+    }
+    return out;
 }
 
 
 def:pub uuid4 -> UUID {
-    out: str = "00000000000000000000000000000000";
-    i: int = 0;
-    built: str = "";
-    while i < 32 {
-        built += _hex((i * 11 + 5) % 16);
-        i += 1;
+    crypto = globalThis.crypto;
+    if crypto and crypto.randomUUID {
+        return UUID(hex=_strip_dashes(crypto.randomUUID()), version=4);
     }
-    return UUID(hex=built, version=4);
+    return UUID(hex=_fallback_uuid4(), version=4);
 }

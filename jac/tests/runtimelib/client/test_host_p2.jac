@@ -81,11 +81,7 @@ test "BunStore shares the PgStore anchor schema and version stamp" {
 
 test "server_runtime wires BunStore into walker spawn context" {
     runtime_jac = _RUNTIMELIB / 'server_runtime.jac';
-    runtime_js = _RUNTIMELIB / 'server_runtime.js';
     text = runtime_jac.read_text(encoding='utf-8');
-    if runtime_js.exists() {
-        text += runtime_js.read_text(encoding='utf-8');
-    }
     assert 'BunStore' in text or '__jacInitBunStore' in text , (
         "server runtime must bootstrap a Bun-backed Store for walkers"
     );

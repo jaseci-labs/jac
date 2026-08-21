@@ -1,15 +1,51 @@
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
-import from jaclang.jac0core.constant { SymbolType, CodeContext }
+import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.eject_targets.server_entry { emit_server_entry }
+import from jaclang.runtimelib.bun_entry { EndpointMeta }
 
 
 def _bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
     chunks: list[str] = [f'// Bundled Bun sv service artifact for {module_name!r}'];
+    bundled_sources = ('server_runtime.js', 'bun_store.js', f'{module_name}.js');
+
+    def _rewrite_entry_line(line: str) -> (str | None) {
+        for src in bundled_sources {
+            if f'from "./{src}"' not in line {
+                continue;
+            }
+            if ' as ' not in line or not line.startswith('import ') {
+                return None;
+            }
+            spec = line[len('import {'):line.rindex('}')].strip();
+            aliases: list[str] = [];
+            for pair in spec.split(',') {
+                (orig, alias) = [p.strip() for p in pair.split(' as ')];
+                aliases.append(f'const {alias} = {orig};');
+            }
+            return ' '.join(aliases);
+        }
+        return line;
+    }
+
+    def _keep_line(line: str) -> bool {
+        for src in bundled_sources {
+            if f'from "./{src}"' in line {
+                return False;
+            }
+        }
+        return True;
+    }
+
     runtime_path = out_dir / 'server_runtime.js';
     if runtime_path.exists() {
-        chunks.append(runtime_path.read_text(encoding='utf-8'));
+        runtime_text = runtime_path.read_text(encoding='utf-8');
+        chunks.append(
+            '\n'.join(
+                [ln for ln in runtime_text.splitlines() if _keep_line(ln)]
+            )
+        );
     }
     bun_store_path = out_dir / 'bun_store.js';
     if bun_store_path.exists() {
@@ -19,23 +55,22 @@ def _bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
     if module_js.exists() {
         chunks.append(module_js.read_text(encoding='utf-8'));
     }
-    skip_markers = ('from "./server_runtime.js"', f'from "./{module_name}.js"');
     entry_lines: list[str] = [];
-    should_skip: bool = False;
     for line in (out_dir / 'server.mjs').read_text(encoding='utf-8').splitlines() {
-        should_skip = False;
-        for marker in skip_markers {
-            if marker in line {
-                should_skip = True;
-                break;
-            }
-        }
-        if not should_skip {
-            entry_lines.append(line);
+        rewritten = _rewrite_entry_line(line);
+        if rewritten is not None {
+            entry_lines.append(rewritten);
         }
     }
     chunks.append('\n'.join(entry_lines));
-    return '\n'.join(chunks) + '\n';
+    bundle = '\n'.join(chunks) + '\n';
+    if 'const _jac' not in bundle and '_jac.' in bundle {
+        import from jaclang.compiler.passes.ecmascript.jac_runtime_js {
+            build_jac_runtime_js
+        }
+        bundle = f'const _jac = {build_jac_runtime_js()};\n' + bundle;
+    }
+    return bundle;
 }
 
 
@@ -51,42 +86,58 @@ def build_bun_service_artifact(
         );
     }
     prog = JacProgram();
-    ir = prog.compile(file_path=str(module_file));
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    ir = prog.compile(
+        file_path=str(module_file),
+        options=CompileOptions(force_codespace='client', type_check=False)
+    );
     if prog.errors_had {
         errs = '\n'.join(str(e) for e in prog.errors_had);
         raise RuntimeError(f"Failed to compile {module_file}:\n{errs}");
     }
-    js_code = ir.gen.js or '';
+    import from jaclang.jac0core.compiler { run_pass }
+    import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
+    js_code = ir.gen.js if ir is not None and ir.gen is not None else '';
+    if ir is not None and not js_code.strip() {
+        run_pass(EsastGenPass, ir, prog);
+        js_code = ir.gen.js or '';
+    }
     if not js_code.strip() {
         raise RuntimeError(f"Bun service '{module_name}' produced no JS output");
     }
 
-    walkers: list = [];
-    functions: list = [];
+    walkers: list[EndpointMeta] = [];
+    functions: list[EndpointMeta] = [];
     for item in ir.body {
-        if item?.code_context == CodeContext.CLIENT {
-            continue;
-        }
         if isinstance(item, uni.Archetype)
             and item.sym_category == SymbolType.WALKER_ARCH {
             walkers.append(
-                {
-                    'name': str(item.name.sym_name),
-                    'module': module_name,
-                    'pub': item.access is not None and 'pub' in str(item.access)
-                }
+                EndpointMeta(
+                    name=str(item.name.sym_name),
+                    module=module_name,
+                    pub=item.access is not None and 'pub' in str(item.access)
+                )
             );
         } elif isinstance(item, uni.Ability) and item.name_ref is not None {
             fn_name = str(item.name_ref.sym_name);
             if fn_name.startswith('_') {
                 continue;
             }
-            functions.append(
-                {
-                    'name': fn_name,
-                    'module': module_name,
-                    'pub': item.access is not None and 'pub' in str(item.access)
+            fn_params: list[str] = [];
+            if isinstance(item.signature, uni.FuncSignature) {
+                for pvar in item.signature.get_parameters() {
+                    if pvar.name is not None {
+                        fn_params.append(str(pvar.name.sym_name));
+                    }
                 }
+            }
+            functions.append(
+                EndpointMeta(
+                    name=fn_name,
+                    module=module_name,
+                    pub=item.access is not None and 'pub' in str(item.access),
+                    params=fn_params
+                )
             );
         }
     }
@@ -97,6 +148,10 @@ def build_bun_service_artifact(
         shutil.rmtree(out_dir);
     }
     out_dir.mkdir(parents=True, exist_ok=True);
+    endpoint_names = [w.name for w in walkers] + [f.name for f in functions];
+    if endpoint_names and 'export' not in js_code {
+        js_code = js_code.rstrip() + f"\nexport {{{', '.join(endpoint_names)}}};\n";
+    }
     pname = project_name or module_name;
     rc = emit_server_entry(
         out_dir,
@@ -110,6 +165,13 @@ def build_bun_service_artifact(
     }
     artifact = base_dir / '.jac' / 'server' / f"{module_name}.mjs";
     artifact.write_text(_bundle_bun_artifact(out_dir, module_name), encoding='utf-8');
+    import from jaclang.jac0core.sv_service_host {
+        bun_artifact_stamp_path,
+        bun_service_inputs_digest
+    }
+    bun_artifact_stamp_path(module_name, str(base_dir)).write_text(
+        bun_service_inputs_digest(module_name, str(base_dir)), encoding='utf-8'
+    );
     console.print(f"  ✔ Bun service artifact: {artifact}", style='success');
     return artifact;
 }

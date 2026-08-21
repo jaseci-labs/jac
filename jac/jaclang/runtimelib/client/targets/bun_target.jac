@@ -9,7 +9,8 @@ obj BunTarget(Host) {
         default: bool = False,
         requires_setup: bool = False,
         config_section: str = "plugin.client",
-        output_dir: Optional[Path] = None;
+        output_dir: Optional[Path] = None,
+        last_built_artifact: Optional[Path] = None;
 
     override def setup(project_dir: Path) -> None;
     override def build(

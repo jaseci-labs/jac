@@ -660,11 +660,11 @@ class JacScalePlugin {
             return;
         }
         import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
+        import from jaclang.jac0core.host { HOST_BUN, HOST_TEST }
         import from jaclang.runtimelib.test_sv_host { prepare_test_sv_service, get_test_adapter }
-        import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
-        import from jaclang.runtimelib.client { get_bun }
+        import from jaclang.runtimelib.bun_sv_spawn { spawn_bun_sv_service }
         host_kind = resolve_sv_service_host(module_name, base_path);
-        if host_kind == 'test' {
+        if host_kind == HOST_TEST {
             if get_test_adapter(module_name) is not None {
                 sv_client.register(module_name, f"test://{module_name}");
                 return;
@@ -710,48 +710,26 @@ class JacScalePlugin {
                 return;
             }
             host_kind = resolve_sv_service_host(module_name, str(base_dir));
-            if host_kind == 'bun' {
-                bun = get_bun();
-                if not bun {
-                    raise RuntimeError(
-                        "Bundled bun runtime is required for Bun-hosted sv services"
-                    );
-                }
-                artifact = build_bun_service_artifact(module_name, str(base_dir));
+            if host_kind == HOST_BUN {
                 port = pick_free_port(module_name);
-                base_url = f"http://127.0.0.1:{port}";
-                child_env = dict(os.environ);
-                child_env["JAC_SV_SIBLING"] = "1";
-                child_env["PORT"] = str(port);
-                child_env["JAC_PORT"] = str(port);
-                log_dir = base_dir / '.jac' / 'logs';
-                log_dir.mkdir(parents=True, exist_ok=True);
-                log_path = log_dir / f"{module_name}.log";
-                log_file = open(log_path, 'ab');
-                try {
-                    proc = subprocess.Popen(
-                        [bun, str(artifact)],
-                        stdout=log_file,
-                        stderr=subprocess.STDOUT,
-                        env=child_env,
-                        cwd=str(base_dir)
-                    );
-                } finally {
-                    log_file.close();
+                def _log_size -> int {
+                    log_path = base_dir / '.jac' / 'logs' / f"{module_name}.log";
+                    try {
+                        return log_path.stat().st_size;
+                    } except OSError {
+                        return -1;
+                    }
                 }
-                _sv_sibling_procs[module_name] = proc;
-                budget = boot_health_timeout();
-                healthy = wait_for_health(
-                    base_url,
-                    lambda { proc.poll() is None; },
-                    timeout=budget
+                spawn_result = spawn_bun_sv_service(
+                    module_name,
+                    str(base_dir),
+                    port,
+                    scale_mode=True,
+                    progress=_log_size
                 );
-                if not healthy {
-                    stop_sv_sibling(module_name);
-                    raise RuntimeError(
-                        f"Bun sv service '{module_name}' did not become healthy at {base_url}"
-                    );
-                }
+                base_url = spawn_result.base_url;
+                proc = spawn_result.proc;
+                _sv_sibling_procs[module_name] = proc;
                 sv_client.register(module_name, base_url);
                 def _cleanup_bun {
                     stop_sv_sibling(module_name);

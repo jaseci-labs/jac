@@ -1,3 +1,3 @@
 def:pub time -> float {
-    return 1700000000.0;
+    return Date.now() / 1000.0;
 }

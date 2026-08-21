@@ -54,6 +54,7 @@ def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
 
 
 def service_call(module_name: str, func_name: str, args: dict) -> any {
+    import from jaclang.jac0core.host { HOST_TEST }
     import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.test_sv_host { get_test_adapter }
@@ -62,7 +63,7 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
 
     func_label = f"{module_name}.{func_name}";
 
-    if resolve_sv_service_host(module_name) == 'test' {
+    if resolve_sv_service_host(module_name) == HOST_TEST {
         adapter = get_test_adapter(module_name);
         if adapter is not None {
             resp = adapter.post(f"/function/{func_name}", json=args);
@@ -130,6 +131,7 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
 def walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any = None
 ) -> any {
+    import from jaclang.jac0core.host { HOST_TEST }
     import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.test_sv_host { get_test_adapter }
@@ -138,7 +140,7 @@ def walker_call(
 
     label = f"{module_name}.{walker_name}";
 
-    if resolve_sv_service_host(module_name) == 'test' {
+    if resolve_sv_service_host(module_name) == HOST_TEST {
         adapter = get_test_adapter(module_name);
         if adapter is not None {
             resp = adapter.post(f"/walker/{walker_name}", json=args);

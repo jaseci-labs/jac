@@ -72,27 +72,6 @@ test "target aliases resolve to P3 host kinds via TARGET_HOST_KIND" {
     assert TARGET_HOST_KIND['cloudflare-workers'] == HOST_EDGE;
 }
 
-test "P3 host rows register on the Host registry" {
-    register = (_TARGETS_DIR / 'register.jac').read_text(encoding='utf-8');
-    targets = (_TARGETS_DIR / 'p3_js_host_targets.jac').read_text(encoding='utf-8');
-    assert 'WebWorkerTarget' in register;
-    assert 'registry.register(WebWorkerTarget())' in register;
-    assert 'name: str = "web-worker"' in targets;
-    assert 'host_kind: str = HOST_WEB_WORKER' in targets;
-    assert 'ServiceWorkerTarget' in register;
-    assert 'registry.register(ServiceWorkerTarget())' in register;
-    assert 'name: str = "service-worker"' in targets;
-    assert 'host_kind: str = HOST_SERVICE_WORKER' in targets;
-    assert 'EdgeTarget' in register;
-    assert 'registry.register(EdgeTarget())' in register;
-    assert 'name: str = "edge"' in targets;
-    assert 'host_kind: str = HOST_EDGE' in targets;
-    assert 'CliJsTarget' in register;
-    assert 'registry.register(CliJsTarget())' in register;
-    assert 'name: str = "cli-js"' in targets;
-    assert 'host_kind: str = HOST_CLI_JS' in targets;
-}
-
 test "HostFactory exposes P3 registry row names" {
     factory = get_host_factory();
     names = factory.get_available_host_names();

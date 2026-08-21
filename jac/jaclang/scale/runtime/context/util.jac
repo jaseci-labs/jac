@@ -122,7 +122,7 @@ def wait_for_health(
         }
         try {
             with urllib.request.urlopen(f"{base_url}/healthz", timeout=1) as resp {
-                if resp.status < 500 {
+                if resp.status == 200 {
                     return True;
                 }
             }

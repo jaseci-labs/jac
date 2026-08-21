@@ -621,7 +621,6 @@ impl install(
         import from jaclang.runtimelib.client.cli { run_npm_add }
         return run_npm_add(packages, dev, install_global);
     }
-    import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv {
         ensure_venv,

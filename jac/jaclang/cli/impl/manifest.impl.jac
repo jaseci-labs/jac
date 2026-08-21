@@ -215,7 +215,13 @@ def _command_routes -> list[CommandMeta] {
                         'mobile',
                         'desktop',
                         'cef',
-                        'react-native'
+                        'react-native',
+                        'bun',
+                        'web-worker',
+                        'service-worker',
+                        'edge',
+                        'cli-js',
+                        'test'
                     ]
                 ),
                 ArgMeta(
@@ -1176,6 +1182,13 @@ def _command_routes -> list[CommandMeta] {
                     short='n'
                 ),
                 ArgMeta(
+                    name='server',
+                    typ='bool',
+                    default=False,
+                    help='With --npm: sync the Bun server npm root at .jac/server/ (for Bun-hosted sv services). Ignored without --npm.',
+                    short=''
+                ),
+                ArgMeta(
                     name='shadcn',
                     typ='bool',
                     `default=False,
@@ -1911,7 +1924,13 @@ def _command_routes -> list[CommandMeta] {
                         'mobile',
                         'desktop',
                         'cef',
-                        'react-native'
+                        'react-native',
+                        'bun',
+                        'web-worker',
+                        'service-worker',
+                        'edge',
+                        'cli-js',
+                        'test'
                     ]
                 ),
                 ArgMeta(

@@ -22,6 +22,8 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Build one distributable artifact (.jab, wheel, npm, source) | `jac build --as {jab,wheel,npm,source,…}` |
 | Add, remove, or update dependencies | `jac install <pkg>` · `jac remove` · `jac update` |
 | Install project dependencies (preview with `--plan`) | `jac install` · `jac install --plan` |
+| Sync Bun server npm deps for BunHost services | `jac install --npm --server` |
+| Start a module as a Bun-hosted HTTP service | `jac start <file.jac> --client bun` |
 | Run an installed CLI tool under Jac | `jac x` |
 | Type-check, format, or lint | `jac check` · `jac fmt` · `jac check --lint` · `jac precommit` |
 | Run tests | `jac test` |
@@ -313,6 +315,42 @@ jac start --scale --dry-run
 >
 > - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac start app.jac`
 >
+### Bun-hosted sv services
+
+Server-placed code normally runs on the **cpython** host (the default `jac start` path). The **bun** host is an alternate server runtime: npm packages, JS globals, and Postgres persistence through **BunStore**. See [Placement: Host vs codespace](../placement.md#host-vs-codespace) for the capability table.
+
+**Standalone Bun serve.** Pass `--client bun` to compile the entry module into a `Bun.serve` artifact and run it under the jac-managed **bun** runtime (no system Node required):
+
+```bash
+# Build and start a Bun-hosted HTTP service on the default port
+jac start my_service.jac --client bun
+
+# Custom port (same as jac start -p)
+jac start my_service.jac --client bun -p 3000
+```
+
+Stateless `def:pub` functions become HTTP endpoints; modules that touch `Root` or walkers persist through BunStore when Postgres is available.
+
+**Microservice routes.** For modules in `[scale.microservices.routes]`, the runtime picks the sv host per module: **cpython** by default, or **bun** when `.jac/server/<module>.mjs` exists (emitted by the Bun service builder). Override explicitly:
+
+```bash
+# Force a route module onto the bun host for this process
+export JAC_SV_MATH_SERVICE_HOST=bun
+jac start
+```
+
+Or set `host = "bun"` under `[scale.microservices.services.<name>]` in `jac.toml`.
+
+**Server npm root.** Bun-hosted services resolve npm packages from `.jac/server/` (a private Bun project separate from the client `node_modules` tree). Sync it with:
+
+```bash
+jac install --npm --server
+```
+
+This creates `.jac/server/package.json` if needed and runs `bun install` there. Requires the jac-managed bun runtime (same resolver as `jac x` for npm tools).
+
+**P3 host targets.** `web-worker`, `service-worker`, `edge`, and `cli-js` are registered Host rows (NPM + JS_GLOBALS only, no DOM or PERSIST yet). They participate in host-kind resolution and target aliases (`worker`, `sw`, `cloudflare-workers`, `cli_js`, ...) but do not yet ship build, dev, or start implementations.
+
 ---
 
 ### jac dev
@@ -1266,7 +1304,7 @@ jac scale destroy app.jac
 
 **Package mode** - `jac install <pkg> [pkg ...]` adds one or more packages to `jac.toml` and installs them into the project's virtual environment at `.jac/venv/` -- this absorbs the former `jac add`. When no version is specified, the package is installed unconstrained and the installed version is queried to record a `~=X.Y` compatible-release spec in `jac.toml`. Pass `--no-save` to install without reading or modifying `jac.toml` (the Jac-native equivalent of `pip install <pkg>`), or `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a tool you install once and use everywhere (`--global` never records to `jac.toml` and works outside a project). Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
 
-Ecosystem flags select what kind of dependency is recorded: `--dev` records under `[dev-dependencies]`, `--git <url>` installs from a git repository and records under `[dependencies.git]`, `--npm` adds a client-side npm package (with no names, installs all npm deps from `jac.toml`), and `--shadcn` installs shadcn UI components from the bundled offline registry.
+Ecosystem flags select what kind of dependency is recorded: `--dev` records under `[dev-dependencies]`, `--git <url>` installs from a git repository and records under `[dependencies.git]`, `--npm` adds a client-side npm package (with no names, installs all npm deps from `jac.toml`), `--npm --server` syncs the Bun server npm root at `.jac/server/` (for [Bun-hosted sv services](#bun-hosted-sv-services)), and `--shadcn` installs shadcn UI components from the bundled offline registry.
 
 > **Recorded vs ad-hoc installs**
 >
@@ -1281,7 +1319,7 @@ Ecosystem flags select what kind of dependency is recorded: `--dev` records unde
 
 ```bash
 jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [--no-save]
-            [-g GIT] [--npm] [--shadcn] [-v] [--force-reinstall] [--no-cache-dir]
+            [-g GIT] [--npm] [--server] [--shadcn] [-v] [--force-reinstall] [--no-cache-dir]
             [--pre] [--dry-run] [--no-deps] [--quiet] [--prefer-binary]
             [--global] [--plan] [--json]
 ```
@@ -1295,6 +1333,7 @@ jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [--no-save
 | `--no-save` | Install named package(s) without recording them in `jac.toml` | `False` |
 | `-g, --git URL` | Git repository URL to install and record under `[dependencies.git]` | None |
 | `--npm` | Install npm (client-side) package(s); with no names, install all npm deps from `jac.toml` | `False` |
+| `--server` | With `--npm`: sync the Bun server npm root at `.jac/server/` (for Bun-hosted sv services). Ignored without `--npm`. | `False` |
 | `--shadcn` | Install shadcn UI component(s) from the bundled registry | `False` |
 | `-v, --verbose` | Show detailed output | `False` |
 | `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
@@ -1328,6 +1367,9 @@ jac install --git https://github.com/user/package.git
 
 # Add npm (client-side) packages
 jac install --npm react
+
+# Sync the Bun server npm root for Bun-hosted sv services
+jac install --npm --server
 
 # Add shadcn UI components (offline, bundled registry)
 jac install --shadcn button card

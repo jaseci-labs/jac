@@ -15,24 +15,13 @@ impl HostRegistry.clear -> None {
 }
 
 impl HostFactory.create(name: str, project_dir: Path) -> Host {
+    import from jaclang.jac0core.host { resolve_registry_name }
     import from jaclang.runtimelib.client.targets.registry { get_host_registry }
     registry = get_host_registry();
-    host_name = name.lower().strip();
-    host = registry.get(host_name);
+    available = [h.name for h in registry.get_all()];
+    key = resolve_registry_name(name, available);
+    host = registry.get(key) if key is not None else None;
     if host is None {
-        alt = host_name.replace('_', '-');
-        if alt != host_name {
-            host = registry.get(alt);
-        }
-    }
-    if host is None {
-        alt2 = host_name.replace('-', '_');
-        if alt2 != host_name {
-            host = registry.get(alt2);
-        }
-    }
-    if host is None {
-        available = [h.name for h in registry.get_all()];
         raise ValueError(f"Unknown host: {name}. Available: {', '.join(available)}.");
     }
     host.project_dir = project_dir;

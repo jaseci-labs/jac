@@ -1210,13 +1210,12 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         return;
     }
     import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
+    import from jaclang.jac0core.host { HOST_BUN, HOST_TEST }
     import from jaclang.runtimelib.test_sv_host { prepare_test_sv_service, get_test_adapter }
-    import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
-    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.bun_sv_spawn { spawn_bun_sv_service }
     import from pathlib { Path }
-    import subprocess;
     host_kind = resolve_sv_service_host(module_name, base_path);
-    if host_kind == 'test' {
+    if host_kind == HOST_TEST {
         if get_test_adapter(module_name) is not None {
             sv_client.register(module_name, f"test://{module_name}");
             return;
@@ -1226,47 +1225,12 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         sv_client.register(module_name, base_url);
         return;
     }
-    if host_kind == 'bun' {
-        bun = get_bun();
-        if not bun {
-            raise RuntimeError("Bundled bun runtime is required for Bun-hosted sv services");
-        }
-        artifact = build_bun_service_artifact(module_name, base_path);
+    if host_kind == HOST_BUN {
         base_port = 18000 + (hash(module_name) % 1000);
-        child_env = dict(os.environ);
-        child_env['PORT'] = str(base_port);
-        child_env['JAC_PORT'] = str(base_port);
-        proc = subprocess.Popen(
-            [bun, str(artifact)],
-            cwd=base_path,
-            env=child_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+        spawn_result = spawn_bun_sv_service(
+            module_name, base_path, base_port
         );
-        base_url = f"http://127.0.0.1:{base_port}";
-        deadline = time.time() + 10.0;
-        healthy = False;
-        while time.time() < deadline {
-            if proc.poll() is not None {
-                break;
-            }
-            try {
-                with urllib.request.urlopen(f"{base_url}/functions", timeout=1) as resp {
-                    if resp.status < 500 {
-                        healthy = True;
-                        break;
-                    }
-                }
-            } except Exception {
-                time.sleep(0.05);
-            }
-        }
-        if not healthy {
-            proc.terminate();
-            raise RuntimeError(
-                f"Bun sv service '{module_name}' did not become healthy at {base_url}"
-            );
-        }
+        base_url = spawn_result.base_url;
         sv_client.register(module_name, base_url);
         return;
     }
@@ -1282,20 +1246,10 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     srv.port = port;
     srv.server = serving;
     base_url = f"http://127.0.0.1:{port}";
-    deadline = time.time() + 10.0;
-    healthy = False;
-    while time.time() < deadline {
-        try {
-            with urllib.request.urlopen(f"{base_url}/functions", timeout=1) as resp {
-                if resp.status < 500 {
-                    healthy = True;
-                    break;
-                }
-            }
-        } except Exception {
-            time.sleep(0.05);
-        }
-    }
+    import from jaclang.scale.runtime.context.util { wait_for_health }
+    healthy = wait_for_health(
+        base_url, lambda { serving.bound_port > 0; }, timeout=10.0, poll_interval=0.05
+    );
     if not healthy {
         raise RuntimeError(
             f"sv-to-sv service '{module_name}' did not become healthy at {base_url}"

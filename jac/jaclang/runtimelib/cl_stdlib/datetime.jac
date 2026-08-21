@@ -1,5 +1,5 @@
 def _epoch_seconds -> float {
-    return 1700000000.0;
+    return Date.now() / 1000.0;
 }
 
 

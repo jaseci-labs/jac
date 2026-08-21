@@ -1,20 +1,39 @@
+obj EndpointMeta {
+    has name: str,
+        module: str,
+        pub: bool = False,
+        params: list[str] = [];
+
+
+    def postinit -> None {
+        if not self.name {
+            raise ValueError('EndpointMeta requires a name');
+        }
+    }
+}
+
+
 def build_bun_server_entry_script(
     project_name: str,
-    walkers: list,
-    functions: list,
+    walkers: list[EndpointMeta],
+    functions: list[EndpointMeta],
     module_imports: list[str],
     handler_imports: list[str]
 ) -> str {
-    walker_names: list[str] = [];
-    for w in walkers {
-        walker_names.append(str(w['name']));
-    }
-    func_names: list[str] = [];
-    for f in functions {
-        func_names.append(str(f['name']));
-    }
+    walker_names: list[str] = [w.name for w in walkers];
+    func_names: list[str] = [f.name for f in functions];
+
     walker_lit = '[' + ', '.join([repr(n) for n in walker_names]) + ']';
     func_lit = '[' + ', '.join([repr(n) for n in func_names]) + ']';
+    params_pairs: list[str] = [];
+    for f in functions {
+        if f.params {
+            params_pairs.append(
+                f"{repr(f.name)}: [{', '.join([repr(p) for p in f.params])}]"
+            );
+        }
+    }
+    params_lit = '{' + ', '.join(params_pairs) + '}';
 
     lines: list[str] = [
         f'// Auto-generated Bun server entry for {project_name!r}',
@@ -35,14 +54,12 @@ def build_bun_server_entry_script(
         ]
     );
     for w in walkers {
-        wn = str(w['name']);
-        lines.append(f'    {repr(wn)}: _W_{wn},');
+        lines.append(f'    {repr(w.name)}: _W_{w.name},');
     }
     lines.append('  },');
     lines.append('  functions: {');
     for f in functions {
-        fn = str(f['name']);
-        lines.append(f'    {repr(fn)}: _F_{fn},');
+        lines.append(f'    {repr(f.name)}: _F_{f.name},');
     }
     lines.extend(
         [
@@ -52,9 +69,9 @@ def build_bun_server_entry_script(
     );
     rest_triples: list[str] = [];
     for f in functions {
-        fn = str(f['name']);
         rest_triples.append(
-            '{ fn: _F_' + fn + ', handler: _F_' + fn + ', name: ' + repr(fn) + ' }'
+            '{ fn: _F_' + f.name + ', handler: _F_' + f.name
+                + ', name: ' + repr(f.name) + ' }'
         );
     }
     if rest_triples {
@@ -70,6 +87,7 @@ def build_bun_server_entry_script(
             f'  walkers: {walker_lit},',
             f'  functions: {func_lit},',
             '  handlers,',
+            f'  params: {params_lit},',
             '  port,',
             '});',
             ''

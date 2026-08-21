@@ -9,6 +9,8 @@ import os;
 import tempfile;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { run_pass }
+import from jaclang.jac0core.compile_options { CompileOptions }
+import from jaclang.jac0core.codeinfo { cl_stdlib_root }
 import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
 
 
@@ -56,17 +58,56 @@ def _compile_bun_service(source: str) -> tuple[JacProgram, any] {
         try {
             os.chdir(tmp);
             program = JacProgram();
-            mod = program.compile(main_path);
+            mod = program.compile(
+                main_path,
+                options=CompileOptions(
+                    force_codespace='client', type_check=False
+                )
+            );
             assert mod is not None , (
                 "fixture failed to compile:\n"
                 + '\n'.join(str(e) for e in program.errors_had)
             );
-            run_pass(EsastGenPass, mod, program);
+            if not (mod.gen is not None and mod.gen.js) {
+                run_pass(EsastGenPass, mod, program);
+            }
             return (program, mod);
         } finally {
             os.chdir(old_cwd);
         }
     }
+}
+
+
+def _service_fn_name(mod: str) -> str {
+    if mod == 'json' {
+        return 'encode';
+    }
+    if mod == 'datetime' {
+        return 'now_iso';
+    }
+    if mod == 'math' {
+        return 'hypot';
+    }
+    if mod == 'os' {
+        return 'cwd';
+    }
+    if mod == 'random' {
+        return 'coin';
+    }
+    if mod == 'hashlib' {
+        return 'digest';
+    }
+    if mod == 'uuid' {
+        return 'new_id';
+    }
+    if mod == 'time' {
+        return 'epoch';
+    }
+    if mod == 'urllib' {
+        return 'enc';
+    }
+    return 'probe';
 }
 
 
@@ -155,9 +196,60 @@ def _assert_bun_stdlib_compiles(mod: str) {
         + f"Diagnostics:\n"
         + '\n'.join(blockers)
     );
-    assert compiled.gen.js and compiled.gen.js.strip() , (
-        f"stdlib {mod!r} must emit JS for bun services"
+    js = compiled.gen.js or '';
+    fn = _service_fn_name(mod);
+    assert f'function {fn}(' in js , (
+        f"stdlib {mod!r} service must emit the {fn!r} function body for bun "
+        + "(not just the endpoint-effects preamble)"
     );
+}
+
+
+def _compile_cl_stdlib_js(mod: str) -> str {
+    stdlib_root = cl_stdlib_root();
+    assert stdlib_root is not None , "cl_stdlib root must be available for bun stdlib tests";
+    if mod == 'urllib' {
+        path = os.path.join(stdlib_root, 'urllib', 'parse.jac');
+    } else {
+        path = os.path.join(stdlib_root, mod + '.jac');
+    }
+    program = JacProgram();
+    compiled = program.compile(path);
+    assert compiled is not None , (
+        f"failed to compile cl_stdlib {mod!r}:\n"
+        + '\n'.join(str(e) for e in program.errors_had)
+    );
+    run_pass(EsastGenPass, compiled, program);
+    js = compiled.gen.js or '';
+    assert js.strip() , f"cl_stdlib {mod!r} must emit JS";
+    return js;
+}
+
+
+def _assert_real_js_impl(mod: str) {
+    js = _compile_cl_stdlib_js(mod);
+    if mod == 'time' or mod == 'datetime' {
+        assert 'Date.now' in js , f"{mod} must read wall clock via Date.now()";
+        assert '1700000000' not in js , f"{mod} must not use compile stub epoch";
+    }
+    if mod == 'os' {
+        assert 'process.cwd' in js , "os.getcwd must delegate to process.cwd()";
+    }
+    if mod == 'random' {
+        assert (
+            'Math.random' in js or 'getRandomValues' in js
+        ) , "random.randint must use Math.random or crypto.getRandomValues";
+    }
+    if mod == 'hashlib' {
+        assert 'CryptoHasher' in js , "hashlib.sha256 must use Bun.CryptoHasher";
+        assert '(i * 7 + len' not in js , "hashlib must not use fake digest stub";
+    }
+    if mod == 'uuid' {
+        assert (
+            'randomUUID' in js or 'Math.random' in js
+        ) , "uuid.uuid4 must use crypto.randomUUID or Math.random fallback";
+        assert '(i * 11 + 5)' not in js , "uuid must not use deterministic fake hex";
+    }
 }
 
 
@@ -195,4 +287,10 @@ test "bun server module compiles stdlib import time without codegen blockers" {
 
 test "bun server module compiles stdlib import urllib without codegen blockers" {
     _assert_bun_stdlib_compiles('urllib');
+}
+
+test "bun cl_stdlib time datetime os random hashlib uuid emit real JS builtins" {
+    for mod in ('time', 'datetime', 'os', 'random', 'hashlib', 'uuid') {
+        _assert_real_js_impl(mod);
+    }
 }

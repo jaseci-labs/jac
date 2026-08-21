@@ -10,7 +10,9 @@ import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.host { HOST_BUN, HOST_CPYTHON }
 import from jaclang.jac0core.sv_service_host {
+    bun_artifact_stamp_path,
     bun_service_artifact_path,
+    bun_service_inputs_digest,
     is_bun_sv_service,
     resolve_sv_service_host,
     sv_host_env_key
@@ -45,13 +47,39 @@ test "resolve_sv_service_host defaults to cpython without a bun artifact" {
     }
 }
 
-test "resolve_sv_service_host selects bun when artifact exists" {
+test "resolve_sv_service_host selects bun when a fresh artifact exists" {
     with tempfile.TemporaryDirectory() as tmp {
+        _write_service(tmp, 'demo', _STATELESS_SVC);
         artifact = bun_service_artifact_path('demo', tmp);
         artifact.parent.mkdir(parents=True, exist_ok=True);
         artifact.write_text('export default {};\n', encoding='utf-8');
+        assert resolve_sv_service_host('demo', tmp) == HOST_CPYTHON , (
+            "stamp-less artifact must not select the bun host (stale)"
+        );
+        stamp = bun_artifact_stamp_path('demo', tmp);
+        stamp.write_text(
+            bun_service_inputs_digest('demo', tmp), encoding='utf-8'
+        );
         assert resolve_sv_service_host('demo', tmp) == HOST_BUN;
         assert is_bun_sv_service('demo', tmp);
+    }
+}
+
+test "edited service source invalidates a previously fresh artifact" {
+    with tempfile.TemporaryDirectory() as tmp {
+        _write_service(tmp, 'demo', _STATELESS_SVC);
+        artifact = bun_service_artifact_path('demo', tmp);
+        artifact.parent.mkdir(parents=True, exist_ok=True);
+        artifact.write_text('export default {};\n', encoding='utf-8');
+        stamp = bun_artifact_stamp_path('demo', tmp);
+        stamp.write_text(
+            bun_service_inputs_digest('demo', tmp), encoding='utf-8'
+        );
+        assert resolve_sv_service_host('demo', tmp) == HOST_BUN;
+        _write_service(tmp, 'demo', 'def:pub ping() -> int {\n    return 7;\n}\n');
+        assert resolve_sv_service_host('demo', tmp) == HOST_CPYTHON , (
+            "source edits must invalidate the artifact (edits self-invalidate)"
+        );
     }
 }
 
@@ -93,7 +121,7 @@ test "test host registers on the host registry" {
     );
     assert 'TestHost' in register;
     assert 'registry.register(TestHost())' in register;
-    assert 'host_kind: str = HOST_CPYTHON' in target;
+    assert 'host_kind: str = HOST_TEST' in target;
     assert 'name: str = "test"' in target;
 }
 

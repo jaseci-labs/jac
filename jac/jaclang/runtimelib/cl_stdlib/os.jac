@@ -1,3 +1,3 @@
 def:pub getcwd -> str {
-    return ".";
+    return process.cwd();
 }

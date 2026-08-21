@@ -29,9 +29,9 @@ def install_server_npm(project_dir: Path) -> None {
     if not bun {
         raise RuntimeError(bun_unavailable_message()) from None;
     }
-    root = server_npm_root(project_dir);
-    root.mkdir(parents=True, exist_ok=True);
-    pkg_path = root / 'package.json';
+    npm_root = server_npm_root(project_dir);
+    npm_root.mkdir(parents=True, exist_ok=True);
+    pkg_path = npm_root / 'package.json';
     if not pkg_path.exists() {
         pkg = {
             'name': 'jac-server-deps',
@@ -43,7 +43,7 @@ def install_server_npm(project_dir: Path) -> None {
         pkg_path.write_text(json.dumps(pkg, indent=2) + '\n', encoding='utf-8');
     }
     import subprocess;
-    subprocess.run([bun, 'install'], cwd=str(root), check=True);
+    subprocess.run([bun, 'install'], cwd=str(npm_root), check=True);
 }
 
 
