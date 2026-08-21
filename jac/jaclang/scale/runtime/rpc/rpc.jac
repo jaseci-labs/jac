@@ -1,52 +1,80 @@
 import from .breaker {
+    breaker_admit,
+    breaker_release_probe,
     breaker_should_skip,
+    breaker_still_admitted,
     breaker_record_success,
     breaker_record_failure,
-    _BREAKER_COOLDOWN_SECONDS
+    _BREAKER_PROBE_GRACE_SECONDS
 }
 
 glob _RPC_MAX_ATTEMPTS: int = 3,
      _RPC_INITIAL_BACKOFF_SECONDS: float = 0.1;
 
-def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
+def _breaker_shed_error(label: str) -> RuntimeError {
+    return RuntimeError(
+        f"sv-to-sv {label} blocked by open circuit breaker shedding load"
+    );
+}
+
+def _breaker_shed_if_open(module_name: str, label: str) {
+    if breaker_should_skip(module_name) {
+        raise _breaker_shed_error(label);
+    }
+}
+
+def _rpc_with_retries(
+    module_name: str, label: str, send: any, rpc_timeout: float
+) -> any {
     import time;
     import from jaclang.runtimelib.serving.client {
         ClientConnectionError,
         ClientRequestNotSent
     }
 
+    (admitted, probe) = breaker_admit(
+        module_name, rpc_timeout + _BREAKER_PROBE_GRACE_SECONDS
+    );
+    if not admitted {
+        raise _breaker_shed_error(label);
+    }
+
     backoff: float = _RPC_INITIAL_BACKOFF_SECONDS;
     last_err: Exception | None = None;
     attempts: int = 0;
-    tripped: bool = False;
+    shed: bool = False;
 
-    for attempt in range(_RPC_MAX_ATTEMPTS) {
-        attempts = attempt + 1;
-        try {
-            payload = send();
-            breaker_record_success(module_name);
-            return payload;
-        } except ClientRequestNotSent as e {
-            err_ref: any = e;
-            last_err = err_ref;
-            breaker_record_failure(module_name);
-            if breaker_should_skip(module_name) {
-                tripped = True;
+    try {
+        for attempt in range(_RPC_MAX_ATTEMPTS) {
+            attempts = attempt + 1;
+            try {
+                payload = send();
+                breaker_record_success(module_name, probe);
+                return payload;
+            } except ClientRequestNotSent as e {
+                err_ref: any = e;
+                last_err = err_ref;
+                breaker_record_failure(module_name, probe);
+                if not breaker_still_admitted(module_name, probe) {
+                    shed = True;
+                    break;
+                }
+                if attempt < _RPC_MAX_ATTEMPTS - 1 {
+                    time.sleep(backoff);
+                    backoff = backoff * 2.0;
+                }
+            } except (ClientConnectionError, OSError) as e {
+                sent_ref: any = e;
+                last_err = sent_ref;
+                breaker_record_failure(module_name, probe);
                 break;
             }
-            if attempt < _RPC_MAX_ATTEMPTS - 1 {
-                time.sleep(backoff);
-                backoff = backoff * 2.0;
-            }
-        } except (ClientConnectionError, OSError) as e {
-            sent_ref: any = e;
-            last_err = sent_ref;
-            breaker_record_failure(module_name);
-            break;
         }
+    } finally {
+        breaker_release_probe(module_name, probe);
     }
 
-    stopped_by = " (stopped by open circuit breaker)" if tripped else "";
+    stopped_by = " (stopped by open circuit breaker)" if shed else "";
     raise RuntimeError(
         f"sv-to-sv {label} failed after {attempts} attempts{stopped_by}: {last_err}"
     );
@@ -71,12 +99,8 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
         return _unwrap_sv_envelope(data, module_name, func_name);
     }
 
-    if breaker_should_skip(module_name) {
-        raise RuntimeError(
-            f"sv-to-sv RPC '{module_name}.{func_name}' blocked by "
-                + f"open circuit breaker (cooldown {int(_BREAKER_COOLDOWN_SECONDS)}s)"
-        );
-    }
+    rpc_label = f"RPC '{func_label}'";
+    _breaker_shed_if_open(module_name, rpc_label);
 
     import jaclang;
     ms_registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
@@ -115,7 +139,7 @@ def service_call(module_name: str, func_name: str, args: dict) -> any {
         );
     }
 
-    (kind, payload) = _rpc_with_retries(module_name, f"RPC '{func_label}'", send);
+    (kind, payload) = _rpc_with_retries(module_name, rpc_label, send, rpc_timeout);
     if kind == 'sse' {
         return payload;
     }
@@ -139,12 +163,8 @@ def walker_call(
         return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
     }
 
-    if breaker_should_skip(module_name) {
-        raise RuntimeError(
-            f"sv-to-sv walker spawn '{label}' blocked by "
-                + f"open circuit breaker (cooldown {int(_BREAKER_COOLDOWN_SECONDS)}s)"
-        );
-    }
+    spawn_label = f"walker spawn '{label}'";
+    _breaker_shed_if_open(module_name, spawn_label);
 
     url = sv_client.resolve_url(module_name);
     import from jaclang.runtimelib.serving.client { request_sync }
@@ -178,7 +198,7 @@ def walker_call(
         return resp.json();
     }
 
-    data = _rpc_with_retries(module_name, f"walker spawn '{label}'", send);
+    data = _rpc_with_retries(module_name, spawn_label, send, rpc_timeout);
     return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
 }
 
