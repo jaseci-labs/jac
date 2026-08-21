@@ -142,19 +142,29 @@ obj NativeJServer {
                 {"http.method": request.method, "http.target": request.url.path}
             );
             user_id = request.state?.user_root_id if request?.state else None;
+            root_bind_error: any = None;
             if user_id {
                 root_ref: any = user_id;
                 try {
                     await ctx.aset_user_root(root_ref);
-                } except ValueError {
-                    logger.warning(
-                        f"Invalid user_root_id: {user_id}, using system root"
-                    );
+                } except (ValueError, RuntimeError) as bind_err {
+                    root_bind_error = bind_err;
                 }
             }
             try {
-                next_fn: any = call_next;
-                response = await next_fn(request);
+                if root_bind_error is not None {
+                    import from jaclang.scale.runtime.context.errors {
+                        identity_unresolvable
+                    }
+                    logger.error(
+                        f"refusing request for user_root_id {user_id}: "
+                        f"{type(root_bind_error).__name__}: {root_bind_error}"
+                    );
+                    response = identity_unresolvable(str(root_bind_error));
+                } else {
+                    next_fn: any = call_next;
+                    response = await next_fn(request);
+                }
                 if trace_id {
                     response.headers["X-Trace-Id"] = trace_id;
                 }
