@@ -1,12 +1,14 @@
-# Scope note: these tests exercise the ScaledObject watch/relist/dedup
-# mechanics in isolation, per the Phase 4 plan. The "hpa" and "deployment"
-# kinds are left empty (no items) in most fixtures here so the KEDA
-# normalizer's replica counts default to 0 -- the reachable states from
-# toggling only ScaledObject conditions are then INACTIVE (Active=False),
-# DEGRADED (Ready=False), and UNKNOWN (no replica data to resolve Active=True
-# against). Cross-kind joins that reach ACTIVATING/ACTIVE/DEACTIVATING by
-# combining ScaledObject + HPA + Deployment are Phase 5's job.
+# Scope note: the first block of tests below exercises the ScaledObject
+# watch/relist/dedup mechanics in isolation, per the Phase 4 plan. The "hpa"
+# and "deployment" kinds are left empty (no items) in most of those fixtures
+# so the KEDA normalizer's replica counts default to 0 -- the reachable
+# states from toggling only ScaledObject conditions are then INACTIVE
+# (Active=False), DEGRADED (Ready=False), and ACTIVATING/UNKNOWN (Active=True
+# with no replica data to resolve against). The cross-resource join tests at
+# the bottom of this file (Phase 5) exercise the HPA and Deployment kinds for
+# real, reaching ACTIVE by combining all three.
 import unittest.mock;
+import time;
 import from kubernetes.client.exceptions { ApiException }
 import from jaclang.scale.deploy.autoscale.kubernetes_observer {
     KubernetesAutoscalerObserver,
@@ -33,6 +35,24 @@ def scaled_object(
                 {"type": "Active", "status": active}
             ],
             "hpaName": f"{target}-hpa"
+        }
+    };
+}
+
+def hpa_item(target: str, current: int, desired: int) -> dict {
+    return {
+        "metadata": {"name": f"{target}-hpa", "labels": {"app": target}},
+        "status": {"current_replicas": current, "desired_replicas": desired}
+    };
+}
+
+def deployment_item(target: str, replicas: int, ready_replicas: int) -> dict {
+    return {
+        "metadata": {"name": target, "labels": {"app": target}},
+        "status": {
+            "replicas": replicas,
+            "ready_replicas": ready_replicas,
+            "available_replicas": ready_replicas
         }
     };
 }
@@ -364,4 +384,116 @@ test "stop(drain=True) joins every watch thread before returning" {
         assert t.is_alive() is False;
     }
     assert obs._threads == {};
+}
+
+
+# --- Phase 5: cross-resource join ---
+# These two exercise the "hpa" and "deployment" kinds for real, joining them
+# with the ScaledObject cache through _reconcile_target.
+
+test "a ScaledObject reconciled with no cached HPA/Deployment data starts activating, not unknown" {
+    seed_item = scaled_object(ready="True", active="True");
+    degraded_item = scaled_object(resource_version="2", ready="False", active="True");
+
+    mock_custom_api = unittest.mock.MagicMock();
+    mock_custom_api.list_namespaced_custom_object.side_effect = make_list_dispatcher(
+        {"items": [seed_item], "metadata": {"resourceVersion": "1"}},
+        {"items": [degraded_item], "metadata": {"resourceVersion": "2"}}
+    );
+    mock_v2 = unittest.mock.MagicMock();
+    mock_v2.list_namespaced_horizontal_pod_autoscaler.return_value = typed_list_response(
+        []
+    );
+    mock_apps = unittest.mock.MagicMock();
+    mock_apps.list_namespaced_deployment.return_value = typed_list_response([]);
+
+    obs = KubernetesAutoscalerObserver(
+        _custom_api=mock_custom_api,
+        _v2_api=mock_v2,
+        _apps_api=mock_apps,
+        _watch_factory=make_watch_factory_with_410([])
+    );
+    sub = obs.subscribe();
+    obs.watch_namespace("default");
+
+    # The first observation (activating) is recorded silently, per the
+    # no-manufactured-history rule -- force a second, real change so it
+    # surfaces as this transition's previous_state instead of asserting on
+    # the observer's internal cache directly.
+    delivered = sub.poll(timeout_seconds=3.0);
+    assert delivered is not None;
+    assert delivered.previous_state == "activating";
+    assert delivered.state == "degraded";
+
+    obs.stop(drain=True);
+}
+
+test "a Deployment readiness update alone can flip a target from activating to active" {
+    target = "orders-deployment";
+    seed_scaled_object = scaled_object(target=target, ready="True", active="True");
+    seed_hpa = hpa_item(target, current=1, desired=1);
+    seed_deployment = deployment_item(target, replicas=1, ready_replicas=0);
+    updated_deployment = deployment_item(target, replicas=1, ready_replicas=1);
+
+    mock_custom_api = unittest.mock.MagicMock();
+    mock_custom_api.list_namespaced_custom_object.return_value = {
+        "items": [seed_scaled_object],
+        "metadata": {"resourceVersion": "1"}
+    };
+    mock_v2 = unittest.mock.MagicMock();
+    mock_v2.list_namespaced_horizontal_pod_autoscaler.return_value = typed_list_response(
+        [seed_hpa]
+    );
+    mock_apps = unittest.mock.MagicMock();
+    mock_apps.list_namespaced_deployment.return_value = typed_list_response(
+        [seed_deployment]
+    );
+
+    def factory(
+        kind: str,
+        list_fn: any,
+        namespace: str,
+        label_selector: any,
+        resource_version: any
+    ) -> any {
+        if kind == "deployment" {
+            return iter(
+                [{"type": "MODIFIED", "object": typed_item(updated_deployment)}]
+            );
+        }
+        return iter([]);
+    }
+
+    obs = KubernetesAutoscalerObserver(
+        _custom_api=mock_custom_api,
+        _v2_api=mock_v2,
+        _apps_api=mock_apps,
+        _watch_factory=factory
+    );
+    sub = obs.subscribe();
+    obs.watch_namespace("default");
+
+    # The three kinds seed on independent threads, so which one populates
+    # the target's cache slot first (and therefore what the silently-recorded
+    # first state is) is a genuine race. "active" (desired == current ==
+    # ready == 1) is only reachable after the scripted Deployment update
+    # fires, though -- no partial-cache reconcile from any arrival order can
+    # coincidentally land there -- so draining until it appears is race-
+    # tolerant regardless of thread scheduling.
+    found_active = False;
+    deadline = time.time() + 3.0;
+    while time.time() < deadline {
+        delivered = sub.poll(timeout_seconds=0.5);
+        if delivered is None {
+            continue;
+        }
+        assert delivered.scale_target_name == target;
+        if delivered.state == "active" {
+            found_active = True;
+            break;
+        }
+    }
+    assert found_active , "expected a transition to active driven by the Deployment update alone";
+
+    obs.stop(drain=True);
 }
