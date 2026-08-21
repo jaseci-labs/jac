@@ -1763,8 +1763,9 @@ obj PythonModuleAst(EmptyToken) {
 
 glob _HEX_DIGITS: str = '0123456789abcdefABCDEF',
      _OCT_DIGITS: str = '01234567',
-     _LIT_PREFIX_CHARS: str = 'bBrR',
+     _LIT_PREFIX_CHARS: str = 'bBrRuU',
      _MAX_CODE_POINT: int = 1114111,
+     _STR_RUN_SEPS: str = ' \t\n\r\x0c\x0b\\',
      _SIMPLE_ESCAPES: dict[str, str] = {
          '\\': '\\',
          "'": "'",
@@ -1777,6 +1778,64 @@ glob _HEX_DIGITS: str = '0123456789abcdefABCDEF',
          't': '\t',
          'v': '\x0b'
      };
+
+def _scan_str_literal(text: str, start: int) -> int {
+    n = len(text);
+    i = start;
+    taken = 0;
+    while (taken < 2 and i < n and text[i] in _LIT_PREFIX_CHARS) {
+        i += 1;
+        taken += 1;
+    }
+    if (i >= n or (text[i] != '"' and text[i] != "'")) {
+        return -1;
+    }
+    quote = text[i];
+    triple = (i + 2) < n and text[i + 1] == quote and text[i + 2] == quote;
+    i += 3 if triple else 1;
+    while (i < n) {
+        if (text[i] == '\\') {
+            i += 2;
+            continue;
+        }
+        if triple {
+            if (
+                ((i + 2) < n)
+                and (text[i] == quote)
+                and (text[i + 1] == quote)
+                and (text[i + 2] == quote)
+            ) {
+                return (i + 3);
+            }
+        } elif (text[i] == quote) {
+            return (i + 1);
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+def _split_literal_run(text: str) -> list[str] {
+    if ((text.count('"') + text.count("'")) <= 2) {
+        return [];
+    }
+    parts: list[str] = [];
+    n = len(text);
+    i = 0;
+    while (i < n) {
+        if (text[i] in _STR_RUN_SEPS) {
+            i += 1;
+            continue;
+        }
+        nxt = _scan_str_literal(text, i);
+        if (nxt < 0) {
+            return [];
+        }
+        parts.append(text[i:nxt]);
+        i = nxt;
+    }
+    return parts if (len(parts) > 1) else [];
+}
 
 def _lit_prefix_len(text: str) -> int {
     n = len(text);
@@ -1943,6 +2002,28 @@ def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
 }
 
 def decode_string_literal(text: str) -> str | bytes {
+    parts = _split_literal_run(text);
+    if parts {
+        head = decode_string_literal(parts[0]);
+        if isinstance(head, `bytes) {
+            out_bytes: bytes = head;
+            for part in parts[1:] {
+                tail_bytes = decode_string_literal(part);
+                if isinstance(tail_bytes, `bytes) {
+                    out_bytes += tail_bytes;
+                }
+            }
+            return out_bytes;
+        }
+        out_str: str = head;
+        for part in parts[1:] {
+            tail_str = decode_string_literal(part);
+            if isinstance(tail_str, `str) {
+                out_str += tail_str;
+            }
+        }
+        return out_str;
+    }
     start = _lit_prefix_len(text);
     if (start < 0) {
         return text;
