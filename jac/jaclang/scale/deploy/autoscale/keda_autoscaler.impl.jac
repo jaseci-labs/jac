@@ -963,6 +963,12 @@ impl KEDAAutoscaler._normalize_keda_status{
             "Active condition missing from ScaledObject status"
         );
     }
+    if trigger_active and hpa is None and deployment is None {
+        return build(
+            AutoscalerState.ACTIVATING.value,
+            "trigger active; awaiting HPA/Deployment replica data"
+        );
+    }
     if (not trigger_active) and desired == 0 {
         return build(AutoscalerState.INACTIVE.value);
     }
