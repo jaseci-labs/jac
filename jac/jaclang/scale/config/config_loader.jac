@@ -44,3 +44,4 @@ def peek_scale_config -> JacScaleConfig | None;
 def reset_scale_config -> None;
 
 def resolve_password_hash_cost(configured_cost: int) -> int;
+def sanitize_prometheus_namespace(name: str) -> str;

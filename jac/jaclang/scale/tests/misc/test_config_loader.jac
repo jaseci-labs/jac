@@ -5,7 +5,8 @@ import from pathlib { Path }
 import from jaclang.scale.config.config_loader {
     JacScaleConfig,
     get_scale_config,
-    reset_scale_config
+    reset_scale_config,
+    sanitize_prometheus_namespace
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -269,4 +270,28 @@ test "get_scale_config raises on a different project_dir instead of silently reu
         shutil.rmtree(dir_a, ignore_errors=True);
         shutil.rmtree(dir_b, ignore_errors=True);
     }
+}
+
+
+test "get_monitoring_config derives the namespace when monitoring.namespace is empty" {
+    reset_scale_config();
+    dir_mon = tempfile.mkdtemp(prefix="jac-cfg-mon-");
+    try {
+        (Path(dir_mon) / "jac.toml").write_text(
+            '[project]\nname = "repro"\n\n[scale.kubernetes]\nnamespace = "jac-shop-prod"\n\n[scale.monitoring]\nnamespace = ""\n'
+        );
+        cfg = get_scale_config(project_dir=Path(dir_mon));
+        assert cfg.get_monitoring_config()["namespace"] == "jac_shop_prod";
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(dir_mon, ignore_errors=True);
+    }
+}
+
+
+test "sanitize_prometheus_namespace produces a valid Prometheus namespace" {
+    assert sanitize_prometheus_namespace("jac--shop") == "jac_shop";
+    assert sanitize_prometheus_namespace("-prod-") == "prod";
+    assert sanitize_prometheus_namespace("1prod") == "_1prod";
+    assert sanitize_prometheus_namespace("---") == "jaclang_scale";
 }
