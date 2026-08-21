@@ -299,7 +299,9 @@ enum NarrowingKind {
     LITERAL_NE = "literal_ne",
     HASATTR = "hasattr",
     TYPE_IS = "type_is",
-    TYPE_GUARD = "type_guard"
+    TYPE_GUARD = "type_guard",
+    MEMBERSHIP_IN = "membership_in",
+    MEMBERSHIP_NOT_IN = "membership_not_in"
 }
 
 obj ConditionInfo {
