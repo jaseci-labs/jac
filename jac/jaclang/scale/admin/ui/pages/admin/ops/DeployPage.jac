@@ -150,6 +150,7 @@ def:pub DeployPage -> JsxElement {
                                 <td className="py-1.5 pr-3">
                                     <span
                                         className={rolloutCls(d["rollout"]["status"])}
+                                        title={d["rollout"]["message"]}
                                     >
                                         {d["rollout"]["status"]}
                                     </span>

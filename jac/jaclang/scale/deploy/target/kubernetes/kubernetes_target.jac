@@ -5,6 +5,10 @@ import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.deploy.target.kubernetes.rollout {
+    ROLLOUT_WAIT_FULL,
+    read_rollout_status
+}
 import from jaclang.scale.injector.pvc_injector { bundle_pvc_name }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
@@ -575,26 +579,29 @@ obj KubernetesTargetBase(DeploymentTarget) {
         try {
             self._load_cluster_config();
             apps_v1 = client.AppsV1Api();
-            core_v1 = client.CoreV1Api();
             namespace = self.k8s_config.namespace;
 
             deployment = apps_v1.read_namespaced_deployment(
                 name=app_name, namespace=namespace
             );
 
-            replicas = deployment.spec.replicas or 0;
-            ready_replicas = deployment.status.ready_replicas or 0;
+            rollout = read_rollout_status(deployment);
+            replicas = rollout.desired;
+            ready_replicas = rollout.updated_available();
 
-            if ready_replicas == replicas and replicas > 0 {
+            if rollout.satisfies(ROLLOUT_WAIT_FULL) and replicas > 0 {
                 status = ResourceStatus.RUNNING;
-            } elif ready_replicas > 0 {
+            } elif rollout.available > 0 or rollout.updated > 0 {
                 status = ResourceStatus.PENDING;
             } else {
                 status = ResourceStatus.FAILED;
             }
 
             return ResourceStatusInfo(
-                status=status, replicas=replicas, ready_replicas=ready_replicas
+                status=status,
+                replicas=replicas,
+                ready_replicas=ready_replicas,
+                message=rollout.stall_note() or None
             );
         } except Exception as e {
             if self.logger {

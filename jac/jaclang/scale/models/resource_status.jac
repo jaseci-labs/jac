@@ -17,6 +17,6 @@ obj ResourceStatusInfo {
     def is_ready -> bool {
         return self.status == ResourceStatus.RUNNING
             and self.replicas > 0
-            and self.ready_replicas == self.replicas;
+            and self.ready_replicas >= self.replicas;
     }
 }

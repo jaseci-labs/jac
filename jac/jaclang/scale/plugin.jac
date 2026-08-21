@@ -61,9 +61,13 @@ def scale_start(
     enable_tls: bool,
     dry_run: bool,
     show_yaml: bool,
+    rollout_wait: str = "",
     port: int = 8000
 ) -> int | None {
     os.environ["JAC_SCALE_RUNTIME"] = "1";
+    if rollout_wait and not scale {
+        console.warning("--wait applies to `--scale` deploys only; ignoring it.");
+    }
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     if port and port != 8000 {
@@ -123,7 +127,7 @@ def scale_start(
                 KubernetesRealizer
             }
             return KubernetesRealizer(ms_config=ms_config).realize(
-                filename, target, enable_tls, dry_run, show_yaml
+                filename, target, enable_tls, dry_run, show_yaml, rollout_wait
             );
         } except Exception as e {
             console.error(f"Deploy failed: {e}", emoji=False);

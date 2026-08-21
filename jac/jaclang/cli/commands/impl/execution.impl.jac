@@ -529,6 +529,7 @@ impl start(
     platform: str = "auto",
     scale: bool = False,
     target: str = "kubernetes",
+    rollout_wait: str = "",
     enable_tls: bool = False,
     dry_run: bool = False,
     show_yaml: bool = False,
@@ -551,7 +552,7 @@ impl start(
 
     import from jaclang.scale.plugin { scale_start }
     scale_rc = scale_start(
-        filename, scale, target, enable_tls, dry_run, show_yaml, port=port
+        filename, scale, target, enable_tls, dry_run, show_yaml, rollout_wait, port=port
     );
     if scale_rc is not None {
         return scale_rc;

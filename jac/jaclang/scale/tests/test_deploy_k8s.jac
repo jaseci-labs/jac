@@ -27,6 +27,8 @@ import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
+import from jaclang.scale.runtime.realizer.kubernetes_realizer { KubernetesRealizer }
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
@@ -111,6 +113,21 @@ def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> 
     );
 }
 
+def _fleet_deployment(available: int = 0, desired: int = 1) -> any {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(generation=1),
+        spec=SimpleNamespace(replicas=desired),
+        status=SimpleNamespace(
+            replicas=available,
+            updated_replicas=available,
+            available_replicas=available,
+            ready_replicas=available,
+            observed_generation=1,
+            conditions=[]
+        )
+    );
+}
+
 def _fleet_bundle(app_name: str = "svc-a") -> dict[str, any] {
     return {
         "deployments": {
@@ -182,8 +199,8 @@ test "fleet rollout ignores crash-looping pod from a stale replica set" {
         current_rs
     ];
     fake_apps_v1.read_namespaced_deployment.side_effect = [
-        SimpleNamespace(status=SimpleNamespace(ready_replicas=0)),
-        SimpleNamespace(status=SimpleNamespace(ready_replicas=1)),
+        _fleet_deployment(available=0),
+        _fleet_deployment(available=1),
 
     ];
 
@@ -225,9 +242,7 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
 
     fake_apps_v1 = unittest.mock.MagicMock();
     fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
-    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=0)
-    );
+    fake_apps_v1.read_namespaced_deployment.return_value = _fleet_deployment();
 
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
@@ -256,9 +271,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
 
     fake_apps_v1 = unittest.mock.MagicMock();
     fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
-    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=0)
-    );
+    fake_apps_v1.read_namespaced_deployment.return_value = _fleet_deployment();
 
     healthy_pod = unittest.mock.MagicMock();
     healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
@@ -304,9 +317,7 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     fake_apps_v1.list_namespaced_replica_set.side_effect = Exception(
         "RS API unavailable"
     );
-    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=0)
-    );
+    fake_apps_v1.read_namespaced_deployment.return_value = _fleet_deployment();
 
     crash_pod = unittest.mock.MagicMock();
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
@@ -677,4 +688,219 @@ test "no usable project name falls back to legacy app_name 'jaseci'" {
         assert cfg["app_name"] == "jaseci" , f"{toml!r}: got {cfg['app_name']!r}";
         assert cfg["namespace"] == "default" , f"{toml!r}: got {cfg['namespace']!r}";
     }
+}
+
+test "rollout wait defaults to the fast gate and reads 'full' from jac.toml" {
+    default_cfg = _k8s_config_for_toml("[project]\nname = \"My App\"\n");
+    assert default_cfg["rollout_wait"] == "ready" , (
+        f"got {default_cfg['rollout_wait']!r}"
+    );
+    assert default_cfg["rollout_timeout"] == 1200 , (
+        f"got {default_cfg['rollout_timeout']!r}"
+    );
+
+    full_cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\n\n[scale.kubernetes]\n"
+        "rollout_wait = \"full\"\nrollout_timeout = 2400\n"
+    );
+    assert full_cfg["rollout_wait"] == "full" , f"got {full_cfg['rollout_wait']!r}";
+    assert full_cfg["rollout_timeout"] == 2400 , (
+        f"got {full_cfg['rollout_timeout']!r}"
+    );
+}
+
+def _status_for(deployment: any) -> any {
+    target = KubernetesTarget(
+        config=KubernetesConfig(app_name="svc-a", namespace="fleet-ns")
+    );
+    apps = unittest.mock.MagicMock();
+    apps.read_namespaced_deployment.return_value = deployment;
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+            return_value=apps
+        ) {
+            return target.get_status("svc-a");
+        }
+    }
+}
+
+def _revision_deployment(
+    desired: int, updated: int, available: int, total: int
+) -> any {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(generation=1),
+        spec=SimpleNamespace(replicas=desired),
+        status=SimpleNamespace(
+            replicas=total,
+            updated_replicas=updated,
+            available_replicas=available,
+            ready_replicas=available,
+            observed_generation=1,
+            conditions=[]
+        )
+    );
+}
+
+test "status is RUNNING only once the applied revision is fully available" {
+    mid = _status_for(_revision_deployment(desired=3, updated=1, available=3, total=4));
+    assert mid.status != ResourceStatus.RUNNING , (
+        f"old-revision pods are not a finished rollout: {mid.status}"
+    );
+    assert mid.ready_replicas == 0 , (
+        f"only new-revision replicas count as ready, got {mid.ready_replicas}"
+    );
+    assert not mid.is_ready() , "a rollout in flight is not ready";
+
+    done = _status_for(
+        _revision_deployment(desired=3, updated=3, available=3, total=3)
+    );
+    assert done.status == ResourceStatus.RUNNING , (
+        f"a completed rollout is RUNNING: {done.status}"
+    );
+    assert done.is_ready() , "a completed rollout is ready";
+}
+
+test "status stays PENDING while old replicas serve a redeploy that placed no pod" {
+    blocked = _status_for(
+        _revision_deployment(desired=3, updated=0, available=3, total=3)
+    );
+    assert blocked.status == ResourceStatus.PENDING , (
+        f"a redeploy still served by its predecessor is not failed: {blocked.status}"
+    );
+
+    down = _status_for(
+        _revision_deployment(desired=3, updated=0, available=0, total=0)
+    );
+    assert down.status == ResourceStatus.FAILED , (
+        f"nothing serving and nothing rolling out is failed: {down.status}"
+    );
+}
+
+test "status reports the stall the deploy gate would fail on" {
+    stalled = _revision_deployment(desired=3, updated=1, available=3, total=4);
+    stalled.status.conditions = [
+        SimpleNamespace(
+            type="Progressing",
+            status="False",
+            reason="ProgressDeadlineExceeded",
+            message="ReplicaSet 'svc-a-abc' has timed out progressing.",
+            last_update_time="2026-08-11T10:00:00Z"
+        )
+    ];
+
+    info = _status_for(stalled);
+
+    assert info.status != ResourceStatus.RUNNING , f"got {info.status}";
+    assert info.message and "ProgressDeadlineExceeded" in info.message , (
+        f"the stall reason must reach the caller: {info.message!r}"
+    );
+    assert "2026-08-11T10:00:00Z" in info.message and "may predate" in info.message , (
+        "a status poller has no baseline, so the verdict must carry when it "
+        f"was stamped: {info.message!r}"
+    );
+}
+
+"""Run a dry-run realize and hand back the deployment target it built."""
+def _realized_target(toml_wait: str, wait_flag: str) -> any {
+    tmp_dir = Path(mkdtemp());
+    (tmp_dir / "main.jac").write_text("with entry {\n    print(\"ok\");\n}\n");
+    scale_cfg = unittest.mock.MagicMock();
+    scale_cfg.get_kubernetes_config.return_value = {
+        "app_name": "svc-a",
+        "namespace": "fleet-ns",
+        "rollout_wait": toml_wait
+    };
+    scale_cfg.get_secrets_config.return_value = {};
+    scale_cfg.load.return_value = {};
+    try {
+        with unittest.mock.patch(
+            "jaclang.scale.runtime.realizer.kubernetes_realizer.get_scale_config",
+            return_value=scale_cfg
+        ), unittest.mock.patch(
+            "jaclang.scale.runtime.cli.plan.print_plan", return_value=({}, [])
+        ) as print_plan {
+            rc = KubernetesRealizer(ms_config={}).realize(
+                str(tmp_dir / "main.jac"), dry_run=True, rollout_wait=wait_flag
+            );
+            assert rc == 0 , f"dry-run realize failed with {rc}";
+            return print_plan.call_args.args[0];
+        }
+    } finally {
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
+test "--wait overrides jac.toml on the target that runs the deploy" {
+    overridden = _realized_target("ready", "full");
+    assert overridden.k8s_config.rollout_wait == "full" , (
+        "--wait full must reach the target, got "
+        f"{overridden.k8s_config.rollout_wait!r}"
+    );
+
+    configured = _realized_target("full", "");
+    assert configured.k8s_config.rollout_wait == "full" , (
+        "without --wait the configured mode stands, got "
+        f"{configured.k8s_config.rollout_wait!r}"
+    );
+}
+
+def _rollout_gate_for(cfg: dict) -> any {
+    return KubernetesTarget(
+        config=KubernetesConfig.from_dict(KubernetesConfig, cfg)
+    )._rollout_gate();
+}
+
+test "an unusable rollout setting fails the deploy, not every config read" {
+    for (setting, bad) in [
+        ("rollout_wait = \"everything\"", "everything"),
+        ("rollout_wait = \"\"", "''"),
+        ("rollout_timeout = 0", "0"),
+        ("rollout_timeout = 30.5", "30.5"),
+        ("rollout_timeout = true", "True"),
+        ("rollout_timeout = \"soon\"", "soon")
+    ] {
+        cfg = _k8s_config_for_toml(
+            "[project]\nname = \"My App\"\n\n[scale.kubernetes]\n"
+            "namespace = \"shop\"\n"
+                + setting
+                + "\n"
+        );
+        assert cfg["namespace"] == "shop" , (
+            f"{setting}: an unusable rollout knob must not cost in-pod readers "
+            f"the rest of the config, got {cfg['namespace']!r}"
+        );
+
+        caught = None;
+        try {
+            _rollout_gate_for(cfg);
+        } except ValueError as e {
+            caught = e;
+        }
+
+        assert caught is not None , f"{setting} must not be silently accepted";
+        assert bad in str(caught) , (
+            f"{setting}: the bad value must be echoed, got {caught}"
+        );
+    }
+}
+
+test "an env interpolated rollout_timeout string stays accepted" {
+    toml = (
+        "[project]\nname = \"My App\"\n\n[scale.kubernetes]\n"
+        "rollout_timeout = \"${JAC_TEST_ROLLOUT_TIMEOUT:-1200}\"\n"
+    );
+
+    os.environ["JAC_TEST_ROLLOUT_TIMEOUT"] = "90";
+    try {
+        (_, timeout) = _rollout_gate_for(_k8s_config_for_toml(toml));
+        assert timeout == 90 , f"got {timeout!r}";
+    } finally {
+        os.environ.pop("JAC_TEST_ROLLOUT_TIMEOUT", None);
+    }
+
+    (_, fallback_timeout) = _rollout_gate_for(_k8s_config_for_toml(toml));
+    assert fallback_timeout == 1200 , f"got {fallback_timeout!r}";
 }

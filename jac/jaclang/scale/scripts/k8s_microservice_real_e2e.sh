@@ -688,6 +688,111 @@ else
         "200|404|405|000" "${FIRST_SVC}-deployment" "" "5"
 fi
 
+# The readiness gate only has a revision to get wrong on a SECOND deploy over
+# an existing Deployment, so it runs last: bump the overlay marker and redeploy
+# twice, once per wait mode, asserting the call returned on the applied revision.
+echo "=== redeploy: the wait gates on the applied revision ==="
+cd "${PROJECT_DIR}"
+export JAC_PROFILE=preview
+jac - <<PYEOF
+import re, sys, time, jaclang  # noqa: F401
+from kubernetes import client, config as kube_config
+from jaclang.scale.deploy.target.kubernetes.target import KubernetesTarget
+from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
+from jaclang.scale.deploy.target.kubernetes.rollout import read_rollout_status
+from jaclang.scale.config.app_config import AppConfig
+
+NS = "${NAMESPACE}"
+PROFILE = "jac.preview.toml"
+PROBE = "products-app-deployment"
+kube_config.load_kube_config()
+apps = client.AppsV1Api()
+
+def revision(name):
+    dep = apps.read_namespaced_deployment(name=name, namespace=NS)
+    return int((dep.metadata.annotations or {}).get("deployment.kubernetes.io/revision", 0))
+
+def bump_marker():
+    src = open(PROFILE).read()
+    bumped = re.sub(
+        r'(name = "E2E_OVERLAY_MARKER"\n)value = "[^"]*"',
+        lambda m: m.group(1) + 'value = "%d"' % time.time_ns(),
+        src,
+    )
+    if bumped == src:
+        sys.exit(f"FAIL: could not bump E2E_OVERLAY_MARKER in {PROFILE}")
+    open(PROFILE, "w").write(bumped)
+
+def redeploy(mode):
+    bump_marker()
+    target = KubernetesTarget(
+        config=KubernetesConfig(
+            app_name="jac-e2e",
+            namespace=NS,
+            container_port=8000,
+            bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
+            python_image="${E2E_POD_BASE_IMAGE:-}",
+            rollout_wait=mode,
+        ),
+    )
+    started = time.monotonic()
+    result = target.deploy(AppConfig(code_folder=".", app_name="jac-e2e"))
+    waited = time.monotonic() - started
+    if not result.success:
+        sys.exit(f"FAIL: redeploy (--wait {mode}) failed: {result.message}")
+    names = [d["metadata"]["name"] for d in (result.details or {}).get("deployments", {}).values()]
+    if not names:
+        sys.exit(f"FAIL: the --wait {mode} bundle carried no Deployments to check")
+    return names, waited
+
+def observed(names, mode):
+    read = {}
+    for name in names:
+        rollout = read_rollout_status(apps.read_namespaced_deployment(name=name, namespace=NS))
+        if not rollout.is_observed():
+            sys.exit(f"FAIL: {name} status is still behind its spec after --wait {mode} returned")
+        read[name] = rollout
+    return read
+
+def counts(rollout):
+    return (f"desired={rollout.desired} updated={rollout.updated} "
+            f"available={rollout.available} replicas={rollout.total}")
+
+def assert_new_revision(mode, before, after):
+    if after <= before:
+        sys.exit(
+            f"FAIL: the overlay bump produced no new revision ({before} -> {after}), so the "
+            f"--wait {mode} redeploy never exercised the gate"
+        )
+
+before = revision(PROBE)
+names, waited = redeploy("ready")
+for name, rollout in observed(names, "ready").items():
+    if rollout.updated_available() < 1:
+        sys.exit(
+            f"FAIL: the deploy returned while {name} had no available replica from the "
+            f"new ReplicaSet ({counts(rollout)})"
+        )
+after = revision(PROBE)
+assert_new_revision("ready", before, after)
+print(f"  redeploy OK in {waited:.0f}s: products-app revision {before} -> {after}, "
+      f"{len(names)} service(s) serving from the new ReplicaSet")
+
+before = after
+names, waited = redeploy("full")
+for name, rollout in observed(names, "full").items():
+    if not rollout.is_complete():
+        sys.exit(
+            f"FAIL: --wait full returned while {name} was still rolling out ({counts(rollout)})"
+        )
+after = revision(PROBE)
+assert_new_revision("full", before, after)
+print(f"  full wait OK in {waited:.0f}s: products-app revision {before} -> {after}, "
+      f"{len(names)} service(s) at full capacity on the new ReplicaSet")
+PYEOF
+
+_t "redeploy + full wait gates OK"
+
 _t "ALL DONE"
 print_timing_report
 echo "=== K8s microservice REAL e2e PASSED ==="

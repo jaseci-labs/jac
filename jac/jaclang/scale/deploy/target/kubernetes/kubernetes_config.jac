@@ -1,4 +1,5 @@
 import from jaclang.scale.config.base_config { BaseConfig }
+import from jaclang.scale.deploy.target.kubernetes.rollout { ROLLOUT_WAIT_READY }
 
 glob DATABASE_MODES = ('auto', 'provision', 'external', 'none');
 
@@ -63,6 +64,8 @@ obj KubernetesConfig(BaseConfig) {
         bundle_access_mode: str = 'ReadWriteMany',
         resource_deletion_wait: int = 5,
         aws_nlb_wait: int = 60,
+        rollout_wait: str = 'ready',
+        rollout_timeout: (int | str) = 1200,
         app_mount_path: str = '/app',
         code_mount_path: str = '/code',
         workspace_path: str = '/code/workspace',
@@ -147,6 +150,8 @@ obj KubernetesConfig(BaseConfig) {
                 'bundle_access_mode': self.bundle_access_mode,
                 'resource_deletion_wait': self.resource_deletion_wait,
                 'aws_nlb_wait': self.aws_nlb_wait,
+                'rollout_wait': self.rollout_wait,
+                'rollout_timeout': self.rollout_timeout,
                 'app_mount_path': self.app_mount_path,
                 'code_mount_path': self.code_mount_path,
                 'workspace_path': self.workspace_path,
@@ -219,6 +224,8 @@ obj KubernetesConfig(BaseConfig) {
             bundle_access_mode=config.get('bundle_access_mode', 'ReadWriteMany'),
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
             aws_nlb_wait=config.get('aws_nlb_wait', 60),
+            rollout_wait=config.get('rollout_wait', ROLLOUT_WAIT_READY),
+            rollout_timeout=config.get('rollout_timeout', 1200),
             app_mount_path=config.get('app_mount_path', '/app'),
             code_mount_path=config.get('code_mount_path', '/code'),
             workspace_path=config.get('workspace_path', '/code/workspace'),

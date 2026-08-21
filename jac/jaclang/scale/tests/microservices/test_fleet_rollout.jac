@@ -63,11 +63,38 @@ def _bundle(deploy_name: str, app: str) -> dict {
     };
 }
 
+def _dep(
+    desired: int = 1,
+    updated: int = 0,
+    available: int = 0,
+    total: int = 0,
+    generation: int = 1,
+    observed: int = 1,
+    conditions: list | None = None
+) -> object {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(generation=generation),
+        spec=SimpleNamespace(replicas=desired),
+        status=SimpleNamespace(
+            replicas=total,
+            updated_replicas=updated,
+            available_replicas=available,
+            ready_replicas=available,
+            observed_generation=observed,
+            conditions=(conditions or [])
+        )
+    );
+}
+
+def _rolled_out(replicas: int = 1) -> object {
+    return _dep(desired=replicas, updated=replicas, available=replicas, total=replicas);
+}
+
 def _apis(ready: int, pods: list) -> tuple {
     apps = unittest.mock.MagicMock();
-    apps.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=ready)
-    );
+    apps.read_namespaced_deployment.return_value = _rolled_out(ready)
+        if ready
+        else _dep();
     core = unittest.mock.MagicMock();
     core.list_namespaced_pod.return_value = SimpleNamespace(items=pods);
     core.list_namespaced_event.return_value = SimpleNamespace(items=[]);
@@ -251,8 +278,8 @@ test "a heal that unwedges the pod lets the rollout succeed" {
     app_c = _cs("gateway", restarts=0, waiting_reason="ImagePullBackOff");
     pod = _pod("gateway-xyz", "gateway", "Pending", [], [app_c]);
     (apps, core) = _apis(0, [pod]);
-    not_ready = SimpleNamespace(status=SimpleNamespace(ready_replicas=0));
-    ready = SimpleNamespace(status=SimpleNamespace(ready_replicas=1));
+    not_ready = _dep();
+    ready = _rolled_out(1);
     apps.read_namespaced_deployment.side_effect = [
         not_ready,
         not_ready,
@@ -381,5 +408,231 @@ test "a terminating pod is invisible to the scanner (no false re-abort)" {
     );
     assert err is not None and "timed out" in str(err) , (
         f"only the plain timeout may fire: {err}"
+    );
+}
+
+
+def _fleet_target(rollout_wait: str = "ready") -> object {
+    return KubernetesTarget(
+        config=KubernetesConfig(
+            app_name="jac-shop", namespace="ns", rollout_wait=rollout_wait
+        )
+    );
+}
+
+def _rollout_apis(deployment: object) -> tuple {
+    (apps, core) = _apis(0, []);
+    apps.read_namespaced_deployment.return_value = deployment;
+    return (apps, core);
+}
+
+test "a redeploy is not ready while only old-revision replicas are serving" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_dep(desired=3, updated=1, available=3, total=4));
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 20);
+
+    assert err is not None and "timed out" in str(err) , (
+        f"three available pods all from the previous ReplicaSet are not a "
+        f"successful rollout: {err}"
+    );
+}
+
+test "the default gate clears once one updated replica is available" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_dep(desired=3, updated=1, available=4, total=4));
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 20);
+
+    assert err is None , f"one serving new-revision pod clears the fast gate: {err}";
+}
+
+test "a spec the controller has not observed yet is never reported ready" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(
+        _dep(desired=1, updated=1, available=1, total=1, generation=4, observed=3)
+    );
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 20);
+
+    assert err is not None and "timed out" in str(err) , (
+        f"a stale status must not be read as a finished rollout: {err}"
+    );
+}
+
+test "full wait holds until every updated replica is available" {
+    target = _fleet_target("full");
+    (apps, core) = _rollout_apis(_dep(desired=3, updated=3, available=2, total=3));
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 20);
+
+    assert err is not None and "timed out" in str(err) , (
+        f"2 of 3 replicas available is not a completed rollout: {err}"
+    );
+}
+
+test "full wait holds until the old replicas are gone" {
+    target = _fleet_target("full");
+    (apps, core) = _rollout_apis(_dep(desired=3, updated=3, available=3, total=4));
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 20);
+
+    assert err is not None and "timed out" in str(err) , (
+        f"a draining old replica means the rollout is still in flight: {err}"
+    );
+}
+
+test "full wait returns once the rollout completes" {
+    target = _fleet_target("full");
+    (apps, core) = _rollout_apis(_rolled_out(3));
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 20);
+
+    assert err is None , f"a fully available new ReplicaSet is ready: {err}";
+}
+
+def _timed_out_condition(marked_at: str = "2026-08-11T10:00:00Z") -> object {
+    return SimpleNamespace(
+        type="Progressing",
+        status="False",
+        reason="ProgressDeadlineExceeded",
+        message="ReplicaSet 'gateway-abc' has timed out progressing.",
+        last_update_time=marked_at
+    );
+}
+
+def _stalling_dep(marked_at: str) -> object {
+    return _dep(
+        desired=3,
+        updated=1,
+        available=3,
+        total=4,
+        generation=5,
+        observed=5,
+        conditions=[_timed_out_condition(marked_at)]
+    );
+}
+
+test "a rollout past its progress deadline fails with the stall reason" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_dep(desired=3, updated=1, available=3, total=4));
+    apps.read_namespaced_deployment.side_effect = [
+        _dep(desired=3, updated=1, available=3, total=4),
+        _stalling_dep("2026-08-11T10:12:00Z")
+    ];
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 600);
+
+    assert err is not None , "a stalled rollout must fail instead of waiting";
+    assert "ProgressDeadlineExceeded" in str(err) , f"stall reason missing: {err}";
+    assert "gateway-deployment" in str(err) , f"stalled deployment not named: {err}";
+    assert "timed out progressing" in str(err) , f"stall message missing: {err}";
+    assert apps.read_namespaced_deployment.call_count == 2 , (
+        "a verdict stamped for this rollout fails on sight, without waiting out "
+        f"the timeout: {apps.read_namespaced_deployment.call_count}"
+    );
+}
+
+test "a stall the controller re-stamps for this rollout fails the deploy" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_stalling_dep("2026-08-11T10:00:00Z"));
+    apps.read_namespaced_deployment.side_effect = [
+        _stalling_dep("2026-08-11T10:00:00Z"),
+        _stalling_dep("2026-08-11T10:12:00Z")
+    ];
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 600);
+
+    assert err is not None and "ProgressDeadlineExceeded" in str(err) , (
+        f"a re-stamped deadline is this rollout's own verdict: {err}"
+    );
+}
+
+test "a stall inherited from the previous deploy never fails this one" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(
+        _dep(
+            desired=3,
+            updated=0,
+            available=3,
+            total=3,
+            generation=5,
+            observed=5,
+            conditions=[_timed_out_condition()]
+        )
+    );
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 120);
+
+    assert apps.read_namespaced_deployment.call_count > 3 , (
+        "the inherited verdict has to outlive several polls for this to prove "
+        f"anything: {apps.read_namespaced_deployment.call_count}"
+    );
+    assert err is not None and "timed out" in str(err) , (
+        f"expected the plain timeout, got: {err}"
+    );
+    assert "ProgressDeadlineExceeded" not in str(err) , (
+        "a verdict the controller stamped before this deploy is the last "
+        f"deploy's, however long the new ReplicaSet takes to start: {err}"
+    );
+}
+
+test "a stall that clears on the next poll does not fail the deploy" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_rolled_out(3));
+    apps.read_namespaced_deployment.side_effect = [
+        _dep(
+            desired=3,
+            updated=0,
+            available=3,
+            total=3,
+            conditions=[_timed_out_condition()]
+        ),
+        _rolled_out(3)
+    ];
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
+
+    assert err is None , (
+        "the controller re-asserts a stale timeout until the new ReplicaSet "
+        f"makes progress; one poll of it is not a stalled rollout: {err}"
+    );
+}
+
+test "a deployment the API server refuses to serve is named in the timeout" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_rolled_out(1));
+    apps.read_namespaced_deployment.side_effect = Exception(
+        "(403) Reason: Forbidden: deployments.apps is forbidden"
+    );
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 30);
+
+    assert err is not None and "timed out" in str(err) , (
+        f"an unreadable deployment can never satisfy the gate: {err}"
+    );
+    assert "gateway-deployment" in str(err) and "Forbidden" in str(err) , (
+        "an unreachable API server, an RBAC refusal and an un-ready fleet must "
+        f"not all read as the same bare timeout: {err}"
+    );
+}
+
+test "a read that fails once and then recovers is not blamed for the timeout" {
+    target = _fleet_target();
+    (apps, core) = _rollout_apis(_dep());
+    # One transient failure, then a fleet that reads clean but never gets ready:
+    # the timeout belongs to the un-ready fleet, not to the read that recovered.
+    reads: list = [Exception("(500) Reason: Internal Server Error")];
+    reads.extend([_dep()] * 64);
+    apps.read_namespaced_deployment.side_effect = reads;
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 30);
+
+    assert err is not None and "timed out" in str(err) , (
+        f"a fleet that never becomes ready still times out: {err}"
+    );
+    assert "Last deployment read failed" not in str(err) , (
+        "a read failure the next poll recovered from must not point the reader "
+        f"at the API server: {err}"
     );
 }

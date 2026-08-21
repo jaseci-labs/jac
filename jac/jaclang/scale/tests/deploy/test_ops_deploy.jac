@@ -58,6 +58,50 @@ test "rollout status: complete vs stuck vs progressing" {
     assert stuck["rollout"]["status"] == "stuck";
 }
 
+test "rollout status agrees with the deploy gate on stale and draining states" {
+    draining = summarize_deployment(
+        {
+            "metadata": {"name": "gw", "generation": 5},
+            "spec": {"replicas": 2},
+            "status": {
+                "observed_generation": 5,
+                "replicas": 3,
+                "updated_replicas": 2,
+                "available_replicas": 2,
+                "ready_replicas": 2
+            }
+        }
+    );
+    assert draining["rollout"]["status"] == "progressing" , (
+        f"an old replica is still serving: {draining['rollout']}"
+    );
+
+    unobserved = summarize_deployment(
+        {
+            "metadata": {"name": "gw", "generation": 6},
+            "spec": {"replicas": 2},
+            "status": {
+                "observed_generation": 5,
+                "replicas": 2,
+                "updated_replicas": 2,
+                "available_replicas": 2,
+                "ready_replicas": 2,
+                "conditions": [
+                    {
+                        "type": "Progressing",
+                        "reason": "ProgressDeadlineExceeded",
+                        "message": "stuck"
+                    }
+                ]
+            }
+        }
+    );
+    assert unobserved["rollout"]["status"] == "progressing" , (
+        "a status describing the previous spec is neither complete nor "
+        f"stuck: {unobserved['rollout']}"
+    );
+}
+
 
 test "pod summary sums restarts + counts ready containers" {
     pod = summarize_pod(
@@ -99,4 +143,37 @@ test "register adds GET /admin/ops/deploy" {
         if e.path == "/admin/ops/deploy"
     ];
     assert len(eps) == 1 and eps[0].method == HTTPMethod.GET;
+}
+
+test "a baseline-free stall verdict carries when the controller stamped it" {
+    stuck = summarize_deployment(
+        {
+            "metadata": {"name": "gw", "generation": 6},
+            "spec": {"replicas": 2},
+            "status": {
+                "observed_generation": 6,
+                "replicas": 2,
+                "updated_replicas": 0,
+                "available_replicas": 2,
+                "ready_replicas": 2,
+                "conditions": [
+                    {
+                        "type": "Progressing",
+                        "reason": "ProgressDeadlineExceeded",
+                        "message": "timed out progressing",
+                        "last_update_time": "2026-08-11T10:00:00Z"
+                    }
+                ]
+            }
+        }
+    );
+    assert stuck["rollout"]["status"] == "stuck" , f"{stuck['rollout']}";
+    assert stuck["rollout"]["reason"] == "ProgressDeadlineExceeded" , (
+        f"the machine-readable verdict stays isolated: {stuck['rollout']}"
+    );
+    message = stuck["rollout"]["message"];
+    assert "2026-08-11T10:00:00Z" in message and "may predate" in message , (
+        "a single read has no previous poll to inherit a mark from, so the "
+        f"verdict must carry when it was stamped: {message!r}"
+    );
 }

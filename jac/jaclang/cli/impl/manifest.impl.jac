@@ -1838,6 +1838,10 @@ def _command_routes -> list[CommandMeta] {
                     'Deploy to a platform target instead of serving locally'
                 ),
                 (
+                    'jac start --scale --wait full',
+                    'Deploy and return only once every replica is available'
+                ),
+                (
                     'jac start --takeover',
                     "Evict a stuck session holding this project's database"
                 )
@@ -1939,6 +1943,14 @@ def _command_routes -> list[CommandMeta] {
                     `default='kubernetes',
                     help='Deployment target (kubernetes, aws, gcp, etc.)',
                     short='t'
+                ),
+                ArgMeta(
+                    name='wait',
+                    `default='',
+                    help="With --scale: how far to wait for the rollout. 'ready' returns once every service has a new-revision replica serving; 'full' returns only once every replica of every service is available. Overrides [scale.kubernetes] rollout_wait.",
+                    short='',
+                    choices=['ready', 'full'],
+                    dest='rollout_wait'
                 ),
                 ArgMeta(
                     name='enable-tls',
