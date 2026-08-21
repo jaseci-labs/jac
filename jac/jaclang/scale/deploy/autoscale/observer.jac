@@ -94,3 +94,37 @@ obj AutoscalerSubscription {
         }
     }
 }
+
+class AutoscalerObserver {
+    def start(self: AutoscalerObserver) {
+        raise NotImplementedError(
+            "start() must be implemented by a concrete AutoscalerObserver subclass"
+        );
+    }
+
+    def stop(self: AutoscalerObserver, drain: bool = True) {
+        raise NotImplementedError(
+            "stop() must be implemented by a concrete AutoscalerObserver subclass"
+        );
+    }
+
+    def watch_namespace(
+        self: AutoscalerObserver, namespace: str, label_selector: (str | None) = None
+    ) {
+        raise NotImplementedError(
+            "watch_namespace() must be implemented by a concrete AutoscalerObserver subclass"
+        );
+    }
+
+    def subscribe(
+        self: AutoscalerObserver,
+        autoscaler_name: (str | None) = None,
+        scale_target_name: (str | None) = None,
+        max_queue: int = 100,
+        backpressure: str = BackpressurePolicy.DROP_OLDEST.value
+    ) -> AutoscalerSubscription {
+        raise NotImplementedError(
+            "subscribe() must be implemented by a concrete AutoscalerObserver subclass"
+        );
+    }
+}
