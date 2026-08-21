@@ -58,24 +58,29 @@ impl EmbeddedGateway._call_member(
 }
 
 
-impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
-    dist = Path(self.client_dist_dir);
-    rel: str = path.lstrip("/");
-    if rel {
-        candidate = dist / rel;
-        try {
-            resolved = candidate.resolve();
+impl EmbeddedGateway._get_asset_table -> list[AssetRoot] {
+    if self._asset_table is None {
+        import from jaclang.runtimelib.serving.static_assets { asset_root_table }
+        self._asset_table = asset_root_table(
+            Path(self.base_path), Path(self.client_dist_dir), self.static_mounts
+        );
+    }
+    return self._asset_table;
+}
 
-            if resolved.is_relative_to(dist.resolve()) and resolved.is_file() {
-                ctype: str = mimetypes.guess_type(str(resolved))[0]
-                    or "application/octet-stream";
-                return Response(content=resolved.read_bytes(), media_type=ctype);
-            }
-        } except OSError {
-            ;
-        }
+impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
+    import from jaclang.runtimelib.serving.static_assets {
+        resolve_asset,
+        asset_response
+    }
+    hit = resolve_asset(self._get_asset_table(), path);
+    if hit is not None {
+        (target, _) = hit;
+        return asset_response(target);
     }
 
+    dist = Path(self.client_dist_dir);
+    rel: str = path.lstrip("/");
     index_file = dist / "index.html";
     if (rel == "" or "text/html" in accept) and index_file.is_file() {
         return Response(
@@ -131,6 +136,7 @@ impl EmbeddedGateway.setup -> None {
     app.add_middleware(dispatcher);
     self.middleware.install(app);
 
+    self._get_asset_table();
     self.app = app;
 }
 

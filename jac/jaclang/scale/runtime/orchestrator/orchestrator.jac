@@ -158,6 +158,10 @@ obj MicroserviceOrchestrator {
             local_path = str(ed.get("local_path", "")).strip();
             if url_prefix and local_path {
                 out.append({"url_prefix": url_prefix, "local_path": local_path});
+            } else {
+                logger.warning(
+                    f"static mount missing url_prefix/local_path, dropped: {`entry}"
+                );
             }
         }
         return out;

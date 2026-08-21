@@ -1,3 +1,4 @@
+import from pathlib { Path }
 import from jaclang.scale.runtime.gateway.gateway { Gateway }
 import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
@@ -22,10 +23,17 @@ obj ProcessGateway(Gateway) {
             port=self.port,
             host=self.host,
             client_dist_dir=self.client_dist_dir,
-            static_mounts=self.static_mounts
+            static_mounts=self.static_mounts,
+            base_path=str(self._resolve_base_path())
         );
         gw.setup();
         self._gateway = gw;
+    }
+
+    def _resolve_base_path -> Path {
+        import from jaclang.project.config { resolve_base_path }
+
+        return resolve_base_path();
     }
 
     def serve {

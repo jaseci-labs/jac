@@ -249,6 +249,102 @@ test "littlex builds and serves /cl/app" {
     }
 }
 
+"""GET a URL and return ``(status_code, body_bytes)`` without raising on 404.
+
+request_endpoint() raises on any non-503 error, which is what we want while
+waiting for boot, but the parity matrix asserts on 404s directly -- so this
+returns the code instead. Call request_endpoint() first to confirm the server
+is warm, then drive the matrix through this.
+"""
+def _get_status(url: str) -> tuple {
+    try {
+        with urlopen(url, timeout=30) as resp {
+            return (resp.status, bytes(resp.read()));
+        }
+    } except HTTPError as exc {
+        body = b"";
+        try {
+            body = bytes(exc.read());
+        } except Exception {
+            body = b"";
+        }
+        exc.close();
+        return (exc.code, body);
+    }
+}
+
+"""One static-asset law, replayed against a real `jac start` boot (#8125).
+
+Injects fixtures into the temp project copy (the littleX source is never
+touched) and asserts the emergent parity property at the served-HTTP level:
+public/ at the web root (the amplify bug #6876 / #8124), no extension
+allowlist, the closed bare project-root exposure, and the dist/ exclusion trap
+that must 404 consistently rather than 200-here-404-there under --scale. Each
+row mirrors an L2 case that was red on the pre-#8125 resolvers.
+"""
+test "littlex serves the one static-asset law over a real boot" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        (project_dir, jac_cmd, env) = _setup_littlex_project(temp_dir);
+        public_brand = os.path.join(project_dir, "public", "brand");
+        os.makedirs(public_brand, exist_ok=True);
+        logo_bytes = b"\x89PNG\r\n8125-BRAND-LOGO";
+        with open(os.path.join(public_brand, "logo.png"), "wb") as f {
+            f.write(logo_bytes);
+        }
+        with open(os.path.join(project_dir, "public", "site.webmanifest"), "wb") as f {
+            f.write(b"{\"name\":\"littleX\"}");
+        }
+        dist_dir = os.path.join(project_dir, "dist");
+        os.makedirs(dist_dir, exist_ok=True);
+        with open(os.path.join(dist_dir, "legacy-only.png"), "wb") as f {
+            f.write(b"LEGACY-DIST-ONLY");
+        }
+        assert os.path.isfile(os.path.join(project_dir, "global.css")) , (
+            "littleX ships global.css at the project root -- a real source file "
+            "the old bare-root candidate exposed; expected it in the copy"
+        );
+        server: Popen | None = None;
+        try {
+            (server, port) = start_app_server(project_dir);
+            base = f"http://127.0.0.1:{port}";
+            request_endpoint(f"{base}/cl/app");
+
+            (logo_status, logo_body) = _get_status(f"{base}/brand/logo.png");
+            assert logo_status == 200 , (
+                f"public/brand/logo.png must serve at /brand/logo.png; got {logo_status}"
+            );
+            assert logo_body == logo_bytes , (
+                "the web root must serve public/brand/logo.png byte-for-byte"
+            );
+
+            (manifest_status, _m) = _get_status(f"{base}/site.webmanifest");
+            assert manifest_status == 200 , (
+                "public/site.webmanifest must resolve at /site.webmanifest with "
+                f"no extension allowlist; got {manifest_status}"
+            );
+
+            (src_status, _s) = _get_status(f"{base}/global.css");
+            assert src_status == 404 , (
+                "/global.css (a real project source file) must 404 -- the "
+                f"bare-root project-file exposure is closed; got {src_status}"
+            );
+
+            (legacy_status, _l) = _get_status(f"{base}/legacy-only.png");
+            assert legacy_status == 404 , (
+                "a project-root dist/ asset must 404 consistently (it is absent "
+                f"under --scale); got {legacy_status}"
+            );
+
+            (nope_status, _n) = _get_status(f"{base}/definitely-nope-8125.png");
+            assert nope_status == 404 , (
+                f"a genuinely missing asset must 404; got {nope_status}"
+            );
+        } finally {
+            stop_server(server);
+        }
+    }
+}
+
 """littleX serves its compiled Tailwind CSS bundle.
 
 Maps to recovering CSS-serving coverage: a `jac build --client web` emits

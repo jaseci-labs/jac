@@ -826,7 +826,7 @@ export default defineConfig({{
             else ''}],
   root: buildDir,
   envDir: projectRoot, // Load .env files from project root
-  publicDir: false,
+  publicDir: path.resolve(projectRoot, "public"),
   appType: 'spa',
   build: {{
     sourcemap: true, // Enable source maps for better error messages{build_overrides_str}

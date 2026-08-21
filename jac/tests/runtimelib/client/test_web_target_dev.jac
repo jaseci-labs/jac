@@ -180,3 +180,36 @@ test "configured scripts reach the dev server index.html" {
         "title and meta tags"
     );
 }
+
+
+"""Dev serves the project's public/ dir at the web root (#8124): the generated
+Vite DEV config points publicDir at <projectRoot>/public so /brand/logo.png
+resolves natively, while the build config keeps publicDir disabled -- the
+runtime serves public/ from source, so copying it into dist would double the
+bytes and drift."""
+test "vite dev config serves the project public/ dir; build config does not" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(project_dir=Path(tmp), output_dir=Path(tmp) / "dist");
+        dev = bundler._generate_vite_config_content(
+            is_dev=True, entry_file=Path("_entry.js"), api_base_url="", base_path="/"
+        );
+        build = bundler._generate_vite_config_content(
+            is_dev=False, entry_file=Path("_entry.js"), api_base_url="", base_path="/"
+        );
+    }
+
+    assert 'publicDir: path.resolve(projectRoot, "public")' in dev , (
+        "the dev config must serve the project public/ dir at the web root so "
+        f"/brand/logo.png resolves natively; got:\n{dev}"
+    );
+    assert "publicDir: false" not in dev , (
+        "the dev config must not disable publicDir"
+    );
+    assert "publicDir: false" in build , (
+        "the build config must keep publicDir disabled -- the runtime serves "
+        "public/ from source, not a copy in dist"
+    );
+}
