@@ -53,6 +53,14 @@ def _run_deploy(cfg: KubernetesConfig, app_name: str) -> dict {
 }
 
 
+# The external url reaches pods through a secret, so read what the deploy wrote.
+def _db_url_written(apis: dict) -> str {
+    call = apis["core_v1"].create_namespaced_secret.call_args;
+    assert call is not None , "external mode wrote no secret for JAC_DB_URL";
+    return call.kwargs["body"]["stringData"]["connection-string"];
+}
+
+
 # Point the deploying process at a database, the way a platform pod is pointed at one.
 def _set_ambient_db_url(url: (str | None)) -> (str | None) {
     prior = os.environ.get("JAC_DB_URL");
@@ -114,9 +122,75 @@ test "an explicit external database_url skips provisioning" {
         );
         apis = _run_deploy(cfg, "tenant-app");
 
-        assert apis["env_list"] == [{"name": "JAC_DB_URL", "value": SHARED_DB_URL}];
+        assert apis["env_list"]
+            == [
+                {
+                    "name": "JAC_DB_URL",
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": "tenant-app-external-db",
+                            "key": "connection-string"
+                        }
+                    }
+                }
+            ] , f"an external url must reach pods by reference, not by value: {apis[
+            'env_list'
+        ]}";
         assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 0 , "external mode must not provision a StatefulSet";
-        assert apis["core_v1"].create_namespaced_secret.call_count == 0;
+    } finally {
+        _set_ambient_db_url(prior);
+    }
+}
+
+
+test "an external database url never reaches a pod spec as a literal value" {
+    # The env list is copied verbatim into every service pod spec and every
+    # Deployment manifest, so a plain value here is a credential readable by
+    # anyone with get on pods, and by the --show-yaml dump.
+    prior = _set_ambient_db_url(None);
+    try {
+        cfg = KubernetesConfig(
+            app_name="tenant-app",
+            namespace="tenant-a",
+            database_mode="external",
+            database_url=SHARED_DB_URL
+        );
+        apis = _run_deploy(cfg, "tenant-app");
+
+        for `entry in apis["env_list"] {
+            assert "value" not in `entry , (
+                f"JAC_DB_URL carries a literal value in the pod spec: {`entry}"
+            );
+            assert SHARED_DB_URL not in str(`entry) , (
+                f"the connection string appears in the env list: {`entry}"
+            );
+        }
+    } finally {
+        _set_ambient_db_url(prior);
+    }
+}
+
+
+test "the external database url is written to a labelled secret the deploy owns" {
+    prior = _set_ambient_db_url(None);
+    try {
+        cfg = KubernetesConfig(
+            app_name="tenant-app",
+            namespace="tenant-a",
+            database_mode="external",
+            database_url=SHARED_DB_URL
+        );
+        apis = _run_deploy(cfg, "tenant-app");
+
+        assert apis["core_v1"].create_namespaced_secret.call_count == 1 , (
+            "the url has to land somewhere pods can reference"
+        );
+        body = apis["core_v1"].create_namespaced_secret.call_args.kwargs["body"];
+        assert body["metadata"]["name"] == "tenant-app-external-db";
+        assert body["metadata"]["labels"]["managed"] == "jac-scale" , (
+            f"destroy sweeps by this label, so an unlabelled secret leaks: {body}"
+        );
+        assert body["stringData"]["connection-string"] == SHARED_DB_URL;
     } finally {
         _set_ambient_db_url(prior);
     }
@@ -217,13 +291,8 @@ test "a bare service host is qualified against the namespace that owns it" {
         );
         apis = _run_deploy(cfg, "tenant-app");
 
-        assert apis["env_list"]
-            == [
-                {
-                    "name": "JAC_DB_URL",
-                    "value": "postgresql://platform@platform-postgres-service.platform.svc.cluster.local:5432/platform"
-                }
-            ];
+        assert _db_url_written(apis)
+            == "postgresql://platform@platform-postgres-service.platform.svc.cluster.local:5432/platform";
     } finally {
         _set_pod_namespace(prior_ns);
         _set_ambient_db_url(prior);
@@ -243,7 +312,7 @@ test "a bare service host in the target namespace is left alone" {
         );
         apis = _run_deploy(cfg, "tenant-app");
 
-        assert apis["env_list"] == [{"name": "JAC_DB_URL", "value": PLATFORM_DB_URL}];
+        assert _db_url_written(apis) == PLATFORM_DB_URL;
     } finally {
         _set_pod_namespace(prior_ns);
         _set_ambient_db_url(prior);
