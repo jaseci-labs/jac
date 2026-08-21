@@ -3,7 +3,6 @@ import logging;
 import from jaclang.scale._optdeps.kubernetes {
     client,
     config,
-    ApiException,
     HAS_KUBERNETES
 }
 import from jaclang.scale.runtime.context.util { in_cluster_namespace }

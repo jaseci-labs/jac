@@ -1,8 +1,5 @@
 import logging;
 import from datetime { UTC, datetime }
-import from jaclang.scale.runtime.middleware.rate_limit {
-    _resolve_client_ip as client_ip
-}
 
 glob _audit_logger = logging.getLogger('jaclang.scale.identity.audit');
 
