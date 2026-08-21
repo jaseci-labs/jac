@@ -68,4 +68,8 @@ obj KEDAAutoscaler(Autoscaler) {
         hpa: (dict[str, any] | None),
         deployment: (dict[str, any] | None)
     ) -> AutoscalerRuntimeStatus;
+
+    def get_runtime_status(
+        autoscaler_name: str, scale_target_name: str, namespace: str
+    ) -> AutoscalerRuntimeStatus;
 }

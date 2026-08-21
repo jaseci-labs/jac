@@ -21,4 +21,7 @@ obj HPAAutoscaler(Autoscaler) {
     def destroy_collection(namespace: str, label_selector: str) -> None;
     def resource_name_for(target: str) -> str;
     def _normalize_hpa_status(hpa: (dict[str, any] | None)) -> AutoscalerRuntimeStatus;
+    def get_runtime_status(
+        autoscaler_name: str, scale_target_name: str, namespace: str
+    ) -> AutoscalerRuntimeStatus;
 }

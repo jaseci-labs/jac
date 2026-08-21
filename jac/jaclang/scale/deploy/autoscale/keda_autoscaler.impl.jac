@@ -981,6 +981,55 @@ impl KEDAAutoscaler._normalize_keda_status{
     );
 }
 
+impl KEDAAutoscaler.get_runtime_status{
+    api = self._custom_api or client.CustomObjectsApi();
+    try {
+        scaled_object = api.get_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            name=autoscaler_name
+        );
+    } except ApiException as e {
+        if e.status in [404, 422] {
+            return self._normalize_keda_status(None, None, None);
+        }
+        raise;
+    }
+
+    hpa_name = scaled_object.get("status", {}).get("hpaName");
+    hpa_dict = None;
+    if hpa_name {
+        v2_api = self._v2_api or AutoscalingV2Api();
+        try {
+            hpa = v2_api.read_namespaced_horizontal_pod_autoscaler(
+                name=hpa_name, namespace=namespace
+            );
+            hpa_dict = hpa.to_dict();
+        } except ApiException as e {
+            if e.status not in [404, 422] {
+                raise;
+            }
+        }
+    }
+
+    apps_api = self._apps_api or client.AppsV1Api();
+    deployment_dict = None;
+    try {
+        deployment = apps_api.read_namespaced_deployment(
+            name=scale_target_name, namespace=namespace
+        );
+        deployment_dict = deployment.to_dict();
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+    }
+
+    return self._normalize_keda_status(scaled_object, hpa_dict, deployment_dict);
+}
+
 impl KEDAAutoscaler.format_capabilities{
     if caps.core_available and caps.http_addon_available and not caps.errors {
         return "KEDA HTTP Add-on capabilities ready: core and HTTP Add-on both available.";

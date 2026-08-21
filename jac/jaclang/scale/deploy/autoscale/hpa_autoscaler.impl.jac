@@ -215,3 +215,17 @@ impl HPAAutoscaler._normalize_hpa_status{
         resource_version=resource_version
     );
 }
+
+impl HPAAutoscaler.get_runtime_status{
+    try {
+        hpa = AutoscalingV2Api().read_namespaced_horizontal_pod_autoscaler(
+            name=autoscaler_name, namespace=namespace
+        );
+    } except ApiException as e {
+        if e.status in [404, 422] {
+            return self._normalize_hpa_status(None);
+        }
+        raise;
+    }
+    return self._normalize_hpa_status(hpa.to_dict());
+}
