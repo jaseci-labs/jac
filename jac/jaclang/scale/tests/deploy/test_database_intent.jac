@@ -122,17 +122,20 @@ test "an explicit external database_url skips provisioning" {
         );
         apis = _run_deploy(cfg, "tenant-app");
 
-        assert apis["env_list"] == [
-            {
-                "name": "JAC_DB_URL",
-                "valueFrom": {
-                    "secretKeyRef": {
-                        "name": "tenant-app-external-db",
-                        "key": "connection-string"
+        assert apis["env_list"]
+            == [
+                {
+                    "name": "JAC_DB_URL",
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": "tenant-app-external-db",
+                            "key": "connection-string"
+                        }
                     }
                 }
-            }
-        ] , f"an external url must reach pods by reference, not by value: {apis['env_list']}";
+            ] , f"an external url must reach pods by reference, not by value: {apis[
+            'env_list'
+        ]}";
         assert apis["apps_v1"].create_namespaced_stateful_set.call_count == 0 , "external mode must not provision a StatefulSet";
     } finally {
         _set_ambient_db_url(prior);
