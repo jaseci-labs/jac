@@ -1,4 +1,5 @@
 import from threading { Lock }
+import from jaclang.scale._optdeps.optional_deps { require_optional }
 import from jaclang.scale.deploy.autoscale.observer { AutoscalerObserver }
 import from jaclang.scale.deploy.autoscale.kubernetes_observer {
     KubernetesAutoscalerObserver
@@ -31,9 +32,12 @@ class AutoscalerObserverRegistry {
             if existing is not None {
                 return existing;
             }
-            created = observer_factory()
-                if observer_factory
-                else KubernetesAutoscalerObserver();
+            if observer_factory {
+                created = observer_factory();
+            } else {
+                require_optional("kubernetes", "deploy.k8s");
+                created = KubernetesAutoscalerObserver();
+            }
             AutoscalerObserverRegistry._instances[key] = created;
         }
         created.start();
