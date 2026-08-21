@@ -1,3 +1,10 @@
+impl ServiceEntry.is_routable -> bool {
+    return (
+        self.status in (ServiceStatus.HEALTHY, ServiceStatus.STARTING)
+        and bool(self.url)
+    );
+}
+
 impl ServiceRegistry.register(service_entry: ServiceEntry) -> None {
     self.entries[service_entry.name] = service_entry;
     self._rebuild_prefix_index();

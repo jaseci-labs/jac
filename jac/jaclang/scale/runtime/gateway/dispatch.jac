@@ -60,18 +60,6 @@ def _longest_prefix_match(norm_path: str, service_prefixes: list[str]) -> str {
 }
 
 
-def is_gateway_owned(path: str) -> bool {
-    norm = _normalize(path);
-    if norm in _BUILTIN_EXACT {
-        return True;
-    }
-    if norm == "/admin" or norm.startswith("/admin/") {
-        return True;
-    }
-    return _first_segment(norm) == "user";
-}
-
-
 def classify_route(path: str, service_prefixes: list[str]) -> RouteDecision {
     norm = _normalize(path);
     if norm in _BUILTIN_EXACT {
