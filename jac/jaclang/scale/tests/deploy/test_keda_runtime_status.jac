@@ -210,9 +210,12 @@ test "keda normalize with no conditions at all is unknown, not a crash" {
     assert status.scaler_ready is None;
 }
 
-test "keda normalize with an unclassifiable combination falls through to unknown, not a crash" {
-    # Ready and Active both healthy but desired is zero while Active=True --
-    # not a shape any of the documented transitions describe.
+test "keda normalize reports activating when Active is true but the HPA still reads zero/zero" {
+    # Observed on a real cluster: the instant Active flips True, KEDA's
+    # generated HPA can still momentarily report current=0/desired=0 (it
+    # hasn't started scaling yet) rather than being altogether absent. This
+    # must read as activating, not fall through to unknown -- the trigger
+    # firing is still real, actionable signal.
     scaled_object = {
         "metadata": {"resourceVersion": "19"},
         "status": {
@@ -222,8 +225,78 @@ test "keda normalize with an unclassifiable combination falls through to unknown
     };
     hpa = {"status": {"current_replicas": 0, "desired_replicas": 0}};
     status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, None);
-    assert status.state == AutoscalerState.UNKNOWN.value;
-    assert status.message is not None;
+    assert status.state == AutoscalerState.ACTIVATING.value;
+}
+
+test "keda normalize reports active during the cooldown window, before replicas actually drop" {
+    # Observed on a real cluster: KEDA flips Active=False (reason
+    # ScalerCooldown) the instant traffic stops, well before the cooldown
+    # timer expires and the HPA/Deployment actually reduce replicas. Nothing
+    # observable has changed yet -- desired/current/ready still agree and are
+    # nonzero -- so this must read as active, not deactivating. Whether it
+    # will eventually scale down is exactly the kind of intent/business
+    # question the observer is not meant to answer; it reports what the
+    # cluster currently shows, not what KEDA is about to do.
+    scaled_object = {
+        "metadata": {"resourceVersion": "20"},
+        "status": {
+            "conditions": [
+                ready_condition(),
+                {
+                    "type": "Active",
+                    "status": "False",
+                    "reason": "ScalerCooldown",
+                    "message": "Scaler cooling down because triggers are not active"
+                }
+            ],
+            "hpaName": "orders-hpa"
+        }
+    };
+    hpa = {"status": {"current_replicas": 1, "desired_replicas": 1}};
+    deployment = {
+        "status": {"replicas": 1, "ready_replicas": 1, "available_replicas": 1}
+    };
+    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, deployment);
+    assert status.state == AutoscalerState.ACTIVE.value;
+    assert status.trigger_active is False;
+    assert status.current_replicas == 1;
+}
+
+test "keda normalize reports active at a steady nonzero floor even when the trigger is not currently firing" {
+    # minReplicaCount >= 1 (not scale-to-zero): the trigger being inactive
+    # just means nothing is pushing scale *up* right now -- the configured
+    # floor is still fully up and serving. This must not read as deactivating
+    # (nothing is being removed) or unknown.
+    scaled_object = {
+        "metadata": {"resourceVersion": "22"},
+        "spec": {"minReplicaCount": 2, "maxReplicaCount": 5},
+        "status": {
+            "conditions": [ready_condition(), active_condition("False")],
+            "hpaName": "orders-hpa"
+        }
+    };
+    hpa = {"status": {"current_replicas": 2, "desired_replicas": 2}};
+    deployment = {
+        "status": {"replicas": 2, "ready_replicas": 2, "available_replicas": 2}
+    };
+    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, deployment);
+    assert status.state == AutoscalerState.ACTIVE.value;
+    assert status.trigger_active is False;
+}
+
+test "keda normalize idle scale-to-zero requires both desired and current at zero, not just desired" {
+    # A target draining toward zero (desired already 0, current still 1) is
+    # deactivating, not inactive -- inactive means nothing is running at all.
+    scaled_object = {
+        "metadata": {"resourceVersion": "21"},
+        "status": {
+            "conditions": [ready_condition(), active_condition("False")],
+            "hpaName": "orders-hpa"
+        }
+    };
+    hpa = {"status": {"current_replicas": 1, "desired_replicas": 0}};
+    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, None);
+    assert status.state == AutoscalerState.DEACTIVATING.value;
 }
 
 test "hpa and keda normalizers agree on the AutoscalerState vocabulary" {
