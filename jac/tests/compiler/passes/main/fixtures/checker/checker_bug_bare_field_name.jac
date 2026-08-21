@@ -28,3 +28,12 @@ obj GlobalControl {
         return global_title.strip();
     }
 }
+
+node NodeWidget {
+    has node_title: str = "field";
+
+    def size -> int {
+        # Graph archetypes follow the same explicit-receiver rule.
+        return len(node_title.strip());
+    }
+}

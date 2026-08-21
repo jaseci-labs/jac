@@ -850,14 +850,28 @@ impl TypeEvaluator._resolution_scope_for(expr: UniNode) -> UniScopeNode | None {
     return scope;
 }
 
+impl TypeEvaluator._is_non_expression_name(expr: Name) -> bool {
+    return (
+        (isinstance(expr.parent, AtomTrailer) and expr.parent.right is expr)
+        or (
+            isinstance(expr.parent, HasVar)
+            and expr.parent.defer
+            and expr is not expr.parent.name
+        )
+        or (isinstance(expr.parent, KWPair) and expr.parent.key is expr)
+        or isinstance(expr.parent, SubTag)
+        or isinstance(expr.parent, ModulePath)
+        or isinstance(expr.parent, JsxElementName)
+        or (isinstance(expr.parent, ModuleCode) and expr.parent.name is expr)
+        or (isinstance(expr.parent, SemDef) and expr in expr.parent.target)
+    );
+}
+
 impl TypeEvaluator._lookup_bare_runtime_name(
     scope: UniScopeNode, name: str
 ) -> Symbol | None {
     cur: UniScopeNode | None = scope;
     while cur is not None {
-        # Python lexical lookup skips class bodies when resolving names used
-        # inside methods. Archetype fields therefore require an explicit
-        # receiver (`self.field`) and must not mask a module global.
         if not isinstance(cur, Archetype) {
             if isinstance(cur, Module) {
                 return lookup_symtab(cur, name, self.builtins_module);

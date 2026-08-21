@@ -5,42 +5,16 @@ impl TypeCheckPass.exit_special_var_ref(
 }
 
 impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: Name) -> None {
+    if self.evaluator._is_non_expression_name(nd) {
+        return;
+    }
     is_bare_field = (
         nd.sym is not None
         and nd.sym.sym_type == SymbolType.HAS_VAR
         and isinstance(nd.sym.parent_tab, Archetype)
         and nd.expr_ctx == ExprCtx.LOAD
-        and not (
-            isinstance(nd.parent, AtomTrailer)
-            and nd.parent.is_attr
-            and nd.parent.right is nd
-        )
     );
     if nd.sym is None or is_bare_field {
-        if isinstance(nd.parent, AtomTrailer) and nd.parent.right is nd {
-            return;
-        }
-        if isinstance(nd.parent, HasVar)
-            and nd.parent.defer
-            and nd is not nd.parent.name {
-            return;
-        }
-        if isinstance(nd.parent, KWPair) and nd.parent.key is nd {
-            return;
-        }
-        if isinstance(nd.parent, SubTag) {
-            return;
-        }
-
-        if isinstance(nd.parent, ModulePath) {
-            return;
-        }
-        if isinstance(nd.parent, JsxElementName) {
-            return;
-        }
-        if isinstance(nd.parent, ModuleCode) and nd.parent.name is nd {
-            return;
-        }
         self.evaluator.get_type_of_expression(nd);
     }
 }

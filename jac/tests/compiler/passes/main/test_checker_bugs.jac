@@ -2000,14 +2000,15 @@ test "bug_tvarmeth1_method_type_param_shadows_class_param" {
 test "bug_barefield1_archetype_fields_require_self" {
     program = compile_and_check("checker_bug_bare_field_name.jac");
 
-    e1032_lines = [
-        e.loc.first_line
+    e1032_errors = [
+        str(e)
         for e in program.errors_had
-        if e.code and e.code.code == "E1032" and e.loc
+        if e.code and e.code.code == "E1032"
     ];
-    assert e1032_lines == [8, 20] , (
-        "Bug #BAREFIELD-1: inline and annex bare field reads must be Unknown, "
+    assert len(e1032_errors) == 3 , (
+        "Bug #BAREFIELD-1: obj, annex, and node bare field reads must be Unknown, "
         "while a same-named module global must still resolve. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
+    assert all('attribute "strip"' in err for err in e1032_errors);
 }
