@@ -97,11 +97,32 @@ curl -X POST http://localhost:8000/walker/add_task \
 jac start --port 3000
 ```
 
-If the specified port is already in use, the server automatically finds and uses the next available port:
+A port you pass is a contract. If it is already in use the server does not move to
+another one, because whatever sits in front of it (a proxy, a port mapping, a health
+check) is still addressing the port you asked for. It fails and names the port:
 
 ```
-Port 3000 is in use, using port 3001 instead
+✖ Error: Port 3000 is already in use
 ```
+
+The same applies to a port set in `jac.toml`, which `jac start` and `jac dev` both read:
+
+```toml
+[serve]
+port = 3000
+```
+
+Naming the port is what makes it a contract, not where you named it. A project that
+pins 3000 usually has something addressing 3000, a proxy or an OAuth callback or a
+hardcoded URL, and moving to 3001 would break it silently.
+
+Leave the port unset and the default behaves as before, relocating with a notice:
+
+```
+Port 8000 is in use, using port 8001 instead
+```
+
+`--api_port` follows the same rule when you pass it, and has no `jac.toml` key.
 
 ### Development Mode (HMR)
 

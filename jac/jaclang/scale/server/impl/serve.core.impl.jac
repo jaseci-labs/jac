@@ -10,29 +10,6 @@ def _validate_events_url(url: (str | None)) {
     }
 }
 
-impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int {
-    current_port = start_port;
-    for _ in range(max_retries) {
-        try {
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
-                s.bind(('0.0.0.0', current_port));
-            }
-            return current_port;
-        } except OSError as e {
-            if e.errno in (ERRNO_ADDR_IN_USE_LINUX, ERRNO_ADDR_IN_USE_WINDOWS)
-                or "Address already in use" in str(e) {
-                current_port += 1;
-            } else {
-                raise;
-            }
-        }
-    }
-    raise OSError(
-        f"Could not find an available port after trying {start_port}-{current_port}"
-    );
-}
-
 impl _get_network_ips -> list[str] {
     ips: list[str] = [];
     try {
@@ -288,7 +265,7 @@ impl JacAPIServerCore.start(
     self._setup_events();
 
     original_port = self.port;
-    self.port = _find_available_port(self.port);
+    self.port = find_available_port(self.port, strict=self.strict_port);
     if self.port != original_port {
         console.print(
             f"  Port {original_port} is in use, using port {self.port} instead",
@@ -301,7 +278,9 @@ impl JacAPIServerCore.start(
     if on_ready {
         on_ready(self.port);
     }
-    self.server.run_server(port=self.port);
+    self.server.run_server(
+        port=self.port, max_retries=0 if self.strict_port else PORT_RETRY_LIMIT
+    );
 }
 
 impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {

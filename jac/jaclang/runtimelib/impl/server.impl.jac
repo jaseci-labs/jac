@@ -2493,7 +2493,9 @@ impl JacAPIServer.start(
         }
     }
     try {
-        serving.run(on_ready=_announce);
+        serving.run(
+            on_ready=_announce, port_retries=0 if self.strict_port else PORT_RETRY_LIMIT
+        );
         console.print('\nShutting down server...');
     } finally {
         self.scheduler.stop();

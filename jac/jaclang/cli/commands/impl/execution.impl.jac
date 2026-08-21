@@ -489,7 +489,7 @@ impl enter(
     return 0;
 }
 
-impl dev(filename: str = "", port: int = 8000, api_port: int = 0) -> int {
+impl dev(filename: str = "", port: int = 0, api_port: int = 0) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.kinds { resolve_entry }
@@ -518,7 +518,7 @@ impl dev(filename: str = "", port: int = 8000, api_port: int = 0) -> int {
 
 impl start(
     filename: str,
-    port: int = 8000,
+    port: int = 0,
     main: bool = True,
     faux: bool = False,
     dev: bool = False,
@@ -616,16 +616,25 @@ impl start(
         mach.mem.unit_exit();
     } except Exception { }
 
+    port_pinned = port > 0;
+    port = port if port_pinned else 8000;
     if dev and not no_client {
         vite_port = port;
         actual_api_port = api_port if api_port > 0 else port + 1;
+        api_port_pinned = api_port > 0;
     } else {
         actual_api_port = port;
         vite_port = 0;
+        api_port_pinned = port_pinned;
     }
 
     ServerClass = Jac.get_api_server_class();
-    server = ServerClass(module_name=mod, port=actual_api_port, base_path=base);
+    server = ServerClass(
+        module_name=mod,
+        port=actual_api_port,
+        base_path=base,
+        strict_port=api_port_pinned
+    );
     if faux {
         try {
             server.print_endpoint_docs();
@@ -708,7 +717,9 @@ impl start(
     def _announce_ready(actual_port: int) {
         primary_port = actual_port;
         if dev and not no_client {
-            free_vite_port = _find_free_port(vite_port, skip_port=actual_port);
+            free_vite_port = _find_free_port(
+                vite_port, skip_port=actual_port, strict=port_pinned
+            );
             (started_vite, bound_port) = _start_vite_dev_server(
                 base, free_vite_port, actual_port
             );
@@ -888,28 +899,19 @@ def _print_startup_message(
     console.print();
 }
 
-def _find_free_port(start: int, skip_port: int = 0) -> int {
-    import socket;
-    candidate = start;
-    for _ in range(50) {
-        if candidate != skip_port {
-            try {
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe {
-                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
-                    probe.bind(('0.0.0.0', candidate));
-                }
-                return candidate;
-            } except OSError {
-                ;
-            }
+def _find_free_port(start: int, skip_port: int = 0, strict: bool = False) -> int {
+    import from jaclang.runtimelib.net { find_available_port }
+    try {
+        return find_available_port(
+            start, max_retries=50, skip_port=skip_port, strict=strict
+        );
+    } except OSError as e {
+        if strict {
+            raise;
         }
-        candidate += 1;
+        console.warning(f"[Vite] {e}; falling back.");
+        return start if start != skip_port else start + 50;
     }
-    console.warning(
-        f"[Vite] No free port found in {start}-{start + 49}; falling back."
-    );
-
-    return start if start != skip_port else start + 50;
 }
 
 def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any {

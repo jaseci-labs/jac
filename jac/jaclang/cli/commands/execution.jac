@@ -130,8 +130,12 @@ def run(
         Arg.create(
             "port",
             typ=int,
-            `default=8000,
-            help="Port to serve on",
+            `default=0,
+            help=(
+                "Server port (default 8000). A port given here must be free: "
+                "it is a contract with whatever sits in front of it, so the "
+                "server fails rather than moving to another port."
+            ),
             short="p",
             config_key="serve.port"
         ),
@@ -151,7 +155,7 @@ def run(
     ],
     group="execution"
 )
-def dev(filename: str = "", port: int = 8000, api_port: int = 0) -> int;
+def dev(filename: str = "", port: int = 0, api_port: int = 0) -> int;
 
 def enter(
     filename: str,
@@ -176,8 +180,12 @@ def enter(
         Arg.create(
             "port",
             typ=int,
-            `default=8000,
-            help="Server port",
+            `default=0,
+            help=(
+                "Server port (default 8000). A port given here must be free: "
+                "it is a contract with whatever sits in front of it, so the "
+                "server fails rather than moving to another port."
+            ),
             short="p",
             config_key="serve.port"
         ),
@@ -319,7 +327,7 @@ def enter(
 )
 def start(
     filename: str,
-    port: int = 8000,
+    port: int = 0,
     main: bool = True,
     faux: bool = False,
     dev: bool = False,
