@@ -723,6 +723,11 @@ class JacScalePluginConfig {
                                     "type": "list",
                                     "default": ["/health", "/healthz", "/metrics"],
                                     "description": "Paths that bypass rate limiting entirely (monitoring + probes)."
+                                },
+                                "trusted_proxies": {
+                                    "type": "list",
+                                    "default": [],
+                                    "description": "IPs/CIDRs of proxies fronting the gateway (e.g. the k8s Ingress pods or a load balancer). X-Forwarded-For is honored only when the TCP peer is in this list, and the per-IP key is the rightmost forwarded entry not itself listed here, so clients cannot mint buckets by forging the header. Empty (default) means the header is never trusted and the per-IP key is the TCP peer address; set this when the gateway runs behind an ingress, or all traffic will share the ingress address's bucket."
                                 }
                             }
                         },

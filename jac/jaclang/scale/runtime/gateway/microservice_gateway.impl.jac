@@ -246,10 +246,15 @@ impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, st
     }
     fwd: dict[str, str] = {};
     for (key, value) in request.headers.items() {
-        if key.lower() not in HOP_BY_HOP_HEADERS {
+        if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "x-forwarded-for" {
             fwd[key] = value;
         }
     }
+
+    peer: str = request.client_host or "unknown";
+    fwd["X-Forwarded-For"] = ", ".join(
+        request.headers.getlist("X-Forwarded-For") + [peer]
+    );
 
     trace = get_current_trace() or ensure_trace_id(request.headers.get("X-Trace-Id"));
     fwd["X-Trace-Id"] = trace;
@@ -436,9 +441,6 @@ impl MicroserviceGateway.forward_to(
     }
 
     fwd_headers = self.build_forward_headers(request);
-    client_addr: str = getattr(request?.client, "host", "unknown");
-    fwd_headers["X-Forwarded-For"] = client_addr;
-
     body: bytes = request.body;
 
     timeout = http_forward_timeout(service_entry.name);

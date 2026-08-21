@@ -7,6 +7,7 @@ import from jaclang.scale.runtime.gateway.service_registry {
     ServiceStatus
 }
 import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
+import from jaclang.runtimelib.serving.datatypes { Headers, Request, URL }
 
 test "resolve strips prefix and preserves walker path" {
     reg = ServiceRegistry();
@@ -1508,4 +1509,29 @@ test "bare /jobs (create + list) is forwarded as a built-in route, not 404'd" {
 
     resp_one = client.get("/jobs/abc123");
     assert resp_one.status_code == 503;
+}
+
+
+test "forward headers append the peer to the forwarded chain" {
+    gw = MicroserviceGateway(registry=ServiceRegistry());
+    h = Headers();
+    h.append("x-forwarded-for", "203.0.113.7");
+    h.append("X-Forwarded-For", "198.51.100.9");
+    req = Request(url=URL(path="/api/x"), headers=h, client_host="10.0.0.1");
+    fwd = gw.build_forward_headers(req);
+    assert fwd["X-Forwarded-For"] == "203.0.113.7, 198.51.100.9, 10.0.0.1";
+    xff_keys = [
+        k
+        for k in fwd.keys()
+        if k.lower() == "x-forwarded-for"
+    ];
+    assert len(xff_keys) == 1;
+}
+
+
+test "forward headers stamp the peer when no chain is present" {
+    gw = MicroserviceGateway(registry=ServiceRegistry());
+    req = Request(url=URL(path="/api/x"), headers=Headers(), client_host="10.0.0.1");
+    fwd = gw.build_forward_headers(req);
+    assert fwd["X-Forwarded-For"] == "10.0.0.1";
 }

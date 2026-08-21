@@ -589,11 +589,17 @@ per_ip_rpm        = 600
 per_user_rpm      = 120        # 0 disables per-user tier
 burst_multiplier  = 2.0        # capacity = rpm * burst / 60
 exempt_paths      = ["/health", "/healthz", "/metrics"]
+trusted_proxies   = []         # IPs/CIDRs allowed to set X-Forwarded-For
 ```
 
-Per-IP key falls back from `X-Forwarded-For` (first hop) to
-`request.client.host`. Per-user key is `sha256(Authorization)[:32]`. 429
-responses carry the standard envelope + `Retry-After` header.
+Per-IP key is the TCP peer address. `X-Forwarded-For` is honored only
+when the peer is listed in `trusted_proxies` (IPs or CIDRs); the key is
+then the rightmost forwarded hop not itself trusted, so clients cannot
+forge their way into fresh buckets. Deployments behind a proxy or
+ingress must list it in `trusted_proxies`, otherwise every request keys
+on the proxy's address and all clients share one bucket. Per-user key
+is `sha256(Authorization)[:32]`. 429 responses carry the standard
+envelope + `Retry-After` header.
 
 ### Observability
 

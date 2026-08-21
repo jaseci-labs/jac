@@ -28,7 +28,7 @@ test "ws scheme rewrite passes through already ws/wss URLs" {
 }
 
 
-test "handshake headers keep auth + trace + xff and drop the rest" {
+test "handshake headers keep auth + trace, drop the rest, and stamp the peer onto xff" {
     inbound = {
         "Authorization": "Bearer abc",
         "X-Trace-Id": "trace-123",
@@ -41,11 +41,11 @@ test "handshake headers keep auth + trace + xff and drop the rest" {
         "Sec-WebSocket-Key": "dGhlIHNhbXBsZQ==",
         "Sec-WebSocket-Version": "13"
     };
-    out = _select_handshake_headers(inbound);
+    out = _select_handshake_headers(inbound, "198.51.100.7");
     assert "Authorization" in out;
     assert out["Authorization"] == "Bearer abc";
     assert "X-Trace-Id" in out;
-    assert "X-Forwarded-For" in out;
+    assert out["X-Forwarded-For"] == "10.0.0.1, 198.51.100.7";
 
     assert "Cookie" not in out;
     assert "User-Agent" not in out;
@@ -57,15 +57,24 @@ test "handshake headers keep auth + trace + xff and drop the rest" {
 }
 
 
+test "handshake xff is the bare peer when the client sent no xff" {
+    out = _select_handshake_headers({"Authorization": "Bearer abc"}, "198.51.100.7");
+    assert out["X-Forwarded-For"] == "198.51.100.7";
+}
+
+
 test "handshake headers are case-insensitive on the filter" {
     inbound = {
         "authorization": "Bearer x",
         "X-TRACE-ID": "t1",
+        "x-forwarded-for": "10.0.0.1",
         "sec-websocket-key": "k"
     };
-    out = _select_handshake_headers(inbound);
+    out = _select_handshake_headers(inbound, "198.51.100.7");
     assert out["authorization"] == "Bearer x";
     assert out["X-TRACE-ID"] == "t1";
+    assert out["X-Forwarded-For"] == "10.0.0.1, 198.51.100.7";
+    assert "x-forwarded-for" not in out;
     assert "sec-websocket-key" not in out;
 }
 
@@ -304,7 +313,8 @@ obj FakeClientWS {
     has inbound: object,
         sent: list,
         closed: bool = False,
-        close_code: int = 0;
+        close_code: int = 0,
+        client_host: str = "";
 
     async def receive -> dict {
         return await self.inbound.get();
@@ -326,12 +336,17 @@ obj FakeClientWS {
 
 
 """Upstream websocket echo, served by the native ws codec."""
-def _spawn_ws_upstream -> tuple[object, object, str] {
+def _spawn_ws_upstream(
+    captured_headers: list | None = None
+) -> tuple[object, object, str] {
     import from jaclang.runtimelib.serving.app { ServingApp }
     import from jaclang.runtimelib.serving.endpoint { WSEndPoint }
     import from jaclang.runtimelib.serving.server { ServingServer }
 
     async def ws_echo(ws: any) {
+        if captured_headers is not None {
+            captured_headers.append(dict(ws.headers.items()));
+        }
         await ws.accept();
         while True {
             msg = await ws.receive();
@@ -358,9 +373,12 @@ def _spawn_ws_upstream -> tuple[object, object, str] {
 
 test "websocket_forward round-trips text and binary through a real upstream ws" {
     async def body -> dict {
-        (stop_upstream, server, base) = _spawn_ws_upstream();
+        upstream_headers: list[dict[str, str]] = [];
+        (stop_upstream, server, base) = _spawn_ws_upstream(upstream_headers);
         try {
-            client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+            client = FakeClientWS(
+                inbound=asyncio.Queue(), sent=[], client_host="203.0.113.9"
+            );
             client.inbound.put_nowait({"type": "websocket.receive", "text": "hello"});
             client.inbound.put_nowait(
                 {"type": "websocket.receive", "bytes": b"\x00\x01\x02"}
@@ -369,9 +387,21 @@ test "websocket_forward round-trips text and binary through a real upstream ws" 
             client.inbound.put_nowait({"type": "websocket.disconnect"});
 
             await websocket_forward(
-                client, base, {"Authorization": "Bearer t", "Cookie": "drop=me"}
+                client,
+                base,
+                {
+                    "Authorization": "Bearer t",
+                    "Cookie": "drop=me",
+                    "X-Forwarded-For": "10.0.0.1"
+                }
             );
-            return {"sent": client.sent, "closed": client.closed};
+            return {
+                "sent": client.sent,
+                "closed": client.closed,
+                "upstream_headers": {
+                    k.lower(): v for (k, v) in upstream_headers[0].items()
+                }
+            };
         } finally {
             stop_upstream();
         }
@@ -393,6 +423,11 @@ test "websocket_forward round-trips text and binary through a real upstream ws" 
     assert "bye" in texts;
     assert b"\x00\x01\x02" in byte_msgs;
     assert result["closed"] == True;
+
+    seen = result["upstream_headers"];
+    assert seen["x-forwarded-for"] == "10.0.0.1, 203.0.113.9";
+    assert seen["authorization"] == "Bearer t";
+    assert "cookie" not in seen;
 }
 
 

@@ -1,3 +1,4 @@
+import ipaddress;
 import logging;
 import threading;
 import time;
@@ -11,6 +12,8 @@ glob _mw_seq = itertools.count();
 
 glob logger = logging.getLogger(__name__),
      _rl_lock = _RLLock();
+
+glob _untrusted_xff_warned = threading.Event();
 
 
 obj TokenBucket {
@@ -119,13 +122,84 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
 }
 
 
-def _resolve_client_ip(request: any) -> str {
-    xff = request.headers.get("X-Forwarded-For");
-    if xff {
-        return xff.split(",")[0].strip();
+def _parse_trusted_proxies(entries: list) -> list {
+    networks: list = [];
+    for item in entries {
+        try {
+            networks.append(ipaddress.ip_network(str(item).strip(), strict=False));
+        } except ValueError {
+            logger.warning(
+                f"Ignoring invalid rate_limit trusted_proxies entry {item!r}; "
+                "expected an IP address or CIDR network."
+            );
+        }
     }
-    client = request?.client;
-    return getattr(client, "host", "unknown") if client else "unknown";
+    return networks;
+}
+
+
+def _parse_forwarded_ip(raw: str) -> any {
+    s: str = raw.strip();
+    if s.startswith("[") {
+        s = s[1:].split("]")[0];
+    } elif s.count(":") == 1 and "." in s {
+        s = s.split(":")[0];
+    }
+    try {
+        return ipaddress.ip_address(s);
+    } except ValueError {
+        return None;
+    }
+}
+
+
+def _is_trusted(ip: any, networks: list) -> bool {
+    return any(ip in net for net in networks);
+}
+
+
+def _warn_dropped_xff_once(request: any) -> None {
+    if _untrusted_xff_warned.is_set() {
+        return;
+    }
+    if request.headers.get("X-Forwarded-For") is None {
+        return;
+    }
+    _untrusted_xff_warned.set();
+    peer: str = request.client_host or "unknown";
+    logger.warning(
+        f"Ignoring X-Forwarded-For from peer {peer!r}: no trusted_proxies "
+        "are configured, so requests are rate-limited by TCP peer address. "
+        "If a proxy or ingress fronts this server, set "
+        "[scale.microservices.rate_limit] trusted_proxies to its address."
+    );
+}
+
+
+def _resolve_client_ip(request: any, trusted_networks: list | None = None) -> str {
+    peer: str = request.client_host or "unknown";
+    if not trusted_networks {
+        return peer;
+    }
+    peer_ip = _parse_forwarded_ip(peer);
+    if peer_ip is None or not _is_trusted(peer_ip, trusted_networks) {
+        return peer;
+    }
+    raw_values = request.headers.getlist("X-Forwarded-For");
+    hops: list = [];
+    for value in raw_values {
+        hops.extend(str(value).split(","));
+    }
+    for hop in reversed(hops) {
+        hop_ip = _parse_forwarded_ip(hop);
+        if hop_ip is None {
+            return peer;
+        }
+        if not _is_trusted(hop_ip, trusted_networks) {
+            return str(hop_ip);
+        }
+    }
+    return peer;
 }
 
 
@@ -146,6 +220,9 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     per_user_rpm: int = int(cfg.get("per_user_rpm", 0));
     burst: float = float(cfg.get("burst_multiplier", 2.0));
     exempt: set[str] = set(cfg.get("exempt_paths", []));
+    trusted_networks: list = _parse_trusted_proxies(
+        cfg.get("trusted_proxies", []) or []
+    );
 
     backend: StateBackend = get_state_backend(bool(cfg.get("scale_enabled", False)));
 
@@ -177,7 +254,10 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
         }
         retry_after: float = 0.0;
         if ip_limiter is not None {
-            key = f"{ns}:ip:{_resolve_client_ip(request)}";
+            if not trusted_networks {
+                _warn_dropped_xff_once(request);
+            }
+            key = f"{ns}:ip:{_resolve_client_ip(request, trusted_networks)}";
             (ok, ra) = ip_limiter.consume(key);
             if not ok {
                 retry_after = max(retry_after, ra);

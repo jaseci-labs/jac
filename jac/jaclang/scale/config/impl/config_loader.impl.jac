@@ -600,7 +600,10 @@ impl normalize_microservices_config(
             'burst_multiplier': float(rl_config.get('burst_multiplier', 2.0)),
             'exempt_paths': list(
                 rl_config.get('exempt_paths', ["/health", "/healthz", "/metrics"])
-            )
+            ),
+            'trusted_proxies': [
+                str(p) for p in (rl_config.get('trusted_proxies', []) or [])
+            ]
         },
         'cors': {
             'allow_origins': list(cors_config.get('allow_origins', ["*"])),
