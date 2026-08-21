@@ -565,3 +565,193 @@ test "destroy collection is silent when cluster returns 422 for absent CRD group
     keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
     keda.destroy_collection("staging", "managed=jac-scale");
 }
+
+
+test "get_runtime_status returns unknown without touching the cluster when the ScaledObject is missing" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_v2 = unittest.mock.MagicMock();
+    mock_apps = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2, _apps_api=mock_apps);
+
+    status = keda.get_runtime_status(
+        "orders-scaledobject", "orders-deployment", "default"
+    );
+
+    assert status.state == "unknown";
+    mock_v2.read_namespaced_horizontal_pod_autoscaler.assert_not_called();
+    mock_apps.read_namespaced_deployment.assert_not_called();
+    mock_api.create_namespaced_custom_object.assert_not_called();
+    mock_api.patch_namespaced_custom_object.assert_not_called();
+    mock_api.delete_namespaced_custom_object.assert_not_called();
+}
+
+test "get_runtime_status treats a 422 ScaledObject read the same as not found" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=422);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+
+    status = keda.get_runtime_status(
+        "orders-scaledobject", "orders-deployment", "default"
+    );
+
+    assert status.state == "unknown";
+}
+
+test "get_runtime_status re-raises a non-404/422 ScaledObject read error instead of masking it" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=403);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+
+    raised = False;
+    try {
+        keda.get_runtime_status("orders-scaledobject", "orders-deployment", "default");
+    } except ApiException as e {
+        raised = True;
+        assert e.status == 403;
+    }
+    assert raised , "Expected a 403 ApiException to propagate, not be swallowed";
+}
+
+test "get_runtime_status joins the ScaledObject, its generated HPA, and the target Deployment" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "metadata": {"resourceVersion": "77"},
+        "status": {
+            "conditions": [
+                {"type": "Ready", "status": "True", "reason": "ScaledObjectReady"},
+                {"type": "Active", "status": "True", "reason": "ScalerActive"}
+            ],
+            "hpaName": "orders-hpa"
+        }
+    };
+    mock_v2 = unittest.mock.MagicMock();
+    mock_hpa = unittest.mock.MagicMock();
+    mock_hpa.to_dict.return_value = {
+        "status": {"current_replicas": 2, "desired_replicas": 2}
+    };
+    mock_v2.read_namespaced_horizontal_pod_autoscaler.return_value = mock_hpa;
+    mock_apps = unittest.mock.MagicMock();
+    mock_deploy = unittest.mock.MagicMock();
+    mock_deploy.to_dict.return_value = {
+        "status": {"replicas": 2, "ready_replicas": 2, "available_replicas": 2}
+    };
+    mock_apps.read_namespaced_deployment.return_value = mock_deploy;
+
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2, _apps_api=mock_apps);
+    status = keda.get_runtime_status(
+        "orders-scaledobject", "orders-deployment", "default"
+    );
+
+    assert status.state == "active";
+    assert status.resource_version == "77";
+    assert status.ready_replicas == 2;
+    mock_v2.read_namespaced_horizontal_pod_autoscaler.assert_called_once_with(
+        name="orders-hpa", namespace="default"
+    );
+    mock_apps.read_namespaced_deployment.assert_called_once_with(
+        name="orders-deployment", namespace="default"
+    );
+}
+
+test "get_runtime_status tolerates a missing generated HPA and still returns a status" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "metadata": {"resourceVersion": "5"},
+        "status": {
+            "conditions": [
+                {"type": "Ready", "status": "True"},
+                {"type": "Active", "status": "False"}
+            ],
+            "hpaName": "orders-hpa"
+        }
+    };
+    mock_v2 = unittest.mock.MagicMock();
+    mock_v2.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
+        status=404
+    );
+    mock_apps = unittest.mock.MagicMock();
+    mock_deploy = unittest.mock.MagicMock();
+    mock_deploy.to_dict.return_value = {
+        "status": {"replicas": 0, "ready_replicas": 0, "available_replicas": 0}
+    };
+    mock_apps.read_namespaced_deployment.return_value = mock_deploy;
+
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2, _apps_api=mock_apps);
+    status = keda.get_runtime_status(
+        "orders-scaledobject", "orders-deployment", "default"
+    );
+
+    assert status.state == "inactive";
+    assert status.desired_replicas == 0;
+}
+
+test "get_runtime_status tolerates a missing target Deployment and still returns a status" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "metadata": {"resourceVersion": "6"},
+        "status": {
+            "conditions": [
+                {"type": "Ready", "status": "True"},
+                {"type": "Active", "status": "True"}
+            ],
+            "hpaName": "orders-hpa"
+        }
+    };
+    mock_v2 = unittest.mock.MagicMock();
+    mock_hpa = unittest.mock.MagicMock();
+    mock_hpa.to_dict.return_value = {
+        "status": {"current_replicas": 1, "desired_replicas": 1}
+    };
+    mock_v2.read_namespaced_horizontal_pod_autoscaler.return_value = mock_hpa;
+    mock_apps = unittest.mock.MagicMock();
+    mock_apps.read_namespaced_deployment.side_effect = ApiException(status=404);
+
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2, _apps_api=mock_apps);
+    status = keda.get_runtime_status(
+        "orders-scaledobject", "orders-deployment", "default"
+    );
+
+    # ready_replicas has no source without the Deployment -- must not crash, defaults to 0.
+    assert status.state == "activating";
+    assert status.ready_replicas == 0;
+}
+
+test "get_runtime_status never creates, patches, or deletes cluster resources" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "metadata": {"resourceVersion": "1"},
+        "status": {
+            "conditions": [
+                {"type": "Ready", "status": "True"},
+                {"type": "Active", "status": "True"}
+            ],
+            "hpaName": "orders-hpa"
+        }
+    };
+    mock_v2 = unittest.mock.MagicMock();
+    mock_hpa = unittest.mock.MagicMock();
+    mock_hpa.to_dict.return_value = {
+        "status": {"current_replicas": 1, "desired_replicas": 1}
+    };
+    mock_v2.read_namespaced_horizontal_pod_autoscaler.return_value = mock_hpa;
+    mock_apps = unittest.mock.MagicMock();
+    mock_deploy = unittest.mock.MagicMock();
+    mock_deploy.to_dict.return_value = {
+        "status": {"replicas": 1, "ready_replicas": 1, "available_replicas": 1}
+    };
+    mock_apps.read_namespaced_deployment.return_value = mock_deploy;
+
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=mock_v2, _apps_api=mock_apps);
+    keda.get_runtime_status("orders-scaledobject", "orders-deployment", "default");
+
+    mock_api.create_namespaced_custom_object.assert_not_called();
+    mock_api.patch_namespaced_custom_object.assert_not_called();
+    mock_api.delete_namespaced_custom_object.assert_not_called();
+    mock_v2.create_namespaced_horizontal_pod_autoscaler.assert_not_called();
+    mock_v2.patch_namespaced_horizontal_pod_autoscaler.assert_not_called();
+    mock_v2.delete_namespaced_horizontal_pod_autoscaler.assert_not_called();
+    mock_apps.create_namespaced_deployment.assert_not_called();
+    mock_apps.patch_namespaced_deployment.assert_not_called();
+    mock_apps.delete_namespaced_deployment.assert_not_called();
+}

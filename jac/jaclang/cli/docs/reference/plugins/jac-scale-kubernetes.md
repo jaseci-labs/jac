@@ -488,6 +488,34 @@ metadata = { queueName = "orders", mode = "QueueLength", value = "50", protocol 
 host = { name = "rabbitmq-secret", key = "host" }
 ```
 
+#### Runtime Status and Live Observation
+
+Both engines expose the same normalized status shape, so callers never need to branch on `autoscaler_engine`.
+
+**One-shot query:**
+
+```python
+status = autoscaler.get_runtime_status(autoscaler_name, scale_target_name, namespace)
+# status.state: "inactive" | "activating" | "active" | "deactivating" | "degraded" | "unknown"
+# status.desired_replicas / current_replicas / ready_replicas
+# status.trigger_active, status.scaler_ready  (None when the engine doesn't report one)
+```
+
+`inactive` is the intentional, healthy scale-to-zero resting state, not an error -- a plain HPA target (see [HPA Engine](#hpa-engine-default)) never reports it, since `minReplicas` is always at least 1 under that engine.
+
+!!! note "Live updates, not polling"
+    `AutoscalerObserverRegistry.get_or_create(namespace, cluster_key=None)` hands back one shared watcher per `(cluster, namespace)` -- every caller that asks for the same namespace gets the same observer instance, so N callers never open N Kubernetes watch connections. Subscribe with `observer.subscribe(scale_target_name=...)` and pull updates with `subscription.poll(timeout_seconds=...)`, which returns an `AutoscalerTransition` (`previous_state`, `state`, `resource_version`, `observed_at`) only when the normalized state actually changes -- a watch reconnect never re-announces a state nothing actually left. `observed_at` is when this process saw the change, not a durable record of when it happened; persist that yourself if you need history across an observer restart.
+
+    ```python
+    observer = AutoscalerObserverRegistry.get_or_create(namespace)
+    subscription = observer.subscribe(scale_target_name=scale_target_name)
+    transition = subscription.poll(timeout_seconds=30.0)
+    if transition:
+        print(f"{transition.previous_state} -> {transition.state}")
+    ```
+
+    For HTTP-activated workloads (`apply_http_activation`, see the KEDA HTTP Add-on note above), `activating` distinguishes "KEDA has requested more replicas" from `active` ("the target Deployment is actually ready to receive traffic") -- watch for `active`, not just a desired-replica bump, before routing a request through.
+
 ---
 
 ### Persistent Storage

@@ -13,6 +13,8 @@ glob PSS_ENFORCE_LABEL: str = "pod-security.kubernetes.io/enforce",
      PSS_WARN_LABEL: str = "pod-security.kubernetes.io/warn",
      PSS_SOURCE_LABEL: str = "jac-scale.jaseci.org/pss-enforce-source";
 
+def default_cluster_key -> str;
+
 def default_pss_labels -> dict[str, str];
 
 def privileged_pss_labels(existing: dict[str, str]) -> dict[str, str] | None;
