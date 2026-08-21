@@ -284,6 +284,30 @@ test "keda normalize reports active at a steady nonzero floor even when the trig
     assert status.trigger_active is False;
 }
 
+test "keda normalize reports deactivating for any inconsistent, settling replica counts while the trigger is inactive" {
+    # Observed on a real cluster during an actual scale-down: the trigger
+    # goes inactive and the HPA's own desired/current readings can be
+    # transiently inconsistent with each other (or with the Deployment's
+    # ready count) for a moment before everything settles at zero. None of
+    # the specific rules above matched this exact shape and it fell through
+    # to unknown. Any inconsistency while the trigger isn't pushing scale up
+    # is winding down, not a mystery -- so this is the catch-all before the
+    # true "we have no idea" fallback.
+    scaled_object = {
+        "metadata": {"resourceVersion": "23"},
+        "status": {
+            "conditions": [ready_condition(), active_condition("False")],
+            "hpaName": "orders-hpa"
+        }
+    };
+    hpa = {"status": {"current_replicas": 0, "desired_replicas": 1}};
+    deployment = {
+        "status": {"replicas": 1, "ready_replicas": 1, "available_replicas": 1}
+    };
+    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, hpa, deployment);
+    assert status.state == AutoscalerState.DEACTIVATING.value;
+}
+
 test "keda normalize idle scale-to-zero requires both desired and current at zero, not just desired" {
     # A target draining toward zero (desired already 0, current still 1) is
     # deactivating, not inactive -- inactive means nothing is running at all.
