@@ -34,6 +34,94 @@ test "cluster type detects aws by provider" {
     }
 }
 
+test "a node probe that fails says so instead of silently answering local" {
+    # An RBAC denial on list_node (nodes are cluster-scoped, and the ops Role
+    # this surface grants does not include them) used to be indistinguishable
+    # from minikube. LocalProvider then fabricates localhost node-port URLs and
+    # skips the load balancer wait, so an EKS deploy reports wrong URLs with no
+    # diagnostic anywhere.
+    class FailingApi {
+        def list_node(self) -> None {
+            raise ApiException(status=403, reason="Forbidden");
+        }
+    }
+
+    class Recorder {
+        def init(self) {
+            self.lines = [];
+        }
+
+        def print(self, *args: any, **kwargs: any) -> None {
+            self.lines.append(" ".join(str(a) for a in args));
+        }
+    }
+
+    recorder = Recorder();
+    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda { FailingApi(); }) {
+        with unittest.mock.patch.object(utils, "console", recorder) {
+            answer = utils.cluster_type();
+        }
+    }
+
+    assert answer == "local" , (
+        f"the fallback itself is unchanged, only its visibility: {answer}"
+    );
+    said = " ".join(recorder.lines);
+    assert "403" in said and "Forbidden" in said , (
+        f"the probe failure must name itself, not be swallowed: {recorder.lines}"
+    );
+    assert "localhost node ports" in said , (
+        f"the warning must name the consequence, not just the failure: {recorder.lines}"
+    );
+}
+
+
+test "a clean probe that finds no aws markers stays quiet" {
+    # Only the unreadable case is worth a warning. A real local cluster must
+    # not print one on every deploy.
+    class Node {
+        def init(self) {
+            self.spec = SimpleNamespace(provider_id="");
+            self.metadata = SimpleNamespace(labels={});
+        }
+    }
+
+    class Response {
+        def init(self) {
+            self.items = [Node()];
+        }
+    }
+
+    class LocalApi {
+        def list_node(self) -> Response {
+            return Response();
+        }
+    }
+
+    class Recorder {
+        def init(self) {
+            self.lines = [];
+        }
+
+        def print(self, *args: any, **kwargs: any) -> None {
+            self.lines.append(" ".join(str(a) for a in args));
+        }
+    }
+
+    recorder = Recorder();
+    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda { LocalApi(); }) {
+        with unittest.mock.patch.object(utils, "console", recorder) {
+            answer = utils.cluster_type();
+        }
+    }
+
+    assert answer == "local";
+    assert recorder.lines == [] , (
+        f"a successful probe of a local cluster must not warn: {recorder.lines}"
+    );
+}
+
+
 test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     def make_pvc(size: str) -> object {
         pvc = unittest.mock.MagicMock();
