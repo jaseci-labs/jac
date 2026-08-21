@@ -42,6 +42,7 @@ jobs:
       desktop: ${{ steps.filter.outputs.desktop }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
+      graphmend: ${{ steps.filter.outputs.graphmend }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -88,6 +89,44 @@ jobs:
               - 'jac/sitecustomize.py'
               - 'jac/jaclang/utils/precompile_bytecode.jac'
               - '.github/actions/**'
+            # NARROWING filter, same shape as `native`: test-graphmend-torch
+            # installs a ~250 MB CPU torch and drives TorchDynamo, which is
+            # wasted on a PR that cannot move a graph break. Everything listed
+            # outside graphmend/** can change the graph count with every
+            # source-text test still green, which is the whole failure mode this
+            # lane exists to catch, so a miss here is worse than an extra run.
+            graphmend:
+              # The transforms themselves.
+              - 'jac/jaclang/compiler/passes/main/graphmend/**'
+              # The helpers that EXECUTE INSIDE THE TRACED REGION: se_emit /
+              # log_emit / se_flush / se_region_enter / se_region_exit /
+              # se_guard / trap_guard / tensor_eq_assert. The buffer-drain and
+              # logging-passthrough edits that motivated this lane touched
+              # runtime.impl.jac and nothing else.
+              - 'jac/jaclang/jac0core/impl/runtime.impl.jac'
+              - 'jac/jaclang/jac0core/runtime.jac'
+              - 'jac/jaclang/jac0core/jaclib.jac'
+              - 'jac/jaclang/jac0core/constant.jac'
+              # Whether a module is transformed at all, and which artifact is
+              # served: the claim set and enable flag (compiler.impl.jac,
+              # compile_options.jac), the graphmend cache-variant key that
+              # decides when a stored artifact may be reused (jir.jac), and the
+              # import hook that claims model packages (meta_importer.py). A
+              # bug in any of them feeds untransformed bytecode to a run whose
+              # source-text assertions still pass.
+              - 'jac/jaclang/jac0core/impl/compiler.impl.jac'
+              - 'jac/jaclang/jac0core/compile_options.jac'
+              - 'jac/jaclang/jac0core/jir.jac'
+              - 'jac/jaclang/meta_importer.py'
+              # Emits the graphmend helper imports into the generated module.
+              # Dropping one is a NameError at exec time, and exec time is
+              # exactly what no other lane reaches.
+              - 'jac/jaclang/jac0core/passes/impl/pyast_gen_pass.impl.jac'
+              # The suites and their fixtures, and the lane's own definition.
+              - 'jac/tests/compiler/passes/main/test_graphmend_*.jac'
+              - 'jac/tests/compiler/passes/main/fixtures/graphmend/**'
+              - '.github/actions/graphmend-torch/**'
+              - '.github/workflows/ci.yml'
 
   # Host kit: the newest main binary (restore-keys prefix; any sealed binary
   # serves as a host because the reroute bypasses its bundled jaclang) plus
@@ -765,6 +804,76 @@ jobs:
           JAC_TEST_JOBS: "0"
         run: jac test jac/jaclang/scale/tests/server/test_serve.jac -f hmr
 
+  # GraphMend's claim is a RUNTIME metric: a compiled region that hands
+  # TorchDynamo 2+ FX graphs unpatched hands it exactly 1 patched. Only the four
+  # *_integration suites assert it, by driving a counting Dynamo backend, and
+  # each of their tests opens with a helper that calls pytest.skip when torch is
+  # missing. No other job installs torch, so those 18 assertions have been
+  # reporting green while executing nothing; everything else in CI checks only
+  # that the transforms emit certain source text. This lane installs CPU-only
+  # torch and FAILS if any of them skips.
+  test-graphmend-torch:
+    name: GraphMend Graph Counts
+    # Gated on host-kit only because the dev lane now IS the host kit through
+    # the reroute (#8469 retired setup-jac-dev), the same gate jac-check and
+    # contribution-checks take. host-kit downloads a prebuilt main binary
+    # rather than building one, so it does not reintroduce the failure mode
+    # that kept this lane off build-jac: run 31918166404, where an unrelated
+    # seal failure skipped every job that needed it.
+    needs: [changes, host-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.graphmend == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      # PINNED, not floored. The assertion is an exact graph count, so a Dynamo
+      # change upstream would redden PRs that never touched GraphMend, and a
+      # gate that reddens for unrelated reasons gets switched off. The nightly
+      # graphmend-torch-latest canary runs the same suites unpinned, so drift
+      # surfaces there instead of in someone's merge queue.
+      TORCH_VERSION: "2.13.0"
+      # Not a torch requirement, but torch warns on import without it and the
+      # suites run under `filterwarnings = error`. Pinned for the same reason
+      # torch is.
+      NUMPY_VERSION: "2.5.1"
+    steps:
+      - uses: actions/checkout@v5
+
+      # Dev lane: the suites drive JacProgram in-process, so this runs THIS
+      # checkout's compiler, which is what the graph-count claim is about;
+      # nightly's canary covers the same suites on the sealed artifact. The
+      # host kit also pins XDG_CACHE_HOME, which is where the runtime site the
+      # torch install targets lives, so install and run agree on one site.
+      - uses: ./.github/actions/jac-kit
+        with:
+          name: jac-host
+
+      # Restore/save split with the SAVE GATED TO MAIN, matching every other
+      # big read-mostly cache here. The wheel set is ~250 MB and its key only
+      # moves on a TORCH_VERSION bump; PR branches cross-restore main's entry
+      # rather than each parking their own copy in the shared 10 GB pool. Until
+      # main has an entry this lane re-downloads, which is a sub-minute cost.
+      - name: Restore cached torch CPU wheels
+        uses: actions/cache/restore@v4
+        with:
+          path: .pip-cache
+          key: torch-cpu-${{ runner.os }}-${{ runner.arch }}-${{ env.TORCH_VERSION }}-np${{ env.NUMPY_VERSION }}
+
+      # No HOME/mktemp isolation here: torch lands in the runtime site under
+      # XDG_CACHE_HOME, and these suites drive the compiler in-process without
+      # spawning `jac` subprocesses, so they need none of what test-compiler
+      # sets up and would lose the install if the root moved.
+      - name: Install torch and run the graph-count suites
+        uses: ./.github/actions/graphmend-torch
+        with:
+          specs: torch==${{ env.TORCH_VERSION }} numpy==${{ env.NUMPY_VERSION }}
+          expected-tests: "18"
+
+      - name: Save cached torch CPU wheels
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .pip-cache
+          key: torch-cpu-${{ runner.os }}-${{ runner.arch }}-${{ env.TORCH_VERSION }}-np${{ env.NUMPY_VERSION }}
+
   # Degradation path: no LLVM shim, no binary -- programs must still compile
   # cleanly in the server codespace with zero scheduling errors.
   test-no-llvm:
@@ -1390,6 +1499,7 @@ jobs:
       - jac-check
       - contribution-checks
       - test-compiler
+      - test-graphmend-torch
       - test-native
       - test-native-sealed
       - test-runtime

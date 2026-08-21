@@ -1054,6 +1054,13 @@ impl _parse_include(raw: dict[str, any]) -> PackageIncludeConfig {
     );
 }
 
+impl _graphmend_gate(raw: any) -> bool {
+    if isinstance(raw, str) {
+        return raw.strip().lower() not in ("off", "false", "no", "0");
+    }
+    return bool(raw);
+}
+
 impl _parse_toml_data(
     data: dict[str, any], toml_path: Path | None = None
 ) -> JacConfig {
@@ -1129,7 +1136,12 @@ impl _parse_toml_data(
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            diagnostics=run_data.get("diagnostics", "error")
+            diagnostics=run_data.get("diagnostics", "error"),
+            graphmend=_graphmend_gate(run_data.get("graphmend", True)),
+            graphmend_claim_imports=_graphmend_gate(
+                run_data.get("graphmend_claim_imports", False)
+            ),
+            graphmend_disable=run_data.get("graphmend_disable", "")
         );
     }
     if "build" in data {

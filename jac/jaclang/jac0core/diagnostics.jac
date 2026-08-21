@@ -980,6 +980,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "String import '{name}' does not match any declared or installed npm package",
          help="A quoted bare import always means an npm package. Declare '{name}' under [dependencies.npm] in jac.toml and run 'jac install', or use a dotted module path (import from .{name}) for a local Jac module."
      ),
+     W1107 = _warn(
+         "W1107",
+         Category.IMPORT,
+         "GraphMend abandoned its claim on '{path}': {reason}",
+         help="The claim was granted under [run] graphmend_claim_imports, but the Jac front end could not serve bytecode for this file, so the module was imported untransformed through the standard Python loader."
+     ),
      W2001 = _warn("W2001", Category.SEMANTIC, "Name '{name}' may be undefined"),
      W2002 = _warn("W2002", Category.SEMANTIC, "Unreachable code detected"),
      W2003 = _warn("W2003", Category.SEMANTIC, "'{name}' is defined but never used"),

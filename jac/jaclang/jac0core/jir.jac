@@ -3,6 +3,7 @@ import os;
 import struct;
 import sys;
 import zlib;
+import from contextvars { ContextVar }
 import from pathlib { Path }
 
 glob MAGIC = b"JIR\x00",
@@ -21,6 +22,7 @@ glob MAGIC = b"JIR\x00",
      SEC_DEBUG_SRC: int = 0x09,
      SEC_PLACEMENT: int = 0x0A,
      SEC_ENVKEY: int = 0x0B,
+     SEC_GM_NOOP: int = 0x0C,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
@@ -256,8 +258,28 @@ def _toolchain_env_fingerprint -> str {
     return h.hexdigest();
 }
 
+glob _GM_CACHE_VARIANT: ContextVar[str] = ContextVar(
+         "jac_graphmend_cache_variant", `default=""
+     );
+
+def swap_graphmend_cache_variant(variant: str) -> str {
+    prev = _GM_CACHE_VARIANT.get();
+    _GM_CACHE_VARIANT.set(variant);
+    return prev;
+}
+
+def graphmend_variant_config(variant: str) -> str {
+    return variant.split(';region=')[0];
+}
+
+def graphmend_variant_region(variant: str) -> str {
+    parts = variant.split(';region=');
+    return parts[1] if (len(parts) > 1) else '';
+}
+
 def _project_env_fingerprint(source_path: str) -> str {
     h = hashlib.sha256();
+    h.update(_GM_CACHE_VARIANT.get().encode());
     h.update(_module_client_kind(source_path).encode());
     h.update(_module_codespace_mode(source_path).encode());
     import from jaclang.jac0core.placement_pins { pins_digest, config_kind_space }
@@ -320,6 +342,10 @@ def read_modkey(data: bytes) -> (str | None) {
 
 def read_envkey(data: bytes) -> (str | None) {
     return _read_key_section(data, SEC_ENVKEY);
+}
+
+def read_gm_noop(data: bytes) -> (str | None) {
+    return _read_key_section(data, SEC_GM_NOOP);
 }
 
 def compute_stub_module_key(source_path: str) -> str {
@@ -603,8 +629,75 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
 }
 
 
+def is_module_cache_valid_gm_noop(source_path: str, cache_path: Path) -> bool {
+    variant = _GM_CACHE_VARIANT.get();
+    if not variant {
+        return False;
+    }
+    prev = swap_graphmend_cache_variant("");
+    try {
+        if not is_module_cache_valid(source_path, cache_path) {
+            return False;
+        }
+    } finally {
+        swap_graphmend_cache_variant(prev);
+    }
+    try {
+        data: bytes = cache_path.read_bytes();
+    } except OSError {
+        return False;
+    }
+    stored = read_gm_noop(data);
+    if stored is None {
+        return False;
+    }
+    if stored == variant {
+        return True;
+    }
+    if graphmend_variant_region(variant) {
+        return False;
+    }
+    return graphmend_variant_config(stored) == graphmend_variant_config(variant);
+}
+
+
+glob _SRC_SHARED: dict[(str, tuple[(int, int, str)])] = {};
+
+def read_source_shared(file_path: str) -> (str | None) {
+    try {
+        st = os.stat(file_path);
+    } except OSError {
+        return None;
+    }
+    hit = _SRC_SHARED.get(file_path);
+    if (hit is not None) and (hit[0] == st.st_mtime_ns) and (hit[1] == st.st_size) {
+        _SRC_SHARED.pop(file_path, None);
+        _SRC_SHARED[file_path] = hit;
+        return hit[2];
+    }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
+    try {
+        src = read_file_with_encoding(file_path);
+    } except Exception {
+        return None;
+    }
+    if file_path in _SRC_SHARED {
+        _SRC_SHARED.pop(file_path, None);
+    } elif len(_SRC_SHARED) >= 4 {
+        oldest = next(iter(_SRC_SHARED), None);
+        if oldest is not None {
+            _SRC_SHARED.pop(oldest, None);
+        }
+    }
+    _SRC_SHARED[file_path] = (st.st_mtime_ns, st.st_size, src);
+    return src;
+}
+
 def write_module_cache(
-    source_path: str, bytecode: bytes, extra_sections: (dict[int, bytes] | None) = None
+    source_path: str,
+    bytecode: bytes,
+    extra_sections: (dict[int, bytes] | None) = None,
+    force: bool = False
 ) -> bool {
     resolved_path = str(Path(source_path).resolve());
     if not jir_cacheable_source_path(resolved_path) {
@@ -612,7 +705,7 @@ def write_module_cache(
     }
     try {
         cache_path = get_module_cache_path(resolved_path);
-        if is_module_cache_valid(resolved_path, cache_path) {
+        if (not force) and is_module_cache_valid(resolved_path, cache_path) {
             return False;
         }
         cache_path.parent.mkdir(parents=True, exist_ok=True);

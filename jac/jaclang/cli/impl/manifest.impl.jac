@@ -1672,6 +1672,13 @@ def _command_routes -> list[CommandMeta] {
                     config_key='run.cache'
                 ),
                 ArgMeta(
+                    name='graphmend_disable',
+                    `default='',
+                    help='Comma-separated GraphMend transforms to skip: trap (guard lowering), where (branch predication), defer (side-effect deferral)',
+                    short='',
+                    config_key='run.graphmend_disable'
+                ),
+                ArgMeta(
                     name='profile',
                     `default='',
                     help='Configuration profile to load (e.g. prod, staging)',

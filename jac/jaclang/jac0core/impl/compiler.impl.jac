@@ -124,9 +124,61 @@ impl JacCompiler._check_native_abi(layout: any, full_target: str) -> None {
 }
 
 impl JacCompiler.get_bytecode(
-    full_target: str, target_program: JacProgram
+    full_target: str,
+    target_program: JacProgram,
+    options: (CompileOptions | None) = None
 ) -> (types.CodeType | None) {
     actual_program = self._resolve_program(full_target, target_program);
+    if options is None {
+        options = CompileOptions(type_check=False);
+    }
+    gm_setting: bool = (options.graphmend is True)
+        and actual_program is not self._internal_program;
+    if gm_setting {
+        import from jaclang.jac0core.jir { read_source_shared }
+        src_probe = read_source_shared(full_target);
+        gm_setting = (src_probe is not None) and ('torch' in src_probe);
+    }
+    real_target = "";
+    gm_region = "";
+    if gm_setting {
+        import from jaclang.compiler.passes.main.graphmend.scope_facts {
+            region_context_probe
+        }
+        real_target = os.path.realpath(full_target);
+        probe_key = region_context_probe(actual_program, real_target);
+        gm_setting = probe_key is not None;
+        gm_region = probe_key or "";
+    }
+    gm_active = gm_setting;
+    gm_variant = "";
+    if gm_active {
+        gm_variant = ";".join(
+            [
+                "graphmend",
+                "disable=" + ",".join(sorted(options.graphmend_disable or [])),
+                "claimed="
+                    + str(int((real_target in target_program.graphmend_claimed))),
+                "region=" + gm_region
+            ]
+        );
+    }
+    prev_variant = swap_graphmend_cache_variant(gm_variant);
+    try {
+        return self._get_bytecode_variant(
+            full_target, target_program, actual_program, gm_active
+        );
+    } finally {
+        swap_graphmend_cache_variant(prev_variant);
+    }
+}
+
+impl JacCompiler._get_bytecode_variant(
+    full_target: str,
+    target_program: JacProgram,
+    actual_program: JacProgram,
+    gm_active: bool
+) -> (types.CodeType | None) {
     (rebuild, no_precompile) = cache_mode();
     symtab_only_recovery = False;
 
@@ -153,7 +205,7 @@ impl JacCompiler.get_bytecode(
         return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
     }
 
-    if not rebuild {
+    if (not gm_active) and (not rebuild) {
         sealed = self._sealed_jir_data(full_target);
         if sealed is not None {
             import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
@@ -177,7 +229,14 @@ impl JacCompiler.get_bytecode(
     }
 
     cache_path = get_module_cache_path(full_target);
-    if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
+    cache_hit = False;
+    if not rebuild {
+        cache_hit = is_module_cache_valid(full_target, cache_path);
+        if gm_active and (not cache_hit) {
+            cache_hit = is_module_cache_valid_gm_noop(full_target, cache_path);
+        }
+    }
+    if cache_hit {
         try {
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
@@ -216,7 +275,11 @@ impl JacCompiler.get_bytecode(
     }
 
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled_bc = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    precompiled_bc = (
+        None
+            if gm_active
+            else self._get_precompiled_jir_bytecode(full_target, allow_unsealed)
+    );
     if precompiled_bc is not None {
         try {
             import from jaclang.jac0core.jir {
@@ -250,7 +313,7 @@ impl JacCompiler.get_bytecode(
         setup_progress.on_internal_compile(full_target);
         self._internal_bytecode_depth += 1;
     }
-    options = CompileOptions(type_check=False);
+    options = CompileOptions(type_check=False, graphmend=gm_active);
     result: (uni.Module | None) = None;
     try {
         result = self.compile(
@@ -300,10 +363,29 @@ impl JacCompiler.get_bytecode(
                 } except Exception {
                     ;
                 }
-                import from jaclang.jac0core.jir { write_module_cache }
+                import from jaclang.jac0core.jir { SEC_GM_NOOP, write_module_cache }
                 cache_bc: any = result.gen?.py_bytecode;
                 if cache_bc is not None and not result.parse_failed {
-                    write_module_cache(full_target, cache_bc, extra_sections=sections);
+                    gm_facts = result.gen.graphmend_facts;
+                    gm_noop = gm_active and (gm_facts is not None) and gm_facts.noop;
+                    if gm_noop {
+                        gm_v = swap_graphmend_cache_variant("");
+                        try {
+                            sections[SEC_GM_NOOP] = gm_v.encode('utf-8');
+                            write_module_cache(
+                                full_target,
+                                cache_bc,
+                                extra_sections=sections,
+                                force=True
+                            );
+                        } finally {
+                            swap_graphmend_cache_variant(gm_v);
+                        }
+                    } else {
+                        write_module_cache(
+                            full_target, cache_bc, extra_sections=sections
+                        );
+                    }
                 }
             } except Exception {
                 ;
@@ -1393,6 +1475,9 @@ impl JacCompiler._compile_once(
         set_effective_default_codespace(options.default_codespace);
     }
     keep_str = use_str or read_file_with_encoding(file_path);
+    if (options.graphmend is True) and ('torch' not in keep_str) {
+        options.graphmend = False;
+    }
     had_parse_errors = len(actual_program.errors_had);
     import from jaclang.jac0core.prefix_flip {
         drop_executed_prefix,
@@ -1414,6 +1499,12 @@ impl JacCompiler._compile_once(
         len(actual_program.errors_had) - prefix_span_errors(_prefix_span)
     )
         > had_parse_errors;
+    if options.graphmend is True {
+        import from jaclang.compiler.passes.main.graphmend.scope_facts {
+            module_binds_torch
+        }
+        options.graphmend = module_binds_torch(mod_targ);
+    }
 
     cur_mod_path = os.path.normpath(file_path);
     blocking_errs_pre_ir = self._count_module_blocking_errors(
@@ -1652,7 +1743,8 @@ impl JacCompiler._compile_once(
             target_program=actual_program,
             passes=get_py_code_gen(
                 native=needs_native,
-                provided=actual_program._analyses_run.get(id(mod_targ), set())
+                provided=actual_program._analyses_run.get(id(mod_targ), set()),
+                graphmend=options.graphmend is True
             ),
             cancel_token=options.cancel_token
         );

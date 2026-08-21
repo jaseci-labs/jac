@@ -155,7 +155,6 @@ class EndpointEffectPass(UniPass) {
             }
             return sym;
         }
-
         if isinstance(call.target, AtomTrailer) {
             attrs = call.target.as_attr_list;
             if attrs {
@@ -174,7 +173,7 @@ class EndpointEffectPass(UniPass) {
             return [];
         }
         defn_node = sym.defn[0];
-        ability = None;
+        ability: (Ability | None) = None;
         if isinstance(defn_node, Ability) {
             ability = defn_node;
         } elif defn_node.parent and isinstance(defn_node.parent, Ability) {

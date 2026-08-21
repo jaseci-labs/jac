@@ -50,7 +50,16 @@ glob __all__ = [
          'on_exit',
          'set_trigger',
          'thread_run',
-         'thread_wait'
+         'thread_wait',
+         '__jac_tensor_eq_assert__',
+         '__jac_trap_guard__',
+         '__jac_se_emit__',
+         '__jac_se_flush__',
+         '__jac_se_region_open__',
+         '__jac_se_guard__',
+         '__jac_log_register__',
+         '__jac_log_emit__',
+         '__jac_log_flush_hook__'
      ],
      connect = JacRuntimeInterface.connect,
      create_j_context = JacRuntimeInterface.create_j_context,
@@ -81,4 +90,13 @@ glob __all__ = [
      on_exit = JacRuntimeInterface.on_exit,
      set_trigger = JacRuntimeInterface.set_trigger,
      thread_run = JacRuntimeInterface.thread_run,
-     thread_wait = JacRuntimeInterface.thread_wait;
+     thread_wait = JacRuntimeInterface.thread_wait,
+     __jac_tensor_eq_assert__ = JacRuntimeInterface.tensor_eq_assert,
+     __jac_trap_guard__ = JacRuntimeInterface.trap_guard,
+     __jac_se_emit__ = JacRuntimeInterface.se_emit,
+     __jac_se_flush__ = JacRuntimeInterface.se_flush,
+     __jac_se_region_open__ = JacRuntimeInterface.se_region_open,
+     __jac_se_guard__ = JacRuntimeInterface.se_guard,
+     __jac_log_register__ = JacRuntimeInterface.log_register,
+     __jac_log_emit__ = JacRuntimeInterface.log_emit,
+     __jac_log_flush_hook__ = JacRuntimeInterface.log_flush_hook;

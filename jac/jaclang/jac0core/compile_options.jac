@@ -1,6 +1,20 @@
 import from dataclasses { field }
 
-glob _config_probe: dict = {"active": False};
+glob _config_probe: dict = {"active": False},
+     _serving_probe: dict[(str, bool)] = {"serving": False},
+     GM_DEFER_BUFFERS_THREAD_SCOPED: bool = False;
+
+def mark_process_serving {
+    _serving_probe["serving"] = True;
+}
+
+def process_is_serving -> bool {
+    return bool(_serving_probe["serving"]);
+}
+
+def defer_declines_here -> bool {
+    return (not GM_DEFER_BUFFERS_THREAD_SCOPED) and process_is_serving();
+}
 
 def _project_config -> any {
     if _config_probe["active"] {
@@ -17,6 +31,50 @@ def _project_config -> any {
     }
 }
 
+def _cfg_attr(owner: any, name: str) -> any {
+    if owner is None {
+        return None;
+    }
+    try {
+        return getattr(owner, name);
+    } except AttributeError {
+        return None;
+    }
+}
+
+def resolved_graphmend_setting -> bool {
+    cfg = _project_config();
+    if cfg is None {
+        return True;
+    }
+    run_cfg = _cfg_attr(cfg, 'run');
+    if run_cfg is None {
+        return True;
+    }
+    return bool(_cfg_attr(run_cfg, 'graphmend'));
+}
+
+def resolved_graphmend_disable_setting -> list[str] {
+    cfg = _project_config();
+    raw = str(_cfg_attr(_cfg_attr(cfg, 'run'), 'graphmend_disable') or '');
+    out: list[str] = [];
+    for part in raw.split(',') {
+        stripped = part.strip().lower();
+        if stripped in ('trap', 'where', 'defer') and stripped not in out {
+            out.append(stripped);
+        }
+    }
+    return out;
+}
+
+def resolved_graphmend_claim_imports_setting -> bool {
+    cfg = _project_config();
+    if cfg is None {
+        return False;
+    }
+    return bool(_cfg_attr(_cfg_attr(cfg, 'run'), 'graphmend_claim_imports'));
+}
+
 obj CompileOptions {
     has type_check: bool = True,
         emit_diagnostics: bool = True,
@@ -27,6 +85,9 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
+        graphmend: (bool | None) = None,
+        graphmend_claim_imports: (bool | None) = None,
+        graphmend_disable: (list[str] | None) = None,
         force_codespace: str = "",
         na_gc_mode: (str | None) = None,
         nogc_enforce_all: bool = False,
@@ -52,8 +113,19 @@ obj CompileOptions {
     def postinit {
         import os;
         cfg = _project_config();
-        gc_cfg = cfg.gc if cfg is not None else None;
-        native_cfg = cfg.build.native if cfg is not None else None;
+        gc_cfg = _cfg_attr(cfg, 'gc');
+        native_cfg = _cfg_attr(_cfg_attr(cfg, 'build'), 'native');
+        if self.graphmend is None {
+            self.graphmend = resolved_graphmend_setting();
+        }
+        if self.graphmend_disable is None {
+            self.graphmend_disable = resolved_graphmend_disable_setting();
+        }
+        if self.graphmend_claim_imports is None {
+            self.graphmend_claim_imports = (
+                bool(_cfg_attr(_cfg_attr(cfg, 'run'), 'graphmend_claim_imports'))
+            );
+        }
         if self.na_gc_mode is None {
             self.na_gc_mode = gc_cfg.`default if gc_cfg else "cycles";
         }

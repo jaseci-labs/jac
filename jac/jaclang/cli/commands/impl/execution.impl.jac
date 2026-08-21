@@ -78,7 +78,12 @@ def _print_plan(plan: RunPlan) {
 }
 
 def _execute_plan(
-    plan: RunPlan, main: bool, cache: bool, diagnostics: str, args: list
+    plan: RunPlan,
+    main: bool,
+    cache: bool,
+    diagnostics: str,
+    args: list,
+    graphmend_disable: str = ""
 ) -> int {
     if plan.action == "execute" {
         return run(
@@ -86,10 +91,13 @@ def _execute_plan(
             main=main,
             cache=cache,
             diagnostics=diagnostics,
-            args=args
+            args=args,
+            graphmend_disable=graphmend_disable
         );
     }
     if plan.action == "serve" {
+        import from jaclang.jac0core.compile_options { mark_process_serving }
+        mark_process_serving();
         return start(
             filename=plan.entry_path,
             port=plan.flags.get("port", 8000),
@@ -212,8 +220,58 @@ def _jab_native_bin(img_root: object, entry_rel: str) -> (str | None) {
     return None;
 }
 
+def _configured_graphmend -> bool {
+    import from jaclang.project.config { get_config }
+    cfg = get_config();
+    return bool(cfg.run.graphmend) if cfg is not None else True;
+}
+
+def _graphmend_may_engage(graphmend: bool, filename: str) -> bool {
+    if not graphmend {
+        return False;
+    }
+    import from jaclang.compiler.passes.main.graphmend.auto_detect {
+        file_imports_torch
+    }
+    return file_imports_torch(filename);
+}
+
+def _apply_graphmend(graphmend_disable: str = "") -> bool {
+    import from jaclang.project.config { get_config }
+    gm_disable: list[str] = [];
+    for part in graphmend_disable.split(',') {
+        stripped = part.strip().lower();
+        if not stripped {
+            continue;
+        }
+        if stripped not in ('trap', 'where', 'defer') {
+            console.warning(
+                f"--graphmend-disable ignores unknown transform '{stripped}' "
+                f"(valid: trap, where, defer)."
+            );
+            continue;
+        }
+        gm_disable.append(stripped);
+    }
+    cfg = get_config();
+    if gm_disable and cfg is not None {
+        cfg.run.graphmend_disable = ",".join(gm_disable);
+    }
+    gm_on = _configured_graphmend();
+    if gm_on and 'torch' in sys.modules {
+        import from jaclang.meta_importer { install_graphmend_loader_hook_for_torch }
+        install_graphmend_loader_hook_for_torch();
+    }
+    return gm_on;
+}
+
 def _run_project(
-    show: bool, main: bool, cache: bool, diagnostics: str, args: list
+    show: bool,
+    main: bool,
+    cache: bool,
+    diagnostics: str,
+    args: list,
+    graphmend_disable: str = ""
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -255,7 +313,12 @@ def _run_project(
         return 0;
     }
     return _execute_plan(
-        plan, main=main, cache=cache, diagnostics=diagnostics, args=args
+        plan,
+        main=main,
+        cache=cache,
+        diagnostics=diagnostics,
+        args=args,
+        graphmend_disable=graphmend_disable
     );
 }
 
@@ -264,6 +327,7 @@ impl run(
     show: bool = False,
     main: bool = True,
     cache: bool = True,
+    graphmend_disable: str = "",
     diagnostics: str = "",
     entry_name: str = "",
     nd: str = "",
@@ -287,11 +351,16 @@ impl run(
             console.error("jac run --entry needs a file.");
             return 1;
         }
-        return enter(filename, entry_name, args, main, root_id, nd);
+        return enter(filename, entry_name, args, main, root_id, nd, graphmend_disable);
     }
     if not filename {
         return _run_project(
-            show=show, main=main, cache=cache, diagnostics=diagnostics, args=args
+            show=show,
+            main=main,
+            cache=cache,
+            diagnostics=diagnostics,
+            args=args,
+            graphmend_disable=graphmend_disable
         );
     }
     if filename.endswith(".jab") {
@@ -324,6 +393,7 @@ impl run(
     sys.argv = [filename] + list(args);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
+    graphmend = _apply_graphmend(graphmend_disable);
     try {
         if filename.endswith('.jac') {
             native_executed = False;
@@ -334,8 +404,11 @@ impl run(
                 and (_cfg_kind.project.kind or '').strip() == 'cli-native'
             );
             if (
-                _kind_forced
-                or (_default_codespace_is_native() and sys.stdout is sys.__stdout__)
+                (not _graphmend_may_engage(graphmend, filename))
+                and (
+                    _kind_forced
+                    or (_default_codespace_is_native() and sys.stdout is sys.__stdout__)
+                )
             ) {
                 import ctypes;
                 import from jaclang.jac0core.compile_options {
@@ -441,7 +514,8 @@ impl enter(
     args: list = [],
     main: bool = True,
     `root: str = '',
-    nd: str = ''
+    nd: str = '',
+    graphmend_disable: str = ''
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.constructs { WalkerArchetype }
@@ -455,6 +529,7 @@ impl enter(
     }
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
+    _apply_graphmend(graphmend_disable);
 
     if `root {
         mach.set_user_root(`root);
@@ -537,8 +612,10 @@ impl start(
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
     import from jaclang.jac0core.codeinfo { set_effective_default_codespace }
+    import from jaclang.jac0core.compile_options { mark_process_serving }
 
     use_line_buffered_output();
+    mark_process_serving();
     set_effective_default_codespace('server');
 
     import from jaclang.runtimelib.client.cli { run_client_start }

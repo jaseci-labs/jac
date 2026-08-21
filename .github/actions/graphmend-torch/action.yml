@@ -1,0 +1,91 @@
+name: GraphMend graph-count suites
+description: >
+  Install CPU-only torch into the jac binary's global site and run the four
+  torch-gated GraphMend integration suites, which assert the runtime claim: a
+  compiled region that hands TorchDynamo 2+ FX graphs unpatched hands it exactly
+  1 patched.
+
+  Every test in those suites opens with a helper that calls `pytest.skip` when
+  torch is missing, and pytest exits 0 for an all-skipped session. So the ONLY
+  thing standing between "these assertions ran" and "these assertions reported
+  green having executed nothing" is the post-run check here, which fails the
+  step on any skip and on a pass count below `expected-tests`.
+
+  Expects `jac` already on PATH (setup-jac, or the ci.yml binary artifact).
+inputs:
+  specs:
+    description: >
+      Space-separated pip specs. ci.yml pins exact versions so the gate cannot
+      redden for reasons outside the PR; the nightly canary passes bare names to
+      catch Dynamo drift. numpy belongs here even though torch does not require
+      it: without it torch's C extension warns on import, and pytest.ini runs
+      with `filterwarnings = error`, so the warning aborts the import and every
+      later test sees a half-built torch module.
+    required: false
+    default: torch numpy
+  expected-tests:
+    description: >
+      Floor on the number of tests that must PASS. Deliberately a hard floor,
+      not a soft one: a suite that shrinks silently is the same failure this
+      whole action exists to catch.
+    required: false
+    default: "18"
+runs:
+  using: composite
+  steps:
+    # The PyPI torch bundles the CUDA stack (multi-GB); this index serves the
+    # CPU build and its dependencies. pip reads PIP_INDEX_URL exactly as
+    # --index-url. PIP_CACHE_DIR sits in the workspace so a caller can wrap
+    # this action in actions/cache.
+    - name: Install CPU-only torch into the global site
+      shell: bash
+      env:
+        PIP_INDEX_URL: https://download.pytorch.org/whl/cpu
+        PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache
+      run: |
+        set -euo pipefail
+        read -r -a specs <<< "${{ inputs.specs }}"
+        jac install --global "${specs[@]}"
+
+    - name: Graph-count suites
+      shell: bash
+      working-directory: jac
+      run: |
+        set -uo pipefail
+        # Preflight under the suites' own warning policy (pytest.ini sets
+        # `filterwarnings = error`), so an import that only warns here fails
+        # with one legible message instead of 18 stack traces. cuda must be
+        # None: a CUDA build means the index pin stopped taking effect.
+        jac -c 'import warnings; warnings.simplefilter("error"); import torch; print("torch", torch.__version__, "cuda:", torch.version.cuda)'
+        rc=0
+        JAC_TEST_JOBS=auto jac test \
+          tests/compiler/passes/main/test_graphmend_trap_integration.jac \
+          tests/compiler/passes/main/test_graphmend_where_integration.jac \
+          tests/compiler/passes/main/test_graphmend_defer_integration.jac \
+          tests/compiler/passes/main/test_graphmend_import_integration.jac \
+          | tee /tmp/graphmend-torch.log || rc=$?
+
+        # The native jac test runner ends with "N passed, M skipped in T.TTs";
+        # the pytest fence variant is kept so the parse survives either runner.
+        summary="$(grep -E '^(=+ .*(passed|failed|error|skipped)|[0-9]+ (passed|failed|error|skipped|crashed).* in [0-9.]+s$)' /tmp/graphmend-torch.log | tail -1)"
+        count() { printf '%s' "$summary" | grep -oE "[0-9]+ $1" | grep -oE '^[0-9]+' || true; }
+        passed="$(count passed)"; skipped="$(count skipped)"
+        passed="${passed:-0}"; skipped="${skipped:-0}"
+        {
+          echo "## GraphMend graph-count suites"
+          echo '```'
+          echo "${summary:-(no test-runner summary line found)}"
+          grep -E '^(FAILED|ERROR)' /tmp/graphmend-torch.log | tail -40 || true
+          echo '```'
+          echo "passed=$passed skipped=$skipped (floor ${{ inputs.expected-tests }})"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$skipped" -ne 0 ]; then
+          echo "::error::$skipped graph-count test(s) SKIPPED. torch is not importable from the jac runtime, so the graph-count assertions did not execute."
+          rc=1
+        fi
+        if [ "$passed" -lt "${{ inputs.expected-tests }}" ]; then
+          echo "::error::expected at least ${{ inputs.expected-tests }} graph-count tests to pass, saw $passed."
+          rc=1
+        fi
+        exit "$rc"

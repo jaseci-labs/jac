@@ -9,6 +9,9 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
+    self.graphmend_claimed: set[str] = set();
+    self.graphmend_claim_walked: set[str] = set();
+    self.graphmend_claim_parent: dict[str, str] = {};
     self._native_cache: dict = {};
 
     self._na_dep_units: dict = {};

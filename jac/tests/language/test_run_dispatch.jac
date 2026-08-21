@@ -393,3 +393,186 @@ test "unknown explicit kind is reported by jac run" {
     assert "Unknown" in err and "banana" in err;
     _cleanup();
 }
+
+"""An entry GraphMend engages on: the torch import is never executed."""
+glob TORCH_ENTRY = "import from jaclang.jac0core.compile_options { CompileOptions }\n"
+         + "def _unused -> None {\n    import torch;\n}\n"
+         + "with entry { print(f\"GM={CompileOptions().graphmend}\"); }",
+     PLAIN_ENTRY = "import from jaclang.jac0core.compile_options { CompileOptions }\n"
+         + "with entry { print(f\"GM={CompileOptions().graphmend}\"); }";
+
+glob _dispatch_calls: list[str] = [];
+
+def _fake_run_jab(filename: str, port: any, args: list, serve_only: bool) -> int {
+    _dispatch_calls.append("jab");
+    return 0;
+}
+
+glob _serve_gm: list = [],
+     _serve_defer: list = [];
+
+def _fake_start(**kwargs: any) -> int {
+    import from jaclang.jac0core.compile_options { CompileOptions, defer_declines_here }
+    _dispatch_calls.append("start");
+    _serve_gm.append(CompileOptions(type_check=False).graphmend);
+    _serve_defer.append(defer_declines_here());
+    return 0;
+}
+
+def _fake_debug(**kwargs: any) -> int {
+    _dispatch_calls.append("debug");
+    return 0;
+}
+
+test "the graphmend off switch survives every jac run mode" {
+    # Each mode discovers the project config, so each binds the switch itself;
+    # only `false` proves discovery, since on is the default.
+    d = _mk_project(
+        "kind = \"cli\"\n\n[run]\ngraphmend = false\n", "main.jac", PLAIN_ENTRY
+    );
+    import from importlib.machinery { SourceFileLoader }
+    hooked_before = getattr(SourceFileLoader, "_jac_graphmend_hooked", False);
+    old = os.getcwd();
+    os.chdir(d);
+    captured = io.StringIO();
+    sys.stdout = captured;
+    try {
+        rc_project = execution.run(filename="");
+        rc_file = execution.run(filename="main.jac");
+        rc_entry = execution.run(filename="");
+    } finally {
+        sys.stdout = sys.__stdout__;
+        os.chdir(old);
+    }
+    out = captured.getvalue();
+    assert rc_project == 0 and rc_file == 0 and rc_entry == 0;
+    assert out.count("GM=False") == 3 , f"expected 3 disabled runs, got: {out}";
+    # None of these runs loads torch, so none of them may patch the stdlib
+    # loader; the hook waits for torch to enter the process.
+    hooked_now = getattr(SourceFileLoader, "_jac_graphmend_hooked", False);
+    assert hooked_now == hooked_before , "a torch-free run installed the hook";
+    _cleanup();
+}
+
+test "a run with the switch absent leaves graphmend on" {
+    d = _mk_project("kind = \"cli\"\n", "main.jac", PLAIN_ENTRY);
+    old = os.getcwd();
+    os.chdir(d);
+    captured = io.StringIO();
+    sys.stdout = captured;
+    try {
+        rc = execution.run(filename="main.jac");
+    } finally {
+        sys.stdout = sys.__stdout__;
+        os.chdir(old);
+    }
+    assert rc == 0;
+    assert "GM=True" in captured.getvalue();
+    _cleanup();
+}
+
+test "a cli-native project graphmend engages on runs the python backend" {
+    # GraphMend transforms the python backend, so an entry it can engage on
+    # skips the native fast path instead of losing the transform.
+    d = _mk_project("kind = \"cli-native\"\n", "main.jac", TORCH_ENTRY);
+    old = os.getcwd();
+    os.chdir(d);
+    captured = io.StringIO();
+    sys.stdout = captured;
+    try {
+        rc = execution.run(filename="main.jac");
+    } finally {
+        sys.stdout = sys.__stdout__;
+        os.chdir(old);
+    }
+    assert rc == 0;
+    assert "GM=True" in captured.getvalue();
+    _cleanup();
+}
+
+test "a prebuilt .jab runs instead of being refused over graphmend" {
+    # GraphMend is a gate, not a request, so it never blocks a run mode that
+    # cannot carry it; a sealed bundle just runs as built.
+    import jaclang.project.config as config_mod;
+    old_config = config_mod._config;
+    old_jab = execution._run_jab;
+    _dispatch_calls.clear();
+    captured = io.StringIO();
+    sys.stderr = captured;
+    try {
+        config_mod._config = JacConfig.from_toml_str("[run]\ngraphmend = true\n");
+        execution._run_jab = _fake_run_jab;
+        rc = execution.run(filename="app.jab");
+    } finally {
+        sys.stderr = sys.__stderr__;
+        execution._run_jab = old_jab;
+        config_mod._config = old_config;
+    }
+    assert rc == 0;
+    assert _dispatch_calls == ["jab"];
+    assert "cannot be combined" not in captured.getvalue();
+}
+
+test "a serve plan runs unrefused and marks the process serving" {
+    # Serve marks the process so the defer transform declines while its buffers
+    # are process-global; the other transforms are untouched.
+    d = _mk_project(
+        "kind = \"service\"\nentry-point = \"api.sv.jac\"\n\n"
+            + "[run]\ngraphmend = true\n",
+        "api.sv.jac"
+    );
+    old = os.getcwd();
+    old_start = execution.start;
+    _dispatch_calls.clear();
+    _serve_gm.clear();
+    _serve_defer.clear();
+    os.chdir(d);
+    captured = io.StringIO();
+    sys.stderr = captured;
+    import jaclang.jac0core.compile_options as opt_mod;
+    saved_serving = dict(opt_mod._serving_probe);
+    try {
+        execution.start = _fake_start;
+        rc = execution.run(filename="");
+    } finally {
+        sys.stderr = sys.__stderr__;
+        execution.start = old_start;
+        os.chdir(old);
+        opt_mod._serving_probe.clear();
+        opt_mod._serving_probe.update(saved_serving);
+    }
+    assert rc == 0;
+    assert _dispatch_calls == ["start"];
+    assert "cannot be combined" not in captured.getvalue();
+    assert _serve_gm == [True] , (
+        f"serve must leave graphmend on for trap and where, saw {_serve_gm}"
+    );
+    assert _serve_defer == [True] , (
+        f"serve must make the defer transform decline, saw {_serve_defer}"
+    );
+    _cleanup();
+}
+
+test "jac run --debug runs instead of being refused over graphmend" {
+    d = _mk_project(
+        "kind = \"cli\"\n\n[run]\ngraphmend = true\n", "main.jac", PLAIN_ENTRY
+    );
+    old = os.getcwd();
+    old_debug = execution.debug;
+    _dispatch_calls.clear();
+    os.chdir(d);
+    captured = io.StringIO();
+    sys.stderr = captured;
+    try {
+        execution.debug = _fake_debug;
+        rc = execution.run(filename="main.jac", debug_mode=True);
+    } finally {
+        sys.stderr = sys.__stderr__;
+        execution.debug = old_debug;
+        os.chdir(old);
+    }
+    assert rc == 0;
+    assert _dispatch_calls == ["debug"];
+    assert "cannot be combined" not in captured.getvalue();
+    _cleanup();
+}

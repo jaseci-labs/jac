@@ -7,6 +7,7 @@ integrate Jac modules into Python's import system.
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import importlib.abc
 import importlib.machinery
@@ -174,6 +175,219 @@ sys.modules["jaclang.jac0core.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
+def _graphmend_claims(fullname: str, path: str) -> bool:
+    """True if GraphMend claims this .py file.
+
+    A module claims itself when it seeds GraphMend; the claim then follows its
+    eager imports, bounded by its top-level package. torch, jaclang and the
+    standard library are never claimed, and claiming imported code at all is a
+    separate consent from transforming authored modules: it requires the
+    ``[run] graphmend_claim_imports`` opt-in, off by default. With nothing
+    claimed yet and torch absent, the gate answers from membership tests
+    alone, before any syscall.
+    """
+    try:
+        from jaclang.jac0core.runtime import JacRuntime as Jac
+
+        program = Jac.get_program()
+        claimed = getattr(program, "graphmend_claimed", None) or ()
+    except Exception:
+        return False
+    top = fullname.split(".")[0]
+    if top in ("torch", "jaclang") or top in sys.stdlib_module_names:
+        return False
+    if not claimed and "torch" not in sys.modules:
+        return False
+    try:
+        from jaclang.jac0core.compile_options import (
+            resolved_graphmend_claim_imports_setting,
+            resolved_graphmend_setting,
+        )
+
+        if resolved_graphmend_setting() is False:
+            return False
+        if not resolved_graphmend_claim_imports_setting():
+            return False
+    except Exception:
+        return False
+    if not os.path.isfile(path):
+        return False
+    if os.path.realpath(path) in claimed:
+        return True
+    if "torch" not in sys.modules:
+        return False
+    try:
+        from jaclang.compiler.passes.main.graphmend.auto_detect import (
+            file_imports_torch,
+        )
+
+        if not file_imports_torch(path):
+            return False
+        from jaclang.compiler.passes.main.graphmend.scope_facts import claim_path
+
+        return bool(claim_path(program, path))
+    except Exception:
+        return False
+
+
+def _report_abandoned_claim(path: str, reason: str) -> None:
+    """Record that a granted claim on a .py file was abandoned.
+
+    The import still succeeds through the stock loader, so a divergence
+    between the Jac and CPython front ends would otherwise be an invisible
+    behavior difference. A warning on the program surfaces it under
+    ``--diagnostics all``, naming the file and the reason. Best-effort: the
+    reporter itself must never break the import it is reporting on.
+    """
+    try:
+        from jaclang.jac0core.codeinfo import CodeLocInfo
+        from jaclang.jac0core.diagnostics import W1107
+        from jaclang.jac0core.passes.transform import Alert, Transform
+        from jaclang.jac0core.runtime import JacRuntime as Jac
+        from jaclang.jac0core.unitree import Source, Token
+
+        tok = Token(
+            orig_src=Source("", path),
+            name="WARNING",
+            value="",
+            line=1,
+            end_line=1,
+            col_start=0,
+            col_end=0,
+            pos_start=0,
+            pos_end=0,
+        )
+        Jac.get_program().warnings_had.append(
+            Alert(
+                W1107.format_message(path=path, reason=reason),
+                CodeLocInfo(tok, tok),
+                Transform,
+                code=W1107,
+            )
+        )
+    except Exception:
+        pass
+
+
+# Holds the live hook wrapper (under "wrapper") and whether the teardown
+# restore is armed (under "atexit"), so uninstall can tell our patch apart
+# from anyone else's and installs arm the restore exactly once.
+_graphmend_hook_state: dict = {}
+
+
+def install_graphmend_loader_hook() -> None:
+    """Route claimed .py files through GraphMend when the import bypasses us.
+
+    A spec built straight from a file location never consults a meta-path
+    finder, but it still goes through ``SourceFileLoader.get_code``. Compiling
+    from source there also sidesteps ``__pycache__``, so a ``.pyc`` from a
+    non-GraphMend run is never served to a GraphMend run. Idempotent; patching
+    a stdlib class is only warranted once GraphMend can claim something, so
+    callers install on the first claim or as torch enters the process. The
+    patch does not outlive the claiming region: the first install arms an
+    ``atexit`` restore, and ``uninstall_graphmend_loader_hook`` gives the
+    class its inherited ``get_code`` back at teardown.
+    """
+    loader = importlib.machinery.SourceFileLoader
+    if getattr(loader, "_jac_graphmend_hooked", False):
+        return
+    original = loader.get_code
+
+    def get_code(self: object, fullname: str) -> object:
+        path = getattr(self, "path", "") or ""
+        if path.endswith(".py") and _graphmend_claims(fullname, path):
+            try:
+                from jaclang.jac0core.runtime import JacRuntime as Jac
+
+                program = Jac.get_program()
+                codeobj = Jac.get_compiler().get_bytecode(
+                    full_target=path, target_program=program
+                )
+                if codeobj is not None:
+                    return codeobj
+                _report_abandoned_claim(
+                    path, "the Jac front end produced no bytecode for it"
+                )
+            except Exception as exc:
+                # Never break an import because GraphMend could not transform it;
+                # fall through to the stock loader and run untransformed.
+                _report_abandoned_claim(
+                    path, f"the Jac front end failed with {exc!r}"
+                )
+        return original(self, fullname)
+
+    if not _graphmend_hook_state.get("atexit"):
+        atexit.register(uninstall_graphmend_loader_hook)
+        _graphmend_hook_state["atexit"] = True
+    if not _graphmend_hook_state.get("finalizer"):
+        # The claims the hook answers live on the installing program, so the
+        # patch's lifetime follows that program: when it is collected, the
+        # stdlib class gets its method back. A later program that claims again
+        # reinstalls through the same entry points. atexit stays as the
+        # backstop for interpreters that exit before collection runs.
+        try:
+            import weakref
+
+            from jaclang.jac0core.runtime import JacRuntime as Jac
+
+            weakref.finalize(
+                Jac.get_program(), uninstall_graphmend_loader_hook
+            )
+            _graphmend_hook_state["finalizer"] = True
+        except Exception:
+            pass
+    _graphmend_hook_state["wrapper"] = get_code
+    loader.get_code = get_code  # type: ignore[method-assign]
+    loader._jac_graphmend_hooked = True  # type: ignore[attr-defined]
+
+
+def uninstall_graphmend_loader_hook() -> None:
+    """Give ``SourceFileLoader`` its inherited ``get_code`` back.
+
+    The hook is a class attribute shadowing the method ``SourceFileLoader``
+    inherits, so removal is deletion, restoring the exact stdlib behavior.
+    Only our own wrapper is removed: if someone else has patched over it,
+    their patch is left in place (it still delegates through to the stock
+    method). Idempotent, and registered with ``atexit`` at install time so
+    the stdlib class is restored when the program tears down even where no
+    explicit teardown runs.
+    """
+    loader = importlib.machinery.SourceFileLoader
+    wrapper = _graphmend_hook_state.pop("wrapper", None)
+    if wrapper is not None and loader.__dict__.get("get_code") is wrapper:
+        del loader.get_code
+    if "_jac_graphmend_hooked" in loader.__dict__:
+        del loader._jac_graphmend_hooked
+
+
+def install_graphmend_loader_hook_for_torch() -> None:
+    """Install the loader hook as torch enters the process, unless off.
+
+    Nothing is claimable before torch: a claim needs it in ``sys.modules``, or
+    a path registered by a compile of a module that imports torch itself. And
+    claiming imported code is its own consent: without the
+    ``[run] graphmend_claim_imports`` opt-in nothing can ever be claimed, so
+    the stdlib class is left untouched.
+    """
+    if getattr(
+        importlib.machinery.SourceFileLoader, "_jac_graphmend_hooked", False
+    ):
+        return
+    try:
+        from jaclang.jac0core.compile_options import (
+            resolved_graphmend_claim_imports_setting,
+            resolved_graphmend_setting,
+        )
+
+        if resolved_graphmend_setting() is False:
+            return
+        if not resolved_graphmend_claim_imports_setting():
+            return
+    except Exception:
+        return
+    install_graphmend_loader_hook()
+
+
 class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     """Meta path importer to load .jac modules via Python's import system."""
 
@@ -201,6 +415,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         target: ModuleType | None = None,
     ) -> importlib.machinery.ModuleSpec | None:
         """Find the spec for the module."""
+        # Submodules import their parent first, so the bare name is the only
+        # case to watch.
+        if fullname == "torch":
+            install_graphmend_loader_hook_for_torch()
+
         # Sealed image is authoritative: a sealed binary resolves its modules
         # from the manifest by name, with no filesystem probing for .jac. This
         # is the primary path (not a fallback) so a sealed runtime never touches
@@ -265,8 +484,38 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     "rename the file to .jac; native placement is inferred "
                     "(or forced by 'jac nacompile' / 'jac build --as native')."
                 )
+            # GraphMend: claim .py modules that seed a compiled region, plus
+            # what those seeds import inside their own package.
+            py_file = candidate_path + ".py"
+            if self._graphmend_claimed_py(fullname, py_file):
+                # A live claim means claimed code can also arrive through a
+                # spec built from a file location, which never reaches us.
+                install_graphmend_loader_hook()
+                return importlib.util.spec_from_file_location(
+                    fullname, py_file, loader=self
+                )
 
         return None
+
+    def _graphmend_claimed_py(self, fullname: str, py_file: str) -> bool:
+        """True if GraphMend should claim this .py import; see the module-level
+        twin ``_graphmend_claims`` for the rule."""
+        return _graphmend_claims(fullname, py_file)
+
+    def _exec_py_source_fallback(self, module: ModuleType, file_path: str) -> bool:
+        """Run a .py module from its original source via CPython's compiler.
+
+        Used when GraphMend interception claimed a .py file but the Jac
+        compiler could not produce bytecode for it. Keeps the import working
+        (untransformed) instead of failing. Returns True on success.
+        """
+        try:
+            with open(file_path, encoding="utf-8") as fh:
+                code = compile(fh.read(), file_path, "exec")
+            exec(code, module.__dict__)  # noqa: S102
+            return True
+        except Exception:
+            return False
 
     def _sealed_spec(self, fullname: str) -> importlib.machinery.ModuleSpec | None:
         found = _sealed.find_module(fullname)
@@ -351,13 +600,33 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Get and execute bytecode using the compiler singleton
         compiler = Jac.get_compiler()
         program = Jac.get_program()
-        codeobj = compiler.get_bytecode(
-            full_target=file_path,
-            target_program=program,
-        )
+        is_py = file_path.endswith(".py")
+        try:
+            codeobj = compiler.get_bytecode(
+                full_target=file_path,
+                target_program=program,
+            )
+        except Exception as exc:
+            # GraphMend-claimed .py that jac can't compile: never break the
+            # import -- fall back to running the original Python source. Worst
+            # case is "not transformed", not a crash.
+            if is_py and self._exec_py_source_fallback(module, file_path):
+                _report_abandoned_claim(
+                    file_path, f"the Jac front end failed with {exc!r}"
+                )
+                return
+            raise
         if not codeobj:
             if is_pkg:
                 # Empty package is OK - just register it
+                return
+            # A GraphMend-claimed .py that produced no bytecode still has usable
+            # original source; run it untransformed rather than failing the
+            # import. Tried before the diagnostic raise below.
+            if is_py and self._exec_py_source_fallback(module, file_path):
+                _report_abandoned_claim(
+                    file_path, "the Jac front end produced no bytecode for it"
+                )
                 return
             alerts = _module_scoped_alerts(program, file_path)
             if not alerts:

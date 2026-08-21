@@ -18,7 +18,9 @@ import from jaclang.jac0core.jir {
     FLAG_PRECOMPILED,
     get_module_cache_path,
     is_module_cache_valid,
+    is_module_cache_valid_gm_noop,
     precompiled_jir_matches_source,
+    swap_graphmend_cache_variant,
     cache_mode,
     read_bytecode_only,
     read_sections,
@@ -626,7 +628,7 @@ def _py_codegen_tail -> list[type[Transform]] {
 }
 
 def get_py_code_gen(
-    native: bool = True, provided: (set[str] | None) = None
+    native: bool = True, provided: (set[str] | None) = None, graphmend: bool = True
 ) -> list[type[Transform]] {
     if _codegen_sched_loading.get() or _ir_sched_loading.get() {
         return _py_codegen_tail();
@@ -663,6 +665,29 @@ def get_py_code_gen(
                 )
             );
             _note_native_schedule_failure(None);
+        }
+        if graphmend {
+            import from jaclang.compiler.passes.main.graphmend.graph_break_detect_pass {
+                GraphBreakDetectPass
+            }
+            import from jaclang.compiler.passes.main.graphmend.trap_lowering_pass {
+                TrapLoweringPass
+            }
+            import from jaclang.compiler.passes.main.graphmend.predicate_ctrl_flow_pass {
+                PredicateCtrlFlowPass
+            }
+            import from jaclang.compiler.passes.main.graphmend.defer_side_effect_pass {
+                DeferSideEffectPass
+            }
+            passes.extend(
+                resolve_schedule(
+                    [TrapLoweringPass, PredicateCtrlFlowPass, DeferSideEffectPass],
+                    providers=providers_for(
+                        [GraphBreakDetectPass, TrapLoweringPass, PredicateCtrlFlowPass]
+                    ),
+                    origin='graphmend codegen schedule'
+                )
+            );
         }
         passes.extend(_py_codegen_tail());
         return passes;
@@ -1241,7 +1266,16 @@ obj JacCompiler {
 
     static def _check_native_abi(layout: any, full_target: str) -> None;
     def get_bytecode(
-        full_target: str, target_program: JacProgram
+        full_target: str,
+        target_program: JacProgram,
+        options: (CompileOptions | None) = None
+    ) -> (types.CodeType | None);
+
+    def _get_bytecode_variant(
+        full_target: str,
+        target_program: JacProgram,
+        actual_program: JacProgram,
+        gm_active: bool
     ) -> (types.CodeType | None);
 
     def _evict_internal_unit(

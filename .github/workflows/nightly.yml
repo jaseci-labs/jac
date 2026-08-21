@@ -294,3 +294,24 @@ jobs:
           echo "=== ingress status ==="; kubectl describe ingress -n "${NS}" || true
           echo "=== ingress controller logs ==="
           kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50 || true
+
+  # ci.yml's test-graphmend-torch pins torch so the merge gate cannot redden for
+  # reasons outside the PR. This is the other half of that trade: the same
+  # graph-count suites against whatever CPU torch is current, so Dynamo drift
+  # shows up here rather than on an unrelated PR.
+  graphmend-torch-latest:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up jac (sealed binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install the latest CPU-only torch and run the graph-count suites
+      uses: ./.github/actions/graphmend-torch
+      with:
+        specs: torch numpy
+        expected-tests: "18"

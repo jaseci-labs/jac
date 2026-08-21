@@ -120,6 +120,24 @@ enum ExprCtx { LOAD = 'load', STORE = 'store', DEL = 'del' }
 
 enum OwnershipKind: int { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, IMM = 4 }
 
+enum GraphBreakKind {
+    VAL_GUARD = 'val_guard',
+    DYN_CTRL_FL = 'dyn_ctrl_fl',
+    SIDE_EFFECT = 'side_effect'
+}
+
+enum GraphMendHelper {
+    EQ_ASSERT = '__jac_tensor_eq_assert__',
+    TRAP_GUARD = '__jac_trap_guard__',
+    SE_EMIT = '__jac_se_emit__',
+    SE_FLUSH = '__jac_se_flush__',
+    SE_GUARD = '__jac_se_guard__',
+    SE_REGION_OPEN = '__jac_se_region_open__',
+    LOG_REGISTER = '__jac_log_register__',
+    LOG_EMIT = '__jac_log_emit__',
+    LOG_FLUSH_HOOK = '__jac_log_flush_hook__'
+}
+
 glob TYPE_PARAM_CONSTRUCTORS: frozenset = frozenset(
          {"TypeVar", "ParamSpec", "TypeVarTuple"}
      ),

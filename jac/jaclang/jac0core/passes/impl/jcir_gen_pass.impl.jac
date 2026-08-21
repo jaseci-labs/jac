@@ -640,6 +640,11 @@ impl JcirGenPass.exit_sub_tag(nd: SubTag) -> None {
 
 impl JcirGenPass.exit_module(nd: Module) -> None {
     mod_path = nd.loc.mod_path;
+    _gm_facts = nd.gen.graphmend_facts;
+    _gm_helpers = _gm_facts.helpers if (_gm_facts is not None) else None;
+    for _gm_helper in (_gm_helpers or set()) {
+        self.jaclib_obj(_gm_helper.value);
+    }
     is_builtin_module = (
         (mod_path.endswith('builtin.jac') or mod_path.endswith('builtin.py'))
         and ('runtimelib' in mod_path)

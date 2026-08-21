@@ -125,7 +125,7 @@ Execute a Jac file, a prebuilt `.jab` artifact, or (with no filename) run the cu
 **Note:** `jac <file>` is shorthand for `jac run <file>` - both work identically.
 
 ```bash
-jac run [-h] [-s] [--show] [-m] [--no-main] [-c] [--no-cache] [-e DIAGNOSTICS] [--profile PROFILE] [--entry ENTRY] [-n NODE] [-r ROOT] [--debug] [filename] [args ...]
+jac run [-h] [-s] [--show] [-m] [--no-main] [-c] [--no-cache] [--graphmend-disable GRAPHMEND_DISABLE] [-e DIAGNOSTICS] [--profile PROFILE] [--entry ENTRY] [-n NODE] [-r ROOT] [--debug] [filename] [args ...]
 ```
 
 | Option | Description | Default |
@@ -134,6 +134,7 @@ jac run [-h] [-s] [--show] [-m] [--no-main] [-c] [--no-cache] [-e DIAGNOSTICS] [
 | `-s, --show` | Print the resolved project run-plan (kind, action, equivalent command) without executing | `False` |
 | `-m, --main` | Treat module as `__main__` | `True` |
 | `-c, --cache` | Enable compilation cache | `True` |
+| `--graphmend-disable` | GraphMend transforms to skip: `trap`, `where`, `defer` | `""` |
 | `-e, --diagnostics` | Diagnostic verbosity: `error`, `all`, or `none` | `error` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
 | `--entry` | Run a specific entrypoint (function/walker) instead of the module's `with entry` block | None |
@@ -143,6 +144,12 @@ jac run [-h] [-s] [--show] [-m] [--no-main] [-c] [--no-cache] [-e DIAGNOSTICS] [
 | `args` | Arguments passed to the script (available via `sys.argv[1:]`) | |
 
 Like Python, everything after the filename is passed to the script. Jac flags must come **before** the filename.
+
+**GraphMend.** GraphMend (PyTorch 2 FX graph-break elimination) is on by default: it engages per compiled module, exactly for modules that import `torch` or a `torch.*` submodule; every other module compiles byte-identically to a graphmend-off run. Within an engaged module, only functions reachable from an entry point are transformed: a `torch.compile` decorated function or class, a call-site wrap such as `torch.compile(Model())`, or a `forward` method whose class binds a torch Module base. A module with no reachable entries compiles exactly as off and shares the off cache artifact. Claiming imported plain `.py` model code is a separate, explicit opt-in: with `[run] graphmend_claim_imports = true`, a module holding an entry point claims itself, and the claim follows its eager imports within the same top-level package; without it (the default), imported code is never recompiled and only the modules the compiler is asked to compile directly are transformed. Imports guarded by `if TYPE_CHECKING:` never extend the claim, and `torch`, `jaclang` and the standard library are never claimed. When a granted claim cannot be served by the Jac front end, the import falls back to the standard Python loader and a `W1107` warning names the file and the reason (visible with `--diagnostics all`); the `SourceFileLoader` patch that carries claiming is removed again when the program tears down. There is no mode and no CLI flag: `[run] graphmend = false` in `jac.toml` is the off switch, and `--graphmend-disable` has a matching `[run] graphmend_disable` key, with the CLI beating `jac.toml`. GraphMend-active compiles stay cached, keyed by the GraphMend configuration and by the module's claim state.
+
+**GraphMend proof discipline.** GraphMend is split into an over-approximating detection stage and a proving rewrite stage, and the two deliberately use different evidence. Detection matches by spelling: the literal name `torch`, method names such as `.item()` or `.all()`, and textual equality of arguments when deciding whether two branches share a call. Rewrites then prove by symbol binding before changing anything: the receiver must resolve to a tensor, `torch` must bind the actual module import, and a site that cannot be proven declines and keeps its original code. An over-tag therefore costs nothing at the rewrite, with one consequence worth knowing: detection is also what decides which imported `.py` files are claimed under `graphmend_claim_imports`, so a file can be claimed and recompiled on spelling evidence alone even if every rewrite in it then declines.
+
+**GraphMend residuals.** The `defer` transform defers delivery of a side-effect call, not materialization of its arguments. Arguments are still evaluated at the original program point: `print(f"loss={loss.item()}")` runs the f-string, and the `.item()` inside it, exactly where it stood, so this pattern keeps its graph break. Each non-literal argument is also snapshotted with a `.clone()` at that point, so a later in-place mutation cannot corrupt the deferred value, which adds a device copy per deferred call. Only the call itself, the print or logger write, moves past the graph. Since logging an interpolated tensor value is the dominant real logging pattern, this bounds how much of the deferral benefit lands on real code.
 
 **Project-aware run (no filename).** Inside a project, a bare `jac run` resolves the project *kind* from `[project] kind` in `jac.toml` (or infers it from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`), **serve** server kinds (`service`, `web-app`, ...), or **build** artifact kinds (`native-binary`, `native-lib`, `py-package`, `js-package`). Use `jac run --show` to preview the plan and the equivalent primitive command (`run` / `start` / `nacompile` / `build`) without running it. See [project kinds](../../quick-guide/project-kinds.md) and [config `[project]`](../config/index.md).
 
