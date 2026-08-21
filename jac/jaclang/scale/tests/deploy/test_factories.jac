@@ -328,43 +328,47 @@ test "hpa autoscaler build manifests produces correct dict" {
         triggers=[Trigger(type="cpu", metadata={"averageUtilization": "70"})]
     );
     result = HPAAutoscaler()._build_manifests(spec);
-    expected = {
-        "apiVersion": "autoscaling/v2",
-        "kind": "HorizontalPodAutoscaler",
-        "metadata": {
-            "name": "my-service-hpa",
-            "namespace": "default",
-            "labels": {"app": "my-service-deployment", "managed": "jac-scale"}
-        },
-        "spec": {
-            "scaleTargetRef": {
-                "apiVersion": "apps/v1",
-                "kind": "Deployment",
-                "name": "my-service-deployment"
+    expected = [
+        {
+            "apiVersion": "autoscaling/v2",
+            "kind": "HorizontalPodAutoscaler",
+            "metadata": {
+                "name": "my-service-hpa",
+                "namespace": "default",
+                "labels": {"app": "my-service-deployment", "managed": "jac-scale"}
             },
-            "minReplicas": 1,
-            "maxReplicas": 3,
-            "metrics": [
-                {
-                    "type": "Resource",
-                    "resource": {
-                        "name": "cpu",
-                        "target": {"type": "Utilization", "averageUtilization": 70}
-                    }
-                }
-            ],
-            "behavior": {
-                "scaleUp": {
-                    "stabilizationWindowSeconds": 60,
-                    "policies": [{"type": "Pods", "value": 2, "periodSeconds": 60}]
+            "spec": {
+                "scaleTargetRef": {
+                    "apiVersion": "apps/v1",
+                    "kind": "Deployment",
+                    "name": "my-service-deployment"
                 },
-                "scaleDown": {
-                    "stabilizationWindowSeconds": 300,
-                    "policies": [{"type": "Percent", "value": 50, "periodSeconds": 60}]
+                "minReplicas": 1,
+                "maxReplicas": 3,
+                "metrics": [
+                    {
+                        "type": "Resource",
+                        "resource": {
+                            "name": "cpu",
+                            "target": {"type": "Utilization", "averageUtilization": 70}
+                        }
+                    }
+                ],
+                "behavior": {
+                    "scaleUp": {
+                        "stabilizationWindowSeconds": 60,
+                        "policies": [{"type": "Pods", "value": 2, "periodSeconds": 60}]
+                    },
+                    "scaleDown": {
+                        "stabilizationWindowSeconds": 300,
+                        "policies": [
+                            {"type": "Percent", "value": 50, "periodSeconds": 60}
+                        ]
+                    }
                 }
             }
         }
-    };
+    ];
     assert result == expected;
 }
 
@@ -384,7 +388,7 @@ test "hpa autoscaler build manifests applies behavior_overlay onto the default s
             }
         }
     );
-    result = HPAAutoscaler()._build_manifests(spec);
+    result = HPAAutoscaler()._build_manifests(spec)[0];
     behavior = result["spec"]["behavior"];
     assert behavior["scaleDown"]["stabilizationWindowSeconds"] == 600;
     assert behavior["scaleDown"]["selectPolicy"] == "Min";

@@ -95,6 +95,37 @@ test "TriggerAuthentication names are scoped per service and per trigger positio
     assert order != order_second;
 }
 
+test "TriggerAuthentication manifest carries app and owner labels for reconciliation" {
+    # apply()'s prune step and destroy() both find TriggerAuthentications by
+    # this label, not by parsing the ScaledObject's authenticationRef.
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="order-service-deployment",
+        app_name="order-service",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={"address": "redis:6379"},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    manifests = keda._build_manifests(spec);
+    ta = [
+        m
+        for m in manifests
+        if m["kind"] == "TriggerAuthentication"
+    ][0];
+    labels = ta["metadata"]["labels"];
+    assert labels["app"] == "order-service";
+    assert labels["jac-scale/owner"] == "order-service-scaledobject";
+    assert labels["managed"] == "jac-scale";
+}
+
 test "duplicate trigger identities raise ValueError before any cluster write" {
     # Two triggers resolving to the same identity would overwrite each other's
     # TriggerAuthentication; apply() must reject the spec up front.
@@ -142,15 +173,15 @@ test "build manifests produces a complete and valid ScaledObject body" {
         max_replicas=10,
         triggers=[Trigger(type="cpu", metadata={"averageUtilization": "60"})]
     );
-    m = keda._build_manifests(spec);
-    assert m["name"] == "orders-deployment-scaledobject";
-    assert m["body"]["apiVersion"] == "keda.sh/v1alpha1";
-    assert m["body"]["kind"] == "ScaledObject";
-    assert m["body"]["metadata"]["labels"]["managed"] == "jac-scale";
-    assert m["body"]["spec"]["scaleTargetRef"]["name"] == "orders-deployment";
-    assert m["body"]["spec"]["minReplicaCount"] == 2;
-    assert m["body"]["spec"]["maxReplicaCount"] == 10;
-    assert m["body"]["spec"]["triggers"][0]["metadata"]["value"] == "60";
+    m = keda._build_manifests(spec)[0];
+    assert m["metadata"]["name"] == "orders-deployment-scaledobject";
+    assert m["apiVersion"] == "keda.sh/v1alpha1";
+    assert m["kind"] == "ScaledObject";
+    assert m["metadata"]["labels"]["managed"] == "jac-scale";
+    assert m["spec"]["scaleTargetRef"]["name"] == "orders-deployment";
+    assert m["spec"]["minReplicaCount"] == 2;
+    assert m["spec"]["maxReplicaCount"] == 10;
+    assert m["spec"]["triggers"][0]["metadata"]["value"] == "60";
 }
 
 test "build manifests applies behavior_overlay through advanced.horizontalPodAutoscalerConfig" {
@@ -169,10 +200,8 @@ test "build manifests applies behavior_overlay through advanced.horizontalPodAut
             }
         }
     );
-    m = keda._build_manifests(spec);
-    behavior = m["body"]["spec"]["advanced"]["horizontalPodAutoscalerConfig"][
-        "behavior"
-    ];
+    m = keda._build_manifests(spec)[0];
+    behavior = m["spec"]["advanced"]["horizontalPodAutoscalerConfig"]["behavior"];
     assert behavior["scaleDown"]["stabilizationWindowSeconds"] == 600;
     assert behavior["scaleDown"]["selectPolicy"] == "Min";
     assert behavior["scaleDown"]["policies"]
@@ -185,8 +214,8 @@ test "build manifests adds idleReplicaCount zero for scale-to-zero" {
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment", namespace="default", idle_replicas=0
     );
-    m = keda._build_manifests(spec);
-    assert m["body"]["spec"]["idleReplicaCount"] == 0;
+    m = keda._build_manifests(spec)[0];
+    assert m["spec"]["idleReplicaCount"] == 0;
 }
 
 test "build manifests omits idleReplicaCount when not configured" {
@@ -194,8 +223,8 @@ test "build manifests omits idleReplicaCount when not configured" {
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment", namespace="default", idle_replicas=None
     );
-    m = keda._build_manifests(spec);
-    assert "idleReplicaCount" not in m["body"]["spec"];
+    m = keda._build_manifests(spec)[0];
+    assert "idleReplicaCount" not in m["spec"];
 }
 
 test "build manifests adds initialCooldownPeriod when set above zero" {
@@ -205,8 +234,8 @@ test "build manifests adds initialCooldownPeriod when set above zero" {
         namespace="default",
         initial_cooldown_period=120
     );
-    m = keda._build_manifests(spec);
-    assert m["body"]["spec"]["initialCooldownPeriod"] == 120;
+    m = keda._build_manifests(spec)[0];
+    assert m["spec"]["initialCooldownPeriod"] == 120;
 }
 
 test "build manifests omits initialCooldownPeriod when zero" {
@@ -216,8 +245,8 @@ test "build manifests omits initialCooldownPeriod when zero" {
         namespace="default",
         initial_cooldown_period=0
     );
-    m = keda._build_manifests(spec);
-    assert "initialCooldownPeriod" not in m["body"]["spec"];
+    m = keda._build_manifests(spec)[0];
+    assert "initialCooldownPeriod" not in m["spec"];
 }
 
 test "build manifests falls back to default cpu trigger when triggers list is empty" {
@@ -225,9 +254,9 @@ test "build manifests falls back to default cpu trigger when triggers list is em
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment", namespace="default", triggers=[]
     );
-    m = keda._build_manifests(spec);
-    assert len(m["body"]["spec"]["triggers"]) == 1;
-    assert m["body"]["spec"]["triggers"][0]["type"] == "cpu";
+    m = keda._build_manifests(spec)[0];
+    assert len(m["spec"]["triggers"]) == 1;
+    assert m["spec"]["triggers"][0]["type"] == "cpu";
 }
 
 test "build manifests includes every trigger in the ScaledObject spec" {
@@ -243,10 +272,10 @@ test "build manifests includes every trigger in the ScaledObject spec" {
             )
         ]
     );
-    m = keda._build_manifests(spec);
-    assert len(m["body"]["spec"]["triggers"]) == 2;
-    assert m["body"]["spec"]["triggers"][0]["type"] == "cpu";
-    assert m["body"]["spec"]["triggers"][1]["type"] == "prometheus";
+    m = keda._build_manifests(spec)[0];
+    assert len(m["spec"]["triggers"]) == 2;
+    assert m["spec"]["triggers"][0]["type"] == "cpu";
+    assert m["spec"]["triggers"][1]["type"] == "prometheus";
 }
 
 test "build manifests with hpa bounds and non-cpu trigger produces ScaledObject with both triggers" {
@@ -269,10 +298,10 @@ test "build manifests with hpa bounds and non-cpu trigger produces ScaledObject 
             )
         ]
     );
-    m = keda._build_manifests(spec);
-    assert m["body"]["spec"]["minReplicaCount"] == 2;
-    assert m["body"]["spec"]["maxReplicaCount"] == 10;
-    trigger_types = [t["type"] for t in m["body"]["spec"]["triggers"]];
+    m = keda._build_manifests(spec)[0];
+    assert m["spec"]["minReplicaCount"] == 2;
+    assert m["spec"]["maxReplicaCount"] == 10;
+    trigger_types = [t["type"] for t in m["spec"]["triggers"]];
     assert "cpu" in trigger_types;
     assert "redis" in trigger_types;
     assert len(trigger_types) == 2;
@@ -354,8 +383,9 @@ test "apply logs the install docs link when KEDA CRDs are not installed" {
 }
 
 test "TriggerAuthentication name written to cluster matches authenticationRef name in ScaledObject" {
-    # _build_trigger (authenticationRef) and _apply_trigger_auth (the resource) must
-    # agree on the name end to end, or KEDA cannot resolve the secret at admission time.
+    # _build_trigger (authenticationRef) and _build_trigger_auth_manifest (the
+    # resource) must agree on the name end to end, or KEDA cannot resolve the
+    # secret at admission time.
     KEDAAutoscaler._preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
@@ -465,6 +495,74 @@ test "apply patches ScaledObject when it already exists on the cluster" {
     assert len(patch_calls) == 1;
 }
 
+test "apply prunes a TriggerAuthentication the redeployed trigger set no longer references" {
+    # A redeploy that renames or drops a trigger must not leave its old
+    # TriggerAuthentication behind, unreferenced by the ScaledObject.
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [{"metadata": {"name": "svc-deployment-scaledobject-stale-ta"}}]
+    };
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        namespace="default",
+        triggers=[Trigger(type="cpu", metadata={})]
+    );
+    result = keda.apply(spec);
+    assert result == True;
+    mock_api.list_namespaced_custom_object.assert_called_once_with(
+        group="keda.sh",
+        version="v1alpha1",
+        namespace="default",
+        plural="triggerauthentications",
+        label_selector="jac-scale/owner=svc-deployment-scaledobject,managed=jac-scale"
+    );
+    prune_calls = [
+        c
+        for c in mock_api.delete_namespaced_custom_object.call_args_list
+        if c[1]["plural"] == "triggerauthentications"
+    ];
+    assert len(prune_calls) == 1;
+    assert prune_calls[0][1]["name"] == "svc-deployment-scaledobject-stale-ta";
+}
+
+test "apply keeps a TriggerAuthentication that is still referenced by the current trigger set" {
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={"address": "redis:6379"},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    desired_name = keda._trigger_auth_name("svc-deployment", spec.triggers[0], 0);
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [{"metadata": {"name": desired_name}}]
+    };
+    result = keda.apply(spec);
+    assert result == True;
+    prune_calls = [
+        c
+        for c in mock_api.delete_namespaced_custom_object.call_args_list
+        if c[1]["plural"] == "triggerauthentications"
+    ];
+    assert len(prune_calls) == 0;
+}
+
 
 test "apply deletes competing HPA when switching from hpa engine to keda" {
     KEDAAutoscaler._preflight_cache.clear();
@@ -516,10 +614,81 @@ test "destroy collection also sweeps competing HPAs" {
     );
 }
 
-test "destroy calls delete with the correct plural and resource name" {
+test "destroy resolves the ScaledObject name from app_name and deletes it" {
     mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {"items": []};
     keda = KEDAAutoscaler(_custom_api=mock_api);
-    keda.destroy("my-svc-scaledobject", "staging");
+    keda.destroy("my-svc", "staging");
+    delete_calls = [
+        c
+        for c in mock_api.delete_namespaced_custom_object.call_args_list
+        if c[1]["plural"] == "scaledobjects"
+    ];
+    assert len(delete_calls) == 1;
+    assert delete_calls[0][1]
+        == {
+            "group": "keda.sh",
+            "version": "v1alpha1",
+            "namespace": "staging",
+            "plural": "scaledobjects",
+            "name": "my-svc-scaledobject"
+        };
+}
+
+test "destroy is a no-op when the ScaledObject is already gone" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {"items": []};
+    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=404);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc", "staging");
+}
+
+test "destroy sweeps TriggerAuthentications owned by this ScaledObject before deleting it" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [{"metadata": {"name": "my-svc-scaledobject-89abcdef-ta"}}]
+    };
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc", "staging");
+    mock_api.list_namespaced_custom_object.assert_called_once_with(
+        group="keda.sh",
+        version="v1alpha1",
+        namespace="staging",
+        plural="triggerauthentications",
+        label_selector="jac-scale/owner=my-svc-scaledobject,managed=jac-scale"
+    );
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 2;
+    assert delete_calls[0][1]
+        == {
+            "group": "keda.sh",
+            "version": "v1alpha1",
+            "namespace": "staging",
+            "plural": "triggerauthentications",
+            "name": "my-svc-scaledobject-89abcdef-ta"
+        };
+    assert delete_calls[1][1]["plural"] == "scaledobjects";
+}
+
+test "destroy tolerates a TriggerAuthentication that is already deleted" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.return_value = {
+        "items": [{"metadata": {"name": "my-svc-scaledobject-89abcdef-ta"}}]
+    };
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=404),  # the TriggerAuthentication
+        None  # the ScaledObject
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc", "staging");
+    assert len(mock_api.delete_namespaced_custom_object.call_args_list) == 2;
+}
+
+test "destroy still deletes the ScaledObject when the TriggerAuthentication CRD is absent" {
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_namespaced_custom_object.side_effect = ApiException(status=404);
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("my-svc", "staging");
     mock_api.delete_namespaced_custom_object.assert_called_once_with(
         group="keda.sh",
         version="v1alpha1",
@@ -527,13 +696,6 @@ test "destroy calls delete with the correct plural and resource name" {
         plural="scaledobjects",
         name="my-svc-scaledobject"
     );
-}
-
-test "destroy is a no-op when the ScaledObject is already gone" {
-    mock_api = unittest.mock.MagicMock();
-    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=404);
-    keda = KEDAAutoscaler(_custom_api=mock_api);
-    keda.destroy("my-svc-scaledobject", "staging");
 }
 
 

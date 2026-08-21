@@ -890,13 +890,13 @@ obj KubernetesTarget(KubernetesTargetBase) {
             autoscaler = AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), None
             );
-            built = autoscaler._build_manifests(
-                self._autoscaler_spec(
-                    svc_name, cfg, autoscaler, self.k8s_config.namespace
+            out.extend(
+                autoscaler._build_manifests(
+                    self._autoscaler_spec(
+                        svc_name, cfg, autoscaler, self.k8s_config.namespace
+                    )
                 )
             );
-
-            out.append(built["body"] if "body" in built else built);
         }
         return out;
     }

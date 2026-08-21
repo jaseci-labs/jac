@@ -374,7 +374,7 @@ obj KubernetesTargetBase(DeploymentTarget) {
         autoscaler = AutoscalerFactory.create(
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
         );
-        autoscaler.destroy(autoscaler.resource_name_for(app_name), namespace);
+        autoscaler.destroy(app_name, namespace);
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );
