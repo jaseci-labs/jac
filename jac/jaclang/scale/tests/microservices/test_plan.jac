@@ -221,7 +221,15 @@ test "render smoke: realistic bundle prints every section" {
             "__gateway__": _dep(image="gateway:v1")
         },
         "services": {"api": {}, "__gateway__": {}},
-        "autoscalers": {"api": {"min": 2, "max": 10, "cpu_target": 70}},
+        "scaling": {
+            "api": {
+                "mode": "metric",
+                "scale_target_name": "api-deployment",
+                "service_name": "api-service",
+                "autoscaler": {"min": 2, "max": 10, "cpu_target": 70},
+                "http_activation": {}
+            }
+        },
         "pdbs": {"api": {"spec": {"maxUnavailable": 1}}},
         "ingress": {
             "spec": {"rules": [{"host": "shop.example.com", "http": {"paths": []}}]}
@@ -288,6 +296,36 @@ test "a disabled rate limit renders no rate-limit line" {
     );
     assert "rate_limit:" not in out , f"disabled limit rendered a line:\n{out}";
     assert "120/min" not in out;
+}
+
+
+test "render: an http_activation service shows scale-to-zero and counts in Totals" {
+    bundle: dict[str, Any] = {
+        "deployments": {"llm": _dep(image="llm:v1")},
+        "services": {"llm": {}},
+        "scaling": {
+            "llm": {
+                "mode": "http_activation",
+                "scale_target_name": "llm-deployment",
+                "service_name": "llm-service",
+                "autoscaler": {},
+                "http_activation": {
+                    "enabled": True,
+                    "min_replicas": 0,
+                    "max_replicas": 5,
+                    "concurrency_target": 10
+                }
+            }
+        },
+        "pdbs": {}
+    };
+    ms_toml = "[scale.microservices.routes]\nllm = \"/llm\"\n";
+    (out, _) = _run_plan(bundle, ms_toml=ms_toml);
+    assert "HTTP activation: 0 -> 5 on concurrency=10" in out;
+    assert "scale-to-zero via KEDA HTTP Add-on" in out;
+    assert "1 HTTP activation" in out;
+    # The metric-autoscaler HPA line must NOT appear for an activation service.
+    assert "HPA:" not in out;
 }
 
 

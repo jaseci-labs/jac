@@ -1,4 +1,7 @@
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { GATEWAY_NAME }
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
+    GATEWAY_NAME,
+    ScalingMode
+}
 import from jaclang.scale.runtime.cli._narrow {
     bget,
     dget,
@@ -80,6 +83,7 @@ obj PlanValidator {
         out: list[Diagnostic] = [];
         routes = dget(self.ms_cfg, "routes");
         deployments = dget(self.bundle, "deployments");
+        scaling = dget(self.bundle, "scaling");
 
         self._check_config_keys(out);
         self._check_routes(routes, out);
@@ -104,6 +108,12 @@ obj PlanValidator {
                         )
                     )
                 );
+                continue;
+            }
+            mode = dget(scaling, svc_name).get("mode");
+            if mode == ScalingMode.HTTP_ACTIVATION {
+                self._check_resources(svc_name, deployment, out);
+                self._check_image(svc_name, deployment, out);
                 continue;
             }
             self._check_hpa(svc_name, svc_cfg, deployment, out);
