@@ -892,6 +892,95 @@ impl KEDAAutoscaler.invalidate_capabilities{
     self._capabilities_cache.pop(self._capabilities_cache_key(), None);
 }
 
+impl KEDAAutoscaler._normalize_keda_status{
+    if scaled_object is None {
+        return AutoscalerRuntimeStatus(
+            state=AutoscalerState.UNKNOWN.value,
+            desired_replicas=0,
+            current_replicas=0,
+            ready_replicas=0,
+            message="ScaledObject not found"
+        );
+    }
+
+    status = scaled_object.get("status", {});
+    conditions = status.get("conditions", []);
+    cond_by_type = {c["type"]: c for c in conditions};
+    resource_version = scaled_object.get("metadata", {}).get("resourceVersion");
+
+    hpa_status = (hpa or {}).get("status", {});
+    deployment_status = (deployment or {}).get("status", {});
+
+    desired = hpa_status.get("desired_replicas");
+    if desired is None {
+        desired = deployment_status.get("replicas", 0) or 0;
+    }
+    current = hpa_status.get("current_replicas");
+    if current is None {
+        current = deployment_status.get("replicas", 0) or 0;
+    }
+    ready = deployment_status.get("ready_replicas", 0) or 0;
+
+    ready_cond = cond_by_type.get("Ready");
+    active_cond = cond_by_type.get("Active");
+    fallback_cond = cond_by_type.get("Fallback");
+    paused_cond = cond_by_type.get("Paused");
+
+    scaler_ready = (ready_cond.get("status") == "True") if ready_cond else None;
+    trigger_active = (active_cond.get("status") == "True") if active_cond else None;
+
+    def build(state: str, message: (str | None) = None) -> AutoscalerRuntimeStatus {
+        return AutoscalerRuntimeStatus(
+            state=state,
+            desired_replicas=desired,
+            current_replicas=current,
+            ready_replicas=ready,
+            trigger_active=trigger_active,
+            scaler_ready=scaler_ready,
+            conditions=conditions,
+            resource_version=resource_version,
+            message=message
+        );
+    }
+
+    if ready_cond and ready_cond.get("status") == "False" {
+        return build(
+            AutoscalerState.DEGRADED.value,
+            ready_cond.get("message") or ready_cond.get("reason")
+        );
+    }
+    if fallback_cond and fallback_cond.get("status") == "True" {
+        return build(
+            AutoscalerState.DEGRADED.value, "scaler using static fallback replica count"
+        );
+    }
+    if paused_cond and paused_cond.get("status") == "True" {
+        return build(AutoscalerState.INACTIVE.value, "paused via annotation");
+    }
+    if active_cond is None {
+        return build(
+            AutoscalerState.UNKNOWN.value,
+            "Active condition missing from ScaledObject status"
+        );
+    }
+    if (not trigger_active) and desired == 0 {
+        return build(AutoscalerState.INACTIVE.value);
+    }
+    if trigger_active and ready < desired {
+        return build(AutoscalerState.ACTIVATING.value);
+    }
+    if trigger_active and ready == desired and desired == current and desired > 0 {
+        return build(AutoscalerState.ACTIVE.value);
+    }
+    if current > desired {
+        return build(AutoscalerState.DEACTIVATING.value);
+    }
+    return build(
+        AutoscalerState.UNKNOWN.value,
+        f"unrecognized state combination: conditions={conditions}"
+    );
+}
+
 impl KEDAAutoscaler.format_capabilities{
     if caps.core_available and caps.http_addon_available and not caps.errors {
         return "KEDA HTTP Add-on capabilities ready: core and HTTP Add-on both available.";

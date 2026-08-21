@@ -159,3 +159,59 @@ impl HPAAutoscaler.destroy_collection{
 impl HPAAutoscaler.resource_name_for{
     return f"{target}-hpa";
 }
+
+impl HPAAutoscaler._normalize_hpa_status{
+    if hpa is None {
+        return AutoscalerRuntimeStatus(
+            state=AutoscalerState.UNKNOWN.value,
+            desired_replicas=0,
+            current_replicas=0,
+            ready_replicas=0,
+            message="HorizontalPodAutoscaler not found"
+        );
+    }
+
+    status = hpa.get("status", {});
+    current = status.get("current_replicas", 0) or 0;
+    desired = status.get("desired_replicas", 0) or 0;
+    conditions = status.get("conditions", []);
+    resource_version = hpa.get("metadata", {}).get("resource_version");
+    cond_by_type = {c["type"]: c for c in conditions};
+    scaling_active = cond_by_type.get("ScalingActive");
+
+    if scaling_active is None {
+        return AutoscalerRuntimeStatus(
+            state=AutoscalerState.UNKNOWN.value,
+            desired_replicas=desired,
+            current_replicas=current,
+            ready_replicas=current,
+            conditions=conditions,
+            resource_version=resource_version,
+            message="ScalingActive condition missing from HorizontalPodAutoscaler status"
+        );
+    }
+
+    scaler_ready = scaling_active.get("status") == "True";
+    if not scaler_ready {
+        return AutoscalerRuntimeStatus(
+            state=AutoscalerState.DEGRADED.value,
+            desired_replicas=desired,
+            current_replicas=current,
+            ready_replicas=current,
+            scaler_ready=False,
+            conditions=conditions,
+            resource_version=resource_version,
+            message=scaling_active.get("message") or scaling_active.get("reason")
+        );
+    }
+
+    return AutoscalerRuntimeStatus(
+        state=AutoscalerState.ACTIVE.value,
+        desired_replicas=desired,
+        current_replicas=current,
+        ready_replicas=current,
+        scaler_ready=True,
+        conditions=conditions,
+        resource_version=resource_version
+    );
+}
