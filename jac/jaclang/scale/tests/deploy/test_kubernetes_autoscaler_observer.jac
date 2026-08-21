@@ -497,3 +497,279 @@ test "a Deployment readiness update alone can flip a target from activating to a
 
     obs.stop(drain=True);
 }
+
+
+# --- target correlation ---
+# jac-scale controls the `app` label on the ScaledObject/HPA resources it
+# creates itself (_managed_labels/_build_manifests), but not on the user's
+# own target Deployment -- so the deployment kind must correlate by the
+# resource's own name, not by a label jac-scale never promised to set there.
+
+test "_target_name_for uses the app label for scaled_object and hpa resources" {
+    obs = KubernetesAutoscalerObserver();
+    scaled_object = {
+        "metadata": {
+            "name": "orders-scaledobject",
+            "labels": {"app": "orders-deployment"}
+        }
+    };
+    hpa = {"metadata": {"name": "orders-hpa", "labels": {"app": "orders-deployment"}}};
+
+    assert obs._target_name_for("scaled_object", scaled_object) == "orders-deployment";
+    assert obs._target_name_for("hpa", hpa) == "orders-deployment";
+}
+
+test "_target_name_for uses the deployment's own name, with no app label required" {
+    obs = KubernetesAutoscalerObserver();
+    # A user's Deployment jac-scale did not create, and so never labeled --
+    # this is the realistic shape most target Deployments actually have.
+    deployment = {"metadata": {"name": "orders-deployment", "labels": {}}};
+
+    assert obs._target_name_for("deployment", deployment) == "orders-deployment";
+}
+
+test "_target_name_for still prefers the app label for a deployment when both are present" {
+    obs = KubernetesAutoscalerObserver();
+    deployment = {
+        "metadata": {
+            "name": "orders-deployment",
+            "labels": {"app": "orders-deployment"}
+        }
+    };
+    assert obs._target_name_for("deployment", deployment) == "orders-deployment";
+}
+
+test "_target_name_for returns None for a scaled_object/hpa resource with no app label" {
+    obs = KubernetesAutoscalerObserver();
+    scaled_object = {"metadata": {"name": "orphan-scaledobject", "labels": {}}};
+    assert obs._target_name_for("scaled_object", scaled_object) is None;
+}
+
+test "_handle_event logs and silently ignores a resource that cannot be correlated" {
+    mock_logger = unittest.mock.MagicMock();
+    obs = KubernetesAutoscalerObserver(logger=mock_logger);
+    orphan = {"metadata": {"name": "orphan-scaledobject", "labels": {}}};
+
+    obs._handle_event("default", "scaled_object", "ADDED", orphan);
+
+    assert obs._target_cache == {};
+    mock_logger.debug.assert_called_once();
+    logged_msg = mock_logger.debug.call_args[0][0];
+    assert "orphan-scaledobject" in logged_msg;
+}
+
+
+# --- watch_namespace concurrency ---
+# The original bug was a check-then-act race: Thread.start() ran outside the
+# lock, so a concurrent watch_namespace call could see the just-registered
+# (but not-yet-started) thread's is_alive() as False and register a second
+# thread over it, orphaning the first (invisible to stop()/health(), never
+# joined). This can't be reproduced deterministically without a hook into
+# the exact register/start window, so this is a best-effort concurrent
+# stress test: it hammers watch_namespace from many threads at once and
+# checks the invariant that must always hold afterward, rather than proving
+# the original race on a single run.
+import threading;
+
+test "concurrent watch_namespace calls never leave more or fewer than one thread per kind" {
+    seed_item = scaled_object(ready="True", active="False");
+    (obs, _) = build_observer(scaled_objects=[seed_item]);
+
+    def call_watch_namespace {
+        for _ in range(20) {
+            obs.watch_namespace("default");
+        }
+    }
+
+    callers = [threading.Thread(target=call_watch_namespace) for _ in range(8)];
+    for c in callers {
+        c.start();
+    }
+    for c in callers {
+        c.join(timeout=10.0);
+    }
+
+    assert len(obs._threads) == len(WATCHED_KINDS);
+    for t in obs._threads.values() {
+        assert t.is_alive() is True;
+    }
+
+    obs.stop(drain=True);
+}
+
+
+# --- _reconcile_target concurrency ---
+# The original bug split one reconcile into three separate lock acquisitions
+# (snapshot the cache, compute the normalized status unlocked, then commit
+# to _last_state), so two threads reconciling the same target -- e.g. the
+# hpa-watch and deployment-watch threads both firing for one target near-
+# simultaneously -- could interleave: whichever commits last wins, even if
+# it was computed from a staler snapshot. This was independently reproduced
+# against a real cluster during manual testing: a real "active" moment (the
+# pod really was 1/1 ready) never appeared in the observed transition
+# sequence at all.
+test "_reconcile_target fully serializes concurrent reconciles of the same target" {
+    import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+    import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerRuntimeStatus }
+
+    obs = KubernetesAutoscalerObserver();
+    key = "default::orders-deployment";
+    obs._target_cache[key] = {
+        "scaled_object": {
+            "metadata": {"name": "orders-scaledobject", "resourceVersion": "1"},
+            "status": {
+                "conditions": [
+                    {"type": "Ready", "status": "True"},
+                    {"type": "Active", "status": "False"}
+                ]
+            }
+        },
+        "hpa": None,
+        "deployment": None
+    };
+
+    in_flight = [0];
+    max_in_flight = [0];
+    counter_lock = threading.Lock();
+
+    def slow_normalize(scaled_object: any, hpa: any, deployment: any) -> any {
+        with counter_lock {
+            in_flight[0] = in_flight[0] + 1;
+            max_in_flight[0] = max(max_in_flight[0], in_flight[0]);
+        }
+        time.sleep(0.05);
+        with counter_lock {
+            in_flight[0] = in_flight[0] - 1;
+        }
+        return AutoscalerRuntimeStatus(
+            state="active", desired_replicas=1, current_replicas=1, ready_replicas=1
+        );
+    }
+
+    def reconcile {
+        obs._reconcile_target("default", "orders-deployment");
+    }
+
+    with unittest.mock.patch.object(
+        KEDAAutoscaler, "_normalize_keda_status", side_effect=slow_normalize
+    ) {
+        threads = [threading.Thread(target=reconcile) for _ in range(5)];
+        for t in threads {
+            t.start();
+        }
+        for t in threads {
+            t.join(timeout=5.0);
+        }
+    }
+
+    assert max_in_flight[0] == 1 , f"expected concurrent reconciles of the same target to be fully serialized, but saw {max_in_flight[
+        0
+    ]} run their compute step at once";
+}
+
+
+# --- stop() drain bookkeeping ---
+
+test "stop(drain=True) keeps tracking a thread that did not finish joining within the deadline" {
+    obs = KubernetesAutoscalerObserver();
+    stuck = unittest.mock.MagicMock();
+    stuck.is_alive.return_value = True;
+    finished = unittest.mock.MagicMock();
+    finished.is_alive.return_value = False;
+    obs._threads = {"default::scaled_object": stuck, "default::hpa": finished};
+
+    obs.stop(drain=True);
+
+    assert "default::scaled_object" in obs._threads;
+    assert "default::hpa" not in obs._threads;
+    stuck.join.assert_called_once();
+    finished.join.assert_called_once();
+}
+
+test "stop(drain=False) clears bookkeeping immediately without joining" {
+    obs = KubernetesAutoscalerObserver();
+    t = unittest.mock.MagicMock();
+    obs._threads = {"default::scaled_object": t};
+
+    obs.stop(drain=False);
+
+    assert obs._threads == {};
+    t.join.assert_not_called();
+}
+
+
+# --- watch-loop retry backoff ---
+
+test "_watch_loop backs off with increasing delay across consecutive failures, not a flat retry" {
+    mock_custom_api = unittest.mock.MagicMock();
+    mock_custom_api.list_namespaced_custom_object.side_effect = RuntimeError(
+        "permanent failure (e.g. missing RBAC)"
+    );
+    obs = KubernetesAutoscalerObserver(_custom_api=mock_custom_api);
+
+    delays = [];
+    def fake_wait_or_stop(observer: any, seconds: float) -> bool {
+        delays.append(seconds);
+        if len(delays) >= 4 {
+            obs._stop_event.set();
+        }
+        return obs._stop_event.is_set();
+    }
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.autoscale.kubernetes_observer.wait_or_stop",
+        side_effect=fake_wait_or_stop
+    ) {
+        obs._watch_loop("default", "scaled_object", None);
+    }
+
+    assert len(delays) >= 3;
+    assert delays[1] > delays[0] , f"expected increasing backoff, got {delays}";
+    assert delays[2] > delays[1] , f"expected increasing backoff, got {delays}";
+}
+
+test "_watch_loop resets the backoff after a successful iteration" {
+    mock_custom_api = unittest.mock.MagicMock();
+    mock_custom_api.list_namespaced_custom_object.side_effect = [
+        RuntimeError("transient"),
+        RuntimeError("transient"),
+        {"items": [], "metadata": {"resourceVersion": "1"}},
+        RuntimeError("transient again")
+    ];
+    obs = KubernetesAutoscalerObserver(
+        _custom_api=mock_custom_api, _watch_factory=make_watch_factory([])
+    );
+
+    delays = [];
+    def fake_wait_or_stop(observer: any, seconds: float) -> bool {
+        delays.append(seconds);
+        if len(delays) >= 4 {
+            obs._stop_event.set();
+        }
+        return obs._stop_event.is_set();
+    }
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.autoscale.kubernetes_observer.wait_or_stop",
+        side_effect=fake_wait_or_stop
+    ) {
+        obs._watch_loop("default", "scaled_object", None);
+    }
+
+    assert delays[1] > delays[0] , f"expected backoff to grow across the first two failures, got {delays}";
+    assert delays[2] < delays[1] , f"expected the successful 3rd iteration to reset the backoff, got {delays}";
+}
+
+
+# --- API client caching ---
+
+test "_kind_config caches the constructed API client across repeated calls" {
+    obs = KubernetesAutoscalerObserver();
+
+    obs._kind_config("scaled_object");
+    first = obs._custom_api;
+    assert first is not None;
+
+    obs._kind_config("scaled_object");
+    assert obs._custom_api is first;
+}
