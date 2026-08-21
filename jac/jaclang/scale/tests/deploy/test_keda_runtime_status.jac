@@ -111,6 +111,25 @@ test "keda normalize reports inactive for idle scale-to-zero -- this is not an e
     assert status.trigger_active is False;
 }
 
+test "keda normalize reports activating when the trigger fired before any HPA/Deployment data exists" {
+    # The ScaledObject watch event can arrive before the observer has cached
+    # anything for the HPA or Deployment kind -- Active=True is still real
+    # signal (something is starting up), so this must not read as "unknown".
+    scaled_object = {
+        "metadata": {"resourceVersion": "20"},
+        "status": {
+            "conditions": [ready_condition(), active_condition("True")],
+            "hpaName": "orders-hpa"
+        }
+    };
+    status = KEDAAutoscaler()._normalize_keda_status(scaled_object, None, None);
+    assert status.state == AutoscalerState.ACTIVATING.value;
+    assert status.desired_replicas == 0;
+    assert status.current_replicas == 0;
+    assert status.ready_replicas == 0;
+    assert status.trigger_active is True;
+}
+
 test "keda normalize reports activating while trigger fired but pods are not ready yet" {
     scaled_object = {
         "metadata": {"resourceVersion": "14"},
