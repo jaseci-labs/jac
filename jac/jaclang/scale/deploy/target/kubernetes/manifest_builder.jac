@@ -174,7 +174,8 @@ obj ManifestBuilder {
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
         microservices_config: (dict[str, any] | None) = None,
-        dry_run: bool = False;
+        dry_run: bool = False,
+        _bundle_services_cache: (dict[str, str] | None) = None;
 
     def _ms_cfg -> dict[str, any] {
         if self.microservices_config is not None {
@@ -207,6 +208,7 @@ obj ManifestBuilder {
             access_mode=self.k8s_config.bundle_access_mode
         );
         injector: PvcInjector = selection[0];
+        injector._ms_config = self._ms_cfg();
         self._toolchain_object_key = str(selection[1]);
         return injector;
     }
@@ -345,6 +347,7 @@ obj ManifestBuilder {
 
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
         self.project_dir = self.project_dir or app_config.code_folder;
+        self._bundle_services();
         injector = self._prepare_injector(app_config);
         self._bundle_object_key = injector._object_key;
 
@@ -501,6 +504,18 @@ obj ManifestBuilder {
         } except Exception {
             return {};
         }
+    }
+
+    def _bundle_services -> dict[str, str] {
+        if self._bundle_services_cache is None {
+            import from jaclang.scale.injector.bundle { resolved_bundle_services }
+            self._bundle_services_cache = (
+                resolved_bundle_services(self.project_dir, self._ms_cfg())
+                    if self.project_dir
+                    else {}
+            );
+        }
+        return self._bundle_services_cache;
     }
 
     def _client_entry -> str {
@@ -716,7 +731,10 @@ obj ManifestBuilder {
             {"name": "K8S_APP_NAME", "value": self.k8s_config.app_name},
             {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
         ];
-        svc_file: str = str(svc_cfg.get("file") or "");
+        svc_file: str = self._bundle_services().get(svc_name, "");
+        if not svc_file {
+            svc_file = str(svc_cfg.get("file") or "");
+        }
         if svc_file {
             env.append({"name": "JAC_SV_FILE", "value": svc_file});
         }
@@ -759,7 +777,7 @@ obj ManifestBuilder {
 
         extra: dict[str, any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
-            if k == "JAC_SV_NAME" {
+            if k in ("JAC_SV_NAME", "JAC_SV_FILE") {
                 continue;
             }
             if k.startswith("JAC_SV_") and k.endswith("_URL") {
@@ -1136,9 +1154,14 @@ obj ManifestBuilder {
                 "else "
                 '  SV_FILE="${JAC_SV_FILE:-}"; '
                 '  if [ -z "$SV_FILE" ]; then '
-                '    SV_FILE="$(find . -name "${JAC_SV_NAME}.jac" -not -path "*/.*" -print 2>/dev/null | head -n1)"; '
-                '  fi; '
-                '  exec jac start "${SV_FILE:-${JAC_SV_NAME}.jac}"; '
+                '    echo "jac-scale boot: JAC_SV_FILE is not set on this pod ($JAC_SV_NAME); the deploy bakes it into every service pod, so check for an edited manifest or an overlay that dropped it." >&2; '
+                "    exit 1; "
+                "  fi; "
+                '  if [ ! -f "$SV_FILE" ]; then '
+                '    echo "jac-scale boot: service $JAC_SV_NAME resolves to $SV_FILE, which the shipped bundle does not contain; fix [scale.microservices] and re-deploy." >&2; '
+                "    exit 1; "
+                "  fi; "
+                '  exec jac start "$SV_FILE"; '
                 "fi"
             ]
         };

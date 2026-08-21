@@ -118,6 +118,40 @@ obj BundleSourceFilter {
         }
         return name.endswith(_EXCLUDE_SUFFIXES);
     }
+
+    def matching_ignore_pattern(rel: Path) -> str {
+        import from jaclang.jac0core.helpers { path_matches_exclude }
+
+        for pattern in self.ignore_patterns {
+            if path_matches_exclude(rel.as_posix(), [pattern]) {
+                return pattern;
+            }
+        }
+        return "";
+    }
+
+    def exclusion_reason(rel: Path) -> str {
+        for part in rel.parts {
+            if part in _EXCLUDE_DIRS {
+                return f"'{part}/' is a build or cache tree the bundle never ships";
+            }
+        }
+        pattern = self.matching_ignore_pattern(rel);
+        if pattern {
+            return f"parked by the .jacignore pattern '{pattern}'";
+        }
+        name = rel.name;
+        if name == "jac.toml" {
+            return "jac.toml ships only as its sanitized copy";
+        }
+        if name == ".env" or name.startswith(".env.") {
+            return ".env files never ship";
+        }
+        if name in _EXCLUDE_FILES or name.endswith(_EXCLUDE_SUFFIXES) {
+            return "key material never ships";
+        }
+        return "excluded from the bundle";
+    }
 }
 
 
@@ -128,15 +162,24 @@ def source_filter_for(base: Path) -> BundleSourceFilter {
 }
 
 
-def entry_module_rel(project_dir: str) -> (Path | None) {
+def _project_config(project_dir: str) -> any {
     import from jaclang.project.config { get_config_for_path }
 
     try {
-        config = get_config_for_path(Path(project_dir));
+        return get_config_for_path(Path(project_dir));
     } except Exception as exc {
-        logger.warning(f"entry-point check skipped, jac.toml unparseable: {exc}");
-        return None;
+        raise ValueError(
+            f"jac.toml under '{project_dir}' cannot be parsed ({exc}), so the "
+            "deploy cannot resolve the entry module or the service modules, "
+            "and every pod would fail on the same file at boot. Fix jac.toml "
+            "and re-deploy."
+        ) from exc;
     }
+}
+
+
+def entry_module_rel(project_dir: str) -> (Path | None) {
+    config = _project_config(project_dir);
     if config is None or not config.project.entry_point {
         return None;
     }
@@ -146,14 +189,15 @@ def entry_module_rel(project_dir: str) -> (Path | None) {
 
 def assert_entry_module_ships(base: Path, excluded: BundleSourceFilter) {
     rel = entry_module_rel(str(base));
-    if rel is None or not (base / rel).is_file() or not excluded.parks(rel) {
+    if rel is None or not (base / rel).is_file() or not excluded.excludes(rel) {
         return;
     }
     raise ValueError(
-        f"The project entry module '{rel.as_posix()}' is parked by .jacignore, "
-        f"so the bundle would ship without an entry point and every pod would "
-        f"crash-loop on boot. Drop the .jacignore pattern that matches it, or "
-        f"point [project] entry-point at a module the bundle ships."
+        f"The project entry module '{rel.as_posix()}' is excluded from the "
+        f"bundle ({excluded.exclusion_reason(rel)}), so the bundle would ship "
+        "without an entry point and every pod would crash-loop on boot. Ship "
+        "the module (for .jacignore, drop the pattern that matches it), or "
+        "point [project] entry-point at a module the bundle ships."
     );
 }
 
@@ -224,6 +268,187 @@ def bundle_source_files(base: Path) -> list[Path] {
         );
     }
     return kept;
+}
+
+
+def _declared_ms_section(project_dir: str) -> dict[str, any] {
+    config = _project_config(project_dir);
+    if config is None {
+        return {};
+    }
+    section = config.get_section("scale");
+    if not isinstance(section, dict) {
+        return {};
+    }
+    ms = section.get("microservices");
+    return ms if isinstance(ms, dict) else {};
+}
+
+
+def _declared_file(services: dict[str, any], name: str) -> str {
+    svc = services.get(name);
+    return str(svc.get("file") or "") if isinstance(svc, dict) else "";
+}
+
+
+def resolved_bundle_services(
+    project_dir: str, ms_config: (dict[str, any] | None) = None
+) -> dict[str, str] {
+    base = Path(project_dir).resolve();
+    excluded = source_filter_for(base);
+    members = [path.relative_to(base).as_posix() for path in bundle_source_files(base)];
+    return resolve_service_members(base, members, excluded, ms_config);
+}
+
+
+def resolve_service_members(
+    base: Path,
+    members: list[str],
+    excluded: BundleSourceFilter,
+    ms_config: (dict[str, any] | None) = None
+) -> dict[str, str] {
+    import from jaclang.scale.runtime.routing { needs_main_service, resolve_routes }
+
+    ms = ms_config if ms_config is not None else _declared_ms_section(str(base));
+    routes = resolve_routes(ms);
+    if not routes {
+        return {};
+    }
+    services = ms.get("services");
+    services = services if isinstance(services, dict) else {};
+    implicit_main = needs_main_service(routes) or routes.get("main") == "/__main__";
+    member_set: set[str] = set(members);
+    resolved: dict[str, str] = {};
+    for name in routes {
+        if name == "main" and implicit_main {
+            continue;
+        }
+        explicit = _declared_file(services, name);
+        if explicit {
+            resolved[name] = _explicit_service_member(
+                base, name, explicit, member_set, excluded
+            );
+        } else {
+            resolved[name] = _default_service_member(
+                base, name, f"{name}.jac", members, member_set, excluded
+            );
+        }
+    }
+    if implicit_main {
+        explicit = _declared_file(services, "main");
+        if explicit {
+            resolved["main"] = _explicit_service_member(
+                base, "main", explicit, member_set, excluded
+            );
+        } else {
+            resolved["main"] = _implicit_main_member(base, member_set, excluded);
+        }
+    }
+    return resolved;
+}
+
+
+def _implicit_main_member(
+    base: Path, member_set: set[str], excluded: BundleSourceFilter
+) -> str {
+    rel = entry_module_rel(str(base));
+    wanted = rel.as_posix() if rel is not None else "main.jac";
+    if wanted in member_set {
+        return wanted;
+    }
+    if not (base / wanted).is_file() {
+        raise ValueError(
+            f"The routed fleet also deploys an implicit 'main' service for the "
+            f"project entry module, but '{wanted}' does not exist, so every "
+            "'main' pod would crash-loop on boot. Add the module, point "
+            "[project] entry-point at the module to boot, or set "
+            "[scale.microservices.services.main] file."
+        );
+    }
+    raise ValueError(
+        f"The routed fleet also deploys an implicit 'main' service for the "
+        f"project entry module '{wanted}', but the bundle does not ship it "
+        f"({excluded.exclusion_reason(Path(wanted))}), so every 'main' pod "
+        "would crash-loop on boot. Ship the module, or point [project] "
+        "entry-point at one the bundle ships."
+    );
+}
+
+
+def _explicit_service_member(
+    base: Path,
+    name: str,
+    explicit: str,
+    member_set: set[str],
+    excluded: BundleSourceFilter
+) -> str {
+    rel = Path(explicit).as_posix();
+    if rel in member_set {
+        return rel;
+    }
+    if not (base / explicit).is_file() {
+        raise ValueError(
+            f"Service '{name}' points [scale.microservices.services.{name}] "
+            f"file at '{explicit}', but no such file exists in the project, "
+            f"so every '{name}' pod would crash-loop on boot."
+        );
+    }
+    raise ValueError(
+        f"Service '{name}' points [scale.microservices.services.{name}] file "
+        f"at '{explicit}', but the bundle does not ship it "
+        f"({excluded.exclusion_reason(Path(rel))}), so every '{name}' pod "
+        "would crash-loop on boot. Ship the file, or point the service at a "
+        "module the bundle ships."
+    );
+}
+
+
+def _default_service_member(
+    base: Path,
+    name: str,
+    wanted: str,
+    members: list[str],
+    member_set: set[str],
+    excluded: BundleSourceFilter
+) -> str {
+    if wanted in member_set {
+        return wanted;
+    }
+    candidates = [
+        m
+        for m in members
+        if m.endswith("/" + wanted)
+    ];
+    if len(candidates) == 1 {
+        return candidates[0];
+    }
+    if candidates {
+        listing = ", ".join(sorted(candidates));
+        raise ValueError(
+            f"Service '{name}' matches more than one shipped module named "
+            f"'{wanted}' ({listing}), so a pod would boot an arbitrary one. "
+            f"Set [scale.microservices.services.{name}] file to the one to "
+            "boot."
+        );
+    }
+    for path in sorted(base.rglob(wanted)) {
+        if not path.is_file() {
+            continue;
+        }
+        rel = path.relative_to(base);
+        raise ValueError(
+            f"Service '{name}' needs '{wanted}', and '{rel.as_posix()}' is "
+            f"excluded from the bundle ({excluded.exclusion_reason(rel)}), so "
+            f"every '{name}' pod would crash-loop on boot. Ship the module, "
+            f"or point [scale.microservices.services.{name}] file at one the "
+            "bundle ships."
+        );
+    }
+    raise ValueError(
+        f"Service '{name}' resolves to '{wanted}', but the project has no "
+        f"such module, so every '{name}' pod would crash-loop on boot. Add "
+        f"the module, or set [scale.microservices.services.{name}] file."
+    );
 }
 
 
@@ -302,8 +527,10 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 }
 
 
-def add_source_members(tar: tarfile.TarFile, base: Path) {
-    for path in bundle_source_files(base) {
+def add_source_members(
+    tar: tarfile.TarFile, base: Path, sources: (list[Path] | None) = None
+) {
+    for path in (sources if sources is not None else bundle_source_files(base)) {
         tar.add(str(path), arcname=str(path.relative_to(base)), filter=det_tar_member);
     }
 }
@@ -614,7 +841,12 @@ def _vendor_stage(stage: Path, seal_binary: bytes, platform_tag: str = "") {
 }
 
 
-def pack_jab(project_dir: str, seal_binary: bytes, pod_arch: str = "") -> bytes {
+def pack_jab(
+    project_dir: str,
+    seal_binary: bytes,
+    pod_arch: str = "",
+    ms_config: (dict[str, any] | None) = None
+) -> bytes {
     if not seal_binary {
         raise ValueError(
             "pack_jab requires a host-runnable jac binary to seal the app "
@@ -630,6 +862,13 @@ def pack_jab(project_dir: str, seal_binary: bytes, pod_arch: str = "") -> bytes 
     }
     excluded = source_filter_for(base);
     assert_entry_module_ships(base, excluded);
+    sources = bundle_source_files(base);
+    resolve_service_members(
+        base,
+        [path.relative_to(base).as_posix() for path in sources],
+        excluded,
+        ms_config
+    );
     if excluded.ignore_patterns {
         logger.info(
             f"Honoring {len(excluded.ignore_patterns)} .jacignore pattern(s) "
@@ -663,7 +902,7 @@ def pack_jab(project_dir: str, seal_binary: bytes, pod_arch: str = "") -> bytes 
         (tar, gz) = open_det_tar(buf);
         try {
             with tar {
-                add_source_members(tar, base);
+                add_source_members(tar, base, sources=sources);
                 pre = staged / "_precompiled";
                 count = 0;
                 for path in sorted(pre.rglob("*")) {

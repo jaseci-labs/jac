@@ -206,7 +206,8 @@ obj PvcInjector(Injector) {
         access_mode: str = "ReadWriteMany",
         loader_image: str = "busybox:1.36",
         _object_key: str = "",
-        _bundle_bytes: bytes = b"";
+        _bundle_bytes: bytes = b"",
+        _ms_config: (dict[str, any] | None) = None;
 
     def _seed_artifacts -> list[tuple[str, bytes]] {
         return [(self._object_key, self._bundle_bytes)];
@@ -220,7 +221,8 @@ obj PvcInjector(Injector) {
         raw = pack_jab(
             project_dir,
             getattr(self, "_seal_binary_bytes", b""),
-            getattr(self, "_pod_arch", "")
+            getattr(self, "_pod_arch", ""),
+            self._ms_config
         );
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);

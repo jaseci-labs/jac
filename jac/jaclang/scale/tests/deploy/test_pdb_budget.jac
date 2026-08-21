@@ -19,20 +19,27 @@ import from jaclang.scale.runtime.cli.diagnostics { PlanValidator }
 
 
 def _pdbs(services: dict) -> dict {
-    builder = ManifestBuilder(
-        k8s_config=KubernetesConfig(
-            app_name="shop", namespace="shop-ns", bundle_storage_class="standard"
-        ),
-        microservices_config={
-            "routes": {name: f"/{name}" for name in services},
-            "services": services
-        },
-        dry_run=True
-    );
-    bundle = builder.generate_manifests(
-        AppConfig(code_folder=".", app_name="shop"), ""
-    );
-    return dict(bundle.get("pdbs", {}));
+    import tempfile;
+    import from pathlib { Path }
+    with tempfile.TemporaryDirectory() as project {
+        for name in list(services.keys()) + ["main"] {
+            (Path(project) / f"{name}.jac").write_text("");
+        }
+        builder = ManifestBuilder(
+            k8s_config=KubernetesConfig(
+                app_name="shop", namespace="shop-ns", bundle_storage_class="standard"
+            ),
+            microservices_config={
+                "routes": {name: f"/{name}" for name in services},
+                "services": services
+            },
+            dry_run=True
+        );
+        bundle = builder.generate_manifests(
+            AppConfig(code_folder=project, app_name="shop"), ""
+        );
+        return dict(bundle.get("pdbs", {}));
+    }
 }
 
 

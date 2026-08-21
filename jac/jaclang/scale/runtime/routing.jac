@@ -87,16 +87,24 @@ def guard_route_prefix(name: str, prefix: str) {
 }
 
 
-def ensure_main_service(
-    routes: dict[str, str], service_files: dict[str, str], entry_file: str = ''
-) -> None {
+def needs_main_service(routes: dict[str, str]) -> bool {
     if 'main' in routes {
-        return;
+        return False;
     }
     for prefix in routes.values() {
         if prefix in ('/', '/__main__') {
-            return;
+            return False;
         }
+    }
+    return True;
+}
+
+
+def ensure_main_service(
+    routes: dict[str, str], service_files: dict[str, str], entry_file: str = ''
+) -> None {
+    if not needs_main_service(routes) {
+        return;
     }
     if not entry_file {
         try {

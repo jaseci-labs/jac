@@ -148,6 +148,9 @@ test "--dry-run reads no cluster state, downloads nothing, and builds nothing" {
     # flag that promises to touch nothing.
     with tempfile.TemporaryDirectory() as tmpdir {
         app = _write_app(tmpdir);
+        with open(os.path.join(tmpdir, "svc.jac"), "w") as f {
+            f.write("with entry {\n    print(\"svc\");\n}\n");
+        }
         cfg = _fake_scale_config(bundle_storage_class="standard");
         with unittest.mock.patch.object(
             realizer_mod, "get_scale_config", return_value=cfg
