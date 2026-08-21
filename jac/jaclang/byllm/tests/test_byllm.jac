@@ -1690,6 +1690,210 @@ test "prompt caching disabled via config" {
     }
 }
 
+"""Tool-call deltas are read by dict subscript; content deltas by attribute."""
+def _tc_chunk(delta: dict, finish: str | None = None) -> dict {
+    return {
+        "id": "c1",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": "m",
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]
+    };
+}
+
+def _text_chunks(text: str) -> list {
+    return [
+        types.SimpleNamespace(
+            usage=None,
+            choices=[
+                types.SimpleNamespace(delta=types.SimpleNamespace(content=w + " "))
+            ]
+        ) for w in text.split(" ")
+    ];
+}
+
+def _mk_run(tools: list) -> MTRuntime {
+    return MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are an agent."),
+            Message(role=MessageRole.USER, content="Do the thing.")
+        ],
+        resp_type=str,
+        stream=True,
+        tools=[*tools, Tool.make_finish_tool(str)],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+}
+
+# Regression guard for jac#8381: tools serialize ahead of messages in Anthropic's
+# wire format, so shrinking mt_run.tools here broke the cached prefix.
+test "_stream_final_answer keeps the tools array intact" {
+    def tool_a(x: str) -> str {
+        return x;
+    }
+    def tool_b(y: str) -> str {
+        return y;
+    }
+
+    model = Model(model_name="anthropic/claude-test");
+    mt_run = _mk_run([Tool(func=tool_a), Tool(func=tool_b)]);
+    expected = [t.get_name() for t in mt_run.tools];
+
+    seen: list = [];
+    def _serve(params: dict) -> list {
+        seen.append(params);
+        return _text_chunks("Done.");
+    }
+    with unittest.mock.patch.object(
+        model, "model_call_with_stream", side_effect=_serve
+    ) {
+        list(model._stream_final_answer(mt_run));
+    }
+
+    assert len(seen) == 1;
+    assert [t["function"]["name"] for t in seen[0]["tools"]] == expected , (
+        "the narration call must send the same tools as the rest of the "
+        "conversation, or Anthropic's cache prefix breaks"
+    );
+    assert seen[0]["tool_choice"] == "none" , "must still forbid tool calls";
+    assert [t.get_name() for t in mt_run.tools] == expected , "mt_run.tools was mutated";
+}
+
+test "finish_tool exit sends an identical tools payload on the narration call" {
+    def search_files(query: str) -> str {
+        return f"found: {query}";
+    }
+
+    model = Model(model_name="anthropic/claude-test");
+    mt_run = _mk_run([Tool(func=search_files)]);
+
+    finish_chunks = [
+        _tc_chunk(
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "c_f",
+                        "type": "function",
+                        "function": {"name": "finish_tool", "arguments": ""}
+                    }
+                ]
+            }
+        ),
+        _tc_chunk(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "function": {"arguments": '{"final_output": "Fixed it."}'}
+                    }
+                ]
+            }
+        ),
+        _tc_chunk({}, "tool_calls")
+    ];
+
+    calls: list = [];
+    def _serve(params: dict) -> list {
+        calls.append(params.get("tools"));
+        return finish_chunks if len(calls) == 1 else _text_chunks("Fixed it.");
+    }
+    with unittest.mock.patch.object(
+        model, "model_call_with_stream", side_effect=_serve
+    ) {
+        list(model._invoke_streaming(mt_run));
+    }
+
+    assert len(calls) == 2 , f"expected exactly 2 LLM calls, got {len(calls)}";
+    assert calls[0] == calls[1] , (
+        f"the narration call must send a byte-identical tools payload "
+        f"(cache_control included); got {calls[1]} vs {calls[0]}"
+    );
+}
+
+def _mk_forced_run -> tuple {
+    def extra_tool(x: str) -> str {
+        return x;
+    }
+
+    model = Model(model_name="anthropic/claude-test");
+    mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are an agent."),
+            Message(role=MessageRole.USER, content="Who?")
+        ],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[Tool(func=extra_tool), Tool.make_finish_tool(_TestPerson)],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    fake_fn = types.SimpleNamespace(
+        name="finish_tool", arguments='{"final_output": {"name": "Amy", "age": 30}}'
+    );
+    fake_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": None,
+                    "tool_calls": [types.SimpleNamespace(id="call_1", function=fake_fn)]
+                }
+            }
+        ]
+    };
+    return (model, mt_run, fake_response);
+}
+
+def _assert_forces_finish(expected: list, captured: list) {
+    assert len(captured) == 1;
+    sent_names = [t.get("function", {}).get("name") for t in captured[0]["tools"]];
+    assert sent_names == expected , f"got {sent_names}, expected {expected}";
+    assert captured[0]["tool_choice"]
+        == {"type": "function", "function": {"name": "finish_tool"}} , "must force finish_tool specifically, not just narrow the tools list";
+}
+
+# Same bug, but a structured resp_type still needs finish_tool callable, so this
+# forces it via tool_choice instead of tool_choice="none".
+test "_force_final_answer keeps the tools array intact and forces finish_tool" {
+    (model, mt_run, fake_response) = _mk_forced_run();
+    expected = [t.get_name() for t in mt_run.tools];
+
+    captured: list = [];
+    def _serve(params: dict) -> dict {
+        captured.append(params);
+        return fake_response;
+    }
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", side_effect=_serve
+    ) {
+        out = model._force_final_answer(mt_run);
+    }
+
+    _assert_forces_finish(expected, captured);
+    assert out.name == "Amy" , f"expected the healed typed output, got: {out}";
+}
+
+test "_attempt_recovery keeps the tools array intact and forces finish_tool" {
+    (model, mt_run, fake_response) = _mk_forced_run();
+    expected = [t.get_name() for t in mt_run.tools];
+
+    captured: list = [];
+    def _serve(params: dict) -> dict {
+        captured.append(params);
+        return fake_response;
+    }
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", side_effect=_serve
+    ) {
+        recovery = model._attempt_recovery(mt_run);
+    }
+
+    _assert_forces_finish(expected, captured);
+    assert recovery.tool_calls[0].is_finish_call();
+}
+
 import asyncio;
 import inspect;
 
