@@ -4,6 +4,7 @@ import logging;
 import threading;
 import from urllib.parse { unquote, urlsplit }
 import from jaclang.runtimelib.serving.app { ServingApp }
+import from jaclang.runtimelib.serving.client { close_connection_pool }
 import from jaclang.runtimelib.serving.datatypes {
     Headers,
     QueryParams,
@@ -122,6 +123,7 @@ obj ServingServer {
                 ;
             }
             await self.app.shutdown();
+            close_connection_pool();
         }
     }
 

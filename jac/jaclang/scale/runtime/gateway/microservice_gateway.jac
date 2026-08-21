@@ -36,6 +36,7 @@ glob logger = logging.getLogger(__name__),
      HOP_BY_HOP_HEADERS: set[str] = {
          "host",
          "transfer-encoding",
+         "content-length",
          "connection",
          "keep-alive"
      };
