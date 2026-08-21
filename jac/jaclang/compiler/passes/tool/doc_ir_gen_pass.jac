@@ -39,6 +39,7 @@ obj DocIRGenPass(UniPass) {
     def line_suffix(contents: doc.DocType) -> doc.LineSuffix;
     def break_parent -> doc.BreakParent;
     def exit_node(nd: uni.UniNode) -> None;
+    def default_exit(nd: uni.UniNode) -> None;
     def _wrap_doc_comments(nd: uni.UniNode) -> None;
     def effective_first_line(nd: uni.UniNode) -> int;
     def join(separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType;
@@ -105,6 +106,7 @@ obj DocIRGenPass(UniPass) {
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_try_stmt(nd: uni.TryStmt) -> None;
+    def exit_awaiting_clause(nd: uni.AwaitingClause) -> None;
     def exit_except(nd: uni.Except) -> None;
     def exit_finally_stmt(nd: uni.FinallyStmt) -> None;
     def exit_tuple_val(nd: uni.TupleVal) -> None;
