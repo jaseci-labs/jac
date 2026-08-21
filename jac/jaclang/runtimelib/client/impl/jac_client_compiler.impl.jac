@@ -566,6 +566,7 @@ impl JacClientCompiler._scan_and_compile_pages(
         return False;
     }
     self._route_scanner = scanner;
+    self._warn_unmigrated_pages(scanner);
     source_root = self.project_dir;
     for page_file in scanner.get_page_files() {
         self.compile_dependencies_recursively(
@@ -592,6 +593,17 @@ impl JacClientCompiler._warn_pages_without_routes(
     }
 }
 
+impl JacClientCompiler._warn_unmigrated_pages(
+    self: JacClientCompiler, scanner: RouteScanner
+) -> None {
+    import from jaclang.runtimelib.client.route_scanner { describe_unmigrated_pages }
+    for line in describe_unmigrated_pages(
+        scanner.pages_dir, scanner.get_page_files()
+    ) {
+        console.error(line);
+    }
+}
+
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     scanner = RouteScanner(self.project_dir, route_exports_of=resolve_route_exports);
     if not scanner.has_pages_dir() {
@@ -603,6 +615,7 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
         return False;
     }
     self._route_scanner = scanner;
+    self._warn_unmigrated_pages(scanner);
 
     for page_file in scanner.get_page_files() {
         if self._output_path_for(page_file, self.project_dir).exists() {
