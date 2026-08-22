@@ -568,7 +568,7 @@ def _link_native_artifact(
             }
         }
         if entry_lib {
-            if "@__jac_argc = global" not in llvm_ir_str {
+            if "__jac_argc" not in llvm_ir_str {
                 llvm_ir_str += (
                     "\n@__jac_argc = global i32 0\n" + "@__jac_argv = global ptr null\n"
                 );
