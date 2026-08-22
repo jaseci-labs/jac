@@ -268,6 +268,54 @@ test "E0025: empty body recovers without crash" {
     assert has_diagnostic_code(prog, "E0025");
 }
 
+# ── E0001: bare tuple targets in `for ... in` must be parenthesized ──
+test "E0001: bare tuple target in for loop names the parenthesized form" {
+    (prog, _) = parse_with_prog(
+        'with entry { d = {"a": 1}; for k, v in d.items() { print(k); } }'
+    );
+    assert has_diagnostic_code(prog, "E0001");
+    assert count_diagnostic_code(prog, "E0001") == 1;
+    alert = None;
+    for a in prog.errors_had {
+        if "parenthesized" in a.msg {
+            alert = a;
+        }
+    }
+    assert alert is not None;
+    assert "for (n, c) in" in (alert.help_text or "");
+}
+
+test "E0001: bare tuple target in comprehension names the parenthesized form" {
+    (prog, _) = parse_with_prog(
+        'with entry { d = {"a": 1}; ks = [k for k, v in d.items()]; }'
+    );
+    assert has_diagnostic_code(prog, "E0001");
+    alert = None;
+    for a in prog.errors_had {
+        if "parenthesized" in a.msg {
+            alert = a;
+        }
+    }
+    assert alert is not None;
+    assert "(k, v)" in (alert.help_text or "");
+}
+
+test "E0001: bare triple target emits one diagnostic and resyncs at 'in'" {
+    (prog, _) = parse_with_prog(
+        'with entry { xs = [(1, 2, 3)]; for a, b, c in xs { print(a); } }'
+    );
+    assert count_diagnostic_code(prog, "E0001") == 1;
+}
+
+test "E0001: parenthesized tuple target does not fire" {
+    (prog, had_err) = parse_with_prog(
+        'with entry { d = {"a": 1}; for (k, v) in d.items() { print(k); } '
+            + 'ks = [k for (k, v) in d.items()]; }'
+    );
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0001");
+}
+
 # ── E0027: forward typed connection missing :+> ──────────────────────
 test "E0027: +>: EdgeType without :+> closer emits E0027" {
     (prog, _) = compile_only("parser_E0027_forward_missing_close.jac");

@@ -217,7 +217,7 @@ dict_spread_entry ::= "**" expression | expression ":" expression
 
 comprehension_clauses ::= compr_clause compr_clause*
 
-compr_clause ::= "async"? "for" atomic_chain "in" pipe_call ("if" walrus_assign)*
+compr_clause ::= "async"? "for" in_target "in" pipe_call ("if" walrus_assign)*
 
 lambda_expr ::=
     "lambda" ("(" func_params ")")? ("->" expression)? "{" code_block_stmts "}"
@@ -313,8 +313,10 @@ open_stmt ::= "in" expression "{" code_block_stmts "}"
 
 forever_stmt ::= "forever" "{" code_block_stmts "}"
 
+in_target ::= atomic_chain ","?
+
 for_stmt ::=
-    "async"? "flow"? "for" atomic_chain (
+    "async"? "flow"? "for" in_target (
         "=" expression "while" expression "with" atomic_chain assignment_with_target?
         "{" code_block_stmts "}" else_stmt?
         | "in" expression "{" code_block_stmts "}" else_stmt?

@@ -521,6 +521,7 @@ obj Parser {
     def parse_while_stmt -> WhileStmt;
     def parse_open_stmt -> OpenStmt;
     def parse_forever_stmt -> ForeverStmt;
+    def parse_in_target(example: str) -> Expr;
     def parse_for_stmt -> IterForStmt | InForStmt;
     def parse_try_stmt -> TryStmt;
     def parse_except_handler -> Except;
