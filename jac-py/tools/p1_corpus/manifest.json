@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "name": "p1_corpus_slice1e",
+  "description": "P1 c2jac proving loop: five-module corpus (header-free + Python.h stub includes)",
+  "source_dir": "corpus",
+  "include_dir": "includes",
+  "lift_output": "jac-py/Modules/_lifted/p1_corpus_slice1b",
+  "baseline_report": "jac-py/tools/p1_corpus/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "mysnprintf",
+      "fixture": "jac/tests/compiler/c2jac/fixtures/cpython/mysnprintf.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystrcmp",
+      "fixture": "jac/tests/compiler/c2jac/fixtures/cpython/pystrcmp.c",
+      "header_free": true
+    },
+    {
+      "stem": "rotatingtree",
+      "fixture": "jac/tests/compiler/c2jac/fixtures/cpython/rotatingtree.c",
+      "header_free": true
+    },
+    {
+      "stem": "getbuildinfo",
+      "fixture": "jac-py/tools/p1_corpus/corpus/getbuildinfo.c",
+      "header_free": true,
+      "cpython_path": "Modules/getbuildinfo.c"
+    },
+    {
+      "stem": "_bisectmodule",
+      "fixture": "jac-py/tools/p1_corpus/corpus/_bisectmodule.c",
+      "header_free": false,
+      "include_dir": "includes",
+      "cpython_path": "Modules/_bisectmodule.c"
+    },
+    {
+      "stem": "_heapqmodule",
+      "fixture": "jac-py/tools/p1_corpus/corpus/_heapqmodule.c",
+      "header_free": false,
+      "include_dir": "includes",
+      "cpython_path": "Modules/_heapqmodule.c"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave4",
+  "description": "P2 wave 4: four leaf extracts (pystricmp, pyctype_space, pyctype_alpha, math_factorial_small)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave4",
+  "baseline_report": "jac-py/tools/p2_corpus_wave4/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "pystricmp",
+      "source": "jac-py/tools/p2_corpus_wave4/corpus/pystricmp.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_space",
+      "source": "jac-py/tools/p2_corpus_wave4/corpus/pyctype_space.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_alpha",
+      "source": "jac-py/tools/p2_corpus_wave4/corpus/pyctype_alpha.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_factorial_small",
+      "source": "jac-py/tools/p2_corpus_wave4/corpus/math_factorial_small.c",
+      "header_free": true
+    }
+  ]
+}

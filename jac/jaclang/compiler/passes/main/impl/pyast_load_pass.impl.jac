@@ -1219,18 +1219,25 @@ impl PyastBuildPass.proc_dict(nd: py_ast.Dict) -> DictVal {
 }
 
 impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> CtrlStmt {
+    (ln, col) = self.ctrl_loc(nd);
     continue_tok = Token(
         orig_src=self.orig_src,
         name=Tok.KW_CONTINUE,
         value='continue',
-        line=0,
-        end_line=0,
-        col_start=0,
-        col_end=0,
+        line=ln,
+        end_line=ln,
+        col_start=col,
+        col_end=col + 8,
         pos_start=0,
-        pos_end=0
+        pos_end=8
     );
     return CtrlStmt(ctrl=continue_tok, kid=[continue_tok]);
+}
+
+impl PyastBuildPass.ctrl_loc(nd: object) -> tuple[int, int] {
+    ln = getattr(nd, "lineno", 0) or 0;
+    col = getattr(nd, "col_offset", 0) or 0;
+    return (ln, col);
 }
 
 impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> Literal {
@@ -1347,16 +1354,17 @@ impl PyastBuildPass.proc_call(nd: py_ast.Call) -> FuncCall {
 }
 
 impl PyastBuildPass.proc_break(nd: py_ast.Break) -> CtrlStmt {
+    (ln, col) = self.ctrl_loc(nd);
     break_tok = Token(
         orig_src=self.orig_src,
         name=Tok.KW_BREAK,
         value='break',
-        line=0,
-        end_line=0,
-        col_start=0,
-        col_end=0,
+        line=ln,
+        end_line=ln,
+        col_start=col,
+        col_end=col + 5,
         pos_start=0,
-        pos_end=0
+        pos_end=5
     );
     return CtrlStmt(ctrl=break_tok, kid=[break_tok]);
 }

@@ -1,0 +1,6 @@
+#ifndef PYCORE_PYATOMIC_FT_WRAPPERS_H
+#define PYCORE_PYATOMIC_FT_WRAPPERS_H
+
+#define FT_ATOMIC_STORE_PTR_RELAXED(dst, src) ((dst) = (src))
+
+#endif /* PYCORE_PYATOMIC_FT_WRAPPERS_H */

@@ -2242,6 +2242,12 @@ impl TypeEvaluator._get_type_of_symbol(symbol: Symbol) -> TypeBase {
             if isinstance(node_.parent, (InForStmt, InnerCompr)) {
                 collection_type = self.get_type_of_expression(node_.parent.collection);
 
+                if isinstance(collection_type, AnyType)
+                and collection_type.is_foreign {
+                    node_.type = collection_type;
+                    return collection_type;
+                }
+
                 if self.is_any_type(collection_type)
                     and self.prefetch.any_class is not None {
                     node_.type = self.prefetch.any_class;
@@ -2655,6 +2661,9 @@ impl TypeEvaluator.get_type_of_magic_method_call(
             return UnionType(types=result_types);
         }
         return None;
+    }
+    if isinstance(obj_type, AnyType) and obj_type.is_foreign {
+        return AnyType(is_foreign=True);
     }
     if obj_type.category == TypeCategory.Class {
         assert isinstance(obj_type, ClassType);

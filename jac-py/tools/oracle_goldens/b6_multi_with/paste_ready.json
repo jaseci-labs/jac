@@ -1,0 +1,376 @@
+[
+  {
+    "name": "single_with_as",
+    "source": "def f():\n    with manager() as resource:\n        result = resource.value\n",
+    "co_flags": 16777219,
+    "co_stacksize": 7,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f003400000000000000700056005002000000000000000000000000000000000000700152005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d006901",
+    "co_exceptiontable_hex": "930d2a05aa0b3b09",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 64,
+        "target": 84,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 84,
+        "end": 106,
+        "target": 118,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "two_with_as",
+    "source": "def f():\n    with first() as left, second() as right:\n        result = left.value + right.value\n",
+    "co_flags": 16777219,
+    "co_stacksize": 9,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f00340000000000000070005c03000000000000000034000000000000003b015f01750275035f003400000000000000700156005004000000000000000000000000000000000000560150040000000000000000000000000000000000002c0000000000000000000000700252005200520034030000000000001f0052005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f004c1a3b031d00690120002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d006901",
+    "co_exceptiontable_hex": "9313412905a61e411609c10408412905c1160b41260dc12108412905c1290b413a09",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 76,
+        "target": 210,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 76,
+        "end": 136,
+        "target": 172,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 136,
+        "end": 152,
+        "target": 210,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 172,
+        "end": 194,
+        "target": 204,
+        "depth": 6,
+        "lasti": true
+      },
+      {
+        "start": 194,
+        "end": 210,
+        "target": 210,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 210,
+        "end": 232,
+        "target": 244,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "two_first_as_second_bare",
+    "source": "def f():\n    with first() as left, second():\n        result = left.value\n",
+    "co_flags": 16777219,
+    "co_stacksize": 9,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f00340000000000000070005c03000000000000000034000000000000003b015f01750275035f0034000000000000001f0056005004000000000000000000000000000000000000700152005200520034030000000000001f0052005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f004c1a3b031d00690120002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d006901",
+    "co_exceptiontable_hex": "9313411805a60d410509b308411805c1050b41150dc11008411805c1180b412909",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 76,
+        "target": 176,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 76,
+        "end": 102,
+        "target": 138,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 102,
+        "end": 118,
+        "target": 176,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 138,
+        "end": 160,
+        "target": 170,
+        "depth": 6,
+        "lasti": true
+      },
+      {
+        "start": 160,
+        "end": 176,
+        "target": 176,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 176,
+        "end": 198,
+        "target": 210,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "single_with_bare",
+    "source": "def f():\n    with manager():\n        result = 1\n",
+    "co_flags": 16777219,
+    "co_stacksize": 7,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f0034000000000000001f005e01700052015201520134030000000000001f005201230020002b002700000000000000670200001c0069021f001d001f001f001f00520123003b031d006901",
+    "co_exceptiontable_hex": "93032005a00b3109",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 44,
+        "target": 64,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 64,
+        "end": 86,
+        "target": 98,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "three_with_as",
+    "source": "def f():\n    with first() as one, second() as two, third() as three:\n        result = one.value + two.value + three.value\n",
+    "co_flags": 16777219,
+    "co_stacksize": 11,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f00340000000000000070005c03000000000000000034000000000000003b015f01750275035f00340000000000000070015c05000000000000000034000000000000003b015f01750275035f003400000000000000700256005006000000000000000000000000000000000000560150060000000000000000000000000000000000002c0000000000000000000000560250060000000000000000000000000000000000002c0000000000000000000000700352005200520034030000000000001f0052005200520034030000000000001f0052005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f004c223b031d00690120002b002700000000000000670200001c0069021f001d001f001f001f004c2d3b031d00690120002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d006901",
+    "co_exceptiontable_hex": "9313422805a613421509b92f42020dc12808421509c13008422805c2020b421211c20d08421509c2150b42250dc22008422805c2280b423909",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 76,
+        "target": 336,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 76,
+        "end": 114,
+        "target": 298,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 114,
+        "end": 208,
+        "target": 260,
+        "depth": 6,
+        "lasti": true
+      },
+      {
+        "start": 208,
+        "end": 224,
+        "target": 298,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 224,
+        "end": 240,
+        "target": 336,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 260,
+        "end": 282,
+        "target": 292,
+        "depth": 8,
+        "lasti": true
+      },
+      {
+        "start": 282,
+        "end": 298,
+        "target": 298,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 298,
+        "end": 320,
+        "target": 330,
+        "depth": 6,
+        "lasti": true
+      },
+      {
+        "start": 320,
+        "end": 336,
+        "target": 336,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 336,
+        "end": 358,
+        "target": 370,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "nested_with",
+    "source": "def f():\n    with outer() as outer_resource:\n        with inner() as inner_resource:\n            result = outer_resource.value + inner_resource.value\n",
+    "co_flags": 16777219,
+    "co_stacksize": 9,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f00340000000000000070005c03000000000000000034000000000000003b015f01750275035f003400000000000000700156005004000000000000000000000000000000000000560150040000000000000000000000000000000000002c0000000000000000000000700252005200520034030000000000001f0052005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f004c1a3b031d00690120002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d006901",
+    "co_exceptiontable_hex": "9313412905a61e411609c10408412905c1160b41260dc12108412905c1290b413a09",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 76,
+        "target": 210,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 76,
+        "end": 136,
+        "target": 172,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 136,
+        "end": 152,
+        "target": 210,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 172,
+        "end": 194,
+        "target": 204,
+        "depth": 6,
+        "lasti": true
+      },
+      {
+        "start": 194,
+        "end": 210,
+        "target": 210,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 210,
+        "end": 232,
+        "target": 244,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "with_inside_try_except",
+    "source": "def f():\n    try:\n        with manager() as resource:\n            result = resource.value\n    except ValueError:\n        result = 0\n",
+    "co_flags": 16777219,
+    "co_stacksize": 7,
+    "co_code_hex": "80001b005c01000000000000000034000000000000003b015f01750275035f003400000000000000700056005002000000000000000000000000000000000000700152005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d00690120005c0400000000000000000600640700001c001f005e0070011d005200230069003b031d006901",
+    "co_exceptiontable_hex": "82123f00940d2b05a1083f00ab0b3c09b6043f00bc033f00bf0d411003c10f01411003",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 40,
+        "target": 126,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 40,
+        "end": 66,
+        "target": 86,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 66,
+        "end": 82,
+        "target": 126,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 86,
+        "end": 108,
+        "target": 120,
+        "depth": 4,
+        "lasti": true
+      },
+      {
+        "start": 108,
+        "end": 116,
+        "target": 126,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 120,
+        "end": 126,
+        "target": 126,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 126,
+        "end": 152,
+        "target": 160,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 158,
+        "end": 160,
+        "target": 160,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "with_exit_suppresses",
+    "source": "def f():\n    with suppressing_manager() as resource:\n        result = resource.value\n",
+    "co_flags": 16777219,
+    "co_stacksize": 7,
+    "co_code_hex": "80005c01000000000000000034000000000000003b015f01750275035f003400000000000000700056005002000000000000000000000000000000000000700152005200520034030000000000001f005200230020002b002700000000000000670200001c0069021f001d001f001f001f00520023003b031d006901",
+    "co_exceptiontable_hex": "930d2a05aa0b3b09",
+    "exception_entries": [
+      {
+        "start": 38,
+        "end": 64,
+        "target": 84,
+        "depth": 2,
+        "lasti": true
+      },
+      {
+        "start": 84,
+        "end": 106,
+        "target": 118,
+        "depth": 4,
+        "lasti": true
+      }
+    ]
+  }
+]

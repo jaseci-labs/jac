@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "wave": "p2_wave3",
+  "description": "P2 wave-3 conformance manifest (oracle-gated leaf extracts)",
+  "module_count": 4,
+  "modules": [
+    {
+      "stem": "math_count_bits",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "count_set_bits popcount; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "math_lcm_long",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "mathmodule lcm on long; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "strhex_byte",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "Single-byte hex pack; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "pyctype_digit",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "Py_ISDIGIT-style check; cc vs lifted jac oracle."
+    }
+  ]
+}

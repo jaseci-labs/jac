@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave5",
+  "description": "P2 wave 5: four leaf extracts (pyctype_xdigit, pyctype_alnum, pyctype_lower, math_isqrt_small)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave5",
+  "baseline_report": "jac-py/tools/p2_corpus_wave5/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "pyctype_xdigit",
+      "source": "jac-py/tools/p2_corpus_wave5/corpus/pyctype_xdigit.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_alnum",
+      "source": "jac-py/tools/p2_corpus_wave5/corpus/pyctype_alnum.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_lower",
+      "source": "jac-py/tools/p2_corpus_wave5/corpus/pyctype_lower.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_isqrt_small",
+      "source": "jac-py/tools/p2_corpus_wave5/corpus/math_isqrt_small.c",
+      "header_free": true
+    }
+  ]
+}

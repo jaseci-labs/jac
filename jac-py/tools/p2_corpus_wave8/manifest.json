@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave8",
+  "description": "P2 wave 8: four leaf extracts (math_ctz_small, math_clz32_small, math_abs_diff, math_min_u)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave8",
+  "baseline_report": "jac-py/tools/p2_corpus_wave8/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "math_ctz_small",
+      "source": "jac-py/tools/p2_corpus_wave8/corpus/math_ctz_small.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_clz32_small",
+      "source": "jac-py/tools/p2_corpus_wave8/corpus/math_clz32_small.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_abs_diff",
+      "source": "jac-py/tools/p2_corpus_wave8/corpus/math_abs_diff.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_min_u",
+      "source": "jac-py/tools/p2_corpus_wave8/corpus/math_min_u.c",
+      "header_free": true
+    }
+  ]
+}

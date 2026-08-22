@@ -271,6 +271,7 @@ impl NaIRGenVtable._codegen_virtual_call(
         }
     }
 
+    vtable_recv = coerced[0] if len(coerced) > 0 else obj_val;
     non_overridden = self._non_overridden_methods.get(obj_type_name);
     if non_overridden is not None and method_name in non_overridden {
         _dv_res = self.builder.call(func, coerced, name=f"call.{method_name}");
@@ -313,7 +314,7 @@ impl NaIRGenVtable._codegen_virtual_call(
     }
     if (_vc_force_variants or not _vd_uniform) and _vd_variants {
         vtable_ptr_ptr = self.builder.gep(
-            obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="vt.id.pp"
+            vtable_recv, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="vt.id.pp"
         );
         _vd_vtp = self.builder.load(vtable_ptr_ptr, name="vt.id");
         _vd_fnc = self.builder.function;
@@ -368,7 +369,7 @@ impl NaIRGenVtable._codegen_virtual_call(
     }
 
     vtable_ptr_ptr = self.builder.gep(
-        obj_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="vtable.ptr.ptr"
+        vtable_recv, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="vtable.ptr.ptr"
     );
     vtable_ptr = self.builder.load(vtable_ptr_ptr, name="vtable.ptr");
 

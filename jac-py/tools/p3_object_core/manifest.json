@@ -1,0 +1,950 @@
+{
+  "version": 1,
+  "name": "p3_object_core_layer0",
+  "description": "P3 object-core Layer-0 replay baselines (PLAN.md \u00a77 P3.1 exit). Counts are self-contained assertEqual pairs replayed via layer0_replay.jac \u2014 not full test-file pass rates.",
+  "reference_root": "reference/cpython",
+  "layer0_files": [
+    {
+      "stem": "test_int",
+      "path": "Lib/test/test_int.py",
+      "baseline": {
+        "passed": 119,
+        "failed": 0,
+        "errored": 0
+      }
+    },
+    {
+      "stem": "test_bool",
+      "path": "Lib/test/test_bool.py",
+      "baseline": {
+        "passed": 50,
+        "failed": 0,
+        "errored": 0
+      }
+    },
+    {
+      "stem": "test_str",
+      "path": "Lib/test/test_str.py",
+      "baseline": {
+        "passed": 345,
+        "failed": 0,
+        "errored": 0
+      }
+    },
+    {
+      "stem": "test_dict",
+      "path": "Lib/test/test_dict.py",
+      "baseline": {
+        "passed": 20,
+        "failed": 0,
+        "errored": 0
+      }
+    },
+    {
+      "stem": "test_list",
+      "path": "Lib/test/test_list.py",
+      "baseline": {
+        "passed": 9,
+        "failed": 0,
+        "errored": 0
+      }
+    },
+    {
+      "stem": "test_tuple",
+      "path": "Lib/test/test_tuple.py",
+      "baseline": {
+        "passed": 9,
+        "failed": 0,
+        "errored": 0
+      }
+    }
+  ],
+  "layer1_files": [
+    {
+      "stem": "test_set",
+      "path": "Lib/test/test_set.py",
+      "baseline": {
+        "passed": 5,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 9
+      },
+      "gate": "P3.1b",
+      "status": "gated"
+    },
+    {
+      "stem": "test_generators",
+      "path": "Lib/test/test_generators.py",
+      "baseline": {
+        "passed": 14,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 8
+      },
+      "gate": "P3.1b",
+      "status": "gated"
+    },
+    {
+      "stem": "test_list",
+      "path": "Lib/test/test_list.py",
+      "baseline": {
+        "passed": 7,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 6
+      },
+      "gate": "P3.1b",
+      "status": "gated"
+    },
+    {
+      "stem": "test_tuple",
+      "path": "Lib/test/test_tuple.py",
+      "baseline": {
+        "passed": 2,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 5
+      },
+      "gate": "P3.1b",
+      "status": "gated"
+    }
+  ],
+  "c2jac_objects_wave": [
+    {
+      "stem": "boolobject",
+      "cpython_path": "Objects/boolobject.c",
+      "lift_output": "jac-py/Objects/_lifted/boolobject.jac",
+      "gate": "P3.1c",
+      "status": "lift",
+      "tier_b_baseline": 9,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/boolobject.py",
+        "baseline": {
+          "passed": 1,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "longobject.jac"
+      }
+    },
+    {
+      "stem": "sliceobject",
+      "cpython_path": "Objects/sliceobject.c",
+      "lift_output": "jac-py/Objects/_lifted/sliceobject.jac",
+      "gate": "P3.1c",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/sliceobject.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "sliceobject.jac"
+      }
+    },
+    {
+      "stem": "abstract_protocol",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/abstract_protocol.c",
+      "lift_output": "jac-py/Objects/_lifted/abstract_protocol.jac",
+      "gate": "P3.1e",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/abstract_protocol.py",
+        "baseline": {
+          "passed": 4,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "abstract_protocol.jac"
+      }
+    },
+    {
+      "stem": "tupleobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/tupleobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/tupleobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 10,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/tupleobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "tupleobject.jac"
+      }
+    },
+    {
+      "stem": "longobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/longobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/longobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 29,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/longobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "longobject.jac"
+      }
+    },
+    {
+      "stem": "typeobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/typeobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/typeobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/typeobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "typeobject.jac"
+      }
+    },
+    {
+      "stem": "exceptions_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/exceptions_core.c",
+      "lift_output": "jac-py/Objects/_lifted/exceptions_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/exceptions_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "exceptions_core.jac"
+      }
+    },
+    {
+      "stem": "bytesobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/bytesobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/bytesobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 2,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/bytesobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "bytesobject.jac"
+      }
+    },
+    {
+      "stem": "listobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/listobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/listobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 3,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/listobject_core.py",
+        "baseline": {
+          "passed": 4,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "listobject.jac"
+      }
+    },
+    {
+      "stem": "dictobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/dictobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/dictobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 15,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/dictobject_core.py",
+        "baseline": {
+          "passed": 4,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "dictobject.jac"
+      }
+    },
+    {
+      "stem": "setobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/setobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/setobject_core.jac",
+      "gate": "P3.2a",
+      "status": "lift",
+      "tier_b_baseline": 9,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/setobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "setobject.jac"
+      }
+    },
+    {
+      "stem": "methodobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/methodobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/methodobject_core.jac",
+      "gate": "P3.2b",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/methodobject_core.py",
+        "baseline": {
+          "passed": 4,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "methodobject.jac"
+      }
+    },
+    {
+      "stem": "descrobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/descrobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/descrobject_core.jac",
+      "gate": "P3.2b",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/descrobject_core.py",
+        "baseline": {
+          "passed": 4,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "descrobject.jac"
+      }
+    },
+    {
+      "stem": "floatobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/floatobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/floatobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 2,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/floatobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "floatobject.jac"
+      }
+    },
+    {
+      "stem": "complexobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/complexobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/complexobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 7,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/complexobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "complexobject.jac"
+      }
+    },
+    {
+      "stem": "rangeobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/rangeobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/rangeobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/rangeobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "rangeobject.jac"
+      }
+    },
+    {
+      "stem": "enumobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/enumobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/enumobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/enumobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "enumobject.jac"
+      }
+    },
+    {
+      "stem": "cellobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/cellobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/cellobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/cellobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "cellobject.jac"
+      }
+    },
+    {
+      "stem": "funcobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/funcobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/funcobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/funcobject_core.py",
+        "baseline": {
+          "passed": 3,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "funcobject.jac"
+      }
+    },
+    {
+      "stem": "iterobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/iterobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/iterobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/iterobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "iterobject.jac"
+      }
+    },
+    {
+      "stem": "classobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/classobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/classobject_core.jac",
+      "gate": "P3.2c",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/classobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "classobject.jac"
+      }
+    },
+    {
+      "stem": "codeobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/codeobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/codeobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/codeobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "codeobject.jac"
+      }
+    },
+    {
+      "stem": "moduleobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/moduleobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/moduleobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/moduleobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "moduleobject.jac"
+      }
+    },
+    {
+      "stem": "weakrefobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/weakrefobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/weakrefobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/weakrefobject_core.py",
+        "baseline": {
+          "passed": 4,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "weakrefobject.jac"
+      }
+    },
+    {
+      "stem": "bytearrayobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/bytearrayobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/bytearrayobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/bytearrayobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "bytearrayobject.jac"
+      }
+    },
+    {
+      "stem": "memoryobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/memoryobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/memoryobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/memoryobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "memoryobject.jac"
+      }
+    },
+    {
+      "stem": "frameobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/frameobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/frameobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/frameobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "frameobject.jac"
+      }
+    },
+    {
+      "stem": "genobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/genobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/genobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/genobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "genobject.jac"
+      }
+    },
+    {
+      "stem": "odictobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/odictobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/odictobject_core.jac",
+      "gate": "P3.2d",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/odictobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "odictobject.jac"
+      }
+    },
+    {
+      "stem": "unionobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/unionobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/unionobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/unionobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "unionobject.jac"
+      }
+    },
+    {
+      "stem": "namespaceobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/namespaceobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/namespaceobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/namespaceobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "namespaceobject.jac"
+      }
+    },
+    {
+      "stem": "capsule_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/capsule_core.c",
+      "lift_output": "jac-py/Objects/_lifted/capsule_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/capsule_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "capsule.jac"
+      }
+    },
+    {
+      "stem": "structseq_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/structseq_core.c",
+      "lift_output": "jac-py/Objects/_lifted/structseq_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/structseq_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "structseq.jac"
+      }
+    },
+    {
+      "stem": "fileobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/fileobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/fileobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/fileobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "fileobject.jac"
+      }
+    },
+    {
+      "stem": "call_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/call_core.c",
+      "lift_output": "jac-py/Objects/_lifted/call_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/call_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "call.jac"
+      }
+    },
+    {
+      "stem": "bytes_methods_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/bytes_methods_core.c",
+      "lift_output": "jac-py/Objects/_lifted/bytes_methods_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/bytes_methods_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "bytes_methods.jac"
+      }
+    },
+    {
+      "stem": "picklebufobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/picklebufobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/picklebufobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/picklebufobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "picklebufobject.jac"
+      }
+    },
+    {
+      "stem": "genericaliasobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/genericaliasobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/genericaliasobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/genericaliasobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "genericaliasobject.jac"
+      }
+    },
+    {
+      "stem": "typevarobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/typevarobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/typevarobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/typevarobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "typevarobject.jac"
+      }
+    },
+    {
+      "stem": "interpolationobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/interpolationobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/interpolationobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/interpolationobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "interpolationobject.jac"
+      }
+    },
+    {
+      "stem": "templateobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/templateobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/templateobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/templateobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "templateobject.jac"
+      }
+    },
+    {
+      "stem": "object_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/object_core.c",
+      "lift_output": "jac-py/Objects/_lifted/object_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/object_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "object_core.jac"
+      }
+    },
+    {
+      "stem": "unicodectype_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/unicodectype_core.c",
+      "lift_output": "jac-py/Objects/_lifted/unicodectype_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 0,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/unicodectype_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "unicodectype.jac"
+      }
+    },
+    {
+      "stem": "unicodeobject_core",
+      "cpython_path": "jac-py/tools/p3_object_core/corpus/unicodeobject_core.c",
+      "lift_output": "jac-py/Objects/_lifted/unicodeobject_core.jac",
+      "gate": "P3.2e",
+      "status": "lift",
+      "tier_b_baseline": 1,
+      "staging": "lift",
+      "runtime_probe": {
+        "source": "jac-py/tools/p3_object_core/probes/unicodeobject_core.py",
+        "baseline": {
+          "passed": 2,
+          "failed": 0,
+          "errored": 0,
+          "skipped": 0
+        },
+        "jacpython_module": "unicodeobject.jac"
+      }
+    }
+  ]
+}

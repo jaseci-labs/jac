@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave6",
+  "description": "P2 wave 6: four leaf extracts (pyctype_upper, pyctype_print, pyctype_punct, math_pow2_check)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave6",
+  "baseline_report": "jac-py/tools/p2_corpus_wave6/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "pyctype_upper",
+      "source": "jac-py/tools/p2_corpus_wave6/corpus/pyctype_upper.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_print",
+      "source": "jac-py/tools/p2_corpus_wave6/corpus/pyctype_print.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_punct",
+      "source": "jac-py/tools/p2_corpus_wave6/corpus/pyctype_punct.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_pow2_check",
+      "source": "jac-py/tools/p2_corpus_wave6/corpus/math_pow2_check.c",
+      "header_free": true
+    }
+  ]
+}

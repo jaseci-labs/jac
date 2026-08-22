@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave1",
+  "description": "P2 proving wave: ten-module c2jac corpus (P1 six + four header-free Python/*.c extracts)",
+  "source_dir": "corpus",
+  "include_dir": "../p1_corpus/includes",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave1",
+  "baseline_report": "jac-py/tools/p2_corpus/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "mysnprintf",
+      "source": "jac-py/tools/p1_corpus/corpus/mysnprintf.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystrcmp",
+      "source": "jac-py/tools/p1_corpus/corpus/pystrcmp.c",
+      "header_free": true
+    },
+    {
+      "stem": "rotatingtree",
+      "source": "jac-py/tools/p1_corpus/corpus/rotatingtree.c",
+      "header_free": true
+    },
+    {
+      "stem": "getbuildinfo",
+      "source": "jac-py/tools/p1_corpus/corpus/getbuildinfo.c",
+      "header_free": true
+    },
+    {
+      "stem": "_bisectmodule",
+      "source": "jac-py/tools/p1_corpus/corpus/_bisectmodule.c",
+      "header_free": false,
+      "include_dir": "../p1_corpus/includes"
+    },
+    {
+      "stem": "_heapqmodule",
+      "source": "jac-py/tools/p1_corpus/corpus/_heapqmodule.c",
+      "header_free": false,
+      "include_dir": "../p1_corpus/includes"
+    },
+    {
+      "stem": "getplatform",
+      "source": "jac-py/tools/p2_corpus/corpus/getplatform.c",
+      "header_free": true
+    },
+    {
+      "stem": "getcompiler",
+      "source": "jac-py/tools/p2_corpus/corpus/getcompiler.c",
+      "header_free": true
+    },
+    {
+      "stem": "getcopyright",
+      "source": "jac-py/tools/p2_corpus/corpus/getcopyright.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyfpe",
+      "source": "jac-py/tools/p2_corpus/corpus/pyfpe.c",
+      "header_free": true
+    }
+  ]
+}

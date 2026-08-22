@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "wave": "p2_wave1",
+  "description": "P2 proving wave conformance manifest (T6 skeleton)",
+  "module_count": 10,
+  "modules": [
+    {
+      "stem": "mysnprintf",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "No Python stdlib equivalent; cc vs staged jac oracle (PyOS_vsnprintf)."
+    },
+    {
+      "stem": "pystrcmp",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "No Python stdlib equivalent; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "rotatingtree",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_rotatingtree_oracle.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "No Python stdlib equivalent; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "getbuildinfo",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "Build-info internals; cc vs staged jac oracle (hand-edited empty-string semantics)."
+    },
+    {
+      "stem": "_bisectmodule",
+      "gate_type": "libtest",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [
+        "bisect_precomputed",
+        "bisect_insort"
+      ],
+      "notes": "Algorithm parity via bisect stdlib; C port oracle-gated separately.",
+      "libtest": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "cases": [
+          {
+            "name": "bisect_precomputed",
+            "passed": true,
+            "detail": "ok"
+          },
+          {
+            "name": "bisect_insort",
+            "passed": true,
+            "detail": "ok"
+          }
+        ]
+      },
+      "jac_differential": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 1,
+        "total": 2,
+        "cases": [
+          {
+            "name": "bisect_precomputed",
+            "status": "fail",
+            "detail": "Setting up Jac for first use (compiling and caching compiler)...\n  Compiling jaclang/project/__init__.jac...\n  Compiling jaclang/project/config.jac...\n  Compiling jaclang/compiler/passes/main/cfg_build_pass.jac...\n  Compiling jaclang/compiler/passes/main/jsx_intrinsic_guard_pass.jac...\n  Compiling jaclang/runtimelib/__init__.jac...\n  Compiling jaclang/project/client_kind.jac...\n  Compiling jaclang/project/client_kind_paths.jac...\n  Compiling jaclang/runtimelib/client/__init__.jac...\n  Compiling jaclang/compiler/passes/tool/unparse_pass.jac...\n  Compiling jaclang/runtimelib/builtin.jac...\n  Compiling jaclang/runtimelib/serving/__init__.jac...\n  Compiling jaclang/compiler/passes/main/sem_def_match_pass.jac...\n  Compiling jaclang/compiler/symbol_utils.jac...\n  Compiling jaclang/compiler/expr_keys.jac...\n  Compiling jaclang/compiler/passes/main/layout_pass.jac...\n  Compiling jaclang/compiler/type_registry.jac...\n  Compiling jaclang/compiler/intrinsic_registry.jac...\n  Compiling jaclang/compiler/passes/main/mtir_gen_pass.jac...\n  Compiling jaclang/compiler/passes/ecmascript/esast_gen_pass.jac...\n  Compiling jaclang/compiler/passes/ecmascript/reactive_intent.jac...\n  Compiling jaclang/compiler/passes/ecmascript/estree.jac...\n  Compiling jaclang/compiler/passes/ecmascript/es_unparse.jac...\n  Compiling jaclang/compiler/passes/ecmascript/scoped_styles.jac...\n  Compiling jaclang/compiler/passes/ecmascript/framework_backend.jac...\n  Compiling jaclang/compiler/passes/ecmascript/free_ident_audit.jac...\n  Compiling jaclang/cli/cli.jac...\n  Compiling jaclang/cli/console.jac...\n  Compiling jaclang/cli/manifest_route.jac...\n[dev] jac dev mode - using compiler source at /home/jac/repos/jac-python/jac\n  Compiling jaclang/cli/manifest.jac...\n  Compiling jaclang/cli/command.jac...\n  Compiling jaclang/cli/manifest_help.jac...\n  Compiling jaclang/cli/dispatch.jac...\n  Compiling jaclang/cli/manifest_parse.jac...\n  Compiling jaclang/cli/executor.jac...\n  Compiling jaclang/cli/loader.jac...\n  Compiling jaclang/project/pyvenv.jac...\n  Compiling jaclang/cli/commands/__init__.jac...\n  Compiling jaclang/cli/commands/execution.jac...\n  Compiling jaclang/cli/registry.jac...\n  Compiling jaclang/scale/__init__.jac...\n  Compiling jaclang/cli/commands/cli_helpers.jac...\n  Compiling jaclang/project/kinds.jac...\n  Compiling jaclang/scale/plugin.jac...\n  Compiling jaclang/scale/runtime/__init__.jac...\n  Compiling jaclang/scale/runtime/realizer/__init__.jac...\n  Compiling jaclang/scale/runtime/orchestrator/__init__.jac...\n  Compiling jaclang/scale/runtime/context/__init__.jac...\n  Compiling jaclang/scale/config/__init__.jac...\n  Compiling jaclang/scale/deploy/__init__.jac...\n  Compiling jaclang/scale/deploy/target/__init__.jac...\n  Compiling jaclang/scale/runtime/transport/__init__.jac...\n  Compiling jaclang/runtimelib/context.jac...\n  Compiling jaclang/runtimelib/exceptions.jac...\n  Compiling jaclang/runtimelib/session.jac...\n  Compiling jaclang/runtimelib/dbcatalog.jac...\n  Compiling jaclang/runtimelib/store.jac...\n  Compiling jaclang/runtimelib/pgwire.jac...\n  Compiling jaclang/runtimelib/pgembed.jac...\n  Compiling jaclang/runtimelib/query_planner.jac...\n  Compiling jaclang/runtimelib/sqlcompile.jac...\n  Compiling jaclang/runtimelib/server.jac...\n  Compiling jaclang/cli/banners.jac...\n  Compiling jaclang/runtimelib/serializer.jac...\n  Compiling jaclang/runtimelib/typecache.jac...\n  Compiling jaclang/runtimelib/schema_rules.jac...\n  Compiling jaclang/runtimelib/client_bundle.jac...\n  Compiling jaclang/runtimelib/auth_models.jac...\n  Compiling jaclang/runtimelib/transport.jac...\n  Compiling jaclang/runtimelib/serving/app.jac...\n  Compiling jaclang/runtimelib/serving/coerce.jac...\n  Compiling jaclang/runtimelib/serving/datatypes.jac...\n  Compiling jaclang/runtimelib/serving/endpoint.jac...\n  Compiling jaclang/runtimelib/serving/multipart.jac...\n  Compiling jaclang/runtimelib/serving/router.jac...\n  Compiling jaclang/runtimelib/serving/sse.jac...\n  Compiling jaclang/runtimelib/serving/middleware.jac...\n  Compiling jaclang/runtimelib/serving/openapi.jac...\n  Compiling jaclang/runtimelib/serving/server.jac...\n  Compiling jaclang/runtimelib/serving/ws.jac...\n  Compiling jaclang/runtimelib/static_files.jac...\n  Compiling jaclang/runtimelib/scheduler.jac...\n  Compiling jaclang/scale/config/config_loader.jac...\n  Compiling jaclang/project/plugin_config.jac...\n  Compiling jaclang/scale/config/firebase_env.jac...\n  Compiling jaclang/scale/events/__init__.jac...\n  Compiling jaclang/scale/config/project_env.jac...\n  Compiling jaclang/scale/_optdeps/__init__.jac...\n  Compiling jaclang/scale/_optdeps/optional_deps.jac...\n  Compiling jaclang/project/capabilities.jac...\n  Compiling jaclang/scale/events/streams/__init__.jac...\n  Compiling jaclang/scale/events/streams/postgres.jac...\n  Compiling jaclang/scale/persistence/__init__.jac...\n  Compiling jaclang/scale/events/broker.jac...\n  Compiling jaclang/scale/persistence/pg.jac...\n  Compiling jaclang/scale/state/__init__.jac...\n  Compiling jaclang/scale/state/pg_state_backend.jac...\n  Compiling jaclang/scale/state/state_backend.jac...\n  Compiling jaclang/runtimelib/storage/__init__.jac...\n  Compiling jaclang/runtimelib/storage/storage.jac...\n  Compiling jaclang/runtimelib/storage/local_storage.jac...\n  Compiling jaclang/project/config_schema.jac...\n  Compiling jaclang/scale/config/validation.jac...\n  Compiling jaclang/scale/config/plugin_config.jac...\n  Compiling jaclang/scale/deploy/target/factory.jac...\n  Compiling jaclang/scale/observability/__init__.jac...\n  Compiling jaclang/scale/deploy/target/deployment_target.jac...\n  Compiling jaclang/scale/models/__init__.jac...\n  Compiling jaclang/scale/config/app_config.jac...\n  Compiling jaclang/scale/config/base_config.jac...\n  Compiling jaclang/scale/models/deployment_result.jac...\n  Compiling jaclang/scale/models/resource_status.jac...\n  Compiling jaclang/scale/observability/logger.jac...\n  Compiling jaclang/runtimelib/utils.jac...\n  Compiling jaclang/compiler/passes/native/na_compile_pass.jac...\n  Compiling jaclang/compiler/passes/native/llvm/__init__.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/__init__.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/common.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/dylib.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/ffi.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/executionengine.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/targets.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/initfini.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/config.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/object_file.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/linker.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/module.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/value.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/context.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/options.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/newpassmanagers.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/analysis.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/orcjit.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen_pass.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/arena.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/state.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/__init__.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/_utils.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/values.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/types.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/context.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/module.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/builder.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/instructions.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/builtins.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/bytearray_na.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/bytes.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/calls.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/clib_abi.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/clib_vtable.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/closures.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/comprehensions.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/container_helpers.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/context_mgr.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/core.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/cycle_collector.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/constants.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/debug.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/dicts.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/enums.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/exceptions.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/expr.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/file_io.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/fmt.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/func.jac...\n  Compiling jaclang/compiler/targets/abi.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/gc_debug.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/generics.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/globals.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/hash_core.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/iterators.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/lists.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/math.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/objects.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/os.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/osp.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/pyb_interop.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/random.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/refcount.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/repr.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/sets.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/stmt.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/struct.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/time.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/trace_fn.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/tuples.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/types.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/vtable.jac...\n  Compiling jaclang/compiler/passes/main/type_checker_pass.jac...\n  Compiling jaclang/compiler/type_system/types.jac...\n  Compiling jaclang/compiler/type_system/type_utils.jac...\n  Compiling jaclang/compiler/type_system/operations.jac...\n  Compiling jaclang/compiler/type_system/type_evaluator.jac...\n  Compiling jaclang/compiler/type_system/properties.jac...\n  Compiling jaclang/compiler/type_system/enum_utils.jac...\n  Compiling jaclang/compiler/type_system/ts_decl_parser.jac...\n  Compiling jaclang/compiler/passes/main/pyast_load_pass.jac...\n  Compiling jaclang/compiler/passes/main/static_analysis_pass.jac...\n  Compiling jaclang/compiler/passes/main/access_check_pass.jac...\n  Compiling jaclang/compiler/passes/main/capability_check_pass.jac...\n  Compiling jaclang/compiler/passes/main/ownership_check_pass.jac...\n  Compiling jaclang/compiler/passes/main/dataflow.jac...\n  Compiling jaclang/compiler/passes/tool/jac_auto_lint_pass.jac...\nnote: /tmp/tmpgeamfq0r/libtest_staged.jac preferred native but did not lower; compiled in the server codespace (error[E1004]: Function 'call' declared return type PyObject but may implicitly return None)\n[ERROR] Error: name '__jac_value__' is not defined\n   37 | glob Py_hash_t = int;\n   38 | \n   39 | @__jac_value__\n      |  ^^^^^^^^^^^^\n   40 | obj unaryfunc {\n   41 |     def call() -> PyObj {\n  at <module> /tmp/tmpgeamfq0r/libtest_staged.jac:39\n  ... [internal runtime calls]\nJac setup complete (202 modules compiled and cached)"
+          },
+          {
+            "name": "bisect_insort",
+            "status": "skip",
+            "detail": "no jac differential entry"
+          }
+        ]
+      },
+      "jacpython": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 2,
+        "total": 2,
+        "cases": [
+          {
+            "name": "bisect_precomputed",
+            "status": "skip",
+            "detail": "bisect_precomputed not jacpython-capable or disabled"
+          },
+          {
+            "name": "bisect_insort",
+            "status": "skip",
+            "detail": "bisect_insort not jacpython-capable or disabled"
+          }
+        ]
+      }
+    },
+    {
+      "stem": "_heapqmodule",
+      "gate_type": "libtest",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [
+        "heapq_push_pop",
+        "heapq_heapify"
+      ],
+      "notes": "Algorithm parity via heapq stdlib; C port oracle-gated separately.",
+      "libtest": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "cases": [
+          {
+            "name": "heapq_push_pop",
+            "passed": true,
+            "detail": "ok"
+          },
+          {
+            "name": "heapq_heapify",
+            "passed": true,
+            "detail": "ok"
+          }
+        ]
+      },
+      "jac_differential": {
+        "passed": 0,
+        "failed": 1,
+        "skipped": 1,
+        "total": 2,
+        "cases": [
+          {
+            "name": "heapq_push_pop",
+            "status": "fail",
+            "detail": "[dev] jac dev mode - using compiler source at /home/jac/repos/jac-python/jac\nnote: /tmp/tmp3m2yg4sh/libtest_staged.jac preferred native but did not lower; compiled in the server codespace (error[E1004]: Function 'call' declared return type PyObject but may implicitly return None)\n[ERROR] Error: name '__jac_value__' is not defined\n   37 | glob Py_hash_t = int;\n   38 | \n   39 | @__jac_value__\n      |  ^^^^^^^^^^^^\n   40 | obj unaryfunc {\n   41 |     def call() -> PyObj {\n  at <module> /tmp/tmp3m2yg4sh/libtest_staged.jac:39\n  ... [internal runtime calls]"
+          },
+          {
+            "name": "heapq_heapify",
+            "status": "skip",
+            "detail": "no jac differential entry"
+          }
+        ]
+      },
+      "jacpython": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 2,
+        "total": 2,
+        "cases": [
+          {
+            "name": "heapq_push_pop",
+            "status": "skip",
+            "detail": "heapq_push_pop not jacpython-capable or disabled"
+          },
+          {
+            "name": "heapq_heapify",
+            "status": "skip",
+            "detail": "heapq_heapify not jacpython-capable or disabled"
+          }
+        ]
+      }
+    },
+    {
+      "stem": "getplatform",
+      "gate_type": "libtest",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [
+        "platform_basic"
+      ],
+      "notes": "Partial Lib/test via platform module; Py_GetPlatform oracle-gated separately.",
+      "libtest": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "cases": [
+          {
+            "name": "platform_basic",
+            "passed": true,
+            "detail": "ok"
+          }
+        ]
+      },
+      "jac_differential": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1,
+        "cases": [
+          {
+            "name": "platform_basic",
+            "status": "pass",
+            "detail": "ok"
+          }
+        ]
+      },
+      "jacpython": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1,
+        "cases": [
+          {
+            "name": "platform_basic",
+            "status": "pass",
+            "detail": "ok"
+          }
+        ]
+      }
+    },
+    {
+      "stem": "getcompiler",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "No Python stdlib equivalent; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "getcopyright",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "No Python stdlib equivalent; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "pyfpe",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "Legacy FPE hook; cc vs lifted jac oracle."
+    }
+  ],
+  "libtest_results": {
+    "_bisectmodule": {
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "cases": [
+        {
+          "name": "bisect_precomputed",
+          "passed": true,
+          "detail": "ok"
+        },
+        {
+          "name": "bisect_insort",
+          "passed": true,
+          "detail": "ok"
+        }
+      ]
+    },
+    "_heapqmodule": {
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "cases": [
+        {
+          "name": "heapq_push_pop",
+          "passed": true,
+          "detail": "ok"
+        },
+        {
+          "name": "heapq_heapify",
+          "passed": true,
+          "detail": "ok"
+        }
+      ]
+    },
+    "getplatform": {
+      "passed": 1,
+      "failed": 0,
+      "total": 1,
+      "cases": [
+        {
+          "name": "platform_basic",
+          "passed": true,
+          "detail": "ok"
+        }
+      ]
+    }
+  },
+  "jac_differential_results": {
+    "_bisectmodule": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 1,
+      "total": 2,
+      "cases": [
+        {
+          "name": "bisect_precomputed",
+          "status": "fail",
+          "detail": "Setting up Jac for first use (compiling and caching compiler)...\n  Compiling jaclang/project/__init__.jac...\n  Compiling jaclang/project/config.jac...\n  Compiling jaclang/compiler/passes/main/cfg_build_pass.jac...\n  Compiling jaclang/compiler/passes/main/jsx_intrinsic_guard_pass.jac...\n  Compiling jaclang/runtimelib/__init__.jac...\n  Compiling jaclang/project/client_kind.jac...\n  Compiling jaclang/project/client_kind_paths.jac...\n  Compiling jaclang/runtimelib/client/__init__.jac...\n  Compiling jaclang/compiler/passes/tool/unparse_pass.jac...\n  Compiling jaclang/runtimelib/builtin.jac...\n  Compiling jaclang/runtimelib/serving/__init__.jac...\n  Compiling jaclang/compiler/passes/main/sem_def_match_pass.jac...\n  Compiling jaclang/compiler/symbol_utils.jac...\n  Compiling jaclang/compiler/expr_keys.jac...\n  Compiling jaclang/compiler/passes/main/layout_pass.jac...\n  Compiling jaclang/compiler/type_registry.jac...\n  Compiling jaclang/compiler/intrinsic_registry.jac...\n  Compiling jaclang/compiler/passes/main/mtir_gen_pass.jac...\n  Compiling jaclang/compiler/passes/ecmascript/esast_gen_pass.jac...\n  Compiling jaclang/compiler/passes/ecmascript/reactive_intent.jac...\n  Compiling jaclang/compiler/passes/ecmascript/estree.jac...\n  Compiling jaclang/compiler/passes/ecmascript/es_unparse.jac...\n  Compiling jaclang/compiler/passes/ecmascript/scoped_styles.jac...\n  Compiling jaclang/compiler/passes/ecmascript/framework_backend.jac...\n  Compiling jaclang/compiler/passes/ecmascript/free_ident_audit.jac...\n  Compiling jaclang/cli/cli.jac...\n  Compiling jaclang/cli/console.jac...\n  Compiling jaclang/cli/manifest_route.jac...\n[dev] jac dev mode - using compiler source at /home/jac/repos/jac-python/jac\n  Compiling jaclang/cli/manifest.jac...\n  Compiling jaclang/cli/command.jac...\n  Compiling jaclang/cli/manifest_help.jac...\n  Compiling jaclang/cli/dispatch.jac...\n  Compiling jaclang/cli/manifest_parse.jac...\n  Compiling jaclang/cli/executor.jac...\n  Compiling jaclang/cli/loader.jac...\n  Compiling jaclang/project/pyvenv.jac...\n  Compiling jaclang/cli/commands/__init__.jac...\n  Compiling jaclang/cli/commands/execution.jac...\n  Compiling jaclang/cli/registry.jac...\n  Compiling jaclang/scale/__init__.jac...\n  Compiling jaclang/cli/commands/cli_helpers.jac...\n  Compiling jaclang/project/kinds.jac...\n  Compiling jaclang/scale/plugin.jac...\n  Compiling jaclang/scale/runtime/__init__.jac...\n  Compiling jaclang/scale/runtime/realizer/__init__.jac...\n  Compiling jaclang/scale/runtime/orchestrator/__init__.jac...\n  Compiling jaclang/scale/runtime/context/__init__.jac...\n  Compiling jaclang/scale/config/__init__.jac...\n  Compiling jaclang/scale/deploy/__init__.jac...\n  Compiling jaclang/scale/deploy/target/__init__.jac...\n  Compiling jaclang/scale/runtime/transport/__init__.jac...\n  Compiling jaclang/runtimelib/context.jac...\n  Compiling jaclang/runtimelib/exceptions.jac...\n  Compiling jaclang/runtimelib/session.jac...\n  Compiling jaclang/runtimelib/dbcatalog.jac...\n  Compiling jaclang/runtimelib/store.jac...\n  Compiling jaclang/runtimelib/pgwire.jac...\n  Compiling jaclang/runtimelib/pgembed.jac...\n  Compiling jaclang/runtimelib/query_planner.jac...\n  Compiling jaclang/runtimelib/sqlcompile.jac...\n  Compiling jaclang/runtimelib/server.jac...\n  Compiling jaclang/cli/banners.jac...\n  Compiling jaclang/runtimelib/serializer.jac...\n  Compiling jaclang/runtimelib/typecache.jac...\n  Compiling jaclang/runtimelib/schema_rules.jac...\n  Compiling jaclang/runtimelib/client_bundle.jac...\n  Compiling jaclang/runtimelib/auth_models.jac...\n  Compiling jaclang/runtimelib/transport.jac...\n  Compiling jaclang/runtimelib/serving/app.jac...\n  Compiling jaclang/runtimelib/serving/coerce.jac...\n  Compiling jaclang/runtimelib/serving/datatypes.jac...\n  Compiling jaclang/runtimelib/serving/endpoint.jac...\n  Compiling jaclang/runtimelib/serving/multipart.jac...\n  Compiling jaclang/runtimelib/serving/router.jac...\n  Compiling jaclang/runtimelib/serving/sse.jac...\n  Compiling jaclang/runtimelib/serving/middleware.jac...\n  Compiling jaclang/runtimelib/serving/openapi.jac...\n  Compiling jaclang/runtimelib/serving/server.jac...\n  Compiling jaclang/runtimelib/serving/ws.jac...\n  Compiling jaclang/runtimelib/static_files.jac...\n  Compiling jaclang/runtimelib/scheduler.jac...\n  Compiling jaclang/scale/config/config_loader.jac...\n  Compiling jaclang/project/plugin_config.jac...\n  Compiling jaclang/scale/config/firebase_env.jac...\n  Compiling jaclang/scale/events/__init__.jac...\n  Compiling jaclang/scale/config/project_env.jac...\n  Compiling jaclang/scale/_optdeps/__init__.jac...\n  Compiling jaclang/scale/_optdeps/optional_deps.jac...\n  Compiling jaclang/project/capabilities.jac...\n  Compiling jaclang/scale/events/streams/__init__.jac...\n  Compiling jaclang/scale/events/streams/postgres.jac...\n  Compiling jaclang/scale/persistence/__init__.jac...\n  Compiling jaclang/scale/events/broker.jac...\n  Compiling jaclang/scale/persistence/pg.jac...\n  Compiling jaclang/scale/state/__init__.jac...\n  Compiling jaclang/scale/state/pg_state_backend.jac...\n  Compiling jaclang/scale/state/state_backend.jac...\n  Compiling jaclang/runtimelib/storage/__init__.jac...\n  Compiling jaclang/runtimelib/storage/storage.jac...\n  Compiling jaclang/runtimelib/storage/local_storage.jac...\n  Compiling jaclang/project/config_schema.jac...\n  Compiling jaclang/scale/config/validation.jac...\n  Compiling jaclang/scale/config/plugin_config.jac...\n  Compiling jaclang/scale/deploy/target/factory.jac...\n  Compiling jaclang/scale/observability/__init__.jac...\n  Compiling jaclang/scale/deploy/target/deployment_target.jac...\n  Compiling jaclang/scale/models/__init__.jac...\n  Compiling jaclang/scale/config/app_config.jac...\n  Compiling jaclang/scale/config/base_config.jac...\n  Compiling jaclang/scale/models/deployment_result.jac...\n  Compiling jaclang/scale/models/resource_status.jac...\n  Compiling jaclang/scale/observability/logger.jac...\n  Compiling jaclang/runtimelib/utils.jac...\n  Compiling jaclang/compiler/passes/native/na_compile_pass.jac...\n  Compiling jaclang/compiler/passes/native/llvm/__init__.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/__init__.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/common.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/dylib.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/ffi.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/executionengine.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/targets.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/initfini.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/config.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/object_file.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/linker.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/module.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/value.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/context.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/options.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/newpassmanagers.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/analysis.jac...\n  Compiling jaclang/compiler/passes/native/llvm/binding/orcjit.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen_pass.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/arena.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/state.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/__init__.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/_utils.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/values.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/types.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/context.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/module.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/builder.jac...\n  Compiling jaclang/compiler/passes/native/llvm/ir/instructions.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/builtins.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/bytearray_na.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/bytes.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/calls.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/clib_abi.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/clib_vtable.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/closures.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/comprehensions.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/container_helpers.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/context_mgr.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/core.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/cycle_collector.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/constants.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/debug.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/dicts.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/enums.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/exceptions.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/expr.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/file_io.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/fmt.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/func.jac...\n  Compiling jaclang/compiler/targets/abi.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/gc_debug.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/generics.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/globals.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/hash_core.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/iterators.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/lists.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/math.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/objects.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/os.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/osp.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/pyb_interop.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/random.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/refcount.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/repr.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/sets.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/stmt.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/struct.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/time.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/trace_fn.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/tuples.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/types.jac...\n  Compiling jaclang/compiler/passes/native/na_ir_gen/vtable.jac...\n  Compiling jaclang/compiler/passes/main/type_checker_pass.jac...\n  Compiling jaclang/compiler/type_system/types.jac...\n  Compiling jaclang/compiler/type_system/type_utils.jac...\n  Compiling jaclang/compiler/type_system/operations.jac...\n  Compiling jaclang/compiler/type_system/type_evaluator.jac...\n  Compiling jaclang/compiler/type_system/properties.jac...\n  Compiling jaclang/compiler/type_system/enum_utils.jac...\n  Compiling jaclang/compiler/type_system/ts_decl_parser.jac...\n  Compiling jaclang/compiler/passes/main/pyast_load_pass.jac...\n  Compiling jaclang/compiler/passes/main/static_analysis_pass.jac...\n  Compiling jaclang/compiler/passes/main/access_check_pass.jac...\n  Compiling jaclang/compiler/passes/main/capability_check_pass.jac...\n  Compiling jaclang/compiler/passes/main/ownership_check_pass.jac...\n  Compiling jaclang/compiler/passes/main/dataflow.jac...\n  Compiling jaclang/compiler/passes/tool/jac_auto_lint_pass.jac...\nnote: /tmp/tmpgeamfq0r/libtest_staged.jac preferred native but did not lower; compiled in the server codespace (error[E1004]: Function 'call' declared return type PyObject but may implicitly return None)\n[ERROR] Error: name '__jac_value__' is not defined\n   37 | glob Py_hash_t = int;\n   38 | \n   39 | @__jac_value__\n      |  ^^^^^^^^^^^^\n   40 | obj unaryfunc {\n   41 |     def call() -> PyObj {\n  at <module> /tmp/tmpgeamfq0r/libtest_staged.jac:39\n  ... [internal runtime calls]\nJac setup complete (202 modules compiled and cached)"
+        },
+        {
+          "name": "bisect_insort",
+          "status": "skip",
+          "detail": "no jac differential entry"
+        }
+      ]
+    },
+    "_heapqmodule": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 1,
+      "total": 2,
+      "cases": [
+        {
+          "name": "heapq_push_pop",
+          "status": "fail",
+          "detail": "[dev] jac dev mode - using compiler source at /home/jac/repos/jac-python/jac\nnote: /tmp/tmp3m2yg4sh/libtest_staged.jac preferred native but did not lower; compiled in the server codespace (error[E1004]: Function 'call' declared return type PyObject but may implicitly return None)\n[ERROR] Error: name '__jac_value__' is not defined\n   37 | glob Py_hash_t = int;\n   38 | \n   39 | @__jac_value__\n      |  ^^^^^^^^^^^^\n   40 | obj unaryfunc {\n   41 |     def call() -> PyObj {\n  at <module> /tmp/tmp3m2yg4sh/libtest_staged.jac:39\n  ... [internal runtime calls]"
+        },
+        {
+          "name": "heapq_heapify",
+          "status": "skip",
+          "detail": "no jac differential entry"
+        }
+      ]
+    },
+    "getplatform": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "cases": [
+        {
+          "name": "platform_basic",
+          "status": "pass",
+          "detail": "ok"
+        }
+      ]
+    }
+  },
+  "jacpython_results": {
+    "_bisectmodule": {
+      "passed": 0,
+      "failed": 0,
+      "skipped": 2,
+      "total": 2,
+      "cases": [
+        {
+          "name": "bisect_precomputed",
+          "status": "skip",
+          "detail": "bisect_precomputed not jacpython-capable or disabled"
+        },
+        {
+          "name": "bisect_insort",
+          "status": "skip",
+          "detail": "bisect_insort not jacpython-capable or disabled"
+        }
+      ]
+    },
+    "_heapqmodule": {
+      "passed": 0,
+      "failed": 0,
+      "skipped": 2,
+      "total": 2,
+      "cases": [
+        {
+          "name": "heapq_push_pop",
+          "status": "skip",
+          "detail": "heapq_push_pop not jacpython-capable or disabled"
+        },
+        {
+          "name": "heapq_heapify",
+          "status": "skip",
+          "detail": "heapq_heapify not jacpython-capable or disabled"
+        }
+      ]
+    },
+    "getplatform": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "cases": [
+        {
+          "name": "platform_basic",
+          "status": "pass",
+          "detail": "ok"
+        }
+      ]
+    }
+  }
+}

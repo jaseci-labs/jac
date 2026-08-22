@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave11/math_popcount_u.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave11/_staging/math_popcount_u.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave11/math_pow_mod.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave11/_staging/math_pow_mod.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave11/pystr_cmp_c.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave11/_staging/pystr_cmp_c.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave11/pystr_contains_c.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave11/_staging/pystr_contains_c.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 0,
+  "version": 1
+}

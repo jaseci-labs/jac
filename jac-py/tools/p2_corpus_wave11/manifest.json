@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave11",
+  "description": "P2 wave 11: four leaf extracts (math_pow_mod, math_popcount_u, pystr_contains_c, pystr_cmp_c)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave11",
+  "baseline_report": "jac-py/tools/p2_corpus_wave11/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "math_pow_mod",
+      "source": "jac-py/tools/p2_corpus_wave11/corpus/math_pow_mod.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_popcount_u",
+      "source": "jac-py/tools/p2_corpus_wave11/corpus/math_popcount_u.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_contains_c",
+      "source": "jac-py/tools/p2_corpus_wave11/corpus/pystr_contains_c.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_cmp_c",
+      "source": "jac-py/tools/p2_corpus_wave11/corpus/pystr_cmp_c.c",
+      "header_free": true
+    }
+  ]
+}

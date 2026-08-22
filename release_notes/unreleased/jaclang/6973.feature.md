@@ -1,0 +1,3 @@
+- **Feat(jac-py): native compiler band-4 functions through closures**: Product path compiles `def`, `lambda`, self-recursion, and nested closures with oracle parity on nested `co_code`, symtable capture facts, and VM execution (`LOAD_DEREF`, `MAKE_CELL`, `COPY_FREE_VARS`, `SET_FUNCTION_ATTRIBUTE`).
+- **Chore(jac-py): regenerate parser.jac**: `grammar2jac.py --check` passes against pinned CPython 3.14.6 grammar.
+- **Feat(jac-py): VM opcode fixtures for closure opcodes**: `vm_opcode_fixtures.py` and `layer_vm_conformance.jac` cover closure-related emission opcodes independently of native codegen.

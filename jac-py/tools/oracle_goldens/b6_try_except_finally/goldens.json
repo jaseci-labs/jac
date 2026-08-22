@@ -1,0 +1,2885 @@
+{
+  "python": "3.14.7",
+  "fixtures": [
+    {
+      "qualname": "f",
+      "name": "try_except_finally_normal",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b005e0170005e0370015201230020005c0000000000000000000600640600001c001f005e0270001d004c1369003b031d00690120005e03700169003b031d006901",
+      "co_exceptiontable": "82020800880d180395021b009701180398031b009b041f03",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 6,
+          "cache_offset": 6,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 6,
+          "start_offset": 6,
+          "end_offset": 8,
+          "cache_offset": 8,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "value"
+        },
+        {
+          "offset": 8,
+          "start_offset": 8,
+          "end_offset": 10,
+          "cache_offset": 10,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 10,
+          "start_offset": 10,
+          "end_offset": 12,
+          "cache_offset": 12,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 12,
+          "start_offset": 12,
+          "end_offset": 14,
+          "cache_offset": 14,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 18,
+          "cache_offset": 18,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 18,
+          "start_offset": 18,
+          "end_offset": 28,
+          "cache_offset": 20,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 0,
+          "argrepr": "ValueError"
+        },
+        {
+          "offset": 28,
+          "start_offset": 28,
+          "end_offset": 30,
+          "cache_offset": 30,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 30,
+          "start_offset": 30,
+          "end_offset": 34,
+          "cache_offset": 32,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 6,
+          "argrepr": "to L2"
+        },
+        {
+          "offset": 34,
+          "start_offset": 34,
+          "end_offset": 36,
+          "cache_offset": 36,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 36,
+          "start_offset": 36,
+          "end_offset": 38,
+          "cache_offset": 38,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 38,
+          "start_offset": 38,
+          "end_offset": 40,
+          "cache_offset": 40,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 42,
+          "cache_offset": 42,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "value"
+        },
+        {
+          "offset": 42,
+          "start_offset": 42,
+          "end_offset": 44,
+          "cache_offset": 44,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+          "oparg": 19,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 50,
+          "cache_offset": 50,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 50,
+          "start_offset": 50,
+          "end_offset": 52,
+          "cache_offset": 52,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 52,
+          "start_offset": 52,
+          "end_offset": 54,
+          "cache_offset": 54,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 54,
+          "start_offset": 54,
+          "end_offset": 56,
+          "cache_offset": 56,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 56,
+          "start_offset": 56,
+          "end_offset": 58,
+          "cache_offset": 58,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 62,
+          "cache_offset": 62,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 62,
+          "start_offset": 62,
+          "end_offset": 64,
+          "cache_offset": 64,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 64,
+          "start_offset": 64,
+          "end_offset": 66,
+          "cache_offset": 66,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 66,
+          "start_offset": 66,
+          "end_offset": 68,
+          "cache_offset": 68,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 8,
+          "target": 16,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 16,
+          "end": 42,
+          "target": 48,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 42,
+          "end": 46,
+          "target": 54,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 46,
+          "end": 48,
+          "target": 48,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 48,
+          "end": 54,
+          "target": 54,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 54,
+          "end": 62,
+          "target": 62,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        value = 1\n    except ValueError:\n        value = 2\n    finally:\n        finished = 3\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "try_except_finally_raised_caught",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640600001c001f005e0170001d004d0469003b031d0069011b005e0270015201230020005e02700169003b031d006901",
+      "co_exceptiontable": "820b0d008d0d1d039a0225009c011d039d032500a5042903",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 14,
+          "cache_offset": 6,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 1,
+          "argrepr": "ValueError + NULL"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "LOAD_CONST",
+          "oparg": 0,
+          "argrepr": "'body'"
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 24,
+          "cache_offset": 18,
+          "opname": "CALL",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 24,
+          "start_offset": 24,
+          "end_offset": 26,
+          "cache_offset": 26,
+          "opname": "RAISE_VARARGS",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 26,
+          "start_offset": 26,
+          "end_offset": 28,
+          "cache_offset": 28,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 28,
+          "start_offset": 28,
+          "end_offset": 38,
+          "cache_offset": 30,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 0,
+          "argrepr": "ValueError"
+        },
+        {
+          "offset": 38,
+          "start_offset": 38,
+          "end_offset": 40,
+          "cache_offset": 40,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 44,
+          "cache_offset": 42,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 6,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 50,
+          "cache_offset": 50,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 50,
+          "start_offset": 50,
+          "end_offset": 52,
+          "cache_offset": 52,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "handled"
+        },
+        {
+          "offset": 52,
+          "start_offset": 52,
+          "end_offset": 54,
+          "cache_offset": 54,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 54,
+          "start_offset": 54,
+          "end_offset": 56,
+          "cache_offset": 56,
+          "opname": "JUMP_FORWARD",
+          "oparg": 4,
+          "argrepr": "to L2"
+        },
+        {
+          "offset": 56,
+          "start_offset": 56,
+          "end_offset": 58,
+          "cache_offset": 58,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 62,
+          "cache_offset": 62,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 62,
+          "start_offset": 62,
+          "end_offset": 64,
+          "cache_offset": 64,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 64,
+          "start_offset": 64,
+          "end_offset": 66,
+          "cache_offset": 66,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 66,
+          "start_offset": 66,
+          "end_offset": 68,
+          "cache_offset": 68,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 68,
+          "start_offset": 68,
+          "end_offset": 70,
+          "cache_offset": 70,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 70,
+          "start_offset": 70,
+          "end_offset": 72,
+          "cache_offset": 72,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 72,
+          "start_offset": 72,
+          "end_offset": 74,
+          "cache_offset": 74,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 74,
+          "start_offset": 74,
+          "end_offset": 76,
+          "cache_offset": 76,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 76,
+          "start_offset": 76,
+          "end_offset": 78,
+          "cache_offset": 78,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 78,
+          "start_offset": 78,
+          "end_offset": 80,
+          "cache_offset": 80,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 80,
+          "start_offset": 80,
+          "end_offset": 82,
+          "cache_offset": 82,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 82,
+          "start_offset": 82,
+          "end_offset": 84,
+          "cache_offset": 84,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 84,
+          "start_offset": 84,
+          "end_offset": 86,
+          "cache_offset": 86,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 86,
+          "start_offset": 86,
+          "end_offset": 88,
+          "cache_offset": 88,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 52,
+          "target": 58,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 52,
+          "end": 56,
+          "target": 74,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 56,
+          "end": 58,
+          "target": 58,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 58,
+          "end": 64,
+          "target": 74,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 74,
+          "end": 82,
+          "target": 82,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        raise ValueError(\"body\")\n    except ValueError:\n        handled = 1\n    finally:\n        finished = 2\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "try_except_finally_raised_unmatched",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0200000000000000000600640600001c001f005e0170001d004d0469003b031d0069011b005e0270015201230020005e02700169003b031d006901",
+      "co_exceptiontable": "820b0d008d0d1d039a0225009c011d039d032500a5042903",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 14,
+          "cache_offset": 6,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 1,
+          "argrepr": "KeyError + NULL"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "LOAD_CONST",
+          "oparg": 0,
+          "argrepr": "'body'"
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 24,
+          "cache_offset": 18,
+          "opname": "CALL",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 24,
+          "start_offset": 24,
+          "end_offset": 26,
+          "cache_offset": 26,
+          "opname": "RAISE_VARARGS",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 26,
+          "start_offset": 26,
+          "end_offset": 28,
+          "cache_offset": 28,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 28,
+          "start_offset": 28,
+          "end_offset": 38,
+          "cache_offset": 30,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 2,
+          "argrepr": "ValueError"
+        },
+        {
+          "offset": 38,
+          "start_offset": 38,
+          "end_offset": 40,
+          "cache_offset": 40,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 44,
+          "cache_offset": 42,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 6,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 50,
+          "cache_offset": 50,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 50,
+          "start_offset": 50,
+          "end_offset": 52,
+          "cache_offset": 52,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "handled"
+        },
+        {
+          "offset": 52,
+          "start_offset": 52,
+          "end_offset": 54,
+          "cache_offset": 54,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 54,
+          "start_offset": 54,
+          "end_offset": 56,
+          "cache_offset": 56,
+          "opname": "JUMP_FORWARD",
+          "oparg": 4,
+          "argrepr": "to L2"
+        },
+        {
+          "offset": 56,
+          "start_offset": 56,
+          "end_offset": 58,
+          "cache_offset": 58,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 62,
+          "cache_offset": 62,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 62,
+          "start_offset": 62,
+          "end_offset": 64,
+          "cache_offset": 64,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 64,
+          "start_offset": 64,
+          "end_offset": 66,
+          "cache_offset": 66,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 66,
+          "start_offset": 66,
+          "end_offset": 68,
+          "cache_offset": 68,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 68,
+          "start_offset": 68,
+          "end_offset": 70,
+          "cache_offset": 70,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 70,
+          "start_offset": 70,
+          "end_offset": 72,
+          "cache_offset": 72,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 72,
+          "start_offset": 72,
+          "end_offset": 74,
+          "cache_offset": 74,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 74,
+          "start_offset": 74,
+          "end_offset": 76,
+          "cache_offset": 76,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 76,
+          "start_offset": 76,
+          "end_offset": 78,
+          "cache_offset": 78,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 78,
+          "start_offset": 78,
+          "end_offset": 80,
+          "cache_offset": 80,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 80,
+          "start_offset": 80,
+          "end_offset": 82,
+          "cache_offset": 82,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 82,
+          "start_offset": 82,
+          "end_offset": 84,
+          "cache_offset": 84,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 84,
+          "start_offset": 84,
+          "end_offset": 86,
+          "cache_offset": 86,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 86,
+          "start_offset": 86,
+          "end_offset": 88,
+          "cache_offset": 88,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 52,
+          "target": 58,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 52,
+          "end": 56,
+          "target": 74,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 56,
+          "end": 58,
+          "target": 58,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 58,
+          "end": 64,
+          "target": 74,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 74,
+          "end": 82,
+          "target": 82,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        raise KeyError(\"body\")\n    except ValueError:\n        handled = 1\n    finally:\n        finished = 2\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "try_except_as_finally",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640d00001c0070005e0170011d00520170003f004d08520170003f00690169003b031d0069011b005e0270025201230020005e02700269003b031d006901",
+      "co_exceptiontable": "820b0d008d0b240398021f039a052c009f052403a4032c00ac043003",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 14,
+          "cache_offset": 6,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 1,
+          "argrepr": "ValueError + NULL"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "LOAD_CONST",
+          "oparg": 0,
+          "argrepr": "'body'"
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 24,
+          "cache_offset": 18,
+          "opname": "CALL",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 24,
+          "start_offset": 24,
+          "end_offset": 26,
+          "cache_offset": 26,
+          "opname": "RAISE_VARARGS",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 26,
+          "start_offset": 26,
+          "end_offset": 28,
+          "cache_offset": 28,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 28,
+          "start_offset": 28,
+          "end_offset": 38,
+          "cache_offset": 30,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 0,
+          "argrepr": "ValueError"
+        },
+        {
+          "offset": 38,
+          "start_offset": 38,
+          "end_offset": 40,
+          "cache_offset": 40,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 44,
+          "cache_offset": 42,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 13,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "error"
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 50,
+          "cache_offset": 50,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 50,
+          "start_offset": 50,
+          "end_offset": 52,
+          "cache_offset": 52,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "handled"
+        },
+        {
+          "offset": 52,
+          "start_offset": 52,
+          "end_offset": 54,
+          "cache_offset": 54,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 54,
+          "start_offset": 54,
+          "end_offset": 56,
+          "cache_offset": 56,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 56,
+          "start_offset": 56,
+          "end_offset": 58,
+          "cache_offset": 58,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "error"
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "DELETE_FAST",
+          "oparg": 0,
+          "argrepr": "error"
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 62,
+          "cache_offset": 62,
+          "opname": "JUMP_FORWARD",
+          "oparg": 8,
+          "argrepr": "to L2"
+        },
+        {
+          "offset": 62,
+          "start_offset": 62,
+          "end_offset": 64,
+          "cache_offset": 64,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 64,
+          "start_offset": 64,
+          "end_offset": 66,
+          "cache_offset": 66,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "error"
+        },
+        {
+          "offset": 66,
+          "start_offset": 66,
+          "end_offset": 68,
+          "cache_offset": 68,
+          "opname": "DELETE_FAST",
+          "oparg": 0,
+          "argrepr": "error"
+        },
+        {
+          "offset": 68,
+          "start_offset": 68,
+          "end_offset": 70,
+          "cache_offset": 70,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 70,
+          "start_offset": 70,
+          "end_offset": 72,
+          "cache_offset": 72,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 72,
+          "start_offset": 72,
+          "end_offset": 74,
+          "cache_offset": 74,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 74,
+          "start_offset": 74,
+          "end_offset": 76,
+          "cache_offset": 76,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 76,
+          "start_offset": 76,
+          "end_offset": 78,
+          "cache_offset": 78,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 78,
+          "start_offset": 78,
+          "end_offset": 80,
+          "cache_offset": 80,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 80,
+          "start_offset": 80,
+          "end_offset": 82,
+          "cache_offset": 82,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 82,
+          "start_offset": 82,
+          "end_offset": 84,
+          "cache_offset": 84,
+          "opname": "STORE_FAST",
+          "oparg": 2,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 84,
+          "start_offset": 84,
+          "end_offset": 86,
+          "cache_offset": 86,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 86,
+          "start_offset": 86,
+          "end_offset": 88,
+          "cache_offset": 88,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 88,
+          "start_offset": 88,
+          "end_offset": 90,
+          "cache_offset": 90,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 90,
+          "start_offset": 90,
+          "end_offset": 92,
+          "cache_offset": 92,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 92,
+          "start_offset": 92,
+          "end_offset": 94,
+          "cache_offset": 94,
+          "opname": "STORE_FAST",
+          "oparg": 2,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 94,
+          "start_offset": 94,
+          "end_offset": 96,
+          "cache_offset": 96,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 96,
+          "start_offset": 96,
+          "end_offset": 98,
+          "cache_offset": 98,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 98,
+          "start_offset": 98,
+          "end_offset": 100,
+          "cache_offset": 100,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 100,
+          "start_offset": 100,
+          "end_offset": 102,
+          "cache_offset": 102,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 48,
+          "target": 72,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 48,
+          "end": 52,
+          "target": 62,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 52,
+          "end": 62,
+          "target": 88,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 62,
+          "end": 72,
+          "target": 72,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 72,
+          "end": 78,
+          "target": 88,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 88,
+          "end": 96,
+          "target": 96,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        raise ValueError(\"body\")\n    except ValueError as error:\n        handled = 1\n    finally:\n        finished = 2\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "return_inside_try_finally",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b001b005e0170005e07230020005e01700069003b031d006901",
+      "co_exceptiontable": "87040b03",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 6,
+          "cache_offset": 6,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 6,
+          "start_offset": 6,
+          "end_offset": 8,
+          "cache_offset": 8,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 8,
+          "start_offset": 8,
+          "end_offset": 10,
+          "cache_offset": 10,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 10,
+          "start_offset": 10,
+          "end_offset": 12,
+          "cache_offset": 12,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 7,
+          "argrepr": ""
+        },
+        {
+          "offset": 12,
+          "start_offset": 12,
+          "end_offset": 14,
+          "cache_offset": 14,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 18,
+          "cache_offset": 18,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 18,
+          "start_offset": 18,
+          "end_offset": 20,
+          "cache_offset": 20,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 20,
+          "start_offset": 20,
+          "end_offset": 22,
+          "cache_offset": 22,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 22,
+          "start_offset": 22,
+          "end_offset": 24,
+          "cache_offset": 24,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 24,
+          "start_offset": 24,
+          "end_offset": 26,
+          "cache_offset": 26,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 26,
+          "start_offset": 26,
+          "end_offset": 28,
+          "cache_offset": 28,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 14,
+          "end": 22,
+          "target": 22,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        return 7\n    finally:\n        finished = 1\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "exception_inside_handler_finally",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640d00001c001f005c03000000000000000052013401000000000000680169003b031d00690120005e01700069003b031d006901",
+      "co_exceptiontable": "820b0d008d172403a4032700a7042b03",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 14,
+          "cache_offset": 6,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 1,
+          "argrepr": "ValueError + NULL"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "LOAD_CONST",
+          "oparg": 0,
+          "argrepr": "'body'"
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 24,
+          "cache_offset": 18,
+          "opname": "CALL",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 24,
+          "start_offset": 24,
+          "end_offset": 26,
+          "cache_offset": 26,
+          "opname": "RAISE_VARARGS",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 26,
+          "start_offset": 26,
+          "end_offset": 28,
+          "cache_offset": 28,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 28,
+          "start_offset": 28,
+          "end_offset": 38,
+          "cache_offset": 30,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 0,
+          "argrepr": "ValueError"
+        },
+        {
+          "offset": 38,
+          "start_offset": 38,
+          "end_offset": 40,
+          "cache_offset": 40,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 44,
+          "cache_offset": 42,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 13,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 58,
+          "cache_offset": 50,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 3,
+          "argrepr": "RuntimeError + NULL"
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "'handler'"
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 68,
+          "cache_offset": 62,
+          "opname": "CALL",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 68,
+          "start_offset": 68,
+          "end_offset": 70,
+          "cache_offset": 70,
+          "opname": "RAISE_VARARGS",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 70,
+          "start_offset": 70,
+          "end_offset": 72,
+          "cache_offset": 72,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 72,
+          "start_offset": 72,
+          "end_offset": 74,
+          "cache_offset": 74,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 74,
+          "start_offset": 74,
+          "end_offset": 76,
+          "cache_offset": 76,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 76,
+          "start_offset": 76,
+          "end_offset": 78,
+          "cache_offset": 78,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 78,
+          "start_offset": 78,
+          "end_offset": 80,
+          "cache_offset": 80,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 80,
+          "start_offset": 80,
+          "end_offset": 82,
+          "cache_offset": 82,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 82,
+          "start_offset": 82,
+          "end_offset": 84,
+          "cache_offset": 84,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "finished"
+        },
+        {
+          "offset": 84,
+          "start_offset": 84,
+          "end_offset": 86,
+          "cache_offset": 86,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 86,
+          "start_offset": 86,
+          "end_offset": 88,
+          "cache_offset": 88,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 88,
+          "start_offset": 88,
+          "end_offset": 90,
+          "cache_offset": 90,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 90,
+          "start_offset": 90,
+          "end_offset": 92,
+          "cache_offset": 92,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 72,
+          "target": 72,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 72,
+          "end": 78,
+          "target": 78,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 78,
+          "end": 86,
+          "target": 86,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        raise ValueError(\"body\")\n    except ValueError:\n        raise RuntimeError(\"handler\")\n    finally:\n        finished = 1\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "nested_try_except_finally",
+      "co_flags": "0x1000003",
+      "co_stacksize": 4,
+      "co_code": "80001b001b005e0170005e0370015e0570035201230020005c0000000000000000000600640600001c001f005e0270001d004c1569003b031d00690120005e03700169003b031d00690120005c0200000000000000000600640600001c001f005e0470021d004c2d69003b031d00690120005e05700369003b031d006901",
+      "co_exceptiontable": "83020b00850225008b0d1b0398021e009a011b039b031e009e042203a2032500a50d3503b2023800b4013503b5033800b8043c03",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 6,
+          "cache_offset": 6,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 6,
+          "start_offset": 6,
+          "end_offset": 8,
+          "cache_offset": 8,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 8,
+          "start_offset": 8,
+          "end_offset": 10,
+          "cache_offset": 10,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "value"
+        },
+        {
+          "offset": 10,
+          "start_offset": 10,
+          "end_offset": 12,
+          "cache_offset": 12,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 12,
+          "start_offset": 12,
+          "end_offset": 14,
+          "cache_offset": 14,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "inner_finished"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 5,
+          "argrepr": ""
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 18,
+          "cache_offset": 18,
+          "opname": "STORE_FAST",
+          "oparg": 3,
+          "argrepr": "outer_finished"
+        },
+        {
+          "offset": 18,
+          "start_offset": 18,
+          "end_offset": 20,
+          "cache_offset": 20,
+          "opname": "LOAD_CONST",
+          "oparg": 1,
+          "argrepr": "None"
+        },
+        {
+          "offset": 20,
+          "start_offset": 20,
+          "end_offset": 22,
+          "cache_offset": 22,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 22,
+          "start_offset": 22,
+          "end_offset": 24,
+          "cache_offset": 24,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 24,
+          "start_offset": 24,
+          "end_offset": 34,
+          "cache_offset": 26,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 0,
+          "argrepr": "ValueError"
+        },
+        {
+          "offset": 34,
+          "start_offset": 34,
+          "end_offset": 36,
+          "cache_offset": 36,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 36,
+          "start_offset": 36,
+          "end_offset": 40,
+          "cache_offset": 38,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 6,
+          "argrepr": "to L3"
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 42,
+          "cache_offset": 42,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 42,
+          "start_offset": 42,
+          "end_offset": 44,
+          "cache_offset": 44,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 2,
+          "argrepr": ""
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "STORE_FAST",
+          "oparg": 0,
+          "argrepr": "value"
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 50,
+          "cache_offset": 50,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 50,
+          "start_offset": 50,
+          "end_offset": 52,
+          "cache_offset": 52,
+          "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+          "oparg": 21,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 52,
+          "start_offset": 52,
+          "end_offset": 54,
+          "cache_offset": 54,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 54,
+          "start_offset": 54,
+          "end_offset": 56,
+          "cache_offset": 56,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 56,
+          "start_offset": 56,
+          "end_offset": 58,
+          "cache_offset": 58,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 62,
+          "cache_offset": 62,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 62,
+          "start_offset": 62,
+          "end_offset": 64,
+          "cache_offset": 64,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 64,
+          "start_offset": 64,
+          "end_offset": 66,
+          "cache_offset": 66,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "inner_finished"
+        },
+        {
+          "offset": 66,
+          "start_offset": 66,
+          "end_offset": 68,
+          "cache_offset": 68,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 68,
+          "start_offset": 68,
+          "end_offset": 70,
+          "cache_offset": 70,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 70,
+          "start_offset": 70,
+          "end_offset": 72,
+          "cache_offset": 72,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 72,
+          "start_offset": 72,
+          "end_offset": 74,
+          "cache_offset": 74,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 74,
+          "start_offset": 74,
+          "end_offset": 76,
+          "cache_offset": 76,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 76,
+          "start_offset": 76,
+          "end_offset": 86,
+          "cache_offset": 78,
+          "opname": "LOAD_GLOBAL",
+          "oparg": 2,
+          "argrepr": "KeyError"
+        },
+        {
+          "offset": 86,
+          "start_offset": 86,
+          "end_offset": 88,
+          "cache_offset": 88,
+          "opname": "CHECK_EXC_MATCH",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 88,
+          "start_offset": 88,
+          "end_offset": 92,
+          "cache_offset": 90,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 6,
+          "argrepr": "to L4"
+        },
+        {
+          "offset": 92,
+          "start_offset": 92,
+          "end_offset": 94,
+          "cache_offset": 94,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 94,
+          "start_offset": 94,
+          "end_offset": 96,
+          "cache_offset": 96,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 96,
+          "start_offset": 96,
+          "end_offset": 98,
+          "cache_offset": 98,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 4,
+          "argrepr": ""
+        },
+        {
+          "offset": 98,
+          "start_offset": 98,
+          "end_offset": 100,
+          "cache_offset": 100,
+          "opname": "STORE_FAST",
+          "oparg": 2,
+          "argrepr": "outer_handled"
+        },
+        {
+          "offset": 100,
+          "start_offset": 100,
+          "end_offset": 102,
+          "cache_offset": 102,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 102,
+          "start_offset": 102,
+          "end_offset": 104,
+          "cache_offset": 104,
+          "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+          "oparg": 45,
+          "argrepr": "to L2"
+        },
+        {
+          "offset": 104,
+          "start_offset": 104,
+          "end_offset": 106,
+          "cache_offset": 106,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 106,
+          "start_offset": 106,
+          "end_offset": 108,
+          "cache_offset": 108,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 108,
+          "start_offset": 108,
+          "end_offset": 110,
+          "cache_offset": 110,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 110,
+          "start_offset": 110,
+          "end_offset": 112,
+          "cache_offset": 112,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        },
+        {
+          "offset": 112,
+          "start_offset": 112,
+          "end_offset": 114,
+          "cache_offset": 114,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 114,
+          "start_offset": 114,
+          "end_offset": 116,
+          "cache_offset": 116,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 5,
+          "argrepr": ""
+        },
+        {
+          "offset": 116,
+          "start_offset": 116,
+          "end_offset": 118,
+          "cache_offset": 118,
+          "opname": "STORE_FAST",
+          "oparg": 3,
+          "argrepr": "outer_finished"
+        },
+        {
+          "offset": 118,
+          "start_offset": 118,
+          "end_offset": 120,
+          "cache_offset": 120,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 120,
+          "start_offset": 120,
+          "end_offset": 122,
+          "cache_offset": 122,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 122,
+          "start_offset": 122,
+          "end_offset": 124,
+          "cache_offset": 124,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 124,
+          "start_offset": 124,
+          "end_offset": 126,
+          "cache_offset": 126,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 6,
+          "end": 10,
+          "target": 22,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 10,
+          "end": 14,
+          "target": 74,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 22,
+          "end": 48,
+          "target": 54,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 48,
+          "end": 52,
+          "target": 60,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 52,
+          "end": 54,
+          "target": 54,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 54,
+          "end": 60,
+          "target": 60,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 60,
+          "end": 68,
+          "target": 68,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 68,
+          "end": 74,
+          "target": 74,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 74,
+          "end": 100,
+          "target": 106,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 100,
+          "end": 104,
+          "target": 112,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 104,
+          "end": 106,
+          "target": 106,
+          "depth": 1,
+          "lasti": true
+        },
+        {
+          "start": 106,
+          "end": 112,
+          "target": 112,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 112,
+          "end": 120,
+          "target": 120,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "source": "def f():\n    try:\n        try:\n            value = 1\n        except ValueError:\n            value = 2\n        finally:\n            inner_finished = 3\n    except KeyError:\n        outer_handled = 4\n    finally:\n        outer_finished = 5\n",
+      "nested_code_objects": []
+    },
+    {
+      "qualname": "f",
+      "name": "try_finally_loop_break_continue",
+      "co_flags": "0x1000003",
+      "co_stacksize": 5,
+      "co_code": "80005e007001560010004627000070021b0056025e0038580000640700001c001b00540270031f005601230056025e0038120000640600001c001b00540270034b1d000057122c0d000000000000000000007001540270034b29000009001e005601230020005402700369003b031d006901",
+      "co_exceptiontable": "8907320296073202a2083202b2043605",
+      "instructions": [
+        {
+          "offset": 0,
+          "start_offset": 0,
+          "end_offset": 2,
+          "cache_offset": 2,
+          "opname": "RESUME",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 2,
+          "start_offset": 2,
+          "end_offset": 4,
+          "cache_offset": 4,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 4,
+          "start_offset": 4,
+          "end_offset": 6,
+          "cache_offset": 6,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "total"
+        },
+        {
+          "offset": 6,
+          "start_offset": 6,
+          "end_offset": 8,
+          "cache_offset": 8,
+          "opname": "LOAD_FAST_BORROW",
+          "oparg": 0,
+          "argrepr": "items"
+        },
+        {
+          "offset": 8,
+          "start_offset": 8,
+          "end_offset": 10,
+          "cache_offset": 10,
+          "opname": "GET_ITER",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 10,
+          "start_offset": 10,
+          "end_offset": 14,
+          "cache_offset": 12,
+          "opname": "FOR_ITER",
+          "oparg": 39,
+          "argrepr": "to L4"
+        },
+        {
+          "offset": 14,
+          "start_offset": 14,
+          "end_offset": 16,
+          "cache_offset": 16,
+          "opname": "STORE_FAST",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 16,
+          "start_offset": 16,
+          "end_offset": 18,
+          "cache_offset": 18,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 18,
+          "start_offset": 18,
+          "end_offset": 20,
+          "cache_offset": 20,
+          "opname": "LOAD_FAST_BORROW",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 20,
+          "start_offset": 20,
+          "end_offset": 22,
+          "cache_offset": 22,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 22,
+          "start_offset": 22,
+          "end_offset": 26,
+          "cache_offset": 24,
+          "opname": "COMPARE_OP",
+          "oparg": 88,
+          "argrepr": "bool(==)"
+        },
+        {
+          "offset": 26,
+          "start_offset": 26,
+          "end_offset": 30,
+          "cache_offset": 28,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 7,
+          "argrepr": "to L2"
+        },
+        {
+          "offset": 30,
+          "start_offset": 30,
+          "end_offset": 32,
+          "cache_offset": 32,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 32,
+          "start_offset": 32,
+          "end_offset": 34,
+          "cache_offset": 34,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 34,
+          "start_offset": 34,
+          "end_offset": 36,
+          "cache_offset": 36,
+          "opname": "LOAD_FAST",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 36,
+          "start_offset": 36,
+          "end_offset": 38,
+          "cache_offset": 38,
+          "opname": "STORE_FAST",
+          "oparg": 3,
+          "argrepr": "cleaned"
+        },
+        {
+          "offset": 38,
+          "start_offset": 38,
+          "end_offset": 40,
+          "cache_offset": 40,
+          "opname": "POP_TOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 40,
+          "start_offset": 40,
+          "end_offset": 42,
+          "cache_offset": 42,
+          "opname": "LOAD_FAST_BORROW",
+          "oparg": 1,
+          "argrepr": "total"
+        },
+        {
+          "offset": 42,
+          "start_offset": 42,
+          "end_offset": 44,
+          "cache_offset": 44,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 44,
+          "start_offset": 44,
+          "end_offset": 46,
+          "cache_offset": 46,
+          "opname": "LOAD_FAST_BORROW",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 46,
+          "start_offset": 46,
+          "end_offset": 48,
+          "cache_offset": 48,
+          "opname": "LOAD_SMALL_INT",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 48,
+          "start_offset": 48,
+          "end_offset": 52,
+          "cache_offset": 50,
+          "opname": "COMPARE_OP",
+          "oparg": 18,
+          "argrepr": "bool(<)"
+        },
+        {
+          "offset": 52,
+          "start_offset": 52,
+          "end_offset": 56,
+          "cache_offset": 54,
+          "opname": "POP_JUMP_IF_FALSE",
+          "oparg": 6,
+          "argrepr": "to L3"
+        },
+        {
+          "offset": 56,
+          "start_offset": 56,
+          "end_offset": 58,
+          "cache_offset": 58,
+          "opname": "NOT_TAKEN",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 58,
+          "start_offset": 58,
+          "end_offset": 60,
+          "cache_offset": 60,
+          "opname": "NOP",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 60,
+          "start_offset": 60,
+          "end_offset": 62,
+          "cache_offset": 62,
+          "opname": "LOAD_FAST",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 62,
+          "start_offset": 62,
+          "end_offset": 64,
+          "cache_offset": 64,
+          "opname": "STORE_FAST",
+          "oparg": 3,
+          "argrepr": "cleaned"
+        },
+        {
+          "offset": 64,
+          "start_offset": 64,
+          "end_offset": 68,
+          "cache_offset": 66,
+          "opname": "JUMP_BACKWARD",
+          "oparg": 29,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 68,
+          "start_offset": 68,
+          "end_offset": 70,
+          "cache_offset": 70,
+          "opname": "LOAD_FAST_BORROW_LOAD_FAST_BORROW",
+          "oparg": 18,
+          "argrepr": "total, item"
+        },
+        {
+          "offset": 70,
+          "start_offset": 70,
+          "end_offset": 82,
+          "cache_offset": 72,
+          "opname": "BINARY_OP",
+          "oparg": 13,
+          "argrepr": "+="
+        },
+        {
+          "offset": 82,
+          "start_offset": 82,
+          "end_offset": 84,
+          "cache_offset": 84,
+          "opname": "STORE_FAST",
+          "oparg": 1,
+          "argrepr": "total"
+        },
+        {
+          "offset": 84,
+          "start_offset": 84,
+          "end_offset": 86,
+          "cache_offset": 86,
+          "opname": "LOAD_FAST",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 86,
+          "start_offset": 86,
+          "end_offset": 88,
+          "cache_offset": 88,
+          "opname": "STORE_FAST",
+          "oparg": 3,
+          "argrepr": "cleaned"
+        },
+        {
+          "offset": 88,
+          "start_offset": 88,
+          "end_offset": 92,
+          "cache_offset": 90,
+          "opname": "JUMP_BACKWARD",
+          "oparg": 41,
+          "argrepr": "to L1"
+        },
+        {
+          "offset": 92,
+          "start_offset": 92,
+          "end_offset": 94,
+          "cache_offset": 94,
+          "opname": "END_FOR",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 94,
+          "start_offset": 94,
+          "end_offset": 96,
+          "cache_offset": 96,
+          "opname": "POP_ITER",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 96,
+          "start_offset": 96,
+          "end_offset": 98,
+          "cache_offset": 98,
+          "opname": "LOAD_FAST_BORROW",
+          "oparg": 1,
+          "argrepr": "total"
+        },
+        {
+          "offset": 98,
+          "start_offset": 98,
+          "end_offset": 100,
+          "cache_offset": 100,
+          "opname": "RETURN_VALUE",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 100,
+          "start_offset": 100,
+          "end_offset": 102,
+          "cache_offset": 102,
+          "opname": "PUSH_EXC_INFO",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 102,
+          "start_offset": 102,
+          "end_offset": 104,
+          "cache_offset": 104,
+          "opname": "LOAD_FAST",
+          "oparg": 2,
+          "argrepr": "item"
+        },
+        {
+          "offset": 104,
+          "start_offset": 104,
+          "end_offset": 106,
+          "cache_offset": 106,
+          "opname": "STORE_FAST",
+          "oparg": 3,
+          "argrepr": "cleaned"
+        },
+        {
+          "offset": 106,
+          "start_offset": 106,
+          "end_offset": 108,
+          "cache_offset": 108,
+          "opname": "RERAISE",
+          "oparg": 0,
+          "argrepr": ""
+        },
+        {
+          "offset": 108,
+          "start_offset": 108,
+          "end_offset": 110,
+          "cache_offset": 110,
+          "opname": "COPY",
+          "oparg": 3,
+          "argrepr": ""
+        },
+        {
+          "offset": 110,
+          "start_offset": 110,
+          "end_offset": 112,
+          "cache_offset": 112,
+          "opname": "POP_EXCEPT",
+          "oparg": null,
+          "argrepr": ""
+        },
+        {
+          "offset": 112,
+          "start_offset": 112,
+          "end_offset": 114,
+          "cache_offset": 114,
+          "opname": "RERAISE",
+          "oparg": 1,
+          "argrepr": ""
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 18,
+          "end": 32,
+          "target": 100,
+          "depth": 1,
+          "lasti": false
+        },
+        {
+          "start": 44,
+          "end": 58,
+          "target": 100,
+          "depth": 1,
+          "lasti": false
+        },
+        {
+          "start": 68,
+          "end": 84,
+          "target": 100,
+          "depth": 1,
+          "lasti": false
+        },
+        {
+          "start": 100,
+          "end": 108,
+          "target": 108,
+          "depth": 2,
+          "lasti": true
+        }
+      ],
+      "source": "def f(items):\n    total = 0\n    for item in items:\n        try:\n            if item == 0:\n                break\n            if item < 0:\n                continue\n            total += item\n        finally:\n            cleaned = item\n    return total\n",
+      "nested_code_objects": []
+    }
+  ]
+}

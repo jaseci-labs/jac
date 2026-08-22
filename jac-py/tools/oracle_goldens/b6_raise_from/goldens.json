@@ -1,0 +1,1246 @@
+{
+  "interpreter": "/home/jac/repos/jac-python/.venv/bin/python",
+  "python_version": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "fixtures": [
+    {
+      "name": "top_level_raise_instance_from_instance",
+      "source": "def f():\n    raise ValueError('x') from TypeError('c')\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 4,
+      "co_code": "80005c010000000000000000520034010000000000005c030000000000000000520134010000000000006802",
+      "co_exceptiontable": "",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 12,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 0,
+          "argval": "'x'",
+          "argrepr": "'x'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 22,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 3,
+          "argval": "'TypeError'",
+          "argrepr": "TypeError + NULL",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 32,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 1,
+          "argval": "'c'",
+          "argrepr": "'c'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 34,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 42,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "raise_instance_from_none",
+      "source": "def f():\n    raise ValueError('x') from None\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 3,
+      "co_code": "80005c0100000000000000005200340100000000000052016802",
+      "co_exceptiontable": "",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 12,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 0,
+          "argval": "'x'",
+          "argrepr": "'x'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 22,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 1,
+          "argval": "None",
+          "argrepr": "None",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 24,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "raise_from_inside_except_explicit_cause",
+      "source": "def f():\n    try:\n        raise ValueError('original')\n    except ValueError:\n        raise TypeError('replacement') from KeyError('cause')\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 5,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600641700001c001f005c030000000000000000520134010000000000005c05000000000000000052023401000000000000680269003b031d006901",
+      "co_exceptiontable": "820b0d008d212e03",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "NOP",
+          "opcode": 27,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 4,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 0,
+          "argval": "'original'",
+          "argrepr": "'original'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 16,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 24,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 26,
+          "opname": "PUSH_EXC_INFO",
+          "opcode": 32,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 28,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 0,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 38,
+          "opname": "CHECK_EXC_MATCH",
+          "opcode": 6,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 40,
+          "opname": "POP_JUMP_IF_FALSE",
+          "opcode": 100,
+          "arg": 23,
+          "argval": "90",
+          "argrepr": "to L1",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 44,
+          "opname": "NOT_TAKEN",
+          "opcode": 28,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 46,
+          "opname": "POP_TOP",
+          "opcode": 31,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 48,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 3,
+          "argval": "'TypeError'",
+          "argrepr": "TypeError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 58,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 1,
+          "argval": "'replacement'",
+          "argrepr": "'replacement'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 60,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 68,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 5,
+          "argval": "'KeyError'",
+          "argrepr": "KeyError + NULL",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 78,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 2,
+          "argval": "'cause'",
+          "argrepr": "'cause'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 80,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 88,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 90,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": true
+        },
+        {
+          "offset": 92,
+          "opname": "COPY",
+          "opcode": 59,
+          "arg": 3,
+          "argval": "3",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 94,
+          "opname": "POP_EXCEPT",
+          "opcode": 29,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 96,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 92,
+          "target": 92,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "implicit_chaining_inside_except",
+      "source": "def f():\n    try:\n        raise ValueError('original')\n    except ValueError:\n        raise TypeError('replacement')\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 4,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640d00001c001f005c03000000000000000052013401000000000000680169003b031d006901",
+      "co_exceptiontable": "820b0d008d172403",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "NOP",
+          "opcode": 27,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 4,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 0,
+          "argval": "'original'",
+          "argrepr": "'original'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 16,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 24,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 26,
+          "opname": "PUSH_EXC_INFO",
+          "opcode": 32,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 28,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 0,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 38,
+          "opname": "CHECK_EXC_MATCH",
+          "opcode": 6,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 40,
+          "opname": "POP_JUMP_IF_FALSE",
+          "opcode": 100,
+          "arg": 13,
+          "argval": "70",
+          "argrepr": "to L1",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 44,
+          "opname": "NOT_TAKEN",
+          "opcode": 28,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 46,
+          "opname": "POP_TOP",
+          "opcode": 31,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 48,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 3,
+          "argval": "'TypeError'",
+          "argrepr": "TypeError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 58,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 1,
+          "argval": "'replacement'",
+          "argrepr": "'replacement'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 60,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 68,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 70,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": true
+        },
+        {
+          "offset": 72,
+          "opname": "COPY",
+          "opcode": 59,
+          "arg": 3,
+          "argval": "3",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 74,
+          "opname": "POP_EXCEPT",
+          "opcode": 29,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 76,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 72,
+          "target": 72,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "bare_raise_inside_except",
+      "source": "def f():\n    try:\n        raise ValueError('original')\n    except ValueError:\n        raise\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 4,
+      "co_code": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640300001c001f00680069003b031d006901",
+      "co_exceptiontable": "820b0d008d0d1a03",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "NOP",
+          "opcode": 27,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 4,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 0,
+          "argval": "'original'",
+          "argrepr": "'original'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 16,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 24,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 26,
+          "opname": "PUSH_EXC_INFO",
+          "opcode": 32,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 28,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 0,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 38,
+          "opname": "CHECK_EXC_MATCH",
+          "opcode": 6,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 40,
+          "opname": "POP_JUMP_IF_FALSE",
+          "opcode": 100,
+          "arg": 3,
+          "argval": "50",
+          "argrepr": "to L1",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 44,
+          "opname": "NOT_TAKEN",
+          "opcode": 28,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 46,
+          "opname": "POP_TOP",
+          "opcode": 31,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 48,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 50,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": true
+        },
+        {
+          "offset": 52,
+          "opname": "COPY",
+          "opcode": 59,
+          "arg": 3,
+          "argval": "3",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 54,
+          "opname": "POP_EXCEPT",
+          "opcode": 29,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 56,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 26,
+          "target": 26,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 26,
+          "end": 52,
+          "target": 52,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "raise_class_from_err",
+      "source": "def f(err):\n    raise ValueError from err\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 2,
+      "co_code": "80005c00000000000000000056006802",
+      "co_exceptiontable": "",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 0,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 12,
+          "opname": "LOAD_FAST_BORROW",
+          "opcode": 86,
+          "arg": 0,
+          "argval": "'err'",
+          "argrepr": "err",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "raise_instance_from_err",
+      "source": "def f(err):\n    raise ValueError('x') from err\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 3,
+      "co_code": "80005c0100000000000000005200340100000000000056006802",
+      "co_exceptiontable": "",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 12,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 0,
+          "argval": "'x'",
+          "argrepr": "'x'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 14,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 22,
+          "opname": "LOAD_FAST_BORROW",
+          "opcode": 86,
+          "arg": 0,
+          "argval": "'err'",
+          "argrepr": "err",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 24,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    },
+    {
+      "name": "raise_from_inside_finally",
+      "source": "def f():\n    try:\n        marker = 1\n    finally:\n        raise ValueError('final') from TypeError('cause')\n",
+      "code_name": "f",
+      "co_flags": "0x1000003",
+      "co_flags_int": 16777219,
+      "co_stacksize": 6,
+      "co_code": "80001b005e0170005c010000000000000000520134010000000000005c03000000000000000052023401000000000000680220005c010000000000000000520134010000000000005c0300000000000000005202340100000000000068023b031d006901",
+      "co_exceptiontable": "8202190099162f03",
+      "instructions": [
+        {
+          "offset": 0,
+          "opname": "RESUME",
+          "opcode": 128,
+          "arg": 0,
+          "argval": "0",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 2,
+          "opname": "NOP",
+          "opcode": 27,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 4,
+          "opname": "LOAD_SMALL_INT",
+          "opcode": 94,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 6,
+          "opname": "STORE_FAST",
+          "opcode": 112,
+          "arg": 0,
+          "argval": "'marker'",
+          "argrepr": "marker",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 8,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 18,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 1,
+          "argval": "'final'",
+          "argrepr": "'final'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 20,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 28,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 3,
+          "argval": "'TypeError'",
+          "argrepr": "TypeError + NULL",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 38,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 2,
+          "argval": "'cause'",
+          "argrepr": "'cause'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 40,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 48,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 50,
+          "opname": "PUSH_EXC_INFO",
+          "opcode": 32,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 52,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 1,
+          "argval": "'ValueError'",
+          "argrepr": "ValueError + NULL",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 62,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 1,
+          "argval": "'final'",
+          "argrepr": "'final'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 64,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 72,
+          "opname": "LOAD_GLOBAL",
+          "opcode": 92,
+          "arg": 3,
+          "argval": "'TypeError'",
+          "argrepr": "TypeError + NULL",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 82,
+          "opname": "LOAD_CONST",
+          "opcode": 82,
+          "arg": 2,
+          "argval": "'cause'",
+          "argrepr": "'cause'",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 84,
+          "opname": "CALL",
+          "opcode": 52,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 92,
+          "opname": "RAISE_VARARGS",
+          "opcode": 104,
+          "arg": 2,
+          "argval": "2",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 94,
+          "opname": "COPY",
+          "opcode": 59,
+          "arg": 3,
+          "argval": "3",
+          "argrepr": "",
+          "starts_line": true,
+          "is_jump_target": false
+        },
+        {
+          "offset": 96,
+          "opname": "POP_EXCEPT",
+          "opcode": 29,
+          "arg": null,
+          "argval": "None",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        },
+        {
+          "offset": 98,
+          "opname": "RERAISE",
+          "opcode": 105,
+          "arg": 1,
+          "argval": "1",
+          "argrepr": "",
+          "starts_line": false,
+          "is_jump_target": false
+        }
+      ],
+      "exception_entries": [
+        {
+          "start": 4,
+          "end": 8,
+          "target": 50,
+          "depth": 0,
+          "lasti": false
+        },
+        {
+          "start": 50,
+          "end": 94,
+          "target": 94,
+          "depth": 1,
+          "lasti": true
+        }
+      ],
+      "assertion_error_like_opnames": [],
+      "assertion_error_note": "No LOAD_ASSERTION_ERROR-like opcode is emitted for this raise fixture."
+    }
+  ]
+}

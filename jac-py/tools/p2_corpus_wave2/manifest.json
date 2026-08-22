@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave2",
+  "description": "P2 wave 2: four leaf extracts (_stat, _opcode, math_gcd, pystrnicmp)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave2",
+  "baseline_report": "jac-py/tools/p2_corpus_wave2/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "_stat",
+      "source": "jac-py/tools/p2_corpus_wave2/corpus/_stat.c",
+      "header_free": true
+    },
+    {
+      "stem": "_opcode",
+      "source": "jac-py/tools/p2_corpus_wave2/corpus/_opcode.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_gcd",
+      "source": "jac-py/tools/p2_corpus_wave2/corpus/math_gcd.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystrnicmp",
+      "source": "jac-py/tools/p2_corpus_wave2/corpus/pystrnicmp.c",
+      "header_free": true
+    }
+  ]
+}

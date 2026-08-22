@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave7/math_ilog2_small.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave7/_staging/math_ilog2_small.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave7/pyctype_blank.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave7/_staging/pyctype_blank.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave7/pyctype_cntrl.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave7/_staging/pyctype_cntrl.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave7/pyctype_graph.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave7/_staging/pyctype_graph.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 0,
+  "version": 1
+}

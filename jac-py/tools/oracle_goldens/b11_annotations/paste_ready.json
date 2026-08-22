@@ -1,0 +1,208 @@
+[
+  {
+    "name": "module_annotated_with_value",
+    "source": "x: int = 5\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 2,
+    "co_code_hex": "61008000520117007402300074005e0574015d005e006b011f0052022300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[1]<__annotate__>",
+        "co_flags": "0x3",
+        "co_stacksize": 4,
+        "co_code_hex": "800056005e0238840000640300001c00510168012f005e005c00000000000000000039000000640a00001c005c0200000000000000003b025201260000002300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "module_bare_annotation",
+    "source": "x: list\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 2,
+    "co_code_hex": "61008000520117007401300074005d005e006b011f0052022300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[1]<__annotate__>",
+        "co_flags": "0x3",
+        "co_stacksize": 4,
+        "co_code_hex": "800056005e0238840000640300001c00510168012f005e005c00000000000000000039000000640a00001c005c0200000000000000003b025201260000002300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "class_body_annotations",
+    "source": "class C:\n    y: str = 'a'\n    z: dict\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 4,
+    "co_code_hex": "8000150021005200170052013402000000000000740052022300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[0]<C>",
+        "co_flags": "0x0",
+        "co_stacksize": 2,
+        "co_code_hex": "610080005d007401520074025e01740316006f005201740456003301520217006c087405520374065600740752042300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      },
+      {
+        "path": "module.co_consts[0]<C>.co_consts[2]<__annotate__>",
+        "co_flags": "0x3",
+        "co_stacksize": 4,
+        "co_code_hex": "3c01800056005e0238840000640300001c00510168012f0053015b003b0252012600000053015b013b025202260000002300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "function_local_annotated",
+    "source": "def f():\n    q: int = 3\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 1,
+    "co_code_hex": "800052001700740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[0]<f>",
+        "co_flags": "0x3",
+        "co_stacksize": 1,
+        "co_code_hex": "80005e03700052012300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "function_local_bare_annotation",
+    "source": "def f():\n    q: list\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 1,
+    "co_code_hex": "800052001700740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[0]<f>",
+        "co_flags": "0x3",
+        "co_stacksize": 1,
+        "co_code_hex": "800052002300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "annotated_attribute_target",
+    "source": "def f(o):\n    o.k: int = 1\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 1,
+    "co_code_hex": "800052001700740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[0]<f>",
+        "co_flags": "0x3",
+        "co_stacksize": 2,
+        "co_code_hex": "80005e0156006e00000000000000000052012300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "annotated_subscript_target",
+    "source": "def f(d):\n    d[\"k\"]: int = 1\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 1,
+    "co_code_hex": "800052001700740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[0]<f>",
+        "co_flags": "0x3",
+        "co_stacksize": 3,
+        "co_code_hex": "80005e01560052012600000052022300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "type_alias_simple",
+    "source": "type Pair = tuple[int, int]\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 4,
+    "co_code_hex": "8000520052015202520317006c013303350b740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[3]<Pair>",
+        "co_flags": "0x3",
+        "co_stacksize": 3,
+        "co_code_hex": "800056005e0238840000640300001c00510168015c0000000000000000005c0200000000000000005c02000000000000000033022c1a000000000000000000002300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "type_alias_parametrized",
+    "source": "type Box[T] = list[T]\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 2,
+    "co_code_hex": "80005200170021003400000000000000740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": [],
+    "nested": [
+      {
+        "path": "module.co_consts[0]<<generic parameters of Box>>",
+        "co_flags": "0x3",
+        "co_stacksize": 5,
+        "co_code_hex": "610080005200520135073b016f003301520256003301520317006c086c013303350b2300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      },
+      {
+        "path": "module.co_consts[0]<<generic parameters of Box>>.co_consts[3]<Box>",
+        "co_flags": "0x13",
+        "co_stacksize": 2,
+        "co_code_hex": "3c01800056005e0238840000640300001c00510168015c00000000000000000053012c1a000000000000000000002300",
+        "co_exceptiontable_hex": "",
+        "exception_entries": []
+      }
+    ]
+  },
+  {
+    "name": "plain_assign_control",
+    "source": "x = 5\n",
+    "path": "module",
+    "co_flags": "0x0",
+    "co_stacksize": 1,
+    "co_code_hex": "80005e05740052012300",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  }
+]

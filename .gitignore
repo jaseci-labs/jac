@@ -70,6 +70,31 @@ demo/
 .zig-cache/
 zig-out/
 
+# c2jac code-reading clones (CPython + pycparser sources, ~194MB) and the P0
+# spike -- read-only provenance, never imported by shipping code (pycparser is a
+# real jac.toml dependency). Must not land in the repo.
+reference/
+
+# c2jac sidecar reports are generated next to each input by `jac c2jac` (and by
+# running the transpiler over test fixtures) -- generated output, never tracked.
+*.c2jac.report.json
+!jac-py/tools/p1_corpus/baseline/project.c2jac.report.json
+!jac-py/Modules/_lifted/p1_corpus_slice1b/project.c2jac.report.json
+!jac-py/tools/p2_corpus/baseline/project.c2jac.report.json
+!jac-py/Modules/_lifted/p2_corpus_wave1/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave5/baseline/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave6/baseline/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave7/baseline/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave8/baseline/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave9/baseline/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave10/baseline/project.c2jac.report.json
+!jac-py/tools/p2_corpus_wave11/baseline/project.c2jac.report.json
+!jac-py/Modules/_lifted/p2_corpus_wave1/*.jac
+
+# P2 corpus lift staging (ephemeral copies of manifest sources)
+jac-py/tools/p2_corpus/_staging/
+jac-py/tools/p2_corpus_wave*/_staging/
+
 # Agent / IDE working notes (not repo artifacts)
 AGENTS.md
 PLAN.md
@@ -95,3 +120,6 @@ zig-pkg/
 
 # Seal-time generated materializer root (see jaclang/utils/gen_native_materialize.jac)
 jac/jaclang/compiler/native_materialize.jac
+
+# Pi subagent session artifacts
+.pi-subagents/

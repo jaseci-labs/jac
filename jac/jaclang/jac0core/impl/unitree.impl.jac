@@ -2646,6 +2646,13 @@ impl PythonModuleAst.init(ast: object, orig_src: Source) -> None {
     self.file_path = orig_src.file_path;
 }
 
+impl CModuleAst.init(ast: object, orig_src: Source) -> None {
+    super.init();
+    self.ast = ast;
+    self.orig_src = orig_src;
+    self.file_path = orig_src.file_path;
+}
+
 impl UniNode.gen.getter -> CodeGenTarget {
     if (self._gen is None) {
         import from jaclang.jac0core.codeinfo { CodeGenTarget as _CGT }

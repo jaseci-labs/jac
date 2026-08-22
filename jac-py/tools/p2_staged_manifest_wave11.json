@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "wave": "p2_wave11",
+  "description": "P2 wave 11 staging policy",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave11",
+  "modules": [
+    {
+      "stem": "math_pow_mod",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_popcount_u",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_contains_c",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_cmp_c",
+      "staging": "lift"
+    }
+  ]
+}

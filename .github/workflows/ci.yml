@@ -51,6 +51,7 @@ jobs:
           filters: |
             core:
               - 'jac/**'
+              - 'jac-py/**'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             scale:
@@ -512,6 +513,181 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/check-release-notes.sh
+
+  jac-py-gates:
+    name: jac-py P4 gates
+    needs: build-kit
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pinned CPython for jac-py gates
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Pin CPython reference checkout
+        run: python3 jac-py/tools/fetch_cpython_reference.py
+
+      - name: P4 import boundary gate
+        run: python3 jac-py/tools/p4_import_gate.py
+
+      - name: P3 import cycle gate
+        run: python3 jac-py/tools/p3_import_cycle_gate.py
+
+      - name: P0.4 token model regeneration gate
+        run: python3 jac-py/tools/tokens2jac.py --check
+
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/jac-kit
+
+      - name: Layer 4 oracle contract tests
+        run: jac test jac-py/jacpython/layer4_compile.jac
+
+      - name: P0.10 compiler slice tests
+        run: jac test jac-py/jacpython/compiler_slice.jac
+
+      - name: Phase 2 validation contract tests
+        run: jac test jac-py/jacpython/compiler_validate.jac
+
+      - name: Phase 5 symtable contract tests
+        run: jac test jac-py/jacpython/compiler_symtable.jac
+
+      - name: layer9 product exec slice tests
+        run: jac test jac-py/jacpython/layer9_product_exec.jac
+
+      - name: P0.4 token model contract tests
+        run: jac test jac-py/jacpython/layer5_token_model.jac
+
+      - name: P0.5 tokenizer slice tests
+        run: jac test jac-py/jacpython/layer5_tokenizer.jac
+
+      - name: P0.6 PEG runtime contract tests
+        run: jac test jac-py/jacpython/layer6_peg_runtime.jac
+
+      - name: grammar2jac check
+        run: python3 jac-py/tools/grammar2jac.py --check
+
+      - name: grammar2jac Phase 1 tests
+        run: python3 -m unittest jac-py/tools/test_grammar2jac.py
+
+      - name: clinic2jac check
+        run: python3 jac-py/tools/clinic2jac.py --check
+
+      - name: clinic2jac P3.1d tests
+        run: python3 -m unittest jac-py/tools/test_clinic2jac.py
+
+      - name: opcode_meta2jac check
+        run: python3 jac-py/tools/opcode_meta2jac.py --check
+
+      - name: opcode_meta2jac Phase 3 tests
+        run: python3 -m unittest jac-py/tools/test_opcode_meta2jac.py
+
+      - name: Phase 3 flowgraph verification tests
+        run: jac test jac-py/jacpython/layer_flowgraph_verify.jac
+
+      - name: Phase 6 VM opcode fixture coverage gate
+        run: python3 jac-py/tools/vm_opcode_fixtures.py --check
+
+      - name: Band 6/7 CPython oracle goldens round-trip check
+        run: python3 jac-py/tools/check_oracle_goldens.py
+
+      - name: Phase 6 VM opcode fixture gate tests
+        run: python3 -m unittest jac-py/tools/test_vm_opcode_fixtures.py
+
+      - name: Phase 6 independent VM conformance tests
+        run: jac test jac-py/jacpython/layer_vm_conformance.jac
+
+      - name: layer7 parser expr tests
+        run: jac test jac-py/jacpython/layer7_parser_expr.jac
+
+      - name: layer8 product eval slice tests
+        run: jac test jac-py/jacpython/layer8_product_expr.jac
+
+      - name: layer10 product control-flow slice tests
+        run: jac test jac-py/jacpython/layer10_product_controlflow.jac
+
+      - name: P1 c2jac corpus lift + Tier-B density gate
+        run: python3 -m unittest jac-py/tools/test_p1_corpus_gate.py
+
+      - name: P1 rotatingtree differential oracle
+        run: jac test jac-py/tests/test_rotatingtree_oracle.jac
+
+      - name: P1 corpus density ratchet (committed lift output)
+        run: jac test jac-py/tests/test_p1_corpus_density.jac
+
+      - name: T8 acceptance validation unit tests
+        run: python3 -m unittest jac-py/tools/test_t8_accept.py jac-py/tools/test_t8_driver.py
+
+      - name: P2 c2jac corpus lift + Tier-B density gate
+        run: python3 -m unittest jac-py/tools/test_p2_corpus_gate.py
+
+      - name: P2 module differential oracles
+        run: jac test jac-py/tests/test_p2_module_oracles.jac
+
+      - name: P2 staged vs lifted drift gate
+        run: jac test jac-py/tests/test_p2_staged_sync.jac
+
+      - name: P2 conformance harness (T6 skeleton)
+        run: jac test jac-py/tests/run_conformance.jac
+
+      - name: P2 conformance manifest drift check
+        run: git diff --exit-code jac-py/tests/conformance_manifest.json
+
+      - name: P2 libtest partial (bisect/heapq/platform)
+        run: jac test jac-py/tests/test_p2_libtest_partial.jac
+
+      - name: P2 conformance manifest gate
+        run: python3 -m unittest jac-py/tools/p2_conformance_gate.py
+
+      - name: P2 corpus density ratchet (committed lift output)
+        run: jac test jac-py/tests/test_p2_corpus_density.jac
+
+      - name: P2 waves 2-11 c2jac corpus lifts + Tier-B density gates
+        run: python3 -m unittest jac-py/tools/test_p2_corpus_waves_gate
+
+      - name: P2 waves 2-11 conformance manifest gates
+        run: python3 -m unittest jac-py/tools/p2_conformance_waves_gate
+
+      - name: P2 waves 2-11 module oracles
+        run: jac test jac-py/tests/test_p2_waves_module_oracles.jac
+
+      - name: P2 waves 2-11 staged vs lifted drift gates
+        run: jac test jac-py/tests/test_p2_waves_staged_sync.jac
+
+      - name: P2 waves 2-11 corpus density ratchets
+        run: jac test jac-py/tests/test_p2_waves_corpus_density.jac
+
+      - name: P2 JacPython libtest harness
+        run: jac test jac-py/jacpython/layer_p2_libtest.jac
+
+      - name: P3 object core manifest gate (P3.1a/P3.1b)
+        run: jac test jac-py/tests/test_p3_object_core_gate.jac
+
+      - name: P3 standalone SipHash secret bootstrap
+        env:
+          JACPATH: jac-py/jacpython
+        run: jac test jac-py/tests/test_pyhash_secret.jac
+
+      - name: P2 facade parity (bisect/heapq/stat)
+        env:
+          JACPATH: jac-py/jacpython
+        run: jac test jac-py/tests/test_p2_facade_parity.jac
+
+      - name: P3 Layer-0/1 replay regression tests
+        run: jac test jac-py/jacpython/layer0_replay.jac
+
+      # The P3 gate drivers only use JACPYTHON_CPYTHON as a run/skip flag; the
+      # interpreter itself is never executed. Resolve it from PATH (setup-python
+      # above pins 3.14) so no dev-machine path leaks into CI.
+      - name: Resolve CPython oracle flag for P3 gates
+        run: echo "JACPYTHON_CPYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+
+      - name: P3 Layer-0/1 corpus ratchet (isolated jac run)
+        run: python3 jac-py/tools/p3_object_core/replay_gate.py
+
+      - name: P3 runtime parity probes (M11)
+        run: python3 jac-py/tools/p3_object_core/runtime_gate.py
 
   # Compiler suite, one chunk per runner. Chunking is load-bearing: the
   # materializer crossing leaks its native parse tree per compile, so one long
@@ -1335,6 +1511,7 @@ jobs:
       - macos-native
       - jac-check
       - contribution-checks
+      - jac-py-gates
       - test-compiler
       - test-native
       - test-native-sealed

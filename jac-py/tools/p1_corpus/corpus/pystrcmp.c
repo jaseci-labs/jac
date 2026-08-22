@@ -1,0 +1,1 @@
+../../../../jac/tests/compiler/c2jac/fixtures/cpython/pystrcmp.c

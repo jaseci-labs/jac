@@ -1,0 +1,134 @@
+[
+  {
+    "name": "top_level_raise_instance_from_instance",
+    "source": "def f():\n    raise ValueError('x') from TypeError('c')\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80005c010000000000000000520034010000000000005c030000000000000000520134010000000000006802",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "raise_instance_from_none",
+    "source": "def f():\n    raise ValueError('x') from None\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 3,
+    "co_code_hex": "80005c0100000000000000005200340100000000000052016802",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "raise_from_inside_except_explicit_cause",
+    "source": "def f():\n    try:\n        raise ValueError('original')\n    except ValueError:\n        raise TypeError('replacement') from KeyError('cause')\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 5,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600641700001c001f005c030000000000000000520134010000000000005c05000000000000000052023401000000000000680269003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d212e03",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 92,
+        "target": 92,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "implicit_chaining_inside_except",
+    "source": "def f():\n    try:\n        raise ValueError('original')\n    except ValueError:\n        raise TypeError('replacement')\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640d00001c001f005c03000000000000000052013401000000000000680169003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d172403",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 72,
+        "target": 72,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "bare_raise_inside_except",
+    "source": "def f():\n    try:\n        raise ValueError('original')\n    except ValueError:\n        raise\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640300001c001f00680069003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d0d1a03",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 52,
+        "target": 52,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "raise_class_from_err",
+    "source": "def f(err):\n    raise ValueError from err\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 2,
+    "co_code_hex": "80005c00000000000000000056006802",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "raise_instance_from_err",
+    "source": "def f(err):\n    raise ValueError('x') from err\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 3,
+    "co_code_hex": "80005c0100000000000000005200340100000000000056006802",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "raise_from_inside_finally",
+    "source": "def f():\n    try:\n        marker = 1\n    finally:\n        raise ValueError('final') from TypeError('cause')\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 6,
+    "co_code_hex": "80001b005e0170005c010000000000000000520134010000000000005c03000000000000000052023401000000000000680220005c010000000000000000520134010000000000005c0300000000000000005202340100000000000068023b031d006901",
+    "co_exceptiontable_hex": "8202190099162f03",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 8,
+        "target": 50,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 50,
+        "end": 94,
+        "target": 94,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  }
+]

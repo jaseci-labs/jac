@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave12",
+  "description": "P2 wave 12: itertools accelerator control kernels (count, cycle, repeat, chain)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave12",
+  "baseline_report": "jac-py/tools/p2_corpus_wave12/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "itertoolsmodule",
+      "source": "jac-py/tools/p2_corpus_wave12/corpus/itertoolsmodule.c",
+      "header_free": true
+    }
+  ]
+}

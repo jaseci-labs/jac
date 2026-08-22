@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "wave": "p2_wave4",
+  "description": "P2 wave 4 conformance manifest (four oracle-gated leaf extracts)",
+  "module_count": 4,
+  "modules": [
+    {
+      "stem": "pystricmp",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "PyOS_mystricmp header-free extract"
+    },
+    {
+      "stem": "pyctype_space",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "pyctype_isspace header-free extract"
+    },
+    {
+      "stem": "pyctype_alpha",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "pyctype_isalpha header-free extract"
+    },
+    {
+      "stem": "math_factorial_small",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "math_factorial_small header-free extract"
+    }
+  ]
+}

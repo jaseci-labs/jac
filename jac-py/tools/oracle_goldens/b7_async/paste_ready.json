@@ -1,0 +1,83 @@
+[
+  {
+    "name": "minimal_async_pass",
+    "source": "async def f():\n    pass\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "await_expr",
+    "source": "async def f(awaitable):\n    await awaitable\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "await_and_return",
+    "source": "async def f(awaitable):\n    result = await awaitable\n    return result\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "async_for_loop",
+    "source": "async def f(it):\n    total = 0\n    async for x in it:\n        total += x\n    return total\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "async_with",
+    "source": "async def f(expr):\n    async with expr as y:\n        return y\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "await_in_try_except",
+    "source": "async def f(awaitable):\n    try:\n        return await awaitable\n    except ValueError:\n        return 0\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "async_generator_yield",
+    "source": "async def f(value):\n    yield value\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "async_generator_yield_and_await",
+    "source": "async def f(awaitable, value):\n    yield value\n    result = await awaitable\n    yield result\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "sync_control_comparison",
+    "source": "def f(value):\n    return value\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  }
+]

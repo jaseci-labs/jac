@@ -1,0 +1,47 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/_bisectmodule.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p1_corpus/corpus/_bisectmodule.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/_heapqmodule.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p1_corpus/corpus/_heapqmodule.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/getbuildinfo.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p1_corpus/corpus/getbuildinfo.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/mysnprintf.jac",
+      "quarantined_functions": [
+        "PyOS_snprintf"
+      ],
+      "source": "jac-py/tools/p1_corpus/corpus/mysnprintf.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/pystrcmp.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p1_corpus/corpus/pystrcmp.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/rotatingtree.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p1_corpus/corpus/rotatingtree.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [
+    "PyOS_snprintf"
+  ],
+  "tier_b_total": 0,
+  "version": 1
+}

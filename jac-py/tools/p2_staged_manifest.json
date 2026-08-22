@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "wave": "p2_wave1",
+  "description": "Canonical staging policy for P2 wave 1: oracle truth in jac-py/Modules/*.jac vs corpus/T8 truth in jac-py/Modules/_lifted/p2_corpus_wave1/*.jac",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave1",
+  "modules": [
+    {
+      "stem": "rotatingtree",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystrcmp",
+      "staging": "lift"
+    },
+    {
+      "stem": "getplatform",
+      "staging": "lift"
+    },
+    {
+      "stem": "getcompiler",
+      "staging": "lift"
+    },
+    {
+      "stem": "getcopyright",
+      "staging": "lift"
+    },
+    {
+      "stem": "pyfpe",
+      "staging": "lift"
+    },
+    {
+      "stem": "getbuildinfo",
+      "staging": "hand",
+      "note": "Fresh-lift unsafe: naive c2jac still emits Tier-B (W4201 char casts) and lacks hand fixes (_uchar, byte-buffer strcpy/cat). Hand-staged oracle (jac-py/Modules/getbuildinfo.jac) is canonical for differential tests until idiom pack catches up; do not assert_lift_matches_c on fresh lift. After T8 tier-B burn-down on staged file, run sync_staged_to_lifted.py before re-measuring density."
+    },
+    {
+      "stem": "_bisectmodule",
+      "staging": "hand",
+      "note": "Dual pipeline: Modules/_bisectmodule.jac is the C-API hand oracle (PyObj stubs) for cc differential tests; jacpython/_bisectmodule.jac is the native product facade (_p2_* list algorithms, no host py-block delegation). Not byte-identical. Staged file defines a no-op __jac_value__ so jac-run oracles survive native-lower fallback (decorator is a c2jac arch marker, not a runtime name). After T8 tier-B burn-down on staged oracle, run sync_staged_to_lifted.py before re-measuring density."
+    },
+    {
+      "stem": "_heapqmodule",
+      "staging": "hand",
+      "note": "Dual pipeline: Modules/_heapqmodule.jac is the C-API hand oracle (PyObj stubs) for cc differential tests; jacpython/_heapqmodule.jac is the native product facade (_p2_* list algorithms, no host py-block delegation). Not byte-identical. Staged file defines a no-op __jac_value__ so jac-run oracles survive native-lower fallback (decorator is a c2jac arch marker, not a runtime name). After T8 tier-B burn-down on staged oracle, run sync_staged_to_lifted.py before re-measuring density."
+    },
+    {
+      "stem": "mysnprintf",
+      "staging": "hand",
+      "note": "Oracle hand-edits. After T8 tier-B burn-down on staged file, run sync_staged_to_lifted.py before re-measuring density."
+    }
+  ]
+}

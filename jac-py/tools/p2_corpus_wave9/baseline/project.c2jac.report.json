@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave9/math_max_u.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave9/_staging/math_max_u.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave9/pystr_count_char.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave9/_staging/pystr_count_char.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave9/pystr_find_char.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave9/_staging/pystr_find_char.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave9/pystr_len_c.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave9/_staging/pystr_len_c.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 0,
+  "version": 1
+}

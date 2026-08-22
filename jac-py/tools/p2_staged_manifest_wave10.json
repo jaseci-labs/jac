@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "wave": "p2_wave10",
+  "description": "P2 wave 10 staging policy",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave10",
+  "modules": [
+    {
+      "stem": "math_gcd_iter",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_lcm_u",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_startswith_c",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_endswith_c",
+      "staging": "lift"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/_bisectmodule.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/_bisectmodule.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/_heapqmodule.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/_heapqmodule.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/getbuildinfo.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/getbuildinfo.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/getcompiler.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/getcompiler.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/getcopyright.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/getcopyright.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/getplatform.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/getplatform.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/mysnprintf.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/mysnprintf.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/pyfpe.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/pyfpe.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/pystrcmp.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/pystrcmp.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave1/rotatingtree.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus/_staging/rotatingtree.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 0,
+  "version": 1
+}

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "wave": "p2_wave8",
+  "description": "P2 wave 8 conformance manifest (four oracle-gated leaf extracts)",
+  "module_count": 4,
+  "modules": [
+    {
+      "stem": "math_ctz_small",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "math_ctz_small header-free extract"
+    },
+    {
+      "stem": "math_clz32_small",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "math_clz32_small header-free extract"
+    },
+    {
+      "stem": "math_abs_diff",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "math_abs_diff header-free extract"
+    },
+    {
+      "stem": "math_min_u",
+      "status": "gated",
+      "gate_type": "oracle",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "note": "math_min_u header-free extract"
+    }
+  ]
+}

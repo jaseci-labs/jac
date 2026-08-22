@@ -956,8 +956,11 @@ def is_untyped_third_party_module(path: str) -> bool {
         return False;
     }
     normalized = path.replace('\\', '/');
+
+    in_vendor = '/jaclang/vendor/' in normalized;
     if ('/site-packages/' not in normalized)
-        and ('/dist-packages/' not in normalized) {
+    and ('/dist-packages/' not in normalized)
+    and not in_vendor {
         return False;
     }
     mod_path = Path(path);
@@ -965,7 +968,7 @@ def is_untyped_third_party_module(path: str) -> bool {
         return False;
     }
     pkg_dir = mod_path.parent;
-    while pkg_dir.name not in ('site-packages', 'dist-packages') {
+    while pkg_dir.name not in ('site-packages', 'dist-packages', 'vendor') {
         if (pkg_dir / 'py.typed').exists() {
             return False;
         }

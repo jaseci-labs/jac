@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave9",
+  "description": "P2 wave 9: four leaf extracts (math_max_u, pystr_len_c, pystr_find_char, pystr_count_char)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave9",
+  "baseline_report": "jac-py/tools/p2_corpus_wave9/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "math_max_u",
+      "source": "jac-py/tools/p2_corpus_wave9/corpus/math_max_u.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_len_c",
+      "source": "jac-py/tools/p2_corpus_wave9/corpus/pystr_len_c.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_find_char",
+      "source": "jac-py/tools/p2_corpus_wave9/corpus/pystr_find_char.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_count_char",
+      "source": "jac-py/tools/p2_corpus_wave9/corpus/pystr_count_char.c",
+      "header_free": true
+    }
+  ]
+}

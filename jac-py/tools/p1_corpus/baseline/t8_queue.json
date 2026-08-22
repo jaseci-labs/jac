@@ -1,0 +1,71 @@
+{
+  "report": "jac-py/tools/p1_corpus/baseline/project.c2jac.report.json",
+  "site_count": 4,
+  "sites": [
+    {
+      "band": "style",
+      "code": "W4201",
+      "context": [],
+      "function": "internal_bisect_right",
+      "line": 139,
+      "msg": "cast to `size_t` elided \u2014 representation-changing conversion (truncation/narrowing/discard) not applied",
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/_bisectmodule.jac",
+      "sidecar": "jac-py/Modules/_lifted/p1_corpus_slice1b/_bisectmodule.c2jac.report.json",
+      "source": "jac-py/tools/p1_corpus/corpus/_bisectmodule.c"
+    },
+    {
+      "band": "style",
+      "code": "W4201",
+      "context": [
+        "static int c_strcmp(const char *a, const char *b) {",
+        "    while (*a && *a == *b) {",
+        "        a++;",
+        "        b++;",
+        "    }",
+        "    return (unsigned char)*a - (unsigned char)*b;"
+      ],
+      "function": "c_strcmp",
+      "line": 6,
+      "msg": "cast to `char` elided \u2014 representation-changing conversion (truncation/narrowing/discard) not applied",
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/getbuildinfo.jac",
+      "sidecar": "jac-py/Modules/_lifted/p1_corpus_slice1b/getbuildinfo.c2jac.report.json",
+      "source": "jac-py/tools/p1_corpus/corpus/getbuildinfo.c"
+    },
+    {
+      "band": "style",
+      "code": "W4201",
+      "context": [
+        "static int c_strcmp(const char *a, const char *b) {",
+        "    while (*a && *a == *b) {",
+        "        a++;",
+        "        b++;",
+        "    }",
+        "    return (unsigned char)*a - (unsigned char)*b;"
+      ],
+      "function": "c_strcmp",
+      "line": 6,
+      "msg": "cast to `char` elided \u2014 representation-changing conversion (truncation/narrowing/discard) not applied",
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/getbuildinfo.jac",
+      "sidecar": "jac-py/Modules/_lifted/p1_corpus_slice1b/getbuildinfo.c2jac.report.json",
+      "source": "jac-py/tools/p1_corpus/corpus/getbuildinfo.c"
+    },
+    {
+      "band": "behavior",
+      "code": "W4207",
+      "context": [
+        "void va_end(va_list va);",
+        "int vsnprintf(char *str, unsigned long size, const char *format, va_list va);",
+        "",
+        "int PyOS_snprintf(char *str, unsigned long size, const char *format, ...) {",
+        "    int rc;",
+        "    va_list va;"
+      ],
+      "function": "PyOS_snprintf",
+      "line": 6,
+      "msg": "variadic `...` lowered to `*args` \u2014 `va_list`/`va_arg` not modelled",
+      "output": "jac-py/Modules/_lifted/p1_corpus_slice1b/mysnprintf.jac",
+      "sidecar": "jac-py/Modules/_lifted/p1_corpus_slice1b/mysnprintf.c2jac.report.json",
+      "source": "jac-py/tools/p1_corpus/corpus/mysnprintf.c"
+    }
+  ]
+}

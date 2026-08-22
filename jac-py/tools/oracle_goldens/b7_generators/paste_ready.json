@@ -1,0 +1,92 @@
+[
+  {
+    "name": "simplest_generator",
+    "source": "def g():\n    yield 1\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "yield_value_then_return",
+    "source": "def g():\n    yield 1\n    return\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "bare_yield",
+    "source": "def g():\n    yield\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "yield_from_iterable",
+    "source": "def g():\n    yield from [1, 2, 3]\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "yield_from_return_value",
+    "source": "def inner():\n    return 7\n    yield\n\ndef g():\n    x = yield from inner()\n    yield x\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "generator_return_value",
+    "source": "def g():\n    yield 1\n    return 42\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "yield_inside_try_finally",
+    "source": "def g():\n    try:\n        yield 1\n    finally:\n        cleanup = 2\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "yield_inside_try_except",
+    "source": "def g():\n    try:\n        yield 1\n    except ValueError:\n        yield 2\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "generator_expression",
+    "source": "gen = (x * 2 for x in range(3))\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "non_generator_control",
+    "source": "def g():\n    return 1\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  }
+]

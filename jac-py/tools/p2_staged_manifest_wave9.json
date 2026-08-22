@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "wave": "p2_wave9",
+  "description": "P2 wave 9 staging policy",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave9",
+  "modules": [
+    {
+      "stem": "math_max_u",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_len_c",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_find_char",
+      "staging": "lift"
+    },
+    {
+      "stem": "pystr_count_char",
+      "staging": "lift"
+    }
+  ]
+}

@@ -1,0 +1,5173 @@
+{
+  "interpreter": "/home/jac/repos/jac-python/.venv/bin/python",
+  "python_version": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "fixtures": [
+    {
+      "name": "minimal_async_pass",
+      "source": "async def f():\n    pass\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<minimal_async_pass>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<minimal_async_pass>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<minimal_async_pass>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 8
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 8
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 8
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 8
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 8
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<minimal_async_pass>",
+          "firstlineno": 1,
+          "co_flags": "0x1000083",
+          "co_flags_int": 16777347,
+          "co_flags_set": [
+            "CO_COROUTINE",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 2,
+          "co_code": "22001f0080005200230035036901",
+          "co_exceptiontable": "82030501",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 8
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 8
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 10,
+              "target": 10,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "await_expr",
+      "source": "async def f(awaitable):\n    await awaitable\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<await_expr>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<await_expr>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<await_expr>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 19
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<await_expr>",
+          "firstlineno": 1,
+          "co_flags": "0x1000083",
+          "co_flags_int": 16777347,
+          "co_flags_set": [
+            "CO_COROUTINE",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 3,
+          "co_code": "22001f0080005600470052006a030000780180034c050a001f005200230007004c0635036901",
+          "co_exceptiontable": "8206110188010f0489071101",
+          "co_varnames": [
+            "awaitable"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'awaitable'",
+              "argrepr": "awaitable",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 10,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "22",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 16,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 20,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "12",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 22,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 24,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 26,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 28,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 30,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 32,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 6,
+              "argval": "22",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 34,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 36,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 16,
+              "target": 34,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 16,
+              "end": 18,
+              "target": 30,
+              "depth": 2,
+              "lasti": false
+            },
+            {
+              "start": 18,
+              "end": 32,
+              "target": 34,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "await_and_return",
+      "source": "async def f(awaitable):\n    result = await awaitable\n    return result\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<await_and_return>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<await_and_return>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<await_and_return>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 17
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 17
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 17
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 17
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 17
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<await_and_return>",
+          "firstlineno": 1,
+          "co_flags": "0x1000083",
+          "co_flags_int": 16777347,
+          "co_flags_set": [
+            "CO_COROUTINE",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 3,
+          "co_code": "22001f0080005600470052006a030000780180034c050a0070015601230007004c0635036901",
+          "co_exceptiontable": "8206110188010f0489071101",
+          "co_varnames": [
+            "awaitable",
+            "result"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'awaitable'",
+              "argrepr": "awaitable",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 19,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "22",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 16,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 20,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "12",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 22,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 24,
+              "opcode": 112,
+              "opname": "STORE_FAST",
+              "arg": 1,
+              "argval": "'result'",
+              "argrepr": "result",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 10
+              }
+            },
+            {
+              "offset": 26,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 1,
+              "argval": "'result'",
+              "argrepr": "result",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 11,
+                "end_col_offset": 17
+              }
+            },
+            {
+              "offset": 28,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 4,
+                "end_col_offset": 17
+              }
+            },
+            {
+              "offset": 30,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 32,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 6,
+              "argval": "22",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 34,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 36,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 16,
+              "target": 34,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 16,
+              "end": 18,
+              "target": 30,
+              "depth": 2,
+              "lasti": false
+            },
+            {
+              "start": 18,
+              "end": 32,
+              "target": 34,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "async_for_loop",
+      "source": "async def f(it):\n    total = 0\n    async for x in it:\n        total += x\n    return total\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<async_for_loop>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<async_for_loop>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<async_for_loop>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<async_for_loop>",
+          "firstlineno": 1,
+          "co_flags": "0x1000083",
+          "co_flags_int": 16777347,
+          "co_flags_set": [
+            "CO_COROUTINE",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 4,
+          "co_code": "22001f0080005e00700156000e000f0052016a030000780180034c050a001c00700257122c0d0000000000000000000070014b14000007004c0f44105401230035036901",
+          "co_exceptiontable": "8205200187041d028b011b068c031d028f0c20019b011d029d032001",
+          "co_varnames": [
+            "it",
+            "total",
+            "x"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 94,
+              "opname": "LOAD_SMALL_INT",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 12,
+                "end_col_offset": 13
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 112,
+              "opname": "STORE_FAST",
+              "arg": 1,
+              "argval": "'total'",
+              "argrepr": "total",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 9
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'it'",
+              "argrepr": "it",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 19,
+                "end_col_offset": 21
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 14,
+              "opname": "GET_AITER",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 19,
+                "end_col_offset": 21
+              }
+            },
+            {
+              "offset": 14,
+              "opcode": 15,
+              "opname": "GET_ANEXT",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 16,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "28",
+              "argrepr": "to L3",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 22,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 24,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 26,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "18",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 28,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 30,
+              "opcode": 28,
+              "opname": "NOT_TAKEN",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 32,
+              "opcode": 112,
+              "opname": "STORE_FAST",
+              "arg": 2,
+              "argval": "'x'",
+              "argrepr": "x",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 14,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 34,
+              "opcode": 87,
+              "opname": "LOAD_FAST_BORROW_LOAD_FAST_BORROW",
+              "arg": 18,
+              "argval": "('total', 'x')",
+              "argrepr": "total, x",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 8,
+                "end_col_offset": 13
+              }
+            },
+            {
+              "offset": 36,
+              "opcode": 44,
+              "opname": "BINARY_OP",
+              "arg": 13,
+              "argval": "13",
+              "argrepr": "+=",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 8,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 48,
+              "opcode": 112,
+              "opname": "STORE_FAST",
+              "arg": 1,
+              "argval": "'total'",
+              "argrepr": "total",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 8,
+                "end_col_offset": 13
+              }
+            },
+            {
+              "offset": 50,
+              "opcode": 75,
+              "opname": "JUMP_BACKWARD",
+              "arg": 20,
+              "argval": "14",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 8,
+                "end_col_offset": 13
+              }
+            },
+            {
+              "offset": 54,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 56,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 15,
+              "argval": "28",
+              "argrepr": "to L3",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 18
+              }
+            },
+            {
+              "offset": 58,
+              "opcode": 68,
+              "opname": "END_ASYNC_FOR",
+              "arg": 16,
+              "argval": "28",
+              "argrepr": "from L3",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 19,
+                "end_col_offset": 21
+              }
+            },
+            {
+              "offset": 60,
+              "opcode": 84,
+              "opname": "LOAD_FAST",
+              "arg": 1,
+              "argval": "'total'",
+              "argrepr": "total",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 5,
+                "end_lineno": 5,
+                "col_offset": 11,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 62,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 5,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 64,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 66,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 14,
+              "target": 64,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 14,
+              "end": 22,
+              "target": 58,
+              "depth": 1,
+              "lasti": false
+            },
+            {
+              "start": 22,
+              "end": 24,
+              "target": 54,
+              "depth": 3,
+              "lasti": false
+            },
+            {
+              "start": 24,
+              "end": 30,
+              "target": 58,
+              "depth": 1,
+              "lasti": false
+            },
+            {
+              "start": 30,
+              "end": 54,
+              "target": 64,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 54,
+              "end": 56,
+              "target": 58,
+              "depth": 1,
+              "lasti": false
+            },
+            {
+              "start": 58,
+              "end": 64,
+              "target": 64,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "async_with",
+      "source": "async def f(expr):\n    async with expr as y:\n        return y\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<async_with>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<async_with>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<async_with>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 3,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<async_with>",
+          "firstlineno": 1,
+          "co_flags": "0x1000083",
+          "co_flags_int": 16777347,
+          "co_flags_set": [
+            "CO_COROUTINE",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 8,
+          "co_code": "22001f00800054003b015f03750275035f023400000000000000470152006a030000780180034c050a0070015401750375025200520052003403000000000000470252006a030000780180034c050a001f00230007004c1807004c0720002b00470252006a040000780180034c0507000a002700000000000000670200001c0069021f001d001f001f001f00520023003b031d00690135036901",
+          "co_exceptiontable": "820f410b0191012a089203410b0195022e05970d410b01a4012c06a506410b01ac01410b01ae06410809b401370eb50a410809c10002410809c10209410b01",
+          "co_varnames": [
+            "expr",
+            "y"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 84,
+              "opname": "LOAD_FAST",
+              "arg": 0,
+              "argval": "'expr'",
+              "argrepr": "expr",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 59,
+              "opname": "COPY",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 95,
+              "opname": "LOAD_SPECIAL",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "__aexit__",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 117,
+              "opname": "SWAP",
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 14,
+              "opcode": 117,
+              "opname": "SWAP",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 16,
+              "opcode": 95,
+              "opname": "LOAD_SPECIAL",
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "__aenter__",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 52,
+              "opname": "CALL",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 26,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 28,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 30,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "40",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 34,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 36,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 38,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "30",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 40,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 42,
+              "opcode": 112,
+              "opname": "STORE_FAST",
+              "arg": 1,
+              "argval": "'y'",
+              "argrepr": "y",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 23,
+                "end_col_offset": 24
+              }
+            },
+            {
+              "offset": 44,
+              "opcode": 84,
+              "opname": "LOAD_FAST",
+              "arg": 1,
+              "argval": "'y'",
+              "argrepr": "y",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 46,
+              "opcode": 117,
+              "opname": "SWAP",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 48,
+              "opcode": 117,
+              "opname": "SWAP",
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 50,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 52,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 54,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 56,
+              "opcode": 52,
+              "opname": "CALL",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 64,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 66,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 68,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "78",
+              "argrepr": "to L4",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 72,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 74,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 76,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "68",
+              "argrepr": "to L3",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 78,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 80,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 82,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 84,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 86,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 24,
+              "argval": "40",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 88,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 90,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 7,
+              "argval": "78",
+              "argrepr": "to L4",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 92,
+              "opcode": 32,
+              "opname": "PUSH_EXC_INFO",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 94,
+              "opcode": 43,
+              "opname": "WITH_EXCEPT_START",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 96,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 98,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 100,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 4,
+              "argval": "112",
+              "argrepr": "to L6",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 104,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 106,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 108,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "100",
+              "argrepr": "to L5",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 110,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 112,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 114,
+              "opcode": 39,
+              "opname": "TO_BOOL",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 122,
+              "opcode": 103,
+              "opname": "POP_JUMP_IF_TRUE",
+              "arg": 2,
+              "argval": "130",
+              "argrepr": "to L7",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 126,
+              "opcode": 28,
+              "opname": "NOT_TAKEN",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 128,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 130,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 132,
+              "opcode": 29,
+              "opname": "POP_EXCEPT",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 134,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 136,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 138,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 140,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 142,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 15,
+                "end_col_offset": 19
+              }
+            },
+            {
+              "offset": 144,
+              "opcode": 59,
+              "opname": "COPY",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 146,
+              "opcode": 29,
+              "opname": "POP_EXCEPT",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 148,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 150,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 152,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 34,
+              "target": 150,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 34,
+              "end": 36,
+              "target": 84,
+              "depth": 4,
+              "lasti": false
+            },
+            {
+              "start": 36,
+              "end": 42,
+              "target": 150,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 42,
+              "end": 46,
+              "target": 92,
+              "depth": 2,
+              "lasti": true
+            },
+            {
+              "start": 46,
+              "end": 72,
+              "target": 150,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 72,
+              "end": 74,
+              "target": 88,
+              "depth": 3,
+              "lasti": false
+            },
+            {
+              "start": 74,
+              "end": 86,
+              "target": 150,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 88,
+              "end": 90,
+              "target": 150,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 92,
+              "end": 104,
+              "target": 144,
+              "depth": 4,
+              "lasti": true
+            },
+            {
+              "start": 104,
+              "end": 106,
+              "target": 110,
+              "depth": 7,
+              "lasti": false
+            },
+            {
+              "start": 106,
+              "end": 126,
+              "target": 144,
+              "depth": 4,
+              "lasti": true
+            },
+            {
+              "start": 128,
+              "end": 132,
+              "target": 144,
+              "depth": 4,
+              "lasti": true
+            },
+            {
+              "start": 132,
+              "end": 150,
+              "target": 150,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "await_in_try_except",
+      "source": "async def f(awaitable):\n    try:\n        return await awaitable\n    except ValueError:\n        return 0\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<await_in_try_except>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<await_in_try_except>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<await_in_try_except>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 5,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<await_in_try_except>",
+          "firstlineno": 1,
+          "co_flags": "0x1000083",
+          "co_flags_int": 16777347,
+          "co_flags_set": [
+            "CO_COROUTINE",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 4,
+          "co_code": "22001f0080001b005600470052006a030000780180034c050a00230007004c0420005c0000000000000000000600640500001c001f001d005e00230069003b031d00690135036901",
+          "co_exceptiontable": "820122018405100089010e048a0310008d0122018e011000900b1f039b0322019e011f039f032201",
+          "co_varnames": [
+            "awaitable"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 27,
+              "opname": "NOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'awaitable'",
+              "argrepr": "awaitable",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 21,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 14,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "24",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 20,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 22,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "14",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 24,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 26,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 8,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 28,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 30,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 4,
+              "argval": "24",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 15,
+                "end_col_offset": 30
+              }
+            },
+            {
+              "offset": 32,
+              "opcode": 32,
+              "opname": "PUSH_EXC_INFO",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 34,
+              "opcode": 92,
+              "opname": "LOAD_GLOBAL",
+              "arg": 0,
+              "argval": "'ValueError'",
+              "argrepr": "ValueError",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 11,
+                "end_col_offset": 21
+              }
+            },
+            {
+              "offset": 44,
+              "opcode": 6,
+              "opname": "CHECK_EXC_MATCH",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 46,
+              "opcode": 100,
+              "opname": "POP_JUMP_IF_FALSE",
+              "arg": 5,
+              "argval": "60",
+              "argrepr": "to L3",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 50,
+              "opcode": 28,
+              "opname": "NOT_TAKEN",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 52,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 54,
+              "opcode": 29,
+              "opname": "POP_EXCEPT",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 5,
+                "end_lineno": 5,
+                "col_offset": 15,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 56,
+              "opcode": 94,
+              "opname": "LOAD_SMALL_INT",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 5,
+                "end_lineno": 5,
+                "col_offset": 15,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 58,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 5,
+                "end_lineno": 5,
+                "col_offset": 15,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 60,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 5,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 62,
+              "opcode": 59,
+              "opname": "COPY",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 64,
+              "opcode": 29,
+              "opname": "POP_EXCEPT",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 66,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 68,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 70,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 6,
+              "target": 68,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 8,
+              "end": 18,
+              "target": 32,
+              "depth": 0,
+              "lasti": false
+            },
+            {
+              "start": 18,
+              "end": 20,
+              "target": 28,
+              "depth": 2,
+              "lasti": false
+            },
+            {
+              "start": 20,
+              "end": 26,
+              "target": 32,
+              "depth": 0,
+              "lasti": false
+            },
+            {
+              "start": 26,
+              "end": 28,
+              "target": 68,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 28,
+              "end": 30,
+              "target": 32,
+              "depth": 0,
+              "lasti": false
+            },
+            {
+              "start": 32,
+              "end": 54,
+              "target": 62,
+              "depth": 1,
+              "lasti": true
+            },
+            {
+              "start": 54,
+              "end": 60,
+              "target": 68,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 60,
+              "end": 62,
+              "target": 62,
+              "depth": 1,
+              "lasti": true
+            },
+            {
+              "start": 62,
+              "end": 68,
+              "target": 68,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "async_generator_yield",
+      "source": "async def f(value):\n    yield value\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<async_generator_yield>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<async_generator_yield>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<async_generator_yield>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 15
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<async_generator_yield>",
+          "firstlineno": 1,
+          "co_flags": "0x1000203",
+          "co_flags_int": 16777731,
+          "co_flags_set": [
+            "CO_ASYNC_GENERATOR",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 2,
+          "co_code": "22001f00800056003504780080051f005200230035036901",
+          "co_exceptiontable": "82080a01",
+          "co_varnames": [
+            "value"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'value'",
+              "argrepr": "value",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 10,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 4,
+              "argval": "4",
+              "argrepr": "INTRINSIC_ASYNC_GEN_WRAP",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 5,
+              "argval": "5",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 14,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 16,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 20,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 22,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 20,
+              "target": 20,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "async_generator_yield_and_await",
+      "source": "async def f(awaitable, value):\n    yield value\n    result = await awaitable\n    yield result\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<async_generator_yield_and_await>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<async_generator_yield_and_await>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<async_generator_yield_and_await>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 4,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 4,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 4,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 4,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 4,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<async_generator_yield_and_await>",
+          "firstlineno": 1,
+          "co_flags": "0x1000203",
+          "co_flags_int": 16777731,
+          "co_flags_set": [
+            "CO_ASYNC_GENERATOR",
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 3,
+          "co_code": "22001f00800056013504780080051f005600470052006a030000780180034c050a00700256023504780080051f005200230007004c0b35036901",
+          "co_exceptiontable": "820b1b018d0119048e0c1b01",
+          "co_varnames": [
+            "awaitable",
+            "value",
+            "result"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 34,
+              "opname": "RETURN_GENERATOR",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 1,
+              "argval": "'value'",
+              "argrepr": "value",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 10,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 4,
+              "argval": "4",
+              "argrepr": "INTRINSIC_ASYNC_GEN_WRAP",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 12,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 5,
+              "argval": "5",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 14,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 15
+              }
+            },
+            {
+              "offset": 16,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'awaitable'",
+              "argrepr": "awaitable",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 19,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 18,
+              "opcode": 71,
+              "opname": "GET_AWAITABLE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 20,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 22,
+              "opcode": 106,
+              "opname": "SEND",
+              "arg": 3,
+              "argval": "32",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 26,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 28,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 30,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 5,
+              "argval": "22",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 32,
+              "opcode": 10,
+              "opname": "END_SEND",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 34,
+              "opcode": 112,
+              "opname": "STORE_FAST",
+              "arg": 2,
+              "argval": "'result'",
+              "argrepr": "result",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 4,
+                "end_col_offset": 10
+              }
+            },
+            {
+              "offset": 36,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 2,
+              "argval": "'result'",
+              "argrepr": "result",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 10,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 38,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 4,
+              "argval": "4",
+              "argrepr": "INTRINSIC_ASYNC_GEN_WRAP",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 40,
+              "opcode": 120,
+              "opname": "YIELD_VALUE",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 42,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 5,
+              "argval": "5",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 44,
+              "opcode": 31,
+              "opname": "POP_TOP",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 46,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 48,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 4,
+                "end_lineno": 4,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 50,
+              "opcode": 7,
+              "opname": "CLEANUP_THROW",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 52,
+              "opcode": 76,
+              "opname": "JUMP_BACKWARD_NO_INTERRUPT",
+              "arg": 11,
+              "argval": "32",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 3,
+                "end_lineno": 3,
+                "col_offset": 13,
+                "end_col_offset": 28
+              }
+            },
+            {
+              "offset": 54,
+              "opcode": 53,
+              "opname": "CALL_INTRINSIC_1",
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "INTRINSIC_STOPITERATION_ERROR",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            },
+            {
+              "offset": 56,
+              "opcode": 105,
+              "opname": "RERAISE",
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": null,
+                "end_lineno": null,
+                "col_offset": null,
+                "end_col_offset": null
+              }
+            }
+          ],
+          "exception_entries": [
+            {
+              "start": 4,
+              "end": 26,
+              "target": 54,
+              "depth": 0,
+              "lasti": true
+            },
+            {
+              "start": 26,
+              "end": 28,
+              "target": 50,
+              "depth": 2,
+              "lasti": false
+            },
+            {
+              "start": 28,
+              "end": 52,
+              "target": 54,
+              "depth": 0,
+              "lasti": true
+            }
+          ]
+        }
+      ],
+      "function_code_index": 1
+    },
+    {
+      "name": "sync_control_comparison",
+      "source": "def f(value):\n    return value\n",
+      "code_objects": [
+        {
+          "name": "<module>",
+          "qualname": "<module>",
+          "filename": "<sync_control_comparison>",
+          "firstlineno": 1,
+          "co_flags": "0x1000000",
+          "co_flags_int": 16777216,
+          "co_flags_set": [],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800052001700740052012300",
+          "co_exceptiontable": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 0,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 0,
+              "argval": "<code object f at 0xADDR, file \"<sync_control_comparison>\", line 1>",
+              "argrepr": "<code object f at 0xADDR, file \"<sync_control_comparison>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 23,
+              "opname": "MAKE_FUNCTION",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 6,
+              "opcode": 116,
+              "opname": "STORE_NAME",
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 8,
+              "opcode": 82,
+              "opname": "LOAD_CONST",
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 10,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 2,
+                "col_offset": 0,
+                "end_col_offset": 16
+              }
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "name": "f",
+          "qualname": "f",
+          "filename": "<sync_control_comparison>",
+          "firstlineno": 1,
+          "co_flags": "0x1000003",
+          "co_flags_int": 16777219,
+          "co_flags_set": [
+            "CO_NEWLOCALS",
+            "CO_OPTIMIZED"
+          ],
+          "co_flag_values": {
+            "CO_ASYNC_GENERATOR": "0x200",
+            "CO_COROUTINE": "0x80",
+            "CO_GENERATOR": "0x20",
+            "CO_HAS_DOCSTRING": "0x4000000",
+            "CO_ITERABLE_COROUTINE": "0x100",
+            "CO_METHOD": "0x8000000",
+            "CO_NESTED": "0x10",
+            "CO_NEWLOCALS": "0x2",
+            "CO_NOFREE": "0x40",
+            "CO_OPTIMIZED": "0x1",
+            "CO_VARARGS": "0x4",
+            "CO_VARKEYWORDS": "0x8"
+          },
+          "co_stacksize": 1,
+          "co_code": "800056002300",
+          "co_exceptiontable": "",
+          "co_varnames": [
+            "value"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "instructions": [
+            {
+              "offset": 0,
+              "opcode": 128,
+              "opname": "RESUME",
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 1,
+                "end_lineno": 1,
+                "col_offset": 0,
+                "end_col_offset": 0
+              }
+            },
+            {
+              "offset": 2,
+              "opcode": 86,
+              "opname": "LOAD_FAST_BORROW",
+              "arg": 0,
+              "argval": "'value'",
+              "argrepr": "value",
+              "starts_line": true,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 11,
+                "end_col_offset": 16
+              }
+            },
+            {
+              "offset": 4,
+              "opcode": 35,
+              "opname": "RETURN_VALUE",
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false,
+              "positions": {
+                "lineno": 2,
+                "end_lineno": 2,
+                "col_offset": 4,
+                "end_col_offset": 16
+              }
+            }
+          ],
+          "exception_entries": []
+        }
+      ],
+      "function_code_index": 1
+    }
+  ]
+}

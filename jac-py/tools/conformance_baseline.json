@@ -1,0 +1,358 @@
+{
+  "schema": 1,
+  "updated": "2026-08-22",
+  "description": "Pinned D2 conformance pass-set (grow-only ratchet). Regenerate with: python3 tools/conformance_dashboard.py --update-baseline",
+  "entry_count": 50,
+  "entries": {
+    "_bisectmodule": {
+      "wave": "p2_wave1",
+      "gate_type": "libtest",
+      "status": "gated",
+      "cases_passed": 0,
+      "cases_total": 2
+    },
+    "_heapqmodule": {
+      "wave": "p2_wave1",
+      "gate_type": "libtest",
+      "status": "gated",
+      "cases_passed": 0,
+      "cases_total": 2
+    },
+    "_opcode": {
+      "wave": "p2_wave2",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "_stat": {
+      "wave": "p2_wave2",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "getbuildinfo": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "getcompiler": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "getcopyright": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "getplatform": {
+      "wave": "p2_wave1",
+      "gate_type": "libtest",
+      "status": "gated",
+      "cases_passed": 1,
+      "cases_total": 1
+    },
+    "math_abs_diff": {
+      "wave": "p2_wave8",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_clz32_small": {
+      "wave": "p2_wave8",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_count_bits": {
+      "wave": "p2_wave3",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_ctz_small": {
+      "wave": "p2_wave8",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_factorial_small": {
+      "wave": "p2_wave4",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_gcd": {
+      "wave": "p2_wave2",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_gcd_iter": {
+      "wave": "p2_wave10",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_ilog2_small": {
+      "wave": "p2_wave7",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_isqrt_small": {
+      "wave": "p2_wave5",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_lcm_long": {
+      "wave": "p2_wave3",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_lcm_u": {
+      "wave": "p2_wave10",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_max_u": {
+      "wave": "p2_wave9",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_min_u": {
+      "wave": "p2_wave8",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_popcount_u": {
+      "wave": "p2_wave11",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_pow2_check": {
+      "wave": "p2_wave6",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "math_pow_mod": {
+      "wave": "p2_wave11",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "mysnprintf": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_alnum": {
+      "wave": "p2_wave5",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_alpha": {
+      "wave": "p2_wave4",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_blank": {
+      "wave": "p2_wave7",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_cntrl": {
+      "wave": "p2_wave7",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_digit": {
+      "wave": "p2_wave3",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_graph": {
+      "wave": "p2_wave7",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_lower": {
+      "wave": "p2_wave5",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_print": {
+      "wave": "p2_wave6",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_punct": {
+      "wave": "p2_wave6",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_space": {
+      "wave": "p2_wave4",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_upper": {
+      "wave": "p2_wave6",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyctype_xdigit": {
+      "wave": "p2_wave5",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pyfpe": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_cmp_c": {
+      "wave": "p2_wave11",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_contains_c": {
+      "wave": "p2_wave11",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_count_char": {
+      "wave": "p2_wave9",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_endswith_c": {
+      "wave": "p2_wave10",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_find_char": {
+      "wave": "p2_wave9",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_len_c": {
+      "wave": "p2_wave9",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystr_startswith_c": {
+      "wave": "p2_wave10",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystrcmp": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystricmp": {
+      "wave": "p2_wave4",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "pystrnicmp": {
+      "wave": "p2_wave2",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "rotatingtree": {
+      "wave": "p2_wave1",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    },
+    "strhex_byte": {
+      "wave": "p2_wave3",
+      "gate_type": "oracle",
+      "status": "gated",
+      "cases_passed": null,
+      "cases_total": null
+    }
+  }
+}

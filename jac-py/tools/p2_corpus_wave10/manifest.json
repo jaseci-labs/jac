@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave10",
+  "description": "P2 wave 10: four leaf extracts (math_gcd_iter, math_lcm_u, pystr_startswith_c, pystr_endswith_c)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave10",
+  "baseline_report": "jac-py/tools/p2_corpus_wave10/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "math_gcd_iter",
+      "source": "jac-py/tools/p2_corpus_wave10/corpus/math_gcd_iter.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_lcm_u",
+      "source": "jac-py/tools/p2_corpus_wave10/corpus/math_lcm_u.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_startswith_c",
+      "source": "jac-py/tools/p2_corpus_wave10/corpus/pystr_startswith_c.c",
+      "header_free": true
+    },
+    {
+      "stem": "pystr_endswith_c",
+      "source": "jac-py/tools/p2_corpus_wave10/corpus/pystr_endswith_c.c",
+      "header_free": true
+    }
+  ]
+}

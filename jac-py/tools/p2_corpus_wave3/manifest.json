@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "p2_corpus_wave3",
+  "description": "P2 wave 3: four leaf extracts (math_count_bits, math_lcm_long, strhex_byte, pyctype_digit)",
+  "source_dir": "corpus",
+  "lift_output": "jac-py/Modules/_lifted/p2_corpus_wave3",
+  "baseline_report": "jac-py/tools/p2_corpus_wave3/baseline/project.c2jac.report.json",
+  "files": [
+    {
+      "stem": "math_count_bits",
+      "source": "jac-py/tools/p2_corpus_wave3/corpus/math_count_bits.c",
+      "header_free": true
+    },
+    {
+      "stem": "math_lcm_long",
+      "source": "jac-py/tools/p2_corpus_wave3/corpus/math_lcm_long.c",
+      "header_free": true
+    },
+    {
+      "stem": "strhex_byte",
+      "source": "jac-py/tools/p2_corpus_wave3/corpus/strhex_byte.c",
+      "header_free": true
+    },
+    {
+      "stem": "pyctype_digit",
+      "source": "jac-py/tools/p2_corpus_wave3/corpus/pyctype_digit.c",
+      "header_free": true
+    }
+  ]
+}

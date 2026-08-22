@@ -71,12 +71,14 @@ obj DocIRGenPass(UniPass) {
     ) -> None;
 
     def is_within(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
+    def is_body_member(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
     def jsx_whitespace -> doc.DocType;
     def jsx_mixed_child_parts(children: Sequence[uni.UniNode]) -> list[doc.DocType];
     def remove_all_spaces(doc_node: doc.DocType) -> doc.DocType;
     def exit_module(nd: uni.Module) -> None;
     def exit_import(nd: uni.Import) -> None;
+    def _gen_clib_import(nd: uni.Import) -> None;
     def exit_module_item(nd: uni.ModuleItem) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;

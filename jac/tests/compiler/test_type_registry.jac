@@ -160,3 +160,16 @@ test "na_type_entries names are subset of primitive_names" {
     na_names = {e[0] for e in JAC_TYPE_REGISTRY.na_type_entries()};
     assert na_names.issubset(JAC_TYPE_REGISTRY.primitive_names());
 }
+
+test "exception_type_id is hash-stable (Exception=0, builtins not dense)" {
+    assert JAC_TYPE_REGISTRY.exception_type_id("Exception") == 0;
+    ve = JAC_TYPE_REGISTRY.exception_type_id("ValueError");
+    te = JAC_TYPE_REGISTRY.exception_type_id("TypeError");
+    assert ve >= 0x40000000 , f"ValueError should be high-band hash, got {ve}";
+    assert te >= 0x40000000 , f"TypeError should be high-band hash, got {te}";
+    assert ve != te;
+    assert JAC_TYPE_REGISTRY.exception_type_id("ValueError") == ve;
+    custom = JAC_TYPE_REGISTRY.exception_type_id("MyPortError");
+    assert custom >= 0x40000000;
+    assert custom == JAC_TYPE_REGISTRY.exception_type_id("MyPortError");
+}

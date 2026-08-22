@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave6/math_pow2_check.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave6/_staging/math_pow2_check.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave6/pyctype_print.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave6/_staging/pyctype_print.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave6/pyctype_punct.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave6/_staging/pyctype_punct.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave6/pyctype_upper.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave6/_staging/pyctype_upper.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 0,
+  "version": 1
+}

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "wave": "p2_wave8",
+  "description": "P2 wave 8 staging policy: oracle truth in jac-py/Modules/*.jac vs corpus/T8 truth in _lifted/p2_corpus_wave8",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave8",
+  "modules": [
+    {
+      "stem": "math_ctz_small",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_clz32_small",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_abs_diff",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_min_u",
+      "staging": "lift"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave12/itertoolsmodule.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave12/_staging/itertoolsmodule.c",
+      "tier_b_count": 1
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 1,
+  "version": 1
+}

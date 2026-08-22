@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave5/math_isqrt_small.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave5/_staging/math_isqrt_small.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave5/pyctype_alnum.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave5/_staging/pyctype_alnum.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave5/pyctype_lower.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave5/_staging/pyctype_lower.c",
+      "tier_b_count": 0
+    },
+    {
+      "output": "jac-py/Modules/_lifted/p2_corpus_wave5/pyctype_xdigit.jac",
+      "quarantined_functions": [],
+      "source": "jac-py/tools/p2_corpus_wave5/_staging/pyctype_xdigit.c",
+      "tier_b_count": 0
+    }
+  ],
+  "quarantined_functions": [],
+  "tier_b_total": 0,
+  "version": 1
+}

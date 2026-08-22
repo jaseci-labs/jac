@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "wave": "p2_wave5",
+  "description": "P2 wave 5 staging policy: oracle truth in jac-py/Modules/*.jac vs corpus/T8 truth in _lifted/p2_corpus_wave5",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave5",
+  "modules": [
+    {
+      "stem": "pyctype_xdigit",
+      "staging": "lift"
+    },
+    {
+      "stem": "pyctype_alnum",
+      "staging": "lift"
+    },
+    {
+      "stem": "pyctype_lower",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_isqrt_small",
+      "staging": "lift"
+    }
+  ]
+}

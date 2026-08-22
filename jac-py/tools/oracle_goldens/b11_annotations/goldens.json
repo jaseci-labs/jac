@@ -1,0 +1,3706 @@
+{
+  "interpreter": "CPython 3.14.7",
+  "python_version": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "flag_constants": {
+    "CO_GENERATOR": {
+      "decimal": 32,
+      "hex": "0x20"
+    },
+    "CO_COROUTINE": {
+      "decimal": 128,
+      "hex": "0x80"
+    },
+    "CO_ITERABLE_COROUTINE": {
+      "decimal": 256,
+      "hex": "0x100"
+    },
+    "CO_ASYNC_GENERATOR": {
+      "decimal": 512,
+      "hex": "0x200"
+    },
+    "CO_OPTIMIZED": {
+      "decimal": 1,
+      "hex": "0x1"
+    },
+    "CO_NEWLOCALS": {
+      "decimal": 2,
+      "hex": "0x2"
+    },
+    "CO_VARARGS": {
+      "decimal": 4,
+      "hex": "0x4"
+    },
+    "CO_VARKEYWORDS": {
+      "decimal": 8,
+      "hex": "0x8"
+    },
+    "CO_NESTED": {
+      "decimal": 16,
+      "hex": "0x10"
+    },
+    "CO_NOFREE": {
+      "decimal": 64,
+      "hex": "0x40"
+    },
+    "CO_HAS_DOCSTRING": {
+      "decimal": 67108864,
+      "hex": "0x4000000"
+    }
+  },
+  "fixtures": [
+    {
+      "name": "module_annotated_with_value",
+      "source": "x: int = 5\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 2,
+          "co_code_hex": "61008000520117007402300074005e0574015d005e006b011f0052022300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [
+            "__conditional_annotations__"
+          ],
+          "co_freevars": [],
+          "co_consts": [
+            "5",
+            "<code object __annotate__>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "MAKE_CELL",
+              "opcode": 97,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "<code object __annotate__>",
+              "argrepr": "<code object __annotate__ at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 2,
+              "argval": "'__annotate__'",
+              "argrepr": "__annotate__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "BUILD_SET",
+              "opcode": 48,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 5,
+              "argval": "5",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 1,
+              "argval": "'x'",
+              "argrepr": "x",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "LOAD_NAME",
+              "opcode": 93,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "SET_ADD",
+              "opcode": 107,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "POP_TOP",
+              "opcode": 31,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 26,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 28,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[1]<__annotate__>",
+          "co_name": "__annotate__",
+          "co_qualname": "__annotate__",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 4,
+          "co_code_hex": "800056005e0238840000640300001c00510168012f005e005c00000000000000000039000000640a00001c005c0200000000000000003b025201260000002300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            "format"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "2",
+            "'x'"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'format'",
+              "argrepr": "format",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "COMPARE_OP",
+              "opcode": 56,
+              "arg": 132,
+              "argval": "'>'",
+              "argrepr": ">",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 3,
+              "argval": "20",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_COMMON_CONSTANT",
+              "opcode": 81,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "NotImplementedError",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "RAISE_VARARGS",
+              "opcode": 104,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "BUILD_MAP",
+              "opcode": 47,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true
+            },
+            {
+              "offset": 22,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 34,
+              "opname": "CONTAINS_OP",
+              "opcode": 57,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "in",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 38,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 10,
+              "argval": "62",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 42,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 44,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 2,
+              "argval": "'int'",
+              "argrepr": "int",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 54,
+              "opname": "COPY",
+              "opcode": 59,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 56,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'x'",
+              "argrepr": "'x'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 58,
+              "opname": "STORE_SUBSCR",
+              "opcode": 38,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 62,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "module_bare_annotation",
+      "source": "x: list\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 2,
+          "co_code_hex": "61008000520117007401300074005d005e006b011f0052022300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [
+            "__conditional_annotations__"
+          ],
+          "co_freevars": [],
+          "co_consts": [
+            "0",
+            "<code object __annotate__>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "MAKE_CELL",
+              "opcode": 97,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "<code object __annotate__>",
+              "argrepr": "<code object __annotate__ at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 1,
+              "argval": "'__annotate__'",
+              "argrepr": "__annotate__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "BUILD_SET",
+              "opcode": 48,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "LOAD_NAME",
+              "opcode": 93,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "SET_ADD",
+              "opcode": 107,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "POP_TOP",
+              "opcode": 31,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[1]<__annotate__>",
+          "co_name": "__annotate__",
+          "co_qualname": "__annotate__",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 4,
+          "co_code_hex": "800056005e0238840000640300001c00510168012f005e005c00000000000000000039000000640a00001c005c0200000000000000003b025201260000002300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            "format"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "2",
+            "'x'"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'format'",
+              "argrepr": "format",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "COMPARE_OP",
+              "opcode": 56,
+              "arg": 132,
+              "argval": "'>'",
+              "argrepr": ">",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 3,
+              "argval": "20",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_COMMON_CONSTANT",
+              "opcode": 81,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "NotImplementedError",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "RAISE_VARARGS",
+              "opcode": 104,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "BUILD_MAP",
+              "opcode": 47,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true
+            },
+            {
+              "offset": 22,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 0,
+              "argval": "'__conditional_annotations__'",
+              "argrepr": "__conditional_annotations__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 34,
+              "opname": "CONTAINS_OP",
+              "opcode": 57,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "in",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 38,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 10,
+              "argval": "62",
+              "argrepr": "to L2",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 42,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 44,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 2,
+              "argval": "'list'",
+              "argrepr": "list",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 54,
+              "opname": "COPY",
+              "opcode": 59,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 56,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'x'",
+              "argrepr": "'x'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 58,
+              "opname": "STORE_SUBSCR",
+              "opcode": 38,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 62,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "class_body_annotations",
+      "source": "class C:\n    y: str = 'a'\n    z: dict\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 4,
+          "co_code_hex": "8000150021005200170052013402000000000000740052022300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "<code object C>",
+            "'C'",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_BUILD_CLASS",
+              "opcode": 21,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "PUSH_NULL",
+              "opcode": 33,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "<code object C>",
+              "argrepr": "<code object C at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'C'",
+              "argrepr": "'C'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "CALL",
+              "opcode": 52,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'C'",
+              "argrepr": "C",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<C>",
+          "co_name": "C",
+          "co_qualname": "C",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 2,
+          "co_code_hex": "610080005d007401520074025e01740316006f005201740456003301520217006c087405520374065600740752042300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [
+            "__classdict__"
+          ],
+          "co_freevars": [],
+          "co_consts": [
+            "'C'",
+            "'a'",
+            "<code object __annotate__>",
+            "()",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "MAKE_CELL",
+              "opcode": 97,
+              "arg": 0,
+              "argval": "'__classdict__'",
+              "argrepr": "__classdict__",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_NAME",
+              "opcode": 93,
+              "arg": 0,
+              "argval": "'__name__'",
+              "argrepr": "__name__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 1,
+              "argval": "'__module__'",
+              "argrepr": "__module__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "'C'",
+              "argrepr": "'C'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 2,
+              "argval": "'__qualname__'",
+              "argrepr": "__qualname__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 3,
+              "argval": "'__firstlineno__'",
+              "argrepr": "__firstlineno__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_LOCALS",
+              "opcode": 22,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "STORE_DEREF",
+              "opcode": 111,
+              "arg": 0,
+              "argval": "'__classdict__'",
+              "argrepr": "__classdict__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'a'",
+              "argrepr": "'a'",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 4,
+              "argval": "'y'",
+              "argrepr": "y",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'__classdict__'",
+              "argrepr": "__classdict__",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 26,
+              "opname": "BUILD_TUPLE",
+              "opcode": 51,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 28,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "<code object __annotate__>",
+              "argrepr": "<code object __annotate__ at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 30,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 32,
+              "opname": "SET_FUNCTION_ATTRIBUTE",
+              "opcode": 108,
+              "arg": 8,
+              "argval": "8",
+              "argrepr": "closure",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 34,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 5,
+              "argval": "'__annotate_func__'",
+              "argrepr": "__annotate_func__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 36,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 3,
+              "argval": "()",
+              "argrepr": "()",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 38,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 6,
+              "argval": "'__static_attributes__'",
+              "argrepr": "__static_attributes__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 40,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'__classdict__'",
+              "argrepr": "__classdict__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 42,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 7,
+              "argval": "'__classdictcell__'",
+              "argrepr": "__classdictcell__",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 44,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 4,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 46,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<C>.co_consts[2]<__annotate__>",
+          "co_name": "__annotate__",
+          "co_qualname": "C.__annotate__",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 4,
+          "co_code_hex": "3c01800056005e0238840000640300001c00510168012f0053015b003b0252012600000053015b013b025202260000002300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            "format"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [
+            "__classdict__"
+          ],
+          "co_consts": [
+            "2",
+            "'y'",
+            "'z'"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "COPY_FREE_VARS",
+              "opcode": 60,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'format'",
+              "argrepr": "format",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "COMPARE_OP",
+              "opcode": 56,
+              "arg": 132,
+              "argval": "'>'",
+              "argrepr": ">",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 3,
+              "argval": "22",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "LOAD_COMMON_CONSTANT",
+              "opcode": 81,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "NotImplementedError",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "RAISE_VARARGS",
+              "opcode": 104,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "BUILD_MAP",
+              "opcode": 47,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": true
+            },
+            {
+              "offset": 24,
+              "opname": "LOAD_DEREF",
+              "opcode": 83,
+              "arg": 1,
+              "argval": "'__classdict__'",
+              "argrepr": "__classdict__",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 26,
+              "opname": "LOAD_FROM_DICT_OR_GLOBALS",
+              "opcode": 91,
+              "arg": 0,
+              "argval": "'str'",
+              "argrepr": "str",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 28,
+              "opname": "COPY",
+              "opcode": 59,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 30,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'y'",
+              "argrepr": "'y'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 32,
+              "opname": "STORE_SUBSCR",
+              "opcode": 38,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 36,
+              "opname": "LOAD_DEREF",
+              "opcode": 83,
+              "arg": 1,
+              "argval": "'__classdict__'",
+              "argrepr": "__classdict__",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 38,
+              "opname": "LOAD_FROM_DICT_OR_GLOBALS",
+              "opcode": 91,
+              "arg": 1,
+              "argval": "'dict'",
+              "argrepr": "dict",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 40,
+              "opname": "COPY",
+              "opcode": 59,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 42,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "'z'",
+              "argrepr": "'z'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 44,
+              "opname": "STORE_SUBSCR",
+              "opcode": 38,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 48,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "function_local_annotated",
+      "source": "def f():\n    q: int = 3\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "800052001700740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "<code object f>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "<code object f>",
+              "argrepr": "<code object f at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<f>",
+          "co_name": "f",
+          "co_qualname": "f",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "80005e03700052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            "q"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "3",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "STORE_FAST",
+              "opcode": 112,
+              "arg": 0,
+              "argval": "'q'",
+              "argrepr": "q",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "function_local_bare_annotation",
+      "source": "def f():\n    q: list\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "800052001700740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "<code object f>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "<code object f>",
+              "argrepr": "<code object f at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<f>",
+          "co_name": "f",
+          "co_qualname": "f",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "800052002300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "annotated_attribute_target",
+      "source": "def f(o):\n    o.k: int = 1\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "800052001700740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "<code object f>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "<code object f>",
+              "argrepr": "<code object f at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<f>",
+          "co_name": "f",
+          "co_qualname": "f",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 2,
+          "co_code_hex": "80005e0156006e00000000000000000052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            "o"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "1",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'o'",
+              "argrepr": "o",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "STORE_ATTR",
+              "opcode": 110,
+              "arg": 0,
+              "argval": "'k'",
+              "argrepr": "k",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "annotated_subscript_target",
+      "source": "def f(d):\n    d[\"k\"]: int = 1\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "800052001700740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "<code object f>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "<code object f>",
+              "argrepr": "<code object f at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'f'",
+              "argrepr": "f",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<f>",
+          "co_name": "f",
+          "co_qualname": "f",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 3,
+          "co_code_hex": "80005e01560052012600000052022300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            "d"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "1",
+            "'k'",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'d'",
+              "argrepr": "d",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'k'",
+              "argrepr": "'k'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "STORE_SUBSCR",
+              "opcode": 38,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "type_alias_simple",
+      "source": "type Pair = tuple[int, int]\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 4,
+          "co_code_hex": "8000520052015202520317006c013303350b740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "'Pair'",
+            "None",
+            "(1,)",
+            "<code object Pair>"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "'Pair'",
+              "argrepr": "'Pair'",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "(1,)",
+              "argrepr": "(1,)",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 3,
+              "argval": "<code object Pair>",
+              "argrepr": "<code object Pair at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "SET_FUNCTION_ATTRIBUTE",
+              "opcode": 108,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "defaults",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "BUILD_TUPLE",
+              "opcode": 51,
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "CALL_INTRINSIC_1",
+              "opcode": 53,
+              "arg": 11,
+              "argval": "11",
+              "argrepr": "INTRINSIC_TYPEALIAS",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'Pair'",
+              "argrepr": "Pair",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[3]<Pair>",
+          "co_name": "Pair",
+          "co_qualname": "Pair",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 3,
+          "co_code_hex": "800056005e0238840000640300001c00510168015c0000000000000000005c0200000000000000005c02000000000000000033022c1a000000000000000000002300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            ".format"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "2"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'.format'",
+              "argrepr": ".format",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "COMPARE_OP",
+              "opcode": 56,
+              "arg": 132,
+              "argval": "'>'",
+              "argrepr": ">",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 3,
+              "argval": "20",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_COMMON_CONSTANT",
+              "opcode": 81,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "NotImplementedError",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "RAISE_VARARGS",
+              "opcode": 104,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 0,
+              "argval": "'tuple'",
+              "argrepr": "tuple",
+              "starts_line": false,
+              "is_jump_target": true
+            },
+            {
+              "offset": 30,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 2,
+              "argval": "'int'",
+              "argrepr": "int",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 40,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 2,
+              "argval": "'int'",
+              "argrepr": "int",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 50,
+              "opname": "BUILD_TUPLE",
+              "opcode": 51,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 52,
+              "opname": "BINARY_OP",
+              "opcode": 44,
+              "arg": 26,
+              "argval": "26",
+              "argrepr": "[]",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 64,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "type_alias_parametrized",
+      "source": "type Box[T] = list[T]\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 2,
+          "co_code_hex": "80005200170021003400000000000000740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "<code object <generic parameters of Box>>",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "<code object <generic parameters of Box>>",
+              "argrepr": "<code object <generic parameters of Box> at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "PUSH_NULL",
+              "opcode": 33,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "CALL",
+              "opcode": 52,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'Box'",
+              "argrepr": "Box",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<<generic parameters of Box>>",
+          "co_name": "<generic parameters of Box>",
+          "co_qualname": "<generic parameters of Box>",
+          "co_flags": {
+            "hex": "0x3",
+            "decimal": 3,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 5,
+          "co_code_hex": "610080005200520135073b016f003301520256003301520317006c086c013303350b2300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [
+            "T"
+          ],
+          "co_freevars": [],
+          "co_consts": [
+            "'Box'",
+            "'T'",
+            "(1,)",
+            "<code object Box>"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "MAKE_CELL",
+              "opcode": 97,
+              "arg": 0,
+              "argval": "'T'",
+              "argrepr": "T",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 0,
+              "argval": "'Box'",
+              "argrepr": "'Box'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "'T'",
+              "argrepr": "'T'",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "CALL_INTRINSIC_1",
+              "opcode": 53,
+              "arg": 7,
+              "argval": "7",
+              "argrepr": "INTRINSIC_TYPEVAR",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 10,
+              "opname": "COPY",
+              "opcode": 59,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "STORE_DEREF",
+              "opcode": 111,
+              "arg": 0,
+              "argval": "'T'",
+              "argrepr": "T",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 14,
+              "opname": "BUILD_TUPLE",
+              "opcode": 51,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 2,
+              "argval": "(1,)",
+              "argrepr": "(1,)",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'T'",
+              "argrepr": "T",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "BUILD_TUPLE",
+              "opcode": 51,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 3,
+              "argval": "<code object Box>",
+              "argrepr": "<code object Box at 0xADDR, file \"<b11-annotations>\", line 1>",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 24,
+              "opname": "MAKE_FUNCTION",
+              "opcode": 23,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 26,
+              "opname": "SET_FUNCTION_ATTRIBUTE",
+              "opcode": 108,
+              "arg": 8,
+              "argval": "8",
+              "argrepr": "closure",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 28,
+              "opname": "SET_FUNCTION_ATTRIBUTE",
+              "opcode": 108,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "defaults",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 30,
+              "opname": "BUILD_TUPLE",
+              "opcode": 51,
+              "arg": 3,
+              "argval": "3",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 32,
+              "opname": "CALL_INTRINSIC_1",
+              "opcode": 53,
+              "arg": 11,
+              "argval": "11",
+              "argrepr": "INTRINSIC_TYPEALIAS",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 34,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        },
+        {
+          "path": "module.co_consts[0]<<generic parameters of Box>>.co_consts[3]<Box>",
+          "co_name": "Box",
+          "co_qualname": "Box",
+          "co_flags": {
+            "hex": "0x13",
+            "decimal": 19,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": true,
+              "CO_NEWLOCALS": true,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": true,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 2,
+          "co_code_hex": "3c01800056005e0238840000640300001c00510168015c00000000000000000053012c1a000000000000000000002300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [
+            ".format"
+          ],
+          "co_cellvars": [],
+          "co_freevars": [
+            "T"
+          ],
+          "co_consts": [
+            "2"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "COPY_FREE_VARS",
+              "opcode": 60,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "LOAD_FAST_BORROW",
+              "opcode": 86,
+              "arg": 0,
+              "argval": "'.format'",
+              "argrepr": ".format",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 2,
+              "argval": "2",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "COMPARE_OP",
+              "opcode": 56,
+              "arg": 132,
+              "argval": "'>'",
+              "argrepr": ">",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 12,
+              "opname": "POP_JUMP_IF_FALSE",
+              "opcode": 100,
+              "arg": 3,
+              "argval": "22",
+              "argrepr": "to L1",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 16,
+              "opname": "NOT_TAKEN",
+              "opcode": 28,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 18,
+              "opname": "LOAD_COMMON_CONSTANT",
+              "opcode": 81,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "NotImplementedError",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 20,
+              "opname": "RAISE_VARARGS",
+              "opcode": 104,
+              "arg": 1,
+              "argval": "1",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 22,
+              "opname": "LOAD_GLOBAL",
+              "opcode": 92,
+              "arg": 0,
+              "argval": "'list'",
+              "argrepr": "list",
+              "starts_line": false,
+              "is_jump_target": true
+            },
+            {
+              "offset": 32,
+              "opname": "LOAD_DEREF",
+              "opcode": 83,
+              "arg": 1,
+              "argval": "'T'",
+              "argrepr": "T",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 34,
+              "opname": "BINARY_OP",
+              "opcode": 44,
+              "arg": 26,
+              "argval": "26",
+              "argrepr": "[]",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 46,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    },
+    {
+      "name": "plain_assign_control",
+      "source": "x = 5\n",
+      "code_objects": [
+        {
+          "path": "module",
+          "co_name": "<module>",
+          "co_qualname": "<module>",
+          "co_flags": {
+            "hex": "0x0",
+            "decimal": 0,
+            "named": {
+              "CO_GENERATOR": false,
+              "CO_COROUTINE": false,
+              "CO_ITERABLE_COROUTINE": false,
+              "CO_ASYNC_GENERATOR": false,
+              "CO_OPTIMIZED": false,
+              "CO_NEWLOCALS": false,
+              "CO_VARARGS": false,
+              "CO_VARKEYWORDS": false,
+              "CO_NESTED": false,
+              "CO_NOFREE": false,
+              "CO_HAS_DOCSTRING": false
+            },
+            "coroutine_family": {
+              "CO_GENERATOR": {
+                "value": 32,
+                "hex": "0x20",
+                "set": false
+              },
+              "CO_COROUTINE": {
+                "value": 128,
+                "hex": "0x80",
+                "set": false
+              },
+              "CO_ITERABLE_COROUTINE": {
+                "value": 256,
+                "hex": "0x100",
+                "set": false
+              },
+              "CO_ASYNC_GENERATOR": {
+                "value": 512,
+                "hex": "0x200",
+                "set": false
+              }
+            }
+          },
+          "co_stacksize": 1,
+          "co_code_hex": "80005e05740052012300",
+          "co_exceptiontable_hex": "",
+          "co_varnames": [],
+          "co_cellvars": [],
+          "co_freevars": [],
+          "co_consts": [
+            "5",
+            "None"
+          ],
+          "instructions": [
+            {
+              "offset": 0,
+              "opname": "RESUME",
+              "opcode": 128,
+              "arg": 0,
+              "argval": "0",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 2,
+              "opname": "LOAD_SMALL_INT",
+              "opcode": 94,
+              "arg": 5,
+              "argval": "5",
+              "argrepr": "",
+              "starts_line": true,
+              "is_jump_target": false
+            },
+            {
+              "offset": 4,
+              "opname": "STORE_NAME",
+              "opcode": 116,
+              "arg": 0,
+              "argval": "'x'",
+              "argrepr": "x",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 6,
+              "opname": "LOAD_CONST",
+              "opcode": 82,
+              "arg": 1,
+              "argval": "None",
+              "argrepr": "None",
+              "starts_line": false,
+              "is_jump_target": false
+            },
+            {
+              "offset": 8,
+              "opname": "RETURN_VALUE",
+              "opcode": 35,
+              "arg": null,
+              "argval": "None",
+              "argrepr": "",
+              "starts_line": false,
+              "is_jump_target": false
+            }
+          ],
+          "exception_entries": []
+        }
+      ]
+    }
+  ]
+}

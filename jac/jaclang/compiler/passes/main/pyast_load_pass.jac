@@ -211,6 +211,7 @@ obj PyastBuildPass(Transform) {
     def proc_arg(nd: py_ast.arg) -> ParamVar;
     def proc_arguments(nd: py_ast.arguments) -> FuncSignature;
     def operator(tok: Tok, value: str) -> Token;
+    def ctrl_loc(nd: object) -> tuple[int, int];
     def proc_and(nd: py_ast.And) -> Token;
     def proc_or(nd: py_ast.Or) -> Token;
     def proc_add(nd: py_ast.Add) -> Token;

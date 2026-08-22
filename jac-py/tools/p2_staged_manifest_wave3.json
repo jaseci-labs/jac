@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "wave": "p2_wave3",
+  "description": "P2 wave 3 staging policy: oracle truth in jac-py/Modules/*.jac vs corpus/T8 truth in _lifted/p2_corpus_wave3",
+  "staged_dir": "jac-py/Modules",
+  "lifted_dir": "jac-py/Modules/_lifted/p2_corpus_wave3",
+  "modules": [
+    {
+      "stem": "math_count_bits",
+      "staging": "lift"
+    },
+    {
+      "stem": "math_lcm_long",
+      "staging": "lift"
+    },
+    {
+      "stem": "pyctype_digit",
+      "staging": "lift"
+    },
+    {
+      "stem": "strhex_byte",
+      "staging": "lift"
+    }
+  ]
+}

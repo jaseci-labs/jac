@@ -1,0 +1,256 @@
+[
+  {
+    "name": "bare_except_body",
+    "source": "def f():\n    try:\n        raise ValueError(\"x\")\n    except:\n        return \"caught\"\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120001f001d00520123003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d021203",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 30,
+        "target": 36,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "typed_then_bare_except",
+    "source": "def f():\n    try:\n        raise RuntimeError(\"x\")\n    except ValueError:\n        return \"value\"\n    except:\n        return \"bare\"\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120005c0200000000000000000600640500001c001f001d00520123001f001d00520223003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d0b1f039b011f03",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 48,
+        "target": 62,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 54,
+        "end": 56,
+        "target": 62,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "bare_except_reraise",
+    "source": "def f():\n    try:\n        raise ValueError(\"x\")\n    except:\n        raise\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120001f0068003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d031003",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 32,
+        "target": 32,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "try_else_normal",
+    "source": "def f():\n    try:\n        value = 1\n    except ValueError:\n        value = 2\n    else:\n        value = 3\n    return value\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005e0170005e0370005600230020005c0000000000000000000600640700001c001f005e0270001d005400230069003b031d006901",
+    "co_exceptiontable_hex": "82020800880d190398011903",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 8,
+        "target": 16,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 16,
+        "end": 42,
+        "target": 50,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 48,
+        "end": 50,
+        "target": 50,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "try_except_else_exception",
+    "source": "def f():\n    try:\n        raise ValueError(\"x\")\n    except ValueError:\n        value = 2\n    else:\n        value = 3\n    return value\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120005c0000000000000000000600640700001c001f005e0270001d005400230069003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d0d1e039d011e03",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 52,
+        "target": 60,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 58,
+        "end": 60,
+        "target": 60,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "try_except_else_finally",
+    "source": "def f():\n    try:\n        value = 1\n    except ValueError:\n        value = 2\n    else:\n        value = 3\n    finally:\n        value = 4\n    return value\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005e0170005e0370005e0470005600230020005c0000000000000000000600640600001c001f005e0270001d004c1369003b031d00690120005e04700069003b031d006901",
+    "co_exceptiontable_hex": "82020a0084021d008a0d1a0397021d0099011a039a031d009d042103",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 8,
+        "target": 20,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 8,
+        "end": 12,
+        "target": 58,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 20,
+        "end": 46,
+        "target": 52,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 46,
+        "end": 50,
+        "target": 58,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 50,
+        "end": 52,
+        "target": 52,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 52,
+        "end": 58,
+        "target": 58,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 58,
+        "end": 66,
+        "target": 66,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  },
+  {
+    "name": "try_without_except_or_finally",
+    "source": "def f():\n    try:\n        pass\n",
+    "co_flags": null,
+    "co_stacksize": null,
+    "co_code_hex": "",
+    "co_exceptiontable_hex": "",
+    "exception_entries": []
+  },
+  {
+    "name": "tuple_except_as",
+    "source": "def f():\n    try:\n        raise KeyError(\"x\")\n    except (ValueError, KeyError) as error:\n        return error\n",
+    "co_flags": "0x1000003",
+    "co_stacksize": 4,
+    "co_code_hex": "80001b005c01000000000000000052003401000000000000680120005c0200000000000000005c00000000000000000033020600640d00001c007000540075021d00520170003f002300520170003f00690169003b031d006901",
+    "co_exceptiontable_hex": "820b0d008d112a039e0125039f012a03a5052a03",
+    "exception_entries": [
+      {
+        "start": 4,
+        "end": 26,
+        "target": 26,
+        "depth": 0,
+        "lasti": false
+      },
+      {
+        "start": 26,
+        "end": 60,
+        "target": 84,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 60,
+        "end": 62,
+        "target": 74,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 62,
+        "end": 64,
+        "target": 84,
+        "depth": 1,
+        "lasti": true
+      },
+      {
+        "start": 74,
+        "end": 84,
+        "target": 84,
+        "depth": 1,
+        "lasti": true
+      }
+    ]
+  }
+]

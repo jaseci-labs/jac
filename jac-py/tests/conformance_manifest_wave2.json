@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "wave": "p2_wave2",
+  "description": "P2 wave-2 conformance manifest (oracle-gated leaf extracts)",
+  "module_count": 4,
+  "modules": [
+    {
+      "stem": "_stat",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "S_IMODE/S_IFMT extract; cc vs hand-staged jac oracle."
+    },
+    {
+      "stem": "_opcode",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "is_valid/has_arg extract; cc vs hand-staged jac oracle."
+    },
+    {
+      "stem": "math_gcd",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "mathmodule gcd fast path; cc vs lifted jac oracle."
+    },
+    {
+      "stem": "pystrnicmp",
+      "gate_type": "oracle",
+      "status": "gated",
+      "oracle_tests": [
+        "test_p2_waves_module_oracles.jac"
+      ],
+      "libtest_snippets": [],
+      "notes": "PyOS_mystrnicmp string compare; cc vs lifted jac oracle."
+    }
+  ]
+}
