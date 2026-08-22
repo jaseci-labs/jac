@@ -3456,16 +3456,28 @@ test "a state setter handed out as a value loads without a ReferenceError" {
     # not defined` on first render, with the build green.
     import re;
     js_code = compile_fixture_to_js("state_setter_value_ref.jac", FIXTURES);
-    # Stand in for @jac/runtime with a cell carrying the same read/write shape.
-    stub = (
-        "const useJacState = (v) => { let cur = v; return { get val() "
-        "{ return cur; }, set(n) { cur = n; } }; };"
-    );
-    body = re.sub(r'import \{[^}]*\} from "@jac/runtime";', stub, js_code, count=1);
-    assert stub in body , (
+    # Emitted modules are ES modules whose only external dependency is
+    # @jac/runtime, and they may carry one import declaration per injected
+    # symbol. Stand in for the package by rewriting every such declaration
+    # into const bindings backed by a permissive proxy, so the module links
+    # under bare `node` without the real package installed.
+    runtime_import_re = re.compile(r'import \{([^}]*)\} from "@jac/runtime";');
+    decls = [(m.group(0), m.group(1)) for m in runtime_import_re.finditer(js_code)];
+    assert decls , (
         f"fixture must import its state hook from @jac/runtime; got:\n{js_code}"
     );
-    wrapper = body
+    body = js_code;
+    for (decl, names_src) in decls {
+        names = [n.strip() for n in names_src.split(",") if n.strip()];
+        body = body.replace(decl, "const { " + ", ".join(names) + " } = __jacRuntimeStub;", 1);
+    }
+    prologue = (
+        "const __mkStub = () => new Proxy(function () {}, { "
+        "get: (t, p) => (p === Symbol.toPrimitive ? () => 0 : __mkStub()), "
+        "apply: () => __mkStub(), construct: () => __mkStub(), set: () => true });\n"
+        "const __jacRuntimeStub = __mkStub();\n"
+    );
+    wrapper = prologue + body
         + (
             "\nconst box = useThing();\n"
             'box.setTheme("light");\n'
