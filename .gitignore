@@ -75,6 +75,10 @@ AGENTS.md
 PLAN.md
 IMPLEMENTATION.md
 RUNTIME_SPLIT_PROGRESS.md
+TODO.md
+
+# Pi subagent session artifacts
+.pi-subagents/
 
 # Claude Code local instructions
 CLAUDE.local.md

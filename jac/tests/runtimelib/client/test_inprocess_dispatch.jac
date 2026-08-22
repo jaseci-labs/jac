@@ -10,11 +10,12 @@ runtime routing a call through `window.__jac_invoke` instead of `fetch`) is
 covered by `jac/tests/runtimelib/test_native_invoke.jac`. Together they prove
 the full round-trip without a live webview, a display, or `nacompile`.
 
-The round-trip needs the built-in scale backend (starlette + jaclang.scale). The
-lean `jac test` desktop CI step does NOT install starlette, so the heavy imports
-are lazy (module import + collection stay backend-free) and each test self-skips
-when the backend deps are absent. It runs for real in the scale-backed CI step
--- see `.github/workflows/ci.yml`.
+Direct dispatch uses `InvocationDispatcher` in runtimelib and does not require
+FastAPI, Starlette, or `jaclang.scale.server.inprocess`. The lean `jac test`
+desktop CI step does NOT install starlette, so the heavy imports are lazy
+(module import + collection stay backend-free) and each test self-skips when
+the backend deps are absent. It runs for real in the scale-backed CI step --
+see `.github/workflows/ci.yml`.
 """
 
 import os;
@@ -49,10 +50,16 @@ module (booting it once on first use); returns the reply already JSON-decoded.""
 def _dispatch_request(request: dict) -> dict {
     import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
         boot,
-        dispatch
+        dispatch,
+        _runtime
     }
 
-    if not _BOOTED {
+    # Re-boot when the staged runtime is gone: some backend-free tests below
+    # exercise shutdown() against the real booted runtime, which closes it and
+    # leaves `_runtime` None. Tests after that point that need a live backend
+    # (e.g. the NOT_FOUND dispatch tests) must boot again rather than dispatch
+    # into a shut-down runtime and see NOT_BOOTED.
+    if not _BOOTED or _runtime is None {
         graph_root = tempfile.mkdtemp(prefix="jac_ipd_test_");
         boot(_FIXTURE, os.path.join(graph_root, "graph"));
         _BOOTED = True;
@@ -75,10 +82,6 @@ def _dispatch_request(request: dict) -> dict {
 
 
 test "walker call round-trips in-process and returns its report" {
-    if not _backend_available() {
-        print("[skip] scale backend (starlette + jaclang.scale) not installed");
-        return;
-    }
     reply = _dispatch_request(
         {
             "kind": "walker",
@@ -98,10 +101,6 @@ test "walker call round-trips in-process and returns its report" {
 
 
 test "function call round-trips in-process and returns its result" {
-    if not _backend_available() {
-        print("[skip] scale backend (starlette + jaclang.scale) not installed");
-        return;
-    }
     reply = _dispatch_request(
         {
             "kind": "function",
@@ -118,6 +117,511 @@ test "function call round-trips in-process and returns its result" {
 }
 
 
+test "native dispatch errors without stream emit hook" {
+    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+        set_stream_emit
+    }
+    set_stream_emit(None);
+    reply = _dispatch_request(
+        {
+            "kind": "function",
+            "name": "stream_numbers",
+            "node": "",
+            "fields": {"n": 2},
+            "token": ""
+        }
+    );
+    assert reply["ok"] == False;
+    assert reply["body"]["error"]["code"] == "NATIVE_DISPATCH_ERROR";
+    assert "emit hook" in reply["body"]["error"]["message"];
+}
+
+
+test "native dispatch opens push stream for streaming functions" {
+    import time;
+    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+        set_stream_emit
+    }
+
+    seen: list = [];
+    done = threading.Event();
+    def capture(stream_id: str, frame: dict) {
+        rec = dict(frame);
+        rec["stream_id"] = stream_id;
+        seen.append(rec);
+        if frame.get("type") in ("end", "error") {
+            done.set();
+        }
+    }
+    set_stream_emit(capture);
+    try {
+        reply = _dispatch_request(
+            {
+                "kind": "function",
+                "name": "stream_numbers",
+                "node": "",
+                "fields": {"n": 3},
+                "token": ""
+            }
+        );
+        assert reply.get("__jac_stream") == True;
+        assert reply.get("protocol") == "push";
+        assert reply.get("v") == 1;
+        sid = reply.get("stream_id");
+        assert isinstance(sid, str) and len(sid) > 0;
+        assert getattr(done, "wait")(2.0) , "stream pump did not emit end in time";
+        # Allow a brief settle for the final append ordering.
+        time.sleep(0.05);
+        data_frames = [
+            f["data"]
+            for f in seen
+            if f.get("type") == "data"
+        ];
+        assert data_frames == [{"n": 0}, {"n": 1}, {"n": 2}];
+        assert all(f.get("stream_id") == sid for f in seen);
+        assert seen[-1].get("type") == "end";
+    } finally {
+        set_stream_emit(None);
+    }
+}
+
+
+# Backend-free (Gate B): a consumer that goes away mid-stream must stop the pump
+# promptly, close the generator, and NOT emit a terminal `end` frame.
+test "cancel_stream stops the pump and suppresses the end frame" {
+    import time;
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_emit = ipd._stream_emit;
+    orig_shutting = ipd._shutting_down;
+    orig_window = ipd._stream_window;
+
+    frames: list = [];
+    started = threading.Event();
+    closed = threading.Event();
+    def _capture(sid: str, frame: dict) {
+        frames.append(frame);
+    }
+    def _slow_gen {
+        started.set();
+        try {
+            for i in range(1000) {
+                time.sleep(0.03);
+                yield {"n": i};
+            }
+        } finally {
+            closed.set();
+        }
+    }
+    try {
+        ipd._shutting_down = False;
+        ipd._stream_window = 0;  # isolate cancellation from backpressure
+        ipd._stream_emit = _capture;
+
+        raw = ipd._open_native_stream(_slow_gen());
+        env = json.loads(raw);
+        sid = env["stream_id"];
+        assert env["__jac_stream"] == True;
+        assert getattr(started, "wait")(2.0);
+        time.sleep(0.09);  # let a couple frames flow
+        n_before = len(
+            [
+                f
+                for f in frames
+                if f["type"] == "data"
+            ]
+        );
+        assert n_before >= 1;
+
+        ipd.cancel_stream(sid);
+        assert getattr(closed, "wait")(2.0) , "cancel must close the generator (finally ran)";
+        time.sleep(0.15);
+        n_after = len(
+            [
+                f
+                for f in frames
+                if f["type"] == "data"
+            ]
+        );
+        # Pump stopped: at most one in-flight frame after cancel, no runaway.
+        assert n_after <= n_before + 1;
+        assert not any(f["type"] == "end" for f in frames) , (
+            "a cancelled stream must not emit a terminal end frame"
+        );
+        # The stream deregistered itself.
+        assert sid not in ipd._streams , "cancelled stream must be unregistered";
+    } finally {
+        ipd._stream_emit = orig_emit;
+        ipd._shutting_down = orig_shutting;
+        ipd._stream_window = orig_window;
+    }
+}
+
+
+# Backend-free (Gate B): with a positive window and a consumer that acks, the
+# pump holds frames to at most one window of in-flight until credits are released.
+test "stream backpressure bounds in-flight frames until acked" {
+    import time;
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_emit = ipd._stream_emit;
+    orig_shutting = ipd._shutting_down;
+    orig_window = ipd._stream_window;
+
+    frames: list = [];
+    def _capture(sid: str, frame: dict) {
+        frames.append(frame);
+    }
+    def _fast_gen {
+        for i in range(5) {
+            yield {"n": i};
+        }
+    }
+    try {
+        ipd._shutting_down = False;
+        ipd._stream_window = 2;  # only 2 frames may be in flight before an ack
+        ipd._stream_emit = _capture;
+
+        raw = ipd._open_native_stream(_fast_gen());
+        env = json.loads(raw);
+        sid = env["stream_id"];
+
+        # Before any ack (and before the ~0.5s no-ack degrade), the producer is
+        # throttled to the window even though it could yield all 5 at once.
+        time.sleep(0.15);
+        data_before = len(
+            [
+                f
+                for f in frames
+                if f["type"] == "data"
+            ]
+        );
+        assert data_before <= 2 , (
+            "backpressure must bound in-flight frames to the window before acks"
+        );
+
+        # Acking releases credits; the rest of the stream drains to completion.
+        ipd.stream_ack(sid, 5);
+        deadline = time.monotonic() + 2.0;
+        while not any(f["type"] == "end" for f in frames)
+            and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        data_after = len(
+            [
+                f
+                for f in frames
+                if f["type"] == "data"
+            ]
+        );
+        assert data_after == 5 , "all frames flow once credits are released";
+        assert any(f["type"] == "end" for f in frames) , "acked stream completes with end";
+    } finally {
+        ipd._stream_emit = orig_emit;
+        ipd._shutting_down = orig_shutting;
+        ipd._stream_window = orig_window;
+    }
+}
+
+
+# Backend-free (Step 5): a generator that raises mid-stream must emit a terminal
+# `error` frame (never `end`), close the generator, and deregister the stream.
+test "a generator raising mid-stream emits an error frame and deregisters" {
+    import time;
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_emit = ipd._stream_emit;
+    orig_shutting = ipd._shutting_down;
+    orig_window = ipd._stream_window;
+
+    frames: list = [];
+    closed = threading.Event();
+    def _capture(sid: str, frame: dict) {
+        frames.append(frame);
+    }
+    def _boom_gen {
+        try {
+            yield {"n": 0};
+            raise ValueError("kaboom mid-stream");
+        } finally {
+            closed.set();
+        }
+    }
+    try {
+        ipd._shutting_down = False;
+        ipd._stream_window = 0;
+        ipd._stream_emit = _capture;
+
+        raw = ipd._open_native_stream(_boom_gen());
+        sid = json.loads(raw)["stream_id"];
+        deadline = time.monotonic() + 2.0;
+        while not any(f["type"] in ("error", "end") for f in frames)
+            and time.monotonic() < deadline {
+            time.sleep(0.01);
+        }
+        assert getattr(closed, "wait")(2.0) , "the raising generator must be closed (finally ran)";
+        types = [f["type"] for f in frames];
+        assert "data" in types , types;
+        assert types[-1] == "error" , types;
+        err = frames[-1]["error"];
+        assert err["error_type"] == "ValueError" , err;
+        assert "kaboom" in err["message"] , err;
+        assert not any(f["type"] == "end" for f in frames) , (
+            "an errored stream must not also emit a terminal end frame"
+        );
+        # Deregistration happens in the pump's finally, which runs just after the
+        # generator's own finally (closed.set); poll rather than race it.
+        dl = time.monotonic() + 2.0;
+        while sid in ipd._streams and time.monotonic() < dl {
+            time.sleep(0.01);
+        }
+        assert sid not in ipd._streams , "an errored stream must deregister itself";
+    } finally {
+        ipd._stream_emit = orig_emit;
+        ipd._shutting_down = orig_shutting;
+        ipd._stream_window = orig_window;
+    }
+}
+
+
+# Backend-free (Step 5): shutdown() with a live stream must cancel it -- close the
+# generator (running its commit-at-drain teardown), deregister it, emit no `end`
+# -- and return promptly without hanging or leaking. Uses a mock runtime so the
+# real booted backend is untouched.
+test "shutdown cancels an active stream without hanging or leaking" {
+    import time;
+    import queue;
+    import from importlib { import_module }
+    import from unittest.mock { MagicMock }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_emit = ipd._stream_emit;
+    orig_shutting = ipd._shutting_down;
+    orig_window = ipd._stream_window;
+    orig_q = ipd._work_q;
+    orig_workers = ipd._workers;
+    orig_runtime = ipd._runtime;
+
+    frames: list = [];
+    started = threading.Event();
+    closed = threading.Event();
+    def _capture(sid: str, frame: dict) {
+        frames.append(frame);
+    }
+    def _slow_gen {
+        started.set();
+        try {
+            for i in range(1000) {
+                time.sleep(0.03);
+                yield {"n": i};
+            }
+        } finally {
+            closed.set();
+        }
+    }
+    try {
+        ipd._shutting_down = False;
+        ipd._stream_window = 0;
+        ipd._stream_emit = _capture;
+        ipd._work_q = queue.Queue();
+        ipd._workers = [];
+        ipd._runtime = MagicMock();
+
+        raw = ipd._open_native_stream(_slow_gen());
+        sid = json.loads(raw)["stream_id"];
+        assert getattr(started, "wait")(2.0);
+        time.sleep(0.05);
+
+        t0 = time.monotonic();
+        ipd.shutdown();
+        elapsed = time.monotonic() - t0;
+
+        assert getattr(closed, "wait")(2.0) , "shutdown must close the active stream's generator";
+        assert elapsed < 5.0 , "shutdown must not hang on an active stream";
+        assert sid not in ipd._streams , "shutdown must deregister the stream";
+        assert not any(f["type"] == "end" for f in frames) , (
+            "a cancelled stream must not emit a terminal end frame"
+        );
+    } finally {
+        ipd._stream_emit = orig_emit;
+        ipd._shutting_down = orig_shutting;
+        ipd._stream_window = orig_window;
+        ipd._work_q = orig_q;
+        ipd._workers = orig_workers;
+        ipd._runtime = orig_runtime;
+    }
+}
+
+
+# End-to-end streaming context-lifetime parity: a streaming function whose yield
+# frames perform graph WRITES is drained through the native push pump -- a daemon
+# thread with a foreign contextvars.Context. `context_bound_stream` must keep
+# root.shared resolving inside every yield frame and commit the body's writes
+# exactly once at drain, provable by a later read_notes seeing them all. (The
+# discriminating mechanism test lives in tests/runtimelib/test_streaming.jac;
+# this single-user in-process path shares one root across contexts, so it proves
+# the wired path works but does not on its own isolate the context binding.)
+test "streaming graph writes inside yield frames commit exactly once (context lifetime)" {
+    import time;
+    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+        set_stream_emit
+    }
+
+    seen: list = [];
+    done = threading.Event();
+    def capture(stream_id: str, frame: dict) {
+        seen.append(frame);
+        if frame.get("type") in ("end", "error") {
+            done.set();
+        }
+    }
+    set_stream_emit(capture);
+    try {
+        reply = _dispatch_request(
+            {
+                "kind": "function",
+                "name": "stream_notes",
+                "node": "",
+                "fields": {"texts": ["s-one", "s-two", "s-three"]},
+                "token": ""
+            }
+        );
+        assert reply.get("__jac_stream") == True;
+        assert reply.get("protocol") == "push";
+        assert getattr(done, "wait")(3.0) , "stream pump did not finish in time";
+        time.sleep(0.05);
+        # No error frame: every graph write inside a yield frame succeeded
+        # against the live request context.
+        errs = [
+            f
+            for f in seen
+            if f.get("type") == "error"
+        ];
+        assert errs == [] , f"graph op failed inside a yield frame: {errs}";
+        data = [
+            f["data"]["saved"]
+            for f in seen
+            if f.get("type") == "data"
+        ];
+        assert data == ["s-one", "s-two", "s-three"];
+        assert seen[-1].get("type") == "end";
+    } finally {
+        set_stream_emit(None);
+    }
+
+    # A SEPARATE request reads root.shared back: all three notes were committed
+    # exactly once at drain-time -- not lost to a torn-down context, not doubled.
+    read_back = _dispatch_request(
+        {"kind": "walker", "name": "read_notes", "node": "", "fields": {}, "token": ""}
+    );
+    assert read_back["ok"] == True;
+    notes = read_back["body"]["data"]["reports"][0]["notes"];
+    for t in ["s-one", "s-two", "s-three"] {
+        assert t in notes , f"streamed note {t!r} not committed: {notes}";
+        assert notes.count(t) == 1 , f"streamed note {t!r} committed more than once: {notes}";
+    }
+}
+
+
+test "async streaming drains context-bound through the native pump (Phase 3)" {
+    import time;
+    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+        set_stream_emit
+    }
+
+    # An async generator returned by an `sv` function must be recognized as a
+    # stream, opened as a push stream, and drained by the native pump on its own
+    # fresh event loop -- each `__anext__` stepped inside the captured request
+    # context (so `root` resolves in the async body) via
+    # `context_bound_async_stream`. A torn-down context would surface as an error
+    # frame. (Async graph WRITES inside yield frames are proven deterministically
+    # by tests/runtimelib/test_streaming.jac; this is the wired-path proof.)
+    seen: list = [];
+    done = threading.Event();
+    def capture(stream_id: str, frame: dict) {
+        seen.append(frame);
+        if frame.get("type") in ("end", "error") {
+            done.set();
+        }
+    }
+    set_stream_emit(capture);
+    try {
+        reply = _dispatch_request(
+            {
+                "kind": "function",
+                "name": "astream_numbers",
+                "node": "",
+                "fields": {"n": 3},
+                "token": ""
+            }
+        );
+        assert reply.get("__jac_stream") == True;
+        assert reply.get("protocol") == "push";
+        assert getattr(done, "wait")(3.0) , "async stream pump did not finish in time";
+        time.sleep(0.05);
+        # No error frame: every async step ran against the live request context.
+        errs = [
+            f
+            for f in seen
+            if f.get("type") == "error"
+        ];
+        assert errs == [] , f"async yield frame ran against a torn-down context: {errs}";
+        data = [
+            f["data"]["n"]
+            for f in seen
+            if f.get("type") == "data"
+        ];
+        assert data == [0, 1, 2];
+        # The pump reached a clean terminal `end` -- the async wrapper (and its
+        # source) closed without a dangling task or loop error.
+        assert seen[-1].get("type") == "end";
+    } finally {
+        set_stream_emit(None);
+    }
+}
+
+
+test "dispatch_outcome exposes SSE mode for streaming functions" {
+    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+        boot,
+        dispatch_outcome,
+        DispatchMode
+    }
+
+    if not _BOOTED {
+        graph_root = tempfile.mkdtemp(prefix="jac_ipd_test_");
+        boot(_FIXTURE, os.path.join(graph_root, "graph"));
+        _BOOTED = True;
+    }
+    outcome = dispatch_outcome(
+        json.dumps(
+            {
+                "kind": "function",
+                "name": "stream_numbers",
+                "node": "",
+                "fields": {"n": 3},
+                "token": ""
+            }
+        )
+    );
+    assert outcome["mode"] == DispatchMode.SSE;
+    assert outcome["stream"] is not None;
+    frames = list(outcome["stream"]);
+    assert frames == [{"n": 0}, {"n": 1}, {"n": 2}];
+}
+
+
 # Needs the backend like the round-trips above. Exercises `root.shared` through
 # the desktop path (the #6685 seam acceptance): a note written to the shared root
 # by one in-process request must be read back by a later one. This is what proves
@@ -125,10 +629,6 @@ test "function call round-trips in-process and returns its result" {
 # desktop copy leaning on postinit's lazy one by construction-order luck) actually
 # backs `root.shared` for unauthenticated desktop calls.
 test "root.shared round-trips a write then read on the desktop path (P1-D / #6685)" {
-    if not _backend_available() {
-        print("[skip] scale backend (starlette + jaclang.scale) not installed");
-        return;
-    }
     saved = _dispatch_request(
         {
             "kind": "walker",
@@ -150,93 +650,6 @@ test "root.shared round-trips a write then read on the desktop path (P1-D / #668
     assert seen["status"] == 200;
     assert seen["ok"] == True;
     assert "ada-was-here" in seen["body"]["data"]["reports"][0]["notes"];
-}
-
-
-"""Forward a raw HTTP request through `forward()` (the CEF loopback bridge),
-booting the fixture once on first use; returns `(status, body_text, content_type)`.
-
-`forward()` is the CEF half of the `cl` -> `sv` path: the page leaves
-__JAC_NATIVE__ unset and POSTs to the loopback, which hands the request here and
-echoes our return straight back -- so unlike `dispatch()` this returns the
-scale response VERBATIM (real status + raw {ok,data,error} body), not the
-{status,ok,body} envelope."""
-def _forward_request(method: str, path: str, body: bytes, token: str = "") -> tuple {
-    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
-        boot,
-        forward
-    }
-
-    if not _BOOTED {
-        graph_root = tempfile.mkdtemp(prefix="jac_ipd_test_");
-        boot(_FIXTURE, os.path.join(graph_root, "graph"));
-        _BOOTED = True;
-    }
-    with warnings.catch_warnings() {
-        warnings.filterwarnings(
-            "ignore", message=r".*iscoroutinefunction.*", category=DeprecationWarning
-        );
-        return forward(method, path, body, token);
-    }
-}
-
-
-test "forward() passes a walker call through to the in-process app verbatim" {
-    if not _backend_available() {
-        print("[skip] scale backend (starlette + jaclang.scale) not installed");
-        return;
-    }
-    (status, body, ctype) = _forward_request(
-        "POST", "/walker/greet", b'{"name": "Ada"}', ""
-    );
-    # Raw passthrough: a real 200 and the untouched {ok,data,...} body the web
-    # fetch client parses -- NOT the {status,ok,body} envelope dispatch() wraps.
-    assert status == 200;
-    assert "application/json" in ctype;
-    payload = json.loads(body);
-    assert payload["ok"] == True;
-    assert payload["data"]["reports"][0]["greeting"] == "hello Ada";
-}
-
-
-test "forward() surfaces the real non-200 status for an unknown walker" {
-    if not _backend_available() {
-        print("[skip] scale backend (starlette + jaclang.scale) not installed");
-        return;
-    }
-    # Proves the raw-passthrough contract: dispatch()'s wrapper would always ride
-    # on HTTP 200, but the web client needs the real status (e.g. 401 -> re-login),
-    # so an unknown walker must come back as a genuine error status, not 200.
-    (status, body, ctype) = _forward_request(
-        "POST", "/walker/no_such_walker_here", b'{}', ""
-    );
-    assert status != 200;
-}
-
-
-test "forward() before boot() returns a 503 envelope, never raises" {
-    # No backend needed: a guarded reply (not an exception) when _tc is unset is
-    # what keeps a dead backend from hanging the loopback handler thread. Drive it
-    # on a fresh module instance so a prior boot in this process can't mask it.
-    import from importlib { import_module }
-
-    ipd = import_module(
-        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
-    );
-    # Force the "never booted" state regardless of test order.
-    saved_tc = ipd._tc;
-    saved_err = ipd._BOOT_ERROR;
-    ipd._tc = None;
-    ipd._BOOT_ERROR = "";
-    try {
-        (status, body, ctype) = ipd.forward("POST", "/walker/greet", b'{}', "");
-    } finally {
-        ipd._tc = saved_tc;
-        ipd._BOOT_ERROR = saved_err;
-    }
-    assert status == 503;
-    payload = json.loads(body);
-    assert payload["ok"] == False;
 }
 
 
@@ -560,25 +973,25 @@ test "boot() clears stale _BOOT_ERROR at entry" {
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
     orig_err = ipd._BOOT_ERROR;
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     try {
         ipd._BOOT_ERROR = "stale ImportError from a prior failed boot";
-        ipd._tc = object();
+        ipd._runtime = object();
         with tempfile.TemporaryDirectory() as d {
             try {
                 ipd.boot("/nonexistent/__definitely_not_a_module__.jac", d + "/g");
             } except Exception { }
         }
         assert "stale ImportError" not in ipd._BOOT_ERROR , (
-            "boot() must clear a stale error at entry before recording a new one"
+            "boot() must clear a stale error at rec before recording a new one"
         );
         assert ipd._BOOT_ERROR != "" , "boot() must still record the fresh failure";
 
         # After clearing _BOOT_ERROR, dispatch() must return NOT_BOOTED (no runtime),
-        # not NATIVE_BOOT_ERROR. Reset _tc to None so dispatch() reaches the
+        # not NATIVE_BOOT_ERROR. Reset _runtime to None so dispatch() reaches the
         # NOT_BOOTED path rather than calling .post() on the fake object().
         ipd._BOOT_ERROR = "";
-        ipd._tc = None;
+        ipd._runtime = None;
         raw = ipd.dispatch(
             json.dumps(
                 {"kind": "walker", "name": "x", "node": "", "fields": {}, "token": ""}
@@ -590,7 +1003,7 @@ test "boot() clears stale _BOOT_ERROR at entry" {
         );
     } finally {
         ipd._BOOT_ERROR = orig_err;
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
     }
 }
 
@@ -604,25 +1017,22 @@ test "shutdown() is a no-op when boot() never ran" {
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
     orig_q = ipd._work_q;
-    orig_tc = ipd._tc;
     orig_runtime = ipd._runtime;
-    orig_worker = ipd._worker;
+    orig_workers = ipd._workers;
     orig_shutting = ipd._shutting_down;
     try {
         ipd._work_q = None;
-        ipd._tc = None;
         ipd._runtime = None;
-        ipd._worker = None;
+        ipd._workers = None;
         ipd._shutting_down = False;
         ipd.shutdown();
         assert ipd._shutting_down == False , "no-op shutdown must not flip the flag";
         assert ipd._work_q is None;
-        assert ipd._tc is None;
+        assert ipd._runtime is None;
     } finally {
         ipd._work_q = orig_q;
-        ipd._tc = orig_tc;
         ipd._runtime = orig_runtime;
-        ipd._worker = orig_worker;
+        ipd._workers = orig_workers;
         ipd._shutting_down = orig_shutting;
     }
 }
@@ -636,25 +1046,25 @@ test "shutdown() stops the worker via a queue sentinel" {
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
     orig_q = ipd._work_q;
-    orig_worker = ipd._worker;
+    orig_workers = ipd._workers;
     orig_shutting = ipd._shutting_down;
     try {
         ipd._shutting_down = False;
         ipd._work_q = queue.Queue();
-        ipd._worker = threading.Thread(
+        worker = threading.Thread(
             target=ipd._worker_loop, name="jac-ipd-shutdown-test", daemon=True
         );
-        ipd._worker.start();
-        worker = ipd._worker;
+        ipd._workers = [worker];
+        worker.start();
         ipd.shutdown();
         assert not worker.is_alive() , "worker must exit after shutdown sentinel";
         assert ipd._work_q is None , "shutdown clears the queue handle";
     } finally {
-        if orig_worker is not None and orig_worker.is_alive() {
-            orig_worker.join(timeout=1.0);
+        if worker is not None and worker.is_alive() {
+            worker.join(timeout=1.0);
         }
         ipd._work_q = orig_q;
-        ipd._worker = orig_worker;
+        ipd._workers = orig_workers;
         ipd._shutting_down = orig_shutting;
     }
 }
@@ -670,14 +1080,14 @@ test "shutdown() drains queued items without replying" {
     _REPLIES.clear();
     _CAP.clear();
     orig_q = ipd._work_q;
-    orig_worker = ipd._worker;
+    orig_workers = ipd._workers;
     orig_wv = ipd._wv_return;
     orig_shutting = ipd._shutting_down;
     try {
         ipd._wv_return = _capture_return;
         ipd._shutting_down = False;
         ipd._work_q = queue.Queue();
-        ipd._worker = None;  # enforce "no worker" regardless of prior-test state
+        ipd._workers = None;  # enforce "no worker" regardless of prior-test state
         # No worker -- shutdown() drains synchronously before posting the sentinel.
         state = ipd.CallState(lock=threading.Lock());
         ipd._work_q.put_nowait(
@@ -688,7 +1098,7 @@ test "shutdown() drains queued items without replying" {
         assert ipd._work_q is None;
     } finally {
         ipd._work_q = orig_q;
-        ipd._worker = orig_worker;
+        ipd._workers = orig_workers;
         ipd._wv_return = orig_wv;
         ipd._shutting_down = orig_shutting;
     }
@@ -789,13 +1199,13 @@ test "handle() replies NOT_BOOTED inline when _work_q is None" {
     orig_shutting = ipd._shutting_down;
     orig_wv = ipd._wv_return;
     orig_q = ipd._work_q;
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
     try {
         ipd._shutting_down = False;
         ipd._wv_return = _capture_return;
         ipd._work_q = None;
-        ipd._tc = None;
+        ipd._runtime = None;
         ipd._BOOT_ERROR = "";
 
         id_buf = ctypes.create_string_buffer(b"no-boot-call");
@@ -815,133 +1225,41 @@ test "handle() replies NOT_BOOTED inline when _work_q is None" {
         ipd._shutting_down = orig_shutting;
         ipd._wv_return = orig_wv;
         ipd._work_q = orig_q;
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
     }
 }
 
 
-# Backend-free: verify dispatch() constructs the right walker path when a
-# non-empty node id is supplied. Uses a mock TestClient so no backend is needed.
-test "dispatch() routes a walker to /walker/{name}/{node_id} when node is set" {
-    import from importlib { import_module }
-    import from unittest.mock { MagicMock }
-
-    ipd = import_module(
-        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+test "dispatch() returns NOT_FOUND for an unknown walker" {
+    reply = _dispatch_request(
+        {
+            "kind": "walker",
+            "name": "no_such_walker_here",
+            "node": "",
+            "fields": {},
+            "token": ""
+        }
     );
-    orig_tc = ipd._tc;
-    orig_err = ipd._BOOT_ERROR;
-    try {
-        mock_resp = MagicMock();
-        mock_resp.status_code = 200;
-        mock_resp.ok = True;
-        mock_resp.json.return_value = {"ok": True, "data": {}};
-        mock_client = MagicMock();
-        mock_client.post.return_value = mock_resp;
-
-        ipd._tc = mock_client;
-        ipd._BOOT_ERROR = "";
-        ipd.dispatch(
-            json.dumps(
-                {
-                    "kind": "walker",
-                    "name": "my_walker",
-                    "node": "abc-123",
-                    "fields": {},
-                    "token": ""
-                }
-            )
-        );
-        path = mock_client.post.call_args[0][0];
-        assert path == "/walker/my_walker/abc-123" , f"expected /walker/my_walker/abc-123, got {path}";
-    } finally {
-        ipd._tc = orig_tc;
-        ipd._BOOT_ERROR = orig_err;
-    }
+    assert reply["status"] == 404;
+    assert reply["ok"] == False;
+    assert reply["body"]["error"]["code"] == "NOT_FOUND";
 }
 
 
-# Backend-free: a non-empty token must appear as Bearer in the Authorization
-# header that dispatch() sends to the in-process TestClient.
-test "dispatch() sends Authorization: Bearer header when token is set" {
-    import from importlib { import_module }
-    import from unittest.mock { MagicMock }
-
-    ipd = import_module(
-        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+test "dispatch() returns NOT_FOUND for an unknown function" {
+    reply = _dispatch_request(
+        {
+            "kind": "function",
+            "name": "no_such_function_here",
+            "node": "",
+            "fields": {},
+            "token": ""
+        }
     );
-    orig_tc = ipd._tc;
-    orig_err = ipd._BOOT_ERROR;
-    try {
-        mock_resp = MagicMock();
-        mock_resp.status_code = 200;
-        mock_resp.ok = True;
-        mock_resp.json.return_value = {"ok": True, "data": {}};
-        mock_client = MagicMock();
-        mock_client.post.return_value = mock_resp;
-
-        ipd._tc = mock_client;
-        ipd._BOOT_ERROR = "";
-        ipd.dispatch(
-            json.dumps(
-                {
-                    "kind": "function",
-                    "name": "add",
-                    "node": "",
-                    "fields": {"a": 1, "b": 2},
-                    "token": "tok-xyz"
-                }
-            )
-        );
-        sent_headers = mock_client.post.call_args[1].get("headers", {});
-        assert sent_headers.get("Authorization") == "Bearer tok-xyz" , (
-            "a non-empty token must be sent as Authorization: Bearer"
-        );
-    } finally {
-        ipd._tc = orig_tc;
-        ipd._BOOT_ERROR = orig_err;
-    }
-}
-
-
-# Backend-free: when the backend returns a non-JSON body (e.g. a bare 404 HTML
-# page), dispatch() must wrap it in an envelope rather than raising.
-test "dispatch() wraps a non-JSON backend response in an error envelope" {
-    import from importlib { import_module }
-    import from unittest.mock { MagicMock }
-
-    ipd = import_module(
-        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
-    );
-    orig_tc = ipd._tc;
-    orig_err = ipd._BOOT_ERROR;
-    try {
-        mock_resp = MagicMock();
-        mock_resp.status_code = 404;
-        mock_resp.ok = False;
-        mock_resp.text = "Not Found";
-        mock_resp.json.side_effect = ValueError("not JSON");
-        mock_client = MagicMock();
-        mock_client.post.return_value = mock_resp;
-
-        ipd._tc = mock_client;
-        ipd._BOOT_ERROR = "";
-        raw = ipd.dispatch(
-            json.dumps(
-                {"kind": "walker", "name": "x", "node": "", "fields": {}, "token": ""}
-            )
-        );
-        env = json.loads(raw);
-        assert env["status"] == 404;
-        assert env["ok"] == False;
-        assert "Not Found" in env["body"]["error"]["message"] , (
-            "non-JSON body text must appear in body.error.message"
-        );
-    } finally {
-        ipd._tc = orig_tc;
-        ipd._BOOT_ERROR = orig_err;
-    }
+    assert reply["status"] == 404;
+    assert reply["ok"] == False;
+    assert reply["body"]["error"]["code"] == "NOT_FOUND";
 }
 
 
@@ -962,7 +1280,7 @@ test "_worker_loop replies NATIVE_DISPATCH_ERROR when dispatch() raises" {
     orig_shutting = ipd._shutting_down;
     orig_dispatch = ipd.dispatch;
     orig_q = ipd._work_q;
-    orig_worker = ipd._worker;
+    orig_workers = ipd._workers;
     ipd._wv_return = _capture_return;
     ipd._shutting_down = False;
 
@@ -971,7 +1289,7 @@ test "_worker_loop replies NATIVE_DISPATCH_ERROR when dispatch() raises" {
     exc_worker = threading.Thread(
         target=ipd._worker_loop, name="jac-ipd-exc-test", daemon=True
     );
-    ipd._worker = exc_worker;
+    ipd._workers = [exc_worker];
     exc_worker.start();
     ipd.dispatch = _raising_dispatch;
     try {
@@ -1004,8 +1322,122 @@ test "_worker_loop replies NATIVE_DISPATCH_ERROR when dispatch() raises" {
         } except queue.Full { }
         exc_worker.join(timeout=2.0);
         ipd._work_q = orig_q;
-        ipd._worker = orig_worker;
+        ipd._workers = orig_workers;
         ipd._wv_return = orig_wv;
+    }
+}
+
+
+# Backend-free (Gate C): with a worker pool, a slow walker must NOT block a fast
+# one -- the fast call returns while the slow call is still executing on another
+# pool worker. Proves the pool removed the single-worker head-of-line blocking.
+test "pool runs invocations concurrently (no head-of-line blocking)" {
+    import queue;
+    import time;
+    import ctypes;
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    _REPLIES.clear();
+    _CAP.clear();
+    orig_wv = ipd._wv_return;
+    orig_shutting = ipd._shutting_down;
+    orig_dispatch = ipd.dispatch;
+    orig_q = ipd._work_q;
+    orig_workers = ipd._workers;
+    orig_timeout = ipd._timeout_s;
+
+    release = threading.Event();
+    def _blocking_dispatch(payload_json: str) -> str {
+        req = json.loads(payload_json);
+        if req.get("name") == "slow" {
+            getattr(release, "wait")(5.0);
+            return json.dumps(
+                {
+                    "status": 200,
+                    "ok": True,
+                    "body": {"ok": True, "data": {"which": "slow"}}
+                }
+            );
+        }
+        return json.dumps(
+            {"status": 200, "ok": True, "body": {"ok": True, "data": {"which": "fast"}}}
+        );
+    }
+
+    q = queue.Queue();
+    workers: list = [];
+    try {
+        ipd._wv_return = _capture_return;
+        ipd._shutting_down = False;
+        ipd._timeout_s = 30.0;
+        ipd.dispatch = _blocking_dispatch;
+        ipd._work_q = q;
+        for i in range(2) {
+            w = threading.Thread(
+                target=ipd._worker_loop, name="jac-ipd-pool-" + str(i), daemon=True
+            );
+            w.start();
+            workers.append(w);
+        }
+        ipd._workers = workers;
+
+        def _enqueue(id_str: bytes, name: str) {
+            id_buf = ctypes.create_string_buffer(id_str);
+            payload = json.dumps(
+                {"kind": "walker", "name": name, "node": "", "fields": {}, "token": ""}
+            );
+            req_buf = ctypes.create_string_buffer(
+                json.dumps([payload]).encode("utf-8")
+            );
+            ipd.handle(
+                ctypes.cast(id_buf, ctypes.c_void_p).value,
+                ctypes.cast(req_buf, ctypes.c_void_p).value,
+                0
+            );
+            # Keep buffers alive until handle() has copied/enqueued them.
+            return (id_buf, req_buf);
+        }
+
+        keep_slow = _enqueue(b"slow-1", "slow");  # occupies one worker, blocks
+        keep_fast = _enqueue(b"fast-1", "fast");  # must be served by the other
+
+        deadline = time.monotonic() + 5.0;
+        while _replies_for(b"fast-1") == 0 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        assert _replies_for(b"fast-1") == 1 , (
+            "fast call must return while the slow call is still blocked (pool concurrency)"
+        );
+        assert _replies_for(b"slow-1") == 0 , (
+            "slow call is still blocked -- proves calls are not serialized"
+        );
+
+        release.set();
+        deadline = time.monotonic() + 5.0;
+        while _replies_for(b"slow-1") == 0 and time.monotonic() < deadline {
+            time.sleep(0.02);
+        }
+        assert _replies_for(b"slow-1") == 1 , "slow call completes once released";
+    } finally {
+        release.set();
+        ipd._shutting_down = True;
+        for _i in range(len(workers)) {
+            try {
+                q.put_nowait(None);
+            } except queue.Full { }
+        }
+        for w in workers {
+            w.join(timeout=2.0);
+        }
+        ipd.dispatch = orig_dispatch;
+        ipd._work_q = orig_q;
+        ipd._workers = orig_workers;
+        ipd._wv_return = orig_wv;
+        ipd._shutting_down = orig_shutting;
+        ipd._timeout_s = orig_timeout;
     }
 }
 
@@ -1075,15 +1507,13 @@ test "shutdown() is idempotent" {
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
     orig_q = ipd._work_q;
-    orig_tc = ipd._tc;
     orig_runtime = ipd._runtime;
-    orig_worker = ipd._worker;
+    orig_workers = ipd._workers;
     orig_shutting = ipd._shutting_down;
     try {
         ipd._work_q = None;
-        ipd._tc = None;
         ipd._runtime = None;
-        ipd._worker = None;
+        ipd._workers = None;
         ipd._shutting_down = False;
 
         raised = False;
@@ -1096,9 +1526,8 @@ test "shutdown() is idempotent" {
         assert not raised , "double shutdown() must not raise";
     } finally {
         ipd._work_q = orig_q;
-        ipd._tc = orig_tc;
         ipd._runtime = orig_runtime;
-        ipd._worker = orig_worker;
+        ipd._workers = orig_workers;
         ipd._shutting_down = orig_shutting;
     }
 }
@@ -1142,7 +1571,7 @@ test "_boot_impl closes a prior runtime before re-booting" {
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
     orig_runtime = ipd._runtime;
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
     try {
         mock_runtime = MagicMock();
@@ -1159,30 +1588,33 @@ test "_boot_impl closes a prior runtime before re-booting" {
         );
     } finally {
         ipd._runtime = orig_runtime;
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
     }
 }
 
 test "dispatch_sync() returns the result for a fast call" {
     import from importlib { import_module }
-    import from unittest.mock { MagicMock }
 
     ipd = import_module(
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
     try {
-        mock_resp = MagicMock();
-        mock_resp.status_code = 200;
-        mock_resp.ok = True;
-        mock_resp.json.return_value = {"ok": True, "data": {"result": 42}};
-        mock_client = MagicMock();
-        mock_client.post.return_value = mock_resp;
-
-        ipd._tc = mock_client;
+        def _fast_dispatch(payload_json: str) -> str {
+            return json.dumps(
+                {
+                    "status": 200,
+                    "ok": True,
+                    "body": {"ok": True, "data": {"result": 42}}
+                }
+            );
+        }
+        ipd._runtime = object();
         ipd._BOOT_ERROR = "";
+        ipd.dispatch = _fast_dispatch;
         raw = ipd.dispatch_sync(
             json.dumps({"kind": "function", "name": "add", "fields": {"a": 2, "b": 40}})
         );
@@ -1192,7 +1624,8 @@ test "dispatch_sync() returns the result for a fast call" {
             "the fast dispatch result must round-trip through the worker thread"
         );
     } finally {
-        ipd._tc = orig_tc;
+        ipd.dispatch = orig_dispatch;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
     }
 }
@@ -1209,12 +1642,12 @@ test "dispatch_sync() times out a slow call with NATIVE_DISPATCH_TIMEOUT" {
     ipd = import_module(
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
     orig_dispatch = ipd.dispatch;
     orig_timeout = ipd._timeout_s;
     try {
-        ipd._tc = object();  # truthy: clears the not-booted guard
+        ipd._runtime = object();  # truthy: clears the not-booted guard
         ipd._BOOT_ERROR = "";
         ipd._timeout_s = 30.0;  # default; the explicit timeout_s below wins
         ipd.dispatch = _slow_dispatch;  # sleeps 0.6s
@@ -1237,7 +1670,7 @@ test "dispatch_sync() times out a slow call with NATIVE_DISPATCH_TIMEOUT" {
             "the slow call to finish"
         );
     } finally {
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
         ipd.dispatch = orig_dispatch;
         ipd._timeout_s = orig_timeout;
@@ -1253,12 +1686,12 @@ test "dispatch_sync() falls back to _timeout_s when timeout_s <= 0" {
     ipd = import_module(
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
     orig_dispatch = ipd.dispatch;
     orig_timeout = ipd._timeout_s;
     try {
-        ipd._tc = object();
+        ipd._runtime = object();
         ipd._BOOT_ERROR = "";
         ipd._timeout_s = 0.2;
         ipd.dispatch = _slow_dispatch;  # 0.6s -- past the configured 0.2s
@@ -1271,7 +1704,7 @@ test "dispatch_sync() falls back to _timeout_s when timeout_s <= 0" {
             "timeout_s <= 0 must apply the configured _timeout_s"
         );
     } finally {
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
         ipd.dispatch = orig_dispatch;
         ipd._timeout_s = orig_timeout;
@@ -1288,11 +1721,11 @@ test "dispatch_sync() returns NATIVE_DISPATCH_ERROR when dispatch() raises" {
     ipd = import_module(
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
     orig_dispatch = ipd.dispatch;
     try {
-        ipd._tc = object();
+        ipd._runtime = object();
         ipd._BOOT_ERROR = "";
         ipd.dispatch = _raising_dispatch;  # always raises RuntimeError
 
@@ -1305,7 +1738,7 @@ test "dispatch_sync() returns NATIVE_DISPATCH_ERROR when dispatch() raises" {
             "a dispatch() exception must surface as NATIVE_DISPATCH_ERROR"
         );
     } finally {
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
         ipd.dispatch = orig_dispatch;
     }
@@ -1320,10 +1753,10 @@ test "dispatch_sync() replies NOT_BOOTED when boot() never ran" {
     ipd = import_module(
         "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
     );
-    orig_tc = ipd._tc;
+    orig_runtime = ipd._runtime;
     orig_err = ipd._BOOT_ERROR;
     try {
-        ipd._tc = None;
+        ipd._runtime = None;
         ipd._BOOT_ERROR = "";
         raw = ipd.dispatch_sync(
             json.dumps({"kind": "walker", "name": "x", "fields": {}, "token": ""})
@@ -1332,9 +1765,9 @@ test "dispatch_sync() replies NOT_BOOTED when boot() never ran" {
         assert env["body"]["error"]["code"] != "NATIVE_BOOT_ERROR" , (
             "a fresh module must not report a stale boot error"
         );
-        assert ipd._tc is None , "test must not leave a fake client behind";
+        assert ipd._runtime is None , "test must not leave a fake client behind";
     } finally {
-        ipd._tc = orig_tc;
+        ipd._runtime = orig_runtime;
         ipd._BOOT_ERROR = orig_err;
     }
 }

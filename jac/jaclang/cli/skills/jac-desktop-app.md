@@ -88,6 +88,42 @@ notification = true
 
 **Gotcha - pass arguments POSITIONALLY, not by keyword.** The client compiler can't resolve param names across the `@jac/desktop` module boundary, so `dialog.save_file(title="Export")` silently compiles to one options object in the first positional slot and the host rejects it. Use `dialog.save_file("Export", "notes.txt")`. (Tracked in [#6675](https://github.com/jaseci-labs/jaseci/issues/6675).)
 
+## Opt-in HTTP sidecar - `[desktop.http]` in `jac.toml`
+
+Most desktop apps never need HTTP: the UI calls its own walkers/functions
+in-process over `__jac_invoke`. For the HTTP-only features (multipart file
+uploads, external webhooks, websockets, OpenAPI docs) enable the **sidecar** - a
+loopback FastAPI server that is *only* imported when you opt in, so a default app
+stays FastAPI-free and lean.
+
+```toml
+[desktop.http]
+enabled = true                       # opt-in; lazy-loads the FastAPI stack
+capabilities = ["multipart"]         # subset of: multipart, webhooks, websockets, openapi
+port = 0                             # 0 = random loopback port
+```
+
+Everything the sidecar serves still funnels through the same
+`InvocationDispatcher` your native calls use - no forked execution semantics,
+same OCC/graph writes/auth. The sidecar auto-generates a bearer token and exposes
+its discovery info to the renderer as
+`window.__JAC_HTTP__ = {base, token, capabilities}`.
+
+Upload a file from client code with `jacUploadFile` (from `@jac/runtime`); it
+routes to the sidecar when present and fails with a clear capability error when
+the sidecar is disabled:
+
+```jac
+import from "@jac/runtime" { jacUploadFile }
+
+# save_upload is a walker with e.g. `has file: bytes; has label: str;`
+async def upload_avatar(the_file: bytes) -> any {
+    return await jacUploadFile(
+        "save_upload", {"label": "avatar"}, {"file": the_file}
+    );
+}
+```
+
 ## Output layout
 
 ```
@@ -105,6 +141,56 @@ The directory is **relocatable** - the binary finds its sibling `dist/` and `lib
 - **No cross-compilation yet.** `--platform` only affects sidecar *naming* (`--platform windows` selects `.exe`); build on each target OS.
 - Desktop builds set `JAC_BUILD=1` so import-time server starts stay inert - guard side effects accordingly.
 - `jac nacompile` lowers the host with Jac's pure-Jac linker (no `cc`/`ld` at link time), but the C toolchain is still needed once for `libwebview.so`.
+
+## Native dispatch - parity notes and known limitations
+
+Desktop `sv` calls go **direct** through the transport-neutral `InvocationDispatcher`
+(the same dispatcher HTTP uses), not through FastAPI. That keeps boot lean (no
+FastAPI/Starlette/Pydantic loaded for a minimal app) but the native `__jac_invoke`
+JSON envelope is a narrower surface than HTTP. What to expect:
+
+- **Input validation is lightweight, not Pydantic.** The dispatcher coerces the
+  common scalars (numeric-string → `int`/`float`, truthy tokens → `bool`) and
+  rejects missing-required or uncoercible fields with a stable
+  `VALIDATION_ERROR` (`http_status` 422) on **both** HTTP and native. It does not
+  reconstruct arbitrary Pydantic models; complex/nested shapes are passed through
+  as-is (walker/function body errors then normalize to `EXECUTION_ERROR`, never a
+  raw traceback).
+- **restspec paths/verbs, GET, and query binding now work on desktop.** They are
+  served by the shared transport-neutral `http_surface` route table that both
+  FastAPI and the desktop `sv` bridge consume, so `@restspec` custom paths/verbs,
+  GET-vs-POST semantics, and query-parameter binding behave identically across
+  transports (native webview calls still use the frozen `__jac_invoke` JSON
+  envelope; the CEF/broker `sv` bridge resolves HTTP-shaped paths through the same
+  table).
+- **Multipart uploads / webhooks / websockets / OpenAPI are opt-in via
+  `[desktop.http]`.** These HTTP-only features are served by a lazily-started
+  loopback FastAPI *sidecar* (no FastAPI is loaded unless you enable it). See the
+  `[desktop.http]` section below. In lean mode (sidecar disabled), attempting an
+  upload fails fast with a structured capability error (`CAPABILITY_NOT_AVAILABLE`,
+  HTTP 415/501) whose hint names `[desktop.http]` and the missing capability.
+- **Auth is Bearer-token only on native.** The middleware chain (CORS, tracing,
+  rate limiting, request-context, JWT) runs only under HTTP. Native carries a
+  `token` string; cookie/SSO/session auth is an HTTP-only concern.
+- **Concurrency is a bounded worker pool.** Native invocations run on a small pool
+  (`boot(..., pool_size=N)`, default 4), each worker holding a persistent event
+  loop so loop-bound resources survive across calls. Execution is OCC-guarded
+  exactly as under HTTP. A saturated queue returns `NATIVE_DISPATCH_BUSY`; a call
+  exceeding the timeout returns `NATIVE_DISPATCH_TIMEOUT` and the pool stays
+  healthy for the next item.
+- **Streaming uses a push protocol with cancellation + optional backpressure.** A
+  generator walker/function replies with `{__jac_stream, protocol:push,
+  stream_id}` and frames arrive via `window.__jac.on("__jac_stream", ...)`. The
+  consumer signals teardown with a `{__jac_stream_ctl:"cancel", stream_id}` frame
+  (stops the pump and closes the generator promptly) and can pace the producer
+  with `{__jac_stream_ctl:"ack", stream_id, n}` when the stream was opened with a
+  positive `stream_window`. **Known limitation:** if the client never acks, the
+  pump falls back to fire-and-forget (bounded to one window per burst, not truly
+  backpressured), and the streaming request-context lifetime tracks the same
+  open question as HTTP SSE.
+- **`http_status` rides inside the JSON body**, not a real transport status line,
+  so a consumer that keyed on an HTTP status must read `body`/`http_status`
+  instead.
 
 ## See also
 

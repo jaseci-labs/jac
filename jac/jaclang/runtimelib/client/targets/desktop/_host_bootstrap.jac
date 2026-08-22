@@ -17,7 +17,8 @@ def _host_boot_py(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: dict = None
+    plugin_configs: dict = None,
+    http_config: dict = None
 ) -> str {
     config = {
         "app_name": app_name,
@@ -28,7 +29,8 @@ def _host_boot_py(
             "max_queue": dispatch_max_queue,
             "debug": dispatch_debug
         },
-        "plugins": plugin_configs if plugin_configs is not None else {}
+        "plugins": plugin_configs if plugin_configs is not None else {},
+        "http": http_config if http_config is not None else {}
     };
     config_literal = json.dumps(
         json.dumps(config, ensure_ascii=False), ensure_ascii=False
@@ -49,7 +51,8 @@ def _generate_host_source(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: dict = None
+    plugin_configs: dict = None,
+    http_config: dict = None
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -58,38 +61,39 @@ def _generate_host_source(
         dispatch_timeout_s,
         dispatch_max_queue,
         dispatch_debug,
-        plugin_configs
+        plugin_configs,
+        http_config
     );
 
     bootstrap_js = (
-        "(function(){try{"
-        "var _l={};"
+        "(function(){var _l={},_streams={};"
+        "function _pushStream(p){"
+        "var s=_streams[p.stream_id]||(_streams[p.stream_id]={q:[],r:[]});"
+        "if(s.r.length)s.r.shift()(p);else s.q.push(p);}"
+        "function _ackStream(id,n){"
+        "try{window.__jac_invoke(JSON.stringify({__jac_stream_ctl:'ack',stream_id:id,n:n}),0,{})"
+        ".then(function(){},function(){});}catch(_){}}"
         "window.__jac={"
         "invoke:function(p,c,a){"
-        "return fetch('/__jac/invoke',{method:'POST',"
-        "headers:{'Content-Type':'application/json'},"
-        "body:JSON.stringify([p,c,a||{}])})"
-        ".then(function(r){return r.text();})"
-        ".then(function(r){"
+        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
         "if(typeof r==='string')r=JSON.parse(r);"
         "if(r.ok)return r.data;"
-        "var e=new Error(r.error.message);"
-        "e.code=r.error.code;throw e;"
-        "});"
-        "},"
-        "on:function(ev,cb){"
-        "(_l[ev]=_l[ev]||[]).push(cb);"
+        "var e=new Error((r.error&&r.error.message)||'invoke failed');"
+        "e.code=r.error&&r.error.code;throw e;});},"
+        "on:function(ev,cb){(_l[ev]=_l[ev]||[]).push(cb);"
         "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
-        "if(i!==-1)a.splice(i,1);};"
-        "},"
+        "if(i!==-1)a.splice(i,1);};},"
         "__emit__:function(ev,p){"
-        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
-        "}"
+        "if(ev==='__jac_stream'&&p&&p.stream_id)_pushStream(p);"
+        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});},"
+        "__stream_next__:function(id){"
+        "var s=_streams[id]||(_streams[id]={q:[],r:[]});"
+        "if(s.q.length){_ackStream(id,1);return Promise.resolve(s.q.shift());}"
+        "return new Promise(function(res){s.r.push(function(p){_ackStream(id,1);res(p);});});}"
         "};"
-        "window.__JAC_DESKTOP__=true;"
-        "window.__JAC_BROKER__='/__jac';"
+        "window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';"
         "window.__JAC_NATIVE__=true;"
-        "}catch(e){}})();"
+        "})();"
     );
 
     boot_error_html = (
@@ -151,6 +155,7 @@ def _generate_host_source(
         "    main_mod: int = 0;\n"
         "    d: int = 0;\n"
         "    url = \"\";\n"
+        "    http_js = \"\";\n"
         "    if boot_rc == 0 {\n"
         "        main_mod = api.PyImport_AddModule(\"__main__\");\n"
         "        d = api.PyModule_GetDict(main_mod);\n"
@@ -159,6 +164,7 @@ def _generate_host_source(
         "        dev_port = api.PyLong_AsLong(api.PyRun_String(\"_ctx.dev_port\", PY_EVAL, d, d));\n"
         "        target_port = dev_port if dev_port > 0 else port;\n"
         "        url = f\"http://127.0.0.1:{target_port}/\";\n"
+        "        http_js = c_string(api.PyUnicode_AsUTF8(api.PyRun_String(\"_ctx.http_bootstrap_js()\", PY_EVAL, d, d)));\n"
         "    }\n"
         "    _wv_raw = webview_create(0, 0);\n"
         "    LAST_WEBVIEW_HANDLE = _wv_raw;\n"
@@ -170,6 +176,9 @@ def _generate_host_source(
         "    healthy: bool = boot_rc == 0;\n"
         "    if healthy {\n"
         "        _stash_wv_in_python(_wv_raw);\n"
+        "        if http_js != \"\" {\n"
+        "            wv.on_load(http_js);\n"
+        "        }\n"
         "        wv.navigate(url);\n"
         "    } else {\n"
         "        wv.html(BOOT_ERROR_HTML);\n"
@@ -177,7 +186,7 @@ def _generate_host_source(
         "    ts = api.PyEval_SaveThread();\n"
         "    run_main_loop();\n"
         "    api.PyEval_RestoreThread(ts);\n"
-        "    api.PyRun_SimpleString(\"from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
+        "    api.PyRun_SimpleString(\"getattr(_ctx, 'close_http', lambda: None)(); from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
         "    api.Py_Finalize();\n"
         "}\n"
     );

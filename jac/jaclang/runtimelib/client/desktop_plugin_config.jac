@@ -149,6 +149,19 @@ def _desktop_config_schema -> PluginConfigSchema {
                     "resizable": schema_bool_option(True, "")
                 }
             ),
+            "http": schema_dict_option(
+                "Opt-in loopback FastAPI sidecar for HTTP-only features. Disabled by default; lazy-loads the scale serve stack only when enabled.",
+                nested={
+                    "enabled": schema_bool_option(
+                        False, "Start the loopback FastAPI sidecar on boot"
+                    ),
+                    "capabilities": schema_list_option(
+                        [],
+                        "Capabilities to expose: multipart, webhooks, websockets, openapi"
+                    ),
+                    "port": schema_int_option(0, "Loopback port (0 = random)")
+                }
+            ),
             "plugins": schema_dict_option(
                 "Desktop capability plugins: each key is a plugin name (window, path, fs, notification, clipboard, dialog, shell). Value can be true (enabled with defaults) or a dict of plugin-specific config.",
                 nested={

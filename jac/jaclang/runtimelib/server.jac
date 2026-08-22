@@ -35,6 +35,7 @@ import from jaclang.runtimelib.serving.openapi { register_docs_endpoints }
 import from jaclang.runtimelib.serving.server { ServingServer }
 import from jaclang.runtimelib.static_files { find_static_candidate, is_asset_request }
 import from jaclang { JacRuntime as Jac }
+import type from jaclang.runtimelib.invocation { InvocationDispatcher }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
 import from jaclang.jac0core.constant { Constants as Con }
@@ -211,6 +212,7 @@ obj JacAPIServer {
         auth_handler: AuthHandler postinit,
         introspection_handler: IntrospectionHandler postinit,
         execution_handler: ExecutionHandler postinit,
+        invocation_dispatcher: InvocationDispatcher postinit,
         server: any postinit,
         app: any postinit,
         scheduler: Scheduler postinit;

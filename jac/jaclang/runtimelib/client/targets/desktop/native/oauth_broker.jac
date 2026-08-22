@@ -8,6 +8,10 @@ import secrets;
 import time;
 import webbrowser;
 import from urllib.parse { parse_qs, quote, urlparse }
+import from jaclang.runtimelib.streaming { drain_sse }
+import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+    DispatchMode
+}
 
 glob _LOOPBACK_HOSTS: frozenset = frozenset({"127.0.0.1", "localhost", "::1"});
 
@@ -147,7 +151,8 @@ def make_handler(
     prefix: str = DEFAULT_PREFIX,
     dispatch: Callable | None = None,
     events: object | None = None,
-    sv_bridge: Callable | None = None
+    sv_bridge: Callable | None = None,
+    sv_router: Callable | None = None
 ) -> type {
     pending = _PendingAuth();
 
@@ -190,6 +195,72 @@ def make_handler(
             self.send_header("Content-Length", str(len(payload)));
             self.end_headers();
             self.wfile.write(payload);
+        }
+
+        def _write_sse(self: _BrokerHandler, gen: object, status: int = 200) {
+            self.send_response(status);
+            self.send_header("Content-Type", "text/event-stream");
+            self.send_header("Cache-Control", "no-cache");
+            self.send_header("Connection", "close");
+            self.send_header("X-Accel-Buffering", "no");
+            self.end_headers();
+            wfile = self.wfile;
+            def _write_frame(frame: bytes) {
+                wfile.write(frame);
+                wfile.flush();
+            }
+
+            drain_sse(gen, _write_frame);
+        }
+
+        def _stream_outcome(self: _BrokerHandler, result: object) -> bool {
+            if not isinstance(result, dict) {
+                return False;
+            }
+            mode = result.get("mode");
+            if getattr(mode, "value", mode) != DispatchMode.SSE.value {
+                return False;
+            }
+            stream = result.get("stream");
+            if stream is None {
+                self.send_error(500);
+                return True;
+            }
+            self._write_sse(stream, int(result.get("status") or 200));
+            return True;
+        }
+
+        def _render_sv(self: _BrokerHandler, result: object) {
+            if self._stream_outcome(result) {
+                return;
+            }
+            if isinstance(result, dict) {
+                self._raw_response(
+                    str(result.get("body") or ""),
+                    int(result.get("status") or 200),
+                    str(result.get("content_type") or "application/json")
+                );
+                return;
+            }
+            (status, sv_body, ctype) = result;
+            self._raw_response(sv_body, status, ctype);
+        }
+
+        def _dispatch_invoke(self: _BrokerHandler, body: str) {
+            if dispatch is None {
+                self.send_error(404);
+                return;
+            }
+            result = dispatch(body);
+            if self._stream_outcome(result) {
+                return;
+            }
+            if isinstance(result, dict) {
+                raw = str(result.get("body") or "");
+                self._raw_json(raw, int(result.get("status") or 200));
+                return;
+            }
+            self._raw_json(str(result));
         }
 
         def _html(self: _BrokerHandler, html: str, status: int = 200) {
@@ -312,6 +383,18 @@ def make_handler(
                 self._sse_events();
                 return;
             }
+
+            if sv_bridge is not None
+                and sv_router is not None
+                and sv_router("GET", self.path) {
+                if self._reject_cross_site() {
+                    return;
+                }
+                auth = self.headers.get("Authorization", "") or "";
+                token = auth[7:] if auth.startswith("Bearer ") else "";
+                self._render_sv(sv_bridge("GET", self.path, b"", token));
+                return;
+            }
             super.do_GET();
         }
 
@@ -391,11 +474,15 @@ def make_handler(
                 }
                 raw = self.rfile.read(n) if n > 0 else b"";
                 body = raw.decode("utf-8") if raw else "[]";
-                self._raw_json(dispatch(body));
+                self._dispatch_invoke(body);
                 return;
             }
             if sv_bridge is not None
-                and (route.startswith("/walker/") or route.startswith("/function/")) {
+                and (
+                    (sv_router is not None and sv_router("POST", self.path))
+                    or route.startswith("/walker/")
+                    or route.startswith("/function/")
+                ) {
                 try {
                     n = int(self.headers.get("Content-Length", 0) or 0);
                 } except (TypeError, ValueError) {
@@ -408,8 +495,8 @@ def make_handler(
                 raw = self.rfile.read(n) if n > 0 else b"";
                 auth = self.headers.get("Authorization", "") or "";
                 token = auth[7:] if auth.startswith("Bearer ") else "";
-                (status, sv_body, ctype) = sv_bridge("POST", route, raw, token);
-                self._raw_response(sv_body, status, ctype);
+
+                self._render_sv(sv_bridge("POST", self.path, raw, token));
                 return;
             }
             self.send_error(404);

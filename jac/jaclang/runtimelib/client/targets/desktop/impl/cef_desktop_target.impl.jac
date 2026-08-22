@@ -96,6 +96,7 @@ def _generate_host_source(
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
+    http_config: dict = None,
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -104,7 +105,8 @@ def _generate_host_source(
         dispatch_timeout_s,
         dispatch_max_queue,
         dispatch_debug,
-        plugin_configs
+        plugin_configs,
+        http_config
     );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
@@ -219,6 +221,7 @@ impl CefDesktopTarget.build(
     win = cfg.get_window_config();
     dispatch = cfg.get_dispatch_config();
     plugin_configs = cfg.get_plugin_configs();
+    http_config = cfg.get_http_config().to_dict();
     app_name = ident.name or "app";
 
     out_dir = project_dir / self.output_dir;
@@ -263,6 +266,7 @@ impl CefDesktopTarget.build(
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,
+        http_config,
     );
     (out_dir / "host.jac").write_text(host_src);
 

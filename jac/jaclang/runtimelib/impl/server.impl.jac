@@ -8,6 +8,12 @@ import from jaclang.runtimelib.auth_models {
     LoginRequest,
     RegisterRequest
 }
+import contextvars;
+import from jaclang.runtimelib.streaming {
+    context_bound_stream,
+    context_bound_async_stream,
+    drain_sse
+}
 
 impl JacAPIServer._make_user_manager -> UserManager {
     return UserManager(base_path=self.base_path);
@@ -358,13 +364,28 @@ impl ExecutionManager._finalize_call_response(
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
-    await Jac.acommit();
+
+    stream: any = None;
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
-        return result;
+        stream = result;
+    } elif isgenerator(reports) or isinstance(reports, AsyncGenerator) {
+        stream = reports;
     }
-    if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
-        return reports;
+    if stream is not None {
+        captured = contextvars.copy_context();
+        def _teardown {
+            Jac.commit();
+            drain_ctx = Jac.get_context();
+            if drain_ctx.diagnostics {
+                drain_ctx.diagnostics.clear();
+            }
+        }
+        if isinstance(stream, AsyncGenerator) {
+            return context_bound_async_stream(stream, captured, _teardown);
+        }
+        return context_bound_stream(stream, captured, _teardown);
     }
+    await Jac.acommit();
 
     envelope: dict[str, JsonValue] = {
         'result': Serializer.serialize(result, api_mode=True),
@@ -1670,6 +1691,12 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
+    import from jaclang.runtimelib.invocation { InvocationDispatcher }
+    self.invocation_dispatcher = InvocationDispatcher(
+        introspector=self.introspector,
+        execution_manager=self.execution_manager,
+        user_manager=self.user_manager
+    );
     self.scheduler = Scheduler.instance();
     self.server = None;
     self.app = None;
@@ -2041,41 +2068,77 @@ impl JacAPIServer.build_app -> ServingApp {
 
     def _call_function(request: Request, name: str) -> any {
         server.introspector.load();
-        if server.introspector.is_auth_required_for_function(name) {
-            username = _authenticate(request);
-            if not username {
-                return JSONResponse(content={'error': 'Unauthorized'}, status_code=401);
-            }
-        } else {
-            username = _auth_or_guest(request);
-        }
         data = _read_data(request);
         if data is None {
             return JSONResponse(content={'error': 'Invalid JSON'}, status_code=400);
         }
-        return asyncio.run(
-            server.execution_handler.call_function(name, data, username)
+        import from jaclang.runtimelib.invocation {
+            InvocationKind,
+            InvocationRequest,
+            InvocationResult
+        }
+        token = _bearer_token(request) or "";
+        username = request.state?.username if request?.state else None;
+        result: InvocationResult = asyncio.run(
+            server.invocation_dispatcher.invoke(
+                InvocationRequest(
+                    kind=InvocationKind.FUNCTION,
+                    name=name,
+                    fields=data,
+                    token=token,
+                    resolved_user=username,
+                    identity_prevalidated=username is not None
+                )
+            )
         );
+        if result.is_stream and result.stream is not None {
+            import from jaclang.runtimelib.serving.datatypes { StreamingResponse }
+            import from jaclang.runtimelib.serving.sse { sse_frame_stream }
+            return StreamingResponse(
+                content=sse_frame_stream(result.stream),
+                media_type='text/event-stream',
+                headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+            );
+        }
+        return transport_to_response(result.to_transport());
     }
 
     def _spawn_walker(request: Request, name: str, node_id: str = '') -> any {
         server.introspector.load();
-        if server.introspector.is_auth_required_for_walker(name) {
-            username = _authenticate(request);
-            if not username {
-                return JSONResponse(content={'error': 'Unauthorized'}, status_code=401);
-            }
-        } else {
-            username = _auth_or_guest(request);
-        }
         data = _read_data(request);
         if data is None {
             return JSONResponse(content={'error': 'Invalid JSON'}, status_code=400);
         }
-        fields = data | {'_jac_spawn_node': node_id};
-        return asyncio.run(
-            server.execution_handler.spawn_walker(name, fields, username)
+        import from jaclang.runtimelib.invocation {
+            InvocationKind,
+            InvocationRequest,
+            InvocationResult
+        }
+        token = _bearer_token(request) or "";
+        username = request.state?.username if request?.state else None;
+        result: InvocationResult = asyncio.run(
+            server.invocation_dispatcher.invoke(
+                InvocationRequest(
+                    kind=InvocationKind.WALKER,
+                    name=name,
+                    fields=data,
+                    node_id=node_id or None,
+                    token=token,
+                    resolved_user=username,
+                    identity_prevalidated=username is not None
+                )
+            )
         );
+        if result.is_stream and result.stream is not None {
+            import from jaclang.runtimelib.serving.datatypes { StreamingResponse }
+            import from jaclang.runtimelib.serving.sse { sse_frame_stream }
+            return StreamingResponse(
+                content=sse_frame_stream(result.stream),
+                media_type='text/event-stream',
+                headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+            );
+        }
+        return transport_to_response(result.to_transport());
     }
 
     def _client_error(request: Request) -> any {

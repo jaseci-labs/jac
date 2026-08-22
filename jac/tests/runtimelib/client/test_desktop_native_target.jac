@@ -117,6 +117,119 @@ test "desktop dispatch config loads from jac.toml" {
     }
 }
 
+"""The opt-in [desktop.http] sidecar config is read from jac.toml: defaults are
+disabled/no-capabilities/random-port; explicit values load and validate; an
+unknown capability or out-of-range port is rejected (Phase 4, doc §7)."""
+test "desktop http sidecar config loads and validates from jac.toml" {
+    import from jaclang.runtimelib.client.desktop_config {
+        get_desktop_config,
+        reset_desktop_config
+    }
+    import from pathlib { Path }
+    import tempfile;
+
+    with tempfile.TemporaryDirectory() as d {
+        reset_desktop_config();
+        # No [desktop.http] -> opt-in defaults (disabled).
+        with open(Path(d) / "jac.toml", "w") as f {
+            f.write(
+                '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+            );
+        }
+        cfg = get_desktop_config(project_dir=Path(d));
+        h1 = cfg.get_http_config();
+        assert h1.enabled == False , "http sidecar defaults off";
+        assert h1.capabilities == [] , "no capabilities by default";
+        assert h1.port == 0 , "port defaults to 0 (random loopback)";
+        reset_desktop_config();
+        # Explicit values load, and to_dict round-trips for the boot config.
+        with open(Path(d) / "jac.toml", "w") as f {
+            f.write(
+                '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+                '[desktop.http]\nenabled = true\n'
+                'capabilities = ["multipart", "openapi"]\nport = 8123\n'
+            );
+        }
+        cfg2 = get_desktop_config(project_dir=Path(d));
+        h2 = cfg2.get_http_config();
+        assert h2.enabled == True , "http sidecar enabled should load";
+        assert h2.capabilities == ["multipart", "openapi"];
+        assert h2.port == 8123;
+        cfg2.validate();
+        as_dict = h2.to_dict();
+        assert as_dict["enabled"] == True and as_dict["port"] == 8123;
+        assert as_dict["capabilities"] == ["multipart", "openapi"];
+        reset_desktop_config();
+        # Unknown capability is rejected by validate().
+        with open(Path(d) / "jac.toml", "w") as f {
+            f.write(
+                '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+                '[desktop.http]\nenabled = true\ncapabilities = ["telepathy"]\n'
+            );
+        }
+        cfg3 = get_desktop_config(project_dir=Path(d));
+        rejected = False;
+        try {
+            cfg3.validate();
+        } except ValueError as e {
+            rejected = True;
+            assert "telepathy" in str(e) and "[desktop.http]" in str(e);
+        }
+        assert rejected , "unknown [desktop.http] capability must be rejected";
+        reset_desktop_config();
+        # Out-of-range port is rejected.
+        with open(Path(d) / "jac.toml", "w") as f {
+            f.write(
+                '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
+                '[desktop.http]\nport = 999999\n'
+            );
+        }
+        cfg4 = get_desktop_config(project_dir=Path(d));
+        bad_port = False;
+        try {
+            cfg4.validate();
+        } except ValueError {
+            bad_port = True;
+        }
+        assert bad_port , "out-of-range [desktop.http] port must be rejected";
+        reset_desktop_config();
+    }
+}
+
+
+"""The generated host threads [desktop.http] into the boot config and injects the
+renderer-facing window.__JAC_HTTP__ discovery hook (read from _ctx at runtime),
+and still tears the sidecar down on close via _ctx.close_http()."""
+test "generated host wires the http sidecar config and __JAC_HTTP__ injection" {
+    import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
+        _generate_host_source
+    }
+
+    src = _generate_host_source(
+        "T",
+        800,
+        600,
+        "test-app",
+        "",
+        30.0,
+        128,
+        False,
+        {},
+        {"enabled": True, "capabilities": ["multipart"], "port": 0}
+    );
+    # The opt-in http config rides the frozen boot config into host_boot.boot().
+    assert "http" in src , "boot config must carry the http section";
+    assert "multipart" in src , "configured capability must be baked into boot config";
+    # Renderer discovery: read _ctx.http_bootstrap_js() and inject via on_load.
+    assert "http_bootstrap_js()" in src , "host must read the sidecar bootstrap js from _ctx";
+    assert "__JAC_HTTP__" not in src or "http_js" in src , "sidecar js is injected at runtime, not baked";
+    assert "http_js" in src , "host must inject the sidecar discovery script";
+    # Sidecar is torn down on close before dispatch shutdown.
+    assert "close_http" in src , "host must stop the sidecar on close";
+    assert src.index("close_http") < src.index("inprocess_dispatch.shutdown()") , "sidecar stops before dispatch teardown";
+}
+
+
 """The host brings up the fused runtime through the fused runtime library
 (engine_boot) instead of binding the build machine's libpython, and never bakes
 build-machine state. All boot behavior lives in the host_boot runtime module; the generated
@@ -134,6 +247,9 @@ test "host source boots the fused runtime and bakes no build-machine state" {
     # Thin boot contract: one BOOT_PY statement into the host_boot module.
     assert "BOOT_PY" in src , "host source must declare BOOT_PY";
     assert "host_boot.boot(" in src , "BOOT_PY must call host_boot.boot()";
+    # Native push streaming needs the stream-capable __jac SDK in BOOTSTRAP_JS.
+    assert "__stream_next__" in src , "native bootstrap must expose __stream_next__";
+    assert "__jac_stream" in src , "native bootstrap must buffer __jac_stream emits";
     # No build-machine site-package baking (the old _builder_dep_site_dirs path).
     assert "getusersitepackages" not in src , "must not reference user-site packages";
     assert "getsitepackages" not in src , "must not bake interpreter site-packages";
@@ -141,9 +257,8 @@ test "host source boots the fused runtime and bakes no build-machine state" {
     assert "JAC_DESKTOP_SCALE_SRC" not in src , "separate scale-source seam is gone (scale is folded into jaclang)";
 }
 
-"""host_boot's deps seam is runtime-only and portable: it reads JAC_DESKTOP_DEPS
-at boot time with no build-time baking. Exercise the real code path instead of
-grepping generated strings."""
+"""host_boot honors JAC_DESKTOP_DEPS as the extra-deps seam (project venv
+site-packages exported by the launch script). Entries join sys.path once."""
 test "host_boot applies the runtime extra-deps seam" {
     import os;
     import sys;
@@ -155,11 +270,11 @@ test "host_boot applies the runtime extra-deps seam" {
     fake_b = os.path.join(os.sep, "nonexistent-jac-deps-b");
     try {
         os.environ["JAC_DESKTOP_DEPS"] = fake_a + os.pathsep + fake_b;
-        host_boot._apply_extra_deps();
+        host_boot._apply_extra_deps(os.sep);
         assert fake_a in sys.path , "first JAC_DESKTOP_DEPS entry must join sys.path";
         assert fake_b in sys.path , "second JAC_DESKTOP_DEPS entry must join sys.path";
         # Idempotent: applying twice must not duplicate entries.
-        host_boot._apply_extra_deps();
+        host_boot._apply_extra_deps(os.sep);
         assert sys.path.count(fake_a) == 1 , "deps seam must not duplicate sys.path entries";
     } finally {
         sys.path[:] = _saved_path;
@@ -246,6 +361,47 @@ test "host_boot routes runtime payloads and passes plugin requests through" {
     assert host_boot.runtime_payload(json.dumps(["not json either"])) is None;
 }
 
+"""host_boot.stream_control is the native endpoint for the client-disconnect /
+backpressure protocol: a `{__jac_stream_ctl}` frame routes to cancel/ack, while
+ordinary calls and non-control payloads fall through (None). The cancel/ack
+effect on a live stream is covered in test_inprocess_dispatch; here we pin the
+routing decision and envelope shape."""
+test "host_boot routes stream-control frames to cancel/ack" {
+    import json;
+    import from jaclang.runtimelib.client.targets.desktop.native { host_boot }
+
+    # Ordinary runtime/plugin payloads are NOT stream control.
+    assert host_boot.stream_control(json.dumps({"kind": "walker", "name": "w"}))
+        is None;
+    assert host_boot.stream_control(json.dumps(["jac.fs", "read_file", {}])) is None;
+    assert host_boot.stream_control("not json") is None;
+
+    # A cancel frame is parsed and acked (cancel_stream is a safe no-op for an
+    # unknown id, so this exercises the routing without a live stream).
+    out = host_boot.stream_control(
+        json.dumps({"__jac_stream_ctl": "cancel", "stream_id": "s-1"})
+    );
+    assert out["ok"] == True
+        and out["__jac_stream_ctl"] == "cancel"
+        and out["stream_id"] == "s-1";
+
+    # Webview bind form (one-element string array) is also accepted, ack form.
+    out2 = host_boot.stream_control(
+        json.dumps(
+            [json.dumps({"__jac_stream_ctl": "ack", "stream_id": "s-2", "n": 3})]
+        )
+    );
+    assert out2["ok"] == True and out2["__jac_stream_ctl"] == "ack" and out2["n"] == 3;
+
+    # Missing stream_id and unknown control verbs are stable errors, not crashes.
+    bad = host_boot.stream_control(json.dumps({"__jac_stream_ctl": "cancel"}));
+    assert bad["ok"] == False;
+    unknown = host_boot.stream_control(
+        json.dumps({"__jac_stream_ctl": "bogus", "stream_id": "s-3"})
+    );
+    assert unknown["ok"] == False;
+}
+
 """Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
 and before Py_Finalize() so the dispatch worker and transport tear down cleanly."""
 test "generated host calls shutdown after run_main_loop()" {
@@ -313,7 +469,7 @@ test "host bootstrap modules import + run from the fused runtime" {
         # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
         assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
         assert hasattr(inprocess_dispatch, "boot")
-            and hasattr(inprocess_dispatch, "forward") , "inprocess_dispatch must import from the runtime";
+            and hasattr(inprocess_dispatch, "dispatch") , "inprocess_dispatch must import from the runtime";
     } finally {
         sys.path[:] = _saved_path;
         for _k in list(sys.modules.keys()) {

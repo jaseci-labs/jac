@@ -60,6 +60,7 @@ def _assemble_native_host(
     win = cfg.get_window_config();
     dispatch = cfg.get_dispatch_config();
     plugin_configs = cfg.get_plugin_configs();
+    http_config = cfg.get_http_config().to_dict();
     app_name = ident.name or "app";
 
     if output_dir.exists() {
@@ -109,7 +110,8 @@ def _assemble_native_host(
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,
-        plugin_configs
+        plugin_configs,
+        http_config
     );
     (output_dir / "host.jac").write_text(host_src);
 

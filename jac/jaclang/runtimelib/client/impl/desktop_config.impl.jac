@@ -56,6 +56,16 @@ impl JacDesktopConfig.get_dispatch_config(self: JacDesktopConfig) -> DispatchCon
     return DispatchConfig.from_dict(data);
 }
 
+impl JacDesktopConfig.get_http_config(self: JacDesktopConfig) -> HttpConfig {
+    config = self.load();
+    raw = config.get('http', {});
+    data: dict[str, any] = {};
+    if isinstance(raw, dict) {
+        data = raw;
+    }
+    return HttpConfig.from_dict(data);
+}
+
 impl JacDesktopConfig.get_engine(self: JacDesktopConfig) -> str {
     config = self.load();
     engine = str(config.get('engine', 'native'));
@@ -118,9 +128,48 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
             );
         }
     }
+    http = config.get('http', {});
+    if isinstance(http, dict) {
+        _validate_http_config(http);
+    }
     plugins = config.get('plugins', {});
     if isinstance(plugins, dict) {
         _validate_plugin_keys(plugins);
+    }
+}
+
+def _validate_http_config(http: dict[str, any]) {
+    import from jaclang.runtimelib.client.desktop_config { HTTP_CAPABILITIES }
+    raw_caps = http.get('capabilities', []);
+    if raw_caps is not None and not isinstance(raw_caps, list) {
+        raise ValueError(
+            "Desktop configuration error: [desktop.http] capabilities must be a "
+            "list of strings."
+        );
+    }
+    valid = ", ".join(sorted(HTTP_CAPABILITIES));
+    for cap in (raw_caps or []) {
+        if str(cap) not in HTTP_CAPABILITIES {
+            raise ValueError(
+                f"Desktop configuration error: unknown [desktop.http] capability "
+                f"'{cap}'. Valid capabilities: {valid}."
+            );
+        }
+    }
+    port = http.get('port', 0);
+    try {
+        port_int = int(port);
+    } except (TypeError, ValueError) {
+        raise ValueError(
+            f"Desktop configuration error: [desktop.http] port ({port!r}) must be "
+            f"an integer (0 = random loopback port)."
+        );
+    }
+    if port_int < 0 or port_int > 65535 {
+        raise ValueError(
+            f"Desktop configuration error: [desktop.http] port ({port_int}) must be "
+            f"between 0 and 65535."
+        );
     }
 }
 
