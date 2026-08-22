@@ -1,9 +1,17 @@
 import jaclang.jac0core.unitree as uni;
+import shutil;
 import from pathlib { Path }
-import from jaclang.jac0core.constant { SymbolType }
+import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.server_entry { emit_server_entry }
 import from jaclang.runtimelib.bun_entry { EndpointMeta }
+
+
+def _is_pub(access: any) -> bool {
+    # Same idiom as placement._is_pub_element / esast_gen_pass: str(access)
+    # renders '<SubTag object>', so compare the tag name token instead.
+    return access is not None and access.tag.name == Tok.KW_PUB;
+}
 
 
 def _string_bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
@@ -15,13 +23,26 @@ def _string_bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
         f'{module_name}.js'
     );
 
-    def _rewrite_entry_line(line: str) -> (str | None) {
+    def _rewrite_entry_line(line: str) -> str {
+        # Single-line import rewriting: `import { X as Y } from "./src"` ->
+        # `const Y = X;`. Anything else referencing a bundled source means the
+        # codegen output no longer matches this bundler's assumptions — fail
+        # loudly instead of emitting a bundle with dangling references.
         for src in bundled_sources {
             if f'from "./{src}"' not in line {
                 continue;
             }
-            if ' as ' not in line or not line.startswith('import ') {
-                return None;
+            if (
+                not line.startswith('import ')
+                or ' as ' not in line
+                or '{' not in line
+                or '}' not in line
+            ) {
+                raise RuntimeError(
+                    f'String bundler cannot rewrite import line for '
+                    + f'\'{src}\': {line!r}. Bun.build output shape changed; '
+                    + 'fix or remove _string_bundle_bun_artifact.'
+                );
             }
             spec = line[len('import {'):line.rindex('}')].strip();
             aliases: list[str] = [];
@@ -64,13 +85,10 @@ def _string_bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
     if module_js.exists() {
         chunks.append(module_js.read_text(encoding='utf-8'));
     }
-    entry_lines: list[str] = [];
-    for line in (out_dir / 'server.mjs').read_text(encoding='utf-8').splitlines() {
-        rewritten = _rewrite_entry_line(line);
-        if rewritten is not None {
-            entry_lines.append(rewritten);
-        }
-    }
+    entry_lines: list[str] = [
+        _rewrite_entry_line(ln)
+        for ln in (out_dir / 'server.mjs').read_text(encoding='utf-8').splitlines()
+    ];
     chunks.append('\n'.join(entry_lines));
     bundle = '\n'.join(chunks) + '\n';
     if 'const _jac' not in bundle and '_jac.' in bundle {
@@ -84,7 +102,6 @@ def _string_bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
 
 
 def _bundle_bun_artifact(out_dir: Path, module_name: str, artifact: Path) -> None {
-    import shutil;
     import subprocess;
     server_entry = out_dir / 'server.mjs';
     bun_bin = shutil.which('bun');
@@ -131,6 +148,47 @@ def _bundle_bun_artifact(out_dir: Path, module_name: str, artifact: Path) -> Non
 }
 
 
+def _extract_endpoints(ir: any, module_name: str) -> (tuple[list[EndpointMeta], list[EndpointMeta]]) {
+    # Pull walker/function endpoint metadata out of a compiled module IR.
+    walkers: list[EndpointMeta] = [];
+    functions: list[EndpointMeta] = [];
+    for item in ir.body {
+        if isinstance(item, uni.Archetype)
+            and item.sym_category == SymbolType.WALKER_ARCH {
+            walkers.append(
+                EndpointMeta(
+                    name=str(item.name.sym_name),
+                    module=module_name,
+                    `pub=_is_pub(item.access)
+                )
+            );
+        } elif isinstance(item, uni.Ability) and item.name_ref is not None {
+            fn_name = str(item.name_ref.sym_name);
+            if fn_name.startswith('_') {
+                continue;
+            }
+            fn_params: list[str] = [];
+            if isinstance(item.signature, uni.FuncSignature) {
+                for pvar in item.signature.get_parameters() {
+                    if pvar.name is not None {
+                        fn_params.append(str(pvar.name.sym_name));
+                    }
+                }
+            }
+            functions.append(
+                EndpointMeta(
+                    name=fn_name,
+                    module=module_name,
+                    `pub=_is_pub(item.access),
+                    params=fn_params
+                )
+            );
+        }
+    }
+    return (walkers, functions);
+}
+
+
 def build_bun_service_artifact(
     module_name: str, base_path: str, project_name: str = ''
 ) -> Path {
@@ -163,46 +221,10 @@ def build_bun_service_artifact(
         raise RuntimeError(f"Bun service '{module_name}' produced no JS output");
     }
 
-    walkers: list[EndpointMeta] = [];
-    functions: list[EndpointMeta] = [];
-    import from jaclang.jac0core.constant { Tokens as Tok }
-    for item in ir.body {
-        if isinstance(item, uni.Archetype)
-            and item.sym_category == SymbolType.WALKER_ARCH {
-            walkers.append(
-                EndpointMeta(
-                    name=str(item.name.sym_name),
-                    module=module_name,
-                    `pub=item.access is not None and item.access.tag.name == Tok.KW_PUB
-                )
-            );
-        } elif isinstance(item, uni.Ability) and item.name_ref is not None {
-            fn_name = str(item.name_ref.sym_name);
-            if fn_name.startswith('_') {
-                continue;
-            }
-            fn_params: list[str] = [];
-            if isinstance(item.signature, uni.FuncSignature) {
-                for pvar in item.signature.get_parameters() {
-                    if pvar.name is not None {
-                        fn_params.append(str(pvar.name.sym_name));
-                    }
-                }
-            }
-            functions.append(
-                EndpointMeta(
-                    name=fn_name,
-                    module=module_name,
-                    `pub=item.access is not None and item.access.tag.name == Tok.KW_PUB,
-                    params=fn_params
-                )
-            );
-        }
-    }
+    (walkers, functions) = _extract_endpoints(ir, module_name);
 
     out_dir = base_dir / '.jac' / 'server' / module_name;
     if out_dir.exists() {
-        import shutil;
         shutil.rmtree(out_dir);
     }
     out_dir.mkdir(parents=True, exist_ok=True);
