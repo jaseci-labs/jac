@@ -45,6 +45,21 @@ obj ElementSummary {
     }
 
     static def from_dict(d: dict) -> ElementSummary {
+        # Shape guard: a well-formed record written by to_dict carries every
+        # key below, so a missing one means a stale/corrupt cache entry.
+        # Raise instead of silently defaulting 14 fields; summary_from_bytes
+        # catches this and the caller recomputes the summary.
+        if (
+            not isinstance(d, dict)
+            or 'index' not in d
+            or 'kind' not in d
+            or 'name' not in d
+        ) {
+            raise ValueError(
+                f'Malformed placement element summary: '
+                + f'{sorted(d.keys()) if isinstance(d, dict) else type(d).__name__}'
+            );
+        }
         es = ElementSummary();
         es.index = int(d.get('index', -1));
         es.kind = str(d.get('kind', ''));
