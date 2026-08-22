@@ -1,6 +1,7 @@
-"""Shared host dispatch for test/bun sv services used by core + scale runtimes."""
+# Shared host dispatch for test/bun sv services used by core + scale runtimes.
 
 import from pathlib { Path }
+import hashlib;
 import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
 import from jaclang.jac0core.host { HOST_BUN, HOST_TEST }
 import from jaclang.runtimelib.test_sv_host {
@@ -12,7 +13,10 @@ import from jaclang.runtimelib { sv_client }
 
 
 def default_sv_base_port(module_name: str) -> int {
-    return 18000 + hash(module_name) % 1000;
+    # Python's hash() is per-process salted, so two processes would derive
+    # different bases from the same name. Use a stable digest instead.
+    digest = int.from_bytes(hashlib.sha1(module_name.encode()).digest()[:4], 'big');
+    return 18000 + digest % 1000;
 }
 
 

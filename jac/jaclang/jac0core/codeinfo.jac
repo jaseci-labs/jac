@@ -200,6 +200,20 @@ glob NATIVE_ERASED_IDENTITY_CALLS: frozenset = frozenset({"cast"});
 
 glob _bun_host_decision_cache: dict[str, bool] = {};
 
+
+def clear_bun_host_decision_cache() -> None {
+    # Drop memoized project_uses_bun_host verdicts AND the discovered-config
+    # cache they were derived from, so tests/watchers that flip
+    # [plugin.client].target mid-process are honored on the next call.
+    _bun_host_decision_cache.clear();
+    try {
+        import from jaclang.project.config { clear_discovered_config_cache }
+        clear_discovered_config_cache();
+    } except ImportError {
+        ;
+    }
+}
+
 glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"field"});
 
 glob PASS_RIM_MODULE: str = "jaclang.jac0core.passes.pass_rim";
@@ -317,28 +331,34 @@ def project_uses_bun_host(base_path: str = '') -> bool {
 }
 
 
-def resolve_cl_module(
-    module_name: str, base_dir: str = ''
-) -> tuple[(str | None, str | None)] {
+obj ClModuleRef {
+    # Resolution result for a client-stdlib module import: `src_name` is the
+    # dotted module path as addressable from the stdlib root (os.sep-joined
+    # relative path), `path` the on-disk .jac file. Both None when unresolved.
+    has src_name: (str | None) = None,
+        path: (str | None) = None;
+}
+
+def resolve_cl_module(module_name: str, base_dir: str = '') -> ClModuleRef {
     import os;
     if not project_uses_bun_host(base_dir) {
-        return (None, None);
+        return ClModuleRef();
     }
     stdlib_dir = cl_stdlib_root();
     if stdlib_dir is None or not module_name {
-        return (None, None);
+        return ClModuleRef();
     }
     clean = module_name.lstrip('.');
     path_name = clean.replace('.', os.sep);
     plain = os.path.join(stdlib_dir, path_name + '.jac');
     if os.path.isfile(plain) {
-        return (path_name, plain);
+        return ClModuleRef(src_name=path_name, path=plain);
     }
     pkg_init = os.path.join(stdlib_dir, path_name, '__init__.jac');
     if os.path.isfile(pkg_init) {
-        return (path_name, pkg_init);
+        return ClModuleRef(src_name=path_name, path=pkg_init);
     }
-    return (None, None);
+    return ClModuleRef();
 }
 
 def is_native_by_location(file_path: str) -> bool {

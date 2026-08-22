@@ -1402,6 +1402,10 @@ impl get_config_for_dir(start_dir: str) -> JacConfig | None {
     return get_config_for_path(Path(start_dir));
 }
 
+impl clear_discovered_config_cache -> None {
+    _config_by_root.clear();
+}
+
 impl get_config_for_path(start_path: Path) -> JacConfig | None {
     explicit = get_explicit_config();
     if explicit is not None {

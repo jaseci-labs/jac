@@ -261,6 +261,12 @@ glob _config: JacConfig | None = None,
      _config_explicit: bool = False,
      _config_by_root: dict[str, JacConfig | None] = {};
 
+# Drops the per-project-root discovery memo (see get_config_for_path).
+# Explicit config set via set_config is untouched. Needed by invalidation
+# entry points (e.g. jaclang.jac0core.codeinfo.clear_bun_host_decision_cache)
+# and tests that rewrite jac.toml mid-process.
+def clear_discovered_config_cache() -> None;
+
 def get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None;

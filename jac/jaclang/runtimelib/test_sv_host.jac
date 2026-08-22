@@ -1,4 +1,4 @@
-"""In-process test host for sv-to-sv tests (replaces _test_clients in production)."""
+# In-process test host for sv-to-sv tests (replaces _test_clients in production).
 
 glob _RUNTIMES: dict[str, any] = {},
      _ADAPTERS: dict[str, any] = {};

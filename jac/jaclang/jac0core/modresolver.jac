@@ -324,9 +324,9 @@ def resolve_module(
             return res;
         }
         import from jaclang.jac0core.codeinfo { resolve_cl_module }
-        (_cl_src, cl_path) = resolve_cl_module(target, base_path);
-        if cl_path is not None {
-            return (cl_path, 'jac');
+        cl_ref = resolve_cl_module(target, base_path);
+        if cl_ref.path is not None {
+            return (cl_ref.path, 'jac');
         }
         res = _self_tree_candidate(base_dir, actual_parts);
         if res {

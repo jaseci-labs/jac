@@ -31,7 +31,7 @@ glob HOST_DOM: str = 'DOM',
      P3_JS_HOST_CAPS: list[str] = [HOST_NPM, HOST_JS_GLOBALS],
      HOST_CAPABILITIES: dict[str, list[str]] = {
          HOST_BROWSER: [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS],
-         'webview': [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS],
+         HOST_WEBVIEW: [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS],
          HOST_RN: [HOST_NPM, HOST_JS_GLOBALS],
          HOST_BUN: [HOST_NPM, HOST_JS_GLOBALS, HOST_PERSIST],
          HOST_WEB_WORKER: [HOST_NPM, HOST_JS_GLOBALS],
@@ -111,7 +111,8 @@ def host_kind_for_target(name: str) -> str {
         if str(name or '').strip() {
             valid = ', '.join(sorted(TARGET_HOST_KIND.keys()));
             raise ValueError(
-                f"Unknown client target '{name}'; valid targets: {valid}"
+                f"Unknown client target '{name}' (set via [client] target in "
+                + f'jac.toml); valid targets: {valid}'
             );
         }
         return HOST_BROWSER;
@@ -217,7 +218,9 @@ def framework_for_host_kind(kind: str) -> str {
         if cfg is not None and cfg.client is not None and cfg.client.framework {
             return cfg.client.framework;
         }
-    } except (ImportError, AttributeError) {
+    } except ImportError {
+        # Only the optional config loader may be missing here. AttributeError
+        # would hide real bugs in the config object shape.
         ;
     }
     return 'react';
