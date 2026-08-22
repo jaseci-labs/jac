@@ -372,3 +372,32 @@ def sum_gen() -> int {
     assert "yield (index * 3)" in js or "yield index * 3" in js , f"yield must survive lowering: {js[0:600]}";
     assert "for (const v of _jac.builtin.iter(gen_vals(3)))" in js , f"generator calls must stay iterable in for-of: {js[0:600]}";
 }
+
+test "typed graph filter in walker body lowers to osp filter" {
+    code = """node Item { has name: str; }
+walker:pub T {
+    can go with Root entry {
+        n = len([root-->][?:Item]);
+    }
+}
+""";
+    prog = JacProgram();
+    mod = compile_inline(code, prog=prog, client=True);
+    assert not prog.errors_had , f"expected clean compile, got {prog.errors_had[:1]}";
+    js = mod.gen.js;
+    assert "__ospRefsW" in js , f"traversal must lower to osp refs: {js[0:600]}";
+    assert ".filter(x => __ospIsA(" in js , f"archetype filter must lower to a real JS filter: {js[0:600]}";
+}
+
+test "typed graph filter in server-side def lowers without E5097" {
+    code = """node Item { has name: str; }
+def:pub count_items -> int {
+    return len([root-->][?:Item]);
+}
+""";
+    prog = JacProgram();
+    mod = compile_inline(code, prog=prog, client=True);
+    assert not prog.errors_had , f"expected clean compile, got {prog.errors_had[:1]}";
+    js = mod.gen.js;
+    assert ".filter(x => __ospIsA(" in js , f"archetype filter must lower to a real JS filter: {js[0:600]}";
+}

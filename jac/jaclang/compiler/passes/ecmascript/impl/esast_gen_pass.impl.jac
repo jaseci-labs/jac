@@ -882,7 +882,52 @@ impl EsastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
         nd.target.gen.es_ast
             or self.sync_loc(es.Identifier(name='obj'), jac_node=nd.target)
     );
-    if (nd.right and nd.right.gen.es_ast) {
+    if (nd.right and isinstance(nd.right, uni.FilterCompr)) {
+        # Graph archetype/value filter on a traversal expression:
+        # `[root-->][?:Item]`. Lower exactly like the step filters in
+        # _build_edge_ref: `.filter(x => <pred>)` over the traversal
+        # result. This trailer shape has no es_ast of its own, so it must
+        # be handled before the generic `right.gen.es_ast` guard below --
+        # otherwise the whole expression lowered to nothing and was
+        # silently dropped from call arguments.
+        self.needs_osp_graph = True;
+        _fpred = self._build_osp_filter_pred(nd, nd.right);
+        if _fpred is None {
+            nd.gen.es_ast = self.sync_loc(
+                es.ArrayExpression(elements=[]), jac_node=nd
+            );
+        } else {
+            nd.gen.es_ast = self.sync_loc(
+                es.CallExpression(
+                    callee=self.sync_loc(
+                        es.MemberExpression(
+                            object=`obj,
+                            property=self.sync_loc(
+                                es.Identifier(name='filter'), jac_node=nd
+                            ),
+                            computed=False
+                        ),
+                        jac_node=nd
+                    ),
+                    arguments=[
+                        self.sync_loc(
+                            es.ArrowFunctionExpression(
+                                params=[
+                                    self.sync_loc(
+                                        es.Identifier(name='x'), jac_node=nd
+                                    )
+                                ],
+                                body=_fpred,
+                                expression=True
+                            ),
+                            jac_node=nd
+                        )
+                    ]
+                ),
+                jac_node=nd
+            );
+        }
+    } elif (nd.right and nd.right.gen.es_ast) {
         if isinstance(nd.right, uni.Name) {
             prop = self.sync_loc(
                 es.Identifier(name=nd.right.sym_name), jac_node=nd.right
