@@ -62,4 +62,5 @@ obj NaIRGenBuiltins(NaIRGenState) {
     def _emit_float_repr(fv: ir.Value) -> ir.Value;
     def _emit_opt_repr(opt_val: ir.Value) -> (ir.Value | None);
     def _float_repr_fn -> ir.Function;
+    def _emit_any_str(jacval: ir.Value) -> ir.Value;
 }
