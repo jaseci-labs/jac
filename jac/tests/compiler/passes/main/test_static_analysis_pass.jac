@@ -101,10 +101,12 @@ test "classmethod and staticmethod on class produce no warnings" {
     prog = JacProgram();
     prog.compile(file_path);
     warning_msgs = [str(w) for w in prog.warnings_had];
+    # W2006/W2007 (semantic analysis) skip Python `class`; W3001 (lint) still
+    # suggests `static` for @staticmethod and must not be counted here.
     decorator_warnings = [
         w
         for w in warning_msgs
-        if "@classmethod" in w or "@staticmethod" in w
+        if "not recommended" in w and ("@classmethod" in w or "@staticmethod" in w)
     ];
     assert len(decorator_warnings) == 0 , f"Expected no decorator warnings for class, got: {decorator_warnings}";
 }

@@ -51,6 +51,13 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
         self._check_unnecessary_pass(list(ability_node.body));
     }
     name = ability_node.name_spec.sym_name if ability_node.name_spec else "<anonymous>";
+
+    if self.report_only
+        and isinstance(ability_node.name_ref, uni.Name)
+        and ability_node.name_ref.value == "__init__"
+        and not self._is_suppressed(W3004) {
+        name = "init";
+    }
     self._check_unnecessary_none_return(
         ability_node, ability_node.body, ability_node.signature, name
     );
@@ -116,7 +123,7 @@ impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -
 }
 
 impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     if ability_node.decorators {
@@ -127,7 +134,11 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
                 break;
             }
         }
-        if has_staticmethod and self.emit(W3001, node_override=ability_node) {
+        if (
+            has_staticmethod
+            and self.emit(W3001, node_override=ability_node)
+            and not self.report_only
+        ) {
             if not ability_node.is_static {
                 ability_node.is_static = True;
             }
@@ -139,7 +150,11 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
             ability_node.decorators = new_decorators or None;
         }
     }
-    if not self._is_suppressed(W3001) and ability_node.is_static {
+    if (
+        not self.report_only
+        and not self._is_suppressed(W3001)
+        and ability_node.is_static
+    ) {
         self._remove_staticmethod_from_kids(ability_node);
     }
 
@@ -163,6 +178,9 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if new_tok is not None {
         init_name = ability_node.name_ref.value;
         if not self.emit(W3004, node_override=ability_node, name=init_name) {
+            return;
+        }
+        if self.report_only {
             return;
         }
         old_ref = ability_node.name_ref;
@@ -190,16 +208,14 @@ impl JacAutoLintPass.enter_impl_def(nd: uni.ImplDef) -> None {
     if not self._is_suppressed(W3043) {
         self._convert_property_impl(impl_node);
     }
-    if self.report_only {
-        return;
-    }
     if not self._is_suppressed(W3010) {
         self._fix_impl_signature_mismatch(impl_node);
     }
     if impl_node.body is not None and isinstance(impl_node.body, list) {
         new_body = self.combine_consecutive_has(list(impl_node.body));
         if len(new_body) != len(impl_node.body)
-            and self.emit(W3002, node_override=impl_node) {
+            and self.emit(W3002, node_override=impl_node)
+            and not self.report_only {
             impl_node.body = new_body;
             self.recalculate_parents(impl_node);
         }
@@ -218,7 +234,7 @@ impl JacAutoLintPass.exit_impl_def(nd: uni.ImplDef) -> None {
 }
 
 impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     enum_node = nd;
@@ -235,9 +251,6 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
         and arch.body is not None
         and isinstance(arch.body, list) {
         self._convert_properties(arch);
-    }
-    if self.report_only {
-        return;
     }
     self._combine_has_in_node(arch);
 }
@@ -269,7 +282,8 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
             all_single = all(len(g.assignments) == 1 for g in merged_globs);
             if len(merged_globs) > 1
                 and all_single
-                and self.emit(W3003, node_override=base_glob) {
+                and self.emit(W3003, node_override=base_glob)
+                and not self.report_only {
                 combined_assignments: list[uni.Assignment] = [];
                 for `glob in merged_globs {
                     combined_assignments.extend(`glob.assignments);
@@ -374,7 +388,11 @@ impl JacAutoLintPass._combine_has_in_node(
     if nd.body is not None and isinstance(nd.body, list) {
         old_body = list(nd.body);
         new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body) and self.emit(W3002, node_override=nd) {
+        if (
+            len(new_body) != len(old_body)
+            and self.emit(W3002, node_override=nd)
+            and not self.report_only
+        ) {
             nd.body = new_body;
             self.recalculate_parents(nd);
             new_body_set = set(id(s) for s in new_body);
@@ -542,12 +560,23 @@ impl JacAutoLintPass.entry_written_names(module: uni.Module) -> set[str] {
 }
 
 impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     module = nd;
     if self.main_module is None {
         self.main_module = module;
+    }
+    if self.report_only {
+        for stmt in module.body {
+            if self._is_future_annotations_import(stmt) {
+                self.emit(W3009, node_override=stmt);
+            }
+        }
+        if not self._is_suppressed(W3003) {
+            self.combine_consecutive_glob(module.body);
+        }
+        return;
     }
     unsafe_globalize = self.names_unsafe_to_globalize(module);
     entry_written = self.entry_written_names(module);
@@ -1082,6 +1111,9 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     if not self.emit(W3008, node_override=if_else_node) {
         return False;
     }
+    if self.report_only {
+        return True;
+    }
     if isinstance(if_else_node.else_value.expr, uni.Null) {
         replacement: uni.Expr = if_else_node.value.expr;
         replacement.parent = parent;
@@ -1147,13 +1179,13 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
 }
 
 impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled {
         return;
     }
     if not self._is_suppressed(W3008) and self._convert_ternary_to_or(if_else_node) {
         return;
     }
-    if self._is_suppressed(W3007) {
+    if self.report_only or self._is_suppressed(W3007) {
         return;
     }
     trailers: list[uni.AtomTrailer] = [];
@@ -1280,6 +1312,9 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
         return;
     }
     if not self.emit(W3010, node_override=impl_node) {
+        return;
+    }
+    if self.report_only {
         return;
     }
     import copy;
@@ -1456,7 +1491,7 @@ impl JacAutoLintPass._signatures_match(
 }
 
 impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
-    if not self.lint_enabled or self.report_only or import_node.from_loc is None {
+    if not self.lint_enabled or import_node.from_loc is None {
         return;
     }
     parent = import_node.parent;
@@ -1471,7 +1506,8 @@ impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
     }
     if idx + 1 < len(body)
         and isinstance(body[idx + 1], uni.Semi)
-        and self.emit(W3011, node_override=import_node) {
+        and self.emit(W3011, node_override=import_node)
+        and not self.report_only {
         semi = body[idx + 1];
         parent.body = [
             s
@@ -2284,6 +2320,10 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         if not self.emit(
             W3038, node_override=stmt, name=var_name, type_name=type_str, init=init_repr
         ) {
+            new_body.append(stmt);
+            continue;
+        }
+        if self.report_only {
             new_body.append(stmt);
             continue;
         }
