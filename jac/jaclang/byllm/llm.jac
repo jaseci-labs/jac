@@ -37,7 +37,11 @@ import from jaclang.byllm.types {
     reroute_tool_images_to_user_message
 }
 import from jaclang.byllm.config_loader { get_byllm_config }
-import from jaclang.byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }
+import from jaclang.byllm.telemetry {
+    _emit_agent_telemetry,
+    _current_invocation_id,
+    _aggregate_usage
+}
 import from jaclang.byllm.parallel {
     dispatch_batch,
     _index_by_identity,
@@ -198,6 +202,7 @@ obj Model(BaseLLM) {
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> object;
+    override async def ainvoke(mt_run: MTRuntime) -> object;
     def _raise_mapped_provider_error(e: Exception) -> None;
     def model_call_no_stream(params: dict) -> dict;
     async def model_call_no_stream_async(params: dict) -> dict;

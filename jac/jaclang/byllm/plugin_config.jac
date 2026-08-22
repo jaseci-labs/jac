@@ -74,6 +74,11 @@ class JacByllmPluginConfig {
                             "type": "bool",
                             "default": True,
                             "description": "Drop unsupported parameters for different providers"
+                        },
+                        "include_cost_in_streaming_usage": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Let litellm compute the cost on streamed usage chunks itself, using its full internal response context, instead of byLLM recomputing it from a synthetic {model, usage} shape"
                         }
                     }
                 },

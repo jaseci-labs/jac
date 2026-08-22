@@ -114,13 +114,13 @@ def _usage_from(path: str, response: (dict | None) = None) -> any {
         with mock.patch.object(llm, "model_call_with_stream", _stream) {
             list(llm.dispatch_streaming(mt));
         }
-        return llm._usage_history[-1];
+        return mt._usage_history[-1];
     }
     with mock.patch.object(llm, "model_call_with_stream_async", _astream) {
         agen: any = llm.adispatch_streaming(mt);
         asyncio.run(_drain(agen));
     }
-    return llm._usage_history[-1];
+    return mt._usage_history[-1];
 }
 
 
@@ -161,4 +161,71 @@ test "cost is omitted rather than guessed when it cannot be computed" {
             );
         }
     }
+}
+
+
+# =============================================================================
+# litellm's native include_cost_in_streaming_usage (BerriAI/litellm#13319)
+# =============================================================================
+# litellm can compute a `cost` field on the usage object itself, using its
+# own full internal response context, when `litellm.include_cost_in_streaming_usage`
+# is enabled. byLLM's own `_attach_call_cost` recomputes cost from a
+# synthetic {model, usage} shape for the raw-chunk streaming paths (no
+# rebuilt response available there), which is strictly less accurate.
+# byLLM should opt in to litellm's flag and defer to a cost litellm already
+# attached rather than recomputing it.
+
+test "byllm enables litellm's native include_cost_in_streaming_usage by default" {
+    litellm.include_cost_in_streaming_usage = False;
+    Model(model_name=MODEL);
+    assert litellm.include_cost_in_streaming_usage , (
+        "byllm should opt in to litellm's native streaming cost computation"
+    );
+}
+
+
+test "include_cost_in_streaming_usage config toggle is respected" {
+    with mock.patch.dict(
+        _byllm_llm_mod._litellm_config,
+        {"debug": False, "drop_params": True, "include_cost_in_streaming_usage": False},
+        clear=True
+    ) {
+        litellm.include_cost_in_streaming_usage = True;
+        Model(model_name=MODEL);
+        assert not litellm.include_cost_in_streaming_usage , (
+            "config should be able to turn off litellm's native streaming cost "
+            "computation"
+        );
+    }
+}
+
+
+test "litellm config defaults include include_cost_in_streaming_usage" {
+    import from jaclang.byllm.config_loader { JacByllmConfig }
+    config = JacByllmConfig();
+    defaults = config.get_default_config();
+    assert "include_cost_in_streaming_usage" in defaults["litellm"] , (
+        "litellm defaults should include 'include_cost_in_streaming_usage' key"
+    );
+    assert defaults["litellm"]["include_cost_in_streaming_usage"] == True , (
+        "include_cost_in_streaming_usage should default to True"
+    );
+
+    litellm_config = config.get_litellm_config();
+    assert litellm_config.get("include_cost_in_streaming_usage") == True , (
+        "get_litellm_config should surface include_cost_in_streaming_usage"
+    );
+}
+
+
+test "_attach_call_cost trusts a cost litellm already computed" {
+    usage = litellm.Usage(**TOKENS);
+    usage.cost = 0.0042;
+    with mock.patch.object(litellm, "completion_cost", return_value=999.0) as spy {
+        _byllm_llm_mod._attach_call_cost(usage, MODEL);
+        assert spy.call_count == 0 , (
+            "a cost litellm already attached must not trigger recomputation"
+        );
+    }
+    assert usage.cost == 0.0042 , "a cost litellm already attached must not be overwritten";
 }

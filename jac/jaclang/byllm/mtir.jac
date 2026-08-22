@@ -39,7 +39,9 @@ obj MTRuntime {
         _final_output: object = None,
         _has_final_output: bool = False,
         _stream_reset_count: int = 0,
-        _tool_arg_deltas: list[dict] = [];
+        _tool_arg_deltas: list[dict] = [],
+        _usage_history: list[dict] = [],
+        _call_kind: str = "react_iteration";
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def add_message(message: MessageType) -> None;

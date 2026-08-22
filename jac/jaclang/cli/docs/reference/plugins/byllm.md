@@ -494,6 +494,7 @@ max_output_retries = 3            # Retries for structured output (0 = disabled)
 local_cost_map = true             # Use local cost map
 drop_params = true                # Drop unsupported params per provider
 debug = false                     # Enable verbose LiteLLM logging
+include_cost_in_streaming_usage = true  # Let LiteLLM compute cost on streaming usage chunks
 
 [byllm.fallback]
 strategy = "fallback"             # Default ModelPool routing strategy
@@ -539,6 +540,7 @@ compaction_model       = ""       # Empty = copy of the active model; set to use
 | `local_cost_map` | bool | `true` | Use local cost map instead of fetching from remote |
 | `drop_params` | bool | `true` | Silently drop parameters unsupported by the chosen provider |
 | `debug` | bool | `false` | Enable verbose LiteLLM logging (HTTP requests, retries, headers). When `false`, LiteLLM's internal loggers are silenced. Exceptions are always logged via byLLM's own logger regardless of this setting |
+| `include_cost_in_streaming_usage` | bool | `true` | Let LiteLLM compute `cost` on a streamed usage chunk itself, from its own full response context, instead of byLLM recomputing it afterward from a bare `{model, usage}` shape. Has no effect below litellm 1.75.2, where the underlying flag doesn't exist |
 
 **`[byllm.parallel]` options:**
 
@@ -1486,7 +1488,7 @@ delta from a stream that replaced an abandoned one.
 | `thought` | LLM produced reasoning text before a tool call | `content` (str), `iteration` (int) |
 | `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
 | `chunk` | One token of the final streamed answer | `content` (str) |
-| `usage` | All LLM calls complete (always the last event) | `total` (dict), `per_call` (list[dict]) |
+| `usage` | All LLM calls complete (always the last event) | `total` (dict), `by_kind` (dict), `per_call` (list[dict]), `requests` (int) |
 
 **Importing `StreamEvent`:**
 
@@ -1517,6 +1519,24 @@ with entry {
                 print(call_usage);
             }
         }
+    }
+}
+```
+
+`usage` fires exactly once per invocation, even if no LLM call reported measurable tokens (`total` and `per_call` are then just empty). Every `by llm()` invocation makes at least one LLM call, but a single invocation with tools can make several - not just the ReAct-loop turns you asked for. Each `per_call` entry carries a `call_kind` field so you can tell them apart, and `event.data["by_kind"]` gives you the same totals pre-grouped:
+
+| `call_kind` | When it happens |
+|---|---|
+| `react_iteration` | A normal turn of the ReAct loop - the calls you actually asked for |
+| `final_answer_restream` | byLLM re-asking the model to reproduce its already-known answer as a stream, once tool calls are done |
+| `recovery` | byLLM re-prompting after the model skipped `finish_tool` on a structured/typed call |
+| `compaction` | The summarisation call that shrinks message history when auto-compaction fires |
+
+```jac
+with entry {
+    if event.event_type == "usage" {
+        print(event.data["requests"]);        # total LLM calls this invocation made
+        print(event.data["by_kind"]);         # e.g. {"react_iteration": {...}, "final_answer_restream": {...}}
     }
 }
 ```
@@ -2218,10 +2238,11 @@ Each callback receives a dict with these fields:
 | `latency_ms` | `float` | Wall-clock time for the invocation in milliseconds |
 | `status` | `str` | `"success"` or `"error"` |
 | `error` | `str \| None` | Error message if status is `"error"` (truncated to 1000 chars) |
+| `tokens` | `dict` | Token usage for every LLM call this invocation made - `total` (dict), `by_kind` (dict), `per_call` (list[dict]), `requests` (int). Same shape and `call_kind` values as the streaming `usage` `StreamEvent` (see [Usage Tracking](#usage-tracking)) - covers streaming and non-streaming calls alike, including `http_client`/proxy dispatch modes that never touch litellm. |
 
 ### Combining with LiteLLM Per-Call Logging
 
-For full observability (tokens, cost, per-call breakdowns), combine the byLLM agent callback with a [litellm CustomLogger](https://docs.litellm.ai/docs/observability/custom_callback#custom-callback-class). The agent callback fires once per `by llm()` invocation, while the litellm callback fires for each underlying LLM API call (including tool-use round-trips).
+The `tokens` field above covers per-invocation totals with no extra wiring. For raw per-underlying-API-call records (e.g. to feed an existing litellm-based observability stack, or to see every retry attempt individually), combine the byLLM agent callback with a [litellm CustomLogger](https://docs.litellm.ai/docs/observability/custom_callback#custom-callback-class). The agent callback fires once per `by llm()` invocation, while the litellm callback fires for each underlying LLM API call (including tool-use round-trips) - for any dispatch mode that actually goes through litellm.
 
 ```jac
 import litellm;
