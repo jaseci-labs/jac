@@ -1,17 +1,27 @@
 """Zero reachable demotions across every sealed root (epic #8201 phase C4).
 
 The per-root coverage files each pin one root. This is the branch-wide
-audit: it walks every entry in `NATIVE_SEAL_ROOTS`, measures it the way
-`seal_native_artifacts` measures it, and holds the whole seal to one
-statement.
+audit: it measures every entry in `NATIVE_SEAL_ROOTS` the way
+`seal_native_artifacts` measures it, one case per root, and holds the
+whole seal to one statement.
 
 **The demotion report equals the enumerated waiver list. Exactly.**
 
 Not "at most", not "fewer than last time". A seam that no waiver names
-fails, and a waiver that names no seam fails, for every root at once.
-That is the same two-way check each wave coverage performs, applied across
-the branch so a root cannot be added without its waivers or kept after
-its seams clear.
+fails, and a waiver that names no seam fails, for every root. That is the
+same two-way check each wave coverage performs, applied across the branch
+so a root cannot be added without its waivers or kept after its seams
+clear.
+
+Both halves of that check are root-scoped -- `seal_waiver_names` resolves
+the waivers registered against one root, and the seams come from that
+root's own coverage -- so the branch-wide statement is the conjunction of
+independent per-root ones, and `parametrize` states them that way. The
+loop that used to carry them was a single test doing every root's compile
+in series: one indivisible unit no scheduler could place, and the longest
+pole in the whole compiler suite by a wide margin. What a root cannot say
+alone is that *something* was measured at all, so that one stays whole
+below.
 
 Two further obligations, which are what make a waiver a debt rather than
 an exemption:
@@ -47,7 +57,9 @@ Running the audit prints the report to stderr, grouped by root and
 family, so a reviewer can read the whole debt in one place. Under
 `jac test` a passing test's output is hidden, and since the runner came
 in-house (#8287) there is no capture-off switch to turn it back on, so
-the report is readable from a failing run.
+the report is readable from a failing run. It is read off the waiver
+tables rather than the coverage: the per-root cases assert the two are
+the same set, so a green suite makes the cheap reading exact.
 
 The measurement is a source-lane one: under a sealed jaclang image the
 coverage reads the image's trust boundary instead of each unit's own
@@ -62,6 +74,7 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.sealed { _jaclang_image, native_artifact_for }
+import from jaclang.runtimelib.test { parametrize }
 import from jaclang.utils.precompile_bytecode {
     NATIVE_SEAL_CLOSURE,
     NATIVE_SEAL_DEMOTION_WAIVERS,
@@ -195,59 +208,72 @@ def _all_waived_names -> set[str] {
 }
 
 
-test "every sealed root's demotion report is exactly its waiver list" {
+"""Audit one root: its demotion report is exactly its waiver list.
+
+Both directions are root-scoped -- `seal_waiver_names` resolves the waivers
+registered against this root alone, and the seams come from this root's own
+coverage -- so a per-root case makes exactly the check the branch-wide loop
+used to make on its behalf. Splitting them is what lets the audit spread
+across workers: as one case it was a single indivisible unit that no
+scheduler could place, and it dominated the suite's wall clock.
+"""
+def _audit_root(rel: str) {
+    _require_source_lane();
+    (live, served, generated) = _auditable_roots();
+    if rel in served {
+        testskip(
+            "served from this runtime's own seal, so the build gated it; a "
+            "source coverage here would measure the image's trust boundary"
+        );
+    }
+    if rel in generated {
+        testskip(
+            "generated root with no source to compile: `native_materialize` "
+            "is written during the seal and measured inside it"
+        );
+    }
+    (_coverage, has_ir, errors) = _root_coverage(rel);
+    assert not errors , (
+        f"{rel}: {len(errors)} compile error(s), so its coverage means "
+        f"'not reached' rather than 'clean': {errors[:3]}"
+    );
+    assert has_ir , f"{rel}: no LLVM IR, so a zero-seam coverage would be vacuous";
+    seams = _seams_by_key(rel);
+    (allowed, _bare) = seal_waiver_names(rel);
+    failures: list[str] = [];
+    for k in sorted(seams) {
+        if k not in allowed {
+            failures.append(f"un-waived seam {k}: {seams[k]}");
+        }
+    }
+    for k in sorted(allowed) {
+        if k not in seams {
+            failures.append(f"waiver {k} no longer names a seam");
+        }
+    }
+    assert not failures , (
+        f"{rel}: {len(failures)} demotion(s) diverge from the enumerated "
+        "waiver list. An un-waived seam ships an abort stub; a stale waiver "
+        "hides a fix that already landed.\n"
+        + "\n".join(f"  {f}" for f in failures)
+    );
+}
+
+
+"""The audit has to measure something, or the whole suite passes vacuously.
+
+Each per-root case skips a root this runtime already serves from its own
+seal, so on a fully sealed runtime every one of them would skip and the
+audit would go green having compiled nothing. This is the guard the
+branch-wide loop carried as its `assert live`, kept whole now that no
+single case sees every root.
+"""
+test "the audit measures at least one sealed root from source" {
     _require_source_lane();
     (live, served, generated) = _auditable_roots();
     assert live , (
         "every sealed root is served from this runtime's own seal, so the "
         "audit measured nothing; run it on a source-lane runtime"
-    );
-    failures: list[str] = [];
-    for rel in live {
-        (_coverage, has_ir, errors) = _root_coverage(rel);
-        if errors {
-            failures.append(
-                f"{rel}: {len(errors)} compile error(s), so its coverage means "
-                f"'not reached' rather than 'clean': {errors[:3]}"
-            );
-            continue;
-        }
-        if not has_ir {
-            failures.append(
-                f"{rel}: no LLVM IR, so a zero-seam coverage would be vacuous"
-            );
-            continue;
-        }
-        seams = _seams_by_key(rel);
-        (allowed, _bare) = seal_waiver_names(rel);
-        unwaived = sorted(
-            k
-            for k in seams
-            if k not in allowed
-        );
-        # A caller whose body unconditionally reaches a demoted function is
-        # folded to an abort stub by the optimizer (the callee's noreturn
-        # stub inlines into it), so it ships as a stub the coverage never
-        # saw. The seal's linkage check requires a waiver for it, so a
-        # waiver naming a shipped stub is load-bearing, not stale.
-        shipped = _STUB_MEMO.get(rel) or set();
-        stale = sorted(
-            k
-            for k in allowed
-            if k not in seams and k.split("::")[-1] not in shipped
-        );
-        for k in unwaived {
-            failures.append(f"{rel}: un-waived seam {k}: {seams[k]}");
-        }
-        for k in stale {
-            failures.append(f"{rel}: waiver {k} no longer names a seam");
-        }
-    }
-    assert not failures , (
-        f"{len(failures)} demotion(s) diverge from the enumerated waiver "
-        "list across the sealed roots. An un-waived seam ships an abort "
-        "stub; a stale waiver hides a fix that already landed.\n"
-        + "\n".join(f"  {f}" for f in failures)
     );
     if served {
         sys.stderr.write(
@@ -341,9 +367,18 @@ test "every waived foreign name belongs to a module the root links" {
 }
 
 
+"""The whole waived surface, read off the tables instead of the coverage.
+
+The per-root cases assert that a root's measured seams and its registered
+waivers are the same set in both directions, so whenever this suite is
+green the enumerated waiver list *is* the waived surface -- reading the
+report off `seal_waiver_names` prints what walking every root's coverage
+would print. The earlier version did walk them, which was free only while
+one process's memo was already warm from the branch-wide case; per-root,
+that walk would have re-compiled every root a second time and simply moved
+the bottleneck here.
+"""
 test "the audit reports the whole waived surface" {
-    _require_source_lane();
-    (live, _served, generated) = _auditable_roots();
     owner = _family_of_waiver();
     mechanisms: dict[(str, str)] = {};
     for (label, _members, mechanism) in NATIVE_SEAL_WAIVER_FAMILIES {
@@ -353,20 +388,15 @@ test "the audit reports the whole waived surface" {
     lines: list[str] = [
         "",
         "  === sealed-root demotion audit ===",
-        f"  roots measured: {len(live)} of {len(AUDITED_ROOTS)}"
+        f"  roots audited: {len(AUDITED_ROOTS)}"
     ];
-    if generated {
-        lines.append(f"  generated, measured inside the seal: {', '.join(generated)}");
-    }
     total = 0;
-    for rel in live {
-        seams = _seams_by_key(rel);
+    for rel in AUDITED_ROOTS {
         (allowed, _bare) = seal_waiver_names(rel);
-        waived = sorted(
-            k
-            for k in seams
-            if k in allowed
-        );
+        waived = sorted(allowed);
+        if not waived {
+            continue;
+        }
         total += len(waived);
         lines.append(f"  {rel}: {len(waived)} waived");
         by_family: dict[(str, list)] = {};
@@ -384,7 +414,7 @@ test "the audit reports the whole waived surface" {
             }
         }
     }
-    lines.append(f"  total waived demotions across measured roots: {total}");
+    lines.append(f"  total waived demotions across audited roots: {total}");
     lines.append("  clearing mechanisms:");
     for label in sorted(mechanisms) {
         lines.append(f"    [{label}] {mechanisms[label]}");
@@ -393,4 +423,14 @@ test "the audit reports the whole waived surface" {
     sys.stderr.write(nl.join(lines) + nl);
     sys.stderr.flush();
     assert total >= 0;
+}
+
+
+with entry {
+    parametrize(
+        "sealed root demotion report equals its waiver list",
+        AUDITED_ROOTS,
+        _audit_root,
+        id_fn=lambda (rel: str) { rel[:-4].replace("/", "."); }
+    );
 }
