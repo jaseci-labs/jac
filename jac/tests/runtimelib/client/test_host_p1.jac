@@ -7,7 +7,7 @@ import os;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, write_service }
 import from jaclang.jac0core.host { HOST_BUN, HOST_CPYTHON, HOST_TEST }
 import from jaclang.jac0core.sv_service_host {
     bun_artifact_stamp_path,
@@ -31,15 +31,6 @@ glob _STATELESS_SVC: str = 'def:pub ping() -> int {\n' '    return 42;\n' '}\n',
      _CLIENT_DIR: Path = Path(JAC_ROOT) / 'jaclang' / 'runtimelib' / 'client';
 
 
-def _write_service(tmp: str, name: str, source: str) -> str {
-    path = os.path.join(tmp, f"{name}.jac");
-    with open(path, 'w') as f {
-        f.write(source);
-    }
-    return path;
-}
-
-
 test "resolve_sv_service_host defaults to cpython without a bun artifact" {
     with tempfile.TemporaryDirectory() as tmp {
         assert resolve_sv_service_host('demo', tmp) == HOST_CPYTHON;
@@ -49,7 +40,7 @@ test "resolve_sv_service_host defaults to cpython without a bun artifact" {
 
 test "resolve_sv_service_host selects bun when a fresh artifact exists" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'demo', _STATELESS_SVC);
+        write_service(tmp, 'demo', _STATELESS_SVC);
         artifact = bun_service_artifact_path('demo', tmp);
         artifact.parent.mkdir(parents=True, exist_ok=True);
         artifact.write_text('export default {};\n', encoding='utf-8');
@@ -67,7 +58,7 @@ test "resolve_sv_service_host selects bun when a fresh artifact exists" {
 
 test "edited service source invalidates a previously fresh artifact" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'demo', _STATELESS_SVC);
+        write_service(tmp, 'demo', _STATELESS_SVC);
         artifact = bun_service_artifact_path('demo', tmp);
         artifact.parent.mkdir(parents=True, exist_ok=True);
         artifact.write_text('export default {};\n', encoding='utf-8');
@@ -76,7 +67,7 @@ test "edited service source invalidates a previously fresh artifact" {
             bun_service_inputs_digest('demo', tmp), encoding='utf-8'
         );
         assert resolve_sv_service_host('demo', tmp) == HOST_BUN;
-        _write_service(tmp, 'demo', 'def:pub ping() -> int {\n    return 7;\n}\n');
+        write_service(tmp, 'demo', 'def:pub ping() -> int {\n    return 7;\n}\n');
         assert resolve_sv_service_host('demo', tmp) == HOST_CPYTHON , (
             "source edits must invalidate the artifact (edits self-invalidate)"
         );
@@ -85,7 +76,7 @@ test "edited service source invalidates a previously fresh artifact" {
 
 test "build_bun_service_artifact emits Bun.serve entry with functions health route" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'stateless', _STATELESS_SVC);
+        write_service(tmp, 'stateless', _STATELESS_SVC);
         artifact = build_bun_service_artifact('stateless', tmp);
         assert artifact.exists();
         text = artifact.read_text(encoding='utf-8');
@@ -96,7 +87,7 @@ test "build_bun_service_artifact emits Bun.serve entry with functions health rou
 
 test "build_bun_service_artifact accepts root-touching modules with BunStore (P2)" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'rooty', _ROOT_SVC);
+        write_service(tmp, 'rooty', _ROOT_SVC);
         artifact = build_bun_service_artifact('rooty', tmp);
         assert artifact.exists();
         text = artifact.read_text(encoding='utf-8');

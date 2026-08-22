@@ -141,16 +141,35 @@ def get_object(filename: str, id: str, main: bool = True) -> dict[(str, any)] {
 
 """Shared bun sv e2e helpers (spawn/poll/post) used by the bun e2e tests."""
 
+def _resolved_bun -> (str | None) {
+    # Use the same bun the production spawn path resolves (jac-managed
+    # installer), falling back to PATH so tests still run on dev boxes.
+    import from jaclang.runtimelib.client { get_bun }
+    return get_bun();
+}
+
 def bun_runtime_available -> bool {
     import subprocess;
     try {
         proc = subprocess.run(
-            ['bun', '--version'], capture_output=True, text=True, timeout=10
+            [_resolved_bun() or 'bun', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=10
         );
         return proc.returncode == 0;
     } except Exception {
         return False;
     }
+}
+
+def write_service(tmp: str, name: str, source: str) -> str {
+    import os;
+    path = os.path.join(tmp, f"{name}.jac");
+    with open(path, 'w') as f {
+        f.write(source);
+    }
+    return path;
 }
 
 def write_sv_project(tmp: str, module_name: str, source: str) -> None {
@@ -180,7 +199,7 @@ def spawn_bun_artifact(artifact: str, cwd: str, port: int, info: any) -> any {
         env['JAC_PG_SOCKET'] = info.unix_socket_dir;
     }
     return subprocess.Popen(
-        ['bun', artifact],
+        [_resolved_bun() or 'bun', artifact],
         cwd=cwd,
         env=env,
         stdout=subprocess.PIPE,

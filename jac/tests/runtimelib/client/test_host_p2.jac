@@ -6,7 +6,7 @@ Derived from PLAN.md Priority 2 only — not from implementation internals.
 import os;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, write_service }
 import from jaclang.jac0core.host { HOST_BUN }
 import from jaclang.jac0core.sv_service_host {
     bun_service_artifact_path,
@@ -39,23 +39,20 @@ glob _STATELESS_SVC: str = 'def:pub ping() -> int {\n' '    return 42;\n' '}\n',
      _BUILDER: Path = _RUNTIMELIB / 'bun_service_builder.jac';
 
 
-def _write_service(tmp: str, name: str, source: str) -> str {
-    path = os.path.join(tmp, f"{name}.jac");
-    with open(path, 'w') as f {
-        f.write(source);
-    }
-    return path;
-}
-
-
-test "BunStore module implements Store over Bun.sql" {
-    bun_store = _RUNTIMELIB / 'bun_store.jac';
-    bun_impl = _RUNTIMELIB / 'impl' / 'bun_store.impl.jac';
-    assert 'obj BunStore(Store)' in bun_store.read_text(encoding='utf-8') , (
-        "BunStore must implement the Store interface"
+test "BunStore implements the Store contract in JS over Bun.sql" {
+    # The Jac-side bun_store.jac is a documentation pointer only; the real
+    # implementation is the JS adapter bundled into service artifacts.
+    bun_store_js = _RUNTIMELIB / 'bun_store.js';
+    assert bun_store_js.exists();
+    js_text = bun_store_js.read_text(encoding='utf-8');
+    assert 'class BunStore' in js_text , (
+        "BunStore must be implemented by the bundled JS adapter"
     );
-    assert 'Bun.sql' in bun_impl.read_text(encoding='utf-8') , (
+    assert 'Bun.sql' in js_text or 'from "bun"' in js_text , (
         "P2 store must use Bun.sql against Postgres"
+    );
+    assert 'SCHEMA_STAMP_KEY' in js_text and 'SHOW server_version_num' in js_text , (
+        "BunStore must compute the PgStore-compatible schema fingerprint"
     );
 }
 
@@ -63,9 +60,9 @@ test "BunStore module implements Store over Bun.sql" {
 test "BunStore shares the PgStore anchor schema and version stamp" {
     import from jaclang.runtimelib.store { SCHEMA_SQL }
     pg_ddl = '\n'.join(str(stmt) for stmt in SCHEMA_SQL);
-    bun_impl = _RUNTIMELIB / 'impl' / 'bun_store.impl.jac';
-    assert bun_impl.exists();
-    bun_text = bun_impl.read_text(encoding='utf-8');
+    bun_schema = _RUNTIMELIB / 'bun_store.js';
+    assert bun_schema.exists();
+    bun_text = bun_schema.read_text(encoding='utf-8');
     for table in _PERSIST_SCHEMA_TABLES {
         assert f"CREATE TABLE IF NOT EXISTS {table}" in pg_ddl , (
             f"shared SCHEMA_SQL must create Postgres table {table!r}"
@@ -90,7 +87,7 @@ test "server_runtime wires BunStore into walker spawn context" {
 
 test "build_bun_service_artifact accepts root-touching modules in P2" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'persisted', _ROOT_SVC);
+        write_service(tmp, 'persisted', _ROOT_SVC);
         artifact = build_bun_service_artifact('persisted', tmp);
         assert artifact.exists();
         text = artifact.read_text(encoding='utf-8');
@@ -113,7 +110,7 @@ test "P1 stateless root gate is removed once BunStore is available" {
 
 test "root-touching bun artifact still resolves through sv_service_host" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'persisted', _ROOT_SVC);
+        write_service(tmp, 'persisted', _ROOT_SVC);
         artifact = build_bun_service_artifact('persisted', tmp);
         assert artifact == bun_service_artifact_path('persisted', tmp);
         assert resolve_sv_service_host('persisted', tmp) == HOST_BUN;
@@ -123,7 +120,7 @@ test "root-touching bun artifact still resolves through sv_service_host" {
 
 test "stateless bun services keep working after P2 store wiring" {
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'stateless', _STATELESS_SVC);
+        write_service(tmp, 'stateless', _STATELESS_SVC);
         artifact = build_bun_service_artifact('stateless', tmp);
         text = artifact.read_text(encoding='utf-8');
         assert 'Bun.serve' in text;
@@ -139,7 +136,7 @@ test "scale microservices config can pin a persist service to bun host" {
         reset_scale_config
     }
     with tempfile.TemporaryDirectory() as tmp {
-        _write_service(tmp, 'persisted', _ROOT_SVC);
+        write_service(tmp, 'persisted', _ROOT_SVC);
         toml = os.path.join(tmp, 'jac.toml');
         with open(toml, 'w') as f {
             f.write(

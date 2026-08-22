@@ -330,26 +330,6 @@ def project_uses_bun_host(base_path: str = '') -> bool {
 }
 
 
-def is_bundled_cl_module(module_name: str) -> bool {
-    import os;
-    stdlib_dir = cl_stdlib_root();
-    if stdlib_dir is None or not module_name {
-        return False;
-    }
-    clean = module_name.lstrip('.');
-    if clean.split('.')[0] not in BUN_STDLIB_MODULES {
-        return False;
-    }
-    path_name = clean.replace('.', os.sep);
-    plain = os.path.join(stdlib_dir, path_name + '.jac');
-    if os.path.isfile(plain) {
-        return True;
-    }
-    pkg_init = os.path.join(stdlib_dir, path_name, '__init__.jac');
-    return os.path.isfile(pkg_init);
-}
-
-
 def resolve_cl_module(
     module_name: str, base_dir: str = ''
 ) -> tuple[(str | None, str | None)] {

@@ -46,8 +46,17 @@ def emit_server_entry(
     import from jaclang.jac0core.compiler { run_pass }
     import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
     runtime_src = Path(resolve_client_runtime_cl_path('bun'));
+    # server_runtime.jac is a JS-interop module: it deliberately uses JS
+    # idioms (Reflect.apply, dot-dict access, `match` attribute names) that
+    # the Jac checker rejects. Compile with type_check=False EXPLICITLY so
+    # this boundary is visible and intentional, not an accident of defaults.
+    # Drift is caught by the bun e2e suites, which execute the artifact
+    # through real Bun.build (mislowered or invalid JS fails the build).
+    import from jaclang.jac0core.compile_options { CompileOptions }
     prog = JacProgram();
-    rt_mod = prog.compile(str(runtime_src));
+    rt_mod = prog.compile(
+        str(runtime_src), options=CompileOptions(type_check=False)
+    );
     if rt_mod is not None {
         run_pass(EsastGenPass, rt_mod, prog);
     }
