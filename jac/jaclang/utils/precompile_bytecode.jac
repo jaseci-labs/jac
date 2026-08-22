@@ -2929,6 +2929,9 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
+# Local copies of sealed_serve.interop_record_path/native_lib_suffix: this
+# script also runs under older runtime caches whose sealed_serve predates
+# those symbols (importing them there fails the whole seal).
 def _native_lib_suffix -> str {
     import sys;
     if sys.platform.startswith("win") {

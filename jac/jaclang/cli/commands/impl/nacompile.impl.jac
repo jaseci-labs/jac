@@ -14,7 +14,6 @@ enum NativeLinkTarget { STANDALONE_EXE = 'standalone_exe', SHARED_LIB = 'shared_
 
 
 obj NativeTargetPlan {
-    """Resolved view of the --target flag plus the host platform.""";
     has raw: str = "",
         is_wasm: bool = False,
         is_windows: bool = False,
@@ -70,7 +69,6 @@ def _parse_native_target(target: str) -> NativeTargetPlan {
 
 
 obj NativeLinkCtx {
-    """Everything downstream linking needs from one native compilation.""";
     has ir_module: any,
         options: any,
         base_llvm_ir: str,
@@ -80,7 +78,6 @@ obj NativeLinkCtx {
 
 
 obj NativeCompilePrep {
-    """Shared prologue result: resolved GC settings and a fresh program.""";
     has gc: str,
         gc_cfg: any,
         prog: any;
