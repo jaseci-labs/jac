@@ -762,12 +762,7 @@ impl NaIRGenVtable._is_runtime_class_tuple(t: any) -> bool {
     An arity-less arm (the `UnknownType` a variadic tuple parks) is skipped, so
     both `tuple[type[T], type[T]]` and `tuple[type[T], ...]` qualify.
     """;
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _SeqClassType }
-    } except ImportError {
-        return False;
-    }
-    if not isinstance(t, _SeqClassType) or t._shared is None {
+    if not isinstance(t, ClassType) or t._shared is None {
         return False;
     }
     if t.shared.class_name != "tuple" {

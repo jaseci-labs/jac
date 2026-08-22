@@ -481,12 +481,7 @@ impl NaIRGenObjects._codegen_archetype(nd: uni.Archetype) -> None {
         if var is not None and var.type_tag is not None {
             if finfo.owner in self.clib_struct_names {
                 _cf_fnty = False;
-                try {
-                    import from jaclang.compiler.type_system.types {
-                        FunctionType as _ClibFnType
-                    }
-                    _cf_fnty = isinstance(var?.type, _ClibFnType);
-                } except ImportError { }
+                _cf_fnty = isinstance(var?.type, FunctionType);
                 if _cf_fnty {
                     ftype = self._lower_clib_function_type(arch_name, fname, var.type);
                 } else {

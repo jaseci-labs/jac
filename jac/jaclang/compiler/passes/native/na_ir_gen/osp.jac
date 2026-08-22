@@ -4,6 +4,7 @@ import from jaclang.jac0core.codeinfo { HDR_RC_OFF, RC_SENTINEL }
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.diagnostics { E5092 }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.compiler.type_system.types { ClassType }
 
 obj NaIRGenOsp(NaIRGenState) {
     def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);

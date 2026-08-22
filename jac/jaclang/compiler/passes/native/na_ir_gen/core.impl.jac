@@ -58,16 +58,8 @@ impl NaIRGenCore.postinit -> None {
         "i8*": ir.IntType(8).as_pointer()
     };
     self._type_map = {};
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        for (_name, _spec) in JAC_TYPE_REGISTRY.na_type_entries() {
-            self.type_map[_name] = _spec_map[_spec];
-        }
-    } except ImportError {
-        self.type_map["int"] = _spec_map["i64"];
-        self.type_map["float"] = _spec_map["f64"];
-        self.type_map["bool"] = _spec_map["i1"];
-        self.type_map["str"] = _spec_map["i8*"];
+    for (_name, _spec) in JAC_TYPE_REGISTRY.na_type_entries() {
+        self.type_map[_name] = _spec_map[_spec];
     }
 
     if "wasm" not in str(self.llvm_module.triple or "") {

@@ -350,15 +350,10 @@ impl NaIRGenTuples._variadic_tuple_seq_type(type_args: list) -> (ir.Type | None)
     system marks the variadic form by parking an `UnknownType` among the type
     arguments, which is the same signal `_tuple_has_variadic_arg` reads.
     """;
-    try {
-        import from jaclang.compiler.type_system.types { UnknownType as _VtUnknown }
-    } except ImportError {
-        return None;
-    }
     elems = [
         a
         for a in type_args
-        if not isinstance(a, _VtUnknown)
+        if not isinstance(a, UnknownType)
     ];
     if len(elems) == len(type_args) or not elems {
         return None;

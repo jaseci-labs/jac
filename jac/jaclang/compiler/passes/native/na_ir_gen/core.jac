@@ -10,6 +10,7 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import jaclang.jac0core.unitree as uni;
 import os;
 import sys;
+import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 obj NaIRGenCore(NaIRGenState) {
     def postinit -> None;

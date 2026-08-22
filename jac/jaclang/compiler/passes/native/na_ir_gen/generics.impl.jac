@@ -19,11 +19,6 @@ impl NaIRGenGenerics._mangled_of(t: any) -> (str | None) {
 impl NaIRGenGenerics._syntactic_bind_type_params(
     tag_node: (uni.UniNode | None), actual: any, tp_names: list[str], solution: dict
 ) -> None {
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _SbCT }
-    } except ImportError {
-        return;
-    }
     nd = tag_node;
     while isinstance(nd, uni.AtomUnit) and nd.value is not None {
         nd = nd.value;
@@ -34,7 +29,7 @@ impl NaIRGenGenerics._syntactic_bind_type_params(
     if isinstance(nd, uni.Name) {
         if nd.value in tp_names and nd.value not in solution {
             _a = actual;
-            if isinstance(_a, _SbCT)
+            if isinstance(_a, ClassType)
                 and not _a.is_instance()
                 and _a.is_instantiable() {
                 _a = _a.clone_as_instance();
@@ -50,7 +45,7 @@ impl NaIRGenGenerics._syntactic_bind_type_params(
         and isinstance(nd.right, uni.IndexSlice)
         and len(nd.right.slices) == 1
         and nd.right.slices[0].start is not None
-        and isinstance(actual, _SbCT)
+        and isinstance(actual, ClassType)
         and not actual.is_instance()
         and actual.is_instantiable()
     ) {
@@ -62,7 +57,7 @@ impl NaIRGenGenerics._syntactic_bind_type_params(
     if (
         isinstance(nd, uni.AtomTrailer)
         and isinstance(nd.right, uni.IndexSlice)
-        and isinstance(actual, _SbCT)
+        and isinstance(actual, ClassType)
     ) {
         _args = actual.private.type_args or [];
         for (i, sl) in enumerate(nd.right.slices) {
@@ -78,15 +73,6 @@ impl NaIRGenGenerics._syntactic_bind_type_params(
 impl NaIRGenGenerics._solve_generic_call(
     ability: uni.Ability, nd: uni.FuncCall
 ) -> (dict | None) {
-    try {
-        import from jaclang.compiler.type_system.types {
-            TypeVarType as _TVT,
-            ClassType as _CT,
-            UnionType as _UT
-        }
-    } except ImportError {
-        return None;
-    }
     solution: dict = {};
 
     def unify(decl: any, actual: any) -> None {
@@ -94,28 +80,30 @@ impl NaIRGenGenerics._solve_generic_call(
             return;
         }
         _outer = self._mono_solution;
-        if isinstance(actual, _TVT) and _outer is not None and actual.name in _outer {
+        if isinstance(actual, TypeVarType)
+            and _outer is not None
+            and actual.name in _outer {
             actual = _outer[actual.name];
         }
-        if isinstance(decl, _TVT) {
+        if isinstance(decl, TypeVarType) {
             if decl.name not in solution {
                 solution[decl.name] = actual;
             }
             return;
         }
         if (
-            isinstance(decl, _CT)
+            isinstance(decl, ClassType)
             and decl._shared is not None
             and decl.shared.class_name == "type"
             and (decl.private.type_args or [])
-            and isinstance(actual, _CT)
+            and isinstance(actual, ClassType)
             and actual.is_instantiable()
             and not actual.is_instance()
         ) {
             unify(decl.private.type_args[0], actual.clone_as_instance());
             return;
         }
-        if isinstance(decl, _CT) and isinstance(actual, _CT) {
+        if isinstance(decl, ClassType) and isinstance(actual, ClassType) {
             d_args = decl.private.type_args or [];
             a_args = actual.private.type_args or [];
             for (i, da) in enumerate(d_args) {
@@ -125,9 +113,9 @@ impl NaIRGenGenerics._solve_generic_call(
             }
             return;
         }
-        if isinstance(decl, _UT) {
+        if isinstance(decl, UnionType) {
             for m in (decl.types or []) {
-                if isinstance(m, _TVT) {
+                if isinstance(m, TypeVarType) {
                     unify(m, actual);
                     return;
                 }
@@ -293,16 +281,8 @@ impl NaIRGenGenerics._stamp_mono_fn(
 impl NaIRGenGenerics._instantiate_generic_for_target(
     func_name: str, tag_node: uni.UniNode
 ) -> (ir.Function | None) {
-    try {
-        import from jaclang.compiler.type_system.types {
-            FunctionType as _A5FnType,
-            TypeVarType as _A5TypeVar
-        }
-    } except ImportError {
-        return None;
-    }
     tag_t = tag_node.type if isinstance(tag_node, uni.Expr) else None;
-    if not isinstance(tag_t, _A5FnType) {
+    if not isinstance(tag_t, FunctionType) {
         return None;
     }
     ability = self.generic_fns.get(func_name);
@@ -317,7 +297,7 @@ impl NaIRGenGenerics._instantiate_generic_for_target(
         if p.type_tag and p.type_tag.tag and isinstance(p.type_tag.tag, uni.Expr) {
             _pt = p.type_tag.tag.type;
         }
-        if isinstance(_pt, _A5TypeVar) and i < len(_tgt_params) {
+        if isinstance(_pt, TypeVarType) and i < len(_tgt_params) {
             _sol_t = _tgt_params[i].param_type;
             if _sol_t is not None and _pt.name not in solution {
                 solution[_pt.name] = _sol_t;
@@ -326,7 +306,7 @@ impl NaIRGenGenerics._instantiate_generic_for_target(
     }
     _rt = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
     if (
-        isinstance(_rt, _A5TypeVar)
+        isinstance(_rt, TypeVarType)
         and _rt.name not in solution
         and tag_t.return_type is not None
     ) {

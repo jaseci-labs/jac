@@ -5,6 +5,7 @@ import from jaclang.jac0core.diagnostics { E5092, E9002 }
 import jaclang.jac0core.unitree as uni;
 import os;
 import from jaclang.jac0core.constant { OwnershipKind }
+import from jaclang.compiler.type_system.type_utils { convert_to_instance }
 
 obj NaIRGenStmt(NaIRGenState) {
     def _codegen_body(stmts: (list | tuple)) -> None;

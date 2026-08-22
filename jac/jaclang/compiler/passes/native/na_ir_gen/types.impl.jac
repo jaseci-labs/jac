@@ -2,20 +2,7 @@ impl NaIRGenTypes._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
         return None;
     }
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _ClassType,
-            UnionType as _UnionType,
-            FunctionType as _FunctionType,
-            NeverType as _NeverType,
-            AnyType as _AnyType,
-            TypeVarType as _TypeVarType,
-            EnumMemberType as _EnumMemberType
-        }
-    } except ImportError {
-        return None;
-    }
-    if isinstance(t, _TypeVarType) {
+    if isinstance(t, TypeVarType) {
         _sol = self._mono_solution;
         if _sol is not None and t.name in _sol {
             return self._lower_type(_sol[t.name]);
@@ -27,19 +14,19 @@ impl NaIRGenTypes._lower_type(t: any) -> (ir.Type | None) {
         return self._lowered_type_cache[key];
     }
     lowered: (ir.Type | None) = None;
-    if isinstance(t, _NeverType) {
+    if isinstance(t, NeverType) {
         lowered = ir.VoidType();
-    } elif isinstance(t, _AnyType) {
+    } elif isinstance(t, AnyType) {
         lowered = self.jacval_type;
-    } elif isinstance(t, _EnumMemberType) {
+    } elif isinstance(t, EnumMemberType) {
         lowered = self._lower_type(t.enum_class) if t.enum_class is not None else None;
-    } elif isinstance(t, _ClassType) {
+    } elif isinstance(t, ClassType) {
         lowered = self._lower_class_type(t);
-    } elif isinstance(t, _UnionType) {
+    } elif isinstance(t, UnionType) {
         lowered = ir.VoidType();
         _members: list = [];
         for m in (t.types or []) {
-            if isinstance(m, _ClassType)
+            if isinstance(m, ClassType)
                 and m.shared.class_name in ("NoneType", "None") {
                 continue;
             }
@@ -67,7 +54,7 @@ impl NaIRGenTypes._lower_type(t: any) -> (ir.Type | None) {
                 lowered = _mlow;
             }
         }
-    } elif isinstance(t, _FunctionType) {
+    } elif isinstance(t, FunctionType) {
         lowered = self._lower_function_type(t);
     }
     if key is not None and lowered is not None {
@@ -115,18 +102,11 @@ impl NaIRGenTypes._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    try {
-        import from jaclang.compiler.type_system.types {
-            EnumMemberType as _EnumMemberType
-        }
-    } except ImportError {
-        return None;
-    }
     import from jaclang.compiler.passes.main.layout_pass {
         is_enum_class_type as _is_enum_type
     }
     t = expr.type;
-    if isinstance(t, _EnumMemberType) and t.enum_class is not None {
+    if isinstance(t, EnumMemberType) and t.enum_class is not None {
         return t.enum_class.shared.class_name;
     }
     if _is_enum_type(t) {
@@ -222,15 +202,7 @@ impl NaIRGenTypes._spec_name_match(tk: str, names: tuple) -> bool {
 }
 
 impl NaIRGenTypes._opt_sole_member(t: any) -> (any | None) {
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _OsClassType,
-            UnionType as _OsUnionType
-        }
-    } except ImportError {
-        return None;
-    }
-    if not isinstance(t, _OsUnionType) {
+    if not isinstance(t, UnionType) {
         return None;
     }
     _all = t.types or [];
@@ -238,7 +210,7 @@ impl NaIRGenTypes._opt_sole_member(t: any) -> (any | None) {
         m
         for m in _all
         if not (
-            isinstance(m, _OsClassType)
+            isinstance(m, ClassType)
             and m._shared is not None
             and m.shared.class_name in ("NoneType", "None")
         )
@@ -250,22 +222,14 @@ impl NaIRGenTypes._opt_sole_member(t: any) -> (any | None) {
 }
 
 impl NaIRGenTypes._spec_union_agreement(t: any, names: tuple) -> (any | None) {
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _SuClassType,
-            UnionType as _SuUnionType
-        }
-    } except ImportError {
-        return None;
-    }
-    if not isinstance(t, _SuUnionType) {
+    if not isinstance(t, UnionType) {
         return None;
     }
     _members = [
         m
         for m in (t.types or [])
         if not (
-            isinstance(m, _SuClassType)
+            isinstance(m, ClassType)
             and m._shared is not None
             and m.shared.class_name in ("NoneType", "None")
         )
@@ -497,22 +461,14 @@ impl NaIRGenTypes._elem_storage_llvm(t: any) -> (ir.Type | None) {
     if t is None {
         return None;
     }
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _EsClassType,
-            UnionType as _EsUnionType
-        }
-    } except ImportError {
-        return self._lower_type(t);
-    }
-    if not isinstance(t, _EsUnionType) {
+    if not isinstance(t, UnionType) {
         return self._lower_type(t);
     }
     _members = [
         m
         for m in (t.types or [])
         if not (
-            isinstance(m, _EsClassType)
+            isinstance(m, ClassType)
             and m._shared is not None
             and m.shared.class_name in ("NoneType", "None")
         )
@@ -843,7 +799,7 @@ impl NaIRGenTypes._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type 
         if _sig_seq is not None {
             return _sig_seq;
         }
-        if not self._type_base_is_unknown(_ptb) {
+        if not isinstance(_ptb, UnknownType) {
             _sig_shared = _ptb?.shared;
             _sig_cn = _sig_shared.class_name if _sig_shared is not None else None;
             if _sig_cn in ("tuple", "list", "dict", "set", "type") {
@@ -935,17 +891,10 @@ impl NaIRGenTypes._widened_tuple_decl_type(
         if not (isinstance(nd, uni.Name) and nd.value == "tuple") {
             return None;
         }
-    } else {
-        try {
-            import from jaclang.compiler.type_system.types { ClassType as _WdClassType }
-        } except ImportError {
-            return None;
-        }
-        if not isinstance(_tb, _WdClassType)
-            or _tb.shared.class_name != "tuple"
-            or (_tb.private.type_args or []) {
-            return None;
-        }
+    } elif not isinstance(_tb, ClassType)
+        or _tb.shared.class_name != "tuple"
+        or (_tb.private.type_args or []) {
+        return None;
     }
     if isinstance(value, uni.TupleVal) and not value.values {
         return self._tuple_struct_of([]).as_pointer();
@@ -964,14 +913,9 @@ impl NaIRGenTypes._tuple_struct_of(elem_types: list) -> ir.Type {
 impl NaIRGenTypes._resolve_field_type(var: uni.UniNode) -> ir.Type {
     _ptb = var?.type;
     if _ptb is not None {
-        try {
-            import from jaclang.compiler.type_system.types {
-                FunctionType as _FieldFnType
-            }
-            if isinstance(_ptb, _FieldFnType) {
-                return self._lower_function_type_raw(_ptb);
-            }
-        } except ImportError { }
+        if isinstance(_ptb, FunctionType) {
+            return self._lower_function_type_raw(_ptb);
+        }
         lowered = self._lower_type(_ptb);
         if lowered is not None {
             if self._str_desc_ty is not None and lowered == self._str_desc_ty {
@@ -985,15 +929,10 @@ impl NaIRGenTypes._resolve_field_type(var: uni.UniNode) -> ir.Type {
         if self._typevar_optional_field(_ptb) {
             return ir.IntType(8).as_pointer();
         }
-        try {
-            import from jaclang.compiler.type_system.types {
-                TypeVarType as _RfTypeVarType
-            }
-            if isinstance(_ptb, _RfTypeVarType) {
-                return ir.IntType(8).as_pointer();
-            }
-        } except ImportError { }
-        if not self._type_base_is_unknown(_ptb) {
+        if isinstance(_ptb, TypeVarType) {
+            return ir.IntType(8).as_pointer();
+        }
+        if not isinstance(_ptb, UnknownType) {
             return self._emit_unlowerable_type(var, _ptb);
         }
     }
@@ -1045,16 +984,7 @@ impl NaIRGenTypes._resolve_field_type(var: uni.UniNode) -> ir.Type {
 }
 
 impl NaIRGenTypes._foreign_optional_field(tb: any) -> bool {
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _FofClassType,
-            UnionType as _FofUnionType,
-            UnknownType as _FofUnknownType
-        }
-    } except ImportError {
-        return False;
-    }
-    if not isinstance(tb, _FofUnionType) {
+    if not isinstance(tb, UnionType) {
         return False;
     }
     _members = tb.types or [];
@@ -1062,7 +992,7 @@ impl NaIRGenTypes._foreign_optional_field(tb: any) -> bool {
         m
         for m in _members
         if not (
-            isinstance(m, _FofClassType)
+            isinstance(m, ClassType)
             and m._shared is not None
             and m.shared.class_name in ("NoneType", "None")
         )
@@ -1070,21 +1000,14 @@ impl NaIRGenTypes._foreign_optional_field(tb: any) -> bool {
     if len(_non_none) == len(_members) or not _non_none {
         return False;
     }
-    try {
-        import from jaclang.compiler.type_system.types {
-            TypeVarType as _FofTypeVarType
-        }
-    } except ImportError {
-        return False;
-    }
     for m in _non_none {
-        if isinstance(m, _FofUnknownType) {
+        if isinstance(m, UnknownType) {
             continue;
         }
-        if isinstance(m, _FofTypeVarType) {
+        if isinstance(m, TypeVarType) {
             return False;
         }
-        if isinstance(m, _FofClassType) and self._lower_type(m) is None {
+        if isinstance(m, ClassType) and self._lower_type(m) is None {
             continue;
         }
         return False;
@@ -1093,14 +1016,7 @@ impl NaIRGenTypes._foreign_optional_field(tb: any) -> bool {
 }
 
 impl NaIRGenTypes._erased_typevar_names(tb: any) -> list[str] {
-    try {
-        import from jaclang.compiler.type_system.types {
-            TypeVarType as _EtvTypeVarType
-        }
-    } except ImportError {
-        return [];
-    }
-    if isinstance(tb, _EtvTypeVarType) and self._lower_type(tb) is None {
+    if isinstance(tb, TypeVarType) and self._lower_type(tb) is None {
         return [tb.name];
     }
     if not self._typevar_optional_field(tb) {
@@ -1108,7 +1024,7 @@ impl NaIRGenTypes._erased_typevar_names(tb: any) -> list[str] {
     }
     out: list[str] = [];
     for m in (tb.types or []) {
-        if isinstance(m, _EtvTypeVarType) and m.name not in out {
+        if isinstance(m, TypeVarType) and m.name not in out {
             out.append(m.name);
         }
     }
@@ -1116,16 +1032,7 @@ impl NaIRGenTypes._erased_typevar_names(tb: any) -> list[str] {
 }
 
 impl NaIRGenTypes._typevar_optional_field(tb: any) -> bool {
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _TvoClassType,
-            UnionType as _TvoUnionType,
-            TypeVarType as _TvoTypeVarType
-        }
-    } except ImportError {
-        return False;
-    }
-    if not isinstance(tb, _TvoUnionType) {
+    if not isinstance(tb, UnionType) {
         return False;
     }
     _members = tb.types or [];
@@ -1133,7 +1040,7 @@ impl NaIRGenTypes._typevar_optional_field(tb: any) -> bool {
         m
         for m in _members
         if not (
-            isinstance(m, _TvoClassType)
+            isinstance(m, ClassType)
             and m._shared is not None
             and m.shared.class_name in ("NoneType", "None")
         )
@@ -1142,7 +1049,7 @@ impl NaIRGenTypes._typevar_optional_field(tb: any) -> bool {
         return False;
     }
     for m in _non_none {
-        if not isinstance(m, _TvoTypeVarType) or self._lower_type(m) is not None {
+        if not isinstance(m, TypeVarType) or self._lower_type(m) is not None {
             return False;
         }
     }
@@ -1158,12 +1065,7 @@ impl NaIRGenTypes._erased_seq_type(tb: any) -> (ir.Type | None) {
     slot to the ordinary refusal path, which is what a sequence of anything
     else that fails to lower deserves.
     """;
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _EsqClassType }
-    } except ImportError {
-        return None;
-    }
-    if not isinstance(tb, _EsqClassType) or tb._shared is None {
+    if not isinstance(tb, ClassType) or tb._shared is None {
         return None;
     }
     if tb.shared.class_name not in ("list", "Sequence") {
@@ -1175,15 +1077,6 @@ impl NaIRGenTypes._erased_seq_type(tb: any) -> (ir.Type | None) {
     }
     self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
     return self.list_types["ptr"].as_pointer();
-}
-
-impl NaIRGenTypes._type_base_is_unknown(tb: any) -> bool {
-    try {
-        import from jaclang.compiler.type_system.types { UnknownType as _UnknownType }
-        return isinstance(tb, _UnknownType);
-    } except ImportError {
-        return True;
-    }
 }
 
 impl NaIRGenTypes._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
@@ -1233,14 +1126,9 @@ impl NaIRGenTypes._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type
         return ir.IntType(8).as_pointer();
     }
 
-    try {
-        import from jaclang.compiler.type_system.types {
-            FunctionType as _ClibSigFnType
-        }
-        if isinstance(type_expr?.type, _ClibSigFnType) {
-            return self._lower_function_type_raw(type_expr.type);
-        }
-    } except ImportError { }
+    if isinstance(type_expr?.type, FunctionType) {
+        return self._lower_function_type_raw(type_expr.type);
+    }
 
     return self._resolve_jac_type(type_expr);
 }
@@ -1745,12 +1633,7 @@ impl NaIRGenTypes._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Va
     if _nt is None {
         return val;
     }
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _ClassType }
-    } except ImportError {
-        return val;
-    }
-    if not isinstance(_nt, _ClassType)
+    if not isinstance(_nt, ClassType)
         or _nt.shared.class_name in ("NoneType", "None") {
         return val;
     }
@@ -1762,7 +1645,7 @@ impl NaIRGenTypes._apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Va
         if not _nt_bare and len(_nt_args) == 1 {
             _a0 = _nt_args[0];
             _nt_bare = (
-                isinstance(_a0, _ClassType)
+                isinstance(_a0, ClassType)
                 and _a0.shared.class_name in ("any", "Any", "object")
             );
         }

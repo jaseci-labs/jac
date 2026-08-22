@@ -5,6 +5,16 @@ import from jaclang.jac0core.constant { OwnershipKind }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5090, E5092 }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.compiler.type_system.types {
+    AnyType,
+    ClassType,
+    EnumMemberType,
+    FunctionType,
+    NeverType,
+    TypeVarType,
+    UnionType,
+    UnknownType
+}
 
 obj NaIRGenTypes(NaIRGenState) {
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
@@ -42,7 +52,6 @@ obj NaIRGenTypes(NaIRGenState) {
     def _typevar_optional_field(tb: any) -> bool;
     def _erased_typevar_names(tb: any) -> list[str];
     def _erased_seq_type(tb: any) -> (ir.Type | None);
-    def _type_base_is_unknown(tb: any) -> bool;
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list) -> (ir.Type | None);

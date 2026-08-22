@@ -858,13 +858,8 @@ impl NaIRGenOsp._osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool {
     if not isinstance(expr, uni.Expr) or expr?.type is None {
         return False;
     }
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _DiscClassType }
-    } except ImportError {
-        return False;
-    }
     t = expr.type;
-    if isinstance(t, _DiscClassType)
+    if isinstance(t, ClassType)
         and t?.shared
         and t.is_builtin()
         and t.shared.class_name in ("list", "tuple", "set", "frozenset") {
@@ -1236,13 +1231,8 @@ impl NaIRGenOsp._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr?.type is None {
         return None;
     }
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _ClassType }
-    } except ImportError {
-        return None;
-    }
     t = expr.type;
-    if not isinstance(t, _ClassType) or not t?.private {
+    if not isinstance(t, ClassType) or not t?.private {
         return None;
     }
     _args = t.private.type_args;
@@ -1250,7 +1240,7 @@ impl NaIRGenOsp._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         return None;
     }
     _elem = _args[0];
-    if isinstance(_elem, _ClassType) and _elem?.shared {
+    if isinstance(_elem, ClassType) and _elem?.shared {
         return _elem.shared.class_name;
     }
     return None;

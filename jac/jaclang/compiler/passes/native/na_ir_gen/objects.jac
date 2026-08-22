@@ -28,6 +28,7 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import jaclang.jac0core.unitree as uni;
 import os;
 import sys;
+import from jaclang.compiler.type_system.types { FunctionType }
 
 obj NaIRGenObjects(NaIRGenState) {
     def _erased_sig_typevars(nd: uni.Archetype) -> dict;

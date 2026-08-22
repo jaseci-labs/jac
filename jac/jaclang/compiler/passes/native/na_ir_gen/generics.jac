@@ -3,6 +3,12 @@ import from jaclang.compiler.passes.native.na_ir_gen.state { NaIRGenState }
 import from jaclang.jac0core.diagnostics { E5092 }
 import jaclang.jac0core.unitree as uni;
 import os;
+import from jaclang.compiler.type_system.types {
+    ClassType,
+    FunctionType,
+    TypeVarType,
+    UnionType
+}
 
 obj NaIRGenGenerics(NaIRGenState) {
     def _mangled_of(t: any) -> (str | None);

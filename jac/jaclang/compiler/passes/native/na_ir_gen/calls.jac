@@ -5,6 +5,7 @@ import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5092, E5095, E9001 }
 import jaclang.jac0core.unitree as uni;
 import os;
+import from jaclang.compiler.type_system.types { ClassType, EnumMemberType, UnionType }
 
 obj NaIRGenCalls(NaIRGenState) {
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);

@@ -2277,13 +2277,8 @@ impl NaIRGenCalls._isinstance_abc_reduction(
     if name in self.struct_types or name in self.enum_types {
         return None;
     }
-    try {
-        import from jaclang.compiler.type_system.types { ClassType as _AbcClassType }
-    } except ImportError {
-        return None;
-    }
     t = type_expr.type if isinstance(type_expr, uni.Expr) else None;
-    if not isinstance(t, _AbcClassType) or t._shared is None {
+    if not isinstance(t, ClassType) or t._shared is None {
         return None;
     }
     if not t.shared.is_from_stdlib_stub {
@@ -2428,18 +2423,9 @@ impl NaIRGenCalls._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
 impl NaIRGenCalls._enum_union_tags(
     operand_expr: uni.UniNode, names: list[str]
 ) -> tuple {
-    try {
-        import from jaclang.compiler.type_system.types {
-            ClassType as _EnClassType,
-            EnumMemberType as _EnMemberType,
-            UnionType as _EnUnionType
-        }
-    } except ImportError {
-        return ([], names, );
-    }
     t = operand_expr.type if isinstance(operand_expr, uni.Expr) else None;
     members: list = [];
-    if isinstance(t, _EnUnionType) {
+    if isinstance(t, UnionType) {
         members = list(t.types or []);
     } elif t is not None {
         members = [t];
@@ -2449,8 +2435,8 @@ impl NaIRGenCalls._enum_union_tags(
     }
     member_rows: list = [];
     for m in members {
-        cls = m.enum_class if isinstance(m, _EnMemberType) else m;
-        if not isinstance(cls, _EnClassType) or cls._shared is None {
+        cls = m.enum_class if isinstance(m, EnumMemberType) else m;
+        if not isinstance(cls, ClassType) or cls._shared is None {
             return ([], names, );
         }
         cn = cls.shared.class_name;

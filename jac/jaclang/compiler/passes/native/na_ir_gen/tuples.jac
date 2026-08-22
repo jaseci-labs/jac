@@ -2,6 +2,7 @@ import from jaclang.compiler.passes.native.llvm { ir }
 import from jaclang.compiler.passes.native.na_ir_gen.state { NaIRGenState }
 import jaclang.jac0core.unitree as uni;
 import os;
+import from jaclang.compiler.type_system.types { UnknownType }
 
 obj NaIRGenTuples(NaIRGenState) {
     def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);

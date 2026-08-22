@@ -850,12 +850,7 @@ impl NaIRGenStmt._match_subj_ty(expr: (uni.UniNode | None)) -> (object | None) {
     tag = holder.type_tag if holder is not None else None;
     tag_expr = tag.tag if tag is not None else None;
     if isinstance(tag_expr, uni.Expr) and tag_expr.type is not None {
-        try {
-            import from jaclang.compiler.type_system.type_utils { convert_to_instance }
-            return convert_to_instance(tag_expr.type);
-        } except ImportError {
-            return tag_expr.type;
-        }
+        return convert_to_instance(tag_expr.type);
     }
     return None;
 }
