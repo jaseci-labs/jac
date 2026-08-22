@@ -5,9 +5,14 @@ Derived from PLAN.md Priority 0 only — not from implementation internals.
 
 import os;
 import subprocess;
+import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.constant { CodeContext }
+import from jaclang.jac0core.codeinfo {
+    clear_bun_host_decision_cache,
+    project_uses_bun_host
+}
 import from jaclang.jac0core.host {
     CAPABILITY_CODESPACE,
     CAPABILITY_SEED_ORDER,
@@ -139,6 +144,38 @@ test "target names resolve to host kinds via registry table only" {
     assert host_kind_for_target('cli_js') == HOST_CLI_JS;
     assert TARGET_HOST_KIND['react-native'] == HOST_RN;
     assert TARGET_HOST_KIND['cef'] == HOST_WEBVIEW;
+}
+
+test "bun-host decision memoizes per project and clears on invalidation" {
+    with tempfile.TemporaryDirectory() as tmp {
+        toml = Path(tmp) / 'jac.toml';
+        toml.write_text(
+            '[project]\nname = "host-decision"\n\n'
+                + '[plugin.client]\ntarget = "bun"\n'
+        );
+        (Path(tmp) / 'app.jac').write_text('def:pub ping() -> int { return 1; }\n');
+        app_file = str(Path(tmp) / 'app.jac');
+        clear_bun_host_decision_cache();
+        try {
+            assert project_uses_bun_host(app_file) , (
+                "target=bun project must resolve to bun host"
+            );
+            # Decision is cached: a config flip is invisible until invalidated.
+            toml.write_text(
+                '[project]\nname = "host-decision"\n\n'
+                    + '[plugin.client]\ntarget = "web"\n'
+            );
+            assert project_uses_bun_host(app_file) , (
+                "stale cached decision must persist"
+            );
+            clear_bun_host_decision_cache();
+            assert not project_uses_bun_host(app_file) , (
+                "after invalidation the flipped target must be honored"
+            );
+        } finally {
+            clear_bun_host_decision_cache();
+        }
+    }
 }
 
 test "native_unmet_capability is table-driven for bare metal" {

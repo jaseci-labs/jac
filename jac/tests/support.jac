@@ -225,6 +225,21 @@ def wait_service_ready(port: int, expect_substring: str = '') -> bool {
     return False;
 }
 
+def get_json(port: int, path: str) -> tuple[(bool, any)] {
+    import json;
+    import subprocess;
+    call = subprocess.run(
+        ['curl', '-sf', f'http://127.0.0.1:{port}{path}'],
+        capture_output=True,
+        text=True,
+        timeout=10
+    );
+    if call.returncode != 0 {
+        return (False, None);
+    }
+    return (True, json.loads(call.stdout or 'null'));
+}
+
 def post_json(port: int, path: str, body: str) -> tuple[(bool, dict)] {
     import json;
     import subprocess;
