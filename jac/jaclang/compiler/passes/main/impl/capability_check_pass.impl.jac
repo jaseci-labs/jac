@@ -760,7 +760,25 @@ impl PortabilityWarnPass.transform(ir_in: Module) -> Module {
     self._check_js_methods(ir_in);
     self._check_js_keywords(ir_in);
     self._check_js_properties(ir_in);
+    self._check_js_host_constructors(ir_in);
     return ir_in;
+}
+
+impl PortabilityWarnPass._check_js_host_constructors(mod: Module) -> None {
+    import from jaclang.compiler.symbol_utils { is_js_host_constructor_call }
+
+    for call in mod.get_all_sub_nodes(typ=FuncCall) {
+        if not is_js_host_constructor_call(call) {
+            continue;
+        }
+        if not isinstance(call.target, Name) {
+            continue;
+        }
+        self.emit(W6010, node_override=call.target, name=call.target.sym_name);
+        if any(isinstance(p, KWPair) for p in (call.params or [])) {
+            self.emit(E6010, node_override=call.target, name=call.target.sym_name);
+        }
+    }
 }
 
 impl PortabilityWarnPass._check_js_globals(mod: Module) -> None {

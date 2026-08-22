@@ -26,7 +26,12 @@ import from jaclang.jac0core.unitree {
     UniNode,
     UniScopeNode
 }
-import from jaclang.jac0core.constant { CodeContext, Tokens as Tok, SymbolType }
+import from jaclang.jac0core.constant {
+    CodeContext,
+    JS_HOST_CONSTRUCTORS,
+    Tokens as Tok,
+    SymbolType
+}
 import from jaclang.jac0core.diagnostics { E5082, E5084, W6006, W6007 }
 import from jaclang.jac0core.compiler {
     ClientImportVerdict,
@@ -285,6 +290,24 @@ def collect_method_names(arch: Archetype) -> set[str] {
         names.add(slot_name);
     }
     return names;
+}
+
+def is_js_host_constructor_call(nd: FuncCall) -> bool {
+    if not nd.in_client_context() {
+        return False;
+    }
+    if not isinstance(nd.target, Name) {
+        return False;
+    }
+    if nd.target.sym_name == "new" {
+        return False;
+    }
+
+    if nd.target.sym is not None and _is_user_symbol(nd.target.sym) {
+        return False;
+    }
+
+    return nd.target.sym_name in JS_HOST_CONSTRUCTORS;
 }
 
 def resolve_importer_path_from_node(nd: UniNode) -> (str | None) {

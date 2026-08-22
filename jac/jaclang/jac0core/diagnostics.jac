@@ -1799,6 +1799,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Definition of '{name}' collides with the reserved native intrinsic of the same name",
          help="'{name}' is in the compiler's intrinsic registry, so native code always lowers calls to the registered intrinsic — this definition is never called from a native context. It stays callable as an ordinary function from non-native (Python/JS) contexts; rename it if that shadowing is not intended."
      ),
+     W6010 = _warn(
+         "W6010",
+         Category.SEMANTIC,
+         "Bare call to JS host constructor '{name}' — use `new({name}, ...)` instead",
+         help="Jac has no `new` keyword. Host constructors like TextEncoder and URL must be created with the portable `new(Cls, ...args)` builtin, which lowers to `Reflect.construct(Cls, [args])` in client code."
+     ),
+     E6010 = _err(
+         "E6010",
+         Category.CODEGEN,
+         "JS host constructor '{name}' called with keyword arguments — host constructors are positional-only",
+         help="Keyword arguments cannot be mapped onto a JS host constructor's positional parameter list: lowering receives them as an options object the constructor does not understand. Pass the arguments positionally, or use `new({name}, ...)` which validates parameters at compile time."
+     ),
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
      E9002 = _err(
          "E9002",

@@ -1,98 +1,12 @@
 import re;
 import jaclang.compiler.passes.ecmascript.estree as es;
-import from jaclang.jac0core.constant { BROWSER_SEED_GLOBALS }
+import from jaclang.jac0core.constant { JS_HOST_AMBIENT_GLOBALS }
 
 glob _AMBIENT_CACHE: set[str] = set(),
      _IDENT_RE: re.Pattern = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*"),
      _RAW_DECL_RE: re.Pattern = re.compile(
          r"\b(?:function|class|const|let|var)\s+\*?\s*([A-Za-z_$][A-Za-z0-9_$]*)"
      );
-
-glob _JS_LANGUAGE_GLOBALS: set[str] = {
-         "globalThis",
-         "undefined",
-         "NaN",
-         "Infinity",
-         "arguments",
-         "eval",
-         "Function",
-         "Symbol",
-         "Map",
-         "Set",
-         "WeakMap",
-         "WeakSet",
-         "WeakRef",
-         "FinalizationRegistry",
-         "Proxy",
-         "Reflect",
-         "Intl",
-         "Error",
-         "AggregateError",
-         "EvalError",
-         "RangeError",
-         "ReferenceError",
-         "SyntaxError",
-         "TypeError",
-         "URIError",
-         "Int8Array",
-         "Uint8ClampedArray",
-         "Int16Array",
-         "Uint16Array",
-         "BigInt64Array",
-         "BigUint64Array",
-         "SharedArrayBuffer",
-         "Atomics",
-         "escape",
-         "unescape",
-         "atob",
-         "btoa",
-         "crypto",
-         "performance",
-         "URL",
-         "URLSearchParams",
-         "Blob",
-         "File",
-         "FileReader",
-         "FormData",
-         "AbortController",
-         "AbortSignal",
-         "WebSocket",
-         "EventSource",
-         "Event",
-         "CustomEvent",
-         "EventTarget",
-         "MessageChannel",
-         "MessagePort",
-         "BroadcastChannel",
-         "Worker",
-         "IntersectionObserver",
-         "ResizeObserver",
-         "MutationObserver",
-         "PerformanceObserver",
-         "requestIdleCallback",
-         "cancelIdleCallback",
-         "matchMedia",
-         "getComputedStyle",
-         "customElements",
-         "XMLHttpRequest",
-         "Image",
-         "Audio",
-         "DOMParser",
-         "XMLSerializer",
-         "CSS",
-         "Notification",
-         "Request",
-         "process",
-         "require",
-         "module",
-         "exports",
-         "__dirname",
-         "__filename",
-         "global",
-         "Buffer",
-         "setImmediate",
-         "clearImmediate"
-     };
 
 glob _BIND_FIELDS: dict[str, set[str]] = {
          'VariableDeclarator': {'id'},
@@ -175,8 +89,7 @@ impl client_ambient_globals -> set[str] {
         return _AMBIENT_CACHE;
     }
     import os;
-    names: set[str] = set(_JS_LANGUAGE_GLOBALS);
-    names.update(BROWSER_SEED_GLOBALS);
+    names: set[str] = set(JS_HOST_AMBIENT_GLOBALS);
 
     stub_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "type_system"

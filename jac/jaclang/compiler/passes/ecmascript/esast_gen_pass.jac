@@ -567,6 +567,13 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         props: list[(es.Property | es.SpreadElement)]
     ) -> (es.Expression | None);
 
+    def _try_lower_js_host_constructor_call(
+        nd: uni.FuncCall,
+        callee_expr: es.Expression,
+        call_args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)]
+    ) -> (es.Expression | None);
+
     def _warn_rpc_callable_params(
         ability_node: uni.Ability, func_name: str, at: uni.UniNode
     ) -> None;

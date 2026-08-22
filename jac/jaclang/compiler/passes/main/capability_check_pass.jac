@@ -39,7 +39,16 @@ import from jaclang.jac0core.passes.module_codegen_pass {
     client_capability_violations
 }
 import from jaclang.jac0core.constant { SymbolType }
-import from jaclang.jac0core.diagnostics { E5090, E5096, W6001, W6002, W6003, W6004 }
+import from jaclang.jac0core.diagnostics {
+    E5090,
+    E5096,
+    E6010,
+    W6001,
+    W6002,
+    W6003,
+    W6004,
+    W6010
+}
 import from jaclang.jac0core.codeinfo { NATIVE_SUPPORTED_STDLIB }
 
 glob NATIVE_REJECT_NODES: tuple[type[PyInlineCode]] = (PyInlineCode, );
@@ -88,6 +97,7 @@ obj PortabilityWarnPass(Transform) {
     def _find_call_is_js_style(call: FuncCall) -> bool;
     def _check_js_keywords(mod: Module) -> None;
     def _check_js_properties(mod: Module) -> None;
+    def _check_js_host_constructors(mod: Module) -> None;
 }
 
 obj NativeCapabilityCheckPass(Transform) {

@@ -42,7 +42,7 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("ecmascript/impl/esast_gen_pass.impl.jac", "symbol_utils"): (
-             6,
+             7,
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
              "readers over an already-resolved walker symbol. "
              "The former classify_call fallback is deleted (#7418): "
@@ -76,7 +76,15 @@ glob FORBIDDEN: dict[str, str] = {
              "stamped code_context, resolved `.sym`, and the declared "
              "access tag; the same resolver drives W6007 in "
              "StaticAnalysisPass, which is the point - the emit path and "
-             "the check path must not disagree about what is bound"
+             "the check path must not disagree about what is bound. "
+             "Plus is_js_host_constructor_call in "
+             "_try_lower_js_host_constructor_call (#7651): a bare call "
+             "to a known JS host constructor must lower through "
+             "Reflect.construct; the helper consumes the stamped "
+             "code_context and the callee's resolved `.sym` (a "
+             "user-defined shadow suppresses the wrap) and drives W6010 "
+             "in PortabilityWarnPass from the same predicate, so the "
+             "emit path and the warn path cannot disagree"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
              2,
