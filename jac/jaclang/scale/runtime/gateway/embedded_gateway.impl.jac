@@ -102,7 +102,7 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
         remainder: str = path[len(decision.service):];
         payload: dict[str, any] = {};
         try {
-            body: bytes = request.body;
+            body: bytes = await request.load_body();
             if body {
                 import json;
                 payload = json.loads(body.decode("utf-8"));

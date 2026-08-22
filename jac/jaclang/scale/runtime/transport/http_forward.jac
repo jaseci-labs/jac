@@ -72,7 +72,7 @@ impl ForwardResult.cleanup -> None {
 
 
 async def stream_forward(
-    method: str, url: str, headers: dict[str, str], body: bytes, timeout: int = 30
+    method: str, url: str, headers: dict[str, str], body: any, timeout: int = 30
 ) -> ForwardResult | None {
     try {
         resp = await arequest(

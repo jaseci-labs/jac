@@ -374,7 +374,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
     }
 
     fwd_headers = self.build_forward_headers(request);
-    body: bytes = request.body;
+    body: bytes = await request.load_body();
     query: str = str(request.url.query);
 
     for (svc_name, svc_entry) in self.registry.entries.items() {
@@ -439,7 +439,7 @@ impl MicroserviceGateway.forward_to(
     client_addr: str = getattr(request?.client, "host", "unknown");
     fwd_headers["X-Forwarded-For"] = client_addr;
 
-    body: bytes = request.body;
+    body: any = request.body_source();
 
     timeout = http_forward_timeout(service_entry.name);
     fr = await stream_forward(

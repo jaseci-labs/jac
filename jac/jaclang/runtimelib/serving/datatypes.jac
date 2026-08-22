@@ -184,10 +184,27 @@ obj Request {
         query_params: QueryParams = QueryParams(),
         path_params: dict[(str, str)] = {},
         body: bytes = b'',
+        stream: any = None,
         state: State = State(),
         client_host: str = '',
         form_fields: dict[(str, list[str])] = {},
         upload_files: dict[(str, list[UploadFile])] = {};
+
+    async def load_body -> bytes {
+        if self.stream is not None {
+            chunks: list[bytes] = [];
+            async for chunk in self.stream {
+                chunks.append(chunk);
+            }
+            self.body = b''.join(chunks);
+            self.stream = None;
+        }
+        return self.body;
+    }
+
+    def body_source -> any {
+        return self.stream if self.stream is not None else self.body;
+    }
 
     async def json -> any {
         return self.json_sync();
