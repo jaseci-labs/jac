@@ -98,7 +98,9 @@ def write_runtime(work: Path) {
         rewrite_core_specifier(compile_react(runtime_path)), encoding="utf-8"
     );
     (work / "client_runtime_core.js").write_text(
-        compile_react(str(Path(runtime_path).parent / "client_runtime_core.jac")),
+        wire_jac_runtime(
+            compile_react(str(Path(runtime_path).parent / "client_runtime_core.jac"))
+        ),
         encoding="utf-8"
     );
 }

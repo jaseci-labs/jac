@@ -37,6 +37,7 @@ obj SolidBackend(ReactBackend) {
     ) -> es.Expression;
 
     def view_runtime_symbols(view: ViewElement) -> list[str];
+    def lowers_fragments_natively -> bool;
     def _jsx_element(
         name_node: any, attrs: list, children: list, jac_node: any, sync_loc: any
     ) -> es.JsxElement;

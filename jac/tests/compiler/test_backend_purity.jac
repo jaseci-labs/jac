@@ -79,7 +79,7 @@ glob FORBIDDEN: dict[str, str] = {
              "the check path must not disagree about what is bound"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
-             2,
+             4,
              "declaration-surface reads: (1) cross-module archetype kind "
              "for OSP lowering (#7948) - _arch_kind_by_name resolves an "
              "imported archetype NAME to its declared node/edge/walker "
@@ -88,7 +88,11 @@ glob FORBIDDEN: dict[str, str] = {
              "analysis re-run. (2) component PascalCase rename "
              "collision guard checks whether the capitalized name is "
              "already declared in the module - the declared NAME is the "
-             "consumed fact, not a resolved type. The former sv-import "
+             "consumed fact, not a resolved type. (3-4) runtime-import "
+             "injection guard checks ir_in and the main module (when "
+             "different) for a locally declared name before emitting a "
+             "@jac/runtime import - the declared NAME is the consumed "
+             "fact, not a resolved type. The former sv-import "
              "stub lookup is deleted (#7760): signatures come from the "
              "recorded InteropBinding"
          ),

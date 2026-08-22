@@ -63,12 +63,19 @@ def _required_runtime_globals(
 }
 
 def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
+    import re;
     (names, src) = _required_runtime_globals(backend);
-    missing = [
-        name
-        for name in names
-        if f"function {name}(" not in js_code
-    ];
+    missing: list[str] = [];
+    for name in names {
+        if f"function {name}(" in js_code {
+            continue;
+        }
+
+        if re.search('import\\s*\\{[^}]*\\b' + re.escape(name) + '\\b', js_code) {
+            continue;
+        }
+        missing.append(name);
+    }
     if not missing {
         return js_code;
     }

@@ -12,6 +12,10 @@ impl SolidBackend.name -> str {
     return "solid";
 }
 
+impl SolidBackend.lowers_fragments_natively -> bool {
+    return True;
+}
+
 impl SolidBackend.required_globals -> list[str] {
     return ["__jacSpawn"];
 }

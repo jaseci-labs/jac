@@ -475,7 +475,10 @@ impl _run_harness(
                 runtime_js = runtime_js.replace(
                     core_match.group(1), "./client_runtime_core.js"
                 );
-                staged["client_runtime_core.js"] = _compile_runtime_core_js();
+
+                staged["client_runtime_core.js"] = _point_at_staged_runtime(
+                    _compile_runtime_core_js()
+                );
             }
             staged["jac_runtime.js"] = runtime_js;
         }
