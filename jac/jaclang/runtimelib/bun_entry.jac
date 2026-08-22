@@ -20,6 +20,11 @@ def build_bun_server_entry_script(
     module_imports: list[str],
     handler_imports: list[str]
 ) -> str {
+    # Only `pub` endpoints become network surface. This mirrors the cpython
+    # host, where non-pub endpoints default to auth-required; the bun host
+    # has no auth layer yet, so serving them would make them world-readable.
+    walkers = [w for w in walkers if w.`pub];
+    functions = [f for f in functions if f.`pub];
     walker_names: list[str] = [w.name for w in walkers];
     func_names: list[str] = [f.name for f in functions];
 

@@ -1213,7 +1213,23 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
         dispatch_sv_service,
         default_sv_base_port
     }
-    url = dispatch_sv_service(module_name, base_path);
+    import atexit;
+
+    # Without this registration the spawned bun process outlives the parent.
+    # Scale mode tracks procs in its sibling registry; core mode keeps a local
+    # atexit hook per service instead.
+    def _track_bun_child(spawn_result: any) -> None {
+        proc = spawn_result.proc;
+
+        def _cleanup_bun_child {
+            if proc.poll() is None {
+                proc.terminate();
+            }
+        }
+        atexit.register(_cleanup_bun_child);
+    }
+
+    url = dispatch_sv_service(module_name, base_path, on_spawn=_track_bun_child);
     if url is not None {
         return;
     }

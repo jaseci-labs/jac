@@ -106,6 +106,14 @@ def resolve_registry_name(name: str, table: any) -> (str | None) {
 def host_kind_for_target(name: str) -> str {
     key = resolve_registry_name(name, TARGET_HOST_KIND);
     if key is None {
+        # Absent target resolves to the browser default upstream; an explicit
+        # but unknown target is a configuration error and must be loud.
+        if str(name or '').strip() {
+            valid = ', '.join(sorted(TARGET_HOST_KIND.keys()));
+            raise ValueError(
+                f"Unknown client target '{name}'; valid targets: {valid}"
+            );
+        }
         return HOST_BROWSER;
     }
     return TARGET_HOST_KIND[key];
@@ -129,7 +137,10 @@ def resolve_project_host_kind(mod_path: str = '') -> str {
         }
         target = resolve_client_target_name(cfg);
         return host_kind_for_target(target);
-    } except (ImportError, AttributeError, KeyError, TypeError, ValueError) {
+    } except ImportError {
+        # Optional dependency missing (config loader unavailable): fall back
+        # to the default host. Invalid *values* raise — see
+        # host_kind_for_target.
         return HOST_CPYTHON;
     }
 }

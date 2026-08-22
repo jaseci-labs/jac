@@ -74,7 +74,7 @@ impl BunBackend.lower_ref_field(r: RefField) -> list[es.Statement] {
 }
 
 impl BunBackend.lower_state_update(u: StateUpdate) -> es.Expression {
-    return u.value_expr;
+    return u.value;
 }
 
 impl BunBackend.lower_effect(e: Effect) -> list[es.Statement] {
@@ -82,7 +82,7 @@ impl BunBackend.lower_effect(e: Effect) -> list[es.Statement] {
 }
 
 impl BunBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
-    return a.boundary_expr;
+    return a.try_expr;
 }
 
 impl BunBackend.lower_state_read(name: str) -> es.Expression {

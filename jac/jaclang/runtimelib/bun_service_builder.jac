@@ -165,6 +165,7 @@ def build_bun_service_artifact(
 
     walkers: list[EndpointMeta] = [];
     functions: list[EndpointMeta] = [];
+    import from jaclang.jac0core.constant { Tokens as Tok }
     for item in ir.body {
         if isinstance(item, uni.Archetype)
             and item.sym_category == SymbolType.WALKER_ARCH {
@@ -172,7 +173,7 @@ def build_bun_service_artifact(
                 EndpointMeta(
                     name=str(item.name.sym_name),
                     module=module_name,
-                    `pub=item.access is not None and 'pub' in str(item.access)
+                    `pub=item.access is not None and item.access.tag.name == Tok.KW_PUB
                 )
             );
         } elif isinstance(item, uni.Ability) and item.name_ref is not None {
@@ -192,7 +193,7 @@ def build_bun_service_artifact(
                 EndpointMeta(
                     name=fn_name,
                     module=module_name,
-                    `pub=item.access is not None and 'pub' in str(item.access),
+                    `pub=item.access is not None and item.access.tag.name == Tok.KW_PUB,
                     params=fn_params
                 )
             );
@@ -210,12 +211,14 @@ def build_bun_service_artifact(
         js_code = js_code.rstrip() + f"\nexport {{{', '.join(endpoint_names)}}};\n";
     }
     pname = project_name or module_name;
+    import from jaclang.runtimelib.session { promotions_for }
     rc = emit_server_entry(
         out_dir,
         pname,
         [{'rel': f"{module_name}.jac", 'js': js_code}],
         walkers,
-        functions
+        functions,
+        promotions=promotions_for(base_path)
     );
     if rc != 0 {
         raise RuntimeError(f"Failed to emit Bun server entry for '{module_name}'");

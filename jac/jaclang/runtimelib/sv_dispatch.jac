@@ -16,6 +16,11 @@ def default_sv_base_port(module_name: str) -> int {
 }
 
 
+# Host test/bun sv services for module_name.
+#
+# Registers the service on sv_client and returns its base_url, or returns
+# None when the caller should fall through to the cpython path. When
+# kinds is given, only those host kinds are dispatched.
 def dispatch_sv_service(
     module_name: str,
     base_path: str,
@@ -26,12 +31,6 @@ def dispatch_sv_service(
     on_spawn: any = None,
     kinds: (frozenset | None) = None
 ) -> (str | None) {
-    """Host test/bun sv services for module_name.
-
-    Registers the service on sv_client and returns its base_url, or returns
-    None when the caller should fall through to the cpython path. When
-    kinds is given, only those host kinds are dispatched.
-    """
     host_kind = resolve_sv_service_host(module_name, base_path);
     if kinds is not None and host_kind not in kinds {
         return None;
@@ -47,7 +46,14 @@ def dispatch_sv_service(
         return base_url;
     }
     if host_kind == HOST_BUN {
-        spawn_port = port if port > 0 else default_sv_base_port(module_name);
+        # Port retry parity with the cpython sibling path
+        # (serve_background(port_retries=100)): probe a free port instead of
+        # failing hard when the hash-derived one is occupied.
+        spawn_port = port;
+        if spawn_port <= 0 {
+            import from jaclang.scale.runtime.context.util { pick_free_port }
+            spawn_port = pick_free_port(module_name);
+        }
         spawn_result = spawn_bun_sv_service(
             module_name,
             base_path,

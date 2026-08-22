@@ -1,5 +1,6 @@
 import from pathlib { Path }
 import os;
+import json;
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.bun_entry { EndpointMeta, build_bun_server_entry_script }
 
@@ -9,13 +10,17 @@ def emit_server_entry(
     project_name: str,
     compiled_modules: list,
     walkers: list[EndpointMeta],
-    functions: list[EndpointMeta]
+    functions: list[EndpointMeta],
+    promotions: dict[str, list[str]] | None = None
 ) -> int {
     out_dir.mkdir(parents=True, exist_ok=True);
     module_imports: list[str] = [];
     handler_imports: list[str] = [];
 
     for w in walkers {
+        if not w.`pub {
+            continue;
+        }
         wn = w.name;
         mod = w.module.replace('.', '/');
         module_imports.append(f'import {{ {wn} as _W_{wn} }} from "./{mod}.js";');
@@ -28,6 +33,9 @@ def emit_server_entry(
         );
     }
     for f in functions {
+        if not f.`pub {
+            continue;
+        }
         fn = f.name;
         mod = f.module.replace('.', '/');
         module_imports.append(f'import {{ {fn} as _F_{fn} }} from "./{mod}.js";');
@@ -62,6 +70,11 @@ def emit_server_entry(
             + repr([str(stmt) for stmt in SCHEMA_SQL])
             + ';\n'
         );
+        # Baked at build time from [database.indexes] via promotions_for() so
+        # BunStore computes the same schema fingerprint as PgStore.
+        schema_js += 'export const PROMOTIONS = ' + json.dumps(
+            promotions or {}, sort_keys=True
+        ) + ';\n';
         (out_dir / 'bun_schema.js').write_text(schema_js, encoding='utf-8');
     }
     for unit in compiled_modules {

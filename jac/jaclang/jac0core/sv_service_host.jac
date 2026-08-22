@@ -28,8 +28,16 @@ def _resolve_sv_host_override(raw: str) -> (str | None) {
     try {
         import from jaclang.runtimelib.client.targets.registry { get_host_factory }
         names = get_host_factory().get_available_host_names();
-        return resolve_registry_name(raw, names);
+        alt = resolve_registry_name(raw, names);
+        if alt is not None {
+            return alt;
+        }
+        valid = ', '.join(
+            sorted(set(list(SV_SERVICE_HOST_KINDS) + list(names)))
+        );
+        raise ValueError(f"Unknown sv host '{raw}'; valid hosts: {valid}");
     } except ImportError {
+        # Registry unavailable: cannot validate extended names.
         ;
     }
     return None;
@@ -38,18 +46,33 @@ def _resolve_sv_host_override(raw: str) -> (str | None) {
 
 def resolve_sv_service_host(module_name: str, base_path: str = '.') -> str {
     env_raw = os.environ.get(sv_host_env_key(module_name), '');
+    # Absent/blank override falls through to config + artifact detection; an
+    # explicit but unrecognized value must be loud, not silently ignored
+    # (a typo would otherwise change the execution host invisibly).
     env_host = _resolve_sv_host_override(env_raw);
     if env_host is not None {
         return env_host;
+    }
+    if env_raw.strip() {
+        raise ValueError(
+            f"{sv_host_env_key(module_name)}='{env_raw}' is not a known sv host"
+        );
     }
     try {
         import from jaclang.scale.config.config_loader { get_scale_config }
         ms_cfg = get_scale_config().get_microservices_config();
         svc_cfg = ms_cfg.get('services', {}).get(module_name, {});
         if isinstance(svc_cfg, dict) {
-            configured = _resolve_sv_host_override(str(svc_cfg.get('host', '') or ''));
+            raw_cfg = str(svc_cfg.get('host', '') or '');
+            configured = _resolve_sv_host_override(raw_cfg);
             if configured is not None {
                 return configured;
+            }
+            if raw_cfg.strip() {
+                raise ValueError(
+                    f'[scale.microservices.services.{module_name}] '
+                        + f"host='{raw_cfg}' is not a known sv host"
+                );
             }
         }
     } except (ImportError, AttributeError, KeyError, TypeError) {

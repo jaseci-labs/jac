@@ -588,6 +588,11 @@ class JacScalePluginConfig {
                                     "default": None,
                                     "description": "Service entry file relative to the project root; default <name>.jac"
                                 },
+                                "host": {
+                                    "type": "string",
+                                    "default": None,
+                                    "description": "Execution host for this service: 'cpython' (default) or 'bun'. Overridable per module via the JAC_SV_<MODULE>_HOST env var; unrecognized values raise at service startup instead of silently falling back."
+                                },
                                 "rpc_timeout": {
                                     "type": "float",
                                     "default": 10.0,

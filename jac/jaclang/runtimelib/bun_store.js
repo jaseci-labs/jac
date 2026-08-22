@@ -1,7 +1,8 @@
 /** BunStore: Postgres anchor persistence via Bun.sql (P2). */
 
 import { SQL } from "bun";
-import { SCHEMA_SQL } from "./bun_schema.js";
+import { createHash } from "node:crypto";
+import { SCHEMA_SQL, PROMOTIONS } from "./bun_schema.js";
 
 export const SCHEMA_VERSION = 1;
 export const SCHEMA_STAMP_KEY = "schema_fingerprint";
@@ -42,17 +43,78 @@ export class BunStore {
     return this._sql;
   }
 
-  async ensureSchema(_promotions = {}) {
-    const sql = this._ensureSql();
+  // Mirrors PgStore._schema_fingerprint in impl/store.impl.jac byte for byte:
+  // "<SCHEMA_VERSION>:<sha256(version, server major, SCHEMA_SQL, sorted
+  // promotion columns)[:24]>". Sharing the stamp key AND formula keeps bun and
+  // cpython hosts from invalidating each other's migrations on the same DB.
+  async _schemaFingerprint(sql, promotions) {
+    const res = await sql.unsafe("SHOW server_version_num");
+    const raw = Array.isArray(res) && res.length ? String(Object.values(res[0])[0]) : "0";
+    const serverMajor = Math.floor(Number(raw) / 10000);
+    const h = createHash("sha256");
+    h.update(String(SCHEMA_VERSION));
+    h.update(String(serverMajor));
     for (const stmt of SCHEMA_SQL) {
-      await sql.unsafe(stmt);
+      h.update(stmt);
     }
-    await sql`
-      INSERT INTO kv_state (key, value, expires_at, updated_at)
-      VALUES (${SCHEMA_STAMP_KEY}, ${String(SCHEMA_VERSION)}, NULL, now())
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-    `;
+    // str((arch, fld, col)) on the cpython side renders as this exact string.
+    for (const [arch, fld, col] of promotionColumns(promotions)) {
+      h.update(`('${arch}', '${fld}', '${col}')`);
+    }
+    return `${SCHEMA_VERSION}:${h.digest("hex").slice(0, 24)}`;
+  }
+
+  async ensureSchema(promotions = PROMOTIONS) {
+    const sql = this._ensureSql();
+    let stamped = null;
+    try {
+      stamped = await this.getKv(SCHEMA_STAMP_KEY);
+    } catch (_) {
+      stamped = null; // kv_state missing — fresh database.
+    }
+    const fp = await this._schemaFingerprint(sql, promotions);
+    if (stamped === fp) {
+      this._ready = true;
+      return;
+    }
+    await sql.unsafe("SET lock_timeout = '5s'");
+    try {
+      for (const stmt of SCHEMA_SQL) {
+        await sql.unsafe(stmt);
+      }
+      // Migration: anchors.seq is required by hydration's ORDER BY seq.
+      const hasSeq = await sql.unsafe(
+        "SELECT 1 FROM information_schema.columns"
+          + " WHERE table_name = 'anchors' AND column_name = 'seq'"
+      );
+      if (!Array.isArray(hasSeq) || hasSeq.length === 0) {
+        await sql.unsafe(
+          "ALTER TABLE anchors ADD COLUMN IF NOT EXISTS seq bigserial"
+        );
+      }
+      await this._applyPromotionDdl(sql, promotions);
+    } finally {
+      await sql.unsafe("SET lock_timeout = DEFAULT");
+    }
+    await this.setKv(SCHEMA_STAMP_KEY, fp);
     this._ready = true;
+  }
+
+  async _applyPromotionDdl(sql, promotions) {
+    for (const [arch, fld, col] of promotionColumns(promotions)) {
+      try {
+        await sql.unsafe(
+          `ALTER TABLE anchors ADD COLUMN IF NOT EXISTS ${col} text`
+            + ` GENERATED ALWAYS AS (props->'archetype'->>'${fld}') STORED`
+        );
+        await sql.unsafe(
+          `CREATE INDEX IF NOT EXISTS idx_${col} ON anchors (${col})`
+            + ` WHERE arch_type = '${arch}'`
+        );
+      } catch (e) {
+        console.warn(`promotion ${arch}.${fld} failed: ${e}`);
+      }
+    }
   }
 
   async upsert(rows) {
@@ -86,9 +148,9 @@ export class BunStore {
     }
   }
 
-  async rows(query, _params = {}) {
+  async rows(query, params = []) {
     const sql = this._ensureSql();
-    const result = await sql.unsafe(query);
+    const result = await sql.unsafe(query, Array.isArray(params) ? params : []);
     if (Array.isArray(result)) {
       return result.map((r) => Object.values(r));
     }
@@ -130,16 +192,46 @@ let _sharedStore = null;
 
 const ROOT_KV_KEY = "__jac_shared_root_id";
 
+// Mirrors PgStore._promotion_columns / _sanitize_ident in impl/store.impl.jac.
+function sanitizeIdent(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9_]/g, "_");
+}
+
+function promotionColumns(promotions) {
+  const out = [];
+  const src = promotions || {};
+  for (const arch of Object.keys(src).sort()) {
+    const fields = Array.isArray(src[arch]) ? src[arch] : [];
+    for (const fld of fields) {
+      out.push([String(arch), String(fld), `g_${sanitizeIdent(arch)}_${sanitizeIdent(fld)}`]);
+    }
+  }
+  return out;
+}
+
 export async function __jacHydrateGraph(store) {
   // Reference: JacRuntime.get_shared_root + store-backed anchor loading
   // (jaclang/jac0core/impl/runtime.impl.jac). The cpython host resolves a
   // stable root id and loads anchors from the store; the bun host does the
   // same eagerly at boot: stable root id from kv_state, then all anchors
   // belonging to that root rebuilt into the OSP graph.
-  if (globalThis.__jacHydrationStarted) {
+  // Idempotence guard marks done ONLY on success so a mid-hydration failure
+  // can be retried on the next request instead of silently skipping forever.
+  if (globalThis.__jacHydrationDone || globalThis.__jacHydrationInFlight) {
     return;
   }
-  globalThis.__jacHydrationStarted = true;
+  globalThis.__jacHydrationInFlight = true;
+  try {
+    const completed = await __jacHydrateGraphInner(store);
+    if (completed) {
+      globalThis.__jacHydrationDone = true;
+    }
+  } finally {
+    globalThis.__jacHydrationInFlight = false;
+  }
+}
+
+async function __jacHydrateGraphInner(store) {
   let rootId = await store.getKv(ROOT_KV_KEY);
   if (!rootId) {
     rootId = randomUuid();
@@ -164,12 +256,13 @@ export async function __jacHydrateGraph(store) {
   register(root);
   __jacTrackNode(root, rootId);
   if (!C || typeof C.osp_conn !== "function") {
-    return;
+    // Core not published yet — report incomplete so a later request retries.
+    return false;
   }
   const rows = await store.rows(
     "SELECT id, kind, arch_type, src, dst, undirected, props FROM anchors "
-      + "WHERE root_id = '" + rootId + "' AND id <> '" + rootId + "' ORDER BY seq",
-    {}
+      + "WHERE root_id = $1 AND id <> $2 ORDER BY seq",
+    [rootId, rootId]
   );
   const byId = new Map();
   byId.set(rootId, root);
@@ -235,11 +328,16 @@ function normalizeJson(raw) {
 }
 
 export async function __jacInitBunStore() {
-  if (_sharedStore?._ready) {
+  // Ready means schema applied AND hydration completed; a failure in either
+  // leaves the gate closed so the next request retries instead of silently
+  // running unhydrated for the process lifetime.
+  if (_sharedStore?._ready && globalThis.__jacHydrationDone) {
     return _sharedStore;
   }
-  const store = new BunStore();
-  await store.ensureSchema({});
+  const store = _sharedStore || new BunStore();
+  if (!store._ready) {
+    await store.ensureSchema();
+  }
   _sharedStore = store;
   globalThis.__jacBunStore = store;
   await __jacHydrateGraph(store);

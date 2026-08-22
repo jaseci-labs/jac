@@ -8,7 +8,14 @@ import from "./bun_store.js" {
 
 async def parseJsonBody(req: any) -> (dict | None) {
     try {
-        return await req.json();
+        text = await req.text();
+        # Empty body means no fields — mirrors the cpython host, where a bare
+        # POST /walker/<name> is valid.
+        if not text or not text.strip() {
+            empty: dict = {};
+            return empty;
+        }
+        return JSON.parse(text);
     } except Exception {
         return None;
     }
@@ -214,7 +221,11 @@ def:pub startBunServer(opts: dict) {
         if fnMatch and method == 'POST' {
             name = decodeURIComponent(fnMatch[1]);
             payload = await handleFunctionCall(req, name, functionFns, params);
-            return Response.json(payload);
+            status = 200;
+            if not payload.ok {
+                status = 500;
+            }
+            return Response.json(payload, {status: status});
         }
 
         walkerMatch = path.match('^/walker/([^/]+)(?:/([^/]+))?$');
@@ -225,7 +236,11 @@ def:pub startBunServer(opts: dict) {
                 nodeId = decodeURIComponent(walkerMatch[2]);
             }
             payload = await handleWalkerSpawn(req, name, nodeId, walkerFns);
-            return Response.json(payload);
+            status = 200;
+            if not payload.ok {
+                status = 500;
+            }
+            return Response.json(payload, {status: status});
         }
 
         for carrier in restspec {
@@ -247,7 +262,11 @@ def:pub startBunServer(opts: dict) {
                 payload = await handleFunctionCall(
                     req, carrier.name, carrier_handlers, params
                 );
-                return Response.json(payload);
+                status = 200;
+            if not payload.ok {
+                status = 500;
+            }
+                return Response.json(payload, {status: status});
             }
         }
 

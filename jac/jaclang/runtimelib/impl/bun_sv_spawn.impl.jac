@@ -3,7 +3,6 @@ import subprocess;
 import from pathlib { Path }
 import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
 import from jaclang.runtimelib.client { get_bun }
-import from jaclang.runtimelib.bun_sv_spawn { SpawnedBunService }
 
 
 impl spawn_bun_sv_service(
@@ -28,29 +27,23 @@ impl spawn_bun_sv_service(
     child_env['JAC_PORT'] = str(port);
     if scale_mode {
         child_env['JAC_SV_SIBLING'] = '1';
-        log_dir = Path(base_path) / '.jac' / 'logs';
-        log_dir.mkdir(parents=True, exist_ok=True);
-        log_path = log_dir / f"{module_name}.log";
-        log_file = open(log_path, 'ab');
-        try {
-            proc = subprocess.Popen(
-                [bun, str(artifact)],
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                env=child_env,
-                cwd=base_path
-            );
-        } finally {
-            log_file.close();
-        }
-    } else {
+    }
+    # Both modes capture output to a log file — a DEVNULL boot failure used to
+    # surface as a bare URL timeout with zero diagnostics in core mode.
+    log_dir = Path(base_path) / '.jac' / 'logs';
+    log_dir.mkdir(parents=True, exist_ok=True);
+    log_path = log_dir / f"{module_name}.log";
+    log_file = open(log_path, 'ab');
+    try {
         proc = subprocess.Popen(
             [bun, str(artifact)],
-            cwd=base_path,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
             env=child_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            cwd=base_path
         );
+    } finally {
+        log_file.close();
     }
     import from jaclang.scale.runtime.context.util {
         boot_health_timeout,
@@ -63,9 +56,16 @@ impl spawn_bun_sv_service(
         base_url, lambda { proc.poll() is None; }, timeout=budget, progress=progress
     );
     if not healthy {
+        exit_code = proc.poll();
         proc.terminate();
+        if exit_code is None {
+            detail = f'stopped making progress for {budget:.0f}s while starting up';
+        } else {
+            detail = f'exited with status {exit_code} before serving';
+        }
         raise RuntimeError(
-            f"Bun sv service '{module_name}' did not become healthy at {base_url}"
+            f"Bun sv service '{module_name}' {detail}; expected it at {base_url}."
+                + f' See {log_path} for its output'
         );
     }
     return SpawnedBunService(base_url=base_url, proc=proc);
