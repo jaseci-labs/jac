@@ -43,11 +43,10 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
         self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr_hl]);
         if self.rc_alloc_fn is None {
             _ha_fnty = ir.FunctionType(i8_ptr_hl, [i64_hl]);
-            _ha_fn = self._define_function("__jac_halloc", _ha_fnty);
-            _ha_fn.linkage = "private";
-            _ha_fn.args[0].name = "size";
-            _ha_bb = _ha_fn.append_basic_block("entry");
-            _ha_b = ir.IRBuilder(_ha_bb);
+            _ha_b = self._new_fn_builder(
+                "__jac_halloc", _ha_fnty, "private", ("size", )
+            );
+            _ha_fn = _ha_b.function;
             _ha_raw = _ha_b.call(self.malloc_fn, [_ha_fn.args[0]], name="raw");
             _ha_b.ret(_ha_raw);
             self.rc_alloc_fn = _ha_fn;
@@ -81,43 +80,33 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     self.rc_gc_disabled_gv = rc_gc_disabled_gv;
 
     dis_gc_fnty = ir.FunctionType(ir.VoidType(), []);
-    dis_gc_fn = self._define_function("__rc_gc_disable", dis_gc_fnty);
-    dis_gc_fn.linkage = "internal";
-    _bb_dis_gc = dis_gc_fn.append_basic_block("entry");
-    _b_dis_gc = ir.IRBuilder(_bb_dis_gc);
+    _b_dis_gc = self._new_fn_builder("__rc_gc_disable", dis_gc_fnty, "internal", ());
     _b_dis_gc.store(ir.Constant(i8, 1), rc_gc_disabled_gv);
     _b_dis_gc.ret_void();
-    self.rc_gc_disable_fn = dis_gc_fn;
+    self.rc_gc_disable_fn = _b_dis_gc.function;
 
-    en_gc_fn = self._define_function("__rc_gc_enable", dis_gc_fnty);
-    en_gc_fn.linkage = "internal";
-    _bb_en_gc = en_gc_fn.append_basic_block("entry");
-    _b_en_gc = ir.IRBuilder(_bb_en_gc);
+    _b_en_gc = self._new_fn_builder("__rc_gc_enable", dis_gc_fnty, "internal", ());
     _b_en_gc.store(ir.Constant(i8, 0), rc_gc_disabled_gv);
     _b_en_gc.ret_void();
-    self.rc_gc_enable_fn = en_gc_fn;
+    self.rc_gc_enable_fn = _b_en_gc.function;
 
     if _cycles_on {
-        en_cyc_fn = self._define_function("__rc_cycles_enable", dis_gc_fnty);
-        en_cyc_fn.linkage = "internal";
-        _bb_en_cyc = en_cyc_fn.append_basic_block("entry");
-        _b_en_cyc = ir.IRBuilder(_bb_en_cyc);
+        _b_en_cyc = self._new_fn_builder(
+            "__rc_cycles_enable", dis_gc_fnty, "internal", ()
+        );
         _b_en_cyc.store(ir.Constant(i8, 1), self.rc_cycles_enabled_gv);
         _b_en_cyc.ret_void();
-        self.rc_cycles_enable_fn = en_cyc_fn;
+        self.rc_cycles_enable_fn = _b_en_cyc.function;
     }
 
     sf_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
-    sf_fn = self._define_function("__rc_safe_free", sf_fnty);
-    sf_fn.linkage = "internal";
-    sf_fn.args[0].name = "ptr";
-    _sf_entry = sf_fn.append_basic_block("entry");
+    sf_b = self._new_fn_builder("__rc_safe_free", sf_fnty, "internal", ("ptr", ));
+    sf_fn = sf_b.function;
     _sf_do = sf_fn.append_basic_block("do_free");
     _sf_done = sf_fn.append_basic_block("done");
-    _sf_b = ir.IRBuilder(_sf_entry);
-    _sf_flag = _sf_b.load(rc_gc_disabled_gv, name="sf.gc.dis");
-    _sf_dis = _sf_b.icmp_unsigned("!=", _sf_flag, ir.Constant(i8, 0), name="sf.dis");
-    _sf_b.cbranch(_sf_dis, _sf_done, _sf_do);
+    _sf_flag = sf_b.load(rc_gc_disabled_gv, name="sf.gc.dis");
+    _sf_dis = sf_b.icmp_unsigned("!=", _sf_flag, ir.Constant(i8, 0), name="sf.dis");
+    sf_b.cbranch(_sf_dis, _sf_done, _sf_do);
     _sf_b = ir.IRBuilder(_sf_do);
     _sf_b.call(self.free_fn, [sf_fn.args[0]]);
     _sf_b.branch(_sf_done);
@@ -156,11 +145,8 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     self._rc_raw_tag_gv = _raw_tag_str;
 
     alloc_fnty = ir.FunctionType(i8_ptr, [i64]);
-    alloc_fn = self._define_function("__rc_alloc", alloc_fnty);
-    alloc_fn.linkage = "private";
-    alloc_fn.args[0].name = "size";
-    entry_bb = alloc_fn.append_basic_block("entry");
-    b = ir.IRBuilder(entry_bb);
+    b = self._new_fn_builder("__rc_alloc", alloc_fnty, "private", ("size", ));
+    alloc_fn = b.function;
     total = b.add(alloc_fn.args[0], ir.Constant(i64, HDR_TOTAL), name="total");
     total = b.add(total, ir.Constant(i64, 15), name="total.pad");
     total = b.and_(total, ir.Constant(i64, -16), name="total.align");
@@ -218,12 +204,10 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     self.rc_alloc_fn = alloc_fn;
 
     set_type_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, i8_ptr]);
-    set_type_fn = self._define_function("__rc_set_type", set_type_fnty);
-    set_type_fn.linkage = "internal";
-    set_type_fn.args[0].name = "ptr";
-    set_type_fn.args[1].name = "tag";
-    _st_bb = set_type_fn.append_basic_block("entry");
-    _st_b = ir.IRBuilder(_st_bb);
+    _st_b = self._new_fn_builder(
+        "__rc_set_type", set_type_fnty, "internal", ("ptr", "tag")
+    );
+    set_type_fn = _st_b.function;
 
     _st_null = _st_b.icmp_unsigned(
         "==", set_type_fn.args[0], ir.Constant(i8_ptr, None), name="st.null"
@@ -294,14 +278,11 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     }
 
     retain_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
-    retain_fn = self._define_function("__rc_retain", retain_fnty);
-    retain_fn.linkage = "private";
-    retain_fn.args[0].name = "ptr";
-    entry_bb = retain_fn.append_basic_block("entry");
+    b = self._new_fn_builder("__rc_retain", retain_fnty, "private", ("ptr", ));
+    retain_fn = b.function;
     check_bb = retain_fn.append_basic_block("check_sentinel");
     do_bb = retain_fn.append_basic_block("do_retain");
     done_bb = retain_fn.append_basic_block("done");
-    b = ir.IRBuilder(entry_bb);
     is_null = b.icmp_unsigned(
         "==", retain_fn.args[0], ir.Constant(i8_ptr, None), name="is.null"
     );
@@ -655,11 +636,10 @@ impl NaIRGenRefcount._emit_str_len_helpers -> None {
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8_ptr]);
     _headerless = self._nogc_headerless();
 
-    len_fn = self._define_function("__jac_str_len", ir.FunctionType(i64, [i8_ptr]));
-    len_fn.linkage = "private";
-    len_fn.args[0].name = "s";
-    _l_entry = len_fn.append_basic_block("entry");
-    b = ir.IRBuilder(_l_entry);
+    b = self._new_fn_builder(
+        "__jac_str_len", ir.FunctionType(i64, [i8_ptr]), "private", ("s", )
+    );
+    len_fn = b.function;
     if _headerless {
         _l_null = b.icmp_unsigned(
             "==", len_fn.args[0], ir.Constant(i8_ptr, None), name="sl.null"
@@ -714,13 +694,10 @@ impl NaIRGenRefcount._emit_str_len_helpers -> None {
     }
     self.str_len_fn = len_fn;
 
-    tr_fn = self._define_function(
-        "__jac_str_truthy", ir.FunctionType(ir.IntType(1), [i8_ptr])
+    tb = self._new_fn_builder(
+        "__jac_str_truthy", ir.FunctionType(ir.IntType(1), [i8_ptr]), "private", ("s", )
     );
-    tr_fn.linkage = "private";
-    tr_fn.args[0].name = "s";
-    _t_entry = tr_fn.append_basic_block("entry");
-    tb = ir.IRBuilder(_t_entry);
+    tr_fn = tb.function;
     if _headerless {
         tb.ret(
             tb.icmp_unsigned(
@@ -795,15 +772,14 @@ impl NaIRGenRefcount._emit_str_stamp_and_new -> None {
     i64 = ir.IntType(64);
     i64_ptr = i64.as_pointer();
     _headerless = self._nogc_headerless();
-    stamp_fn = self._define_function(
-        "__jac_str_stamp", ir.FunctionType(ir.VoidType(), [i8_ptr, i64])
+    b = self._new_fn_builder(
+        "__jac_str_stamp",
+        ir.FunctionType(ir.VoidType(), [i8_ptr, i64]),
+        "private",
+        ("s", "n")
     );
-    stamp_fn.linkage = "private";
-    stamp_fn.args[0].name = "s";
-    stamp_fn.args[1].name = "n";
-    _s_entry = stamp_fn.append_basic_block("entry");
+    stamp_fn = b.function;
     _s_done = stamp_fn.append_basic_block("done");
-    b = ir.IRBuilder(_s_entry);
     if _headerless {
         b.branch(_s_done);
     } else {
@@ -833,14 +809,13 @@ impl NaIRGenRefcount._emit_str_stamp_and_new -> None {
     self.str_stamp_fn = stamp_fn;
 
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
-    new_fn = self._define_function(
-        "__jac_str_new", ir.FunctionType(i8_ptr, [i8_ptr, i64])
+    b = self._new_fn_builder(
+        "__jac_str_new",
+        ir.FunctionType(i8_ptr, [i8_ptr, i64]),
+        "weak_odr",
+        ("data", "n")
     );
-    new_fn.linkage = "weak_odr";
-    new_fn.args[0].name = "data";
-    new_fn.args[1].name = "n";
-    _n_entry = new_fn.append_basic_block("entry");
-    b = ir.IRBuilder(_n_entry);
+    new_fn = b.function;
     _n_null = b.icmp_unsigned(
         "==", new_fn.args[0], ir.Constant(i8_ptr, None), name="sn.null"
     );
@@ -912,20 +887,16 @@ impl NaIRGenRefcount._emit_str_cmp_helper -> None {
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     strcmp_fn = self._get_or_declare_extern("strcmp", i32, [i8_ptr, i8_ptr]);
-    cmp_fn = self._define_function(
-        "__jac_str_cmp", ir.FunctionType(i32, [i8_ptr, i8_ptr])
+    b = self._new_fn_builder(
+        "__jac_str_cmp", ir.FunctionType(i32, [i8_ptr, i8_ptr]), "private", ("a", "b")
     );
-    cmp_fn.linkage = "private";
-    cmp_fn.args[0].name = "a";
-    cmp_fn.args[1].name = "b";
-    _c_entry = cmp_fn.append_basic_block("entry");
+    cmp_fn = b.function;
     _c_same = cmp_fn.append_basic_block("same");
     _c_anull = cmp_fn.append_basic_block("check.a");
     _c_alt = cmp_fn.append_basic_block("a.null");
     _c_bnull = cmp_fn.append_basic_block("check.b");
     _c_bgt = cmp_fn.append_basic_block("b.null");
     _c_body = cmp_fn.append_basic_block("body");
-    b = ir.IRBuilder(_c_entry);
     b.cbranch(
         b.icmp_unsigned("==", cmp_fn.args[0], cmp_fn.args[1], name="sc.same"),
         _c_same,
@@ -971,13 +942,12 @@ impl NaIRGenRefcount._emit_str_dup_helper -> None {
         self._emit_str_len_helpers();
     }
     i8_ptr = ir.IntType(8).as_pointer();
-    dup_fn = self._define_function("__jac_str_dup", ir.FunctionType(i8_ptr, [i8_ptr]));
-    dup_fn.linkage = "private";
-    dup_fn.args[0].name = "s";
-    _d_entry = dup_fn.append_basic_block("entry");
+    b = self._new_fn_builder(
+        "__jac_str_dup", ir.FunctionType(i8_ptr, [i8_ptr]), "private", ("s", )
+    );
+    dup_fn = b.function;
     _d_null = dup_fn.append_basic_block("null");
     _d_copy = dup_fn.append_basic_block("copy");
-    b = ir.IRBuilder(_d_entry);
     b.cbranch(
         b.icmp_unsigned(
             "==", dup_fn.args[0], ir.Constant(i8_ptr, None), name="sd.null"
@@ -1009,13 +979,12 @@ impl NaIRGenRefcount._emit_str_len_raw_helper -> None {
     i8_ptr = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8_ptr]);
-    raw_fn = self._define_function("__jac_str_len_raw", ir.FunctionType(i64, [i8_ptr]));
-    raw_fn.linkage = "private";
-    raw_fn.args[0].name = "p";
-    _r_entry = raw_fn.append_basic_block("entry");
+    b = self._new_fn_builder(
+        "__jac_str_len_raw", ir.FunctionType(i64, [i8_ptr]), "private", ("p", )
+    );
+    raw_fn = b.function;
     _r_zero = raw_fn.append_basic_block("zero");
     _r_scan = raw_fn.append_basic_block("scan");
-    b = ir.IRBuilder(_r_entry);
     b.cbranch(
         b.icmp_unsigned(
             "==", raw_fn.args[0], ir.Constant(i8_ptr, None), name="sr.null"
@@ -1084,10 +1053,10 @@ impl NaIRGenRefcount._emit_str_desc_helpers -> None {
         ("__jac_str_wrap", self.str_len_fn),
         ("__jac_str_wrap_raw", self.str_len_raw_fn)
     ) {
-        wf = self._define_function(fname, ir.FunctionType(desc, [i8p]));
-        wf.linkage = "private";
-        wf.args[0].name = "s";
-        wb = ir.IRBuilder(wf.append_basic_block("entry"));
+        wb = self._new_fn_builder(
+            fname, ir.FunctionType(desc, [i8p]), "private", ("s", )
+        );
+        wf = wb.function;
         wlen = wb.call(len_fn, [wf.args[0]], name="w.len");
         slot = wb.alloca(desc, name="w.slot");
         if not _hl {
@@ -1104,15 +1073,14 @@ impl NaIRGenRefcount._emit_str_desc_helpers -> None {
             self.str_wrap_raw_fn = wf;
         }
     }
-    uf = self._define_function("__jac_str_unwrap", ir.FunctionType(i8p, [desc]));
-    uf.linkage = "private";
-    uf.args[0].name = "d";
-    _u_entry = uf.append_basic_block("entry");
+    ub = self._new_fn_builder(
+        "__jac_str_unwrap", ir.FunctionType(i8p, [desc]), "private", ("d", )
+    );
+    uf = ub.function;
     _u_null = uf.append_basic_block("null");
     _u_probe = uf.append_basic_block("probe");
     _u_pass = uf.append_basic_block("pass");
     _u_copy = uf.append_basic_block("copy");
-    ub = ir.IRBuilder(_u_entry);
     _u_data = ub.extract_value(uf.args[0], _di, name="u.data");
     _u_len = ub.extract_value(uf.args[0], _li, name="u.len");
     ub.cbranch(
@@ -2322,19 +2290,16 @@ impl NaIRGenRefcount._emit_str_cmp3_helper -> None {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
-    fn = self._define_function(
-        "__jac_str_cmp3", ir.FunctionType(i32, [i8p, i64, i8p, i64])
+    b = self._new_fn_builder(
+        "__jac_str_cmp3",
+        ir.FunctionType(i32, [i8p, i64, i8p, i64]),
+        "private",
+        ("a", "al", "b", "bl")
     );
-    fn.linkage = "private";
-    fn.args[0].name = "a";
-    fn.args[1].name = "al";
-    fn.args[2].name = "b";
-    fn.args[3].name = "bl";
-    _entry = fn.append_basic_block("entry");
+    fn = b.function;
     _cmp_bb = fn.append_basic_block("cmp");
     _retr_bb = fn.append_basic_block("retr");
     _tie_bb = fn.append_basic_block("tie");
-    b = ir.IRBuilder(_entry);
     _al = fn.args[1];
     _bl = fn.args[3];
     _n = b.select(b.icmp_signed("<", _al, _bl, name="c3.min.p"), _al, _bl, name="c3.n");

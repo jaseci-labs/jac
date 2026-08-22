@@ -25,6 +25,13 @@ obj NaIRGenFunc(NaIRGenState) {
     def _codegen_generator(nd: uni.Ability, func: ir.Function) -> None;
     def _emit_generator_drop_fn(name: str, slots: list[tuple]) -> ir.Function;
     def _define_function(name: str, fnty: ir.FunctionType) -> ir.Function;
+    def _new_fn_builder(
+        name: str,
+        fnty: ir.FunctionType,
+        linkage: str = "internal",
+        arg_names: tuple = ()
+    ) -> ir.IRBuilder;
+
     def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _normalize_type_key(key: str) -> str;

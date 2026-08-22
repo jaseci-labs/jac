@@ -265,6 +265,68 @@ impl GrammarExtractPass.before_pass -> None {
     self._rule_firsts = {};
     self._none_returning = {};
     self._helper_bodies = {};
+    self._token_globs = {};
+}
+
+impl GrammarExtractPass._collect_glob_tokens(expr: uni.Expr) -> list {
+    if isinstance(expr, uni.FuncCall) {
+        for p in expr.params {
+            toks = self._collect_glob_tokens(p);
+            if len(toks) > 0 {
+                return toks;
+            }
+        }
+        return [];
+    }
+    if isinstance(expr, uni.SetVal)
+        or isinstance(expr, uni.ListVal)
+        or isinstance(expr, uni.TupleVal) {
+        toks = [];
+        for item in expr.values {
+            tn = self.extract_token_kind(item);
+            if tn is not None {
+                toks.append(tn);
+            } elif isinstance(item, uni.Name) {
+                toks.extend(self._token_glob_map().get(item.value, []));
+            }
+        }
+        return toks;
+    }
+    if isinstance(expr, uni.BinaryExpr)
+        and expr.op is not None
+        and expr.op.value == "|" {
+        return self._collect_glob_tokens(expr.left)
+            + self._collect_glob_tokens(expr.right);
+    }
+    return [];
+}
+
+impl GrammarExtractPass._token_glob_map -> dict {
+    if len(self._token_globs) > 0 {
+        return self._token_globs;
+    }
+    if self.ir_in is None {
+        return self._token_globs;
+    }
+    for node in self.ir_in.body {
+        if not isinstance(node, uni.GlobalVars) {
+            continue;
+        }
+        for assign in node.assignments {
+            tgt = assign.target;
+            if isinstance(tgt, list) and len(tgt) > 0 {
+                tgt = tgt[0];
+            }
+            if not isinstance(tgt, uni.Name) or not tgt.value.startswith("_") {
+                continue;
+            }
+            toks = self._collect_glob_tokens(assign.value);
+            if len(toks) > 0 {
+                self._token_globs[tgt.value] = toks;
+            }
+        }
+    }
+    return self._token_globs;
 }
 
 impl GrammarExtractPass._returns_none(nd: uni.ImplDef) -> bool {
@@ -2141,6 +2203,15 @@ impl GrammarExtractPass.interpret_condition(cond: uni.Expr) -> ConditionResult |
                         if len(tok_names) > 0 {
                             return ConditionResult(
                                 method="check", kind="lookahead", tokens=tok_names
+                            );
+                        }
+                    } elif isinstance(right, uni.Name) {
+                        glob_toks = self._token_glob_map().get(right.value, []);
+                        if len(glob_toks) > 0 {
+                            return ConditionResult(
+                                method="check",
+                                kind="lookahead_any",
+                                tokens=list(glob_toks)
                             );
                         }
                     }

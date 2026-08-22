@@ -1274,6 +1274,17 @@ impl NaIRGenFunc._define_function(name: str, fnty: ir.FunctionType) -> ir.Functi
     );
 }
 
+impl NaIRGenFunc._new_fn_builder(
+    name: str, fnty: ir.FunctionType, linkage: str = "internal", arg_names: tuple = ()
+) -> ir.IRBuilder {
+    fn = self._define_function(name, fnty);
+    fn.linkage = linkage;
+    for (idx, arg_name) in enumerate(arg_names) {
+        fn.args[idx].name = arg_name;
+    }
+    return ir.IRBuilder(fn.append_basic_block("entry"));
+}
+
 impl NaIRGenFunc._emit_glob_init_func -> None {
     saved_builder = self._builder;
     saved_locals = self.local_vars if self?.local_vars else {};

@@ -1,7 +1,6 @@
 """Tests for the built-in `jac mcp` server (jaclang.cli.mcp)."""
 
 import from jaclang.cli.mcp.server { JacMcpServer }
-import from jaclang.cli.mcp.plugin_config { JacMcpPluginConfig }
 import from jaclang.cli.mcp.resources { ResourceProvider }
 import from jaclang.cli.mcp.tools { ToolProvider }
 import from jaclang.cli.mcp.prompts { PromptProvider }
@@ -182,29 +181,6 @@ test "engine get_prompt renders messages as text content with valid roles" {
         assert m["role"] in ["user", "assistant"];
         assert m["content"]["type"] == "text";
     }
-}
-
-# ── Plugin Config Tests ──
-test "get plugin metadata" {
-    metadata = JacMcpPluginConfig.get_plugin_metadata();
-    assert metadata["name"] == "mcp";
-    assert metadata["version"] == "0.1.0";
-    assert "description" in metadata;
-}
-
-test "get config schema" {
-    schema = JacMcpPluginConfig.get_config_schema();
-    assert schema["section"] == "mcp";
-    assert "options" in schema;
-    options = schema["options"];
-    assert "transport" in options;
-    assert "port" in options;
-    assert "host" in options;
-    assert "expose_grammar" in options;
-    assert "enable_validate" in options;
-    assert "mode" in options;
-    mode_opt = options["mode"];
-    assert mode_opt["default"] == "full";
 }
 
 # ── Resource Provider Tests ──

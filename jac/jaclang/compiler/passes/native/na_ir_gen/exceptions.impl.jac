@@ -55,11 +55,8 @@ impl NaIRGenExceptions._emit_exc_push_helper -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     fnty = ir.FunctionType(ir.VoidType(), [exc_state_ptr]);
-    func = self._define_function("__jac_exc_push", fnty);
-    func.linkage = "private";
-    func.args[0].name = "state";
-    bb = func.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
+    b = self._new_fn_builder("__jac_exc_push", fnty, "private", ("state", ));
+    func = b.function;
     state = func.args[0];
 
     prev_handler = b.load(self._exc_handler_global, name="prev");
@@ -91,10 +88,8 @@ impl NaIRGenExceptions._emit_exc_pop_helper -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = self._define_function("__jac_exc_pop", fnty);
-    func.linkage = "private";
-    bb = func.append_basic_block("entry");
-    b = ir.IRBuilder(bb);
+    b = self._new_fn_builder("__jac_exc_pop", fnty, "private", ());
+    func = b.function;
 
     cur_handler = b.load(self._exc_handler_global, name="cur");
 

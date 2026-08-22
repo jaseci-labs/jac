@@ -576,7 +576,7 @@ test "rules reference valid names" {
 }
 
 # ── Ratchet: strict findings may only go down ────────────────────────────
-glob STRICT_FINDING_BUDGET = 37;
+glob STRICT_FINDING_BUDGET = 35;
 
 test "strict finding budget" {
     prog = JacProgram();

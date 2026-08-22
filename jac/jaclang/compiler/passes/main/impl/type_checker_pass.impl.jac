@@ -524,19 +524,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: Assignment) -> None 
                     }
                 }
             } elif left_type.bound and isinstance(left_type.bound, ClassType) {
-                if op_name {
-                    result = self.evaluator.get_type_of_magic_method_call(
+                result = (
+                    self.evaluator.get_type_of_magic_method_call(
                         left_type.bound, op_name, [nd.value], nd
-                    );
-                    if result is None {
-                        self.emit(
-                            E1010,
-                            node_override=nd,
-                            op=nd.aug_op.name,
-                            type=str(left_type.bound)
-                        );
-                    }
-                } else {
+                    )
+                        if op_name
+                        else None
+                );
+                if result is None {
                     self.emit(
                         E1010,
                         node_override=nd,

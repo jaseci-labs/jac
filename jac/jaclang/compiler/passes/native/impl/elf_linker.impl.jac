@@ -123,6 +123,67 @@ glob R_AARCH64_PREL32 = 261,
      R_AARCH64_TLSLE_ADD_TPREL_LO12_NC = 551;
 
 
+def _write_ehdr(
+    output: bytearray,
+    e_type: int,
+    `entry: int,
+    arch: ArchConfig,
+    num_phdrs: int,
+    ehdr_size: int
+) {
+    ident = bytearray(16);
+    ident[0:4] = ELFMAG;
+    ident[4] = ELFCLASS64;
+    ident[5] = ELFDATA2LSB;
+    ident[6] = 1;
+    ident[7] = 0;
+    struct.pack_into("16s", output, 0, bytes(ident));
+    struct.pack_into(
+        "<HHIQQQIHHHHHH",
+        output,
+        16,
+        e_type,
+        arch.e_machine,
+        1,
+        `entry,
+        ehdr_size,
+        0,
+        0,
+        ehdr_size,
+        56,
+        num_phdrs,
+        0,
+        0,
+        0
+    );
+}
+
+def _write_phdr(
+    output: bytearray,
+    off: int,
+    p_type: int,
+    flags: int,
+    foff: int,
+    vaddr: int,
+    filesz: int,
+    memsz: int,
+    align: int
+) {
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        off,
+        p_type,
+        flags,
+        foff,
+        vaddr,
+        vaddr,
+        filesz,
+        memsz,
+        align
+    );
+}
+
 def _elf_hash(name: str) -> int {
     h = 0;
     for c in name.encode("utf-8") {
@@ -1146,43 +1207,16 @@ impl ElfLinker.build_executable -> bytes {
     entry_vaddr = _find_entry_vaddr(local_sym_map, text_vaddr);
 
     output = bytearray(total_file_size);
-
-    ident = bytearray(16);
-    ident[0:4] = ELFMAG;
-    ident[4] = ELFCLASS64;
-    ident[5] = ELFDATA2LSB;
-    ident[6] = 1;
-    ident[7] = 0;
-    struct.pack_into("16s", output, 0, bytes(ident));
-    struct.pack_into(
-        "<HHIQQQIHHHHHH",
-        output,
-        16,
-        ET_EXEC,
-        arch.e_machine,
-        1,
-        entry_vaddr,
-        ehdr_size,
-        0,
-        0,
-        ehdr_size,
-        56,
-        num_phdrs,
-        0,
-        0,
-        0
-    );
+    _write_ehdr(output, ET_EXEC, entry_vaddr, arch, num_phdrs, ehdr_size);
 
     phdr_off = ehdr_size;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_PHDR,
         PF_R,
         ehdr_size,
-        BASE_VADDR + ehdr_size,
         BASE_VADDR + ehdr_size,
         phdr_size,
         phdr_size,
@@ -1190,14 +1224,12 @@ impl ElfLinker.build_executable -> bytes {
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_INTERP,
         PF_R,
         interp_foff,
-        interp_vaddr,
         interp_vaddr,
         len(interp_data),
         len(interp_data),
@@ -1205,44 +1237,38 @@ impl ElfLinker.build_executable -> bytes {
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_LOAD,
         PF_R | PF_X,
         0,
         BASE_VADDR,
-        BASE_VADDR,
         code_seg_size,
         code_seg_size,
         PAGE_SIZE
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_LOAD,
         PF_R | PF_W,
         data_seg_foff,
         data_seg_vaddr,
-        data_seg_vaddr,
         data_seg_size,
         data_seg_size,
         PAGE_SIZE
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_DYNAMIC,
         PF_R | PF_W,
         dynamic_foff,
-        dynamic_vaddr,
         dynamic_vaddr,
         len(dynamic_data),
         len(dynamic_data),
@@ -2323,86 +2349,54 @@ impl ElfLinker.build_shared_object -> bytes {
     }
 
     output = bytearray(total_file_size);
-    ident = bytearray(16);
-    ident[0:4] = ELFMAG;
-    ident[4] = ELFCLASS64;
-    ident[5] = ELFDATA2LSB;
-    ident[6] = 1;
-    ident[7] = 0;
-    struct.pack_into("16s", output, 0, bytes(ident));
-    struct.pack_into(
-        "<HHIQQQIHHHHHH",
-        output,
-        16,
-        ET_DYN,
-        arch.e_machine,
-        1,
-        0,
-        ehdr_size,
-        0,
-        0,
-        ehdr_size,
-        56,
-        num_phdrs,
-        0,
-        0,
-        0
-    );
+    _write_ehdr(output, ET_DYN, 0, arch, num_phdrs, ehdr_size);
     phdr_off = ehdr_size;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_PHDR,
         PF_R,
         ehdr_size,
         BASE_VADDR + ehdr_size,
-        BASE_VADDR + ehdr_size,
         phdr_size,
         phdr_size,
         8
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_LOAD,
         PF_R | PF_X,
         0,
         BASE_VADDR,
-        BASE_VADDR,
         code_seg_size,
         code_seg_size,
         PAGE_SIZE
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_LOAD,
         PF_R | PF_W,
         data_seg_foff,
         data_seg_vaddr,
-        data_seg_vaddr,
         data_seg_size,
         data_seg_size,
         PAGE_SIZE
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_DYNAMIC,
         PF_R | PF_W,
         dynamic_foff,
-        dynamic_vaddr,
         dynamic_vaddr,
         dynamic_size,
         dynamic_size,
@@ -2410,9 +2404,7 @@ impl ElfLinker.build_shared_object -> bytes {
     );
     phdr_off += 56;
 
-    struct.pack_into(
-        "<IIQQQQQQ", output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 0, 16
-    );
+    _write_phdr(output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 16);
 
     output[hash_foff:hash_foff + len(hash_data)] = hash_data;
     output[dynsym_foff:dynsym_foff + len(dynsym_data)] = bytes(dynsym_data);
@@ -3053,69 +3045,39 @@ impl ElfLinker.build_static_executable -> bytes {
     entry_vaddr = _find_entry_vaddr(local_sym_map, text_vaddr);
 
     output = bytearray(total_file_size);
-    ident = bytearray(16);
-    ident[0:4] = ELFMAG;
-    ident[4] = ELFCLASS64;
-    ident[5] = ELFDATA2LSB;
-    ident[6] = 1;
-    ident[7] = 0;
-    struct.pack_into("16s", output, 0, bytes(ident));
-    struct.pack_into(
-        "<HHIQQQIHHHHHH",
-        output,
-        16,
-        ET_EXEC,
-        arch.e_machine,
-        1,
-        entry_vaddr,
-        ehdr_size,
-        0,
-        0,
-        ehdr_size,
-        56,
-        num_phdrs,
-        0,
-        0,
-        0
-    );
+    _write_ehdr(output, ET_EXEC, entry_vaddr, arch, num_phdrs, ehdr_size);
 
     phdr_off = ehdr_size;
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_PHDR,
         PF_R,
         ehdr_size,
         BASE_VADDR + ehdr_size,
-        BASE_VADDR + ehdr_size,
         phdr_size,
         phdr_size,
         8
     );
     phdr_off += 56;
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_LOAD,
         PF_R | PF_X,
         0,
         BASE_VADDR,
-        BASE_VADDR,
         code_seg_size,
         code_seg_size,
         PAGE_SIZE
     );
     phdr_off += 56;
-    struct.pack_into(
-        "<IIQQQQQQ",
+    _write_phdr(
         output,
         phdr_off,
         PT_LOAD,
         PF_R | PF_W,
         data_seg_foff,
-        data_seg_vaddr,
         data_seg_vaddr,
         data_seg_size,
         data_seg_size,
@@ -3123,14 +3085,12 @@ impl ElfLinker.build_static_executable -> bytes {
     );
     phdr_off += 56;
     if has_tls {
-        struct.pack_into(
-            "<IIQQQQQQ",
+        _write_phdr(
             output,
             phdr_off,
             PT_TLS,
             PF_R,
             tls_foff,
-            tls_vaddr,
             tls_vaddr,
             tls_file_size,
             tls_mem_size,
@@ -3138,9 +3098,7 @@ impl ElfLinker.build_static_executable -> bytes {
         );
         phdr_off += 56;
     }
-    struct.pack_into(
-        "<IIQQQQQQ", output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 0, 16
-    );
+    _write_phdr(output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 16);
 
     output[text_foff:text_foff + len(code_bytes)] = bytes(code_bytes);
     if len(rodata_bytes) > 0 {

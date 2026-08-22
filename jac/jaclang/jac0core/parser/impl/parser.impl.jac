@@ -50,6 +50,22 @@ impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
     return self.peek().kind in kinds;
 }
 
+impl Parser.at_aug_assign_op -> bool {
+    return self.current().kind in _AUG_ASSIGN_KINDS;
+}
+
+impl Parser.peek_at_aug_assign_op -> bool {
+    return self.peek().kind in _AUG_ASSIGN_KINDS;
+}
+
+impl Parser.at_comparison_op -> bool {
+    return self.current().kind in _COMPARE_KINDS;
+}
+
+impl Parser.at_fstring_start -> bool {
+    return self.current().kind in _FSTRING_START_KINDS;
+}
+
 impl Parser.postinit{
     self.source = Source(self.source_code, self.file_path);
 }
@@ -145,128 +161,11 @@ impl Parser.is_name_usable_token -> bool {
 }
 
 impl Parser.is_keyword_token -> bool {
-    return self.check_any(
-        TokenKind.KW_ABSTRACT,
-        TokenKind.KW_OBJECT,
-        TokenKind.KW_CLASS,
-        TokenKind.KW_ENUM,
-        TokenKind.KW_NODE,
-        TokenKind.KW_EDGE,
-        TokenKind.KW_WALKER,
-        TokenKind.KW_HAS,
-        TokenKind.KW_CAN,
-        TokenKind.KW_DEF,
-        TokenKind.KW_STATIC,
-        TokenKind.KW_OVERRIDE,
-        TokenKind.KW_IMPL,
-        TokenKind.KW_GETTER,
-        TokenKind.KW_SETTER,
-        TokenKind.KW_DELETER,
-        TokenKind.KW_SEM,
-        TokenKind.KW_TEST,
-        TokenKind.KW_GLOBAL,
-        TokenKind.KW_IMPORT,
-        TokenKind.KW_INCLUDE,
-        TokenKind.KW_FROM,
-        TokenKind.KW_AS,
-        TokenKind.KW_IF,
-        TokenKind.KW_ELIF,
-        TokenKind.KW_ELSE,
-        TokenKind.KW_FOR,
-        TokenKind.KW_BY,
-        TokenKind.KW_WHILE,
-        TokenKind.KW_FOREVER,
-        TokenKind.KW_MATCH,
-        TokenKind.KW_SWITCH,
-        TokenKind.KW_CASE,
-        TokenKind.KW_DEFAULT,
-        TokenKind.KW_TRY,
-        TokenKind.KW_EXCEPT,
-        TokenKind.KW_FINALLY,
-        TokenKind.KW_WITH,
-        TokenKind.KW_RETURN,
-        TokenKind.KW_YIELD,
-        TokenKind.KW_BREAK,
-        TokenKind.KW_CONTINUE,
-        TokenKind.KW_RAISE,
-        TokenKind.KW_DELETE,
-        TokenKind.KW_ASSERT,
-        TokenKind.KW_SKIP,
-        TokenKind.KW_REPORT,
-        TokenKind.KW_VISIT,
-        TokenKind.KW_SPAWN,
-        TokenKind.KW_ENTRY,
-        TokenKind.KW_EXIT,
-        TokenKind.KW_DISENGAGE,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_ASYNC,
-        TokenKind.KW_AWAIT,
-        TokenKind.KW_FLOW,
-        TokenKind.KW_WAIT,
-        TokenKind.KW_AND,
-        TokenKind.KW_OR,
-        TokenKind.KW_NOT,
-        TokenKind.KW_IN,
-        TokenKind.KW_IS,
-        TokenKind.KW_LAMBDA,
-        TokenKind.KW_PUB,
-        TokenKind.KW_PRIV,
-        TokenKind.KW_PROT,
-        TokenKind.KW_SELF,
-        TokenKind.KW_PROPS,
-        TokenKind.KW_INIT,
-        TokenKind.KW_POST_INIT,
-        TokenKind.KW_SUPER,
-        TokenKind.TYP_STRING,
-        TokenKind.TYP_INT,
-        TokenKind.TYP_FLOAT,
-        TokenKind.TYP_LIST,
-        TokenKind.TYP_TUPLE,
-        TokenKind.TYP_SET,
-        TokenKind.TYP_DICT,
-        TokenKind.TYP_BOOL,
-        TokenKind.TYP_BYTES,
-        TokenKind.TYP_ANY,
-        TokenKind.TYP_TYPE,
-        TokenKind.TYP_I8,
-        TokenKind.TYP_U8,
-        TokenKind.TYP_I16,
-        TokenKind.TYP_U16,
-        TokenKind.TYP_I32,
-        TokenKind.TYP_U32,
-        TokenKind.TYP_I64,
-        TokenKind.TYP_U64,
-        TokenKind.TYP_F32,
-        TokenKind.TYP_F64
-    );
+    return self.current().kind in _KEYWORD_KINDS;
 }
 
 impl Parser.is_builtin_type_token -> bool {
-    return self.check_any(
-        TokenKind.TYP_STRING,
-        TokenKind.TYP_INT,
-        TokenKind.TYP_FLOAT,
-        TokenKind.TYP_LIST,
-        TokenKind.TYP_TUPLE,
-        TokenKind.TYP_SET,
-        TokenKind.TYP_DICT,
-        TokenKind.TYP_BOOL,
-        TokenKind.TYP_BYTES,
-        TokenKind.TYP_ANY,
-        TokenKind.TYP_TYPE,
-        TokenKind.TYP_I8,
-        TokenKind.TYP_U8,
-        TokenKind.TYP_I16,
-        TokenKind.TYP_U16,
-        TokenKind.TYP_I32,
-        TokenKind.TYP_U32,
-        TokenKind.TYP_I64,
-        TokenKind.TYP_U64,
-        TokenKind.TYP_F32,
-        TokenKind.TYP_F64
-    );
+    return self.current().kind in _BUILTIN_TYPE_KINDS;
 }
 
 impl Parser.expect_name(context: str = "identifier") -> LexToken {
@@ -485,35 +384,7 @@ impl Parser.make_semi -> Semi {
 impl Parser.synchronize{
     self.advance();
     while not self.at_end() {
-        if self.check_any(
-            TokenKind.KW_IF,
-            TokenKind.KW_WHILE,
-            TokenKind.KW_FOREVER,
-            TokenKind.KW_FOR,
-            TokenKind.KW_DEF,
-            TokenKind.KW_CAN,
-            TokenKind.KW_OBJECT,
-            TokenKind.KW_NODE,
-            TokenKind.KW_EDGE,
-            TokenKind.KW_WALKER,
-            TokenKind.KW_CLASS,
-            TokenKind.KW_ENUM,
-            TokenKind.KW_IMPORT,
-            TokenKind.KW_INCLUDE,
-            TokenKind.KW_RETURN,
-            TokenKind.KW_TEST,
-            TokenKind.KW_GLOBAL,
-            TokenKind.KW_IMPL,
-            TokenKind.KW_ASYNC,
-            TokenKind.KW_WITH,
-            TokenKind.KW_TRY,
-            TokenKind.KW_PUB,
-            TokenKind.KW_PRIV,
-            TokenKind.KW_PROT,
-            TokenKind.DECOR_OP,
-            TokenKind.RBRACE,
-            TokenKind.SEMI
-        ) {
+        if self.current().kind in _SYNC_BOUNDARY_KINDS {
             return;
         }
         self.advance();
@@ -855,45 +726,12 @@ impl Parser.parse_logical_not(allow_cast: bool = True) -> Expr {
 
 impl Parser.parse_compare(allow_cast: bool = True) -> Expr {
     left = self.parse_cast(allow_cast);
-    if self.check_any(
-        TokenKind.EE,
-        TokenKind.NE,
-        TokenKind.LT,
-        TokenKind.GT,
-        TokenKind.LTE,
-        TokenKind.GTE,
-        TokenKind.KW_IN,
-        TokenKind.KW_IS,
-        TokenKind.KW_NIN,
-        TokenKind.KW_ISN
-    ) {
+    if self.at_comparison_op() {
         rights: list[Expr] = [];
         ops: list[Token] = [];
         kid: list[UniNode] = [left];
-        while self.check_any(
-            TokenKind.EE,
-            TokenKind.NE,
-            TokenKind.LT,
-            TokenKind.GT,
-            TokenKind.LTE,
-            TokenKind.GTE,
-            TokenKind.KW_IN,
-            TokenKind.KW_IS,
-            TokenKind.KW_NIN,
-            TokenKind.KW_ISN
-        ) {
-            op_tok = self.expect_any(
-                TokenKind.EE,
-                TokenKind.NE,
-                TokenKind.LT,
-                TokenKind.GT,
-                TokenKind.LTE,
-                TokenKind.GTE,
-                TokenKind.KW_IN,
-                TokenKind.KW_IS,
-                TokenKind.KW_NIN,
-                TokenKind.KW_ISN
-            );
+        while self.at_comparison_op() {
+            op_tok = self.advance();
             op = self.make_uni_token(op_tok);
             ops.append(op);
             kid.append(op);
@@ -1775,32 +1613,14 @@ impl Parser.parse_multistring -> Expr | None {
     } elif self.check(TokenKind.STRING) {
         first_tok = self.expect(TokenKind.STRING);
         strings.append(self.make_string(first_tok));
-    } elif self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
+    } elif self.at_fstring_start() {
         strings.append(self.parse_fstring());
     } else {
         return None;
     }
 
     while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        )
+        or self.at_fstring_start()
         or (
             self.check(TokenKind.NAME)
             and self.current().value
@@ -1824,52 +1644,8 @@ impl Parser.parse_multistring -> Expr | None {
 }
 
 impl Parser.parse_builtin_type -> Expr | None {
-    if self.check_any(
-        TokenKind.TYP_STRING,
-        TokenKind.TYP_INT,
-        TokenKind.TYP_FLOAT,
-        TokenKind.TYP_LIST,
-        TokenKind.TYP_TUPLE,
-        TokenKind.TYP_SET,
-        TokenKind.TYP_DICT,
-        TokenKind.TYP_BOOL,
-        TokenKind.TYP_BYTES,
-        TokenKind.TYP_ANY,
-        TokenKind.TYP_TYPE,
-        TokenKind.TYP_I8,
-        TokenKind.TYP_U8,
-        TokenKind.TYP_I16,
-        TokenKind.TYP_U16,
-        TokenKind.TYP_I32,
-        TokenKind.TYP_U32,
-        TokenKind.TYP_I64,
-        TokenKind.TYP_U64,
-        TokenKind.TYP_F32,
-        TokenKind.TYP_F64
-    ) {
-        tok = self.expect_any(
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE,
-            TokenKind.TYP_I8,
-            TokenKind.TYP_U8,
-            TokenKind.TYP_I16,
-            TokenKind.TYP_U16,
-            TokenKind.TYP_I32,
-            TokenKind.TYP_U32,
-            TokenKind.TYP_I64,
-            TokenKind.TYP_U64,
-            TokenKind.TYP_F32,
-            TokenKind.TYP_F64
-        );
+    if self.current().kind in _BUILTIN_TYPE_KINDS {
+        tok = self.advance();
         builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]
             if tok.kind in TOKEN_KIND_TO_TOK
             else tok.kind.value;
@@ -1943,16 +1719,7 @@ impl Parser.parse_atom -> Expr {
     }
 
     if self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        )
+        or self.at_fstring_start()
         or (
             self.check(TokenKind.NAME)
             and self.current().value
@@ -3674,22 +3441,7 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
 
     if self.is_keyword_token()
         and not self.is_name_usable_token()
-        and self.check_peek_any(
-            TokenKind.EQ,
-            TokenKind.ADD_EQ,
-            TokenKind.SUB_EQ,
-            TokenKind.MUL_EQ,
-            TokenKind.DIV_EQ,
-            TokenKind.FLOOR_DIV_EQ,
-            TokenKind.MOD_EQ,
-            TokenKind.STAR_POW_EQ,
-            TokenKind.MATMUL_EQ,
-            TokenKind.BW_AND_EQ,
-            TokenKind.BW_OR_EQ,
-            TokenKind.BW_XOR_EQ,
-            TokenKind.LSHIFT_EQ,
-            TokenKind.RSHIFT_EQ
-        ) {
+        and (self.check_peek(TokenKind.EQ) or self.peek_at_aug_assign_op()) {
         kw_target = self.make_name(self.expect_name("variable"));
         return self.parse_assignment_with_target(kw_target);
     }
@@ -3875,21 +3627,7 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
     expr = self.parse_expression();
     if self.check(TokenKind.EQ)
         or self.check(TokenKind.COLON)
-        or self.check_any(
-            TokenKind.ADD_EQ,
-            TokenKind.SUB_EQ,
-            TokenKind.MUL_EQ,
-            TokenKind.DIV_EQ,
-            TokenKind.FLOOR_DIV_EQ,
-            TokenKind.MOD_EQ,
-            TokenKind.STAR_POW_EQ,
-            TokenKind.MATMUL_EQ,
-            TokenKind.BW_AND_EQ,
-            TokenKind.BW_OR_EQ,
-            TokenKind.BW_XOR_EQ,
-            TokenKind.LSHIFT_EQ,
-            TokenKind.RSHIFT_EQ
-        ) {
+        or self.at_aug_assign_op() {
         return self.parse_assignment_with_target(expr);
     }
 
@@ -4878,36 +4616,8 @@ impl Parser.parse_assignment_with_target(
                 value = self.parse_expression();
             }
         }
-    } elif self.check_any(
-        TokenKind.ADD_EQ,
-        TokenKind.SUB_EQ,
-        TokenKind.MUL_EQ,
-        TokenKind.DIV_EQ,
-        TokenKind.FLOOR_DIV_EQ,
-        TokenKind.MOD_EQ,
-        TokenKind.STAR_POW_EQ,
-        TokenKind.MATMUL_EQ,
-        TokenKind.BW_AND_EQ,
-        TokenKind.BW_OR_EQ,
-        TokenKind.BW_XOR_EQ,
-        TokenKind.LSHIFT_EQ,
-        TokenKind.RSHIFT_EQ
-    ) {
-        aug_tok = self.expect_any(
-            TokenKind.ADD_EQ,
-            TokenKind.SUB_EQ,
-            TokenKind.MUL_EQ,
-            TokenKind.DIV_EQ,
-            TokenKind.FLOOR_DIV_EQ,
-            TokenKind.MOD_EQ,
-            TokenKind.STAR_POW_EQ,
-            TokenKind.MATMUL_EQ,
-            TokenKind.BW_AND_EQ,
-            TokenKind.BW_OR_EQ,
-            TokenKind.BW_XOR_EQ,
-            TokenKind.LSHIFT_EQ,
-            TokenKind.RSHIFT_EQ
-        );
+    } elif self.at_aug_assign_op() {
+        aug_tok = self.advance();
         aug_op = self.make_uni_token(aug_tok);
         if self.check(TokenKind.KW_YIELD) {
             value = self.parse_yield_stmt();
@@ -6733,26 +6443,10 @@ impl Parser.parse_impl_target_name -> NameAtom {
         name_tok = self.expect_name();
         return self.make_name(name_tok);
     } elif self.check_any(TokenKind.KW_INIT, TokenKind.KW_POST_INIT) {
-        name_tok = self.expect_any(TokenKind.KW_INIT, TokenKind.KW_POST_INIT);
+        name_tok = self.advance();
         return SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
-    } elif self.check_any(
-        TokenKind.KW_ENTRY,
-        TokenKind.KW_EXIT,
-        TokenKind.KW_DEFAULT,
-        TokenKind.KW_GETTER,
-        TokenKind.KW_SETTER,
-        TokenKind.KW_DELETER,
-        TokenKind.KW_RETURN
-    ) {
-        name_tok = self.expect_any(
-            TokenKind.KW_ENTRY,
-            TokenKind.KW_EXIT,
-            TokenKind.KW_DEFAULT,
-            TokenKind.KW_GETTER,
-            TokenKind.KW_SETTER,
-            TokenKind.KW_DELETER,
-            TokenKind.KW_RETURN
-        );
+    } elif self.current().kind in _IMPL_SPECIAL_NAME_KINDS {
+        name_tok = self.advance();
         return self.make_special_name(name_tok);
     } else {
         name_tok = self.expect_name("impl target");

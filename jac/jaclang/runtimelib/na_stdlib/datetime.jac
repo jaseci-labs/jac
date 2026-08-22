@@ -57,42 +57,26 @@ obj datetime {
 
     def isoformat -> str {
         return (
-            _pad4(self.year)
+            _padn(self.year, 4)
             + "-"
-            + _pad2(self.month)
+            + _padn(self.month, 2)
             + "-"
-            + _pad2(self.day)
+            + _padn(self.day, 2)
             + "T"
-            + _pad2(self.hour)
+            + _padn(self.hour, 2)
             + ":"
-            + _pad2(self.minute)
+            + _padn(self.minute, 2)
             + ":"
-            + _pad2(self.second)
+            + _padn(self.second, 2)
             + _offset_str(self.tz_offset_min)
         );
     }
 }
 
 
-def _pad2(n: int) -> str {
-    if n < 10 {
-        return "0" + str(n);
-    }
-    return str(n);
-}
-
-
-def _pad4(n: int) -> str {
-    if n < 10 {
-        return "000" + str(n);
-    }
-    if n < 100 {
-        return "00" + str(n);
-    }
-    if n < 1000 {
-        return "0" + str(n);
-    }
-    return str(n);
+def _padn(n: int, width: int) -> str {
+    s = str(n);
+    return "0" * (width - len(s)) + s;
 }
 
 
@@ -103,5 +87,5 @@ def _offset_str(offset_min: int) -> str {
         sign = "-";
         o = -o;
     }
-    return sign + _pad2(o // 60) + ":" + _pad2(o % 60);
+    return sign + _padn(o // 60, 2) + ":" + _padn(o % 60, 2);
 }

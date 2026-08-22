@@ -100,7 +100,14 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
          "check_name": MethodSemantics(kind="lookahead", token_args=False),
          "is_keyword_token": MethodSemantics(kind="lookahead", token_args=False),
          "is_builtin_type_token": MethodSemantics(kind="lookahead", token_args=False),
+         "is_name_usable_token": MethodSemantics(kind="lookahead", token_args=False),
          "at_end": MethodSemantics(kind="lookahead", token_args=False),
+         "at_fstring_start": MethodSemantics(kind="lookahead_any", token_args=False),
+         "at_comparison_op": MethodSemantics(kind="lookahead_any", token_args=False),
+         "at_aug_assign_op": MethodSemantics(kind="lookahead_any", token_args=False),
+         "peek_at_aug_assign_op": MethodSemantics(
+             kind="lookahead_peek_any", token_args=False
+         ),
          "error": MethodSemantics(kind="ignore", token_args=False),
          "emit_diag": MethodSemantics(kind="ignore", token_args=False),
          "emit_warn": MethodSemantics(kind="ignore", token_args=False),
@@ -148,7 +155,60 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
              "TYP_U64",
              "TYP_F32",
              "TYP_F64"
-         ]
+         ],
+         "at_fstring_start": [
+             "F_DQ_START",
+             "F_SQ_START",
+             "F_TDQ_START",
+             "F_TSQ_START",
+             "RF_DQ_START",
+             "RF_SQ_START",
+             "RF_TDQ_START",
+             "RF_TSQ_START"
+         ],
+         "at_comparison_op": [
+             "EE",
+             "NE",
+             "LT",
+             "GT",
+             "LTE",
+             "GTE",
+             "KW_IN",
+             "KW_IS",
+             "KW_NIN",
+             "KW_ISN"
+         ],
+         "at_aug_assign_op": [
+             "ADD_EQ",
+             "SUB_EQ",
+             "MUL_EQ",
+             "DIV_EQ",
+             "FLOOR_DIV_EQ",
+             "MOD_EQ",
+             "STAR_POW_EQ",
+             "MATMUL_EQ",
+             "BW_AND_EQ",
+             "BW_OR_EQ",
+             "BW_XOR_EQ",
+             "LSHIFT_EQ",
+             "RSHIFT_EQ"
+         ],
+         "peek_at_aug_assign_op": [
+             "ADD_EQ",
+             "SUB_EQ",
+             "MUL_EQ",
+             "DIV_EQ",
+             "FLOOR_DIV_EQ",
+             "MOD_EQ",
+             "STAR_POW_EQ",
+             "MATMUL_EQ",
+             "BW_AND_EQ",
+             "BW_OR_EQ",
+             "BW_XOR_EQ",
+             "LSHIFT_EQ",
+             "RSHIFT_EQ"
+         ],
+         "is_name_usable_token": ["NAME", "KWESC_NAME"]
      };
 
 obj ConditionResult {
@@ -165,11 +225,14 @@ obj GrammarExtractPass(UniPass) {
         _rule_firsts: dict = {},
         _current_rule: str = "",
         _none_returning: dict = {},
-        _helper_bodies: dict = {};
+        _helper_bodies: dict = {},
+        _token_globs: dict = {};
 
     def before_pass -> None;
     def enter_impl_def(nd: uni.ImplDef) -> None;
     def after_pass -> None;
+    def _token_glob_map -> dict;
+    def _collect_glob_tokens(expr: uni.Expr) -> list;
     def _interpret_all -> list;
     def _compute_rule_firsts(rules: list) -> dict;
     def _compute_rule_firsts_deep(rules: list) -> dict;
