@@ -6,7 +6,7 @@ import from jaclang.jac0core.host { HOST_TEST }
 obj TestHost(Host) {
     has name: str = "test",
         host_kind: str = HOST_TEST,
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "",
         output_dir: Optional[Path] = None;

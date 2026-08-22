@@ -1,10 +1,9 @@
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.runtimelib.client.targets.web_target { WebTarget }
-import from jaclang.runtimelib.client.targets.registry { TargetType }
 
 obj CefDesktopTarget(WebTarget) {
-    has name: str = TargetType.DESKTOP_CEF.value,
+    has name: str = "cef",
         `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "desktop",

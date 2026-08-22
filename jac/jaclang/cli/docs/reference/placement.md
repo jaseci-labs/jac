@@ -25,9 +25,11 @@ The placement solver seeds codespace from capability evidence (DOM and npm impor
 | `cpython` | | | ● | ● | |
 | `bare-metal` | | | | | ● |
 
-The P3 host kinds (`web-worker`, `service-worker`, `edge`, `cli-js`) are registered for capability and alias resolution; their build, dev, and start targets are not wired yet.
+The P3 host kinds (`web-worker`, `service-worker`, `edge`, `cli-js`) exist only as capability rows and target aliases in `jaclang.jac0core.host`; no executable build, dev, or start target is registered until one ships.
 
 Modules listed in `[scale.microservices.routes]` resolve their sv host at runtime: default **cpython**, or **bun** when a `.jac/server/<module>.mjs` artifact exists or when `JAC_SV_<MODULE>_HOST=bun` (or `[scale.microservices.services.<name>.host]`) overrides it. See [CLI Reference: Bun-hosted sv services](cli/index.md#bun-hosted-sv-services).
+
+Note: the module resolver consults this same host decision: when the project's client target resolves to the **bun** host, failed stdlib imports are rerouted to `cl_stdlib`. That decision is cached per base directory, so resolution cost is paid once per project.
 
 ## How placement is decided
 

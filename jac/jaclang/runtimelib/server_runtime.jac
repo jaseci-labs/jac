@@ -70,7 +70,13 @@ def serializeApiValue(val: any) -> any {
                 out[key] = serializeApiValue(val[key]);
             }
         }
-        if val.constructor and val.constructor.name {
+        # Reference: Serializer.serialize(api_mode=True) only annotates
+        # archetype instances — plain objects/dicts must stay clean.
+        if (
+            val.constructor
+            and val.constructor.name
+            and val.constructor.name != 'Object'
+        ) {
             out['_jac_type'] = val.constructor.name;
             out['_jac_archetype'] = 'walker';
         }
@@ -84,14 +90,20 @@ def finalizeCallResponse(result: any, reports: any = []) -> dict {
 }
 
 def okEnvelope(data: any) -> dict {
-    return {'ok': True, 'data': data};
+    # Mirrors _transport_response_to_dict in jaclang/scale/server/impl/serve.impl.jac
+    return {'ok': True, 'type': 'response', 'data': data, 'error': None};
 }
 
 def errorEnvelope(message: str) -> dict {
-    return {'ok': False, 'error': {'message': message}};
+    return {
+        'ok': False,
+        'type': 'error',
+        'data': None,
+        'error': {'code': 'EXECUTION_ERROR', 'message': message, 'details': None}
+    };
 }
 
-async def execWalker(walkerCls: any, fields: dict) -> any {
+async def:pub execWalker(walkerCls: any, fields: dict) -> any {
     inst = Object.assign(new(walkerCls), fields);
     return await __jacServerSpawnWalker(inst);
 }
@@ -170,7 +182,7 @@ async def handleWalkerSpawn(req: any, name: str, nodeId: str, handlers: dict) ->
     }
 }
 
-def startBunServer(opts: dict) {
+def:pub startBunServer(opts: dict) {
     project = opts.project or 'jac-service';
     walkers = opts.walkers or [];
     functions = opts.functions or [];

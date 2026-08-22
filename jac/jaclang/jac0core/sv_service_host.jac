@@ -29,7 +29,7 @@ def _resolve_sv_host_override(raw: str) -> (str | None) {
         import from jaclang.runtimelib.client.targets.registry { get_host_factory }
         names = get_host_factory().get_available_host_names();
         return resolve_registry_name(raw, names);
-    } except Exception {
+    } except ImportError {
         ;
     }
     return None;
@@ -52,7 +52,7 @@ def resolve_sv_service_host(module_name: str, base_path: str = '.') -> str {
                 return configured;
             }
         }
-    } except Exception {
+    } except (ImportError, AttributeError, KeyError, TypeError) {
         ;
     }
     return _sv_host_from_artifact(module_name, base_path);

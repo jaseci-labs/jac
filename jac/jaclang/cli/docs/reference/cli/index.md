@@ -349,8 +349,6 @@ jac install --npm --server
 
 This creates `.jac/server/package.json` if needed and runs `bun install` there. Requires the jac-managed bun runtime (same resolver as `jac x` for npm tools).
 
-**P3 host targets.** `web-worker`, `service-worker`, `edge`, and `cli-js` are registered Host rows (NPM + JS_GLOBALS only, no DOM or PERSIST yet). They participate in host-kind resolution and target aliases (`worker`, `sw`, `cloudflare-workers`, `cli_js`, ...) but do not yet ship build, dev, or start implementations.
-
 ---
 
 ### jac dev

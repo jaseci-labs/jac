@@ -55,11 +55,15 @@ def emit_server_entry(
         (out_dir / 'bun_store.js').write_text(
             bun_store_src.read_text(encoding='utf-8'), encoding='utf-8'
         );
+        import from jaclang.runtimelib.store { SCHEMA_SQL }
+        schema_js = (
+            '// GENERATED from jaclang.runtimelib.store.SCHEMA_SQL — do not edit.\n'
+            + 'export const SCHEMA_SQL = '
+            + repr([str(stmt) for stmt in SCHEMA_SQL])
+            + ';\n'
+        );
+        (out_dir / 'bun_schema.js').write_text(schema_js, encoding='utf-8');
     }
-    handler_imports.insert(
-        0, 'import { execWalker, startBunServer } from "./server_runtime.js";'
-    );
-
     for unit in compiled_modules {
         if not unit.get('js') {
             continue;
@@ -70,9 +74,9 @@ def emit_server_entry(
         dest.write_text(str(unit['js']), encoding='utf-8');
     }
 
-    entry = build_bun_server_entry_script(
+    entry_script = build_bun_server_entry_script(
         project_name, walkers, functions, module_imports, handler_imports
     );
-    (out_dir / 'server.mjs').write_text(entry, encoding='utf-8');
+    (out_dir / 'server.mjs').write_text(entry_script, encoding='utf-8');
     return 0;
 }

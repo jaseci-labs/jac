@@ -198,6 +198,8 @@ glob NATIVE_ERASED_BASES: frozenset = (
 
 glob NATIVE_ERASED_IDENTITY_CALLS: frozenset = frozenset({"cast"});
 
+glob _bun_host_decision_cache: dict[str, bool] = {};
+
 glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"field"});
 
 glob PASS_RIM_MODULE: str = "jaclang.jac0core.passes.pass_rim";
@@ -314,27 +316,17 @@ def cl_stdlib_root -> (str | None) {
 
 
 def project_uses_bun_host(base_path: str = '') -> bool {
-    try {
-        import from jaclang.project.config { get_config, get_config_for_dir }
-        import from jaclang.runtimelib.client.npm_provider {
-            resolve_client_target_name
-        }
-        import from jaclang.jac0core.host { host_kind_for_target, HOST_BUN }
-        cfg = None;
-        if base_path.strip() {
-            cfg = get_config_for_dir(os.path.dirname(os.path.abspath(base_path)));
-        }
-        if cfg is None {
-            cfg = get_config();
-        }
-        if cfg is None {
-            return False;
-        }
-        target = resolve_client_target_name(cfg);
-        return host_kind_for_target(target) == HOST_BUN;
-    } except Exception {
-        return False;
+    import os;
+    key = os.path.abspath(base_path) if base_path.strip() else '';
+    if key in _bun_host_decision_cache {
+        return _bun_host_decision_cache[key];
     }
+    import from jaclang.jac0core.host { resolve_project_host_kind, HOST_BUN }
+    uses_bun = resolve_project_host_kind(base_path) == HOST_BUN;
+    if key {
+        _bun_host_decision_cache[key] = uses_bun;
+    }
+    return uses_bun;
 }
 
 

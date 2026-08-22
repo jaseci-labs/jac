@@ -1,5 +1,4 @@
 """Shared path anchor for the test suite.
-
 Tests must not assume the editable-install layout (`jaclang.__file__` sitting
 next to the repo `tests/`): under the single `jac` binary, jaclang lives in the
 sealed runtime cache, not beside the tests. This module resolves the repo root
@@ -136,5 +135,108 @@ def get_object(filename: str, id: str, main: bool = True) -> dict[(str, any)] {
         return found.__jac__.__getstate__();
     } finally {
         mach.close();
+    }
+}
+
+
+"""Shared bun sv e2e helpers (spawn/poll/post) used by the bun e2e tests."""
+
+def bun_runtime_available -> bool {
+    import subprocess;
+    try {
+        proc = subprocess.run(
+            ['bun', '--version'], capture_output=True, text=True, timeout=10
+        );
+        return proc.returncode == 0;
+    } except Exception {
+        return False;
+    }
+}
+
+def write_sv_project(tmp: str, module_name: str, source: str) -> None {
+    import os;
+    with open(os.path.join(tmp, f'{module_name}.jac'), 'w') as f {
+        f.write(source);
+    }
+    with open(os.path.join(tmp, 'jac.toml'), 'w') as f {
+        f.write(
+            '[project]\n'
+                + f'name = "{module_name}"\n'
+                + f'entry-point = "{module_name}.jac"\n'
+        );
+    }
+}
+
+def spawn_bun_artifact(artifact: str, cwd: str, port: int, info: any) -> any {
+    import os;
+    import subprocess;
+    env = os.environ.copy();
+    env['PORT'] = str(port);
+    env['JAC_PG_HOST'] = info.host or '127.0.0.1';
+    env['JAC_PG_PORT'] = str(info.port);
+    env['JAC_PG_USER'] = info.user;
+    env['JAC_PG_DATABASE'] = info.database;
+    if info.unix_socket_dir {
+        env['JAC_PG_SOCKET'] = info.unix_socket_dir;
+    }
+    return subprocess.Popen(
+        ['bun', artifact],
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    );
+}
+
+def wait_service_ready(port: int, expect_substring: str = '') -> bool {
+    import subprocess;
+    import time;
+    url = f'http://127.0.0.1:{port}/functions';
+    for _ in range(40) {
+        ping = subprocess.run(
+            ['curl', '-sf', url], capture_output=True, text=True, timeout=2
+        );
+        if ping.returncode == 0
+            and (not expect_substring or expect_substring in ping.stdout) {
+            return True;
+        }
+        time.sleep(0.25);
+    }
+    return False;
+}
+
+def post_json(port: int, path: str, body: str) -> tuple[(bool, dict)] {
+    import json;
+    import subprocess;
+    call = subprocess.run(
+        [
+            'curl',
+            '-sf',
+            '-X',
+            'POST',
+            f'http://127.0.0.1:{port}{path}',
+            '-H',
+            'Content-Type: application/json',
+            '-d',
+            body
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10
+    );
+    if call.returncode != 0 {
+        return (False, {});
+    }
+    return (True, json.loads(call.stdout or '{}'));
+}
+
+def stop_process(proc: any) -> None {
+    import subprocess;
+    proc.terminate();
+    try {
+        proc.`wait(timeout=5);
+    } except subprocess.TimeoutExpired {
+        proc.kill();
     }
 }

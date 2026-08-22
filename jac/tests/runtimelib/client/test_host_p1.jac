@@ -8,7 +8,7 @@ import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
-import from jaclang.jac0core.host { HOST_BUN, HOST_CPYTHON }
+import from jaclang.jac0core.host { HOST_BUN, HOST_CPYTHON, HOST_TEST }
 import from jaclang.jac0core.sv_service_host {
     bun_artifact_stamp_path,
     bun_service_artifact_path,
@@ -105,34 +105,38 @@ test "build_bun_service_artifact accepts root-touching modules with BunStore (P2
 }
 
 test "ServerNpmProvider is wired for jac install --npm --server" {
+    import from jaclang.runtimelib.client.server_npm_provider {
+        ServerNpmProvider,
+        server_npm_root
+    }
+    provider = ServerNpmProvider();
+    assert str(provider.cli_flag) == '--server';
+    assert str(server_npm_root(Path('.'))).endswith('.jac/server');
     plugin = (_CLIENT_DIR / 'plugin_config.jac').read_text(encoding='utf-8');
-    provider = (_CLIENT_DIR / 'server_npm_provider.jac').read_text(encoding='utf-8');
-    assert 'ServerNpmProvider' in plugin;
     assert 'register_ecosystem_providers' in plugin;
-    assert 'cli_flag: str = "--server"' in provider;
-    assert 'server_npm_root' in provider;
-    assert ".jac' / 'server'" in provider or '.jac/server' in provider;
 }
 
 test "test host registers on the host registry" {
-    register = (_CLIENT_DIR / 'targets' / 'register.jac').read_text(encoding='utf-8');
-    target = (_CLIENT_DIR / 'targets' / 'test_host_target.jac').read_text(
-        encoding='utf-8'
-    );
-    assert 'TestHost' in register;
-    assert 'registry.register(TestHost())' in register;
-    assert 'host_kind: str = HOST_TEST' in target;
-    assert 'name: str = "test"' in target;
+    import from jaclang.runtimelib.client.targets.registry { get_host_registry }
+    host = get_host_registry().get('test');
+    assert host is not None , "test target must register on the host registry";
+    assert str(host.host_kind) == HOST_TEST;
+    assert str(host.name) == 'test';
 }
 
-test "sv_client uses test host env override instead of _test_clients dispatch" {
-    sv_client = (Path(JAC_ROOT) / 'jaclang' / 'runtimelib' / 'sv_client.jac').read_text(
-        encoding='utf-8'
+test "sv_client registers and clears test-host env overrides" {
+    import from jaclang.runtimelib { sv_client }
+    env_key = sv_host_env_key('env_probe_mod');
+    os.environ.pop(env_key, None);
+    try {
+        sv_client.register_test_client('env_probe_mod');
+        assert os.environ.get(env_key) == 'test';
+    } finally {
+        sv_client.clear_test_clients();
+    }
+    assert env_key not in os.environ , (
+        "clear_test_clients must unset registered JAC_SV_*_HOST keys"
     );
-    assert 'sv_host_env_key' in sv_client;
-    assert "os.environ[sv_host_env_key(module_name)] = 'test'" in sv_client;
-    assert 'register_test_adapter' in sv_client;
-    assert 'glob _test_clients' not in sv_client;
 }
 
 test "hard removal grep script passes for P1 items 8-10" {

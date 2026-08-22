@@ -154,31 +154,24 @@ test "framework_for_host_kind maps bun without a global backend singleton" {
 }
 
 test "Host registry exposes target factory aliases" {
-    registry = (
-        Path(JAC_ROOT)
-        / 'jaclang'
-        / 'runtimelib'
-        / 'client'
-        / 'targets'
-        / 'registry.jac'
-    ).read_text(
-        encoding='utf-8'
-    );
-    assert 'class Host {' in registry or 'obj HostRegistry' in registry;
-    assert 'def get_host_factory' in registry;
-    assert 'def get_target_factory' in registry;
-    assert 'return get_host_factory();' in registry;
-    assert 'return get_host_registry();' in registry;
+    import from jaclang.runtimelib.client.targets.registry {
+        get_host_factory,
+        get_host_registry,
+        get_target_factory,
+        get_target_registry
+    }
+    assert get_target_registry() is get_host_registry();
+    assert get_target_factory() is get_host_factory();
+    names = get_host_factory().get_available_host_names();
+    assert 'bun' in names and 'test' in names;
 }
 
-test "bun host row is declared for the P1 stateless tier" {
-    targets_dir = Path(JAC_ROOT) / 'jaclang' / 'runtimelib' / 'client' / 'targets';
-    register = (targets_dir / 'register.jac').read_text(encoding='utf-8');
-    bun_target = (targets_dir / 'bun_target.jac').read_text(encoding='utf-8');
-    assert 'BunTarget' in register;
-    assert 'registry.register(BunTarget())' in register;
-    assert 'host_kind: str = HOST_BUN' in bun_target;
-    assert 'name: str = "bun"' in bun_target;
+test "bun host row is registered for the P1 stateless tier" {
+    import from jaclang.runtimelib.client.targets.registry { get_host_registry }
+    host = get_host_registry().get('bun');
+    assert host is not None , "bun target must register on the host registry";
+    assert str(host.host_kind) == HOST_BUN;
+    assert str(host.name) == 'bun';
 }
 
 test "hard removal grep script passes for P0 items 1-7" {

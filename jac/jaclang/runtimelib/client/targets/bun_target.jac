@@ -6,7 +6,7 @@ import from jaclang.jac0core.host { HOST_BUN }
 obj BunTarget(Host) {
     has name: str = "bun",
         host_kind: str = HOST_BUN,
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "plugin.client",
         output_dir: Optional[Path] = None,

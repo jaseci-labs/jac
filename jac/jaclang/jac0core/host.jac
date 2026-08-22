@@ -30,16 +30,16 @@ glob HOST_DOM: str = 'DOM',
      ),
      P3_JS_HOST_CAPS: list[str] = [HOST_NPM, HOST_JS_GLOBALS],
      HOST_CAPABILITIES: dict[str, list[str]] = {
-         'browser': ['DOM', 'NPM', 'JS_GLOBALS'],
-         'webview': ['DOM', 'NPM', 'JS_GLOBALS'],
-         'rn': ['NPM', 'JS_GLOBALS'],
-         'bun': ['NPM', 'JS_GLOBALS', 'PERSIST'],
-         'web-worker': ['NPM', 'JS_GLOBALS'],
-         'service-worker': ['NPM', 'JS_GLOBALS'],
-         'edge': ['NPM', 'JS_GLOBALS'],
-         'cli-js': ['NPM', 'JS_GLOBALS'],
-         'cpython': ['PY', 'PERSIST'],
-         'bare-metal': ['FFI']
+         HOST_BROWSER: [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS],
+         'webview': [HOST_DOM, HOST_NPM, HOST_JS_GLOBALS],
+         HOST_RN: [HOST_NPM, HOST_JS_GLOBALS],
+         HOST_BUN: [HOST_NPM, HOST_JS_GLOBALS, HOST_PERSIST],
+         HOST_WEB_WORKER: [HOST_NPM, HOST_JS_GLOBALS],
+         HOST_SERVICE_WORKER: [HOST_NPM, HOST_JS_GLOBALS],
+         HOST_EDGE: [HOST_NPM, HOST_JS_GLOBALS],
+         HOST_CLI_JS: [HOST_NPM, HOST_JS_GLOBALS],
+         HOST_CPYTHON: [HOST_PY, HOST_PERSIST],
+         HOST_BARE_METAL: [HOST_FFI]
      },
      TARGET_HOST_KIND: dict[str, str] = {
          'web': 'browser',
@@ -129,7 +129,7 @@ def resolve_project_host_kind(mod_path: str = '') -> str {
         }
         target = resolve_client_target_name(cfg);
         return host_kind_for_target(target);
-    } except Exception {
+    } except (ImportError, AttributeError, KeyError, TypeError, ValueError) {
         return HOST_CPYTHON;
     }
 }
@@ -206,7 +206,7 @@ def framework_for_host_kind(kind: str) -> str {
         if cfg is not None and cfg.client is not None and cfg.client.framework {
             return cfg.client.framework;
         }
-    } except Exception {
+    } except (ImportError, AttributeError) {
         ;
     }
     return 'react';

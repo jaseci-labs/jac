@@ -13,7 +13,6 @@ import from jaclang.jac0core.sv_service_host {
     resolve_sv_service_host
 }
 import from jaclang.runtimelib.bun_service_builder { build_bun_service_artifact }
-import from jaclang.runtimelib.store { SCHEMA_VERSION }
 
 
 glob _STATELESS_SVC: str = 'def:pub ping() -> int {\n' '    return 42;\n' '}\n',
@@ -52,29 +51,28 @@ def _write_service(tmp: str, name: str, source: str) -> str {
 test "BunStore module implements Store over Bun.sql" {
     bun_store = _RUNTIMELIB / 'bun_store.jac';
     bun_impl = _RUNTIMELIB / 'impl' / 'bun_store.impl.jac';
-    assert bun_store.exists() , f"missing BunStore declaration at {bun_store}";
-    assert bun_impl.exists() , f"missing BunStore implementation at {bun_impl}";
-    combined = bun_store.read_text(encoding='utf-8')
-        + bun_impl.read_text(encoding='utf-8');
-    assert 'Bun.sql' in combined , "P2 store must use Bun.sql against Postgres";
-    assert 'obj BunStore' in combined or 'class BunStore' in combined;
+    assert 'obj BunStore(Store)' in bun_store.read_text(encoding='utf-8') , (
+        "BunStore must implement the Store interface"
+    );
+    assert 'Bun.sql' in bun_impl.read_text(encoding='utf-8') , (
+        "P2 store must use Bun.sql against Postgres"
+    );
 }
 
 
 test "BunStore shares the PgStore anchor schema and version stamp" {
-    pg_impl = _RUNTIMELIB / 'impl' / 'store.impl.jac';
+    import from jaclang.runtimelib.store { SCHEMA_SQL }
+    pg_ddl = '\n'.join(str(stmt) for stmt in SCHEMA_SQL);
     bun_impl = _RUNTIMELIB / 'impl' / 'bun_store.impl.jac';
     assert bun_impl.exists();
-    pg_text = pg_impl.read_text(encoding='utf-8');
     bun_text = bun_impl.read_text(encoding='utf-8');
     for table in _PERSIST_SCHEMA_TABLES {
-        assert f"CREATE TABLE IF NOT EXISTS {table}" in pg_text;
-        assert table in bun_text , (
-            f"BunStore must target the same Postgres schema table {table!r}"
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in pg_ddl , (
+            f"shared SCHEMA_SQL must create Postgres table {table!r}"
         );
     }
-    assert str(SCHEMA_VERSION) in bun_text , (
-        "BunStore must stamp rows with the shared SCHEMA_VERSION"
+    assert 'SCHEMA_SQL' in bun_text , (
+        "BunStore must consume the shared exported SCHEMA_SQL constant"
     );
 }
 

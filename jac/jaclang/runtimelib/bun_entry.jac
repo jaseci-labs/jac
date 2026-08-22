@@ -1,7 +1,7 @@
 obj EndpointMeta {
     has name: str,
         module: str,
-        pub: bool = False,
+        `pub: bool = False,
         params: list[str] = [];
 
 
@@ -37,7 +37,7 @@ def build_bun_server_entry_script(
 
     lines: list[str] = [
         f'// Auto-generated Bun server entry for {project_name!r}',
-        'import { startBunServer } from "./server_runtime.js";'
+        'import { execWalker, startBunServer } from "./server_runtime.js";'
     ];
     for imp in module_imports {
         lines.append(imp);
@@ -54,7 +54,7 @@ def build_bun_server_entry_script(
         ]
     );
     for w in walkers {
-        lines.append(f'    {repr(w.name)}: _W_{w.name},');
+        lines.append(f'    {repr(w.name)}: _spawn_{w.name},');
     }
     lines.append('  },');
     lines.append('  functions: {');

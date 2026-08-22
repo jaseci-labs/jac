@@ -1,8 +1,8 @@
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.runtimelib.client.targets.registry { ClientTarget }
+import from jaclang.runtimelib.client.targets.registry { Host }
 
-obj WebTarget(ClientTarget) {
+obj WebTarget(Host) {
     has name: str = "web",
         `default: bool = True,
         requires_setup: bool = False,

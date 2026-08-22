@@ -1209,33 +1209,16 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     if module_name in sv_client._registry {
         return;
     }
-    import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
-    import from jaclang.jac0core.host { HOST_BUN, HOST_TEST }
-    import from jaclang.runtimelib.test_sv_host { prepare_test_sv_service, get_test_adapter }
-    import from jaclang.runtimelib.bun_sv_spawn { spawn_bun_sv_service }
-    import from pathlib { Path }
-    host_kind = resolve_sv_service_host(module_name, base_path);
-    if host_kind == HOST_TEST {
-        if get_test_adapter(module_name) is not None {
-            sv_client.register(module_name, f"test://{module_name}");
-            return;
-        }
-        module_file = str(Path(base_path) / f"{module_name}.jac");
-        base_url = prepare_test_sv_service(module_name, module_file, base_path);
-        sv_client.register(module_name, base_url);
+    import from jaclang.runtimelib.sv_dispatch {
+        dispatch_sv_service,
+        default_sv_base_port
+    }
+    url = dispatch_sv_service(module_name, base_path);
+    if url is not None {
         return;
     }
-    if host_kind == HOST_BUN {
-        base_port = 18000 + (hash(module_name) % 1000);
-        spawn_result = spawn_bun_sv_service(
-            module_name, base_path, base_port
-        );
-        base_url = spawn_result.base_url;
-        sv_client.register(module_name, base_url);
-        return;
-    }
-    base_port = 18000 + (hash(module_name) % 1000);
 
+    base_port = default_sv_base_port(module_name);
     srv = CoreJacAPIServer(
         module_name=module_name, port=0, base_path=base_path, is_sv_sibling=True
     );

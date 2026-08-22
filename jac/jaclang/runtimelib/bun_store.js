@@ -1,53 +1,10 @@
 /** BunStore: Postgres anchor persistence via Bun.sql (P2). */
 
 import { SQL } from "bun";
+import { SCHEMA_SQL } from "./bun_schema.js";
 
 export const SCHEMA_VERSION = 1;
 export const SCHEMA_STAMP_KEY = "schema_fingerprint";
-
-const SCHEMA_SQL = [
-  `CREATE TABLE IF NOT EXISTS anchors (
-        id             uuid PRIMARY KEY,
-        kind           text NOT NULL,
-        arch_type      text NOT NULL DEFAULT '',
-        arch_module    text NOT NULL DEFAULT '',
-        fingerprint    text NOT NULL DEFAULT '',
-        root_id        uuid,
-        src            uuid,
-        dst            uuid,
-        undirected     boolean NOT NULL DEFAULT false,
-        props          jsonb NOT NULL DEFAULT '{}'::jsonb,
-        format_version integer NOT NULL DEFAULT 1,
-        updated_at     timestamptz NOT NULL DEFAULT now(),
-        seq            bigserial
-    )`,
-  `CREATE INDEX IF NOT EXISTS idx_anchors_src
-        ON anchors (src, arch_type) WHERE src IS NOT NULL`,
-  `CREATE INDEX IF NOT EXISTS idx_anchors_dst
-        ON anchors (dst, arch_type) WHERE dst IS NOT NULL`,
-  `CREATE INDEX IF NOT EXISTS idx_anchors_kind_type
-        ON anchors (kind, arch_type)`,
-  `CREATE INDEX IF NOT EXISTS idx_anchors_root
-        ON anchors (root_id) WHERE root_id IS NOT NULL`,
-  `CREATE TABLE IF NOT EXISTS graph_types (
-        type_name text NOT NULL,
-        ancestor  text NOT NULL,
-        PRIMARY KEY (type_name, ancestor)
-    )`,
-  `CREATE TABLE IF NOT EXISTS kv_state (
-        key        text PRIMARY KEY,
-        value      text NOT NULL,
-        expires_at timestamptz,
-        updated_at timestamptz NOT NULL DEFAULT now()
-    )`,
-  `CREATE TABLE IF NOT EXISTS quarantine (
-        missing_id  uuid NOT NULL,
-        referrer_id uuid,
-        kind        text NOT NULL,
-        created_at  timestamptz NOT NULL DEFAULT now(),
-        PRIMARY KEY (missing_id, kind)
-    )`,
-];
 
 function pgOptionsFromEnv() {
   const host = process.env.JAC_PG_HOST || "127.0.0.1";
@@ -138,6 +95,28 @@ export class BunStore {
     return [];
   }
 
+  async getKv(key) {
+    const sql = this._ensureSql();
+    const result = await sql.unsafe(
+      "SELECT value FROM kv_state WHERE key = $1 LIMIT 1",
+      [key]
+    );
+    if (Array.isArray(result) && result.length > 0) {
+      const row = result[0];
+      return typeof row === "object" ? Object.values(row)[0] : row;
+    }
+    return null;
+  }
+
+  async setKv(key, value) {
+    const sql = this._ensureSql();
+    await sql.unsafe(
+      "INSERT INTO kv_state (key, value, expires_at, updated_at) VALUES ($1, $2, NULL, now()) "
+        + "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+      [key, value]
+    );
+  }
+
   async close() {
     if (this._sql?.close) {
       await this._sql.close();
@@ -149,6 +128,112 @@ export class BunStore {
 
 let _sharedStore = null;
 
+const ROOT_KV_KEY = "__jac_shared_root_id";
+
+export async function __jacHydrateGraph(store) {
+  // Reference: JacRuntime.get_shared_root + store-backed anchor loading
+  // (jaclang/jac0core/impl/runtime.impl.jac). The cpython host resolves a
+  // stable root id and loads anchors from the store; the bun host does the
+  // same eagerly at boot: stable root id from kv_state, then all anchors
+  // belonging to that root rebuilt into the OSP graph.
+  if (globalThis.__jacHydrationStarted) {
+    return;
+  }
+  globalThis.__jacHydrationStarted = true;
+  let rootId = await store.getKv(ROOT_KV_KEY);
+  if (!rootId) {
+    rootId = randomUuid();
+    await store.setKv(ROOT_KV_KEY, rootId);
+  }
+  const C = globalThis.__jacOspCore;
+  const tagByName = globalThis.__jacOspTagByName || {};
+  function register(obj) {
+    if (!C || !C.O || !C.H) {
+      return -1;
+    }
+    let h = C.H.get(obj);
+    if (h === undefined) {
+      h = C.O.length;
+      C.O.push(obj);
+      C.H.set(obj, h);
+    }
+    return h;
+  }
+  const root = { _jac_type: "Root", _jac_id: rootId };
+  globalThis.root = root;
+  register(root);
+  __jacTrackNode(root, rootId);
+  if (!C || typeof C.osp_conn !== "function") {
+    return;
+  }
+  const rows = await store.rows(
+    "SELECT id, kind, arch_type, src, dst, undirected, props FROM anchors "
+      + "WHERE root_id = '" + rootId + "' AND id <> '" + rootId + "' ORDER BY seq",
+    {}
+  );
+  const byId = new Map();
+  byId.set(rootId, root);
+  const edgeRows = [];
+  for (const r of rows) {
+    const id = String(r[0]);
+    const kind = String(r[1] || "");
+    const archType = String(r[2] || "");
+    if (kind === "EdgeAnchor") {
+      edgeRows.push(r);
+      continue;
+    }
+    let props = r[6];
+    props = normalizeJson(props);
+    const obj = Object.assign({}, props);
+    obj._jac_id = id;
+    obj._jac_type = archType;
+    obj._jac_root_id = rootId;
+    const tag = tagByName[archType];
+    if (tag !== undefined) {
+      obj.__tag = tag;
+    }
+    byId.set(id, obj);
+    register(obj);
+  }
+  for (const r of edgeRows) {
+    const srcObj = byId.get(String(r[3] || ""));
+    const dstObj = byId.get(String(r[4] || ""));
+    if (!srcObj || !dstObj) {
+      continue;
+    }
+    let props = normalizeJson(r[6]);
+    const edgeObj = Object.assign({}, props);
+    edgeObj._jac_id = String(r[0]);
+    const archType = String(r[2] || "");
+    const tag = tagByName[archType];
+    const undirected = r[5] === true || r[5] === "t" ? 1 : 0;
+    C.osp_conn(
+      register(srcObj),
+      register(dstObj),
+      register(edgeObj),
+      undirected,
+      tag === undefined ? -1 : tag,
+      0,
+      0
+    );
+  }
+  // Enable write-tracking only after the replay so hydrated rows are not
+  // re-pended by the osp_conn hook.
+  const rh = C.H.get(root);
+  globalThis.__jacHydrationDone = true;
+}
+
+function normalizeJson(raw) {
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch (_) {
+      return {};
+    }
+  }
+  return raw && typeof raw === "object" ? raw : {};
+}
+
 export async function __jacInitBunStore() {
   if (_sharedStore?._ready) {
     return _sharedStore;
@@ -157,6 +242,7 @@ export async function __jacInitBunStore() {
   await store.ensureSchema({});
   _sharedStore = store;
   globalThis.__jacBunStore = store;
+  await __jacHydrateGraph(store);
   return store;
 }
 
@@ -273,6 +359,8 @@ export function __jacEnsureRoot() {
   if (globalThis.root?._jac_id) {
     return globalThis.root;
   }
+  // Root id normally comes from hydration (stable across restarts); only
+  // mint a transient one when no store is available yet.
   const root = { _jac_type: "Root", _jac_id: randomUuid() };
   globalThis.root = root;
   __jacTrackNode(root, root._jac_id);
@@ -283,17 +371,28 @@ export function __jacInstallOspPersistHooks() {
   if (globalThis.__jacOspPersistInstalled) {
     return;
   }
+  const C = globalThis.__jacOspCore;
+  if (!C || typeof C.osp_conn !== "function") {
+    // Core not published yet — retry on the next request.
+    return;
+  }
   globalThis.__jacOspPersistInstalled = true;
   __jacEnsureRoot();
-  const orig = globalThis.__ospConnW;
-  if (typeof orig === "function") {
-    globalThis.__ospConnW = (src, tgt, mkEdge, undirected, tag = -1) => {
-      const edge = typeof mkEdge === "function" ? mkEdge() : mkEdge;
-      const out = orig(src, tgt, mkEdge, undirected, tag);
-      __jacTrackEdge(src, tgt, edge, undirected);
-      return out;
-    };
-  }
+  // Generated code reaches the graph exclusively through the shared core
+  // (__jacOspCore.osp_conn), so persistence hooks wrap that entry point.
+  const origConn = C.osp_conn;
+  C.osp_conn = (srcH, dstH, edgeH, undirected, tag, rgnSrc, rgnTgt) => {
+    const out = origConn(srcH, dstH, edgeH, undirected, tag, rgnSrc, rgnTgt);
+    if (globalThis.__jacHydrationDone) {
+      try {
+        const O = C.O || [];
+        __jacTrackEdge(O[srcH], O[dstH], O[edgeH], undirected === 1 || undirected === true);
+      } catch (_) {
+        /* never let bookkeeping break the graph write */
+      }
+    }
+    return out;
+  };
 }
 
 export async function __jacServerSpawnWalker(walkerInst) {
@@ -305,8 +404,35 @@ export async function __jacServerSpawnWalker(walkerInst) {
       await __jacCommitGraph();
       return result;
     }
-    if (typeof globalThis.__ospC?.osp_spawn === "function") {
-      const result = await globalThis.__ospC.osp_spawn(walkerInst);
+    // Reference: ExecutionManager.spawn_walker_sync in
+    // jaclang/runtimelib/impl/server.impl.jac — instantiate the walker,
+    // resolve the target node (_jac_spawn_node override or the shared
+    // root), then hand off to the OSP spawn primitive.
+    const C = globalThis.__jacOspCore;
+    if (C && typeof C.osp_spawn === "function") {
+      const tag = walkerInst?.constructor?.prototype?.__tag;
+      const wdesc = (globalThis.__jacOspDesc || {})[tag];
+      const rt = globalThis.__jacOspRT;
+      let starts = [globalThis.root];
+      const spawnNodeId = walkerInst?._jac_spawn_node;
+      if (spawnNodeId) {
+        delete walkerInst._jac_spawn_node;
+        for (const o of C.O || []) {
+          if (o && o._jac_id === spawnNodeId) {
+            starts = [o];
+            break;
+          }
+        }
+      }
+      if (!rt || !wdesc) {
+        throw new Error(
+          "No walker descriptor/runtime available for Bun host (missing __jacOspRT or __jacOspDesc)"
+        );
+      }
+      const result = await C.osp_spawn(rt, walkerInst, wdesc, starts);
+      if (result && typeof result === "object" && !result.reports) {
+        result.reports = walkerInst.reports || [];
+      }
       await __jacCommitGraph();
       return result;
     }

@@ -8,7 +8,8 @@ import from jaclang.runtimelib.test_sv_host {
 }
 
 glob _registry: dict[str, str] = {},
-     _consumer_providers: dict[str, list[str]] = {};
+     _consumer_providers: dict[str, list[str]] = {},
+     _registered_env_keys: set[str] = set();
 
 def headless_start_args(entry_file: str, port: int) -> list[str] {
     return ["start", entry_file, "--port", str(port), "--no-client"];
@@ -25,13 +26,19 @@ def unregister(module_name: str) {
 }
 
 def register_test_client(module_name: str, client: any = None) -> None {
-    os.environ[sv_host_env_key(module_name)] = 'test';
+    env_key = sv_host_env_key(module_name);
+    os.environ[env_key] = 'test';
+    _registered_env_keys.add(env_key);
     if client is not None {
         register_test_adapter(module_name, client);
     }
 }
 
 def clear_test_clients {
+    for env_key in _registered_env_keys {
+        os.environ.pop(env_key, None);
+    }
+    _registered_env_keys.clear();
     clear_test_adapters();
     close_all_test_sv_services();
 }

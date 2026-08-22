@@ -1,64 +1,3 @@
-glob _SCHEMA_SQL = [
-         """
-    CREATE TABLE IF NOT EXISTS anchors (
-        id             uuid PRIMARY KEY,
-        kind           text NOT NULL,
-        arch_type      text NOT NULL DEFAULT '',
-        arch_module    text NOT NULL DEFAULT '',
-        fingerprint    text NOT NULL DEFAULT '',
-        root_id        uuid,
-        src            uuid,
-        dst            uuid,
-        undirected     boolean NOT NULL DEFAULT false,
-        props          jsonb NOT NULL DEFAULT '{}'::jsonb,
-        format_version integer NOT NULL DEFAULT 1,
-        updated_at     timestamptz NOT NULL DEFAULT now(),
-        seq            bigserial
-    )
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_anchors_src
-        ON anchors (src, arch_type) WHERE src IS NOT NULL
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_anchors_dst
-        ON anchors (dst, arch_type) WHERE dst IS NOT NULL
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_anchors_kind_type
-        ON anchors (kind, arch_type)
-    """,
-         """
-    CREATE INDEX IF NOT EXISTS idx_anchors_root
-        ON anchors (root_id) WHERE root_id IS NOT NULL
-    """,
-         """
-    CREATE TABLE IF NOT EXISTS graph_types (
-        type_name text NOT NULL,
-        ancestor  text NOT NULL,
-        PRIMARY KEY (type_name, ancestor)
-    )
-    """,
-         """
-    CREATE TABLE IF NOT EXISTS kv_state (
-        key        text PRIMARY KEY,
-        value      text NOT NULL,
-        expires_at timestamptz,
-        updated_at timestamptz NOT NULL DEFAULT now()
-    )
-    """,
-         """
-    CREATE TABLE IF NOT EXISTS quarantine (
-        missing_id  uuid NOT NULL,
-        referrer_id uuid,
-        kind        text NOT NULL,
-        created_at  timestamptz NOT NULL DEFAULT now(),
-        PRIMARY KEY (missing_id, kind)
-    )
-    """
-     ];
-
-
 impl ConnInfo.dsn -> str {
     if self.unix_socket_dir {
         return (
@@ -564,7 +503,7 @@ impl PgStore._apply_schema_ddl_resilient -> None {
 impl PgStore._apply_schema_ddl -> None {
     self._run("SET lock_timeout = '5s'", {});
     try {
-        for stmt in _SCHEMA_SQL {
+        for stmt in SCHEMA_SQL {
             self._run(stmt, {});
         }
         has_seq = bool(
@@ -599,7 +538,7 @@ impl PgStore._schema_fingerprint -> str {
     h = hashlib.sha256();
     h.update(str(SCHEMA_VERSION).encode());
     h.update(str(self.server_version()).encode());
-    for stmt in _SCHEMA_SQL {
+    for stmt in SCHEMA_SQL {
         h.update(stmt.encode());
     }
     for col in sorted(self._promotion_columns()) {

@@ -648,6 +648,7 @@ class JacScalePlugin {
         import atexit;
         import subprocess;
         import from jaclang.runtimelib { sv_client }
+        import from jaclang.jac0core.host { HOST_TEST }
         import from pathlib { Path }
         import from jaclang.scale.runtime.context.util {
             pick_free_port,
@@ -655,23 +656,16 @@ class JacScalePlugin {
             wait_for_health,
             boot_health_timeout
         }
+        import from jaclang.runtimelib.sv_dispatch { dispatch_sv_service }
 
         if module_name in sv_client._registry {
             return;
         }
-        import from jaclang.jac0core.sv_service_host { resolve_sv_service_host }
-        import from jaclang.jac0core.host { HOST_BUN, HOST_TEST }
-        import from jaclang.runtimelib.test_sv_host { prepare_test_sv_service, get_test_adapter }
-        import from jaclang.runtimelib.bun_sv_spawn { spawn_bun_sv_service }
-        host_kind = resolve_sv_service_host(module_name, base_path);
-        if host_kind == HOST_TEST {
-            if get_test_adapter(module_name) is not None {
-                sv_client.register(module_name, f"test://{module_name}");
-                return;
-            }
-            module_file = str(Path(base_path) / f"{module_name}.jac");
-            base_url = prepare_test_sv_service(module_name, module_file, base_path);
-            sv_client.register(module_name, base_url);
+
+        url = dispatch_sv_service(
+            module_name, base_path, kinds=frozenset({HOST_TEST})
+        );
+        if url is not None {
             return;
         }
 
@@ -705,36 +699,35 @@ class JacScalePlugin {
             );
         }
 
+        def _log_size -> int {
+            log_path = base_dir / '.jac' / 'logs' / f"{module_name}.log";
+            try {
+                return log_path.stat().st_size;
+            } except OSError {
+                return -1;
+            }
+        }
+
         with _sv_spawn_lock(module_name) {
             if module_name in sv_client._registry {
                 return;
             }
-            host_kind = resolve_sv_service_host(module_name, str(base_dir));
-            if host_kind == HOST_BUN {
-                port = pick_free_port(module_name);
-                def _log_size -> int {
-                    log_path = base_dir / '.jac' / 'logs' / f"{module_name}.log";
-                    try {
-                        return log_path.stat().st_size;
-                    } except OSError {
-                        return -1;
-                    }
-                }
-                spawn_result = spawn_bun_sv_service(
-                    module_name,
-                    str(base_dir),
-                    port,
-                    scale_mode=True,
-                    progress=_log_size
-                );
-                base_url = spawn_result.base_url;
-                proc = spawn_result.proc;
-                _sv_sibling_procs[module_name] = proc;
-                sv_client.register(module_name, base_url);
-                def _cleanup_bun {
-                    stop_sv_sibling(module_name);
-                }
+            def _cleanup_bun {
+                stop_sv_sibling(module_name);
+            }
+            def _register_bun_spawn(spawn_result: any) -> None {
+                _sv_sibling_procs[module_name] = spawn_result.proc;
                 atexit.register(_cleanup_bun);
+            }
+            url = dispatch_sv_service(
+                module_name,
+                str(base_dir),
+                port=pick_free_port(module_name),
+                scale_mode=True,
+                progress=_log_size,
+                on_spawn=_register_bun_spawn
+            );
+            if url is not None {
                 return;
             }
             port: int = pick_free_port(module_name);
@@ -759,13 +752,6 @@ class JacScalePlugin {
                 log_file.close();
             }
             _sv_sibling_procs[module_name] = proc;
-            def _log_size -> int {
-                try {
-                    return log_path.stat().st_size;
-                } except OSError {
-                    return -1;
-                }
-            }
             budget: float = boot_health_timeout();
             healthy = wait_for_health(
                 base_url,

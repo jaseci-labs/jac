@@ -2,13 +2,18 @@ import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.cli.console { console }
-import from jaclang.cli.commands.eject_targets.server_entry { emit_server_entry }
+import from jaclang.runtimelib.server_entry { emit_server_entry }
 import from jaclang.runtimelib.bun_entry { EndpointMeta }
 
 
-def _bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
+def _string_bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
     chunks: list[str] = [f'// Bundled Bun sv service artifact for {module_name!r}'];
-    bundled_sources = ('server_runtime.js', 'bun_store.js', f'{module_name}.js');
+    bundled_sources = (
+        'server_runtime.js',
+        'bun_schema.js',
+        'bun_store.js',
+        f'{module_name}.js'
+    );
 
     def _rewrite_entry_line(line: str) -> (str | None) {
         for src in bundled_sources {
@@ -47,6 +52,10 @@ def _bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
             )
         );
     }
+    schema_path = out_dir / 'bun_schema.js';
+    if schema_path.exists() {
+        chunks.append(schema_path.read_text(encoding='utf-8'));
+    }
     bun_store_path = out_dir / 'bun_store.js';
     if bun_store_path.exists() {
         chunks.append(bun_store_path.read_text(encoding='utf-8'));
@@ -71,6 +80,54 @@ def _bundle_bun_artifact(out_dir: Path, module_name: str) -> str {
         bundle = f'const _jac = {build_jac_runtime_js()};\n' + bundle;
     }
     return bundle;
+}
+
+
+def _bundle_bun_artifact(out_dir: Path, module_name: str, artifact: Path) -> None {
+    import shutil;
+    import subprocess;
+    server_entry = out_dir / 'server.mjs';
+    bun_bin = shutil.which('bun');
+    if bun_bin {
+        try {
+            result = subprocess.run(
+                [
+                    bun_bin,
+                    'build',
+                    str(server_entry),
+                    '--outdir',
+                    str(artifact.parent),
+                    '--outfile',
+                    artifact.stem,
+                    '--target=bun',
+                    '--format=esm'
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120
+            );
+            if result.returncode == 0 {
+                # bun names the bundle after the entry file (server.js),
+                # regardless of --outfile — locate and rename it.
+                built = artifact.parent / 'server.js';
+                if not built.exists() {
+                    built = Path(f"{artifact.parent / artifact.stem}.js");
+                }
+                if built.exists() {
+                    built.replace(artifact);
+                    return;
+                }
+            }
+            console.print(
+                f"  Bun.build failed for '{module_name}'; using string bundler"
+                    + (f": {result.stderr.strip()}" if result.stderr.strip() else ''),
+                style='warning'
+            );
+        } except Exception as e {
+            console.print(f'  Bun.build unavailable ({e}); using string bundler');
+        }
+    }
+    artifact.write_text(_string_bundle_bun_artifact(out_dir, module_name), encoding='utf-8');
 }
 
 
@@ -115,7 +172,7 @@ def build_bun_service_artifact(
                 EndpointMeta(
                     name=str(item.name.sym_name),
                     module=module_name,
-                    pub=item.access is not None and 'pub' in str(item.access)
+                    `pub=item.access is not None and 'pub' in str(item.access)
                 )
             );
         } elif isinstance(item, uni.Ability) and item.name_ref is not None {
@@ -135,7 +192,7 @@ def build_bun_service_artifact(
                 EndpointMeta(
                     name=fn_name,
                     module=module_name,
-                    pub=item.access is not None and 'pub' in str(item.access),
+                    `pub=item.access is not None and 'pub' in str(item.access),
                     params=fn_params
                 )
             );
@@ -164,7 +221,7 @@ def build_bun_service_artifact(
         raise RuntimeError(f"Failed to emit Bun server entry for '{module_name}'");
     }
     artifact = base_dir / '.jac' / 'server' / f"{module_name}.mjs";
-    artifact.write_text(_bundle_bun_artifact(out_dir, module_name), encoding='utf-8');
+    _bundle_bun_artifact(out_dir, module_name, artifact);
     import from jaclang.jac0core.sv_service_host {
         bun_artifact_stamp_path,
         bun_service_inputs_digest
