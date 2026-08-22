@@ -435,6 +435,11 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     if not success {
         return {"js_code": "", "warnings": [str(result)]};
     }
+    js_code = result.get("js_code", "") or "";
+    if js_code.strip() {
+        import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
+        result["js_code"] = prepend_active_runtime_globals(js_code);
+    }
     return result;
 }
 
