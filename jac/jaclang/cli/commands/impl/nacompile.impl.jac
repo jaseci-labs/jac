@@ -568,13 +568,9 @@ def _link_native_artifact(
             }
         }
         if entry_lib {
-            # The host protocol pokes __jac_argc/__jac_argv via dlsym before
-            # __jac_shared_init, so they must have storage even when the app
-            # never reads argv (na_ir_gen only emits them on argv use).
             if "@__jac_argc = global" not in llvm_ir_str {
                 llvm_ir_str += (
-                    "\n@__jac_argc = global i32 0\n"
-                    + "@__jac_argv = global ptr null\n"
+                    "\n@__jac_argc = global i32 0\n" + "@__jac_argv = global ptr null\n"
                 );
             }
             for _s in ["jac_entry", "__jac_argc", "__jac_argv", "__jac_shared_init"] {
