@@ -2174,6 +2174,50 @@ test "expr_narrowing" {
         + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
+"""`x == "literal"` narrows x, like the int, float and bool forms do."""
+test "literal_eq_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_literal_eq_narrowing.jac"),
+        options=NO_TC
+    );
+    run_pass(TypeCheckPass, mod, program);
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
+        program.errors_had
+    )}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
+"""`x != "literal"` rules out one value, never the whole class."""
+test "literal_ne_does_not_over_narrow" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_literal_ne_no_over_narrow.jac"),
+        options=NO_TC
+    );
+    run_pass(TypeCheckPass, mod, program);
+    assert len(program.errors_had) == 9 , f"Expected 9 type errors, but got {len(
+        program.errors_had
+    )}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had]);
+    for (err, expected) in zip(
+        program.errors_had,
+        [
+            "Cannot assign str | NoneType to NoneType",
+            "Cannot assign int | NoneType to NoneType",
+            "Cannot assign float | NoneType to NoneType",
+            "Cannot assign bool | NoneType to NoneType",
+            "Cannot assign str | NoneType to NoneType",
+            "Cannot assign int | NoneType to NoneType",
+            "Cannot assign float | NoneType to NoneType",
+            "Cannot assign bool | NoneType to NoneType",
+            "Cannot assign Literal[\"b\"] to NoneType"
+        ]
+    ) {
+        assert expected in err.pretty_print() , f"Expected '{expected}' in:\n{err.pretty_print()}";
+    }
+}
+
 test "reassign_in_branch" {
     program = JacProgram();
     mod = program.compile(
