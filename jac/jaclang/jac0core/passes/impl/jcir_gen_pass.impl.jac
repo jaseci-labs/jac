@@ -4332,7 +4332,7 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list {
 }
 
 impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list {
-    import from jaclang.jac0core.codeinfo { native_test_symbol, native_safe_sym }
+    import from jaclang.jac0core.codeinfo { native_test_symbol, native_glob_init_name }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
     symbol = native_test_symbol(test_name, line);
@@ -4341,7 +4341,7 @@ impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list {
     init_syms: list[str] = [];
     for dep_src in (dep_sources or []) {
         if dep_src {
-            dep_init = f"__jac_glob_init_{native_safe_sym(dep_src)}";
+            dep_init = native_glob_init_name(dep_src, manifest);
             if dep_init not in init_syms {
                 init_syms.append(dep_init);
             }

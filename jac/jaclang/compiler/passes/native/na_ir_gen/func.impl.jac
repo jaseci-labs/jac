@@ -1457,7 +1457,7 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     i64 = ir.IntType(64);
     import re;
 
-    import from jaclang.jac0core.codeinfo { native_safe_sym }
+    import from jaclang.jac0core.codeinfo { native_glob_init_name, native_safe_sym }
 
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = self._define_function("jac_entry", fnty);
@@ -1544,8 +1544,7 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
         }
         _seen_init_mods.add(_source_mod);
 
-        safe_name = native_safe_sym(_source_mod);
-        init_name = f"__jac_glob_init_{safe_name}";
+        init_name = native_glob_init_name(_source_mod, _manifest);
 
         imp_init_fn = self.func_symtab.get(init_name);
         if imp_init_fn is None {

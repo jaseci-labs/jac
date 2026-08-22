@@ -136,37 +136,32 @@ def _patch_host_rpath(binary: Path) {
 }
 
 
-def _pyembed_shim_name -> str {
-    if sys.platform == "darwin" {
-        return "libjacpyembed.dylib";
-    }
-    if sys.platform.startswith("win") {
-        return "jacpyembed.dll";
-    }
-    return "libjacpyembed.so";
+def _fused_runtime_dir -> Path {
+    import jaclang;
+    return Path(jaclang.__file__).parent / "runtimelib" / "fused";
 }
 
 
-def _stage_pyembed_shim(out_dir: Path) {
-    name = _pyembed_shim_name();
-    src = _find_desktop_native_dir() / name;
-    if not src.exists() {
+def _stage_fused_runtime(out_dir: Path) {
+    src = _fused_runtime_dir();
+    if not (src / "bringup.jac").is_file() {
         raise RuntimeError(
-            f"jac-desktop: {name} not found in the fused runtime ({src}). "
-            "Rebuild the jac binary (zig build) so the payload carries the "
-            "libjacpyembed shim."
+            f"jac-desktop: the fused runtime library is missing from this jaclang ({src})."
         );
     }
-    shutil.copy2(src, out_dir / name);
+    dst = out_dir / "fused";
+    dst.mkdir(parents=True, exist_ok=True);
+    for f in sorted(src.`glob("*.jac")) {
+        shutil.copy2(f, dst / f.name);
+    }
 }
 
 
 def _bundle_runtime(host_binary: Path) {
-    import subprocess;
+    import from jaclang.runtimelib.fused_binary { graft_runtime }
     jac_bin = os.path.realpath(os.sys.executable);
 
-    rc = subprocess.run([jac_bin, "__graftrt", str(host_binary)]).returncode;
-    if rc != 0 {
+    if not graft_runtime(jac_bin, str(host_binary)) {
         raise RuntimeError(
             "jac-desktop: the running jac binary carries no fused-runtime "
             f"({jac_bin}); a desktop app needs a fused `jac` built via `zig build`. "

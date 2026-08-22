@@ -22,7 +22,7 @@ git remote -v
 
 **Setting Up Your Dev Environment**
 
-`jaclang` ships as the single `jac` binary (a Zig launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
+`jaclang` ships as the single `jac` binary (a native Jac launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
 
 **1. Install Zig**
 

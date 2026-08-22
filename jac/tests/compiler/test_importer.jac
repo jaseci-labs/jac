@@ -764,8 +764,10 @@ test "release compile closure clears ASTs and evaluator but keeps stubs" {
         prog.release_compile_closure(keep_stubs=True);
         gc.collect();
         assert ast_ref() is None , "released AST is still strongly referenced";
-        assert source_path not in prog.mod.hub;
-        assert stub_path in prog.mod.hub;
+        # The hub is keyed by the resolved path (JacProgram.hub_key), and
+        # find_module is the accessor that normalizes for you.
+        assert prog.find_module(source_path) is None;
+        assert prog.find_module(stub_path) is not None;
         assert prog.type_evaluator is None;
     }
 }
@@ -779,7 +781,7 @@ test "release compile closure honors no unit eviction" {
         os.environ["JAC_NO_UNIT_EVICT"] = "1";
         try {
             prog.release_compile_closure();
-            assert source_path in prog.mod.hub;
+            assert prog.find_module(source_path) is not None;
         } finally {
             if old_no_evict is None {
                 os.environ.pop("JAC_NO_UNIT_EVICT", None);

@@ -114,6 +114,7 @@ obj NaIRGenTypes(NaIRGenState) {
     def _codegen_float_floor_mod(left: ir.Value, right: ir.Value) -> ir.Value;
     def _spec_name_match(tk: str, names: tuple) -> bool;
     def _opt_sole_member(t: any) -> (any | None);
+    def _spec_union_agreement(t: any, names: tuple) -> (any | None);
     def _elem_storage_llvm(t: any) -> (ir.Type | None);
     def _aos_elem_of(type_expr: uni.UniNode | None) -> (str | None);
     def _infer_type_name(val: ir.Value) -> (str | None);

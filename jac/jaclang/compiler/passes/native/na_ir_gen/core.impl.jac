@@ -387,6 +387,12 @@ impl NaIRGenCore._export_native_layout -> None {
         if fname.startswith("__") or fname == "jac_entry" or fname in method_names {
             continue;
         }
+        if ".__jacp_" in str(func.name) {
+            continue;
+        }
+        if fname in self._clib_symbol_lib {
+            continue;
+        }
         param_types = [self._llvm_type_str(a) for a in func.function_type.args];
         param_names: list[str] = [a.name for a in func.args];
         ret_type = self._llvm_type_str(func.function_type.return_type);
@@ -609,10 +615,14 @@ impl NaIRGenCore._register_imported_struct_types -> None {
     _self_key = (
         os.path.realpath(self.ir_in.loc.mod_path) if (self.ir_in?.loc) else None
     );
+    import from jaclang.jac0core.codeinfo { native_module_key }
+
+    _canon_src: dict = {};
+    _src_keys: dict[str, str] = {};
     dep_edges: dict = {};
     qi = 0;
     while qi < len(wq) {
-        (mod_name, cur_base, parent_src) = wq[qi];
+        (mod_name, cur_base, parent_key) = wq[qi];
         qi += 1;
         (src_mod_str, full_path) = resolve_native_module(mod_name, cur_base);
         if src_mod_str is None or full_path is None {
@@ -621,12 +631,12 @@ impl NaIRGenCore._register_imported_struct_types -> None {
         if _self_key is not None and os.path.realpath(full_path) == _self_key {
             continue;
         }
-        if parent_src in dep_edges {
-            dep_edges[parent_src].append(src_mod_str);
-        } else {
-            dep_edges[parent_src] = [src_mod_str];
-        }
         abs_key = os.path.abspath(full_path);
+        if parent_key in dep_edges {
+            dep_edges[parent_key].append(abs_key);
+        } else {
+            dep_edges[parent_key] = [abs_key];
+        }
         if abs_key in processed_modules {
             continue;
         }
@@ -653,28 +663,32 @@ impl NaIRGenCore._register_imported_struct_types -> None {
         }
         self._ensure_imported_module_inferred(imported_mod);
         processed_modules.add(abs_key);
+        _canon_src[abs_key] = src_mod_str;
         imported_mods.append((src_mod_str, imported_mod));
+        _src_keys[src_mod_str] = native_module_key(full_path);
 
         sub_base = os.path.dirname(os.path.abspath(full_path));
         for sub_imp in ModuleCodegenPass.iter_module_imports(imported_mod)
             + ModuleCodegenPass.iter_nested_imports(imported_mod, CodeContext.NATIVE) {
             sub_name = self._extract_import_module_name(sub_imp);
             if sub_name {
-                wq.append((sub_name, sub_base, src_mod_str));
+                wq.append((sub_name, sub_base, abs_key));
             }
         }
     }
 
     self._foreign_modules = [m for (_s, m) in imported_mods];
 
-    _own_code_srcs: set = set();
-    for (src_mod_str, imported_mod) in imported_mods {
+    _own_code_keys: set = set();
+    for (_abs_key, (_src_mod_str, imported_mod)) in zip(
+        _canon_src.keys(), imported_mods
+    ) {
         _has_own_code = any(
             not isinstance(s, uni.Import)
             for s in ModuleCodegenPass.iter_context_stmts(imported_mod)
         );
         if _has_own_code {
-            _own_code_srcs.add(src_mod_str);
+            _own_code_keys.add(_abs_key);
         }
     }
     _visited: set = set();
@@ -691,10 +705,12 @@ impl NaIRGenCore._register_imported_struct_types -> None {
             }
         } elif (
             _nd is not None
-            and _nd in _own_code_srcs
-            and _nd not in manifest.native_transitive_sources
+            and _nd in _own_code_keys
+            and _canon_src.get(_nd) is not None
+            and _canon_src[_nd] not in manifest.native_transitive_sources
         ) {
-            manifest.native_transitive_sources.append(_nd);
+            manifest.native_transitive_sources.append(_canon_src[_nd]);
+            manifest.native_transitive_keys.append(_src_keys.get(_canon_src[_nd], ""));
         }
     }
 
@@ -982,7 +998,11 @@ impl NaIRGenCore._walk_imported_module_abilities(
                 and isinstance(_imp_stmt.signature, uni.FuncSignature)
             ) {
                 _im_full = f"{_ia_name}.{_imp_stmt.name_ref.sym_name}";
-                if (_imp_layout is not None and _im_full not in _imp_layout.methods)
+                if (
+                    _imp_layout is not None
+                    and _im_full not in _imp_layout.methods
+                    and not _imp_stmt.type_params
+                )
                     or (_imp_layout is None and _wl_internal) {
                     self._native_skipped_methods.add(_im_full);
                 }

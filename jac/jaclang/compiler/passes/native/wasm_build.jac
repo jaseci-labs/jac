@@ -16,11 +16,12 @@ def _wasm_libc_dir -> (str | None) {
     if os.path.isdir(dev) and os.listdir(dev) {
         return dev;
     }
-    shipped = os.path.join(
-        os.path.dirname(pkg_root), "python", "floor", "wasm32", "libc"
-    );
-    if os.path.isdir(shipped) and os.listdir(shipped) {
-        return shipped;
+    import from jaclang.runtimelib.fused_binary { bundled_floor_roots }
+    for floor in bundled_floor_roots(pkg_root) {
+        shipped = os.path.join(floor, "wasm32", "libc");
+        if os.path.isdir(shipped) and os.listdir(shipped) {
+            return shipped;
+        }
     }
     return None;
 }

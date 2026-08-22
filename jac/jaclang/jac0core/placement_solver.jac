@@ -4,6 +4,7 @@ import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.diagnostics { DiagnosticInfo }
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.placement {
+    PLACEMENT_HOLD_EXEMPT_ROOTS,
     get_module_summary,
     placement_state,
     record_placement_evidence,
@@ -11,7 +12,7 @@ import from jaclang.jac0core.placement {
     summarize_module
 }
 
-glob _na_scan_memo: dict[str, tuple] = {},
+glob _na_scan_memo: dict[tuple, tuple] = {},
      _SPACE_BY_NAME: dict[str, CodeContext] = {
          'server': CodeContext.SERVER,
          'client': CodeContext.CLIENT,
@@ -22,8 +23,10 @@ def native_scan_memo_clear {
     _na_scan_memo.clear();
 }
 
-def _native_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
-    import from jaclang.jac0core.compiler { _is_demoted_native }
+def _native_dep_scan(
+    path: str, hold_exempt: bool = False
+) -> (tuple[str, list[str]] | None) {
+    import from jaclang.jac0core.placement_pins { _is_demoted_native }
     import from jaclang.jac0core.helpers { read_file_with_encoding }
     import from jaclang.jac0core.program { JacProgram }
     if _is_demoted_native(os.path.realpath(path)) {
@@ -44,7 +47,7 @@ def _native_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
         }
     }
     fresh_key = tuple(fresh_parts);
-    cached = _na_scan_memo.get(path);
+    cached = _na_scan_memo.get((path, hold_exempt, ));
     if cached is not None and cached[0] == fresh_key {
         return (cached[1], cached[2]);
     }
@@ -64,7 +67,9 @@ def _native_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
                 sv_reason = "parse error";
                 break;
             }
-            (f_sv, f_deps) = scan_native_blockers(dep_mod, base_dir, allow_pub=True);
+            (f_sv, f_deps) = scan_native_blockers(
+                dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
+            );
             if f_sv {
                 sv_reason = f_sv;
                 break;
@@ -75,11 +80,13 @@ def _native_dep_scan(path: str) -> (tuple[str, list[str]] | None) {
     if sv_reason {
         deps = [];
     }
-    _na_scan_memo[path] = (fresh_key, sv_reason, deps);
+    _na_scan_memo[(path, hold_exempt, )] = (fresh_key, sv_reason, deps);
     return (sv_reason, deps);
 }
 
-def _native_deps_ok(root_path: str, root_deps: list[str]) -> bool {
+def _native_deps_ok(
+    root_path: str, root_deps: list[str], hold_exempt: bool = False
+) -> bool {
     import from jaclang.jac0core.codeinfo { effective_native_closure_cap }
     import from jaclang.jac0core.compiler { _note_native_closure_cap }
     cap = effective_native_closure_cap();
@@ -94,7 +101,7 @@ def _native_deps_ok(root_path: str, root_deps: list[str]) -> bool {
         if dep in edges {
             continue;
         }
-        info = _native_dep_scan(dep);
+        info = _native_dep_scan(dep, hold_exempt=hold_exempt);
         if info is None {
             return False;
         }
@@ -114,7 +121,10 @@ def _native_deps_ok(root_path: str, root_deps: list[str]) -> bool {
 
 def native_default_path_ok(path: str) -> bool {
     ap = os.path.abspath(path);
-    info = _native_dep_scan(ap);
+
+    _ap_posix = ap.replace(os.sep, "/");
+    exempt = any(marker in _ap_posix for marker in PLACEMENT_HOLD_EXEMPT_ROOTS);
+    info = _native_dep_scan(ap, hold_exempt=exempt);
     if info is None {
         return False;
     }
@@ -122,14 +132,12 @@ def native_default_path_ok(path: str) -> bool {
     if has_sv {
         return False;
     }
-    return _native_deps_ok(ap, deps);
+    return _native_deps_ok(ap, deps, hold_exempt=exempt);
 }
 
 def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
-    import from jaclang.jac0core.compiler {
-        _is_demoted_native,
-        native_pipeline_available
-    }
+    import from jaclang.jac0core.compiler { native_pipeline_available }
+    import from jaclang.jac0core.placement_pins { _is_demoted_native }
 
     try {
         import from jaclang.project.config { get_config }
@@ -850,6 +858,41 @@ def solve_program_placement(entry_mod: uni.Module, prog: any) -> None {
     }
 }
 
+def invalidate_importers_es(prog: any, mod_path: str) -> list[uni.Module] {
+    cleared: list[uni.Module] = [];
+    hub = prog?.mod?.hub;
+    if not isinstance(hub, dict) {
+        return cleared;
+    }
+    key = os.path.realpath(mod_path);
+    for m in list(hub.values()) {
+        if (
+            not isinstance(m, uni.Module)
+            or m.loc is None
+            or os.path.realpath(m.loc.mod_path) == key
+        ) {
+            continue;
+        }
+        for imp in m.get_all_sub_nodes(uni.Import) {
+            if imp.from_loc is None {
+                continue;
+            }
+            try {
+                target = imp.from_loc.resolve_relative_path();
+            } except Exception {
+                continue;
+            }
+            if isinstance(target, str) and os.path.realpath(target) == key {
+                m.gen.js = '';
+                m.gen.es_ast = None;
+                cleared.append(m);
+                break;
+            }
+        }
+    }
+    return cleared;
+}
+
 def demote_client_pulled_elements(
     module: uni.Module, prog: any, err_mark: int, warn_mark: int
 ) -> bool {
@@ -896,30 +939,7 @@ def demote_client_pulled_elements(
     del prog.warnings_had[warn_mark:];
     module.gen.js = '';
     module.gen.es_ast = None;
-    key = os.path.abspath(mod_path);
-    hub = prog?.mod?.hub;
-    if isinstance(hub, dict) {
-        for m in list(hub.values()) {
-            if not isinstance(m, uni.Module) or m is module {
-                continue;
-            }
-            for stmt in m.body {
-                if (
-                    isinstance(stmt, uni.Import)
-                    and stmt.code_context == CodeContext.CLIENT
-                    and stmt.from_loc is not None
-                ) {
-                    resolved = stmt.from_loc.resolve_relative_path();
-                    if (
-                        isinstance(resolved, str) and os.path.abspath(resolved) == key
-                    ) {
-                        m.gen.js = '';
-                        m.gen.es_ast = None;
-                    }
-                }
-            }
-        }
-    }
+    invalidate_importers_es(prog, mod_path);
     try {
         import sys;
         import from jaclang.cli.console { console }

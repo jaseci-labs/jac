@@ -11,7 +11,7 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _jac_bin,
     _jac_subprocess_env,
     _patch_host_rpath,
-    _stage_pyembed_shim,
+    _stage_fused_runtime,
     _bundle_runtime,
     build_cef_dispatch,
     build_cef_subprocess,
@@ -19,7 +19,7 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
     _host_boot_py,
-    _jacpyembed_import_block
+    _fused_runtime_import_block
 }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
@@ -116,7 +116,7 @@ def _generate_host_source(
         "    cef_run_loop,\n"
         "    cef_cleanup,\n"
         "}\n"
-        + _jacpyembed_import_block()
+        + _fused_runtime_import_block()
         + "glob PY_EVAL: i32 = 258;\n"
         f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
         "with entry {\n"
@@ -128,31 +128,28 @@ def _generate_host_source(
         "    if rc != 1 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        "    engine_rc: i32 = jac_engine_boot();\n"
-        "    if engine_rc != 0 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
-        "    rc_py: i32 = jpy_PyRun_SimpleString(BOOT_PY);\n"
+        "    api = engine_boot().api;\n"
+        "    rc_py: i32 = api.PyRun_SimpleString(BOOT_PY);\n"
         "    if rc_py != 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        '    main_mod = jpy_PyImport_AddModule("__main__");\n'
-        "    d = jpy_PyModule_GetDict(main_mod);\n"
-        '    port_obj: int = jpy_PyRun_String("_ctx.port", PY_EVAL, d, d);\n'
+        '    main_mod = api.PyImport_AddModule("__main__");\n'
+        "    d = api.PyModule_GetDict(main_mod);\n"
+        '    port_obj: int = api.PyRun_String("_ctx.port", PY_EVAL, d, d);\n'
         "    if port_obj == 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        "    port = jpy_PyLong_AsLong(port_obj);\n"
+        "    port = api.PyLong_AsLong(port_obj);\n"
         "    url = f\"http://127.0.0.1:{port}/\";\n"
         "    cef_open_browser(\n"
         "        url,\n"
         f"        {json.dumps(title, ensure_ascii=False)},\n"
         f"        {width}, {height}\n"
         "    );\n"
-        "    ts = jpy_PyEval_SaveThread();\n"
+        "    ts = api.PyEval_SaveThread();\n"
         "    cef_run_loop();\n"
-        "    jpy_PyEval_RestoreThread(ts);\n"
-        "    jpy_Py_Finalize();\n"
+        "    api.PyEval_RestoreThread(ts);\n"
+        "    api.Py_Finalize();\n"
         "    cef_cleanup();\n"
         "}\n"
     );
@@ -253,7 +250,7 @@ impl CefDesktopTarget.build(
     shutil.copytree(sv_root, out_dir / "sv", ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
-    _stage_pyembed_shim(out_dir);
+    _stage_fused_runtime(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
         win.title or app_name,

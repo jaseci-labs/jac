@@ -53,10 +53,11 @@ traversal driven from Python):
 
 A waived name that shows up in a root's reachable set is a stop-the-line
 finding: the artifact could abort at runtime, so the waiver must be removed
-and the seam fixed instead. The two exceptions are written down as tables
-with an argument each, `ACCESSOR_ARGUED` and `PASSENGER_ARGUED`, and both are
-kept honest the same way: an entry that stops being flagged fails, and
-nothing outside the table is ever excused.
+and the seam fixed instead. The exceptions are written down as tables with
+an argument each -- `ACCESSOR_ARGUED`, `PASSENGER_ARGUED` and, since B4's
+closure growth put the pass base chain in every artifact, `SPINE_ARGUED` --
+and all are kept honest the same way: an entry that stops being flagged
+fails, and nothing outside the tables is ever excused.
 """
 
 import os;
@@ -145,18 +146,23 @@ glob PKG_PATH = Path(jaclang.__file__).parent,
          "build_solution_from_specialized_class",
          "collect_member_syms"
      ),
-     # A third table, BASE_CHAIN_ARGUED, lived here for one wave: the four
-     # base-chain waivers (`is_canceled`, `ice`, the two generic statics)
-     # became reachable when the chain joined every sealed closure, and the
-     # table argued that the only path to them ran through a pass
-     # construction no sealed entry performs -- naming itself as the fused
-     # prefix's gate. It retired the way it promised: `is_canceled` reads
-     # the `cancel_requested` scalar now, `ice` builds the message its
-     # callers raise, and the generic-static shims were retired for the
-     # `UniNode` methods they wrapped. Nothing construction-reachable is
-     # waived anymore, so the walks below run against the plain argued
-     # tables again.
+     # BASE_CHAIN_ARGUED lived here for one wave and retired the way it
+     # promised: `is_canceled` reads the `cancel_requested` scalar now,
+     # `ice` builds the message its callers raise, and the generic-static
+     # shims were retired outright for the `UniNode` methods they wrapped.
+     # Its successor, the SPINE tables, retired one landing later: B4's
+     # grown closures re-admitted the base-chain field-wall trio
+     # (`__post_init__`/`transform`/`traverse`) and argued them here, but
+     # the composed measurement read the wall as down in every root, the
+     # waivers left the tables, and union staleness emptied the argument.
+     # The tables stay so the next carve-out has a policed place to land;
+     # every entry must be waived, flagged by a walk, and declared in the
+     # pass spine, or the suite fails it.
+     SPINE_ARGUED: tuple = (),
+     SPINE_ROOT_ARGUED: tuple = (),
+     _SPINE_FLAGGED: set = set(),
      TYPE_SYSTEM_DIR = "compiler/type_system",
+     PASS_SPINE_DIR = "jac0core/passes",
      _CLOSURE_MEMO: list = [],
      _PASS_MEMO: dict[(str, tuple)] = {};
 
@@ -490,14 +496,25 @@ def _waived_names -> set {
     return {`entry.split("::")[-1] for `entry in _CLOSURE_SEAM_WAIVERS};
 }
 
-"""One root's findings: (reachable waivers beyond the argued set, stale argued)."""
+"""One root's findings: (reachable waivers beyond the argued sets, stale argued).
+
+Spine names the walk flags are collected into `_SPINE_FLAGGED` rather than
+reported -- their argument lives on `SPINE_ROOT_ARGUED`, and the last test
+in this file fails any entry no walked root flags any more.
+"""
 def _pass_findings(rel: str) -> tuple[(list, list)] {
     (seen, waived) = pass_reachable(rel);
     argued = set(ACCESSOR_ARGUED.get(rel, ()));
+    spine = set(SPINE_ROOT_ARGUED);
+    for name in waived {
+        if name in seen and name in spine {
+            _SPINE_FLAGGED.add(name);
+        }
+    }
     hit = sorted(
         name
         for name in waived
-        if name in seen and name not in argued
+        if name in seen and name not in argued and name not in spine
     );
     stale = sorted(
         name
@@ -550,7 +567,7 @@ test "the closure reaches the parser itself" {
 test "no waived seam is reachable from the sealed entry points" {
     seen = reachable();
     waived = _waived_names();
-    argued = set(PASSENGER_ARGUED);
+    argued = set(PASSENGER_ARGUED) | set(SPINE_ARGUED);
     reachable_waivers = sorted(
         name
         for name in waived
@@ -567,10 +584,31 @@ test "no waived seam is reachable from the sealed entry points" {
         if name not in seen or name not in waived
     );
     assert not stale_argued , (
-        "carve-out entries the walk no longer flags (or that stopped being "
-        "waived) -- drop them, and say which mechanism cleared each:\n"
+        "passenger or spine carve-out entries the walk no longer flags (or "
+        "that stopped being waived) -- drop them:\n"
         + "\n".join(f"  {name}" for name in stale_argued)
     );
+}
+
+
+test "every spine carve-out is declared in the pass spine" {
+    (_seen, tables) = sealed_walk();
+    (_arch_of, _mod_funcs, _globs, _reg, arch_mod, func_mod) = tables;
+    for name in SPINE_ARGUED {
+        (owner, dot, _rest) = name.partition(".");
+        where = arch_mod.get(owner) if dot else func_mod.get(name);
+        assert where is not None , (
+            f"'{name}' is carved out as a pass-spine passenger but the walk "
+            "cannot say which module declares it"
+        );
+        assert PASS_SPINE_DIR in str(where).replace(os.sep, "/") , (
+            f"'{name}' is carved out as a pass-spine passenger but is "
+            f"declared in {where}. The argument is that no sealed artifact "
+            "constructs or dispatches a pass natively, which is only true "
+            "of the spine's own classes -- it cannot excuse a seam "
+            "elsewhere."
+        );
+    }
 }
 
 
@@ -604,7 +642,11 @@ test "wave-1 roots: each walk reaches the pass's own machinery" {
             "jac0core/passes/module_codegen_pass.jac",
             ("ModuleCodegenPass.archetype_refs", "NameAtom.sym.__get__")
         ),
-        ("jac0core/passes/uni_pass.jac", ("UniPass.traverse", "UniPass.enter_node")),
+        # `UniPass.traverse` was the sentinel here until B4's closure growth
+        # demoted it (base-chain `cur_node` write) and its waiver excluded it
+        # from the walk; `prune` is the same kind of always-live traversal
+        # machinery and keeps the vacuity guard honest.
+        ("jac0core/passes/uni_pass.jac", ("UniPass.prune", "UniPass.enter_node")),
         (
             "jac0core/passes/endpoint_effect_pass.jac",
             ("EndpointEffectPass._callee_body", "Archetype._get_impl_resolved_body")
@@ -767,12 +809,7 @@ test "wave-5 roots: each walk reaches the pass's own machinery" {
 
 test "wave-5 roots: no waived seam is native-reachable from the live surface" {
     for rel in WAVE5_ROOTS {
-        (seen, waived) = pass_reachable(rel);
-        hit = sorted(
-            name
-            for name in waived
-            if name in seen
-        );
+        (hit, _stale) = _pass_findings(rel);
         assert not hit , (
             f"{rel}: {len(hit)} waived seam(s) are reachable through native "
             "calls from the root's live entry surface, so the sealed artifact "
@@ -815,18 +852,35 @@ test "jcir: no waived seam is native-reachable from the live surface" {
         f"{JCIR_ROOT} left NATIVE_SEAL_ROOTS; if it was refused again, the "
         "refusal belongs in NATIVE_SEAL_REFUSED_ROOTS with its blocker"
     );
-    (seen, waived) = pass_reachable(JCIR_ROOT);
-    argued = set(ACCESSOR_ARGUED.get(JCIR_ROOT, ()));
-    hit = sorted(
-        name
-        for name in waived
-        if name in seen and name not in argued
-    );
+    (hit, _stale) = _pass_findings(JCIR_ROOT);
     assert not hit , (
         f"{JCIR_ROOT}: {len(hit)} waived seam(s) are reachable through "
         "native calls from the root's live entry surface, so the sealed "
         "artifact can abort at runtime -- remove the waiver and fix the "
         "seam:\n"
         + "\n".join(f"  {name}" for name in hit)
+    );
+}
+
+
+test "every spine carve-out is flagged by some pass root's walk" {
+    # Union staleness for SPINE_ROOT_ARGUED: run every walked root's
+    # findings (memoized -- the wave tests above already computed them)
+    # and require each argued spine name to still be flagged somewhere.
+    # An entry nothing flags has cleared, so its argument is dead weight
+    # and must leave with the waiver that carried it.
+    for roots in (WAVE1_ROOTS, WAVE2_ROOTS, WAVE4_ROOTS, WAVE5_ROOTS) {
+        _findings_report(roots);
+    }
+    _pass_findings(JCIR_ROOT);
+    unflagged = sorted(
+        name
+        for name in SPINE_ROOT_ARGUED
+        if name not in _SPINE_FLAGGED
+    );
+    assert not unflagged , (
+        "spine carve-out entries no walked root flags any more -- the seam "
+        "cleared or the waiver moved, so drop the argument with it:\n"
+        + "\n".join(f"  {name}" for name in unflagged)
     );
 }

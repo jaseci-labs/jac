@@ -149,3 +149,19 @@ test "bound slots answer as the server lane does" {
         f"rather than refusing, so the answers diverge silently"
     );
 }
+
+
+test "str over a boxed kwargs value renders the value, not its tag" {
+    fixture = "kwargs_any_str.jac";
+    sv = sv_lines(fixture);
+    na = na_lines(fixture);
+    assert sv == na , (
+        f"str(v) over dict[str, any] diverged between tiers: staged {sv} vs "
+        f"native {na}. The native lowering once snprintf'd the raw JacVal "
+        "box and printed the tag ('2' for a str), which shipped diagnostic "
+        "messages with unfilled-looking values from sealed passes."
+    );
+    assert sv == ["keyword=break;", "keyword=break;n=3;"] , (
+        f"the fixture's expected output drifted: {sv}"
+    );
+}

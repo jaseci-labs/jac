@@ -1156,6 +1156,9 @@ impl ModulePath.native_bundled_path -> (str | None) {
     if not self.in_native_context() {
         return None;
     }
+    if mod_path and mod_path.endswith(".pyi") {
+        return None;
+    }
     base = self.dot_path_str;
     if not is_bundled_native_module(base) {
         return None;

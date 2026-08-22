@@ -134,6 +134,18 @@ test "solid counter fixture: createSignal, accessor reads, setter writes (fixtur
     assert "() => count()" not in js , "JSX path must not thunk dynamic reads";
 }
 
+test "solid keeps the signal destructure for a setter used as a value" {
+    # Solid always bound `setX` through the createSignal destructure, so the
+    # #8224 fix on the React family must leave this shape exactly as it was.
+    js = compile_fixture_with_backend("state_setter_value_ref.jac", SolidBackend());
+    assert 'const [theme, setTheme] = createSignal("dark")' in js , (
+        f"solid state lowering must stay a signal destructure; got:\n{js}"
+    );
+    assert "setTheme: setTheme" in js;
+    assert "useJacState" not in js;
+    assert "__jacS_theme" not in js;
+}
+
 test "solid aug-assign fixture emits functional updaters (fixture #3)" {
     js = compile_fixture_with_backend("reactive_aug_assign.jac", SolidBackend());
     assert "setCount(prev => (prev + 5))" in js;

@@ -1,0 +1,48 @@
+{
+  "_comment": "Pinned build-time inputs shared by jac/build.zig and the jaclang.payload tool (jaclang/payload/pins.jac). One edit here moves both the fetch and the build, so they can never disagree. The pbs patch release must be a patch of the bundled CPython minor (py_ver is derived from `pbs.python`); `llvm.version` must match the version the LLVMPY_* shim source (llvmlite 0.48.0rc1) targets. typeshed pins live in jaclang/vendor/typeshed/{PIN,TARBALL_SHA256}; the bun pin is bun_installer.jac BUN_VERSION.",
+  "pbs": {
+    "_comment": "python-build-standalone release: <base>/<tag>/cpython-<python>+<tag>-<platform>-<flavor>.tar.zst, verified against the release SHA256SUMS. The archives are compressed with a 128 MiB zstd window.",
+    "tag": "20260610",
+    "python": "3.14.6",
+    "flavor": "pgo+lto-full",
+    "base": "https://github.com/astral-sh/python-build-standalone/releases/download"
+  },
+  "llvm": {
+    "_comment": "jaseci-labs/llvm-slice repackages the official LLVM release into a per-member, HTTP-range-fetchable zip at <slice_base>/v<version>/llvm-<version>-<triple>-{dev.zip,manifest.json}. `dirname` is the release's top-level dir (the -Dllvm-dir basename under .llvm-build); `triple`/`manifest_sha256`/`zip_size` drive the range fetch. `upstream` true = repackaged official upstream binaries; false = built from source by llvm-slice (externals like zlib/zstd/libxml2 OFF). On macOS that decides the whole shim link shape: upstream archives are ThinLTO bitcode that ld64 must lower via the slice's own libLTO.dylib and they reference zlib/zstd/libxml2, while a from-source slice is plain native Mach-O with no external deps. A `*-libcxx` triple is a libc++ build whose archives the shim must link with `zig c++ -target <floor>` rather than the host g++/libstdc++.",
+    "version": "22.1.8",
+    "slice_base": "https://github.com/jaseci-labs/llvm-slice/releases/download",
+    "slices": {
+      "linux-x86_64": {
+        "_comment": "libc++ slice (built -DLLVM_ENABLE_LIBCXX=ON with zig c++ @ glibc 2.17): the LLVMPY_* shim links it with `zig c++` for a clean glibc 2.17 floor (#7082). The stock x86_64-linux slice is libstdc++ and forces a host-g++ link at the runner's glibc (~2.38).",
+        "dirname": "LLVM-22.1.8-Linux-X64-libcxx",
+        "triple": "x86_64-linux-libcxx",
+        "manifest_sha256": "6c227bfc95829729a93b8af44eeae182489df5a2bb16fd5bb5fe9b36d8877d54",
+        "zip_size": 667452266,
+        "upstream": false
+      },
+      "linux-aarch64": {
+        "_comment": "libc++ slice, same zig c++ @ 2.17 build as x86_64 (built natively on ubuntu-24.04-arm, llvm-slice#4); the libcxx triple routes the shim to the zig c++/2.17 link path. Closes the #7082 aarch64 follow-up.",
+        "dirname": "LLVM-22.1.8-Linux-ARM64-libcxx",
+        "triple": "aarch64-linux-libcxx",
+        "manifest_sha256": "0315f2d83f4cab6cc5e0ef94b5d6999306109b27d0955549e7af46897ca28c34",
+        "zip_size": 462054429,
+        "upstream": false
+      },
+      "macos-aarch64": {
+        "dirname": "LLVM-22.1.8-macOS-ARM64",
+        "triple": "aarch64-apple-darwin",
+        "manifest_sha256": "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
+        "zip_size": 743879473,
+        "upstream": true
+      },
+      "macos-x86_64": {
+        "_comment": "Upstream ships no macOS Intel binaries for 22.x, so this slice is built from source by llvm-slice (build-macos-x64.yml) on the macos-15-intel runner: plain native archives (no ThinLTO/libLTO), externals OFF, minos pinned to 12.0 so release binaries reach 2015-and-newer Intel Macs.",
+        "dirname": "LLVM-22.1.8-macOS-X64",
+        "triple": "x86_64-apple-darwin",
+        "manifest_sha256": "a984b4f7aef1978386f74ff2ea4b30d76f9e0b33d08dbae57bee9fea9bb16f9d",
+        "zip_size": 49613317,
+        "upstream": false
+      }
+    }
+  }
+}

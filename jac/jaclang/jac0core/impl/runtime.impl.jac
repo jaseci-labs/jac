@@ -377,20 +377,6 @@ impl JacBuiltin.printgraph(
 }
 
 
-impl JacCmd.run_ai_agent(req: object) -> int {
-    try {
-        import from jaclang.cli.ai_agent { run_agent }
-    } except ImportError {
-        import from jaclang.cli.console { console }
-        console.error(
-            "`jac ai` needs the byLLM plugin, which is not installed.",
-            hint="Install it with:  pip install byllm"
-        );
-        return 1;
-    }
-    return run_agent(req);
-}
-
 impl JacContext.get_context -> ExecutionContext {
     ctx = _request_context.get();
     if ctx is not None {

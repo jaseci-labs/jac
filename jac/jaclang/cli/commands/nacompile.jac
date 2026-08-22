@@ -68,6 +68,13 @@ glob registry = get_registry();
             short="",
             help="Enforce zero-RC ownership coverage (E140x hard errors) on the compiled module, regardless of jac.toml [gc.enforce] patterns"
         ),
+        Arg.create(
+            "strict",
+            kind=ArgKind.FLAG,
+            `default=False,
+            short="",
+            help="Fail when any function in the program's native closure was demoted to Python-only (a demoted function cannot run in a self-contained binary); JAC_NA_DEBUG=1 prints why"
+        ),
 
     ],
     examples=[
@@ -91,6 +98,10 @@ glob registry = get_registry();
             "jac nacompile service.jac --gc none --assert-no-rc",
             "Compile and prove the artifact contains no RC/collector machinery"
         ),
+        (
+            "jac nacompile launcher.jac --strict",
+            "Compile and refuse any Python-only demotion in the native closure"
+        ),
 
     ],
     group="transform"
@@ -104,5 +115,6 @@ def nacompile(
     debug: bool = False,
     gc: str = "",
     assert_no_rc: bool = False,
-    enforce_nogc: bool = False
+    enforce_nogc: bool = False,
+    strict: bool = False
 ) -> int;

@@ -107,6 +107,30 @@ obj ScaleClient {
         );
     }
 
+    def revisions(
+        app_name: str, namespace: str, target: str = 'auto'
+    ) -> list[dict[str, any]] {
+        return self._lifecycle_target(app_name, namespace, target).list_revisions(
+            app_name
+        );
+    }
+
+    def rollback(
+        app_name: str, namespace: str, revision: int, target: str = 'auto'
+    ) -> DeploymentResult {
+        return self._lifecycle_target(app_name, namespace, target).rollback_to(
+            app_name, revision
+        );
+    }
+
+    def bundle_keys(app_name: str, namespace: str, target: str = 'auto') -> set[str] {
+        return self._lifecycle_target(
+            app_name, namespace, target
+        ).referenced_bundle_keys(
+            app_name
+        );
+    }
+
     def scale(app_name: str, namespace: str, replicas: int, target: str = 'auto') {
         self._lifecycle_target(app_name, namespace, target).scale(app_name, replicas);
     }

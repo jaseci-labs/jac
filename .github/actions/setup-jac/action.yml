@@ -1,11 +1,11 @@
 name: Set up jac binary
 description: >
-  Make the self-contained `jac` binary (Zig launcher + bundled CPython) available
+  Make the self-contained `jac` binary (a Jac launcher + bundled CPython) available
   on PATH. Replaces `pip install -e ./jac`: jaclang ships as the binary, not a
   PyPI/editable package, so no system Python is needed to get the `jac` command.
 
   The binary is an OUTPUT cache keyed on the content that goes into it (jaclang
-  source, build.zig, and the launcher -- including payload.zig, which pins the
+  source, build.zig, and the launcher -- including bootstrap/pins.json, which pins the
   pbs tag / python version / bundled pip deps). Merges to main seed the cache;
   every other job and workflow restores the prebuilt binary in seconds instead
   of rebuilding (PR branches cross-restore main's entry, and build their own on
@@ -13,16 +13,6 @@ description: >
   be served -- which is why this is safe even though zig's own incremental cache
   stays disabled (it doesn't reliably invalidate on a jaclang/payload change).
 inputs:
-  ninja:
-    description: >
-      Fuse the neovim editor closure into the binary. The closure's Lua
-      dependency is fetched from lua.org on a cold package store -- the
-      flakiest fetch in the whole build -- and test workloads never open the
-      editor, so dev-lane fallbacks pass "false" to skip it entirely. A
-      no-ninja binary is never saved to the shared jac-bin cache (release
-      flows restore that key and must get the fused editor).
-    required: false
-    default: "true"
   skip-precompile:
     description: >
       Skip the payload JIR precompile (~24 min cold). Only sane for dev-lane
@@ -58,7 +48,7 @@ runs:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-        key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**') }}
+        key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**', 'jac/bootstrap/**') }}
 
     - name: Restore cached typeshed stdlib stubs
       id: typeshed-cache
@@ -79,19 +69,19 @@ runs:
     # Avoid re-downloading + re-decoding the ~600 MB python-build-standalone tree
     # on every binary-cache miss (the std zstd decode of the 122 MB archive is
     # slow): cache the extracted .pbs-build, keyed on the pbs pin (PBS_TAG /
-    # PBS_PY / PBS_FLAVOR live in payload.zig). Only engaged on a binary miss
-    # (when we actually build); a payload.zig edit re-fetches.
+    # the pbs pins live in bootstrap/pins.json). Only engaged on a binary miss
+    # (when we actually build); a pins.json edit re-fetches.
     - name: Restore cached python-build-standalone tree
       id: pbs-cache
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/.pbs-build
-        key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+        key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
     # The LLVMPY_* shim is the single most expensive build artifact (statically
     # links ~0.5 GB of LLVM archives; several minutes) and depends only on
-    # native/**, build.zig, and the pinned slice (llvm_release.zig) -- NOT on
+    # native/**, build.zig, and the pinned slice (bootstrap/pins.json) -- NOT on
     # jaclang/**. Cache the built shim itself so compiler-only merges (the
     # common case for a binary-cache miss) skip both the LLVM fetch below and
     # the link: the build step passes the restored file via `-Dshim-bin`. The
@@ -103,12 +93,12 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
 
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
     # wheel anymore). Cache the pruned ~0.5 GB tree, keyed on the single-sourced
-    # slice pin (llvm_release.zig) so unrelated payload.zig churn (bun/pbs/pip
+    # slice pin (bootstrap/pins.json) so unrelated payload-tool churn (bun/pbs/pip
     # pins) does not orphan a 0.5 GB entry. Only engaged on a binary miss AND a
     # shim miss (a cached shim needs no LLVM at all).
     - name: Restore cached LLVM (jacllvm shim deps)
@@ -117,12 +107,12 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
     # The contained bun runtime is fetched + sha256-verified and bundled into the
     # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
     # miss does not re-download it, keyed on the resolver pin in
-    # bun_installer.jac (kept in lockstep with payload.zig by the contribution
+    # bun_installer.jac (the one definition; the Jac payload tool imports it, so no lockstep
     # check). Only engaged on a binary miss.
     - name: Restore cached bun runtime
       id: bun-cache
@@ -190,9 +180,9 @@ runs:
     # frame and VERIFIES it by decompress + byte-compare before reuse, so like
     # the precompile tree a stale restore can only miss, never mis-serve --
     # restore-keys is safe. The key names every pinned input that feeds the
-    # layer (pbs/pip/bun pins and pack code in launcher/**, shim inputs in
-    # native/** + build.zig, the editor closure in editor/** + build.zig.zon,
-    # the wasm_rt floor); unpinned pip releases can still drift the content
+    # layer (pbs/pip/bun pins in bootstrap/pins.json, the launcher and payload tool, shim inputs in
+    # native/** + build.zig, the zon-pinned packages in build.zig.zon, the
+    # wasm_rt floor); unpinned pip releases can still drift the content
     # mid-key, which just recompresses until the key next rolls.
     - name: Restore cached payload deps-layer frame
       id: layers-cache
@@ -200,22 +190,20 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: jac/.payload-layers
-        key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/editor/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
+        key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
         restore-keys: |
           payload-layers-${{ runner.os }}-${{ runner.arch }}-
 
     # The Zig package store (.zig-cache/p): every git/tarball dependency
-    # `zig build` fetches -- the pinned neovim fork and, transitively, its PUC
-    # Lua source off lua.org's FTP (historically the flakiest fetch in the whole
-    # build), plus mini.nvim, tree-sitter-jac, libuv, zlua, lpeg, luv, etc.
-    # Content-addressed and immutable (the hash IS the identity), so unlike zig's
-    # build-artifact cache it can never ship stale bits -- which is why we cache
-    # only the `p/` package subdir and leave o/,h/ (the payload-artifact cache,
-    # deliberately disabled via use-cache:false) untouched. mlugg/setup-zig pins
+    # `zig build` fetches, as pinned by build.zig.zon. Content-addressed and
+    # immutable (the hash IS the identity), so unlike zig's build-artifact cache
+    # it can never ship stale bits -- which is why we cache only the `p/`
+    # package subdir and leave o/,h/ (the payload-artifact cache, deliberately
+    # disabled via use-cache:false) untouched. mlugg/setup-zig pins
     # ZIG_GLOBAL_CACHE_DIR to $GITHUB_WORKSPACE/.zig-cache. Keyed on build.zig.zon
-    # (which pins the neovim fork hash, and thus its entire transitive closure);
-    # restore-keys so a zon bump still reuses every unchanged package (Lua
-    # included) instead of re-hitting lua.org. Only engaged on a binary miss.
+    # (which pins every package hash, and thus the entire transitive closure);
+    # restore-keys so a zon bump still reuses every unchanged package instead of
+    # re-fetching it. Only engaged on a binary miss.
     - name: Restore cached Zig package store
       id: zig-pkgs-cache
       if: steps.cache.outputs.cache-hit != 'true'
@@ -235,24 +223,6 @@ runs:
         # for the payload step, so leave it off and rebuild from scratch on a miss.
         use-cache: false
 
-    # lua.org (the flakiest fetch in the closure -- see the package-store cache
-    # note above) must not be load-bearing on a cold build: when the store cache
-    # missed, pre-seed the Lua source from Debian's pool, whose orig tarball is
-    # byte-identical upstream content on a CDN. `zig fetch` stores it in the
-    # package store under its computed content hash, so the seed is used only if
-    # it extracts to the exact tree the zon pin names (verified: it does), and
-    # `zig build` then resolves lua by hash without ever contacting lua.org. On
-    # main the refreshed store is re-saved by the cache step below, so this also
-    # self-heals the shared zig-pkgs entry after eviction. Best-effort: on a
-    # mirror failure the build falls back to lua.org exactly as before.
-    - name: Pre-seed Lua from the Debian mirror (store-cache miss only)
-      if: steps.cache.outputs.cache-hit != 'true' && steps.zig-pkgs-cache.outputs.cache-hit != 'true'
-      shell: bash
-      working-directory: jac
-      run: |
-        zig fetch https://deb.debian.org/debian/pool/main/l/lua5.1/lua5.1_5.1.5.orig.tar.gz \
-          || echo "::warning::Lua mirror pre-seed failed; the build will fall back to lua.org"
-
     # Download + extract the pinned LLVM into jac/.llvm-build (idempotent: a no-op
     # when the cache above restored it). Must run before `zig build` so the shim's
     # static archives exist when build.zig configures the jacllvm step. Skipped
@@ -261,22 +231,15 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
-      # -Dno-ninja unconditionally: fetching the LLVM slice is
-      # editor-independent (exactly like fetch-typeshed below), and
-      # configuring the graph without it drags the neovim + Lua closure
-      # (incl. the flaky lua.org tarball) into a step that cannot retry.
-      # The fused build still configures ninja itself, inside the retried
-      # build step.
-      run: zig build -Dno-ninja fetch-llvm --summary all
+      run: zig build fetch-llvm --summary all
 
     - name: Fetch typeshed stdlib stubs
       if: steps.typeshed-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
-      # -Dno-ninja: typeshed materialization is editor-independent, so skip
-      # configuring (and fetching) the neovim + Lua closure. Load-bearing on a
-      # binary-cache hit, where no full build ran to fetch it otherwise.
-      run: zig build -Dno-ninja fetch-typeshed --summary all
+      # Load-bearing on a binary-cache hit, where no full build ran to fetch
+      # the stubs otherwise.
+      run: zig build fetch-typeshed --summary all
 
     # Same capacity floor build-binaries.yml gained in #8279, for the workflows
     # that build the binary through this action -- now a backstop rather than
@@ -352,22 +315,18 @@ runs:
           cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
           SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
         fi
-        NINJA_ARG=()
-        if [ "${{ inputs.ninja }}" != "true" ]; then
-          NINJA_ARG=(-Dno-ninja)
-        fi
         PRE_ARG=()
         if [ "${{ inputs.skip-precompile }}" = "true" ]; then
           PRE_ARG=(-Dskip-precompile)
         fi
-        # Retried: the cold-store fetches (lua.org especially) time out
-        # transiently, and one flake otherwise costs a whole run. A seal
+        # Retried: the cold-store fetches time out transiently, and one
+        # flake otherwise costs a whole run. A seal
         # refusal is deterministic, though, so it exits on the first attempt
         # rather than burning two more full builds to reprint itself.
         set -o pipefail
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
-          if zig build "${NINJA_ARG[@]}" "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+          if zig build "${PRE_ARG[@]}" "${SHIM_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
             exit 0
           fi
           if grep -qE 'NATIVE SEAL:|Seal aborted|seal-finalize failed' "$LOG"; then
@@ -386,14 +345,13 @@ runs:
       if: >-
         github.ref == 'refs/heads/main' &&
         steps.cache.outputs.cache-hit != 'true' &&
-        inputs.ninja == 'true' &&
         inputs.skip-precompile != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
-        key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**') }}
+        key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**', 'jac/bootstrap/**') }}
 
     # Seed the shared read-mostly caches -- from main only (see the note above
     # the restore steps). Every merge to main runs this action, so a pin bump
@@ -406,7 +364,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.pbs-build
-        key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+        key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
     - name: Save LLVMPY shim cache (main only)
       if: >-
@@ -416,7 +374,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
-        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
 
     - name: Save LLVM cache (main only)
       if: >-
@@ -427,7 +385,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
     - name: Save bun cache (main only)
       if: >-
@@ -461,7 +419,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: jac/.payload-layers
-        key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/editor/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
+        key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
 
     # Seed the Zig package store from main only (see the restore note). Like the
     # precompile cache, a restore-keys prefix hit still leaves cache-hit != true,
@@ -501,10 +459,7 @@ runs:
       if: steps.cache.outputs.cache-hit == 'true' && steps.typeshed_check.outputs.needed == 'true'
       shell: bash
       working-directory: jac
-      # -Dno-ninja: this path only runs on a binary-cache hit (no build), so
-      # without it a bare `fetch-typeshed` would fetch the neovim + Lua closure
-      # purely to materialize stubs.
-      run: zig build -Dno-ninja fetch-typeshed
+      run: zig build fetch-typeshed
 
     - name: Put jac on PATH
       shell: bash

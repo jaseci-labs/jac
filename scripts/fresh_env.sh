@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fresh dev environment for the single-binary toolchain.
 #
-# jaclang ships as the one self-contained `jac` binary (Zig launcher + a private
+# jaclang ships as the one self-contained `jac` binary (a Jac launcher + a private
 # bundled CPython). There is NO pip-installed jaclang and no editable `.venv` for
 # the language itself. This script builds a `jac` for the EDITABLE DEV LOOP with
 # `zig build -Ddev`: the compiler is NOT bundled into the binary; instead the
@@ -38,7 +38,7 @@ cd "$(git rev-parse --show-toplevel)"
 # the payload instead; this is the editable/source-checkout equivalent.
 ( cd jac && zig build fetch-bun )
 
-# Build the dev binary (needs zig 0.16.0 + network; no zstd/curl/git -- payload.zig
+# Build the dev binary (needs zig 0.16.0 + network; no zstd/curl/git -- the Jac payload tool
 # does it all in std). zig build fetches the pinned typeshed stdlib stubs itself
 # (the fetch-typeshed step), so there is no submodule to check out. -Ddev links the
 # compiler from this checkout instead of bundling it -- fast to build, edits run live.

@@ -435,16 +435,12 @@ class JacBuiltin {
     static def get_console -> ConsoleImpl;
 }
 
-class JacCmd {
-    static def run_ai_agent(req: object) -> int;
-}
-
 class JacConfig {
     static def on_config_loaded(config: dict[(str, any)]) -> None;
     static def validate_config(config: dict[(str, any)]) -> list[str];
 }
 
-class JacRuntimeInterface(JacClassReferences, JacContext, JacPersistence, JacAccessValidation, JacGraph, JacWalker, JacArchetype, JacModule, JacIntrospection, JacLLM, JacServe, JacTest, JacBuiltin, JacCmd, JacConfig) {}
+class JacRuntimeInterface(JacClassReferences, JacContext, JacPersistence, JacAccessValidation, JacGraph, JacWalker, JacArchetype, JacModule, JacIntrospection, JacLLM, JacServe, JacTest, JacBuiltin, JacConfig) {}
 
 class JacRuntime(JacRuntimeInterface) {
     with entry {

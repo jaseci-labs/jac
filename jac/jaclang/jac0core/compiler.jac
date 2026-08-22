@@ -885,7 +885,7 @@ def module_own_native_anchor(module: (uni.Module | None)) -> bool {
 }
 
 def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
-    import from jaclang.jac0core.placement_pins { config_module_pin }
+    import from jaclang.jac0core.placement_pins { effective_module_pin }
     if (
         nd.is_service_import
         or nd.is_typed
@@ -907,7 +907,7 @@ def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
     ) {
         return None;
     }
-    if config_module_pin(resolved) == 'native' {
+    if effective_module_pin(resolved) == 'native' {
         return resolved;
     }
     target = hub_module_for_path(resolved, prog);
@@ -929,7 +929,7 @@ def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
 }
 
 def import_declares_native_target(nd: uni.Import) -> bool {
-    import from jaclang.jac0core.placement_pins { config_module_pin }
+    import from jaclang.jac0core.placement_pins { effective_module_pin }
     if nd.from_loc is None {
         return False;
     }
@@ -941,16 +941,16 @@ def import_declares_native_target(nd: uni.Import) -> bool {
     if not isinstance(resolved, str) or not resolved.endswith('.jac') {
         return False;
     }
-    return config_module_pin(resolved) == 'native';
+    return effective_module_pin(resolved) == 'native';
 }
 
 def native_only_import_target(nd: uni.Import, prog: object) -> (str | None) {
-    import from jaclang.jac0core.placement_pins { config_module_pin }
+    import from jaclang.jac0core.placement_pins { effective_module_pin }
     resolved = plain_native_import_target(nd, prog);
     if resolved is None {
         return None;
     }
-    if config_module_pin(resolved) == 'native' {
+    if effective_module_pin(resolved) == 'native' {
         return resolved;
     }
     target = hub_module_for_path(resolved, prog);
@@ -1093,12 +1093,12 @@ def import_binds_client_native(nd: uni.Import, manifest: object) -> bool {
     return False;
 }
 
-glob _na_demotion_memo: dict[str, tuple] = {},
-     _na_coverage: dict[str, dict] = {},
+glob _na_coverage: dict[str, dict] = {},
      _na_coverage_state: dict[str, bool] = {"enabled": False},
      _na_cap_noted: dict[str, bool] = {};
 
 def na_coverage_begin {
+    import from jaclang.jac0core.placement_pins { _na_demotion_memo }
     import from jaclang.jac0core.placement_solver { native_scan_memo_clear }
     _na_coverage.clear();
     _na_demotion_memo.clear();
@@ -1171,29 +1171,24 @@ def _default_codespace_for(target_program: JacProgram) -> str {
     return effective_default_codespace();
 }
 
-def _is_demoted_native(path: str) -> bool {
-    key = _na_demotion_memo.get(path);
-    if key is None {
-        return False;
+def _drop_demoted_native_bindings(mod: uni.Module, resolved: str) {
+    import from jaclang.jac0core.codeinfo { InteropContext, InteropManifest }
+    key = os.path.realpath(resolved);
+    manifest = mod.gen.interop_manifest;
+    if not isinstance(manifest, InteropManifest) or not manifest.bindings {
+        return;
     }
-    try {
-        st = os.stat(path);
-        if key == (st.st_mtime_ns, st.st_size) {
-            return True;
-        }
-    } except OSError {
-        ;
-    }
-    del _na_demotion_memo[path];
-    return False;
-}
-
-def _mark_demoted_native(path: str) {
-    try {
-        st = os.stat(path);
-        _na_demotion_memo[path] = (st.st_mtime_ns, st.st_size);
-    } except OSError {
-        ;
+    stale = [
+        name
+        for (name, b) in manifest.bindings.items()
+        if (
+            b.source_context == InteropContext.NATIVE
+            and b.source_module
+            and os.path.realpath(b.source_module) == key
+        )
+    ];
+    for name in stale {
+        manifest.bindings.pop(name, None);
     }
 }
 
@@ -1295,6 +1290,7 @@ obj JacCompiler {
     def stamp_client_kind_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def stamp_access_check_facts(mod: uni.Module) -> None;
     def stamp_native_import_facts(mod: uni.Module, target_program: JacProgram) -> None;
+    def _release_compile_scratch(target_program: JacProgram) -> None;
     def compile(
         file_path: str,
         target_program: JacProgram,

@@ -328,3 +328,67 @@ test "normalizer passes documented boot and static-mount keys through" {
     mounts = normalized["client"]["static_mounts"];
     assert mounts == [{"url_prefix": "/assets", "local_path": "public"}] , mounts;
 }
+
+
+def _collect_schema_keys(schema: dict, out: set) -> None {
+    if not isinstance(schema, dict) {
+        return;
+    }
+    for (key, value) in schema.items() {
+        if isinstance(value, dict) {
+            out.add(str(key));
+            _collect_schema_keys(value.get("nested", {}), out);
+        }
+    }
+}
+
+
+# The blocker this guards: a KubernetesConfig field that from_dict reads but
+# the schema never declares. _walk_schema then warns "unknown key ... defaults
+# apply instead" on every command, and hard-fails under
+# JAC_SCALE_CONFIG_STRICT, for a key the loader does read. Walking the DEFAULT
+# config dict cannot catch it, because the default dict is not what
+# from_config consumes.
+test "every [scale.kubernetes] key the constructor reads is declared in the schema" {
+    import re;
+    import from pathlib { Path }
+    source = (
+        Path(__file__).parents[2]
+        / "deploy"
+        / "target"
+        / "kubernetes"
+        / "kubernetes_config.jac"
+    ).read_text();
+    # Split on the constructor's real name. Splitting on a name the file does
+    # not contain returns the WHOLE source, so the scrape silently widens to
+    # every config.get in the module and the guard below can never fire.
+    marker = "from_dict";
+    assert marker in source , (
+        f"'{marker}' is gone from kubernetes_config.jac, so this test is "
+        "scraping the whole file instead of the constructor; update it"
+    );
+    body = source.split(marker, 1)[-1];
+    consumed = set(re.findall(r"config\.get\(\s*'([a-z_]+)'", body));
+    assert consumed , "could not read the constructor's keys; update this test";
+
+    # Any section: a few keys the kubernetes block reads are owned by another
+    # section and merged in, so "declared somewhere" is the honest bar. What
+    # must never happen is a key the loader reads that the schema never names.
+    declared: set = set();
+    _collect_schema_keys(
+        JacScalePluginConfig.get_config_schema().get("options", {}), declared
+    );
+
+    # Keys get_kubernetes_config assigns unconditionally after loading, from
+    # [scale.monitoring] and from the system plugin deps. Declaring them under
+    # [scale.kubernetes] would validate a value that is then thrown away, which
+    # is the same lie this test exists to catch, pointing the other way.
+    derived: set = {"monitoring_enabled", "service_dependencies"};
+
+    missing = sorted(consumed - declared - derived);
+    assert missing == [] , (
+        f"the constructor reads {missing} but [scale.kubernetes] does not declare "
+        "them, so a user setting one gets an 'unknown key' warning and the "
+        "value is reported as ignored while the loader actually uses it"
+    );
+}

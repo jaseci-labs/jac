@@ -151,7 +151,12 @@ impl native_unit_demotions(
             if _ud_mod.gen.llvm_ir is not None {
                 `entry = _ud_mod;
             } else {
-                _ud_mid_compile = True;
+                _ud_mid_compile = (
+                    real_path in prog._na_dep_inflight
+                    or real_path in prog._na_verdict_resolving
+                    or _ud_key in prog._na_dep_inflight
+                    or _ud_key in prog._na_verdict_resolving
+                );
             }
             break;
         }
@@ -914,7 +919,8 @@ impl NativeCompilePass._compile_and_link_native_imports(
         try {
             imported_llvm_str = imported_llvm_str_raw;
 
-            safe_name = native_safe_sym(source_mod_path);
+            import from jaclang.jac0core.codeinfo { native_module_key }
+            safe_name = native_safe_sym(native_module_key(real_path));
             entry_rename = f"__jac_entry_{safe_name}";
             imported_llvm_str = imported_llvm_str.replace(
                 '@"jac_entry"', f'@"{entry_rename}"'

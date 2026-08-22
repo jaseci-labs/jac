@@ -159,8 +159,7 @@
             { "title": "Placement", "page": "reference/placement.md" },
             { "title": "Errors & Warnings", "page": "reference/diagnostics.md" },
             { "title": "Code Organization", "page": "reference/code-organization.md" },
-            { "title": "Testing", "page": "reference/testing.md" },
-            { "title": "Jac Ninja Editor", "page": "reference/ninja.md" }
+            { "title": "Testing", "page": "reference/testing.md" }
           ]
         }
       ]

@@ -74,6 +74,7 @@ glob PARITY_CORPUS: list[str] = [
          "jaclang/jac0core/srcloc.jac",
          "jaclang/jac0core/expr_keys.jac",
          "jaclang/compiler/expr_keys.jac",
+         "tests/compiler/passes/ecmascript/fixtures/advanced_language_features.jac",
 
      ],
      _SKIP_FIELDS: tuple[str] = ("rc_last_use", "_deferred_type_diags", "_gen", ),

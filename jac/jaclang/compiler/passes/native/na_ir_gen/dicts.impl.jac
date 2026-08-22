@@ -8,7 +8,7 @@ impl NaIRGenDicts._dict_key_spec(key_type: ir.Type) -> tuple {
     if isinstance(key_type, ir.PointerType) {
         if isinstance(key_type.pointee, ir.LiteralStructType) {
             _sz = self._get_struct_size(key_type.pointee);
-            return (f"tuple{_sz}", _sz);
+            return (self._tuple_spec_name(key_type.pointee), _sz);
         }
         return ("ptr", 0);
     }
@@ -56,6 +56,9 @@ impl NaIRGenDicts._dict_val_spec(val_type: ir.Type) -> str {
             return "ptr_" + str(_pointee.name).replace(".", "_");
         }
         return "ptr";
+    }
+    if isinstance(val_type, ir.IntType) and val_type.width != 64 {
+        return f"i{val_type.width}";
     }
     return "i64";
 }
@@ -296,6 +299,9 @@ impl NaIRGenDicts._box_to_jacval(value: ir.Value) -> ir.Value {
             b.store(ir.Constant(i8, ptr_tag), tag_ptr);
         }
         b.store(payload, payload_ptr);
+    } elif isinstance(value.type, ir.VoidType) {
+        b.store(ir.Constant(i8, 8), tag_ptr);
+        b.store(ir.Constant(i64, 0), payload_ptr);
     } else {
         self.emit(E5092, kind="expression", name=f"`any` box of {value.type}");
         b.store(ir.Constant(i8, 0), tag_ptr);

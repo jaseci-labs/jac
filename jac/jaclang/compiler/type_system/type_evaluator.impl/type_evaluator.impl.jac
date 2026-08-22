@@ -776,6 +776,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = overloaded_ty or member_ty;
                         return expr.right.type;
                     }
+                    if lookup_type.is_enum_class() {
+                        enum_meta_ty = self._synthesize_enum_metaclass_attr(
+                            lookup_type, expr.right.value
+                        );
+                        if enum_meta_ty is not None {
+                            expr.right.type = enum_meta_ty;
+                            return enum_meta_ty;
+                        }
+                    }
                     if expr.is_null_ok {
                         return self._null_ok_attr_type(expr);
                     }
@@ -823,24 +832,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                             return expr.right.type;
                         }
                         if attr_name in ('value', '_value_') {
-                            val_type = base_type.shared.enum_value_type;
-
-                            if val_type is None and base_type.shared.enum_members {
-                                member_types = [
-                                    m.value_type
-                                    for m in base_type.shared.enum_members.values()
-                                    if m.value_type is not None
-                                ];
-                                if member_types
-                                    and all(
-                                        isinstance(t, ClassType)
-                                            and isinstance(member_types[0], ClassType)
-                                            and t.shared == member_types[0].shared
-                                        for t in member_types
-                                    ) {
-                                    val_type = member_types[0];
-                                }
-                            }
+                            val_type = self._resolve_enum_value_type(base_type);
                             if val_type is not None {
                                 expr.right.type = self._convert_to_instance(val_type);
                             } else {
@@ -1109,7 +1101,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return AnyType();
                     }
                     if base_type.constraints {
-                        found_member: any = None;
+                        found_member: ClassMember | None = None;
                         for constraint_type in base_type.constraints {
                             if isinstance(constraint_type, ClassType) {
                                 if member
@@ -2644,7 +2636,7 @@ impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> boo
 impl TypeEvaluator.get_type_of_magic_method_call(
     obj_type: TypeBase,
     method_name: str,
-    arg_nodes: list[Expr],
+    arg_nodes: (Sequence[Expr | KWPair] | None),
     node_for_error: Expr | None = None,
 ) -> TypeBase | None {
     if isinstance(obj_type, UnionType) {
@@ -3427,6 +3419,7 @@ impl TypeEvaluator._prefetch_types{
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
+    self.prefetch.mappingproxy_class = get_types_class("MappingProxyType");
 
     self.prefetch.tuple_class = get_builtin_class("tuple");
     self.prefetch.bool_class = get_builtin_class("bool");

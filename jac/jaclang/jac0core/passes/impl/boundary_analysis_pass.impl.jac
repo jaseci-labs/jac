@@ -17,20 +17,6 @@ impl BoundaryAnalysisPass._resolved_native_decl(
     return None;
 }
 
-impl BoundaryAnalysisPass._na_target_decl(
-    self: BoundaryAnalysisPass, source_mod: (Module | None), name: str
-) -> (UniNode | None) {
-    if source_mod is None {
-        return None;
-    }
-    for decl in source_mod.body {
-        if isinstance(decl, (Ability, Archetype, Enum)) and decl.sym_name == name {
-            return decl;
-        }
-    }
-    return None;
-}
-
 impl BoundaryAnalysisPass._signature_of_decl(
     self: BoundaryAnalysisPass, decl: (Ability | None)
 ) -> tuple[(str, list[str], list[str])] {
@@ -290,18 +276,8 @@ impl BoundaryAnalysisPass._register_sv_import(
     self: BoundaryAnalysisPass, nd: Import, module_name: str, caller_ctx: InteropContext
 ) -> None {
     facts = nd.boundary_facts;
-    source_mod = facts.sv_source_mod if facts else None;
-
-    source_abilities: dict[(str, Ability)] = {};
-    source_walkers: dict[(str, Archetype)] = {};
-    if source_mod {
-        try {
-            self._collect_abilities(source_mod, source_abilities);
-        } except Exception { }
-        try {
-            self._collect_pub_walkers(source_mod, source_walkers);
-        } except Exception { }
-    }
+    source_abilities: dict[(str, Ability)] = facts.sv_abilities if facts else {};
+    source_walkers: dict[(str, Archetype)] = facts.sv_walkers if facts else {};
     manifest = self.ir_in.gen.interop_manifest;
     for item in nd.items {
         if not isinstance(item, ModuleItem) {
@@ -357,7 +333,6 @@ impl BoundaryAnalysisPass._register_na_client_import(
         return;
     }
     manifest = self.ir_in.gen.interop_manifest;
-    source_mod = facts.na_source_mod if facts else None;
     stem = native_wasm_stem(resolved_path);
     for existing in manifest.client_native_imports {
         other = existing.source_module or '';
@@ -376,11 +351,10 @@ impl BoundaryAnalysisPass._register_na_client_import(
         local_name = item.alias.sym_name if item.alias else sym_name;
         decl = self._resolved_native_decl(item.name);
         if decl is None {
-            target = self._na_target_decl(source_mod, sym_name);
-            if isinstance(target, Ability)
-                and isinstance(target.signature, FuncSignature) {
+            target = facts.na_target_decls.get(sym_name) if facts else None;
+            if target is not None {
                 decl = target;
-            } elif target is not None {
+            } elif facts and sym_name in facts.na_unmappable_targets {
                 self.emit(E5100, node_override=item, name=sym_name, module=stem);
                 continue;
             }
@@ -430,32 +404,6 @@ impl BoundaryAnalysisPass._register_client_bridged_import(
             source_module=module_name,
             kind='function'
         );
-    }
-}
-
-impl BoundaryAnalysisPass._collect_abilities(
-    self: BoundaryAnalysisPass, nd: UniNode, out: dict[(str, Ability)]
-) -> None {
-    if isinstance(nd, Ability) and nd.sym_name {
-        out[nd.sym_name] = nd;
-    }
-    for k in nd.kid {
-        self._collect_abilities(k, out);
-    }
-}
-
-impl BoundaryAnalysisPass._collect_pub_walkers(
-    self: BoundaryAnalysisPass, nd: UniNode, out: dict[(str, Archetype)]
-) -> None {
-    if isinstance(nd, Archetype) and nd.sym_name {
-        is_walker = nd.arch_kind == "walker";
-        is_pub = bool(nd.public_access);
-        if is_walker and is_pub {
-            out[nd.sym_name] = nd;
-        }
-    }
-    for k in nd.kid {
-        self._collect_pub_walkers(k, out);
     }
 }
 

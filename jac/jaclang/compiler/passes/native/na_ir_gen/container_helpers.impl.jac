@@ -817,6 +817,30 @@ impl NaIRGenContainerHelpers._emit_key_comparison(
         return b.icmp_signed(
             "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
         );
+    } elif (
+        isinstance(key_type, ir.PointerType)
+        and key_size > 0
+        and self._tuple_key_fields(key_type) is not None
+    ) {
+        _eq: any = None;
+        for (_fi, _fk) in self._tuple_key_fields(key_type) {
+            _sv = self._tuple_key_field_val(b, stored_val, _fi, _fk);
+            _qv = self._tuple_key_field_val(b, search_val, _fi, _fk);
+            if _fk == "str" or _fk == "jacstr" {
+                _c = self._call_str_cmp(b, _sv, _qv, name=f"tk.sc{_fi}");
+                _e = b.icmp_signed(
+                    "==", _c, ir.Constant(ir.IntType(32), 0), name=f"tk.seq{_fi}"
+                );
+            } elif _fk == "f64" {
+                _e = b.fcmp_ordered("==", _sv, _qv, name=f"tk.feq{_fi}");
+            } elif _fk == "ptr" {
+                _e = b.icmp_unsigned("==", _sv, _qv, name=f"tk.peq{_fi}");
+            } else {
+                _e = b.icmp_signed("==", _sv, _qv, name=f"tk.ieq{_fi}");
+            }
+            _eq = _e if _eq is None else b.and_(_eq, _e, name=f"tk.eq{_fi}");
+        }
+        return _eq;
     } elif isinstance(key_type, ir.PointerType) and key_size > 0 {
         memcmp_fn = self._get_or_declare_extern(
             "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]

@@ -1,11 +1,6 @@
-import base64;
 import os;
-import tarfile;
 import time;
 import from pathlib { Path }
-import requests;
-import urllib3;
-import from jaclang.scale.config.project_env { read_project_env }
 import from jaclang.scale._optdeps.kubernetes {
     client,
     config,
@@ -13,7 +8,6 @@ import from jaclang.scale._optdeps.kubernetes {
     ConfigException
 }
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
-import from requests.exceptions { RequestException, SSLError }
 
 glob PSS_ENFORCE_LABEL: str = "pod-security.kubernetes.io/enforce",
      PSS_WARN_LABEL: str = "pod-security.kubernetes.io/warn",

@@ -25,6 +25,12 @@ obj ClientConnectionError(Exception) {
     }
 }
 
+obj ClientRequestNotSent(ClientConnectionError) {}
+
+obj ClientRequestSent(ClientConnectionError) {}
+
+obj ClientReadTimeout(ClientRequestSent) {}
+
 def _client_json_default(o: any) -> str {
     return str(o);
 }
@@ -148,32 +154,42 @@ async def _open_stream(
     scheme: str, host: str, port: int, timeout: float
 ) -> tuple[any, any] {
     use_tls = scheme in ('https', 'wss');
-    ssl_ctx = ssl_lib.create_default_context() if use_tls else None;
     open_fn: any = asyncio.open_connection;
     try {
+        ssl_ctx = ssl_lib.create_default_context() if use_tls else None;
         pair: any = await asyncio.wait_for(
             open_fn(host, port, ssl=ssl_ctx), timeout=timeout
         );
         return (pair[0], pair[1]);
     } except asyncio.TimeoutError {
-        raise ClientConnectionError(detail=f"connect timeout: {host}:{port}");
+        raise ClientRequestNotSent(detail=f"connect timeout: {host}:{port}");
     } except OSError as e {
-        raise ClientConnectionError(detail=f"{host}:{port}: {e}");
+        raise ClientRequestNotSent(detail=f"{host}:{port}: {e}");
     }
 }
 
 async def _read_response_head(reader: any, timeout: float) -> tuple[int, str, Headers] {
-    status_line: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
+    try {
+        status_line: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
+    } except asyncio.TimeoutError {
+        raise ClientReadTimeout(detail=f"no response head within {timeout}s");
+    }
     text = status_line.decode('latin-1').strip();
     parts = text.split(' ', 2);
     if len(parts) < 2 or not parts[1].isdigit() {
-        raise ClientConnectionError(detail=f"bad status line: {text!r}");
+        raise ClientRequestSent(detail=f"bad status line: {text!r}");
     }
     status = int(parts[1]);
     reason = parts[2] if len(parts) > 2 else '';
     headers = Headers();
     while True {
-        raw: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
+        try {
+            raw: bytes = await asyncio.wait_for(reader.readline(), timeout=timeout);
+        } except asyncio.TimeoutError {
+            raise ClientReadTimeout(
+                detail=f"response headers stalled beyond {timeout}s"
+            );
+        }
         if raw in (b'\r\n', b'\n', b'') {
             break;
         }
@@ -202,7 +218,7 @@ async def arequest(
     }
     (scheme, host, port, path) = _split_url(url);
     if scheme not in ('http', 'https') {
-        raise ClientConnectionError(detail=f"unsupported scheme: {scheme}");
+        raise ClientRequestNotSent(detail=f"unsupported scheme: {scheme}");
     }
     body = b'';
     header_list: list[tuple[str, str]] = [];
@@ -236,13 +252,20 @@ async def arequest(
         writer.write(blob + body);
         await writer.drain();
         (status, reason, resp_headers) = await _read_response_head(reader, timeout);
+    } except ClientRequestSent {
+        try {
+            writer.close();
+        } except Exception {
+            ;
+        }
+        raise;
     } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
         try {
             writer.close();
         } except Exception {
             ;
         }
-        raise ClientConnectionError(detail=str(e));
+        raise ClientRequestSent(detail=f"connection lost during or after send: {e!r}");
     }
     transfer = (resp_headers.get('Transfer-Encoding') or '').lower();
     chunked = 'chunked' in transfer;
@@ -256,8 +279,17 @@ async def arequest(
     }
     collected: list[bytes] = [];
     response.reader = reader;
-    async for block in response.aiter_raw() {
-        collected.append(block);
+    try {
+        async for block in response.aiter_raw() {
+            collected.append(block);
+        }
+    } except (ConnectionError, OSError, asyncio.IncompleteReadError) as e {
+        try {
+            writer.close();
+        } except Exception {
+            ;
+        }
+        raise ClientRequestSent(detail=f"connection lost mid-body: {e!r}");
     }
     response.reader = None;
     response.body = b''.join(collected);
@@ -380,7 +412,13 @@ def post_stream_aware_sync(
                 response.body = b''.join(collected);
                 if response.status_code >= 400 {
                     handshake.put(
-                        ('error', f"HTTP {response.status_code}: {response.text()}")
+                        (
+                            'exc',
+                            ClientRequestSent(
+                                detail=f"HTTP {response.status_code}: {response.text()}",
+                                status_code=response.status_code
+                            )
+                        )
                     );
                 } else {
                     handshake.put(('json', response.json()));
@@ -403,6 +441,9 @@ def post_stream_aware_sync(
                     events.put(item);
                 }
             }
+        } except Exception as e {
+            events.put(('error', repr(e)));
+            raise;
         } finally {
             await response.aclose();
             events.put(sentinel);
@@ -413,17 +454,26 @@ def post_stream_aware_sync(
         try {
             asyncio.run(_pump());
         } except Exception as e {
-            handshake.put(('error', str(e)));
-            events.put(('error', str(e)));
+            handshake.put(('exc', e));
             events.put(sentinel);
         }
     }
     thread = threading.Thread(target=_runner, daemon=True);
     thread.start();
-    first: any = handshake.get(timeout=timeout + 5);
+    try {
+        first: any = handshake.get(timeout=timeout + 5);
+    } except queue_lib.Empty {
+        raise ClientRequestSent(
+            detail=f"stream '{label}': no response within {timeout + 5}s"
+        );
+    }
     kind = str(first[0]);
-    if kind == 'error' {
-        raise ClientConnectionError(detail=str(first[1]));
+    if kind == 'exc' {
+        exc = first[1];
+        if isinstance(exc, ClientConnectionError) {
+            raise exc;
+        }
+        raise ClientRequestSent(detail=f"stream '{label}' failed: {exc!r}");
     }
     if kind == 'json' {
         return ('json', first[1]);

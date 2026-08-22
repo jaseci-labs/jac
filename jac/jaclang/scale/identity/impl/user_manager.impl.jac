@@ -23,14 +23,18 @@ impl JacScaleUserManager.postinit -> None {
         }
     }
 
-    import from jaclang.scale.persistence.pg { shared_store }
+    import from jaclang.scale.persistence.pg {
+        NO_DATABASE_RESOLVED,
+        shared_store,
+        shared_store_failure
+    }
     store = shared_store();
     if store is None {
         raise RuntimeError(
-            'identity storage requires a reachable Postgres database: no '
-            '[scale.database] url / JAC_DB_URL resolved and the embedded '
-            'server could not be provisioned. Refusing to fall back to a '
-            'second credential store; fix the database and restart.'
+            'identity storage requires a reachable Postgres database: '
+            f"{shared_store_failure() or NO_DATABASE_RESOLVED}. Refusing to "
+            'fall back to a second credential store; fix the database and '
+            'restart.'
         );
     }
     self._identity_storage = PgIdentityStorage(store=store);

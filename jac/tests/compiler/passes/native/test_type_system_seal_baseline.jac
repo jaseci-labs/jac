@@ -30,14 +30,14 @@ questions:
   declarations: the refusal named a whole `dict` type, and measuring it said
   the bare `tuple` key was the only un-lowerable half.
 * `type_checker_pass.jac` -- the evaluator's only consumer, and the other half
-  of the pair M2 has to seal. It reaches codegen already; what it does not
-  reach is the evaluator, and the coverage says so in one number.
-* `enum_utils.jac` and `operations.jac` -- measurable since #8285. A parameter
-  typed `TypeEvaluator` is resolved when the ability is declared, which used to
-  be before any body opened a demotion window, so it stranded the module the
-  way a field declaration does. The declaration owns the refusal now: each
-  callable that names an evaluator-side type in its signature is a seam, every
-  other body in both modules lowers, and the module keeps its IR.
+  of the pair M2 has to seal. Since B4 (#8323) emptied the inference hold it
+  reaches the evaluator in one unit: the closure is the pair's joint closure,
+  `self.evaluator` is a declared `class`-tier annotation, and the boundary
+  cause this census once counted in one number reads empty.
+* `enum_utils.jac` and `operations.jac` -- measurable since #8285, and since
+  B4 their `TypeEvaluator`-typed signatures resolve against the in-unit
+  layout, so the signature-refusal family this file carried is spent. What
+  remains in each is a handful of ordinary gaps, pinned per module below.
 
 Waivers are enumerated one at a time and name what blocks each, so the suite
 never degrades into a "fewer than N" threshold: an un-waived seam fails, a
@@ -45,10 +45,10 @@ waiver that stops matching a real seam fails too, and a seam that starts
 demoting for a different reason than the one recorded fails as well, which
 keeps the baseline current as the backend grows. The two big tables are keyed
 cause-first -- one cause, the members that demote on it -- because that is the
-shape the measurement actually has: 80 evaluator seams across 41 causes, 42
-checker seams across 8, and in the checker the largest single cause is worth
-more than four fifths of the file. Every member is still named individually, so
-nothing here is a count.
+shape the measurement actually has: 80 evaluator seams across 41 causes, 14
+checker seams across 8 now that the evaluator boundary is a declared field
+in a shared unit. Every member is still named individually, so nothing here
+is a count.
 
 Only seams in files this stage owns are enumerated -- `unitree.jac`,
 `type_utils.jac` and `helpers.jac` ride in `types.jac`'s closure and their
@@ -80,55 +80,88 @@ compile-time import name made `types.jac` linkable, which closed the
 `unitree <-> types` layout cycle in the other direction too, and the modules
 on the far side of it are in the unit whichever end is the root. This set is
 `unitree`'s closure exactly -- `test_unitree_seal_baseline.jac` pins the same
-eleven from the other root, and that is the seal's own view.
+nineteen from the other root (the eleven of old plus the pass spine B4's
+emptied inference hold admits through `unitree`'s `import type` edges), and
+that is the seal's own view.
 """
 glob TYPES_CLOSURE: tuple = (
          "_hashlib_native.jac",
+         "codeinfo.jac",
          "constant.jac",
-         "fnmatch.jac",
-         "hashlib.jac",
-         "helpers.jac",
-         "pathlib.jac",
-         "srcloc.jac",
-         "type_registry.jac",
-         "type_utils.jac",
-         "types.jac",
-         "unitree.jac"
-     ),
-     DECL_PARSER_CLOSURE: tuple = ("ts_decl_parser.jac", ),
-     # `properties.jac` links the keystone and nothing above it, so its unit is
-     # the eleven minus `type_utils`'s own leaves that it does not reach.
-     PROPERTIES_CLOSURE: tuple = (
-         "_hashlib_native.jac",
-         "constant.jac",
-         "fnmatch.jac",
-         "hashlib.jac",
-         "helpers.jac",
-         "pathlib.jac",
-         "properties.jac",
-         "srcloc.jac",
-         "type_registry.jac",
-         "type_utils.jac",
-         "types.jac",
-         "unitree.jac"
-     ),
-     # The two modules whose evaluator-side signatures demote (#8285) reach the
-     # same set, so it is named once and the module's own file is added per
-     # case. A signature refusal costs its callable a native body, not the unit
-     # around it, so this is the closure of a module that lowers.
-     SIGNATURE_SEAM_CLOSURE: tuple = (
-         "_hashlib_native.jac",
-         "const_fold.jac",
-         "constant.jac",
+         "contextvars.jac",
+         "diagnostic_utils.jac",
          "diagnostics.jac",
          "fnmatch.jac",
          "hashlib.jac",
          "helpers.jac",
+         "logging.jac",
+         "module_codegen_pass.jac",
          "pathlib.jac",
          "srcloc.jac",
+         "transform.jac",
          "type_registry.jac",
          "type_utils.jac",
          "types.jac",
+         "uni_pass.jac",
+         "unitree.jac"
+     ),
+     DECL_PARSER_CLOSURE: tuple = ("ts_decl_parser.jac", ),
+     # `properties.jac` links the keystone and nothing above it, so its unit is
+     # the nineteen plus itself.
+     PROPERTIES_CLOSURE: tuple = (
+         "_hashlib_native.jac",
+         "codeinfo.jac",
+         "constant.jac",
+         "contextvars.jac",
+         "diagnostic_utils.jac",
+         "diagnostics.jac",
+         "fnmatch.jac",
+         "hashlib.jac",
+         "helpers.jac",
+         "logging.jac",
+         "module_codegen_pass.jac",
+         "pathlib.jac",
+         "properties.jac",
+         "srcloc.jac",
+         "transform.jac",
+         "type_registry.jac",
+         "type_utils.jac",
+         "types.jac",
+         "uni_pass.jac",
+         "unitree.jac"
+     ),
+     # `enum_utils.jac` and `operations.jac` name the evaluator in their
+     # signatures through `import type` edges, and since B4 emptied the
+     # inference hold those edges are unit edges: each pulls the whole
+     # evaluator family, so the two share one 27-member closure -- the
+     # evaluator's own set -- including each other.
+     SIGNATURE_SEAM_CLOSURE: tuple = (
+         "_hashlib_native.jac",
+         "client_kind.jac",
+         "client_kind_paths.jac",
+         "codeinfo.jac",
+         "const_fold.jac",
+         "constant.jac",
+         "contextvars.jac",
+         "diagnostic_utils.jac",
+         "diagnostics.jac",
+         "enum_utils.jac",
+         "fnmatch.jac",
+         "hashlib.jac",
+         "helpers.jac",
+         "logging.jac",
+         "module_codegen_pass.jac",
+         "operations.jac",
+         "pathlib.jac",
+         "properties.jac",
+         "srcloc.jac",
+         "transform.jac",
+         "ts_decl_parser.jac",
+         "type_evaluator.jac",
+         "type_registry.jac",
+         "type_utils.jac",
+         "types.jac",
+         "uni_pass.jac",
          "unitree.jac"
      );
 
@@ -212,40 +245,53 @@ glob TYPES_SEAM_WAIVERS: dict[(str, str)] = {
 
 """Every module the native compile of `type_evaluator.jac` puts in its closure.
 
-Nine more than the keystone's, and every one of them arrives through a
+Eight more than the keystone's, and every one of them arrives through a
 module-level import in the evaluator itself: `enum_utils`, `operations`,
 `properties`, `ts_decl_parser` and `diagnostics` directly, `const_fold`,
-`client_kind` and `client_kind_paths` behind them. `type_evaluator.jac` is in
-its own closure, which is the whole point of this file: before a declaration
-could own its refusal the module had no IR to be in anyone's closure with.
+`client_kind` and `client_kind_paths` behind them -- plus the pass spine
+the keystone now carries everywhere since B4 (#8323) emptied
+`PLACEMENT_INFERENCE_HELD`: `codeinfo`, `transform`, `uni_pass`,
+`module_codegen_pass`, `diagnostic_utils`, `contextvars` and `logging`.
+`type_evaluator.jac` is in its own closure, which is the whole point of
+this file: before a declaration could own its refusal the module had no IR
+to be in anyone's closure with.
 
 `program.jac` is deliberately absent even though `TypeEvaluator.program` is
-typed `JacProgram`. `import type` keeps it out, and the declaration erases to
-an opaque slot rather than dragging the compiler driver into the type system's
-unit -- measured, not assumed: unquoting the annotation moves the refusal's
-label from `[MultiString]` to `JacProgram` and changes nothing else, not this
-list and not the seam count.
+typed `JacProgram`. An `import type` edge admits its target only when the
+placement scan does, and `program.jac`'s own blockers (the compiler driver's
+ground) keep it refused -- so the declaration erases to an opaque slot
+rather than dragging the driver into the type system's unit. Measured, not
+assumed: unquoting the annotation moves the refusal's label from
+`[MultiString]` to `JacProgram` and changes nothing else, not this list and
+not the seam count.
 """
 glob EVALUATOR_CLOSURE: tuple = (
          "_hashlib_native.jac",
          "client_kind.jac",
          "client_kind_paths.jac",
+         "codeinfo.jac",
          "const_fold.jac",
          "constant.jac",
+         "contextvars.jac",
+         "diagnostic_utils.jac",
          "diagnostics.jac",
          "enum_utils.jac",
          "fnmatch.jac",
          "hashlib.jac",
          "helpers.jac",
+         "logging.jac",
+         "module_codegen_pass.jac",
          "operations.jac",
          "pathlib.jac",
          "properties.jac",
          "srcloc.jac",
+         "transform.jac",
          "ts_decl_parser.jac",
          "type_evaluator.jac",
          "type_registry.jac",
          "type_utils.jac",
          "types.jac",
+         "uni_pass.jac",
          "unitree.jac"
      );
 
@@ -430,7 +476,14 @@ glob EVALUATOR_SEAM_WAIVERS: dict[(str, tuple)] = {
              "TypeEvaluator._get_declared_return_type",
              "TypeEvaluator._infer_lambda_block_return_type"
          ),
-         "attribute access 'cur_node'": ("TypeEvaluator._in_native_context", ),
+         # `attribute access 'cur_node'` cleared when `transform.jac` joined
+         # the closure and the read got a layout; `_in_native_context`
+         # demotes one step deeper, on the isinstance the read feeds -- one
+         # for one, exactly as the joint-seal design measured.
+         "builtin call 'isinstance against `UniNode`'": (
+             "TypeEvaluator._in_native_context",
+
+         ),
          "attribute access 'errors_had'": ("TypeEvaluator._resolve_type_alias_rhs", ),
          "builtin call 'isinstance against `UniCFGNode`'": ("_find_cfg_node_for", ),
          "builtin call 'isinstance'": ("TypeEvaluator._union_narrowed_types", ),
@@ -503,29 +556,44 @@ glob EVALUATOR_SEAM_WAIVERS: dict[(str, tuple)] = {
 
 """Every module the native compile of `type_checker_pass.jac` puts in its closure.
 
-The load-bearing entry is the one that is missing. `type_evaluator.jac` is not
-here, and neither is anything the evaluator alone drags in (`enum_utils`,
-`properties`, `ts_decl_parser`, `client_kind`), because the checker never names
-the evaluator at module scope: it reaches one through
-`self.prog.get_type_evaluator()` in `before_pass` and stores it on an attribute
-it does not declare. Fifteen modules here against the evaluator's twenty, and
-the two sets are not nested -- they share thirteen and each has its own.
+The load-bearing entry is the one that used to be missing.
+`type_evaluator.jac` is here -- the one-closure handshake this file
+designed -- and it arrived the moment B4 (#8323) emptied
+`PLACEMENT_INFERENCE_HELD`: the checker's module-level import of
+`operations.jac` names the evaluator in signatures through `import type`
+edges, and with the hold gone those edges are unit edges. Twenty-eight
+modules: the evaluator's own twenty-seven plus the checker itself.
+`program.jac` stays out (its own scan blockers hold), which is why
+`TypeEvaluator.program` stays an erased slot below.
 """
 glob CHECKER_CLOSURE: tuple = (
          "_hashlib_native.jac",
+         "client_kind.jac",
+         "client_kind_paths.jac",
+         "codeinfo.jac",
          "const_fold.jac",
          "constant.jac",
+         "contextvars.jac",
+         "diagnostic_utils.jac",
          "diagnostics.jac",
+         "enum_utils.jac",
          "fnmatch.jac",
          "hashlib.jac",
          "helpers.jac",
+         "logging.jac",
+         "module_codegen_pass.jac",
          "operations.jac",
          "pathlib.jac",
+         "properties.jac",
          "srcloc.jac",
+         "transform.jac",
+         "ts_decl_parser.jac",
          "type_checker_pass.jac",
+         "type_evaluator.jac",
          "type_registry.jac",
          "type_utils.jac",
          "types.jac",
+         "uni_pass.jac",
          "unitree.jac"
      );
 
@@ -610,121 +678,80 @@ reports. Measured on this tree, the evaluator reported three:
     uni_pass (#8201 wave work)` -- the sole entry in
     `placement.PLACEMENT_INFERENCE_HELD`.
 
-Two of the three are gone. The third is the whole remaining gate, and it is
-not the type system's to remove: it is the entry #8323's B4 is scheduled to
-empty deliberately. Emptying it locally, as a measurement and not a change,
-flips `native_default_path_ok` to `True` for `type_evaluator.jac`,
-`transform.jac` and `type_checker_pass.jac` alike -- three for one.
+Two of the three were removed by that change, and B4 (#8323) then emptied
+the third -- the sole `PLACEMENT_INFERENCE_HELD` entry -- and performed the
+flip this file had priced. The measurement written down in advance
+reproduced exactly: with the entry empty and `has evaluator:
+TypeEvaluator;` declared, `type_checker_pass.jac` compiles with IR over the
+**28-module closure that contains `type_evaluator.jac`**, and its census
+reads **14 seams across 8 causes against 43 across 8**. Of the 36 boundary
+refusals, **31 cleared outright**; the `inherited field read 'evaluator'`
+cause is empty, and what the other five were also waiting on behind the
+boundary read is now visible in the table below. `test_checker_pass`'s 243
+diagnostics are unchanged, which is the behavior-neutrality the `class`-tier
+annotation promised.
 
-The joint seal was then built in that configuration and measured, so B4 knows
-what its entry is worth before it spends the work. With the entry empty and
-`has evaluator: TypeEvaluator;` declared, `type_checker_pass.jac` compiles
-with IR over a **28-module closure that contains `type_evaluator.jac`**, and
-its coverage reads **14 seams across 8 causes against 43 across 8**. Of the 36
-boundary refusals, **31 clear outright** and five keep demoting for causes of
-their own -- `_insert_builtin_symbols`, `exit_ability`, `exit_archetype` and
-`exit_enum` on `inherited field access 'ir_in'`, `exit_assignment` on `field
-assignment 'type'`. That distinction is this file's whole discipline and it
-is kept here: the boundary read is answered, and what those five were also
-waiting on behind it is now visible. The evaluator's own seams stay in the
-evaluator's table where they belong. Peak RSS for that compile is **3.40 GiB**
-(3.14 GiB for the evaluator
-as its own root over 27 modules), which is inside the 4.5 GiB/root the seal
-pool sizes on, so the grown closure needs no new capacity law -- at
-`JAC_SEAL_JOBS<=3` it is about 10 GiB of the budget #8280 already provides.
+An honest wrinkle the advance measurement could not see: the closure
+arrived one step before the declaration did. The checker names the
+evaluator's type through `operations.jac`'s `import type` edges, so
+emptying the entry alone already put the evaluator in the unit and
+dissolved the boundary cause into per-call `FuncCall` refusals -- 33 seams
+in that intermediate state. The declaration is what collapses those into
+ordinary native calls; both steps land together here.
 
-What the flip does not buy is the evaluator's own count. Under the same
-configuration `type_evaluator.jac` still reads 80 seams across 41 causes:
-`attribute access 'cur_node'` clears, and `_in_native_context` immediately
-demotes one step deeper on `isinstance(cur, UniNode)` instead, one for one.
+What the flip does not buy is the evaluator's own count.
+`type_evaluator.jac` still reads 80 seams across 41 causes: `attribute
+access 'cur_node'` cleared, and `_in_native_context` immediately demotes
+one step deeper on `isinstance(cur, UniNode)` instead, one for one.
 `errors_had` does not clear at all. So `transform.jac` in the closure is
 necessary for the checker's 35 and worth nothing to the evaluator's table,
-which is the kind of thing only measuring finds.
+which is the kind of thing only measuring finds. Peak RSS for the checker
+compile is **3.40 GiB** (3.14 GiB for the evaluator as its own root over 27
+modules), inside the 4.5 GiB/root the seal pool sizes on, so the grown
+closure needs no new capacity law -- at `JAC_SEAL_JOBS<=3` it is about 10
+GiB of the budget #8280 already provides.
 
-The 14 are named here so the day the flip lands the table is already written.
-`inherited field access 'ir_in'` (6 -- `_check_unresolved_lambda_params`,
-`_insert_builtin_symbols`, `emit`, `exit_ability`, `exit_archetype`,
-`exit_enum`) is the base chain's next wall, one level up from the one this
-change answers: `ir_in` is declared on `BaseTransform`, and reading it needs
-the same layout `evaluator` just got. `expression 'FuncCall'` (2 --
-`after_pass`, `before_pass`) is the honest stamp, `before_pass` having moved
-off `inherited field read 'prog'`. `field assignment 'type'` (1 --
-`exit_assignment`) and the four ordinary gaps this table already carries
-(`classify_call`, `get`, `is_intrinsic`, `type`) round it out, plus `type
-'JacProgram'` arriving from the evaluator's declaration now that the
-evaluator is in the unit. `_check_unresolved_lambda_params` is new to the
-table entirely -- it was never reached before, which is the same "a rise here
-can mean a gap elsewhere closed" this file records for `_check_explicit_any`.
+The 14 that remain, by cause. `inherited field access 'ir_in'` (6 --
+`_check_unresolved_lambda_params`, `_insert_builtin_symbols`, `emit`,
+`exit_ability`, `exit_archetype`, `exit_enum`) is the base chain's next
+wall, one level up from the one the declaration answered: `ir_in` is
+declared on `BaseTransform`, and reading it needs the same layout
+`evaluator` just got -- the exact wall the sealed wave censuses waive as
+`UniPass.transform`/`traverse` and `JsxIntrinsicGuardPass.before_pass`.
+`expression 'FuncCall'` (2 -- `after_pass`, `before_pass`) is the honest
+stamp, `before_pass` having moved off `inherited field read 'prog'`.
+`field assignment 'type'` (1 -- `exit_assignment`) and the four ordinary
+gaps this table already carried (`classify_call`, `get`, `is_intrinsic`,
+`type`) round it out, plus `type 'JacProgram'` -- the evaluator's `program`
+declaration seam, re-recorded on every module that re-emits the
+declaration, the checker included. `_check_unresolved_lambda_params` is new
+to the table entirely -- it was never reached before, which is the same "a
+rise here can mean a gap elsewhere closed" this file records for
+`_check_explicit_any`.
 
-It is the same gate three more times over, which is why it is recorded here
-rather than in three places:
-
-  - `transform.jac` is held out of every closure by that one entry alone. It
-    is the reason `_pass: Transform` erases in the evaluator's table above,
-    and therefore the reason `cur_node` and `errors_had` still refuse.
-  - `ownership_check_pass.jac`'s eleven `emit` seams are the same wall. With
-    the entry lifted, `transform.jac` and `uni_pass.jac` join its closure and
-    all eleven clear: 26 own seams to 12, and the `emit` family reads empty.
-    `test_pass_seal_wave3_baseline.jac` predicted exactly this and named the
-    price as transform's own 33 seams; transform's rung-2 redesign since cut
-    that to 3.
-  - `static_analysis_pass.jac`'s twelfth seam, `_check_undefined_names`, is
-    the same wall reached with an optional `str`. With the entry lifted it
-    clears too, and that root reads 5 seams with IR.
-
-So the joint seal is designed, and it is refused for one named, owned,
-already-scheduled reason rather than for a list. Nothing in the pair needs a
-lowering change to seal: it needs `PLACEMENT_INFERENCE_HELD` empty. What this
-change lands is everything that does not: the `**` cluster collected, the two
-blockers the type system owns removed, and the third pinned here so that the
-day B4 empties the entry, the flip is a two-line edit whose measurement is
-already written down.
-
-The other seven seams are ordinary backend gaps and are named individually.
+The same gate cleared the same wall elsewhere, measured in the wave
+censuses: ownership's eleven `emit` seams (26 own seams to 12, the `emit`
+family empty, plus both remaining bound-method transfers), and
+`static_analysis_pass`'s `_check_undefined_names` (6 own seams to 5, with
+IR). What remains of the joint seal is roots in `NATIVE_SEAL_ROOTS` and the
+pooled seal's verdict; nothing in the pair needs a lowering change.
 """
 glob CHECKER_SEAM_WAIVERS: dict[(str, tuple)] = {
-         "inherited field read 'evaluator'": (
-             "TypeCheckPass._body_always_returns",
-             "TypeCheckPass._check_event_trigger_archetype",
-             "TypeCheckPass._check_explicit_any",
-             "TypeCheckPass._diag_erased_membership",
-             "TypeCheckPass._enclosing_walker_report_elem_type",
-             "TypeCheckPass._eval_unpacking_names",
+         "inherited field access 'ir_in'": (
+             "TypeCheckPass._check_unresolved_lambda_params",
              "TypeCheckPass._insert_builtin_symbols",
-             "TypeCheckPass.enter_ability",
-             "TypeCheckPass.enter_with_stmt",
+             "TypeCheckPass.emit",
              "TypeCheckPass.exit_ability",
              "TypeCheckPass.exit_archetype",
-             "TypeCheckPass.exit_assert_stmt",
-             "TypeCheckPass.exit_assignment",
-             "TypeCheckPass.exit_atom_trailer",
-             "TypeCheckPass.exit_binary_expr",
-             "TypeCheckPass.exit_compare_expr",
-             "TypeCheckPass.exit_delete_stmt",
-             "TypeCheckPass.exit_edge_ref_trailer",
-             "TypeCheckPass.exit_enum",
-             "TypeCheckPass.exit_filter_compr",
-             "TypeCheckPass.exit_formatted_value",
-             "TypeCheckPass.exit_has_var",
-             "TypeCheckPass.exit_import",
-             "TypeCheckPass.exit_in_for_stmt",
-             "TypeCheckPass.exit_jsx_element",
-             "TypeCheckPass.exit_name",
-             "TypeCheckPass.exit_param_var",
-             "TypeCheckPass.exit_raise_stmt",
-             "TypeCheckPass.exit_report_stmt",
-             "TypeCheckPass.exit_return_stmt",
-             "TypeCheckPass.exit_special_var_ref",
-             "TypeCheckPass.exit_type_alias",
-             "TypeCheckPass.exit_visit_stmt",
-             "TypeCheckPass.exit_while_stmt",
-             "TypeCheckPass.exit_with_stmt",
-             "TypeCheckPass.exit_yield_expr"
+             "TypeCheckPass.exit_enum"
          ),
-         "expression 'AtomTrailer'": ("TypeCheckPass.emit", ),
-         "expression 'FuncCall'": ("TypeCheckPass.after_pass", ),
+         "expression 'FuncCall'": (
+             "TypeCheckPass.after_pass",
+             "TypeCheckPass.before_pass"
+         ),
+         "type 'JacProgram'": ("TypeEvaluator.program", ),
+         "field assignment 'type'": ("TypeCheckPass.exit_assignment", ),
          "function 'classify_call'": ("TypeCheckPass.exit_func_call", ),
-         "inherited field read 'prog'": ("TypeCheckPass.before_pass", ),
          "unsupported attribute access 'get'": (
              "TypeCheckPass._check_intrinsic_call",
 
@@ -738,33 +765,36 @@ glob CHECKER_SEAM_WAIVERS: dict[(str, tuple)] = {
 
 """Seams in the two modules that used to be refused whole by a signature.
 
-Both hold `def f(evaluator: TypeEvaluator, ...)` at module scope, and
-`TypeEvaluator` is the stage's upper half -- a class with no native layout. A
-signature is resolved when the ability is declared, and until #8285 that was
-before any body opened a demotion window, so the failure had no owner and cost
-the module its IR the way an un-lowerable field declaration does. The
-declaration now owns it, which is the same clearing mechanism #8234 and #8237
-applied to constructors and to `postinit` handles.
+Both hold `def f(evaluator: TypeEvaluator, ...)` at module scope, and until
+B4 (#8323) `TypeEvaluator` was a class with no native layout, so each such
+signature demoted its callable -- eight seams under one mechanism, and
+before #8285 the same fact cost each module its IR outright. With the
+inference hold empty the `import type` edges pull `type_evaluator.jac` into
+both units, the signatures resolve against a real layout, and the
+signature-refusal family is spent as a family.
 
-What is left is a seam per callable that names the evaluator-side type in its
-signature, and nothing else: every other body in both modules lowers. These go
-when `type_evaluator.jac` gets a native layout, which is M2's work, not this
-table's.
+What is left is ordinary and per-module: two `fold_const` reaches (the
+`const_fold` call does not lower), an `attribute access 'decl'` and a
+`set add` in `enum_utils`, a `keyword argument 'op'` construction in
+`operations`, and the `TypeEvaluator.program` declaration seam, re-recorded
+on every module that re-emits the declaration -- the same entry the
+evaluator's own table carries as `type 'JacProgram'`.
 """
 glob SIGNATURE_SEAM_WAIVERS: dict[(str, dict)] = {
          "enum_utils.jac": {
-             "enum_utils.jac::create_enum_member_info": "TypeEvaluator",
-             "enum_utils.jac::validate_enum_member_annotation": "TypeEvaluator",
-             "enum_utils.jac::build_enum_members": "TypeEvaluator",
+             "enum_utils.jac::TypeEvaluator.program": "type 'JacProgram'",
+             "enum_utils.jac::create_enum_member_info": "function 'fold_const'",
+             "enum_utils.jac::build_enum_members": "attribute access 'decl'",
              "enum_utils.jac::get_special_enum_value_type_from_bases": (
-                 "PrefetchedTypes"
+                 "expression 'set add'"
              )
          },
          "operations.jac": {
-             "operations.jac::get_numeric_promotion_type": "TypeEvaluator",
-             "operations.jac::get_pow_result_type": "TypeEvaluator",
-             "operations.jac::is_annotation_type": "TypeEvaluator",
-             "operations.jac::get_type_of_binary_operation": "TypeEvaluator"
+             "operations.jac::TypeEvaluator.program": "type 'JacProgram'",
+             "operations.jac::get_pow_result_type": "function 'fold_const'",
+             "operations.jac::get_type_of_binary_operation": (
+                 "expression 'keyword argument 'op''"
+             )
          }
      };
 
@@ -1096,7 +1126,7 @@ test "an un-lowerable declaration is a seam on its field, not on its module" {
 }
 
 
-test "the checker lowers, and does not reach the evaluator" {
+test "the checker lowers, and shares one unit with its evaluator" {
     (coverage, has_ir, fatal) = _coverage_of(CHECKER_SRC);
     assert has_ir , (
         "no LLVM IR for type_checker_pass.jac:\n" + "\n".join(f"  {f}" for f in fatal)
@@ -1106,11 +1136,12 @@ test "the checker lowers, and does not reach the evaluator" {
         f"type_checker_pass.jac's native closure changed: {seen} != "
         f"{CHECKER_CLOSURE}."
     );
-    assert "type_evaluator.jac" not in seen , (
-        "the evaluator is in the checker's unit now. That is the one-closure "
-        "handshake landing, so `self.evaluator` should be a declared field "
-        "with a real slot -- update the waivers to the cascades that replace "
-        "the boundary refusals rather than keeping this assertion."
+    assert "type_evaluator.jac" in seen , (
+        "the evaluator left the checker's unit. The one-closure handshake "
+        "(B4, #8323) is what turned 36 boundary refusals into the 14-seam "
+        "table above; losing the membership brings the boundary cause back "
+        "and the joint seal apart -- this is a regression to read, not to "
+        "re-pin."
     );
 }
 
@@ -1126,58 +1157,55 @@ test "every checker seam is enumerated, and filed under the cause it has" {
 }
 
 
-test "the checker's cost of not declaring its evaluator is one number" {
+test "the evaluator boundary is retired, and stays retired" {
+    # This test counted the price of the un-declared `self.evaluator` -- 36
+    # methods refusing on `inherited field read 'evaluator'` -- through the
+    # whole era the handshake was designed in. B4 (#8323) declared the field
+    # into a shared unit and the count is zero; a single reappearance means
+    # either the declaration or the closure membership regressed, and both
+    # halves are pinned by the other tests, so this names the exact cause.
     (coverage, _has_ir, _fatal) = _coverage_of(CHECKER_SRC);
     found = _seams_of(coverage, ("type_checker_pass.jac", ));
     boundary = sorted(
         k
         for k in found
-        if "inherited field read 'evaluator'" in _seam_cause(found[k])
+        if "field read 'evaluator'" in _seam_cause(found[k])
+            or "erased field 'TypeCheckPass.evaluator'" in _seam_cause(found[k])
     );
-    assert len(boundary) == 36 , (
-        f"{len(boundary)} methods refuse on the un-declared `self.evaluator`, "
-        "not 36. This number is the handshake's price tag: it is what one "
-        "missing `has` on a pass costs, and the seal of the pair is not "
-        "closer until it moves. It went up by one when the explicit-self "
-        "variadic bug cleared, because `_check_explicit_any` was failing "
-        "earlier for that reason and now reaches its evaluator read -- a "
-        "rise here can mean a gap elsewhere closed. It went up by one again "
-        "with #8326's `_diag_erased_membership`, and that is the other way it "
-        "rises: every new checker visitor that asks the evaluator a question "
-        "costs one more, which is the tax the declaration retires."
-    );
-    assert len(boundary) * 100 // max(len(found), 1) >= 70 , (
-        "the boundary read has stopped being the checker's dominant cause; "
-        "the one-closure argument in this file's tables was decided on it "
-        "being so, and should be re-decided if it no longer is."
+    assert not boundary , (
+        f"{len(boundary)} method(s) refuse on `self.evaluator` again:\n"
+        + "\n".join(f"  {k}: {_seam_cause(found[k])}" for k in boundary)
+        + "\nThe declaration plus the joint closure is what retired this "
+        "cause; find which half regressed before touching the tables."
     );
 }
 
 
-test "a signature type demotes its callable, not its module" {
+test "an evaluator-typed signature resolves in the shared unit" {
     for (mod, waived) in sorted(SIGNATURE_SEAM_WAIVERS.items()) {
         (coverage, has_ir, fatal) = _coverage_of(TS_PATH / mod);
         assert has_ir , (
-            f"no LLVM IR for {mod} -- a signature the backend cannot resolve "
-            f"has to demote the ability that carries it, so nothing here is "
-            f"module-fatal any more:\n"
-            + "\n".join(f"  {f}" for f in fatal)
+            f"no LLVM IR for {mod}:\n" + "\n".join(f"  {f}" for f in fatal)
         );
         found = _seams_of(coverage, (mod, ));
         _assert_waivers_match(found, waived, mod);
-        for (key, tname) in sorted(waived.items()) {
-            assert "signature type" in found[key] and tname in found[key] , (
-                f"{key} demotes for a different reason now; a signature "
-                f"refusal has to name the annotation it could not resolve: "
-                f"{found[key]}"
+        for (key, cause) in sorted(waived.items()) {
+            assert "signature type" not in found[key] , (
+                f"{key} refuses its signature again. `TypeEvaluator` has an "
+                "in-unit layout since B4 put the evaluator in this closure; "
+                f"a signature refusal means that membership broke: {found[key]}"
+            );
+            assert cause in _seam_cause(found[key]) , (
+                f"{key} demotes for a different cause than the one it is "
+                f"filed under -- refile it: filed {cause!r}, actual "
+                f"{_seam_cause(found[key])!r}"
             );
         }
         seen = tuple(sorted({os.path.basename(p) for p in coverage}));
-        want = tuple(sorted(SIGNATURE_SEAM_CLOSURE + (mod, )));
-        assert seen == want , (
-            f"{mod}'s closure is {seen}, not {want}. The demotions cost each "
-            "callable its native body, not the unit around them, so a change "
-            "here is a change in what the module links."
+        assert seen == SIGNATURE_SEAM_CLOSURE , (
+            f"{mod}'s closure is {seen}, not {SIGNATURE_SEAM_CLOSURE}. The "
+            "two modules share the evaluator family's one unit since B4; a "
+            "change here is a change in what the stage links."
         );
     }
 }

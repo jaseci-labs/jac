@@ -59,7 +59,32 @@ impl NaIRGenHashCore._emit_hash_core_helpers(
     hash_fn.linkage = "private";
     hash_fn.args[0].name = "key";
     bhe = ir.IRBuilder(hash_fn.append_basic_block("entry"));
-    if is_bytes_key or is_str_key or _key_sz > 0 {
+    _tkf = self._tuple_key_fields(key_type)
+        if (_key_sz > 0 and not is_bytes_key and not is_str_key)
+        else None;
+    if _tkf is not None {
+        _hv: ir.Value = ir.Constant(i64, HASH_FNV_BASIS);
+        for (_fi, _fk) in _tkf {
+            _fv = self._tuple_key_field_val(bhe, hash_fn.args[0], _fi, _fk);
+            if _fk == "str" or _fk == "jacstr" {
+                _fh = bhe.call(self._str_fnv_fn(), [_fv], name=f"tk.sh{_fi}");
+            } elif _fk == "f64" {
+                _fh = bhe.bitcast(_fv, i64, name=f"tk.fb{_fi}");
+            } elif _fk == "ptr" {
+                _fh = bhe.ptrtoint(_fv, i64, name=f"tk.pi{_fi}");
+            } elif _fv.type.width == 64 {
+                _fh = _fv;
+            } else {
+                _fh = bhe.zext(_fv, i64, name=f"tk.zx{_fi}");
+            }
+            _hv = bhe.mul(
+                bhe.xor(_hv, _fh, name=f"tk.hx{_fi}"),
+                ir.Constant(i64, HASH_FNV_PRIME),
+                name=f"tk.hm{_fi}"
+            );
+        }
+        bhe.ret(_hv);
+    } elif is_bytes_key or is_str_key or _key_sz > 0 {
         h_a = bhe.alloca(i64, name="h");
         idx_a = bhe.alloca(i64, name="idx");
         bhe.store(ir.Constant(i64, HASH_FNV_BASIS), h_a);
@@ -984,4 +1009,111 @@ impl NaIRGenHashCore._static_key_op(
         return (plain, None);
     }
     return (ph, ir.Constant(ir.IntType(64), h));
+}
+
+
+impl NaIRGenHashCore._str_fnv_fn -> ir.Function {
+    if self.str_fnv_fn is not None {
+        return self.str_fnv_fn;
+    }
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    i8p = i8.as_pointer();
+    fn = self._define_function("__jac_str_fnv", ir.FunctionType(i64, [i8p]));
+    fn.linkage = "private";
+    fn.args[0].name = "s";
+    bb_entry = fn.append_basic_block("entry");
+    lc = fn.append_basic_block("lc");
+    lb = fn.append_basic_block("lb");
+    rt = fn.append_basic_block("rt");
+    b = ir.IRBuilder(bb_entry);
+    h_a = b.alloca(i64, name="h");
+    idx_a = b.alloca(i64, name="idx");
+    b.store(ir.Constant(i64, HASH_FNV_BASIS), h_a);
+    b.store(ir.Constant(i64, 0), idx_a);
+    b.cbranch(
+        b.icmp_unsigned("==", fn.args[0], ir.Constant(i8p, None), name="s.null"), rt, lc
+    );
+    b = ir.IRBuilder(lc);
+    idx = b.load(idx_a, name="idx");
+    ch = b.load(b.gep(fn.args[0], [idx], name="cp"), name="ch");
+    b.cbranch(b.icmp_signed("==", ch, ir.Constant(i8, 0), name="end"), rt, lb);
+    b = ir.IRBuilder(lb);
+    cur = b.load(h_a, name="h");
+    ce = b.zext(ch, i64, name="ce");
+    b.store(
+        b.mul(b.xor(cur, ce, name="hx"), ir.Constant(i64, HASH_FNV_PRIME), name="hm"),
+        h_a
+    );
+    b.store(b.add(idx, ir.Constant(i64, 1), name="ni"), idx_a);
+    b.branch(lc);
+    b = ir.IRBuilder(rt);
+    b.ret(b.load(h_a, name="hf"));
+    self.str_fnv_fn = fn;
+    return fn;
+}
+
+impl NaIRGenHashCore._tuple_key_fields(key_type: ir.Type) -> (list | None) {
+    if not isinstance(key_type, ir.PointerType) {
+        return None;
+    }
+    pointee = key_type.pointee;
+    if not isinstance(pointee, ir.LiteralStructType) {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    out: list = [];
+    for (i, ety) in enumerate(pointee.elements) {
+        if isinstance(ety, ir.IntType) {
+            out.append((i, "int"));
+        } elif isinstance(ety, ir.DoubleType) {
+            out.append((i, "f64"));
+        } elif ety == i8p {
+            out.append((i, "str"));
+        } elif self._str_desc_ty is not None and ety == self._str_desc_ty {
+            out.append((i, "jacstr"));
+        } elif isinstance(ety, ir.PointerType) {
+            out.append((i, "ptr"));
+        } else {
+            return None;
+        }
+    }
+    return out;
+}
+
+impl NaIRGenHashCore._tuple_key_field_val(
+    b: ir.IRBuilder, key_ptr: ir.Value, idx: int, kind: str
+) -> ir.Value {
+    i32 = ir.IntType(32);
+    path = [ir.Constant(i32, 0), ir.Constant(i32, idx)];
+    if kind == "jacstr" {
+        data_idx = JACSTR_DESC_FIELDS[self._str_desc_kind()].index("data");
+        path.append(ir.Constant(i32, data_idx));
+    }
+    fp = b.gep(key_ptr, path, name=f"tk.fp{idx}");
+    return b.load(fp, name=f"tk.f{idx}");
+}
+
+
+impl NaIRGenHashCore._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
+    size = self._get_struct_size(struct_type);
+    fields = self._tuple_key_fields(struct_type.as_pointer());
+    if fields is None {
+        return f"tuple{size}";
+    }
+    sig = "";
+    for (i, kind) in fields {
+        if kind == "int" {
+            sig += f"i{struct_type.elements[i].width}";
+        } elif kind == "f64" {
+            sig += "f";
+        } elif kind == "str" {
+            sig += "s";
+        } elif kind == "jacstr" {
+            sig += "j";
+        } else {
+            sig += "p";
+        }
+    }
+    return f"tuple{size}_{sig}";
 }

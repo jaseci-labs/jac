@@ -1,4 +1,3 @@
-import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 impl cfg_dot_from_file(file_name: str) -> str {
     import from jaclang.jac0core.compiler { run_pass }
     import from jaclang.jac0core.program { JacProgram }
@@ -94,6 +93,7 @@ impl CoalesceBBPass._has_bool_sc(condition: Expr) -> bool {
 
 impl CoalesceBBPass._node_label(nd: UniNode) -> str {
     import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 
     if isinstance(nd, ElseIf) {
         return 'elif'
@@ -517,20 +517,83 @@ impl CFGBuildPass._find_parent_of_types(
     return None;
 }
 
+impl CFGBuildPass._next_in_body(
+    body: Sequence[CodeBlockStmt], child: UniNode
+) -> (UniCFGNode | None) {
+    found = False;
+    for stmt in body {
+        if found and isinstance(stmt, CodeBlockStmt) {
+            return stmt;
+        }
+        if stmt is child {
+            found = True;
+        }
+    }
+    return None;
+}
+
 impl CFGBuildPass._find_next_cfg_stmt_after(
     parent: UniNode, child: UniNode
 ) -> (UniCFGNode | None) {
-    body = parent?.body;
-    if body is not None and isinstance(body, Sequence) {
-        found = False;
-        for stmt in body {
-            if found and isinstance(stmt, CodeBlockStmt) {
-                return stmt;
-            }
-            if stmt is child {
-                found = True;
-            }
-        }
+    if isinstance(parent, IfStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, ElseStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, TryStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, Except) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, FinallyStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, InForStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, IterForStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, WhileStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, ForeverStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, WithStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, MatchCase) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, SwitchCase) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, ModuleCode) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, Test) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, TypedCtxBlock) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, OpenStmt) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, AwaitingClause) {
+        return self._next_in_body(parent.body, child);
+    }
+    if isinstance(parent, Ability) and isinstance(parent.body, list) {
+        return self._next_in_body(cast(Sequence[CodeBlockStmt], parent.body), child);
+    }
+    if isinstance(parent, ImplDef) and isinstance(parent.body, list) {
+        return self._next_in_body(cast(Sequence[CodeBlockStmt], parent.body), child);
+    }
+    if isinstance(parent, LambdaExpr) and isinstance(parent.body, list) {
+        return self._next_in_body(cast(Sequence[CodeBlockStmt], parent.body), child);
     }
     return None;
 }

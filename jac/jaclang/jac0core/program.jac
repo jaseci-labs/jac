@@ -36,13 +36,17 @@ class JacProgram {
         _inferred_mods: set,
         _analyses_run: dict,
         _placement_summaries: dict,
-        _placement_state: dict;
+        _placement_state: dict,
+        _boundary_parse_memo: dict,
+        _compile_depth: int;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
     def release_compile_closure(self: JacProgram, keep_stubs: bool = False) -> None;
+    def release_native_dep_units(self: JacProgram) -> None;
+    def release_check_caches(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
     def record_dependency(

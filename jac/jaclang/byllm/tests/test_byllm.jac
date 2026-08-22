@@ -443,8 +443,8 @@ test "visit by for routing" {
 
 test "streaming visit by routes and streams tokens to handler" {
     # `visit [-->] by model(stream=True, stream_handler=fn)` streams the routing
-    # decision token-by-token to the handler (the jac ai --ui firehose path)
-    # while the structured choice still selects the successor edge.
+    # decision token-by-token to the handler (the path a live token feed
+    # consumes) while the structured choice still selects the successor edge.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     jac_import("streaming_visit_by", base_path=FIXTURE_DIR + "/");

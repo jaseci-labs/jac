@@ -1013,8 +1013,8 @@ test "generated host source contains required elements" {
     );
     # Must contain key elements
     assert "import from webview" in src;
-    assert "import from jacpyembed" in src;
-    assert "jac_engine_boot" in src;
+    assert "import from fused.bringup" in src;
+    assert "engine_boot" in src;
     assert "Py_Finalize" in src;
     assert "_jac_invoke_handler" in src;
     assert "_PH_DISPATCH" in src;

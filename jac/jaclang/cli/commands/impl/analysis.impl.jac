@@ -1230,7 +1230,7 @@ impl `test(
     maxfail: int = None,
     directory: str = "",
     verbose: bool = False,
-    ignore: str = ""
+    ignore: (list | None) = None
 ) -> int {
     import os;
     import from jaclang.runtimelib.test_runner { run_tests }
@@ -1288,7 +1288,11 @@ impl `test(
             xit=xit,
             maxfail=maxfail,
             verbose=verbose,
-            ignore=([ignore] if ignore else []),
+            ignore=[
+                p
+                for p in (ignore or [])
+                if p
+            ],
             jobs=jobs
         );
     } except (ValueError, FileNotFoundError) as exc {

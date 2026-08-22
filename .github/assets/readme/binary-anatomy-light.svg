@@ -15,7 +15,7 @@
   <rect x="32" y="84" width="348" height="40" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
   <text class="sans fg" x="44" y="101" font-size="11" font-weight="bold">launcher stub</text>
   <text class="sans dim" x="368" y="101" font-size="11" text-anchor="end">native code · links libc only</text>
-  <text class="sans dim" x="44" y="116" font-size="10">jac ninja editor (Neovim fork) statically linked in</text>
+  <text class="sans dim" x="44" y="116" font-size="10">written in Jac, compiled by the Jac native compiler and linker</text>
 
   <!-- Payload container -->
   <rect x="32" y="136" width="348" height="260" rx="8" fill="none" stroke="#d0d7de" stroke-dasharray="4 3"/>

@@ -5,12 +5,16 @@ measures it (same `CompileOptions`, same coverage), and three things are
 pinned per root, the same discipline `test_unitree_seal_baseline.jac` set:
 
   1. **Closure membership** is exact. Every root drags `constant`,
-     `srcloc` and `unitree` into its native unit and nothing else; the
-     `Transform`/`UniPass` base chain deliberately stays Python-side
-     (cross-module trust), so a new closure member means a module-level
-     import changed and has to reach zero seams before the root can keep
-     sealing.
-  2. **The root produces native IR.** A zero-seam coverage without IR means
+     `srcloc` and `unitree` into its native unit -- and, since B4 (#8323)
+     emptied `PLACEMENT_INFERENCE_HELD`, the pass spine with them:
+     `codeinfo`'s admissibility flipped `native_default_path_ok` for
+     `transform`, `uni_pass` and `module_codegen_pass`, so the base
+     chain that deliberately stayed Python-side is in-unit now, plus the
+     `diagnostics` / `diagnostic_utils` / `contextvars` / `logging`
+     leaves it drags. A new member beyond these means a module-level
+     import changed and has to reach zero un-waived seams before the
+     root can keep sealing.
+  2. **The root produces native IR.** A zero-seam census without IR means
      "not reached", not "clean".
   3. **The seam set matches `NATIVE_SEAL_DEMOTION_WAIVERS` two-way.** An
      un-waived seam fails (it would ship as an `abort()` stub), and a
@@ -22,12 +26,12 @@ Every waiver names what blocks it and what clears it:
   - `unitree`'s fifteen seams recur in every closure and are documented in
     `test_unitree_seal_baseline.jac`; each pass root's waiver tuple extends
     `_UNITREE_SEAM_WAIVERS` rather than restating them.
-  - `EndpointEffectPass.enter_ability` / `.enter_archetype` are
-    Python-only: they write endpoint classifications through
-    `UniNode.gen` into the `InteropManifest`, Python-only codegen state
-    (the same family as unitree's waived `UniNode.gen.__get__`). They
-    clear when endpoint effects are emitted as data the driver collects,
-    the #86 diagnostics-as-data pattern.
+  - `EndpointEffectPass.enter_ability` / `.enter_archetype` wrote
+    endpoint classifications through `UniNode.gen`, Python-only while
+    the lazy `CodeGenTarget` construction could not lower. They cleared
+    when `codeinfo` joined every closure (B4) and `.gen` lowered with
+    it -- the same mechanism that cleared unitree's
+    `UniNode.gen.__get__` waiver.
   - `module_codegen_pass` used to waive six, led by
     `ModuleCodegenPass.iter_context_stmts` running `isinstance` over an
     element-erased sequence element, with the other five as pure call
@@ -84,6 +88,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "compiler/type_registry.jac",
              "compiler/type_system/type_utils.jac",
              "compiler/type_system/types.jac",
+             "jac0core/codeinfo.jac",
              "jac0core/constant.jac",
              "jac0core/diagnostic_utils.jac",
              "jac0core/diagnostics.jac",
@@ -96,6 +101,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "jac0core/srcloc.jac",
              "jac0core/unitree.jac",
              "runtimelib/na_stdlib/_hashlib_native.jac",
+             "runtimelib/na_stdlib/contextvars.jac",
              "runtimelib/na_stdlib/fnmatch.jac",
              "runtimelib/na_stdlib/hashlib.jac",
              "runtimelib/na_stdlib/logging.jac",
@@ -105,6 +111,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "compiler/type_registry.jac",
              "compiler/type_system/type_utils.jac",
              "compiler/type_system/types.jac",
+             "jac0core/codeinfo.jac",
              "jac0core/constant.jac",
              "jac0core/diagnostic_utils.jac",
              "jac0core/diagnostics.jac",
@@ -115,6 +122,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "jac0core/srcloc.jac",
              "jac0core/unitree.jac",
              "runtimelib/na_stdlib/_hashlib_native.jac",
+             "runtimelib/na_stdlib/contextvars.jac",
              "runtimelib/na_stdlib/fnmatch.jac",
              "runtimelib/na_stdlib/hashlib.jac",
              "runtimelib/na_stdlib/logging.jac",
@@ -124,6 +132,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "compiler/type_registry.jac",
              "compiler/type_system/type_utils.jac",
              "compiler/type_system/types.jac",
+             "jac0core/codeinfo.jac",
              "jac0core/constant.jac",
              "jac0core/diagnostic_utils.jac",
              "jac0core/diagnostics.jac",
@@ -134,6 +143,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "jac0core/srcloc.jac",
              "jac0core/unitree.jac",
              "runtimelib/na_stdlib/_hashlib_native.jac",
+             "runtimelib/na_stdlib/contextvars.jac",
              "runtimelib/na_stdlib/fnmatch.jac",
              "runtimelib/na_stdlib/hashlib.jac",
              "runtimelib/na_stdlib/logging.jac",
@@ -143,6 +153,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "compiler/type_registry.jac",
              "compiler/type_system/type_utils.jac",
              "compiler/type_system/types.jac",
+             "jac0core/codeinfo.jac",
              "jac0core/constant.jac",
              "jac0core/diagnostic_utils.jac",
              "jac0core/diagnostics.jac",
@@ -154,6 +165,7 @@ glob WAVE1_CLOSURES: dict[(str, tuple)] = {
              "jac0core/srcloc.jac",
              "jac0core/unitree.jac",
              "runtimelib/na_stdlib/_hashlib_native.jac",
+             "runtimelib/na_stdlib/contextvars.jac",
              "runtimelib/na_stdlib/fnmatch.jac",
              "runtimelib/na_stdlib/hashlib.jac",
              "runtimelib/na_stdlib/logging.jac",

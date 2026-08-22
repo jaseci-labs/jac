@@ -173,7 +173,10 @@ obj PgStore(Store) {
     def _join_listen_thread(parked: any) -> None;
     def _schema_fingerprint -> str;
     def _schema_stamp -> (str | None);
+    def _acquire_schema_lock(fingerprint: str) -> bool;
+    def _release_schema_lock -> None;
     def _apply_schema_ddl -> None;
+    def _apply_schema_ddl_resilient -> None;
     def _load_known_types -> None;
     def _peer_sessions -> list[dict];
     def _reap_dead_sessions -> int;

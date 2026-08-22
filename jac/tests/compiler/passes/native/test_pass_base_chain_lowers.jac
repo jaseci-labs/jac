@@ -30,11 +30,16 @@ And pinned here too, because this is the file that owns the question: what
 a pass *construction* inside a native root does now. Section 11.1 of
 `internals/fused-pipeline.md` measured it as a discarded
 `_pyb_instantiate` bridge after which the field read answered the field's
-declared default -- the pass did not run and nothing said so. Then it
-refused, with E5088, because the base modules were not in the root's
-closure. Now it lowers: the base chain links, and the last two tests in
-this file pin that, together with the seam that is next -- the traversal
-methods still refuse on stores to slots they inherit.
+declared default -- the pass did not run and nothing said so. #8305 made
+that refuse with E5088, whose remedy named the gate: the base modules were
+not in the root's closure. Two landings opened it -- the re-export import
+that dragged `codeinfo.jac` into the chain was retargeted to the declaring
+module, and B4 (#8323) emptied `PLACEMENT_INFERENCE_HELD`. The chain
+links, and the last tests in this file pin the construction lowering over
+it. The probe passes no `prog`: the rim base is native-erased, so ctor
+synthesis in a native context declares none (#8341's design) -- the
+handle is driver-stamped, and the Python lane's `TypeError` contract
+lives in `test_sealed_pass_tier.jac`.
 """
 
 import os;
@@ -101,16 +106,10 @@ def _transform_seams -> dict[(str, str)] {
         (name, sep, why) = str(seam).partition(": ");
         found[name if sep else str(seam)] = why if sep else "";
     }
-    # The unit exports no LLVM IR and no layout of its own -- it is in no
-    # closure, which is section 11.1's symptom rather than its disease --
-    # so the coverage record is the whole measurement. It is guarded against
-    # vacuity from the other side: the seam set is pinned both ways below,
-    # and an unreached compile would empty it and fail on the stale half.
-    assert found , (
-        "the coverage recorded no seam at all for transform.jac, which on "
-        "this unit means the compile was never reached rather than that it "
-        "is clean"
-    );
+    # Zero seams is the real state now -- the gutter fix lowered
+    # Alert.pretty_print and the prefix work cleared is_canceled/ice --
+    # so an empty set is clean, not vacuous. Vacuity is guarded above:
+    # the census record must exist with outcome "native".
     _MEMO.append(found);
     return found;
 }
@@ -189,39 +188,39 @@ def _ctor_probe -> tuple {
 }
 
 
-"""The base chain links, and a pass construction inside a native root lowers.
+"""The rung-3 gate, measured open.
 
-This test used to pin the opposite. Section 11.1 of
-`internals/fused-pipeline.md` measured the construction as a silent
-`_pyb_instantiate` bridge whose result was discarded; #8305 turned that into
-E5088, #8306 and rung 2 emptied the unit of everything un-lowerable, and
-what was left was a refusal whose reason was the closure: an
-`import from ... { UniPass }` inside a native root pulled in none of
-`uni_pass.jac`, `module_codegen_pass.jac` or `transform.jac`, so
-`UniPass.postinit` would have run on a Python shadow.
+Section 11.1 of `internals/fused-pipeline.md` measured this construction as
+a silent `_pyb_instantiate` bridge whose result was discarded -- the pass
+did not run and nothing said so. #8305 turned the shadow-initialized
+construction into E5088; #8306 plus rung 2 emptied the unit of everything
+that made it un-lowerable; and the refusal's own remedy -- bring the base
+into the native unit -- landed with B4 (#8323): emptying
+`PLACEMENT_INFERENCE_HELD` made `codeinfo` admissible and the whole chain
+with it, so `import from ... { UniPass }` inside a native root now pulls
+`uni_pass.jac`, `module_codegen_pass.jac` and `transform.jac` into the
+unit, and the construction lowers over real layouts instead of refusing
+over a shadow.
 
-The cause was one import. A native root's walk filters candidates through
-`native_default_path_ok`, the placement pre-scan, run over the candidate and
-every transitive `.jac` dependency, all-or-nothing. `transform.jac` asked
-`codeinfo.jac` for `CodeLocInfo` -- a symbol `srcloc.jac` declares and
-`codeinfo` merely re-exports -- and `codeinfo.jac` scans dirty on its own
-`import from typing { Any }`. Retargeting the import to the declaring module
-took `codeinfo.jac` out of the chain's closure, and all three base modules
-now pass the scan and link.
-
-So E5088 is gone here because its precondition is gone, which is the remedy
-its own help text names. What the probe pins now is that state, both ways:
-the construction lowers with no seam at all, and the three base modules are
-in the closure. If either half regresses, the walk stopped reaching the base
-chain again and the first place to look is a re-export import.
+One thing this pins beyond the happy path: the chain's own waived seams
+(`UniPass.transform`/`traverse`) ride along and are someone else's table --
+the fixture's own file must stay seam-free, or a fused root cannot trust
+its smallest operation. The probe passes no `prog` (the rim base is
+native-erased and ctor synthesis declares none in a native context); the
+Python lane's run-time `TypeError` contract for the rim handle lives in
+`test_sealed_pass_tier.jac`.
 """
-test "constructing a pass in a native root lowers, with the base chain linked" {
+test "a native root constructs a pass over the linked base chain" {
     (seams, closure) = _ctor_probe();
-    why = seams.get("probe_construct", "");
-    assert not why , (
-        f"constructing a pass inside a native root demoted again: {why}. If "
-        "this is E5088, the base chain fell out of the root's closure -- "
-        f"check for a re-export import (closure was {closure})"
+    assert "probe_construct" not in seams , (
+        "constructing a pass inside a native root demotes again: "
+        + seams.get("probe_construct", "")
+        + ". Rung 3's gate was measured open when B4 linked the base chain; "
+        "find which chain member fell out of the unit before re-pinning"
+    );
+    assert "LocalCountPass.enter_name" not in seams , (
+        "the probe pass's own visitor demoted; the fixture must stay "
+        "seam-free for the construction measurement to mean anything"
     );
     for base in (
         "jac0core/passes/transform.jac",
@@ -229,16 +228,15 @@ test "constructing a pass in a native root lowers, with the base chain linked" {
         "jac0core/passes/module_codegen_pass.jac"
     ) {
         assert base in closure , (
-            f"{base} left the native root's closure. The construction may "
-            "still lower by accident; the base chain linking is the thing "
-            "this test exists to hold"
+            f"{base} left the native root's closure. The chain linking is "
+            "what rung 3 is; see this test's docstring"
         );
     }
-    assert "jac0core/codeinfo.jac" not in closure , (
-        "codeinfo.jac is back in the pass base chain's closure. It scans "
-        "dirty on `import from typing { Any }`, so it does not merely cost "
-        "compile time -- it takes the whole chain out of the walk. Whatever "
-        "re-export pulled it in should ask the declaring module instead"
+    assert "jac0core/codeinfo.jac" in closure , (
+        "codeinfo.jac left the probe's closure. Since B4 emptied "
+        "PLACEMENT_INFERENCE_HELD it rides every unit that links the base "
+        "chain, its seams waived by name; its absence means the placement "
+        "walk is refusing it again -- find the blocker before re-pinning"
     );
 }
 
@@ -248,15 +246,17 @@ test "constructing a pass in a native root lowers, with the base chain linked" {
 This test has pinned three successive states of the same file. First the
 traversal methods as waived seams (inherited-slot stores, cleared by
 #8320's linearization repair). Then the two `type[T]`-generic statics as
-the honest remainder. Now those are gone too -- not lowered, RETIRED:
+the honest remainder. Those are gone -- not lowered, RETIRED:
 `get_all_sub_nodes` and `find_parent_of_type` were forwarding shims for
 the same-named `UniNode` methods, every caller lived outside the sealed
 closure and calls the node methods directly now, and a shim with no
 callers is not a seam worth waiving, it is dead code the seal was
-carrying. With them gone, `uni_pass.jac` contributes zero entries to
-`NATIVE_SEAL_DEMOTION_WAIVERS`, which is what this pins: any name from
-this module reappearing in the table means pass machinery demoted again,
-and the fused prefix is re-blocked by whatever did it.
+carrying. B4's branch had re-admitted the base-chain field-wall trio
+(`__post_init__`/`transform`/`traverse`) as waivers, but the composed
+measurement read them stale in every root -- the wall lowered with the
+gate work -- so zero entries is the pin again. Any name from this module
+reappearing in the table means pass machinery demoted again, and the
+fused prefix is re-blocked by whatever did it.
 """
 test "uni_pass contributes no waiver at all" {
     (seams, _closure) = _ctor_probe();
@@ -272,10 +272,12 @@ test "uni_pass contributes no waiver at all" {
         }
     }
     assert not offending , (
-        f"uni_pass.jac is back in the waiver table: {sorted(offending)}. "
-        "The traversal seams cleared with #8320's slot repair and the "
-        "generic-static shims were retired outright; a returning entry "
-        "means pass machinery demotes again and the fused prefix is "
-        "re-blocked -- fix the lowering rather than re-waiving it"
+        "uni_pass.jac is back in the waiver table: "
+        f"{sorted(offending)}. The traversal seams cleared with #8320's "
+        "slot repair, the generic-static shims were retired outright, and "
+        "B4's grown closures re-measured the field-wall trio as lowering "
+        "in every root; a returning entry means pass machinery demotes "
+        "again and the fused prefix is re-blocked -- fix the lowering "
+        "rather than re-waiving it"
     );
 }

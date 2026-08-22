@@ -80,6 +80,16 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 8 * * *' }}
     uses: ./.github/workflows/_installer.yml
 
+  # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
+  # libSystem-equivalence tests that consume it. Off the PR critical path
+  # (44-68 min, and 60 runs of evidence that it duplicated the Linux seal
+  # refusal); see _macos-native.yml. ci.yml still runs it on a `macos` label.
+  # This is also the only caller that runs on main, so it is what seeds the
+  # shared macOS caches -- setup-jac gates every cache save to main.
+  macos-native:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    uses: ./.github/workflows/_macos-native.yml
+
   # PR CI runs the suite chunked across runners; this is the unchunked
   # single-process full-suite run (materializer-leak watchdog) against a
   # cold sealed build.
@@ -112,7 +122,7 @@ jobs:
 
     - name: Vendor static-musl runtime
       working-directory: jac
-      run: zig build -Dno-ninja vendor-musl --summary all
+      run: zig build vendor-musl --summary all
 
     - name: Full suite against the sealed binary
       working-directory: jac

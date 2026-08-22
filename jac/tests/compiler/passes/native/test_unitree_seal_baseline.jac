@@ -84,30 +84,30 @@ glob PKG_PATH = Path(jaclang.__file__).parent,
 
 """Every module the native compile of `unitree.jac` puts in its closure.
 
-`codeinfo` and `treeprinter` are deliberately absent: unitree reads them
-through `import type` (typing-only) or through function-local imports, so they
-never enter the native unit. `codeinfo` in particular *cannot*, because
-`CodeGenTarget` carries LLVM binding and estree handles and imports `unitree`
-back, which would make the unit circular.
-
 `types.jac` and `type_utils.jac` are the type system's lower half, pulled in
 by unitree's `TypeBase`-typed fields once the keystone became linkable.
-`helpers.jac` arrives with them, and the remaining five are pure leaves those
-two reach: `pathlib`, `fnmatch`, `hashlib`, `_hashlib_native` and
-`type_registry` all lower whole and contribute no waiver.
+`helpers.jac` arrives with them, and `pathlib`, `fnmatch`, `hashlib`,
+`_hashlib_native` and `type_registry` are pure leaves those two reach.
 
-The pass base chain -- `transform`, `module_codegen_pass`, `uni_pass`, and
-`diagnostics`/`diagnostic_utils`/`logging` behind them -- joined when
-`transform.jac` stopped asking `codeinfo.jac` for `CodeLocInfo`, a symbol
-`srcloc.jac` declares. `codeinfo` fails the native placement pre-scan on its
-own `import from typing { Any }`, and the pre-scan is all-or-nothing over
-the transitive set, so that one re-export import had been keeping the whole
-chain out of every root's walk. `codeinfo` itself stays absent, for the
-reasons above.
+The pass spine joined when B4 (#8323) emptied `PLACEMENT_INFERENCE_HELD`:
+`codeinfo` arrives through unitree's own `import type` edge (the same edge
+kind that pulled `types.jac` in) and through `UniNode.gen`'s function-local
+import, which now lowers; `uni_pass` through the `import type { UniPass }`
+the visitor signatures carry; and `module_codegen_pass`, `transform`,
+`diagnostics`, `diagnostic_utils`, `contextvars` and `logging` ride their
+module-level imports. Only `codeinfo` brings seams, all
+waived below (`transform`'s trio cleared -- the gutter formatting, the
+cancel scalar, `ice` as a message-builder -- and the base-chain field
+wall is down everywhere: every measured root lowers
+`__post_init__`/`transform`/`traverse` now); the old reading that `codeinfo` could "never share
+a native unit with unitree" predicted a cycle that `import type` erasure
+never actually forms. `treeprinter` stays absent: function-local only.
 """
 glob UNITREE_CLOSURE: tuple = (
          "_hashlib_native.jac",
+         "codeinfo.jac",
          "constant.jac",
+         "contextvars.jac",
          "diagnostic_utils.jac",
          "diagnostics.jac",
          "fnmatch.jac",
@@ -127,8 +127,12 @@ glob UNITREE_CLOSURE: tuple = (
      # Seams that stay, each naming what has to land before it goes. Keyed
      # `<module>::<Type>.<method>` exactly as `_seal_demotions` keys them, so
      # an entry reads the same as one in `NATIVE_SEAL_DEMOTION_WAIVERS` --
-     # all of these are mirrored there (as `_UNITREE_SEAM_WAIVERS`) now that
-     # `unitree` is in `NATIVE_SEAL_ROOTS`.
+     # all of these are mirrored there now that `unitree` is in
+     # `NATIVE_SEAL_ROOTS`: the unitree/types/type_utils/helpers entries as
+     # the families `_CLOSURE_SEAM_WAIVERS` always carried, and the
+     # codeinfo/transform/uni_pass entries as the `_CODEINFO_SEAM_WAIVERS`,
+     # `_TRANSFORM_SEAM_WAIVERS` and `_UNI_PASS_SEAM_WAIVERS` families that
+     # joined it when B4 emptied the hold.
      #
      # A `<field>.__get__` entry is a property. #8074 made accessors lower as
      # methods, so their bodies reach the backend for the first time; before it
@@ -149,12 +153,6 @@ glob UNITREE_CLOSURE: tuple = (
              "`resolve_native_module` live in `jac0core.codeinfo`, which can "
              "never share a native unit with `unitree` (LLVM binding and "
              "estree handles, and it imports `unitree` back)."
-         ),
-         "unitree.jac::UniNode.gen.__get__": (
-             "Python-only: lazily constructs a `CodeGenTarget` through a "
-             "function-local import of `jac0core.codeinfo`, the module that "
-             "can never share a native unit with `unitree`. Only codegen "
-             "passes read `.gen`; a parse never does."
          ),
          "unitree.jac::Module.annexable_by.__get__": (
              "Python-only: calls `jac0core.bccache.discover_base_file`, which "
@@ -240,15 +238,6 @@ glob UNITREE_CLOSURE: tuple = (
              "Backend gap: the same `enumerate(...)` for-loop iterable as "
              "`build_type_var_solution`."
          ),
-         "helpers.jac::pretty_print_source_location": (
-             "Backend gap: its gutter arithmetic asks for `MOD` on mismatched "
-             "integer widths. The `ANSIColors` reads that used to sit beside "
-             "it lower since #8256; the width mismatch is what is left."
-         ),
-         "helpers.jac::format_related_spans": (
-             "Cascade: calls `pretty_print_source_location`, waived above. "
-             "Its own `ANSIColors` reads lower since #8256."
-         ),
          "helpers.jac::read_file_with_encoding": (
              "Python-only: `open()` with an encoding keyword. The native lane "
              "refuses the keyword out loud since #8255 rather than lowering a "
@@ -279,15 +268,61 @@ glob UNITREE_CLOSURE: tuple = (
              "`.pyi` ingestion path -- version-guarded typeshed blocks -- "
              "which no sealed parse reaches."
          ),
-         "transform.jac::Alert.pretty_print": (
-             "Rim work: renders source spans through "
-             "`helpers.pretty_print_source_location`, itself waived above. "
-             "Clears with it, and with diagnostics crossing as data. The "
-             "four entries that used to sit beside it cleared for the fused "
-             "prefix: `is_canceled` reads the `cancel_requested` scalar, "
-             "`ice` builds the message its callers raise, and the two "
-             "generic-static shims were retired for the `UniNode` methods "
-             "they wrapped."
+         # `transform.jac` and `uni_pass.jac` contribute no entry:
+         # `Alert.pretty_print` cleared when the helpers gutter formatting
+         # lowered, `is_canceled`/`ice` cleared for the fused prefix (the
+         # cancel scalar; ice as the message its callers raise), and the
+         # base-chain field wall is down everywhere -- no measured root
+         # demotes `__post_init__`/`transform`/`traverse` any more.
+         "codeinfo.jac::CodeGenTarget.doc_ir.__get__": (
+             "Python-only: lazily imports `compiler.passes.tool.doc_ir`, "
+             "the formatter's IR, which stays Python-side. Only the "
+             "formatter reads `.doc_ir`; a parse never does."
+         ),
+         "codeinfo.jac::_func_layout_to_dict": (
+             "Backend gap: boxing an optional (`JacOpt`) into an "
+             "`any`-valued dict entry."
+         ),
+         "codeinfo.jac::_inferred_native_path": (
+             "Python-only: calls `placement_solver.native_default_path_ok`, "
+             "the placement scan -- the driver's ground, never a parse's."
+         ),
+         "codeinfo.jac::effective_default_codespace": (
+             "Python-only: reads `project.config`, jac.toml machinery."
+         ),
+         "codeinfo.jac::effective_native_closure_cap": (
+             "Python-only: the same `project.config` read, behind a "
+             "`ContextVar.get` the backend also cannot compare."
+         ),
+         "codeinfo.jac::install_native_static_init": (
+             "Python-only: writes fields on an `any`-typed LLVM "
+             "`ExecutionEngine` handle the driver owns."
+         ),
+         "codeinfo.jac::is_bundled_native_module": (
+             "Cascade: calls `native_stdlib_root`, waived below."
+         ),
+         "codeinfo.jac::is_client_by_location": (
+             "Python-only: reads `jaclang.__file__` through a bare Python "
+             "module import."
+         ),
+         "codeinfo.jac::is_native_by_location": (
+             "Python-only: same `jaclang.__file__` read."
+         ),
+         "codeinfo.jac::native_layout_to_dict": (
+             "Backend gap: attribute reads on values of a typed dict "
+             "inside a dict comprehension, plus the same `any`-box of an "
+             "optional as `_func_layout_to_dict`."
+         ),
+         "codeinfo.jac::native_stdlib_root": (
+             "Python-only: reads `jaclang.__file__` to locate the bundled "
+             "na_stdlib on disk."
+         ),
+         "codeinfo.jac::native_wasm_stem": (
+             "Backend gap: `os.path.splitext` has no native lowering."
+         ),
+         "codeinfo.jac::resolve_native_module": (
+             "Cascade: `_inferred_native_path` and `native_stdlib_root`, "
+             "waived above, plus `os.path.abspath`."
          )
      };
 

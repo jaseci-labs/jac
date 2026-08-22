@@ -360,11 +360,19 @@ obj _MatGen {
         } elif vb == "list" {
             self.emit_list(f"vh_{u}", f"dv_{u}", _inner(vt), out, ind + "    ", u);
         } elif vb == "set" {
-            out.append(ind + f"    vh_{u} = PySet_New(0);");
-            out.append(ind + f"    if len(dv_{u}) != 0 {{");
-            out.append(ind + f"        Py_DecRef(vh_{u});");
-            out.append(ind + "        return 0;");
-            out.append(ind + "    }");
+            _sv = _norm(_inner(vt));
+            if _sv in _SCALARS {
+                out.append(ind + f"    vh_{u} = PySet_New(0);");
+                out.append(ind + f"    for sv_{u} in dv_{u} {{");
+                out.append(
+                    ind + f"        se_{u} = " + self.scalar_expr(f"sv_{u}", _sv) + ";"
+                );
+                out.append(ind + f"        PySet_Add(vh_{u}, se_{u});");
+                out.append(ind + f"        Py_DecRef(se_{u});");
+                out.append(ind + "    }");
+            } else {
+                out.append(ind + f"    vh_{u} = _py_none();");
+            }
         } elif vb in self.ns and not self.is_chain(vb) {
             out.append(ind + f"    vh_{u} = _emit_{vb}(dv_{u});");
         } else {
@@ -413,11 +421,23 @@ obj _MatGen {
             } elif ab == "dict" {
                 emitted = self.emit_dict(v, expr, _inner(a), buf, pre, uid);
             } elif ab == "set" {
-                buf.append(pre + f"{v} = PySet_New(0);");
-                buf.append(pre + f"if len({expr}) != 0 {{");
-                buf.append(pre + f"    Py_DecRef({v});");
-                buf.append(pre + "    return 0;");
-                buf.append(pre + "}");
+                _se = _norm(_inner(a));
+                if _se in _SCALARS {
+                    buf.append(pre + f"{v} = PySet_New(0);");
+                    buf.append(pre + f"for it_{uid}s in {expr} {{");
+                    buf.append(
+                        pre
+                            + f"    e_{uid}s = "
+                            + self.scalar_expr(f"it_{uid}s", _se)
+                            + ";"
+                    );
+                    buf.append(pre + f"    PySet_Add({v}, e_{uid}s);");
+                    buf.append(pre + f"    Py_DecRef(e_{uid}s);");
+                    buf.append(pre + "}");
+                } else {
+                    self.warn(f"unhandled set element {repr(ann)} -> None");
+                    emitted = False;
+                }
             } elif ab in self.enum_ns {
                 self.register_enum(ab);
                 buf.append(pre + f"{v} = _enum_{ab}({expr});");
@@ -515,9 +535,13 @@ glob _HEADER_LINES: tuple[str, ...] = (
          'materializes the woven module: the native-execution canary the',
          'pass-serving binder verifies at bind time.',
          '\'\'\'',
+         '@UNI_IMPORT@',
+         (
+             'import from jaclang.jac0core.passes.prefix_drive {'
+             ' PrefixAlertRow, run_prefix_passes }'
+         ),
          '@ENTRY_IMPORT@',
          'import from jaclang.jac0core.passes.annex_weave { merge_annex_into }',
-         '@UNI_IMPORT@',
          '@CONST_IMPORT@',
          '@SRC_IMPORT@',
          '@ENV_IMPORT@',
@@ -654,6 +678,67 @@ glob _HEADER_LINES: tuple[str, ...] = (
          '    PyList_SetItem(out, 0, mat_materialize(mod));',
          '    PyList_SetItem(out, 1, PyLong_FromLongLong(p_errs + lex_errs));',
          '    PyList_SetItem(out, 2, PyLong_FromLongLong(a_errs + a_lex_errs));',
+         '    _mat_flush();',
+         '    return out;',
+         '}',
+         '',
+         'def _emit_alert_rows(rows: list[PrefixAlertRow]) -> int {',
+         '    v_rl = PyList_New(len(rows));',
+         '    ri = 0;',
+         '    for r in rows {',
+         '        v_t = PyList_New(9);',
+         '        PyList_SetItem(v_t, 0, PyLong_FromLongLong(r.severity));',
+         '        PyList_SetItem(v_t, 1, _py_str(r.code));',
+         '        PyList_SetItem(v_t, 2, _py_str(r.msg));',
+         '        PyList_SetItem(v_t, 3, _py_str(r.help_text));',
+         '        PyList_SetItem(v_t, 4, PyLong_FromLongLong(r.first_line));',
+         '        PyList_SetItem(v_t, 5, PyLong_FromLongLong(r.col_start));',
+         '        PyList_SetItem(v_t, 6, PyLong_FromLongLong(r.pos_start));',
+         '        PyList_SetItem(v_t, 7, PyLong_FromLongLong(r.pos_end));',
+         '        PyList_SetItem(v_t, 8, PyLong_FromLongLong(r.pass_idx));',
+         '        PyList_SetItem(v_rl, ri, v_t);',
+         '        ri += 1;',
+         '    }',
+         '    return v_rl;',
+         '}',
+         '',
+         'def mat_parse_and_run_prefix(',
+         '    src: str,',
+         '    path: str,',
+         '    claimed_n: int,',
+         '    project_root: str,',
+         '    has_project_root: int,',
+         '    access_enforced: int',
+         ') -> int {',
+         '    (mod, p_errs, p_diags, comments, lex_diags, lex_errs) = @ENTRY@(',
+         '        src, path',
+         '    );',
+         '    executed = 0;',
+         '    clause = "";',
+         '    detail = "";',
+         '    rows_h = PyList_New(0);',
+         '    if (p_errs + lex_errs) == 0 {',
+         '        if has_project_root != 0 {',
+         '            mod.jac_project_root = project_root;',
+         '        }',
+         '        mod.access_enforced = access_enforced != 0;',
+         '        run = run_prefix_passes(mod, claimed_n);',
+         '        executed = run.executed;',
+         '        clause = run.clause;',
+         '        detail = run.detail;',
+         '        rows_h = _emit_alert_rows(run.rows);',
+         '    }',
+         '    out = PyList_New(10);',
+         '    PyList_SetItem(out, 0, mat_materialize(mod));',
+         '    PyList_SetItem(out, 1, PyLong_FromLongLong(p_errs));',
+         '    PyList_SetItem(out, 2, _emit_diag_list(p_diags));',
+         '    PyList_SetItem(out, 3, _emit_comment_list(comments));',
+         '    PyList_SetItem(out, 4, _emit_diag_list(lex_diags));',
+         '    PyList_SetItem(out, 5, PyLong_FromLongLong(lex_errs));',
+         '    PyList_SetItem(out, 6, PyLong_FromLongLong(executed));',
+         '    PyList_SetItem(out, 7, _py_str(clause));',
+         '    PyList_SetItem(out, 8, _py_str(detail));',
+         '    PyList_SetItem(out, 9, rows_h);',
          '    _mat_flush();',
          '    return out;',
          '}',

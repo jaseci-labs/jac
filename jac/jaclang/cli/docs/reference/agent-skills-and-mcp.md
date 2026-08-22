@@ -4,9 +4,8 @@ AI coding assistants are good at Jac's *ideas* but often wrong about its *syntax
 
 - **`jac guide`** -- curated reference guides bundled with the compiler. They are the authoritative spec for writing correct, idiomatic Jac, and any agent that can run a shell command can read them.
 - **The `jac mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
-- **`jac ai`** -- Jac's own built-in coding agent, if you'd rather not bring an external assistant at all. It knows the guides already and works with fully local models, so it runs without an API key.
 
-These are complementary: the guides tell a model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler; `jac ai` packages both into a ready-made agent.
+These are complementary: the guides tell a model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler.
 
 ## `jac guide` -- the built-in reference
 
@@ -50,19 +49,6 @@ Claude Code, Cursor, and the Claude Agent SDK can *auto-load* [Agent Skills](htt
 ## MCP server (any MCP client)
 
 The built-in `jac mcp` server exposes the Jac compiler (grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac) to any MCP-capable assistant, with nothing to install. The **[MCP Server reference](mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
-
-## `jac ai` -- the built-in coding agent
-
-If you want an agent *now*, without wiring up an external assistant, the CLI ships one:
-
-```bash
-jac ai                                   # interactive session (project's configured model)
-jac ai "add a walker that lists todos"   # one-shot request
-jac ai -m local:gemma-4-e4b              # fully local -- no API key
-jac ai --ui                              # web UI with a live phase-graph visualizer
-```
-
-It uses your `[byllm.model]` configuration (falling back to the bundled local model), reads the same built-in guides, and can edit files and run code in your project -- pass `--safe` to approve every write and command. See the [`jac ai` reference](cli/index.md#jac-ai).
 
 ## Structured code access for agents
 

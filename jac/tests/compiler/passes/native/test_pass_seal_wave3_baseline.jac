@@ -177,6 +177,17 @@ the region predicate hoisted out of `symbol_utils.jac`. That leaves
 `static_analysis_pass` and `ownership_check_pass` as the cluster's
 remaining refusals, which is what `REFUSED_OWN_SEAMS` tracks.
 
+B4 (#8323) then bought exactly what the `emit` family's analysis above
+priced: `PLACEMENT_INFERENCE_HELD` emptied, `transform.jac` and
+`uni_pass.jac` joined this cluster's closures, and ownership's census
+dropped 26 -> 12 with the `emit` family reading empty -- all eleven, plus
+`_run_borrow_liveness` and `_run_reaching_borrows`, whose bound-method
+transfers stopped refusing as Python-base reads. `static_analysis_pass`
+reads 6 -> 5 the same way (`_check_undefined_names`, the optional-`str`
+twin of the emit wall, cleared). The price was not transform's own 33
+seams as first quoted: rung 2 had already cut those to 3 by the time the
+entry emptied, and the three ship waived in every sealed closure.
+
 The measurement is a source-lane one: under a sealed jaclang image the
 coverage reads the image's trust boundary instead of each unit's own
 coupling, so `_root_coverage` skips there (both gates below).
@@ -206,6 +217,7 @@ glob WAVE3_CLOSURES: dict[(str, tuple)] = {
              "compiler/type_registry.jac",
              "compiler/type_system/type_utils.jac",
              "compiler/type_system/types.jac",
+             "jac0core/codeinfo.jac",
              "jac0core/constant.jac",
              "jac0core/diagnostic_utils.jac",
              "jac0core/diagnostics.jac",
@@ -216,6 +228,7 @@ glob WAVE3_CLOSURES: dict[(str, tuple)] = {
              "jac0core/srcloc.jac",
              "jac0core/unitree.jac",
              "runtimelib/na_stdlib/_hashlib_native.jac",
+             "runtimelib/na_stdlib/contextvars.jac",
              "runtimelib/na_stdlib/fnmatch.jac",
              "runtimelib/na_stdlib/hashlib.jac",
              "runtimelib/na_stdlib/logging.jac",
@@ -231,7 +244,7 @@ next wave should collect. Neither may pass unnoticed.
 """
 glob REFUSED_OWN_SEAMS: dict[(str, int)] = {
          "compiler/passes/main/static_analysis_pass.jac": 5,
-         "compiler/passes/main/ownership_check_pass.jac": 13
+         "compiler/passes/main/ownership_check_pass.jac": 12
      };
 
 glob _COVERAGE_MEMO: dict[(str, tuple)] = {};

@@ -3449,3 +3449,42 @@ test "obj postinit is invoked by the generated constructor" {
     );
     assert_balanced_syntax(js_code, "postinit_obj.jac");
 }
+
+test "a state setter handed out as a value loads without a ReferenceError" {
+    # #8224 executed rather than pattern-matched: the module that returns
+    # `setTheme` alongside `theme` used to throw `ReferenceError: setTheme is
+    # not defined` on first render, with the build green.
+    import re;
+    js_code = compile_fixture_to_js("state_setter_value_ref.jac", FIXTURES);
+    # Stand in for @jac/runtime with a cell carrying the same read/write shape.
+    stub = (
+        "const useJacState = (v) => { let cur = v; return { get val() "
+        "{ return cur; }, set(n) { cur = n; } }; };"
+    );
+    body = re.sub(r'import \{[^}]*\} from "@jac/runtime";', stub, js_code, count=1);
+    assert stub in body , (
+        f"fixture must import its state hook from @jac/runtime; got:\n{js_code}"
+    );
+    wrapper = body
+        + (
+            "\nconst box = useThing();\n"
+            'box.setTheme("light");\n'
+            'console.log(JSON.stringify({kind: typeof box.setTheme}));\n'
+        );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "the emitted module must load and run:\nstderr="
+        + result.stderr
+        + "\njs:\n"
+        + body
+    );
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    assert got["kind"] == "function" , (
+        f"setTheme must reach the caller as a callable, got {got}"
+    );
+}

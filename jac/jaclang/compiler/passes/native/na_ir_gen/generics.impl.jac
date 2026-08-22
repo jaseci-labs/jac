@@ -142,8 +142,10 @@ impl NaIRGenGenerics._instantiate_generic(
         return _hit;
     }
     import re;
+    import hashlib as _mono_hash;
     safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
-    spec_name = f"__jac_mono_{func_name}_{safe}";
+    _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
+    spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
     saved_map = self._mono_mangle_map;
     self._mono_solution = solution;
@@ -265,8 +267,10 @@ impl NaIRGenGenerics._instantiate_generic_for_target(
         return _hit;
     }
     import re;
+    import hashlib as _mono_hash;
     safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
-    spec_name = f"__jac_mono_{func_name}_{safe}";
+    _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
+    spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
     saved_map = self._mono_mangle_map;
     self._mono_solution = solution;
@@ -306,8 +310,10 @@ impl NaIRGenGenerics._instantiate_generic_method(
         return _hit;
     }
     import re;
+    import hashlib as _mono_hash;
     safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
-    spec_name = f"__jac_mono_{owner_arch}_{method_name}_{safe}";
+    _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
+    spec_name = f"__jac_mono_{owner_arch}_{method_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
     saved_map = self._mono_mangle_map;
     self._mono_solution = solution;
@@ -329,6 +335,9 @@ impl NaIRGenGenerics._stamp_mono_method(
     memo_key: str
 ) -> (ir.Function | None) {
     full_name = f"{arch_name}.{method_name}";
+    if full_name in self._native_skipped_methods {
+        return None;
+    }
     struct_type = self.struct_types.get(arch_name);
     sig = ability.signature;
     if struct_type is None

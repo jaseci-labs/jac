@@ -54,10 +54,6 @@ class BoundaryAnalysisPass(UniPass) {
         self: BoundaryAnalysisPass, name_node: (UniNode | None)
     ) -> (Ability | None);
 
-    def _na_target_decl(
-        self: BoundaryAnalysisPass, source_mod: (Module | None), name: str
-    ) -> (UniNode | None);
-
     def _signature_of_decl(
         self: BoundaryAnalysisPass, decl: (Ability | None)
     ) -> tuple[(str, list[str], list[str])];
@@ -81,14 +77,6 @@ class BoundaryAnalysisPass(UniPass) {
     def _register_na_client_import(self: BoundaryAnalysisPass, nd: Import) -> None;
     def _register_client_bridged_import(
         self: BoundaryAnalysisPass, nd: Import
-    ) -> None;
-
-    def _collect_abilities(
-        self: BoundaryAnalysisPass, nd: UniNode, out: dict[(str, Ability)]
-    ) -> None;
-
-    def _collect_pub_walkers(
-        self: BoundaryAnalysisPass, nd: UniNode, out: dict[(str, Archetype)]
     ) -> None;
 
     def _extract_walker_has_fields(

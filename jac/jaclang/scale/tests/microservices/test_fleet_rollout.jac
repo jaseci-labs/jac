@@ -63,11 +63,27 @@ def _bundle(deploy_name: str, app: str) -> dict {
     };
 }
 
+# A single replica Deployment as the apiserver reports it. "Not ready" is a
+# pod that exists on the current template but has not become available, which
+# is what a starting or crash-looping replica actually looks like.
+def _dep(ready: int) -> object {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(generation=1),
+        spec=SimpleNamespace(replicas=1),
+        status=SimpleNamespace(
+            observed_generation=1,
+            replicas=1,
+            updated_replicas=1,
+            available_replicas=ready,
+            ready_replicas=ready
+        )
+    );
+}
+
+
 def _apis(ready: int, pods: list) -> tuple {
     apps = unittest.mock.MagicMock();
-    apps.read_namespaced_deployment.return_value = SimpleNamespace(
-        status=SimpleNamespace(ready_replicas=ready)
-    );
+    apps.read_namespaced_deployment.return_value = _dep(ready);
     core = unittest.mock.MagicMock();
     core.list_namespaced_pod.return_value = SimpleNamespace(items=pods);
     core.list_namespaced_event.return_value = SimpleNamespace(items=[]);
@@ -251,8 +267,8 @@ test "a heal that unwedges the pod lets the rollout succeed" {
     app_c = _cs("gateway", restarts=0, waiting_reason="ImagePullBackOff");
     pod = _pod("gateway-xyz", "gateway", "Pending", [], [app_c]);
     (apps, core) = _apis(0, [pod]);
-    not_ready = SimpleNamespace(status=SimpleNamespace(ready_replicas=0));
-    ready = SimpleNamespace(status=SimpleNamespace(ready_replicas=1));
+    not_ready = _dep(0);
+    ready = _dep(1);
     apps.read_namespaced_deployment.side_effect = [
         not_ready,
         not_ready,

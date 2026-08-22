@@ -131,37 +131,35 @@ test "static and pwa dev flows inherit the compile-before-serve fix" {
 }
 
 
-obj _FakeConfig {
-    has meta_data: dict;
-
-    def get_plugin_config(name: str) -> dict {
-        return {"app_meta_data": self.meta_data};
-    }
-}
-
-
 """The dev server writes its own index.html rather than going through
 HeaderBuilder, so `[client.app_meta_data] scripts` has to be injected there too.
 Without it an SDK the app depends on is present in `jac build` output but
-silently missing under `jac start --dev`, which reads as a bug."""
+silently missing under `jac start --dev`, which reads as a bug.
+
+Only the plugin lookup is patched, on the real config class: replacing
+`get_config` wholesale with a stand-in breaks whatever else reads the config
+while the patch is active (CompileOptions reads `gc` and `build.native` when a
+module compiles lazily inside the window, which is what happens when the
+compiler runs from source rather than the sealed payload)."""
 test "configured scripts reach the dev server index.html" {
     import tempfile;
+    import from jaclang.project.config { JacConfig }
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
-    def _fake_get_config -> any {
-        return _FakeConfig(
-            meta_data={
+    def _fake_plugin_config(self: JacConfig, name: str) -> dict {
+        return {
+            "app_meta_data": {
                 "title": "ignored in dev",
                 "scripts": [{"src": "https://js.stripe.com/v3", "defer": True}]
             }
-        );
+        };
     }
 
     with tempfile.TemporaryDirectory() as tmp {
         build_dir = Path(tmp);
         bundler = ViteBundler(project_dir=build_dir);
-        with unittest.mock.patch(
-            "jaclang.project.config.get_config", _fake_get_config
+        with unittest.mock.patch.object(
+            JacConfig, "get_plugin_config", _fake_plugin_config
         ) {
             bundler._ensure_dev_index_html(build_dir);
         }

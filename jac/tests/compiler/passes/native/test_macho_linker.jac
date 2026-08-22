@@ -147,3 +147,100 @@ test "darwin host: the dylib loads and resolves CPython from the process" {
     ctypes.pythonapi.Py_DecRef.argtypes = [ctypes.c_void_p];
     ctypes.pythonapi.Py_DecRef(d);
 }
+
+
+"""IR whose private literal carries the same name every LLVM object uses."""
+def literal_ir(triple: str, text: str, fn: str) -> str {
+    n = len(text) + 1;
+    return (
+        f'target triple = "{triple}"\n'
+        + f'@.str.0 = private constant [{n} x i8] c"{text}\\00"\n'
+        + f'define ptr @{fn}() {{\nentry:\n  ret ptr @.str.0\n}}\n'
+        + 'define i32 @main() {\nentry:\n  ret i32 0\n}\n'
+    );
+}
+
+
+"""Emit the way nacompile emits executables: large code model, every global
+reached through a GOT slot."""
+def emit_large_object(ir_txt: str, triple: str) -> bytes {
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    mod = llvm.parse_assembly(ir_txt);
+    mod.verify();
+    tm = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, codemodel="large"
+    );
+    return tm.emit_object(mod);
+}
+
+
+"""Every C string an internal GOT slot of the image points at."""
+def got_slot_strings(img: bytes) -> set[str] {
+    ncmds = struct.unpack_from("<I", img, 16)[0];
+    off = 32;
+    secs: list[tuple] = [];
+    for _i in range(ncmds) {
+        (cmd, cmdsize) = struct.unpack_from("<II", img, off);
+        if cmd == 0x19 {
+            nsects = struct.unpack_from("<I", img, off + 64)[0];
+            so = off + 72;
+            for _j in range(nsects) {
+                name = img[so:so + 16].rstrip(b"\x00").decode();
+                (addr, size, foff) = struct.unpack_from("<QQI", img, so + 32);
+                secs.append((name, addr, size, foff));
+                so += 80;
+            }
+        }
+        off += cmdsize;
+    }
+    found: set[str] = set();
+    for (name, addr, size, foff) in secs {
+        if name != "__got" {
+            continue;
+        }
+        for k in range(0, size, 8) {
+            target = struct.unpack_from("<Q", img, foff + k)[0];
+            for (_n, a2, s2, f2) in secs {
+                if a2 <= target < a2 + s2 {
+                    raw = img[f2 + target - a2:f2 + target - a2 + 64];
+                    found.add(raw.split(b"\x00")[0].decode("utf-8", errors="replace"));
+                }
+            }
+        }
+    }
+    return found;
+}
+
+
+test "internal GOT slots are keyed by symbol, not by private symbol name" {
+    # Every LLVM object names its first private literal `l_.str.0`; merging an
+    # archive member must not let its literal claim the main object's slot.
+    main_obj = emit_large_object(
+        literal_ir(MACHO_TRIPLE, "main-literal", "jac_main_ptr"), MACHO_TRIPLE
+    );
+    member = emit_large_object(
+        literal_ir(MACHO_TRIPLE, "member-literal", "jac_member_ptr"), MACHO_TRIPLE
+    );
+    for shared in [False, True] {
+        d = tempfile.mkdtemp();
+        out = os.path.join(d, "probe.dylib" if shared else "probe");
+        ok = MachOLinker.link(
+            obj_bytes=main_obj,
+            output_path=out,
+            shared=shared,
+            export_symbols=["jac_main_ptr", "jac_member_ptr"],
+            soname="probe.dylib" if shared else "",
+            archive_members=[member]
+        );
+        assert ok , "MachOLinker.link returned False";
+        with open(out, "rb") as f {
+            img = f.read();
+        }
+        seen = got_slot_strings(img);
+        assert "main-literal" in seen and "member-literal" in seen , (
+            f"shared={shared}: GOT slots reach {sorted(seen)}; both literals "
+            "must keep their own slot"
+        );
+    }
+}

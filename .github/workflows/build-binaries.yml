@@ -169,10 +169,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
-          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
 
-      # Keyed on llvm_release.zig to match the entries setup-jac seeds (the
-      # old release-dev key hashed payload.zig, so it never matched them and
+      # Keyed on bootstrap/pins.json to match the entries setup-jac seeds (the
+      # old release-dev key hashed the payload tool, so it never matched them and
       # duplicated the ~0.5 GB tree into the cache pool).
       - name: Restore cached LLVM (dev channel)
         if: inputs.channel == 'dev' && steps.shim-cache.outputs.cache-hit != 'true'
@@ -180,7 +180,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.llvm-build
-          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
       # Identity of the compiler this build runs, as git blob ids over the same
       # file set jir.jac hashes for its module keys (jaclang.jac0core.jir:
@@ -236,7 +236,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.pbs-build
-          key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+          key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -254,7 +254,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.payload-layers
-          key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/editor/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
+          key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
           restore-keys: |
             payload-layers-${{ runner.os }}-${{ runner.arch }}-
 
@@ -273,7 +273,7 @@ jobs:
         id: shim-fetch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
         run: |
           set -euo pipefail
           EXT=so
@@ -293,15 +293,15 @@ jobs:
           fi
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 
-      # The Zig package store (.zig-cache/p): the neovim fork + its transitive
-      # PUC Lua source off lua.org's FTP (the build's flakiest fetch), mini.nvim,
-      # tree-sitter-jac, etc. Content-addressed source packages -- immutable, so
-      # (unlike the payload-artifact caches above, kept dev-only to avoid
-      # shipping stale bits) this is safe on BOTH channels, and a release is
-      # exactly when a lua.org blip must not fail the build. Same key as
-      # setup-jac so the Linux-x86_64 leg reuses the entry main seeds; a cross
-      # -Dtarget build fetches the same source, so os/arch is the right axis.
-      - name: Cache the Zig package store (avoids re-fetching Lua/neovim deps)
+      # The Zig package store (.zig-cache/p): every git/tarball dependency
+      # `zig build` fetches, as pinned by build.zig.zon. Content-addressed
+      # source packages -- immutable, so (unlike the payload-artifact caches
+      # above, kept dev-only to avoid shipping stale bits) this is safe on BOTH
+      # channels, and a release is exactly when an upstream fetch blip must not
+      # fail the build. Same key as setup-jac so the Linux-x86_64 leg reuses the
+      # entry main seeds; a cross -Dtarget build fetches the same source, so
+      # os/arch is the right axis.
+      - name: Cache the Zig package store (avoids re-fetching zon deps)
         uses: actions/cache@v4
         with:
           path: .zig-cache/p

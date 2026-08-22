@@ -1,15 +1,21 @@
-"""Sealing wave 6: capability_check_pass reaches IR, and what the last five seams are.
+"""Sealing wave 6: capability_check_pass reaches IR, and what the last seam is.
 
 Same harness as waves 1, 2, 4 and 5 -- `na_coverage_begin` plus
 `force_codespace='native'`, exactly what `seal_native_artifacts` runs -- and
 the same two-way discipline: this file fails if the closure gains a member,
 if IR stops being produced, or if the seam set moves in either direction.
 
-`capability_check_pass` is not sealed here. It is measured, and the
-measurement is the deliverable: wave 5 recorded it as "no IR, 7 blocking
-errors, 7 own seams behind them", and every one of those seven errors is
-gone. The pass produces native IR for the first time, and the seams behind
-that wall are now countable rather than hypothetical.
+`capability_check_pass` was measured here first, taken to one seam by B4
+(#8323), and then REFUSED for the seal by the seal's own strongest check:
+wave 5 recorded it as "no IR, 7 blocking errors, 7 own seams behind
+them", this wave cleared every error and counted five seams, emptying
+`PLACEMENT_INFERENCE_HELD` cleared four of the five -- and the pooled
+seal's abort-stub linkage check then read the IR that ships and found
+`NativeCapabilityCheckPass.transform`, the root's live entry point,
+linking the one remaining seam's stub directly. A waiver cannot excuse a
+stub the live surface calls, so the root sits in
+`NATIVE_SEAL_REFUSED_ROOTS` with that finding as its named blocker, and
+the accounting below keeps the refused root measured.
 
 What cleared, and how:
 
@@ -35,25 +41,23 @@ Python-base boundary `Transform.emit` sits behind, and the two
 `viols_reported` flags moved off `UniNode.gen` onto `Module` -- `gen`'s
 getter is a standing seam, so every read behind it was one too.
 
-## The four that remain, and what each one waits on
+## The one that remains, and what it waits on
 
-All four are one fact seen from different distances:
-`jac0core/codeinfo.jac` is not in the closure. `scan_native_blockers`
-refuses it for `import from typing { Any }`, and
-`test_native_erased_any.jac` carries that measurement and its clearing
-list. `classify_native_import` reads codeinfo's compile-time import
-table, `base_expr_is_erased` reads its erased-base table,
-`name_in_type_position` is a pure cascade of the second, and
-`native_capability_violations` cascades on the first and third -- plus
-one member gap of its own, `os.path.abspath`, which clears when that
-member lowers.
+Four of the recorded five cleared when B4 (#8323) emptied
+`PLACEMENT_INFERENCE_HELD` and `codeinfo` -- with `transform`,
+`uni_pass` and `module_codegen_pass` riding the same admissibility flip
+-- joined this closure. `classify_native_import` reads codeinfo's
+compile-time import table and `base_expr_is_erased` its erased-base
+table, both in-unit now; `name_in_type_position` was a pure cascade of
+the second; and `ClientCapabilityCheckPass.transform` calls
+`client_capability_violations`, a module-level *function* of
+`module_codegen_pass`, which inlines once the module is a member.
 
-The fifth is gone. `ClientCapabilityCheckPass.transform` waited on the
-pass-tier boundary -- `client_capability_violations` lives in
-`module_codegen_pass` -- and #8320's re-land put the base chain in this
-closure (the honest `CodeLocInfo` import), so the callee linked and the
-seam cleared. The same link took the `iter_context_stmts` half out of
-`native_capability_violations`' causes.
+The one left is `native_capability_violations`, and it is the pass-tier
+method boundary this file described: it calls
+`ModuleCodegenPass.iter_context_stmts`, a *method* on another sealed
+root's class, and that crossing clears when the artifacts link, not when
+the callee is fixed -- the callee has been fixed since this wave landed.
 
 This file still pins `module_codegen_pass`'s zero own seams below: it is
 the half of the wave's work that capability's coverage cannot see.
@@ -66,6 +70,10 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.compiler { na_coverage_begin, na_coverage_end }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.sealed { _jaclang_image, native_artifact_for }
+import from jaclang.utils.precompile_bytecode {
+    NATIVE_SEAL_REFUSED_ROOTS,
+    NATIVE_SEAL_ROOTS
+}
 
 glob PKG_PATH = Path(jaclang.__file__).parent,
      CAPABILITY: str = "compiler/passes/main/capability_check_pass.jac",
@@ -85,6 +93,7 @@ glob CAPABILITY_CLOSURE: tuple = (
          "compiler/type_registry.jac",
          "compiler/type_system/type_utils.jac",
          "compiler/type_system/types.jac",
+         "jac0core/codeinfo.jac",
          "jac0core/constant.jac",
          "jac0core/diagnostic_utils.jac",
          "jac0core/diagnostics.jac",
@@ -95,28 +104,26 @@ glob CAPABILITY_CLOSURE: tuple = (
          "jac0core/srcloc.jac",
          "jac0core/unitree.jac",
          "runtimelib/na_stdlib/_hashlib_native.jac",
+         "runtimelib/na_stdlib/contextvars.jac",
          "runtimelib/na_stdlib/fnmatch.jac",
          "runtimelib/na_stdlib/hashlib.jac",
          "runtimelib/na_stdlib/logging.jac",
          "runtimelib/na_stdlib/pathlib.jac"
      );
 
-"""capability's own four, each mapped to the mechanism that clears it.
+"""capability's own seams, each mapped to the mechanism that clears it.
 
-This table held five until the base chain linked.
-`ClientCapabilityCheckPass.transform` was waiting on exactly that
-crossing -- `client_capability_violations` lives in `module_codegen_pass`
--- and it cleared the moment the callee joined the closure.
-`native_capability_violations` stays, but its reasons moved: the
-`iter_context_stmts` half of its old cause cleared with the same link,
-and what remains is its codeinfo cascades plus an `os.path.abspath`
-member the native lane does not carry yet.
+Four of the five cleared the moment B4 emptied
+`PLACEMENT_INFERENCE_HELD` and `codeinfo`, `transform`,
+`module_codegen_pass` and the rest of the pass spine joined this
+closure: `classify_native_import` and `base_expr_is_erased` read
+`codeinfo`'s tables in-unit now, `name_in_type_position` cascaded on the
+second, and `ClientCapabilityCheckPass.transform` calls
+`client_capability_violations` as an in-unit function. The one left is
+the pass-tier method crossing, exactly as this file predicted.
 """
 glob CAPABILITY_SEAMS: dict[(str, str)] = {
-         "classify_native_import": "codeinfo not in closure: reads native_erased_import_names",
-         "base_expr_is_erased": "codeinfo not in closure: reads NATIVE_ERASED_BASES",
-         "name_in_type_position": "cascade of base_expr_is_erased",
-         "native_capability_violations": "codeinfo cascades (classify_native_import, name_in_type_position) plus os.path.abspath"
+         "native_capability_violations": "pass-tier crossing: calls ModuleCodegenPass.iter_context_stmts"
      };
 
 glob _COVERAGE_MEMO: dict[(str, tuple)] = {};
@@ -185,6 +192,21 @@ def _own_seams(rel: str, member: str) -> set {
 }
 
 
+test "capability_check_pass is refused for the seal, by name" {
+    assert CAPABILITY not in NATIVE_SEAL_ROOTS , (
+        f"{CAPABILITY} is in NATIVE_SEAL_ROOTS. The seal's abort-stub "
+        "linkage check refused it -- NativeCapabilityCheckPass.transform "
+        "links the native_capability_violations stub -- so re-rooting it "
+        "needs that finding cleared first, not just this assertion flipped"
+    );
+    blocker = NATIVE_SEAL_REFUSED_ROOTS.get(CAPABILITY, "");
+    assert "NativeCapabilityCheckPass" in blocker , (
+        f"{CAPABILITY} is not in NATIVE_SEAL_REFUSED_ROOTS with its "
+        f"measured blocker; a refusal without its name rots: {blocker!r}"
+    );
+}
+
+
 test "capability_check_pass compiles with no module-level errors" {
     (_coverage, _has_ir, errors) = _root_coverage(CAPABILITY);
     assert not errors , (
@@ -220,7 +242,7 @@ test "capability_check_pass's native closure is exactly the measured set" {
 }
 
 
-test "capability_check_pass's own seams are exactly the five named" {
+test "capability_check_pass's own seams are exactly the named set" {
     seen = _own_seams(CAPABILITY, CAPABILITY);
     expected = set(CAPABILITY_SEAMS.keys());
     assert seen == expected , (

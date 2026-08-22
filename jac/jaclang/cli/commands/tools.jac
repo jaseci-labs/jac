@@ -92,15 +92,6 @@ def dot(
 def lsp -> int;
 
 @registry.command(
-    name="ninja",
-    help="Open the built-in jac editor (fused Neovim + LSP + tree-sitter)",
-    args=[],
-    examples=[("jac ninja file.jac", "Edit a jac file in the built-in editor"), ],
-    group="tools"
-)
-def ninja -> int;
-
-@registry.command(
     name="completions",
     hidden=True,
     help="Generate shell completion script",

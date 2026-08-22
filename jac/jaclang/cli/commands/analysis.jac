@@ -279,7 +279,12 @@ def precommit(
             short="v",
             config_key="test.verbose"
         ),
-        Arg.create("ignore", `default="", help="Path to skip during collection"),
+        Arg.create(
+            "ignore",
+            kind=ArgKind.MULTI_OPTION,
+            `default=[],
+            help="Paths to skip during collection (space separated)"
+        ),
         Arg.create(
             "profile",
             `default="",
@@ -306,7 +311,7 @@ def `test(
     maxfail: int = None,
     directory: str = "",
     verbose: bool = False,
-    ignore: str = ""
+    ignore: (list | None) = None
 ) -> int;
 
 @registry.command(

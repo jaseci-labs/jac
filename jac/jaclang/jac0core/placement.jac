@@ -12,8 +12,15 @@ glob PLACEMENT_SCHEMA: int = 1,
      ),
      PLACEMENT_NATIVE_REJECT_NODES: tuple = (),
      PLACEMENT_INFERENCE_HELD: dict[str, str] = {
-         "jac0core/codeinfo.jac": "13 own seams, and a closure that reaches uni_pass (#8201 wave work)"
-     };
+         "jac0core/codeinfo.jac": (
+             "runtime JIT inference stays conservative: admitting codeinfo "
+             "opens the jaclang-internal import universe to default-native "
+             "flips (walker identity splits, sv envelopes). The compiler's "
+             "own roots are exempt via PLACEMENT_HOLD_EXEMPT_ROOTS, which "
+             "is what B4 (#8323) actually needed"
+         )
+     },
+     PLACEMENT_HOLD_EXEMPT_ROOTS: tuple = ("/jaclang/jac0core/", "/jaclang/compiler/");
 
 obj ElementSummary {
     has index: int = -1,
@@ -537,7 +544,10 @@ def _erased_only_import(imp: uni.Import) -> bool {
 }
 
 def scan_native_blockers(
-    module: uni.Module, base_dir: str, allow_pub: bool = False
+    module: uni.Module,
+    base_dir: str,
+    allow_pub: bool = False,
+    hold_exempt: bool = False
 ) -> tuple[str, list[str]] {
     import from jaclang.jac0core.codeinfo {
         NATIVE_SUPPORTED_STDLIB,
@@ -546,9 +556,11 @@ def scan_native_blockers(
     }
     deps: list[str] = [];
     _held_path = (module.loc.mod_path if module.loc is not None else '') or '';
-    for (_held_rel, _held_why) in PLACEMENT_INFERENCE_HELD.items() {
-        if _held_path.replace(os.sep, "/").endswith("/jaclang/" + _held_rel) {
-            return (f"inference held: {_held_why}", deps);
+    if not hold_exempt {
+        for (_held_rel, _held_why) in PLACEMENT_INFERENCE_HELD.items() {
+            if _held_path.replace(os.sep, "/").endswith("/jaclang/" + _held_rel) {
+                return (f"inference held: {_held_why}", deps);
+            }
         }
     }
     for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
@@ -720,8 +732,8 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
         es.name = element_display_name(stmt);
         es.pinned = '';
         if ps.mod_path {
-            import from jaclang.jac0core.placement_pins { config_pin_for }
-            es.pinned = config_pin_for(ps.mod_path, es.name);
+            import from jaclang.jac0core.placement_pins { effective_pin_for }
+            es.pinned = effective_pin_for(ps.mod_path, es.name);
         }
         es.is_pub = _is_pub_element(stmt);
         es.reqs = _element_reqs(stmt);

@@ -211,7 +211,7 @@ impl EsastGenPass._in_identifier_slot(nd: uni.UniNode) -> bool {
         return (parent.alias is nd) or any(part is nd for part in (parent.path or []));
     }
     if isinstance(parent, uni.JsxNormalAttribute) {
-        return parent.name is nd;
+        return (parent.name is nd) and (parent.value is not nd);
     }
     if isinstance(parent, uni.JsxElementName) {
         return any(part is nd for part in (parent.parts or []));
@@ -1852,6 +1852,7 @@ impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] 
             forwarders.append(self._build_server_forwarder(top, func_name, ref_name));
             continue;
         }
+        self._unbound_reported.add(ref_name.sym_name);
         self.emit(E5086, node_override=ref_name, name=ref_name.sym_name);
     }
     return forwarders;
@@ -4809,8 +4810,13 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             init_value = es.Identifier(name='undefined');
         }
 
-        state_field = StateField(name=var_name, init_expr=init_value);
         self._ensure_backend();
+        setter_name = self.backend._get_setter_name(var_name);
+        state_field = StateField(
+            name=var_name,
+            init_expr=init_value,
+            bind_setter=not self._setter_name_taken(has_var, setter_name)
+        );
         for sym in self.backend.state_field_symbols(state_field) {
             self._inject_runtime_import(sym, nd);
         }
@@ -4820,6 +4826,9 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 
         self.reactive_vars.add(var_name);
         self._register_declaration(var_name);
+        if state_field.bind_setter and setter_name {
+            self._register_declaration(setter_name);
+        }
     }
     if len(statements) == 1 {
         nd.gen.es_ast = statements[0];
@@ -4828,6 +4837,22 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
     } else {
         nd.gen.es_ast = None;
     }
+}
+
+impl EsastGenPass._setter_name_taken(has_var: uni.HasVar, setter_name: str) -> bool {
+    if not setter_name {
+        return True;
+    }
+    scope = has_var.sym_tab;
+    if scope is None {
+        return False;
+    }
+    existing = scope.names_in_scope.get(setter_name);
+    if existing is None {
+        return False;
+    }
+
+    return existing.decl.parent is not has_var;
 }
 
 impl EsastGenPass.exit_param_var(nd: uni.ParamVar) -> None {
@@ -7468,6 +7493,45 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     nd.gen.es_ast = program;
     nd.gen.js = es_to_js(nd.gen.es_ast);
     nd.gen.client_manifest = self.client_manifest;
+    self._audit_free_identifiers(nd, program);
+}
+
+impl EsastGenPass._audit_free_identifiers(nd: uni.Module, program: es.Program) -> None {
+    if not self.client_manifest.has_client {
+        return;
+    }
+    allowed = client_ambient_globals() | RUNTIME_PRELUDE_GLOBALS;
+    frees = free_identifiers(program, allowed);
+    if not frees {
+        return;
+    }
+    names = nd.get_all_sub_nodes(typ=uni.Name);
+    reported: set[str] = set();
+    for free in frees {
+        if (free.name in reported) or (free.name in self._unbound_reported) {
+            continue;
+        }
+        origin: (uni.Name | None) = None;
+        imported = False;
+        for cand in names {
+            if (cand.value != free.name) or (cand.sym is None) {
+                continue;
+            }
+            if cand.sym.decl.find_parent_of_type(uni.Import) is not None {
+                imported = True;
+                break;
+            }
+            origin = cand;
+            if cand.loc.first_line == free.line {
+                break;
+            }
+        }
+        if imported or (origin is None) {
+            continue;
+        }
+        reported.add(free.name);
+        self.emit(E5101, node_override=origin, name=free.name);
+    }
 }
 
 impl EsastGenPass._build_block_statement(

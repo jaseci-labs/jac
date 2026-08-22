@@ -14,6 +14,11 @@ import from jaclang.compiler.passes.ecmascript.scoped_styles {
     load_style_annex
 }
 import from jaclang.compiler.passes.ecmascript.framework_backend { FrameworkBackend }
+import from jaclang.compiler.passes.ecmascript.free_ident_audit {
+    RUNTIME_PRELUDE_GLOBALS,
+    client_ambient_globals,
+    free_identifiers
+}
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     relative_js_specifier,
@@ -34,7 +39,8 @@ import from jaclang.jac0core.diagnostics {
     E5081,
     E5085,
     E5086,
-    E5099
+    E5099,
+    E5101
 }
 
 glob _T = TypeVar('_T', bound=es.Node),
@@ -203,6 +209,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         needs_osp_kernel: bool = False,
         needs_osp_graph: bool = False,
         _unlowered_reported: set = set(),
+        _unbound_reported: set[str] = set(),
         _osp_var_arch_cache: (dict | None) = None,
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
@@ -320,6 +327,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.MemberExpression;
 
     def exit_module(nd: uni.Module) -> None;
+    def _audit_free_identifiers(nd: uni.Module, program: es.Program) -> None;
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
@@ -347,6 +355,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
+    def _setter_name_taken(has_var: uni.HasVar, setter_name: str) -> bool;
     def exit_has_var(nd: uni.HasVar) -> None;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;

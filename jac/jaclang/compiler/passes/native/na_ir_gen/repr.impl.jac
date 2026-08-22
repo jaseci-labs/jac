@@ -894,3 +894,95 @@ impl NaIRGenRepr._repr_jacval_fn -> (ir.Function | None) {
     self._builder = saved_builder;
     return fn;
 }
+
+impl NaIRGenRepr._str_jacval_fn -> (ir.Function | None) {
+    if not self?.jacval_type {
+        return None;
+    }
+    _cached = self._repr_fns.get("jacval_str");
+    if _cached is not None {
+        return _cached;
+    }
+    _int_fn = self._repr_leaf_fn("int");
+    _bool_fn = self._repr_leaf_fn("bool");
+    _float_fn = self._float_repr_fn();
+    if _int_fn is None or _bool_fn is None {
+        return None;
+    }
+    i8 = ir.IntType(8);
+    i8p: any = i8.as_pointer();
+    f64 = ir.DoubleType();
+    fnty = ir.FunctionType(i8p, [self.jacval_type]);
+    fn: any = ir.Function(self.llvm_module, fnty, name="__jac_str_jacval");
+    fn.linkage = "private";
+    fn.args[0].name = "jv";
+    self._repr_fns["jacval_str"] = fn;
+    saved_builder = self._builder;
+    entry_bb = fn.append_basic_block("entry");
+    b = ir.IRBuilder(entry_bb);
+    self._builder = b;
+    tag = b.extract_value(fn.args[0], 0, name="sj.tag");
+    payload = b.extract_value(fn.args[0], 1, name="sj.payload");
+    _strdup = self._get_or_declare_extern("strdup", i8p, [i8p]);
+
+    def _ret_const(bl: ir.IRBuilder, text: str, label: str) {
+        _prev = self._builder;
+        self._builder = bl;
+        _g: any = self._make_global_string(text, name_prefix=f".str.jv.{label}");
+        if self._nogc_headerless() {
+            _g = bl.call(_strdup, [_g], name=f"sj.{label}.dup");
+        }
+        self._builder = _prev;
+        bl.ret(_g);
+    }
+    _cases = [
+        (1, "float"),
+        (2, "str"),
+        (3, "list"),
+        (4, "dict"),
+        (5, "set"),
+        (6, "obj"),
+        (7, "bool"),
+        (8, "none")
+    ];
+    for (_t, _label) in _cases {
+        _hit_bb = fn.append_basic_block(f"sjv.{_label}");
+        _next_bb = fn.append_basic_block(f"sjv.chk.{_label}");
+        b.cbranch(
+            b.icmp_unsigned("==", tag, ir.Constant(i8, _t), name=f"sj.is.{_label}"),
+            _hit_bb,
+            _next_bb
+        );
+        bh = ir.IRBuilder(_hit_bb);
+        if _label == "float" {
+            bh.ret(
+                bh.call(
+                    _float_fn,
+                    [bh.bitcast(payload, f64, name="sj.f64")],
+                    name="sj.float"
+                )
+            );
+        } elif _label == "str" {
+            _sp: any = bh.inttoptr(payload, i8p, name="sj.sp");
+            _prev_b = self._builder;
+            self._builder = bh;
+            self._emit_rc_retain(_sp, op="str_jacval");
+            self._builder = _prev_b;
+            bh.ret(_sp);
+        } elif _label == "bool" {
+            bh.ret(bh.call(_bool_fn, [payload], name="sj.bool"));
+        } elif _label == "none" {
+            _ret_const(bh, "None", "none");
+        } elif _label == "list" {
+            _ret_const(bh, "[...]", "list");
+        } elif _label in ("dict", "set") {
+            _ret_const(bh, "{...}", _label);
+        } else {
+            _ret_const(bh, "<object>", "obj");
+        }
+        b = ir.IRBuilder(_next_bb);
+    }
+    b.ret(b.call(_int_fn, [payload], name="sj.int"));
+    self._builder = saved_builder;
+    return fn;
+}

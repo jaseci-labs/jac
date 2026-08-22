@@ -30,6 +30,10 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     if not path.exists() {
                         continue;
                     }
+
+                    if path.name not in {e.name for e in path.parent.iterdir()} {
+                        continue;
+                    }
                     path_str = str(path);
 
                     if (not path_str.endswith((".jac", ".py", ".pyi")))
@@ -303,6 +307,10 @@ impl TypeEvaluator._resolve_submodule_attr(
         ];
         for path in candidates {
             if not path.exists() {
+                continue;
+            }
+
+            if path.name not in {e.name for e in path.parent.iterdir()} {
                 continue;
             }
             path_str = str(path);

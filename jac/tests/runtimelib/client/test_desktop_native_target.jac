@@ -117,9 +117,9 @@ test "desktop dispatch config loads from jac.toml" {
     }
 }
 
-"""The host brings up the fused runtime via the libjacpyembed shim (jac_engine_boot)
-instead of binding the build machine's libpython, and never bakes build-machine
-state. All boot behavior lives in the host_boot runtime module; the generated
+"""The host brings up the fused runtime through the fused runtime library
+(engine_boot) instead of binding the build machine's libpython, and never bakes
+build-machine state. All boot behavior lives in the host_boot runtime module; the generated
 source only carries configuration plus the native bridge."""
 test "host source boots the fused runtime and bakes no build-machine state" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
@@ -127,9 +127,9 @@ test "host source boots the fused runtime and bakes no build-machine state" {
     }
 
     src = _generate_host_source("T", 800, 600, "test-app");
-    # Fused-runtime bring-up: the shim, not libpython-by-soname.
-    assert "import from jacpyembed" in src , "host must import the libjacpyembed shim";
-    assert "jac_engine_boot()" in src , "host must boot the fused runtime";
+    # Fused-runtime bring-up: the fused runtime library, not libpython-by-soname.
+    assert "import from fused.bringup" in src , "host must import the fused runtime library";
+    assert "engine_boot()" in src , "host must boot the fused runtime";
     assert "libpython" not in src , "host must not bind a libpython soname";
     # Thin boot contract: one BOOT_PY statement into the host_boot module.
     assert "BOOT_PY" in src , "host source must declare BOOT_PY";

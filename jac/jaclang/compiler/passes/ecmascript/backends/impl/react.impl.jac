@@ -81,10 +81,10 @@ impl ReactBackend.vite_plugin_lines -> (tuple[str, str] | None) {
 }
 
 impl ReactBackend._get_setter_name(var_name: str) -> str {
-    if not var_name {
-        return "";
+    import from jaclang.compiler.passes.ecmascript.framework_backend {
+        state_setter_name
     }
-    return f"set{var_name[0].upper()}{var_name[1:]}";
+    return state_setter_name(var_name);
 }
 
 impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpression {
@@ -142,8 +142,24 @@ impl ReactBackend.lower_state_field(s: StateField) -> list[es.Statement] {
     declarator = es.VariableDeclarator(
         id=es.Identifier(name=self._state_cell_name(s.name)), init=hook_call
     );
-    decl_stmt = es.VariableDeclaration(declarations=[declarator], kind='const');
-    return [decl_stmt];
+    statements: list[es.Statement] = [
+        es.VariableDeclaration(declarations=[declarator], kind='const')
+    ];
+    setter_name = self._get_setter_name(s.name);
+    if (s.bind_setter and setter_name) {
+        statements.append(
+            es.VariableDeclaration(
+                declarations=[
+                    es.VariableDeclarator(
+                        id=es.Identifier(name=setter_name),
+                        init=self._state_cell_member(s.name, 'set')
+                    )
+                ],
+                kind='const'
+            )
+        );
+    }
+    return statements;
 }
 
 impl ReactBackend.lower_ref_field(r: RefField) -> list[es.Statement] {

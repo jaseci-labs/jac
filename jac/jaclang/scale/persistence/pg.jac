@@ -4,6 +4,10 @@ import threading;
 glob logger = logging.getLogger(__name__),
      _lock = threading.Lock(),
      _holder: dict[str, any] = {},
+     NO_DATABASE_RESOLVED = (
+         'no [scale.database] url / JAC_DB_URL resolved, and no project '
+         'directory to provision an embedded server for'
+     ),
      _DOCS_DDL = (
          'CREATE TABLE IF NOT EXISTS jac_docs ('
          'collection text NOT NULL, '
@@ -11,7 +15,13 @@ glob logger = logging.getLogger(__name__),
          'doc jsonb NOT NULL, '
          'PRIMARY KEY (collection, id))'
      ),
-     __all__ = ['scale_db_url', 'shared_store', 'open_docs_store'];
+     __all__ = [
+         'scale_db_url',
+         'shared_store',
+         'shared_store_failure',
+         'open_docs_store',
+         'NO_DATABASE_RESOLVED'
+     ];
 
 
 def open_docs_store -> (any | None) {
@@ -30,13 +40,48 @@ def scale_db_url -> (str | None) {
         return url;
     }
     try {
-        import from jaclang.scale.config.plugin_config { get_scale_config }
+        import from jaclang.scale.config.config_loader { get_scale_config }
         cfg = get_scale_config().get_database_config();
         got = cfg.get('url') or cfg.get('postgres_url');
         return str(got) if got else None;
-    } except Exception {
+    } except Exception as e {
+        logger.debug(f"[scale.database] url unreadable: {e}");
         return None;
     }
+}
+
+
+def _url_source -> str {
+    return ('JAC_DB_URL' if os.environ.get('JAC_DB_URL') else '[scale.database] url');
+}
+
+
+def _store_target(store: any) -> str {
+    try {
+        info = store.conninfo;
+        where = info.unix_socket_dir or info.host or '?';
+        return f"{where}:{info.port}/{info.database}";
+    } except Exception {
+        return 'the resolved database';
+    }
+}
+
+
+def _fail(reason: str) {
+    if _holder.get('failure') == reason {
+        logger.debug(f"scale shared store still unavailable: {reason}");
+    } else {
+        logger.warning(f"scale shared store unavailable: {reason}");
+    }
+    _holder.pop('key', None);
+    _holder.pop('store', None);
+    _holder['failure'] = reason;
+}
+
+
+def shared_store_failure -> (str | None) {
+    got = _holder.get('failure');
+    return str(got) if got else None;
 }
 
 
@@ -60,6 +105,8 @@ def shared_store -> (any | None) {
         }
         store: (any | None) = None;
         reset = False;
+        stage = 'resolve';
+        source = _url_source() if url else 'the embedded server';
         try {
             import from jaclang.runtimelib.session { conninfo_from_url, promotions_for }
             import from jaclang.runtimelib.store { PgStore }
@@ -70,6 +117,7 @@ def shared_store -> (any | None) {
                 import from jaclang.runtimelib.session { runtime_for_base }
                 base = JacRuntime.get_base_path_dir();
                 if base {
+                    stage = 'provision';
                     lease = runtime_for_base(base, JacRuntime.get_full_target_path());
                     rt = lease.runtime;
                     store = PgStore(
@@ -78,20 +126,49 @@ def shared_store -> (any | None) {
                     reset = lease.reset;
                 }
             }
-            if store is not None {
-                store.ensure_schema_once(promotions);
-                if reset {
-                    store.reset_data();
-                }
+            if store is None {
+                _fail(NO_DATABASE_RESOLVED);
+                return None;
+            }
+
+            stage = 'connect';
+            store.rows('SELECT 1', {});
+            stage = 'schema';
+            store.ensure_schema_once(promotions);
+            if reset {
+                store.reset_data();
             }
         } except Exception as e {
-            logger.warning(f"scale shared store unavailable: {e}");
-            _holder['key'] = key;
-            _holder['store'] = None;
+            if store is not None {
+                try {
+                    store.close();
+                } except Exception { }
+            }
+            _fail(_failure_reason(stage, source, store, e));
             return None;
         }
         _holder['key'] = key;
         _holder['store'] = store;
+        _holder.pop('failure', None);
         return store;
     }
+}
+
+
+def _failure_reason(stage: str, source: str, store: any, e: Exception) -> str {
+    cause = f"{type(e).__name__}: {e}";
+    if stage == 'provision' {
+        return f"the embedded Postgres server could not be provisioned ({cause})";
+    }
+    if stage == 'resolve' {
+        return f"the store named by {source} could not be built ({cause})";
+    }
+    where = _store_target(store);
+    if stage == 'schema' {
+        return (
+            f"connected to {where} but the shared schema could not be set up"
+            f" ({cause})"
+        );
+    }
+    return f"cannot reach {where}, resolved from {source} ({cause})";
 }

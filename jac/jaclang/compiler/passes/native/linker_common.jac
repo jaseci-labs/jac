@@ -48,8 +48,8 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
     want = triple_arch(triple);
 
     pbs = os.path.join(pkg_root, ".pbs-build");
+    fallback: (str | None) = None;
     if os.path.isdir(pbs) {
-        fallback: (str | None) = None;
         for d in sorted(os.listdir(pbs)) {
             libdir = os.path.join(pbs, d, "python", "build", "lib");
             if os.path.isdir(libdir) {
@@ -61,13 +61,13 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
                 }
             }
         }
-        if fallback is not None {
-            return fallback;
-        }
     }
 
-    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
-    if os.path.isdir(floor) {
+    import from jaclang.runtimelib.fused_binary { bundled_floor_roots }
+    for floor in bundled_floor_roots(pkg_root) {
+        if not os.path.isdir(floor) {
+            continue;
+        }
         for d in sorted(os.listdir(floor)) {
             cand = os.path.join(floor, d);
             if os.path.isdir(cand) and (want in d) {
@@ -75,7 +75,7 @@ def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
             }
         }
     }
-    return None;
+    return fallback;
 }
 
 def floor_lib_dir(triple: str) -> (str | None) {

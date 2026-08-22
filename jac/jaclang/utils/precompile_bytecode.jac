@@ -302,9 +302,22 @@ glob NATIVE_SEAL_ROOTS: tuple[str, ...] = (
          "compiler/native_materialize.jac",
 
      ),
-     NATIVE_SEAL_REFUSED_ROOTS: dict[str, str] = {},
+     NATIVE_SEAL_REFUSED_ROOTS: dict[str, str] = {
+         "compiler/passes/main/capability_check_pass.jac": (
+             "one own seam left (native_capability_violations, the "
+             "pass-tier crossing into ModuleCodegenPass.iter_context_stmts) "
+             "and it cannot be waived: the seal's abort-stub linkage check "
+             "reads the IR that ships and NativeCapabilityCheckPass."
+             "transform -- the root's live entry point -- links the stub "
+             "directly, so the artifact would abort on its first native "
+             "run. Seals when the pass-tier crossing links artifacts "
+             "instead of stubbing, or when transform stops calling the "
+             "demoted function natively."
+         )
+     },
      NATIVE_SEAL_CLOSURE: tuple[str, ...] = (
          "jac0core/codegen_ir.jac",
+         "jac0core/codeinfo.jac",
          "jac0core/constant.jac",
          "jac0core/diagnostic_utils.jac",
          "jac0core/diagnostics.jac",
@@ -320,6 +333,7 @@ glob NATIVE_SEAL_ROOTS: tuple[str, ...] = (
          "jac0core/passes/endpoint_effect_pass.jac",
          "jac0core/passes/jcir_gen_pass.jac",
          "jac0core/passes/module_codegen_pass.jac",
+         "jac0core/passes/prefix_drive.jac",
          "jac0core/passes/semantic_analysis_pass.jac",
          "jac0core/passes/sym_tab_build_pass.jac",
          "jac0core/passes/transform.jac",
@@ -340,6 +354,7 @@ glob NATIVE_SEAL_ROOTS: tuple[str, ...] = (
          "project/client_kind_paths.jac",
          "runtimelib/client/targets/react_native/html_tag_map.jac",
          "runtimelib/na_stdlib/_hashlib_native.jac",
+         "runtimelib/na_stdlib/contextvars.jac",
          "runtimelib/na_stdlib/fnmatch.jac",
          "runtimelib/na_stdlib/hashlib.jac",
          "runtimelib/na_stdlib/keyword.jac",
@@ -356,7 +371,6 @@ glob NATIVE_SEAL_UNITREE_ROOT: str = "jac0core/unitree.jac",
 glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
          "jac0core/unitree.jac::ModulePath.resolve_relative_path",
          "jac0core/unitree.jac::ModulePath.native_bundled_path",
-         "jac0core/unitree.jac::UniNode.gen.__get__",
          "jac0core/unitree.jac::Module.annexable_by.__get__",
          "jac0core/unitree.jac::Import.__jac_detected.__get__",
          "jac0core/unitree.jac::Import.is_service_import.__get__",
@@ -384,8 +398,6 @@ glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
 
      ),
      _HELPERS_SEAM_WAIVERS: tuple[str, ...] = (
-         "jac0core/helpers.jac::pretty_print_source_location",
-         "jac0core/helpers.jac::format_related_spans",
          "jac0core/helpers.jac::read_file_with_encoding",
          "jac0core/helpers.jac::normalize_exclude_patterns",
          "jac0core/helpers.jac::read_jacignore_patterns",
@@ -395,22 +407,37 @@ glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
          "jac0core/helpers.jac::evaluate_version_condition",
 
      ),
-     _TRANSFORM_SEAM_WAIVERS: tuple[str, ...] = (
-         "jac0core/passes/transform.jac::Alert.pretty_print",
+     _CODEINFO_SEAM_WAIVERS: tuple[str, ...] = (
+         "jac0core/codeinfo.jac::CodeGenTarget.doc_ir.__get__",
+         "jac0core/codeinfo.jac::_func_layout_to_dict",
+         "jac0core/codeinfo.jac::_inferred_native_path",
+         "jac0core/codeinfo.jac::effective_default_codespace",
+         "jac0core/codeinfo.jac::effective_native_closure_cap",
+         "jac0core/codeinfo.jac::install_native_static_init",
+         "jac0core/codeinfo.jac::is_bundled_native_module",
+         "jac0core/codeinfo.jac::is_client_by_location",
+         "jac0core/codeinfo.jac::is_native_by_location",
+         "jac0core/codeinfo.jac::native_layout_to_dict",
+         "jac0core/codeinfo.jac::native_stdlib_root",
+         "jac0core/codeinfo.jac::native_wasm_stem",
+         "jac0core/codeinfo.jac::resolve_native_module",
 
      ),
-     _MODULE_CODEGEN_SEAM_WAIVERS: tuple[str, ...] = (
+     _CLOSURE_SEAM_WAIVERS: tuple[str, ...] = (
+         _UNITREE_SEAM_WAIVERS
+         + _TYPES_SEAM_WAIVERS
+         + _TYPE_UTILS_SEAM_WAIVERS
+         + _HELPERS_SEAM_WAIVERS
+         + _CODEINFO_SEAM_WAIVERS
+     ),
+     _MCP_PASSENGER_SEAM_WAIVERS: tuple[str, ...] = (
          (
              "jac0core/passes/module_codegen_pass.jac::"
-             "ModuleCodegenPass.archetype_refs"
+             "ModuleCodegenPass.has_native_context_stmts"
          ),
          (
              "jac0core/passes/module_codegen_pass.jac::"
              "ModuleCodegenPass.iter_context_stmts"
-         ),
-         (
-             "jac0core/passes/module_codegen_pass.jac::"
-             "ModuleCodegenPass.has_native_context_stmts"
          ),
          (
              "jac0core/passes/module_codegen_pass.jac::"
@@ -424,31 +451,20 @@ glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
              "jac0core/passes/module_codegen_pass.jac::"
              "ModuleCodegenPass.shared_archetypes_for_context"
          ),
-         ("jac0core/passes/module_codegen_pass.jac::" "client_capability_violations"),
+         "jac0core/passes/module_codegen_pass.jac::client_capability_violations",
 
      ),
-     _LEAF_SEAM_WAIVERS: tuple[str, ...] = (
-         _UNITREE_SEAM_WAIVERS
-         + _TYPES_SEAM_WAIVERS
-         + _TYPE_UTILS_SEAM_WAIVERS
-         + _HELPERS_SEAM_WAIVERS
-     ),
-     _CLOSURE_SEAM_WAIVERS: tuple[str, ...] = (
-         _LEAF_SEAM_WAIVERS + _TRANSFORM_SEAM_WAIVERS
-     ),
-     _ENDPOINT_EFFECT_SEAM_WAIVERS: tuple[str, ...] = (
-         "jac0core/passes/endpoint_effect_pass.jac::EndpointEffectPass.enter_ability",
-         "jac0core/passes/endpoint_effect_pass.jac::EndpointEffectPass.enter_archetype",
+     _CAPABILITY_SEAM_WAIVERS: tuple[str, ...] = (
+         (
+             "compiler/passes/main/capability_check_pass.jac::"
+             "native_capability_violations"
+         ),
 
      ),
      _CFG_BUILD_SEAM_WAIVERS: tuple[str, ...] = (
          "compiler/passes/main/cfg_build_pass.jac::cfg_dot_from_file",
          "compiler/passes/main/cfg_build_pass.jac::CoalesceBBPass.enter_node",
          "compiler/passes/main/cfg_build_pass.jac::CoalesceBBPass._node_label",
-         (
-             "compiler/passes/main/cfg_build_pass.jac::"
-             "CFGBuildPass._find_next_cfg_stmt_after"
-         ),
 
      ),
      _JCIR_INTEROP_SEAM_WAIVERS: tuple[str, ...] = (
@@ -458,10 +474,6 @@ glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
              "jac0core/passes/jcir_gen_pass.jac::"
              "JcirGenPass._native_import_registration_map"
          ),
-         "jac0core/passes/jcir_gen_pass.jac::JcirGenPass._native_test_shim_stmts",
-         "jac0core/passes/jcir_gen_pass.jac::JcirGenPass._gen_py_sv_func_stub",
-         "jac0core/passes/jcir_gen_pass.jac::JcirGenPass._gen_py_sv_walker_stub",
-         "jac0core/passes/jcir_gen_pass.jac::JcirGenPass._gen_py_boundary_stub_class",
          "jac0core/passes/jcir_gen_pass.jac::JcirGenPass.exit_test",
          "jac0core/passes/jcir_gen_pass.jac::JcirGenPass.exit_import",
 
@@ -489,17 +501,17 @@ glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
 
      ),
      NATIVE_SEAL_DEMOTION_WAIVERS: dict[str, tuple[str, ...]] = {
-         "compiler/native_materialize.jac": _CLOSURE_SEAM_WAIVERS,
+         "compiler/native_materialize.jac": (
+             _CLOSURE_SEAM_WAIVERS + _CFG_BUILD_SEAM_WAIVERS
+         ),
          "jac0core/unitree.jac": _CLOSURE_SEAM_WAIVERS,
          "jac0core/passes/annex_pass.jac": _CLOSURE_SEAM_WAIVERS,
          "jac0core/passes/module_codegen_pass.jac": _CLOSURE_SEAM_WAIVERS,
          "jac0core/passes/uni_pass.jac": (
-             _CLOSURE_SEAM_WAIVERS + _MODULE_CODEGEN_SEAM_WAIVERS
+             _CLOSURE_SEAM_WAIVERS + _MCP_PASSENGER_SEAM_WAIVERS
          ),
          "jac0core/passes/transform.jac": _CLOSURE_SEAM_WAIVERS,
-         "jac0core/passes/endpoint_effect_pass.jac": (
-             _CLOSURE_SEAM_WAIVERS + _ENDPOINT_EFFECT_SEAM_WAIVERS
-         ),
+         "jac0core/passes/endpoint_effect_pass.jac": _CLOSURE_SEAM_WAIVERS,
          "jac0core/passes/ast_validation_pass.jac": _CLOSURE_SEAM_WAIVERS,
          "jac0core/passes/semantic_analysis_pass.jac": _CLOSURE_SEAM_WAIVERS,
          "jac0core/passes/sym_tab_build_pass.jac": _CLOSURE_SEAM_WAIVERS,
@@ -511,6 +523,9 @@ glob _UNITREE_SEAM_WAIVERS: tuple[str, ...] = (
              _CLOSURE_SEAM_WAIVERS + _CFG_BUILD_SEAM_WAIVERS
          ),
          "compiler/passes/main/rc_facts_pass.jac": _CLOSURE_SEAM_WAIVERS,
+         "compiler/passes/main/capability_check_pass.jac": (
+             _CLOSURE_SEAM_WAIVERS + _CAPABILITY_SEAM_WAIVERS
+         ),
          "jac0core/passes/jcir_gen_pass.jac": (
              _CLOSURE_SEAM_WAIVERS
              + _JCIR_INTEROP_SEAM_WAIVERS
@@ -526,12 +541,14 @@ glob NATIVE_SEAL_WAIVER_FAMILIES: tuple[tuple[str, tuple[str, ...], str], ...] =
              _UNITREE_SEAM_WAIVERS,
              "Import resolution, filesystem and jac.toml reads, the "
              "CPython ast bridge, the `type`-object literal map and the `...` "
-             "value, plus the lazy `CodeGenTarget` construction behind "
-             "`UniNode.gen`. Each is infrastructure no native unit can host. "
+             "value. Each is infrastructure no native unit can host. "
              "They clear as the driver hands the tree data instead of "
              "handles: import detection stamped onto the node (the #8242 "
              "`absorbed_mod` pattern), codegen state crossing as records, "
-             "and a native value for `Ellipsis`."
+             "and a native value for `Ellipsis`. `UniNode.gen.__get__` sat "
+             "here until `codeinfo` joined the closure; with the module in "
+             "the unit the lazy `CodeGenTarget` construction lowers and the "
+             "waiver is gone."
          ),
          (
              "type system cross-module cascades",
@@ -561,61 +578,72 @@ glob NATIVE_SEAL_WAIVER_FAMILIES: tuple[tuple[str, tuple[str, ...], str], ...] =
              "as data."
          ),
          (
-             "helpers rendering, file reads and the unitree cycle",
+             "helpers file reads and the unitree cycle",
              _HELPERS_SEAM_WAIVERS,
-             "Three groups. `pretty_print_source_location` asks for `MOD` on "
-             "mismatched integer widths and `format_related_spans` cascades "
-             "on it. `read_file_with_encoding` passes an encoding keyword to "
-             "`open()`, which the native lane refuses out loud since #8255; "
-             "`normalize_exclude_patterns` and `read_jacignore_patterns` are "
-             "string methods on element-erased list members. The "
-             "`sys.version_info` family reads unitree through a "
-             "function-local import that keeps `helpers` out of a "
-             "module-level cycle with `unitree`; hoisting it is the clearing "
-             "mechanism and it needs the cycle broken first."
+             "Two groups. `read_file_with_encoding` passes an encoding "
+             "keyword to `open()`, which the native lane refuses out loud "
+             "since #8255; `normalize_exclude_patterns` and "
+             "`read_jacignore_patterns` are string methods on "
+             "element-erased list members. The `sys.version_info` family "
+             "reads unitree through a function-local import that keeps "
+             "`helpers` out of a module-level cycle with `unitree`; "
+             "hoisting it is the clearing mechanism and it needs the cycle "
+             "broken first. `pretty_print_source_location` and "
+             "`format_related_spans` sat here until their old-style `%` "
+             "formatting (the `MOD on i8*` gap) became plain padding; the "
+             "console gutter lowers now and `Alert.pretty_print` with it."
          ),
          (
-             "pass base chain rim surface",
-             _TRANSFORM_SEAM_WAIVERS,
-             "One left of the three the base chain's arrival brought in. "
-             "`Alert.pretty_print` renders source spans through "
-             "`helpers.pretty_print_source_location`, already waived above, "
-             "and clears with it. `BaseTransform.is_canceled` cleared when "
-             "cancellation started crossing as a scalar the pass reads "
-             "(`cancel_requested`; the event poll lives on the driver and "
-             "the Python loader now), and `Transform.ice` cleared when it "
-             "became the message-builder half of the internal-error guard "
-             "-- callers raise `RuntimeError(self.ice(...))`, a statement "
-             "the native raise path lowers."
+             "codeinfo Python-only machinery and named backend gaps",
+             _CODEINFO_SEAM_WAIVERS,
+             "The module the emptied `PLACEMENT_INFERENCE_HELD` entry was "
+             "holding out of every unit (#8323 B4). Its data model lowers "
+             "whole; every seam is filesystem, config or Python-codegen "
+             "machinery no native unit can host, or a named backend gap. "
+             "Python-only: `native_stdlib_root`, `is_native_by_location`, "
+             "`is_client_by_location` (a `jaclang.__file__` read), "
+             "`effective_default_codespace` and `effective_native_closure_"
+             "cap` (`project.config` reads), `_inferred_native_path` and "
+             "`resolve_native_module` (the placement scan, the driver's "
+             "ground), `is_bundled_native_module` (cascade), "
+             "`CodeGenTarget.doc_ir.__get__` (lazy `doc_ir` import), "
+             "`install_native_static_init` (writes an `any`-typed engine "
+             "handle). Backend gaps: `native_layout_to_dict` and "
+             "`_func_layout_to_dict` (`any` box of an optional), "
+             "`native_wasm_stem` (`os.path.splitext`). None is reachable "
+             "from a parse; each Python-only entry clears when its answer "
+             "crosses as driver-stamped data, the #8274 pattern."
          ),
          (
-             "module_codegen isinstance against an unreachable layout",
-             _MODULE_CODEGEN_SEAM_WAIVERS,
-             "One mechanism and its cascades, demoting in exactly one root "
-             "-- `uni_pass.jac`, the only root that links "
-             "`module_codegen_pass` without also linking the unitree layout "
-             "that would make its reads resolvable. `iter_context_stmts` "
-             "tests `isinstance` against `ElementStmt`, a unitree class "
-             "whose layout is not reachable there, which is the same named "
-             "backend gap `type_utils`'s `class_implements_protocol` and "
-             "`doc_of_sym` are waived for above; five of the others call "
-             "it, and `archetype_refs` hits the same wall one door over, "
-             "calling `UniNode.get_all_sub_nodes` on the layout that is "
-             "not there. It was always this way on this root -- the "
-             "ordering bug #8320's A1 fixed had been emitting it against "
-             "an unlanded verdict, so the seam only became visible when "
-             "the verdict started binding. They clear together the day a "
-             "call against an unreachable layout lowers -- one mechanism, "
-             "seven waivers, and no separate work of their own."
+             "module_codegen passengers in the uni_pass artifact",
+             _MCP_PASSENGER_SEAM_WAIVERS,
+             "In `uni_pass.jac`'s own unit the seat class is an ancestor "
+             "rather than the root, and `iter_context_stmts`'s "
+             "`isinstance` against `ElementStmt` loses the root-relative "
+             "layout reachability it has in every other unit; the other "
+             "five are cascades of it. The copies are dead passengers -- "
+             "the serving binder answers `module_codegen_pass` calls from "
+             "that root's own artifact -- and they clear when imported "
+             "isinstance stops being root-relative. The base-chain field "
+             "wall that once ran the other way is gone: every measured "
+             "root lowers `__post_init__`/`transform`/`traverse` now, so "
+             "uni_pass contributes no waiver of its own anywhere."
          ),
          (
-             "endpoint effects written as codegen state",
-             _ENDPOINT_EFFECT_SEAM_WAIVERS,
-             "Both write endpoint classifications through `UniNode.gen` "
-             "into the `InteropManifest`, Python-only codegen state, the "
-             "same family as unitree's waived `UniNode.gen.__get__`. They "
-             "clear when endpoint effects are emitted as data the driver "
-             "collects, the diagnostics-as-data pattern."
+             "capability pass-tier crossing",
+             _CAPABILITY_SEAM_WAIVERS,
+             "`native_capability_violations` calls "
+             "`ModuleCodegenPass.iter_context_stmts`, a method on another "
+             "sealed root's class, and the crossing clears when sealed "
+             "artifacts link each other rather than when the callee is "
+             "fixed -- the callee reached zero seams in wave 6. The waiver "
+             "does NOT make the root sealable: the seal's abort-stub "
+             "linkage check measured `NativeCapabilityCheckPass.transform` "
+             "-- the live entry point -- linking this stub directly, which "
+             "is why the root sits in `NATIVE_SEAL_REFUSED_ROOTS` with "
+             "that finding as its blocker. The accounting stays so the "
+             "audit keeps measuring the refused root; "
+             "`test_pass_seal_wave6_census.jac` carries the census."
          ),
          (
              "cfg_build graph tooling and erased basic-block storage",
@@ -629,9 +657,9 @@ glob NATIVE_SEAL_WAIVER_FAMILIES: tuple[tuple[str, tuple[str, ...], str], ...] =
              "reaches the emitter as a bare pointer, and the second "
              "cascades on `unparse_node`. They clear together when a "
              "container stored inside a container keeps its layout. "
-             "`_find_next_cfg_stmt_after` is on the real schedule and "
-             "reads a `Sequence` element through `cast`; it clears when "
-             "that read lowers."
+             "`_find_next_cfg_stmt_after` was here until it learned to "
+             "read the body through the classes that own one; it lowers "
+             "now and its waiver is gone."
          ),
          (
              "jcir interop manifest and driver reads",
@@ -643,8 +671,11 @@ glob NATIVE_SEAL_WAIVER_FAMILIES: tuple[tuple[str, tuple[str, ...], str], ...] =
              "them is gone: `exit_import` consumes "
              "`Import.native_only_drop` instead of asking the driver for "
              "`native_only_import_target`, so this root names no driver "
-             "entry point at all. Clears the rest of the way when the "
-             "manifest crosses as a native-clean record instead of a "
+             "entry point at all. Four entries cleared when `codeinfo` "
+             "joined the closure -- the py-sv stub builders and "
+             "`_native_test_shim_stmts` read manifest state whose types "
+             "now have in-unit layouts. Clears the rest of the way when "
+             "the manifest crosses as a native-clean record instead of a "
              "Python object."
          ),
          (
@@ -1280,6 +1311,192 @@ def seal_parse_parity_canary(lib_path: str, layout_dict: dict[str, any]) -> str 
     return _merge_probe_parity(np);
 }
 
+def seal_prefix_parity_canary(lib_path: str, layout_dict: dict[str, any]) -> str {
+    import traceback;
+    import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
+    import from jaclang.jac0core.compile_options { env_na_debug }
+    import from jaclang.jac0core.parser.lexer { tokenize_full }
+    import from jaclang.jac0core.parser.materialize { bind_native_parser }
+    import from jaclang.jac0core.parser.parser { Parser }
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
+    import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.jac0core.passes.decl_impl_match_pass { DeclImplMatchPass }
+    import from jaclang.jac0core.passes.semantic_analysis_pass { SemanticAnalysisPass }
+    import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
+    import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
+
+    nl = chr(10);
+    sys.stderr.write(f"    canary: prefix parity in {os.path.basename(lib_path)}\n");
+    sys.stderr.flush();
+    try {
+        np = bind_native_parser(lib_path, layout_dict);
+    } except Exception as bind_exc {
+        if env_na_debug() {
+            traceback.print_exc(file=sys.stderr);
+        }
+        return f"binding failed: {type(bind_exc).__name__}: {bind_exc}";
+    }
+    if not np.serves_prefix() {
+        return "the artifact exports no mat_parse_and_run_prefix entry";
+    }
+    _pfx_harness_lines = [
+        (
+            'test "box holds" { assert Canary(a=2).m() >= -1; }'
+                if ln.startswith("test box_holds")
+                else ln
+        ) for ln in _PARITY_CANARY_LINES
+    ];
+    _pfx_alerting_lines = [
+        "def m(p: int) -> int {",
+        "    break;",
+        "    return p;",
+        "}",
+
+    ];
+    corpora = [
+        (nl.join(_pfx_harness_lines), "__seal_prefix_harness__.jac", 0, ),
+        (nl.join(list(_PARITY_CORPUS_LINES)), "__seal_prefix_corpus__.jac", 0, ),
+        (nl.join(_pfx_alerting_lines), "__seal_prefix_alerting__.jac", 1, ),
+
+    ];
+    import from jaclang.jac0core.passes.prefix_drive {
+        PREFIX_NATIVE_FRONTIER as _pfx_frontier
+    }
+    for (canary_src, canary_path, min_rows) in corpora {
+        try {
+            r = np.parse_and_run_prefix(canary_src, canary_path, 6, "", 0, 0);
+        } except Exception as run_exc {
+            if env_na_debug() {
+                traceback.print_exc(file=sys.stderr);
+            }
+            return (
+                f"prefix crossing of {canary_path} raised "
+                f"{type(run_exc).__name__}: {run_exc}"
+            );
+        }
+        (native_mod, n_errs, _pd, _cm, _ld, n_lex) = (
+            r[0],
+            r[1],
+            r[2],
+            r[3],
+            r[4],
+            r[5],
+
+        );
+        (executed, clause, detail, rows) = (r[6], r[7], r[8], r[9], );
+        if n_errs or n_lex {
+            _pd_head: list[str] = [];
+            try {
+                for _pd_row in (list(_pd) + list(_ld))[:3] {
+                    _pd_head.append(
+                        f"{_pd_row.loc.line}:{_pd_row.loc.col_start} "
+                        f"{str(_pd_row.message)[:90]}"
+                    );
+                }
+            } except Exception as _pd_exc {
+                _pd_head.append(f"<diag rows unreadable: {_pd_exc}>");
+            }
+            return (
+                f"{canary_path}: the seal corpus did not parse "
+                f"({n_errs}/{n_lex}): {'; '.join(_pd_head)}"
+            );
+        }
+        if executed != _pfx_frontier {
+            return (
+                f"{canary_path}: the crossing executed {executed}, but the "
+                f"native frontier claims {_pfx_frontier} ({clause}: {detail})"
+            );
+        }
+        if len(rows) < min_rows {
+            return (
+                f"{canary_path}: the alerting corpus produced {len(rows)} "
+                f"row(s); a canary that cannot see an alert is decoration"
+            );
+        }
+        (tokens, _c, _lx, lex_errs) = tokenize_full(canary_src, canary_path);
+        pyp = Parser(tokens=tokens, file_path=canary_path, source_code=canary_src);
+        py_mod = pyp.parse();
+        if pyp.error_count or lex_errs {
+            return f"{canary_path}: the staged parse of the corpus errored";
+        }
+        prog = JacProgram();
+        staged_rows: list[tuple] = [];
+        _pfx_all_passes = (
+            ASTValidationPass,
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass,
+            SemDefMatchPass,
+            CFGBuildPass,
+
+        );
+        for (pass_ord, cls) in enumerate(_pfx_all_passes[:_pfx_frontier]) {
+            inst: any = cls(ir_in=py_mod, prog=prog);
+            for e in inst.errors_had {
+                staged_rows.append(
+                    (
+                        1,
+                        e.code.code if e.code is not None else "",
+                        e.msg,
+                        e.loc.first_line,
+                        e.loc.col_start,
+                        e.loc.pos_start,
+                        e.loc.pos_end,
+                        pass_ord,
+
+                    )
+                );
+            }
+            for w in inst.warnings_had {
+                staged_rows.append(
+                    (
+                        0,
+                        w.code.code if w.code is not None else "",
+                        w.msg,
+                        w.loc.first_line,
+                        w.loc.col_start,
+                        w.loc.pos_start,
+                        w.loc.pos_end,
+                        pass_ord,
+
+                    )
+                );
+            }
+        }
+        native_rows = [
+            (rr[0], rr[1], rr[2], rr[4], rr[5], rr[6], rr[7], rr[8], ) for rr in rows
+        ];
+        if native_rows != staged_rows {
+            return (
+                f"{canary_path}: the alert streams diverged "
+                f"(prefix {len(native_rows)} row(s), staged "
+                f"{len(staged_rows)}): {native_rows[:3]} != {staged_rows[:3]}"
+            );
+        }
+        native_up = unparse_node(native_mod);
+        py_up = unparse_node(py_mod);
+        if native_up != py_up {
+            return _parity_text_report(canary_path, native_up, py_up);
+        }
+        n_syms: list[str] = [];
+        p_syms: list[str] = [];
+        try {
+            n_syms = _sym_name_fingerprint(native_mod);
+            p_syms = _sym_name_fingerprint(py_mod);
+        } except Exception as sym_exc {
+            return (
+                f"{canary_path}: post-pass symbol fingerprint raised "
+                f"{type(sym_exc).__name__}: {sym_exc}"
+            );
+        }
+        if n_syms != p_syms {
+            return _parity_sym_report(canary_path, n_syms, p_syms);
+        }
+    }
+    return "";
+}
+
 glob _MERGE_PROBE_MAIN: tuple[str, ...] = (
          "obj Widget {",
          "    has size: int = 1;",
@@ -1891,6 +2108,11 @@ def seal_native_roots(
                             str(reuse_lib), reused_layout
                         );
                     }
+                    if not canary and rel == NATIVE_SEAL_MATERIALIZE_ROOT {
+                        canary = seal_prefix_parity_canary(
+                            str(reuse_lib), reused_layout
+                        );
+                    }
                 }
                 if canary {
                     why = f"its canary no longer passes: {canary}";
@@ -2058,10 +2280,9 @@ def seal_native_roots(
         out_dir.mkdir(parents=True, exist_ok=True);
         lib_path.unlink(missing_ok=True);
         layout_path.unlink(missing_ok=True);
-        transitive = list(manifest.native_transitive_sources) if manifest else [];
         (ok, err) = emit_shared_library(
             str(ir.gen.llvm_ir),
-            transitive,
+            manifest,
             exports,
             str(lib_path),
             clib_paths=list(ir.gen._clib_paths or []),
@@ -2105,12 +2326,15 @@ def seal_native_roots(
         }
         if rel == NATIVE_SEAL_MATERIALIZE_ROOT {
             parity = seal_parse_parity_canary(str(lib_path), layout_dict);
+            if not parity {
+                parity = seal_prefix_parity_canary(str(lib_path), layout_dict);
+            }
             if parity {
                 console.error(
                     f"NATIVE SEAL: {rel}: the emitted artifact "
-                    f"{lib_path.name} failed its parse parity canary. The "
-                    "seal refuses artifacts whose parses do not match the "
-                    "bytecode parser; set JAC_NA_DEBUG=1 for the full "
+                    f"{lib_path.name} failed its parity canaries. The seal "
+                    "refuses artifacts whose parse or prefix does not match "
+                    "the staged route; set JAC_NA_DEBUG=1 for the full "
                     f"unparsed texts and the traceback.{chr(10)}{parity}"
                 );
                 lib_path.unlink(missing_ok=True);

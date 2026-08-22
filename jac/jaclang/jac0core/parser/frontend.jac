@@ -110,7 +110,21 @@ def parse(
         p_errs = parser.error_count;
         p_diags = parser.diags;
     }
+    had_error = _finish_parse(
+        module, p_errs, p_diags, comments, lex_diags, lex_errs, prog
+    );
+    return (module, had_error);
+}
 
+def _finish_parse(
+    module: Module,
+    p_errs: int,
+    p_diags: any,
+    comments: any,
+    lex_diags: any,
+    lex_errs: int,
+    prog: (JacProgram | None)
+) -> bool {
     diag_src: Source | None = None;
     if prog is not None and lex_diags {
         diag_src = module.source;
@@ -156,6 +170,122 @@ def parse(
             }
         }
     }
-    had_error = p_errs > 0 or lex_errs > 0;
-    return (module, had_error);
+    return p_errs > 0 or lex_errs > 0;
+}
+
+def _replay_prefix_rows(rows: any, claimed: tuple, prog: JacProgram, diag_src: Source) {
+    import from jaclang.jac0core.compiler {
+        deliver_alerts,
+        get_ir_gen_sched,
+        get_symtab_ir_sched
+    }
+
+    pool: dict[str, any] = {};
+    for sched in [
+        get_ir_gen_sched(gen_mtir=True),
+        get_ir_gen_sched(gen_mtir=False),
+        get_symtab_ir_sched()
+    ] {
+        for p in sched {
+            pool[p.__name__] = p;
+        }
+    }
+    errs: list = [];
+    warns: list = [];
+    for rr in rows {
+        sev = int(rr[0]);
+        code_str = str(rr[1]);
+        pass_idx = int(rr[8]);
+        rtok = UniToken(
+            orig_src=diag_src,
+            name="ERROR" if sev else "WARNING",
+            value="",
+            line=int(rr[4]),
+            end_line=int(rr[4]),
+            col_start=int(rr[5]),
+            col_end=int(rr[5]),
+            pos_start=int(rr[6]),
+            pos_end=int(rr[7])
+        );
+        from_pass: any = None;
+        if pass_idx >= 0 and pass_idx < len(claimed) {
+            from_pass = pool.get(str(claimed[pass_idx]));
+        }
+        if from_pass is None {
+            from_pass = Parser;
+        }
+        alrt = Alert(
+            str(rr[2]),
+            CodeLocInfo(rtok, rtok),
+            from_pass,
+            code=DIAGNOSTICS.get(code_str) if code_str else None,
+            help_text=str(rr[3])
+        );
+        if sev {
+            errs.append(alrt);
+        } else {
+            warns.append(alrt);
+        }
+    }
+    deliver_alerts(errs, warns, prog);
+}
+
+def parse_and_run_prefix(
+    source_str: str,
+    file_path: str,
+    prog: (JacProgram | None),
+    claimed: tuple,
+    facts: any
+) -> tuple {
+    _np = _native_parse();
+    if _np is None or not _np.serves_prefix() {
+        raise RuntimeError(
+            "parse_and_run_prefix was entered without a prefix-serving "
+            "artifact; the flip predicate gates on the bound parser and "
+            "must have declined before reaching this entry"
+        );
+    }
+    import from jaclang.jac0core.prefix_flip { PREFIX_IR_GEN_NO_CGEN }
+    claimed_t = tuple(claimed or ());
+    claimed_n = len(claimed_t) if len(claimed_t) < 6 else 6;
+    if list(claimed_t[:claimed_n]) != list(PREFIX_IR_GEN_NO_CGEN[:claimed_n]) {
+        (module, had_error) = parse(source_str, file_path, prog=prog);
+        return (
+            module,
+            had_error,
+            (),
+            "option-shape-unsupported",
+            "the claimed schedule does not lead with the sealed prefix order",
+
+        );
+    }
+    proj_root = facts?.jac_project_root;
+    r = _np.parse_and_run_prefix(
+        source_str,
+        file_path,
+        claimed_n,
+        str(proj_root) if proj_root is not None else "",
+        1 if proj_root is not None else 0,
+        1 if facts?.access_enforced else 0
+    );
+    (module, p_errs, p_diags, comments, lex_diags, lex_errs) = (
+        r[0],
+        r[1],
+        r[2],
+        r[3],
+        r[4],
+        r[5],
+
+    );
+    (executed_n, clause, detail, rows) = (int(r[6]), str(r[7]), str(r[8]), r[9], );
+    had_error = _finish_parse(
+        module, p_errs, p_diags, comments, lex_diags, lex_errs, prog
+    );
+    if had_error {
+        return (module, had_error, (), "prefix-declined", "the source did not parse");
+    }
+    if prog is not None and rows {
+        _replay_prefix_rows(rows, claimed_t, prog, module.source);
+    }
+    return (module, had_error, tuple(claimed_t[:executed_n]), clause, detail);
 }

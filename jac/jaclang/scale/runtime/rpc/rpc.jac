@@ -10,7 +10,10 @@ glob _RPC_MAX_ATTEMPTS: int = 3,
 
 def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
     import time;
-    import from jaclang.runtimelib.serving.client { ClientConnectionError }
+    import from jaclang.runtimelib.serving.client {
+        ClientConnectionError,
+        ClientRequestNotSent
+    }
 
     backoff: float = _RPC_INITIAL_BACKOFF_SECONDS;
     last_err: Exception | None = None;
@@ -23,7 +26,7 @@ def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
             payload = send();
             breaker_record_success(module_name);
             return payload;
-        } except (ClientConnectionError, OSError) as e {
+        } except ClientRequestNotSent as e {
             err_ref: any = e;
             last_err = err_ref;
             breaker_record_failure(module_name);
@@ -35,6 +38,11 @@ def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
                 time.sleep(backoff);
                 backoff = backoff * 2.0;
             }
+        } except (ClientConnectionError, OSError) as e {
+            sent_ref: any = e;
+            last_err = sent_ref;
+            breaker_record_failure(module_name);
+            break;
         }
     }
 

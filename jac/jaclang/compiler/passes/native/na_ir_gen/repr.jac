@@ -11,6 +11,7 @@ obj NaIRGenRepr(NaIRGenState) {
     def _repr_str_fn -> ir.Function;
     def _repr_leaf_fn(kind: str) -> (ir.Function | None);
     def _repr_jacval_fn -> (ir.Function | None);
+    def _str_jacval_fn -> (ir.Function | None);
     def _runtime_repr_key(val: ir.Value) -> (str | None);
     def _repr_obj_fn(arch_name: str) -> ir.Function;
     def _repr_list_fn(type_key: str) -> (ir.Function | None);

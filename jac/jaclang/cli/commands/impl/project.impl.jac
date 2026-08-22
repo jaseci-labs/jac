@@ -1981,7 +1981,8 @@ def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
     name = config.project.name;
     jac_bin = os.path.realpath(sys.executable);
 
-    if subprocess.run([jac_bin, "__hasruntime"], capture_output=True).returncode != 0 {
+    import from jaclang.runtimelib.fused_binary { has_runtime, append_overlay }
+    if not has_runtime(jac_bin) {
         console.error(
             "jac build --as binary needs a bundled single-file jac to carry the "
             "runtime; the current interpreter is not one (source / pip install).",
@@ -2022,10 +2023,8 @@ def _bundle_binary(config: any, output: str, fat: bool = False) -> int {
 
         console.print("  Appending app image onto the jac runtime", style="muted");
 
-        rc = subprocess.run(
-            [jac_bin, "__appjab", str(jab_path), str(out_bin)]
-        ).returncode;
-        if rc != 0 or not out_bin.is_file() {
+        if not append_overlay(jac_bin, str(jab_path), str(out_bin))
+            or not out_bin.is_file() {
             console.error("Failed to append the app image onto the jac runtime.");
             return 1;
         }

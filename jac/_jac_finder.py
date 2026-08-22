@@ -1,7 +1,7 @@
 """Lightweight lazy finder for .jac modules.
 
 Installed by the jac binary's launcher at startup (``import _jac_finder;
-_jac_finder.install()`` in launcher.zig BOOT_SRC). Costs ~0ms for non-Jac
+_jac_finder.install()`` in launcher/launcher.jac BOOT_SRC). Costs ~0ms for non-Jac
 Python. On first .jac import, triggers ``import jaclang`` to bootstrap the full
 compiler, then delegates to the real JacMetaImporter.
 """
@@ -46,7 +46,7 @@ def _baked_source_dir() -> str | None:
 
     ``zig build -Ddev`` / ``-Djaclang-dir=PATH`` ships a payload WITHOUT a
     bundled ``jaclang`` and writes the absolute compiler path into a
-    ``jac_linked_source`` file beside this module (see ``payload.zig``
+    ``jac_linked_source`` file beside this module (see ``jaclang.payload``
     ``mkPayload``). Reading it here makes such a binary reroute to live source
     from ANY directory, with no ``[dev]`` ``jac.toml`` stanza in scope. The file
     is one line of plain text; absent on a normal (self-contained) binary.
@@ -88,10 +88,24 @@ def _dev_source_from_toml() -> str | None:
     return os.path.abspath(os.path.join(os.path.dirname(toml), src))
 
 
+def _inherited_dev_source() -> str | None:
+    """The dev source a parent jac process exported, if it still holds a tree.
+
+    ``apply_dev_source_override`` exports ``JAC_DEV_SOURCE`` whenever the loop
+    engages, so a child jac spawned from any cwd (a ``nacompile`` into a temp
+    dir, a desktop build compiling its host) inherits the same compiler instead
+    of silently falling back to the bundled copy.
+    """
+    src = os.environ.get("JAC_DEV_SOURCE", "")
+    if src and os.path.isdir(os.path.join(src, "jaclang")):
+        return src
+    return None
+
+
 def apply_dev_source_override() -> None:
     """Reroute ``import jaclang`` to an in-repo source tree -- an editable dev loop.
 
-    The source dir comes from one of two places, in order:
+    The source dir comes from one of three places, in order:
 
     1. ``[dev] jaclang_source`` from the nearest ``jac.toml``::
 
@@ -106,7 +120,12 @@ def apply_dev_source_override() -> None:
        walk-up means the loop holds from the repo root AND from ``cd jac``
        (where the suite runs); other subprojects opt in by adding their own
        stanza.
-    2. Otherwise, a ``jac_linked_source`` marker baked into a linked dev binary
+    2. Otherwise, an inherited ``JAC_DEV_SOURCE`` -- exported by a jac process
+       whose loop engaged, so the children it spawns (``jac test`` running a
+       ``nacompile`` into a temp dir, a desktop build compiling its host) stay
+       on the same compiler whatever their cwd. Without this a child outside the
+       repo would silently fall back to the bundled copy.
+    3. Otherwise, a ``jac_linked_source`` marker baked into a linked dev binary
        (``zig build -Ddev`` / ``-Djaclang-dir``; see ``_baked_source_dir``) --
        the cwd-independent "linked compiler" mode, where the binary ships no
        bundled ``jaclang``.
@@ -141,7 +160,7 @@ def apply_dev_source_override() -> None:
         # suppresses the jac.toml-based loop, where a bundled jaclang takes over.
         toml_src: str | None = None
         if not os.environ.get("JAC_NO_DEV_SOURCE"):
-            toml_src = _dev_source_from_toml()
+            toml_src = _dev_source_from_toml() or _inherited_dev_source()
         src_dir = toml_src or _baked_source_dir()
         if src_dir is None:
             return

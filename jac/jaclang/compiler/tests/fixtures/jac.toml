@@ -253,6 +253,7 @@
 "prim_os_environ.environ_na" = "native"
 "prim_ospath.ospath_cl" = "client"
 "prim_ospath.ospath_na" = "native"
+"prim_os_environ._set_from_param_na" = "native"
 "prim_phi_str_box.phi_str_box_cl" = "client"
 "prim_phi_str_box.phi_str_box_na" = "native"
 "prim_pprint.pprint_cl" = "client"

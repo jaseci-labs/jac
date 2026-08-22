@@ -183,6 +183,14 @@ impl NaIRGenTypes._spec_of(
         }
     }
     if not matched {
+        _agreed = self._spec_union_agreement(_t, names);
+        if _agreed is not None {
+            _t = _agreed;
+            tk = self._mangled_of(_t);
+            matched = True;
+        }
+    }
+    if not matched {
         if self._na_debug_on() and ("Sequence" in tk or "UniNode" in tk) {
             import sys as _so_sys;
             _so_sys.stderr.write(f"SPECMISS {tk}\n");
@@ -241,6 +249,48 @@ impl NaIRGenTypes._opt_sole_member(t: any) -> (any | None) {
     return _members[0];
 }
 
+impl NaIRGenTypes._spec_union_agreement(t: any, names: tuple) -> (any | None) {
+    try {
+        import from jaclang.compiler.type_system.types {
+            ClassType as _SuClassType,
+            UnionType as _SuUnionType
+        }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(t, _SuUnionType) {
+        return None;
+    }
+    _members = [
+        m
+        for m in (t.types or [])
+        if not (
+            isinstance(m, _SuClassType)
+            and m._shared is not None
+            and m.shared.class_name in ("NoneType", "None")
+        )
+    ];
+    if len(_members) < 2 {
+        return None;
+    }
+    _low: any = None;
+    for m in _members {
+        if not self._spec_name_match(self._mangled_of(m), names) {
+            return None;
+        }
+        _ml = self._lower_type(m);
+        if _ml is None {
+            return None;
+        }
+        if _low is None {
+            _low = _ml;
+        } elif _ml != _low {
+            return None;
+        }
+    }
+    return _members[0];
+}
+
 impl NaIRGenTypes._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     """Which archetype layout a receiver's field access should address.
 
@@ -278,10 +328,31 @@ impl NaIRGenTypes._struct_name_for_key(tk: (str | None)) -> (str | None) {
     if tk in self.struct_types {
         return tk;
     }
-    for part in self._split_union_key(tk) {
-        if part in self.struct_types {
-            return part;
+    _arch_parts = [
+        part
+        for part in self._split_union_key(tk)
+        if part in self.struct_types
+    ];
+    if len(_arch_parts) == 1 {
+        return _arch_parts[0];
+    }
+    if _arch_parts {
+        for _anc in self._mro_of(_arch_parts[0]) {
+            if _anc not in self.struct_types {
+                continue;
+            }
+            _in_all = True;
+            for _other in _arch_parts[1:] {
+                if _anc not in self._mro_of(_other) {
+                    _in_all = False;
+                    break;
+                }
+            }
+            if _in_all {
+                return _anc;
+            }
         }
+        return None;
     }
     for part in self._split_union_key(tk) {
         _base = self._erased_arch_base(part);
@@ -663,7 +734,7 @@ impl NaIRGenTypes._lower_class_type(t: any) -> (ir.Type | None) {
             spec = "ptr";
             if isinstance(elem_llvm.pointee, ir.LiteralStructType) {
                 esize = self._get_struct_size(elem_llvm.pointee);
-                spec = f"tuple{esize}";
+                spec = self._tuple_spec_name(elem_llvm.pointee);
             }
         }
         self._emit_set_helpers(spec, elem_llvm, esize);

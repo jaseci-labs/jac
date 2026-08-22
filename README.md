@@ -273,7 +273,6 @@ Here is the actual anatomy. The `jac` you download is a small native **launcher 
 | **Package manager** | pip runs inside the private interpreter, npm resolution goes through the carried Bun: one `jac.toml`, an automatic `.jac/venv`, and `jac x` to run any installed CLI tool | pip, pipx, uv, poetry, venv/virtualenv |
 | **Type checker** | Built into the compiler (`jac check`), with the typeshed stdlib stubs vendored at a pinned commit | mypy, pyright, tsc |
 | **Dev tooling** | Formatter, test runner, language server, and MCP server are modules of the same site (`jac fmt` / `jac test` / `jac lsp` / `jac mcp`) | black, ruff, pytest, jest |
-| **special easter egg** | Only for those with strong jac ninja chi | you will know when you're ready... |
 
 Full story: [One Binary, Build Anything](https://www.jaclang.org/docs/latest/quick-guide/one-binary).
 
@@ -300,7 +299,7 @@ The commands you'll use every day:
 | `jac build --as native` | Compile to a standalone, zero-dependency executable |
 | `jac install` / `jac x` | Manage PyPI + npm deps / run any installed CLI tool |
 | `jac check` / `jac fmt` / `jac test` | Type-check, format, test |
-| `jac ai` / `jac mcp` / `jac guide` | Built-in coding agent, MCP server, curated docs |
+| `jac mcp` / `jac guide` | MCP server for coding agents, curated docs |
 
 ## Build anything
 

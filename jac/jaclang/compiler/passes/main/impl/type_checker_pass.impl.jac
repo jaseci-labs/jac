@@ -1038,6 +1038,76 @@ impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
     self.ir_in.parent_scope = self.evaluator.builtins_module;
 }
 
+impl TypeCheckPass._client_state_field_owner(
+    self: TypeCheckPass, nd: HasVar
+) -> (Ability | None) {
+    if not isinstance(nd.parent, ArchHas) {
+        return None;
+    }
+    owner: (UniNode | None) = nd.parent;
+    while (owner is not None and not isinstance(owner, (Ability, Archetype))) {
+        owner = owner.parent;
+    }
+    if not isinstance(owner, Ability) {
+        return None;
+    }
+    if not nd.in_client_context() {
+        return None;
+    }
+    for probe in (nd.value, nd.type_tag.tag if nd.type_tag else None) {
+        cur: (UniNode | None) = probe;
+        while isinstance(cur, (FuncCall, AtomTrailer)) {
+            cur = cur.target;
+        }
+        if isinstance(cur, Name) and cur.value == 'Ref' {
+            return None;
+        }
+    }
+    return owner;
+}
+
+impl TypeCheckPass._install_client_state_setters(self: TypeCheckPass) -> None {
+    import from jaclang.compiler.passes.ecmascript.framework_backend {
+        state_setter_name
+    }
+    import from jaclang.compiler.type_system.types { create_callable_type }
+    mod = self.ir_in;
+    if mod is None {
+        return;
+    }
+
+    prev_emit = getattr(self, '_emit_diagnostics', True);
+    self._emit_diagnostics = False;
+    try {
+        none_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+        for nd in mod.get_all_sub_nodes(typ=HasVar) {
+            owner = self._client_state_field_owner(nd);
+            if owner is None {
+                continue;
+            }
+            setter_name = state_setter_name(nd.name.value);
+            if not setter_name {
+                continue;
+            }
+            scope = nd.sym_tab;
+            if (scope is None) or (scope.names_in_scope.get(setter_name) is not None) {
+                continue;
+            }
+            sym = nd.sym;
+            if sym is None {
+                continue;
+            }
+            stub = Name.gen_stub_from_node(nd.name, setter_name);
+            stub.type = create_callable_type(
+                [self.evaluator.get_type_of_symbol(sym)], none_type
+            );
+            scope.def_insert(stub);
+        }
+    } finally {
+        self._emit_diagnostics = prev_emit;
+    }
+}
+
 impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator = self.prog.get_type_evaluator();
 
@@ -1075,6 +1145,7 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
         self.evaluator._flow_key_type_cache.clear();
         self.evaluator._and_narrowing_overrides.clear();
     }
+    self._install_client_state_setters();
 }
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {

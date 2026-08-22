@@ -26,7 +26,6 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Type-check, format, or lint | `jac check` · `jac fmt` · `jac check --lint` · `jac precommit` |
 | Run tests | `jac test` |
 | Debug or visualize a graph | `jac run --debug` · `jac dot` · `jac browse` |
-| Have an AI agent write or edit code in my project | `jac ai` |
 | Query code structure (definitions, uses, walkers) | `jac code` |
 | Inspect or manage the project's Postgres store | `jac db` |
 | Manage config or profiles | `jac config` |
@@ -54,7 +53,6 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac purge` | Purge global bytecode cache (works even if corrupted) |
 | `jac dot` | Generate graph visualization |
 | `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
-| `jac ai` | Launch an interactive Jac coding agent (works with local models, no API key) |
 | `jac code` | Query code structure via the compiler (symbols, uses, walkers, slices) |
 | `jac mcp` | Start the MCP server so AI assistants can use the live Jac compiler |
 | `jac completions` | Generate (and optionally install) shell completions |
@@ -835,40 +833,7 @@ jac browse close
 
 ## AI-Assisted Development
 
-Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../agent-skills-and-mcp.md) for the workflow overview.
-
-### jac ai
-
-Launch an interactive Jac coding agent in your project. Runs against your configured byLLM model -- including fully local models, so it works without an API key.
-
-```bash
-jac ai [prompt] [-m MODEL] [--n_ctx N] [--safe] [-q] [--ui]
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `prompt` | Optional one-shot request; omit for an interactive session | interactive |
-| `-m, --model` | Model to use, e.g. `local:gemma-4-e4b` or `openai/gpt-4o` | from `jac.toml` |
-| `-n, --n_ctx` | Context-window size for local models (tokens) | model default |
-| `-s, --safe` | Confirm every file write and code execution | off |
-| `-q, --quiet` | Compact output: hide live reasoning, timings, and step detail | off |
-| `-u, --ui` | Open the agent in a web UI with a live phase-graph visualizer | off |
-
-**Examples:**
-
-```bash
-# Interactive session using the project's configured model
-jac ai
-
-# One-shot request
-jac ai "add a walker that lists all Todo nodes"
-
-# Fully local, no API key
-jac ai -m local:gemma-4-e4b
-
-# Web UI with live phase-graph visualization
-jac ai --ui
-```
+Two commands make Jac projects legible to (and drivable by) AI agents. See also [Agent Skills & MCP](../agent-skills-and-mcp.md) for the workflow overview.
 
 ### jac code
 

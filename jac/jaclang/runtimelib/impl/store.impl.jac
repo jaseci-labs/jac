@@ -248,6 +248,20 @@ def _app_identity -> str {
 }
 
 
+glob _SCHEMA_LOCK_TAG = 'jac:ensure_schema',
+     _SCHEMA_LOCK_WAIT_SECONDS = 30.0,
+     _SCHEMA_LOCK_POLL_SECONDS = 0.05,
+     _SCHEMA_LOCK_POLL_MAX_SECONDS = 0.5,
+     _CONCURRENT_CREATE_STATES = ('23505', '42P07', '42710');
+
+
+def _schema_lock_key -> int {
+    import hashlib;
+    digest = hashlib.sha256(_SCHEMA_LOCK_TAG.encode('utf-8')).digest()[:8];
+    return int.from_bytes(digest, 'big', signed=True);
+}
+
+
 def _sqlstate(e: Exception) -> str {
     for arg in getattr(e, 'args', ()) {
         if isinstance(arg, dict) and 'C' in arg {
@@ -407,30 +421,41 @@ impl PgStore.ensure_schema(promotions: dict[str, list[str]]) -> None {
             self._load_known_types();
             return;
         }
+        held = self._acquire_schema_lock(fp);
         try {
-            self._apply_schema_ddl();
-        } except PgWireError as e {
-            if _sqlstate(e) != '55P03' {
-                raise;
-            }
-            if self._reap_dead_sessions() == 0 {
-                raise SessionConflictError(
-                    database=self.conninfo.database, blockers=self._live_blockers()
-                ) from e;
+            if self._schema_stamp() == fp {
+                self._load_known_types();
+                return;
             }
             try {
-                self._apply_schema_ddl();
-            } except PgWireError as e2 {
-                if _sqlstate(e2) != '55P03' {
+                self._apply_schema_ddl_resilient();
+            } except PgWireError as e {
+                if _sqlstate(e) != '55P03' {
                     raise;
                 }
-                raise SessionConflictError(
-                    database=self.conninfo.database, blockers=self._live_blockers()
-                ) from e2;
+                if self._reap_dead_sessions() == 0 {
+                    raise SessionConflictError(
+                        database=self.conninfo.database, blockers=self._live_blockers()
+                    ) from e;
+                }
+                try {
+                    self._apply_schema_ddl_resilient();
+                } except PgWireError as e2 {
+                    if _sqlstate(e2) != '55P03' {
+                        raise;
+                    }
+                    raise SessionConflictError(
+                        database=self.conninfo.database, blockers=self._live_blockers()
+                    ) from e2;
+                }
+            }
+            self.kv_put(SCHEMA_STAMP_KEY, fp);
+            self._load_known_types();
+        } finally {
+            if held {
+                self._release_schema_lock();
             }
         }
-        self.kv_put(SCHEMA_STAMP_KEY, fp);
-        self._load_known_types();
     }
 }
 
@@ -469,6 +494,69 @@ impl PgStore.reset_data -> None {
             self.kv_put(SCHEMA_STAMP_KEY, stamp);
         }
         self._known_types = set();
+    }
+}
+
+
+impl PgStore._acquire_schema_lock(fingerprint: str) -> bool {
+    import time;
+    deadline = time.monotonic() + _SCHEMA_LOCK_WAIT_SECONDS;
+    delay = _SCHEMA_LOCK_POLL_SECONDS;
+    while True {
+        try {
+            got = self._run(
+                'SELECT pg_try_advisory_lock(:k)', {'k': _schema_lock_key()}
+            );
+            if got and bool(got[0][0]) {
+                return True;
+            }
+        } except PgWireError as e {
+            logger.debug(f"schema election unavailable ({_sqlstate(e)}): {e}");
+            return False;
+        }
+        if self._schema_stamp() == fingerprint {
+            return False;
+        }
+        if time.monotonic() >= deadline {
+            logger.warning(
+                f"waited {_SCHEMA_LOCK_WAIT_SECONDS:.0f}s for the schema"
+                f" election on '{self.conninfo.database}'; applying schema"
+                ' DDL without it'
+            );
+            return False;
+        }
+        time.sleep(delay);
+        delay = min(delay * 2, _SCHEMA_LOCK_POLL_MAX_SECONDS);
+    }
+}
+
+
+impl PgStore._release_schema_lock -> None {
+    try {
+        self._run('SELECT pg_advisory_unlock(:k)', {'k': _schema_lock_key()});
+    } except Exception as e {
+        logger.debug(f"schema election release failed: {e}");
+    }
+}
+
+
+impl PgStore._apply_schema_ddl_resilient -> None {
+    try {
+        self._apply_schema_ddl();
+    } except PgWireError as e {
+        state = _sqlstate(e);
+        if state not in _CONCURRENT_CREATE_STATES {
+            raise;
+        }
+        logger.info(
+            f"schema DDL lost a catalog race ({state}); a concurrent creator"
+            ' won, re-checking'
+        );
+        if self._schema_stamp() == self._schema_fingerprint() {
+            return;
+        }
+
+        self._apply_schema_ddl();
     }
 }
 

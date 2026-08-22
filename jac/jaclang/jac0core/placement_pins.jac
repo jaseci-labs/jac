@@ -98,6 +98,51 @@ def config_module_pin(source_path: str) -> str {
 }
 
 
+glob _na_demotion_memo: dict[str, tuple] = {};
+
+
+def _is_demoted_native(path: str) -> bool {
+    key = _na_demotion_memo.get(path);
+    if key is None {
+        return False;
+    }
+    try {
+        st = os.stat(path);
+        if key == (st.st_mtime_ns, st.st_size) {
+            return True;
+        }
+    } except OSError {
+        ;
+    }
+    del _na_demotion_memo[path];
+    return False;
+}
+
+
+def _mark_demoted_native(path: str) {
+    try {
+        st = os.stat(path);
+        _na_demotion_memo[path] = (st.st_mtime_ns, st.st_size);
+    } except OSError {
+        ;
+    }
+}
+
+
+def effective_pin_for(source_path: str, element_name: str) -> str {
+    pin = config_pin_for(source_path, element_name);
+    if pin == 'native' and _is_demoted_native(os.path.realpath(source_path)) {
+        return '';
+    }
+    return pin;
+}
+
+
+def effective_module_pin(source_path: str) -> str {
+    return effective_pin_for(source_path, '');
+}
+
+
 glob _kind_cache: dict[str, tuple[tuple, str]] = {},
      _kind_chain_cache: dict[str, list[str]] = {},
      _kind_probe: dict = {"active": False};

@@ -213,7 +213,8 @@ impl nacompile(
     debug: bool = False,
     gc: str = "",
     assert_no_rc: bool = False,
-    enforce_nogc: bool = False
+    enforce_nogc: bool = False,
+    strict: bool = False
 ) -> int {
     import from jaclang.jac0core.ext_registry {
         is_jac,
@@ -419,6 +420,22 @@ impl nacompile(
     }
 
     llvm_ir_str = str(ir_module.gen.llvm_ir);
+    if strict {
+        import from jaclang.compiler.passes.native.na_compile_pass {
+            native_demoted_ir_symbols as _demoted_syms
+        }
+        _demoted = _demoted_syms(llvm_ir_str);
+        if _demoted {
+            console.error(
+                f"{len(
+                    _demoted
+                )} function(s) in the native closure were demoted to Python-only: "
+                    + ", ".join(_demoted),
+                hint="A self-contained binary cannot run a demoted function. Rerun with JAC_NA_DEBUG=1 to see why each one failed to lower."
+            );
+            return 1;
+        }
+    }
 
     if assert_no_rc {
         (_rc_syms, _rc_probes) = _scan_rc_machinery(llvm_ir_str);
@@ -510,15 +527,11 @@ impl nacompile(
     _static_musl = _is_linux_exec and (len(needed_libs) == 0);
 
     if shared {
-        _transitive: list[str] = [];
         _mf = ir_module.gen.interop_manifest;
-        if _mf {
-            _transitive = _mf.native_transitive_sources;
-        }
         import from jaclang.compiler.passes.native.shared_emit {
             inject_shared_init as _inject_shared_init
         }
-        (llvm_ir_str, _extra_exports) = _inject_shared_init(llvm_ir_str, _transitive);
+        (llvm_ir_str, _extra_exports) = _inject_shared_init(llvm_ir_str, _mf);
         init_funcs = ["__jac_shared_init"];
         for _s in ir_module.gen._exported_symbols {
             if _s not in export_symbols {
@@ -789,8 +802,11 @@ def _musl_lib_dir(triple: str) -> (str | None) {
         }
     }
 
-    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
-    if os.path.isdir(floor) {
+    import from jaclang.runtimelib.fused_binary { bundled_floor_roots }
+    for floor in bundled_floor_roots(pkg_root) {
+        if not os.path.isdir(floor) {
+            continue;
+        }
         for d in sorted(os.listdir(floor)) {
             cand = os.path.join(floor, d, "musl");
             if os.path.isdir(cand)

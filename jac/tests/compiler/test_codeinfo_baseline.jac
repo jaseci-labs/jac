@@ -21,33 +21,27 @@ What this pins is the measured result: `codeinfo` produces IR and every
 remaining refusal is a per-callable seam, so the module ships. Each seam is
 filesystem, config or Python-codegen machinery, none of it the data model.
 
-**What it does not do, measured rather than assumed.** The nine
-`interop_manifest` seams in `boundary_analysis_pass` do not clear yet. They
-read `self.ir_in.gen.interop_manifest`, and `UniNode.gen`'s getter imports
-`CodeGenTarget` from `codeinfo` at run time; for that call to lower,
-`codeinfo` has to be *inferred* native, not merely compilable as a forced
-root.
+**The hold is gone, deliberately.** `PLACEMENT_INFERENCE_HELD` held this
+module out of native inference through two eras: first by the
+`import from typing { Any }` accident E1122 retired, then by name, priced
+at "13 own seams, and a closure that reaches uni_pass". B4 (#8323) paid
+that price with measurements: the entry is empty, `scan_native_blockers`'s
+held-loop iterates nothing, and `codeinfo` infers native wherever a unit
+imports it.
 
-What used to stop that was an accident: `import from typing { Any }` made
-`scan_native_blockers` answer `unresolved import 'typing'`. That import is a
-hard error in the language now (E1122), so the accident is gone and the hold
-is deliberate -- `PLACEMENT_INFERENCE_HELD` names `codeinfo` and says why.
-
-The hold is not bookkeeping. Letting inference through was measured on this
-base with the module-fatal glob already fixed, so `codeinfo` does produce IR;
-the problem is the blast radius. `unitree`'s closure goes from 11 members to
-19 and picks up 21 un-waived seams, and only 13 of those are `codeinfo`'s own
-filesystem-and-config machinery. The rest arrive with `passes/uni_pass.jac`
-and `passes/transform.jac`, and they include `UniPass.transform`,
-`UniPass.traverse` and `UniPass.get_all_sub_nodes` -- pass machinery a parse
-reaches, which is exactly the shape that must not ship as an `abort()` stub
-inside a sealed artifact. `unitree` is in `NATIVE_SEAL_ROOTS`, so this is a
-live seal, not a hypothetical one.
-
-Clearing the hold means answering `codeinfo`'s 13 seams and that closure,
-which is wave work; `test_unitree_seal_baseline.jac` is the guard that catches
-it either way. This change is deliberately closure-neutral for every sealed
-root.
+What that bought and cost, measured on this base. The closure below grew
+from 13 members to 19: `codeinfo`'s admissibility flips
+`native_default_path_ok` for the whole pass spine, so `transform`,
+`uni_pass`, `module_codegen_pass`, `diagnostics`, `diagnostic_utils` and
+`logging` join every unit that reaches `unitree` -- whose `import type`
+edges to `UniPass` and `CodeGenTarget` are real unit edges, the same kind
+that pulled `types.jac` in. The 21 seams the old measurement predicted
+arrived exactly (13 here, 3 in `transform`, 5 in `uni_pass`), every one
+waived by name in `NATIVE_SEAL_DEMOTION_WAIVERS` and pinned reachable-dead
+by `test_sealed_seam_reachability.jac`; `UniNode.gen.__get__` and
+`SymTabBuildPass.exit_global_vars` *cleared* in exchange, and
+`capability_check_pass` dropped from five own seams to one. The sealed
+censuses carry the per-root accounting.
 
 One coverage run, one test, deliberately: see the note in
 `test_expr_keys_baseline.jac` on what a file of N tests over one root costs

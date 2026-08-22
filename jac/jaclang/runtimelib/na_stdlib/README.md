@@ -289,6 +289,73 @@ bundled one. A bundled module links through the existing cross-module machinery
   instantiation, because a generic archetype is laid out once for every
   instantiation and its `T` slot is a raw pointer (#8229).
 
+- **`io.jac`** (Mechanism B) -- `BytesIO` (the CPython `io.BytesIO` value
+  model: `read`/`read1`/`write`/`seek`/`tell`/`getvalue`/`seek`-relative
+  `whence`, growth-with-NUL-fill on a seek-past-end write, `close`, context
+  manager) plus a `BufferedIOBase` name whose abstract methods raise, and the
+  `SEEK_*` / `DEFAULT_BUFFER_SIZE` constants. On the sv pathway `import io`
+  binds CPython's real `io` (same source, different binding), so the API
+  names/semantics match. DIVERGENCE: `BytesIO` is a **standalone** class rather
+  than a `BufferedIOBase` subclass -- the native pathway does not yet support
+  cross-module vtable dispatch (calling an overridden method through a
+  base-typed reference defined in another module aborts at run time), so the
+  bundled readers avoid inheritance across the module boundary. SCOPE: binary
+  streams only (no text `StringIO`, no `BufferedReader`/`BufferedWriter`
+  wrappers).
+
+- **`compression/zstd.jac`** (Mechanism F) + **`_zstd_native.jac`** (FFI
+  floor over the bundled `libzstd`, zstd 1.5.7) -- the CPython 3.14
+  `compression.zstd` read subset: `compress(data, level=3)` (one-shot
+  `ZSTD_compress2` with `ZSTD_c_compressionLevel`; byte-identical to CPython at
+  the same level, both over the same library), `decompress(data)` (loops
+  `ZSTD_decompressStream` across MULTIPLE concatenated frames, exactly as
+  CPython does), `ZstdDecompressor` (`decompress(data, max_length=-1)`, `eof`,
+  `needs_input`, `unused_data` -- single-frame semantics with the remainder
+  surfaced as `unused_data`, `d_windowLogMax` raised to 27), read-mode
+  `ZstdFile(file: io.BytesIO, mode="rb")` that pulls 1 MiB compressed chunks
+  and decodes incrementally, continuing seamlessly across concatenated frames
+  (`read`/`read1`/`seek`/`tell`/`close`/context manager), `get_frame_info`
+  (`ZSTD_getFrameContentSize`), the `ZstdError` exception, and the
+  `zstd_version` string. A zstd error raises `ZstdError` (on sv the real one).
+  DIVERGENCES: `ZstdFile` is read-only and, being standalone (see `io.jac`),
+  types its source as a concrete `io.BytesIO` rather than a general file object
+  (a path variant is not accepted); write/append modes raise `ValueError`. The
+  floor also defines strong no-op `ZSTD_trace_{compress,decompress}_{begin,end}`
+  symbols: `libzstd` is built with `ZSTD_TRACE` and references those four hooks
+  weakly, which the dynamic loader binds to 0 (JIT path) but the AOT static
+  linker emits as hard dynamic-undefined symbols -- the stubs satisfy them so a
+  `jac nacompile` binary links and runs. Native-host only (wasm gets a clean
+  link error). Pinned sv<->na congruent by `test_zstd_equivalence.jac`.
+
+- **`tarfile.jac`** (Mechanism B) + **`_tarfile_native.jac`** (tiny libc FFI
+  floor: `chmod`/`symlink`/`link`/`utime`/`creat`/`write`) -- a streaming-read
+  subset of CPython 3.14 `tarfile`: `open(name=None, mode="r", fileobj=None)`
+  supporting `"r"`/`"r:"`/`"r|"`, `TarInfo`
+  (`name`/`size`/`mtime`/`mode`/`type`/`linkname`/`uid`/`gid`/`uname`/`gname`
+  plus `isfile`/`isdir`/`issym`/`islnk`/`isreg`), `TarFile`
+  (`next`/`__iter__`/`__next__`/`getmembers`/`extractfile` returning an
+  `io.BytesIO`/`extractall(path, filter="data")`/`close`/context manager).
+  Header parsing is full POSIX ustar 512-byte blocks: octal fields **and** the
+  GNU base-256 binary encoding for sizes > 8 GiB, unsigned+signed checksum
+  verification, two zero blocks (or a truncated end) terminate, typeflags
+  `0`/`\0`/`5`/`2`/`1`/`x` (pax `path`/`linkpath`/`size`/`mtime` records)/`g`
+  (global pax, skipped)/`L`/`K` (GNU long name/link), padding to 512-byte
+  blocks. `extractall` creates parent dirs, writes regular files, makes dirs,
+  and applies `mode & 0o777` via a libc `chmod` plus the CPython `data`-filter
+  permission rules (`mode & 0o755`, clear exec if not user-exec, `| 0o600` for
+  files; directories/symlinks keep the system mode). The `data` filter's path
+  containment, absolute-path, and absolute-link checks are enforced, raising the
+  CPython `FilterError` subclasses. DIVERGENCES: read-only (`w`/`a`/`x` raise);
+  the whole archive is materialized as `bytes` at `open()` (so `"r|"` diverges
+  from CPython's incremental stream in memory profile only -- the extracted tree
+  is identical); a compressed `fileobj` must be a `compression.zstd.ZstdFile`
+  (a plain `io.BytesIO` fileobj is not accepted on na -- use `name=` for an
+  uncompressed file), and it must be called **module-qualified**
+  (`import tarfile; tarfile.open(...)`) because a bare unqualified `open(...)`
+  collides with the native builtin `open`; GNU sparse members raise; hard/soft
+  links are created via libc `link`/`symlink` when trivial. Native-host only.
+  Pinned sv<->na congruent by `test_tarfile_equivalence.jac`.
+
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
 intercepts, reached via the flat `import os`, not bundled here (see

@@ -68,7 +68,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
     if isinstance(caller_type, ClassType)
         and caller_type.is_builtin("auto")
         and (not expr.params or len(expr.params) == 0) {
-        return self.prefetch.int_class if self.prefetch else UnknownType();
+        return self.prefetch.int_class or UnknownType();
     }
 
     if self._in_native_context() {
@@ -152,7 +152,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
             dotted = target_node.sym.sym_dotted_name;
             is_cast = dotted.endswith("typing.cast");
         }
-        if is_cast and len(expr.params) >= 1 {
+        if is_cast and expr.params and len(expr.params) >= 1 {
             first_arg = expr.params[0];
             first_arg_expr = first_arg.value
                 if isinstance(first_arg, KWPair)
@@ -471,7 +471,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
 }
 
 impl TypeEvaluator.match_args_to_params(
-    arg_nodes: list[Expr | KWPair],
+    arg_nodes: (Sequence[Expr | KWPair] | None),
     node_for_error: Expr | None,
     func_type: FunctionType,
     checking_overload: bool = False,
@@ -507,7 +507,7 @@ impl TypeEvaluator.match_args_to_params(
         }
     }
     param_tracker = ParamAssignmentTracker(params_to_match);
-    for arg in arg_nodes {
+    for arg in (arg_nodes or []) {
         try {
             if isinstance(arg, KWPair) {
                 matching_param = param_tracker.match_named_argument(arg);
@@ -637,7 +637,7 @@ impl TypeEvaluator._strip_implicit_self_cls(method: FunctionType) -> FunctionTyp
 }
 
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: any, caller_type: ClassType
+    method_member: ClassMember, caller_type: ClassType
 ) -> TypeBase {
     method_ty = self.get_type_of_symbol(method_member.symbol);
 
@@ -888,7 +888,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
 }
 
 impl TypeEvaluator._find_overload_by_arg_count(
-    method_type: TypeBase, arg_count: int, overload_symbols: list
+    method_type: TypeBase, arg_count: int, overload_symbols: list[Symbol]
 ) -> FunctionType | None {
     overloads: list[FunctionType] = [];
     if isinstance(method_type, FunctionType) {

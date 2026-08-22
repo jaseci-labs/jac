@@ -111,7 +111,7 @@ impl NaIRGenComprehensions._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value |
         struct_type = self.tuple_types[tuple_key_str];
         key_type = struct_type.as_pointer();
         key_size = self._get_struct_size(struct_type);
-        key_type_name = f"tuple{key_size}";
+        key_type_name = self._tuple_spec_name(struct_type);
     }
 
     if isinstance(val_expr, uni.TupleVal) {

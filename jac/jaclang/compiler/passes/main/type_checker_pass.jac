@@ -76,6 +76,7 @@ import from jaclang.compiler.type_system.operations {
     get_numeric_promotion_type,
     get_pow_result_type
 }
+import type from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
 import from jaclang.jac0core.diagnostics {
     Category,
     DiagnosticInfo,
@@ -117,7 +118,9 @@ import from jaclang.jac0core.diagnostics {
 
 
 class TypeCheckPass(UniPass) {
-    has _lambda_depth: int = 0;
+    has evaluator: TypeEvaluator,
+        _lambda_depth: int = 0;
+
     static has PROVIDES: tuple = ('inference', ),
         inference_only: bool = False;
 
@@ -133,6 +136,8 @@ class TypeCheckPass(UniPass) {
     ) -> bool;
 
     def _insert_builtin_symbols(self: TypeCheckPass) -> None;
+    def _install_client_state_setters(self: TypeCheckPass) -> None;
+    def _client_state_field_owner(self: TypeCheckPass, nd: HasVar) -> (Ability | None);
     def enter_ability(self: TypeCheckPass, nd: Ability) -> None;
     def exit_ability(self: TypeCheckPass, nd: Ability) -> None;
     def enter_lambda_expr(self: TypeCheckPass, nd: LambdaExpr) -> None;

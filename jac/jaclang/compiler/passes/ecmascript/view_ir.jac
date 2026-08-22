@@ -12,7 +12,7 @@ obj ComponentTag {
 }
 
 obj FragmentTag {
-    has jac_node: uni.UniNode;
+    has jac_node: (uni.UniNode | None);
 }
 
 obj DynamicTag {
@@ -112,6 +112,13 @@ obj EachChild {
         js_fallback: es.Expression,
         jac_node: (uni.UniNode | None);
 }
+
+glob ViewChild = TextChild
+         | DynamicChild
+         | ElementChild
+         | SlotChild
+         | IfChild
+         | EachChild;
 
 obj ViewElement {
     has tag: (HostTag | ComponentTag | FragmentTag | DynamicTag),

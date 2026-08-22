@@ -195,6 +195,11 @@ class JacScalePluginConfig {
                             "default": 3,
                             "description": "Maximum pod replicas for the autoscaler."
                         },
+                        "revision_history_limit": {
+                            "type": "int",
+                            "default": 10,
+                            "description": "How many superseded ReplicaSets Kubernetes keeps per Deployment, which is how far back a rollback can reach. 0 keeps no history and makes a rollback impossible."
+                        },
                         "cpu_utilization_target": {
                             "type": "int",
                             "default": 50,

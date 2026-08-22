@@ -166,11 +166,7 @@ jac/jaclang/cli/shadcn/cli.jac
 jac/jaclang/cli/shadcn/impl/cli.impl.jac
 jac/jaclang/compiler/code_intel.jac
 jac/jaclang/compiler/passes/ecmascript/backends/impl/react.impl.jac
-jac/jaclang/compiler/passes/ecmascript/backends/impl/solid.impl.jac
 jac/jaclang/compiler/passes/ecmascript/backends/react.jac
-jac/jaclang/compiler/passes/ecmascript/backends/solid.jac
-jac/jaclang/compiler/passes/ecmascript/impl/primitives_es.impl.jac
-jac/jaclang/compiler/passes/ecmascript/primitives_es.jac
 jac/jaclang/compiler/passes/main/capability_check_pass.jac
 jac/jaclang/compiler/passes/main/impl/capability_check_pass.impl.jac
 jac/jaclang/compiler/passes/main/jsx_intrinsic_guard_pass.jac

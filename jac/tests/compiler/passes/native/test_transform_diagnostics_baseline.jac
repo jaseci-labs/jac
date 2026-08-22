@@ -41,16 +41,14 @@ lowered to a bare erased pointer is a `UniNode` now, and the constructor
 lowers. Each waiver is dropped rather than reworded, which is the point of
 pinning them two ways.
 
-Rung 2 did not deliver closure membership and said so. Rung 3 does, and it
-was not the fused root that delivered it: `transform.jac` reached
-`codeinfo.jac` for `CodeLocInfo`, a symbol `srcloc.jac` declares and
-`codeinfo` re-exports, and `codeinfo.jac` fails the native placement
-pre-scan on its own `import from typing { Any }`. Since the pre-scan is
-all-or-nothing over the transitive dependency set, that one import kept the
-whole base chain out of every root's walk. Asking the declaring module
-instead links all three base modules, so `NATIVE_SEAL_CLOSURE` gains this
-unit and `NATIVE_SEAL_DEMOTION_WAIVERS` gains the three seams below -- the
-bookkeeping this file's earlier revision described as not yet owed.
+Closure membership arrived after rung 2, by two routes landing together:
+the re-export import that dragged `codeinfo.jac` into the chain was
+retargeted to the declaring module (`srcloc.jac`), and B4 (#8323) emptied
+`PLACEMENT_INFERENCE_HELD`, so `codeinfo` -- transform's one held
+dependency -- became admissible and every sealed root's closure walk now
+links this unit. The wave censuses measure it in each closure, and the
+unit rides `NATIVE_SEAL_CLOSURE` with no waivers of its own -- the seam
+table below is pinned empty.
 
 The measurement is a source-lane one. Under a sealed jaclang image every
 method of an imported jaclang-internal archetype is untrusted by design, so
@@ -83,21 +81,21 @@ glob EMISSION_PATH: tuple = (
          "Alert.postinit"
      );
 
-"""Waived per-callable seams: real Python machinery off the emission path.
+"""Waived per-callable seams: pinned empty -- every entry cleared by a mechanism.
 
-Two entries this table used to carry cleared for the fused prefix:
 `BaseTransform.is_canceled` reads the `cancel_requested` scalar now (the
-event poll moved to the driver and the Python loader), and `Transform.ice`
+event poll moved to the driver and the Python loader). `Transform.ice`
 became the message-builder its callers raise
 (`raise RuntimeError(self.ice(...))`), which the native raise path lowers.
+`Alert.pretty_print` left when the helpers gutter's old-style `%`
+formatting (the `MOD on i8*` gap) became plain padding:
+`pretty_print_source_location` and `format_related_spans` lower and the
+renderer lowers with them -- found by the seal's dlopen canary refusing
+the dangling `pretty_print_source_location` extern that the root-favored
+certification had linked against. Each entry is dropped rather than
+reworded; a name reappearing here is live work the audit must see.
 """
-glob TRANSFORM_SEAM_WAIVERS: dict[(str, str)] = {
-         "Alert.pretty_print": (
-             "console rendering: calls `pretty_print_source_location` and "
-             "`format_related_spans` from `helpers`; presentation stays "
-             "Python-side."
-         )
-     };
+glob TRANSFORM_SEAM_WAIVERS: dict[(str, str)] = {};
 
 """Module-fatal backend gaps: none. Kept as an empty inventory rather than
 deleted, so a construct that goes module-fatal again has a named place to
@@ -275,13 +273,18 @@ test "the unit is clean enough to link, and the sealed roots link it" {
         for p in coverage
         if os.path.realpath(p) != os.path.realpath(TRANSFORM_JAC)
     );
-    # `transform.jac` compiles as a root here with no module-fatal error and
-    # its own closure is the ordinary unitree family every root carries, so
-    # nothing about the unit blocks a root from linking it. That direction
-    # was always true. The other direction -- whether any root's walk
-    # *reaches* transform.jac -- turned on a single re-export import and is
-    # true now, which is why `NATIVE_SEAL_CLOSURE` lists this unit and the
-    # three seams above are waived rather than merely inventoried.
+    # The other half of the rung-2 claim, and the half a clean seam census
+    # cannot make on its own. `transform.jac` compiles as a root here with
+    # no module-fatal error, and its own closure is the ordinary unitree
+    # family every root carries -- so nothing about the unit blocks a root
+    # from linking it. The other direction flipped twice over: the
+    # re-export import that kept the chain out of every walk was retargeted
+    # to the declaring module, and B4 (#8323) emptied
+    # `PLACEMENT_INFERENCE_HELD`, which had been refusing `codeinfo`,
+    # transform's one module-level jac0core dependency beyond the family.
+    # The wave censuses measure the spine in every sealed closure and
+    # `NATIVE_SEAL_CLOSURE` carries this unit -- with no waivers left to
+    # mirror, since the seam table above is pinned empty.
     assert linked , (
         "transform.jac's own closure is empty, so the compile was never "
         "reached and the seam coverage above is vacuous"
@@ -290,11 +293,12 @@ test "the unit is clean enough to link, and the sealed roots link it" {
         f"transform.jac stopped linking unitree ({linked}); the measurement "
         "moved rather than the unit getting cleaner"
     );
-    assert "jac0core/codeinfo.jac" not in linked , (
-        "transform.jac reaches codeinfo.jac again. codeinfo fails the native "
-        "placement pre-scan, and the pre-scan is all-or-nothing over the "
-        "transitive set, so this does not cost compile time -- it takes the "
-        "whole base chain back out of every sealed root's walk"
+    assert "jac0core/codeinfo.jac" in linked , (
+        "codeinfo.jac left transform's unit. Since B4 emptied "
+        "PLACEMENT_INFERENCE_HELD it joins through unitree's own edges "
+        "(UniNode.gen lowers), with its seams waived by name; its absence "
+        "means the placement walk is refusing it again -- find the blocker "
+        "before re-pinning"
     );
     import from jaclang.utils.precompile_bytecode {
         NATIVE_SEAL_CLOSURE,

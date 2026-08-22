@@ -87,9 +87,14 @@ obj NaIRGenObjects(NaIRGenState) {
     ) -> (ir.Value | None);
 
     def _emit_dispatched_field_ptr(
-        obj_val: ir.Value, type_name: str, field_name: str, ftype: ir.Type
+        obj_val: ir.Value,
+        type_name: str,
+        field_name: str,
+        ftype: (ir.Type | None),
+        parts: (list[str] | None) = None
     ) -> (ir.Value | None);
 
+    def _receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] | None);
     def _narrow_receiver_ptr(obj_val: ir.Value, type_name: str) -> (ir.Value | None);
     def _class_const_global(
         arch_name: str, field_name: str

@@ -16,13 +16,16 @@ vocabulary to decide. The first test below pins that -- the vocabulary must
 keep refusing `Any`, now for a reason that cannot change back.
 
 `codeinfo` spells its four annotations `any` and imports nothing from
-`typing`, so the import-shaped blocker is gone. Inference is still held for
-it, deliberately now rather than by accident: `PLACEMENT_INFERENCE_HELD`
-names the module and the reason, and `test_codeinfo_baseline.jac` carries the
-measurement -- letting it through takes `unitree`'s closure from 11 members
-to 19 and picks up `UniPass.transform`, `UniPass.traverse` and
-`UniPass.get_all_sub_nodes`, pass machinery a parse reaches, inside a root
-that is actually sealed.
+`typing`, so the import-shaped blocker is gone. The hold that replaced the
+accident is lane-scoped now: B4 (#8323) answered what it priced for the
+compiler's own roots -- `test_codeinfo_baseline.jac` carries the 19-member
+closure, the 21 arriving seams are waived by name in
+`NATIVE_SEAL_DEMOTION_WAIVERS`, and `test_unitree_seal_baseline.jac` pins the
+sealed root that absorbs them -- so `PLACEMENT_HOLD_EXEMPT_ROOTS` exempts
+`jac0core/` and `compiler/` from the hold, while user-facing inference keeps
+it (admitting codeinfo there flipped byllm/scale module codespaces). The
+third test below pins that contract: exactly codeinfo is held, its reason
+names the exemption, and both compiler roots are exempt.
 
 The clearing list, and where each item stands:
 
@@ -42,13 +45,12 @@ The clearing list, and where each item stands:
      change, and it did: a flat `list[str]` of "/"-joined relative paths,
      rejoined with `os.sep` at its one use site.
 
-So the list is spent as a list: nothing on it blocks anything any more. What
-replaces it is a single named hold with a measured reason, and the work it
-names is `codeinfo`'s own 13 seams plus the closure they travel in. When that
-clears, four of `capability_check_pass`'s five seams clear with it -- three
-because it reads `codeinfo`'s tables, and `ClientCapabilityCheckPass.transform`
-because `module_codegen_pass` joins alongside. That was measured on this base
-too, and it is what the hold is holding back.
+So the list is spent as a list: nothing on it blocks anything any more. The
+single named hold that replaced it is spent too, and its prediction held
+exactly: with the entry empty, four of `capability_check_pass`'s five seams
+cleared -- three because it reads `codeinfo`'s tables in-unit, and
+`ClientCapabilityCheckPass.transform` because `module_codegen_pass` joined
+alongside. `test_pass_seal_wave6_baseline.jac` carries the measurement.
 
 The last test keeps the half of the old reasoning that outlived the rest.
 `ModuleCodegenPass.is_erased_type_decl` reads the *marker* set
@@ -109,18 +111,32 @@ test "a module annotated with the any keyword needs no import to infer native" {
 }
 
 
-test "codeinfo's hold is deliberate and names its reason" {
-    import from jaclang.jac0core.placement { PLACEMENT_INFERENCE_HELD }
-    held = PLACEMENT_INFERENCE_HELD.get("jac0core/codeinfo.jac");
-    assert held , (
-        "codeinfo is no longer held out of native inference. If that is "
-        "intended, the closure it joins has to be answered first: see "
-        "test_codeinfo_baseline.jac for the 21-seam measurement, and expect "
-        "test_unitree_seal_baseline.jac to fail loudly until it is"
+test "the inference hold is lane-scoped: codeinfo held for users, compiler roots exempt" {
+    import from jaclang.jac0core.placement {
+        PLACEMENT_HOLD_EXEMPT_ROOTS,
+        PLACEMENT_INFERENCE_HELD
+    }
+    assert set(PLACEMENT_INFERENCE_HELD) == {"jac0core/codeinfo.jac"} , (
+        "the inference hold table changed: "
+        f"{sorted(PLACEMENT_INFERENCE_HELD)!r}. A hold is a deliberate debt "
+        "with a named reason and a coverage measurement that prices it -- "
+        "codeinfo's is carried here for user-facing inference only (B4, "
+        "#8323, lane-scoped); a new entry needs the same treatment, and "
+        "dropping this one re-opens the jaclang-internal import universe to "
+        "default-native flips in user programs"
     );
-    assert "uni_pass" in held , (
-        f"the hold must name what it is holding back, got {held!r}"
+    why = PLACEMENT_INFERENCE_HELD["jac0core/codeinfo.jac"];
+    assert "PLACEMENT_HOLD_EXEMPT_ROOTS" in why , (
+        f"codeinfo's hold reason must name the exemption that answers it: {why!r}"
     );
+    for marker in ("/jaclang/jac0core/", "/jaclang/compiler/") {
+        assert marker in PLACEMENT_HOLD_EXEMPT_ROOTS , (
+            f"{marker} is no longer exempt from the hold: "
+            f"{PLACEMENT_HOLD_EXEMPT_ROOTS!r}. The compiler's own roots are "
+            "what B4 unheld -- without the exemption the pass spine leaves "
+            "every sealed closure again"
+        );
+    }
 }
 
 

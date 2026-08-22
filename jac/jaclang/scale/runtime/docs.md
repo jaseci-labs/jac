@@ -327,7 +327,7 @@ code changes from local mode.
 | `cpu_request`/`cpu_limit` | unset | `"100m"`, `"2000m"` |
 | `memory_request`/`memory_limit` | unset | `"128Mi"`, `"4Gi"` |
 | `env` | `{}` | extra env vars |
-| `rpc_timeout` | `10.0` | service RPC httpx timeout (s) |
+| `rpc_timeout` | `10.0` | service RPC timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
 | `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `50` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
 | `hpa.behavior` | `{}` | Raw HPA `behavior` fragment (`scaleUp`/`scaleDown`) deep-merged over the generated scale-rate defaults - same merge rules as `deployment_overlay`. Applies to both engines; for `keda` it only governs scaling while replicas are above zero - the drop to zero is still controlled by `autoscaler_cooldown` (the ScaledObject's `cooldownPeriod`). See example below. |
@@ -493,8 +493,9 @@ Default is 10s. Override for LLM / generation / long-running services:
 rpc_timeout = 120.0
 ```
 
-The override is read on every service RPC and passed through to
-`httpx.Client(timeout=...)`.
+The override is read on every service RPC and applied as the
+transport timeout for connection setup and for reads while waiting
+on the response head.
 
 ### Streaming sv-to-sv RPC (generator returns)
 
@@ -529,21 +530,25 @@ and re-raise as a `RuntimeError` out of the consumer's iterator
 (so a normal `for ... in` loop sees the failure rather than a
 silently-truncated stream).
 
-Lifecycle: the consumer's generator owns the underlying httpx
+Lifecycle: the consumer's generator owns the underlying
 connection. Exhausting the iterator OR letting it go out of scope
 closes the connection cleanly. Dropping mid-stream (consumer
 disconnects) closes too - the producer's `finally` blocks run.
 
-`rpc_timeout` semantics on streaming: the timeout applies to
-*establishing* the connection and to each blocking read between
-events. A long, idle stream that sends no events for `rpc_timeout`
-seconds will time out, matching the behavior we want for a hung
-producer; a fast-stepping stream of any total duration is fine.
+`rpc_timeout` semantics on streaming: the timeout bounds
+*establishing* the connection and the wait for the response head.
+Once the head has arrived, reads of the event body are not bounded
+by `rpc_timeout`: a producer that stalls between events holds the
+consumer's iterator open until the connection drops (see #8429).
+A fast-stepping stream of any total duration is fine.
 
-Retries are skipped once the stream is open: an in-flight stream
-cannot be replayed without losing already-consumed events. Connect-
-time failures (DNS, refused) still retry + count against the breaker
-as they would for a non-streaming RPC.
+Retries happen only for connect-phase failures (DNS, refused,
+connect timeout), where the request provably never reached the peer.
+Any failure after the request is sent - a read timeout, a dropped
+connection, an HTTP error - fails fast without a replay, because the
+peer may already have executed the call. Every failed round trip in
+either phase records one circuit-breaker failure. This applies to
+streaming and non-streaming RPC alike.
 
 ### WebSockets + SSE proxy at the gateway
 

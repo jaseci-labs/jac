@@ -34,6 +34,30 @@ impl _ThunkViewBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
     return es.CallExpression(callee=es.Identifier(name="__view"), arguments=[expr]);
 }
 
+"""The react state lowering as it stood before #8224: the store cell and no
+setter. Standing in for the regression lets the free-identifier audit be tested
+on the exact shape it exists to catch, without reverting the fix."""
+obj _DropSetterBackend(ReactBackend) {
+    def lower_state_field(s: any) -> list[es.Statement];
+}
+
+impl _DropSetterBackend.lower_state_field(s: any) -> list[es.Statement] {
+    return [
+        es.VariableDeclaration(
+            declarations=[
+                es.VariableDeclarator(
+                    id=es.Identifier(name=self._state_cell_name(s.name)),
+                    init=es.CallExpression(
+                        callee=es.Identifier(name="useJacState"),
+                        arguments=[s.init_expr]
+                    )
+                )
+            ],
+            kind="const"
+        )
+    ];
+}
+
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );
@@ -1265,5 +1289,78 @@ test "augmented reactive assignments do not double-apply the lhs" {
     # nested `(__jacS_count.val + (__jacS_count.val` shape.
     assert "(__jacS_count.val + (__jacS_count.val" not in js , (
         "double-application bug detected in:\n" + js
+    );
+}
+
+"""Diagnostic code strings carried by a list of alerts."""
+def _codes_of(alerts: list) -> list[str] {
+    return [
+        a.code.code
+        for a in alerts
+        if a.code is not None
+    ];
+}
+
+"""Compile a fixture the whole way through client codegen, keeping its alerts."""
+def compile_fixture_reporting(filename: str) -> JacProgram {
+    prog = JacProgram();
+    prog.compile(file_path=fixture_path(filename), type_check=True);
+    return prog;
+}
+
+"""Run the ES pass with a backend and hand back the program's alerts."""
+def codegen_alerts(filename: str, backend: object) -> list {
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path(filename), no_cgen=True, type_check=True);
+    run_pass(EsastGenPass, ir, prog, backend=backend);
+    return list(prog.errors_had);
+}
+
+test "an emitted module may not reference a name it never binds" {
+    # The property behind #8072 and #8224, standing in for the lowering bug
+    # rather than describing it: _DropSetterBackend is the pre-fix react
+    # lowering, emitting the state cell and no setter. `setTheme` is a name the
+    # compiler resolved -- the checker registers it for every client `has`
+    # field -- so emitting it unbound is a ReferenceError the audit has to
+    # catch, and this test fails the moment the binding is dropped again.
+    errs = [
+        e
+        for e in codegen_alerts("state_setter_value_ref.jac", _DropSetterBackend())
+        if e.code is not None and e.code.code == "E5101"
+    ];
+    assert len(errs) == 1 , (
+        "dropping the setter binding must be an error, got "
+        f"{_codes_of(
+            codegen_alerts('state_setter_value_ref.jac', _DropSetterBackend())
+        )}"
+    );
+    assert "setTheme" in str(errs[0]) , (
+        f"E5101 must name the unbound identifier; got {errs[0]!s}"
+    );
+    assert "state_setter_value_ref.jac" in str(errs[0]) , (
+        f"E5101 must point at the Jac source that names it; got {errs[0]!s}"
+    );
+}
+
+test "the audit leaves ordinary client modules alone" {
+    # Ambient browser globals, runtime imports and the framework's own required
+    # globals are bindings the module legitimately does not declare.
+    prog = compile_fixture_reporting("state_setter_value_ref.jac");
+    assert "E5101" not in _codes_of(prog.errors_had) , (
+        "the audit must not fire on a module whose names are all bound: "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+}
+
+test "a client state setter used as a value is bound by codegen" {
+    # #8224: `has theme` names both `theme` and `setTheme`; handing the setter
+    # to a constructor is the ordinary hook shape and must emit a real binding.
+    es_ast = compile_to_esast(fixture_path("state_setter_value_ref.jac"));
+    js = es_to_js(es_ast);
+    assert "const setTheme = " in js , (
+        f"the emitted module must declare setTheme; got:\n{js}"
+    );
+    assert "setTheme: setTheme" in js , (
+        f"the setter reference must stay an ordinary reference; got:\n{js}"
     );
 }

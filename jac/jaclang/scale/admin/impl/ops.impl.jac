@@ -294,13 +294,14 @@ async def _loki_recent_count -> int {
 
 def _postgres_ping_blocking -> tuple[bool, str] {
     try {
-        import from jaclang.scale.persistence.pg { shared_store }
+        import from jaclang.scale.persistence.pg {
+            NO_DATABASE_RESOLVED,
+            shared_store,
+            shared_store_failure
+        }
         store = shared_store();
         if store is None {
-            return (
-                False,
-                "no JAC_DB_URL / [plugins.scale.database] url and no embedded server"
-            );
+            return (False, shared_store_failure() or NO_DATABASE_RESOLVED);
         }
         ok = store.is_available();
         return (

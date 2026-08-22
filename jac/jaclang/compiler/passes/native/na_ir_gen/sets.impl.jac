@@ -150,7 +150,7 @@ impl NaIRGenSets._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         elem_type_name = "ptr";
         if isinstance(elem_type.pointee, ir.LiteralStructType) {
             elem_size = self._get_struct_size(elem_type.pointee);
-            elem_type_name = f"tuple{elem_size}";
+            elem_type_name = self._tuple_spec_name(elem_type.pointee);
         } elif elem_size {
             elem_type_name = f"tuple{elem_size}";
         }

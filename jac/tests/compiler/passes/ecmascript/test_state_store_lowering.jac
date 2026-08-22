@@ -16,6 +16,8 @@ These tests pin the emitted shape for the react and preact backends:
   - dependency effects sample values: `[__jacS_n.val]`
   - `useJacState` imports from `@jac/runtime` on both backends
   - no `useState` state lowering remains
+  - the setter name `set<Name>` is a real binding, not only a rewrite of the
+    write sites the backend happens to recognize (#8224)
 """
 
 import os;
@@ -80,6 +82,47 @@ def assert_store_contract(js: str, backend_name: str) {
     );
 }
 
+"""Pin the setter binding: `set<Name>` must be declared, not just rewritten.
+
+The store-cell migration kept every write SITE working by rewriting it to
+`__jacS_x.set(...)`, but a setter used as a value has no site to rewrite. It
+reaches codegen as a plain identifier, so the module has to declare the name.
+"""
+def assert_setter_binding(js: str, backend_name: str) {
+    decl = re.search(r"\bconst\s+setTheme\s*=\s*([^;,\n]+)", js);
+    assert decl is not None , (
+        f"[{backend_name}] `has theme` must bind `setTheme` as a real value; "
+        f"the emitted module never declares it:\n{js}"
+    );
+    assert "__jacS_theme" in decl.group(1) , (
+        f"[{backend_name}] `setTheme` must delegate to the state cell's "
+        f"setter, got `{decl.group(1).strip()}`:\n{js}"
+    );
+
+    # The value reference itself stays an ordinary reference.
+    assert "setTheme: setTheme" in js , (
+        f"[{backend_name}] the setter reference must emit as a plain "
+        f"identifier:\n{js}"
+    );
+}
+
+"""Pin the other half of the same failure: a state read in shorthand position.
+
+JSX attribute shorthand parses one Name into both the attribute's name and its
+value. Treating that node as a name-only slot skipped the state read rewrite,
+so the value emitted as a bare identifier the module never binds.
+"""
+def assert_shorthand_read(js: str, backend_name: str) {
+    assert '"flag": __jacS_flag.val' in js , (
+        f"[{backend_name}] a shorthand JSX attribute must lower its value as "
+        f"a state read:\n{js}"
+    );
+    assert re.search(r"\{\s*[\"']?flag[\"']?\s*:\s*flag\s*\}", js) is None , (
+        f"[{backend_name}] the shorthand value must not stay a bare "
+        f"identifier:\n{js}"
+    );
+}
+
 test "react backend lowers has state to read-your-writes store cells" {
     js = compile_with_backend("state_semantics_component.jac", ReactBackend());
     assert_store_contract(js, "react");
@@ -88,4 +131,24 @@ test "react backend lowers has state to read-your-writes store cells" {
 test "preact backend inherits the store cell lowering" {
     js = compile_with_backend("state_semantics_component.jac", PreactBackend());
     assert_store_contract(js, "preact");
+}
+
+test "react binds the state setter as a first-class value" {
+    js = compile_with_backend("state_setter_value_ref.jac", ReactBackend());
+    assert_setter_binding(js, "react");
+}
+
+test "preact binds the state setter as a first-class value" {
+    js = compile_with_backend("state_setter_value_ref.jac", PreactBackend());
+    assert_setter_binding(js, "preact");
+}
+
+test "react lowers a shorthand jsx attribute as a state read" {
+    js = compile_with_backend("state_shorthand_attr.jac", ReactBackend());
+    assert_shorthand_read(js, "react");
+}
+
+test "preact lowers a shorthand jsx attribute as a state read" {
+    js = compile_with_backend("state_shorthand_attr.jac", PreactBackend());
+    assert_shorthand_read(js, "preact");
 }

@@ -87,8 +87,13 @@ def add_numbers(a: int, b: int) -> int {
     return a + b;
 }
 
-"""Function to generate a greeting message."""
-def greet(name: str = "World") -> str {
+"""Function to generate a greeting message.
+
+`def:pub` because `client_page` below calls it: only an endpoint bridges over
+RPC, and a plain `def` would leave the client bundle naming a function it
+never binds.
+"""
+def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 

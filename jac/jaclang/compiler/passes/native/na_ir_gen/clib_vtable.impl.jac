@@ -110,3 +110,68 @@ impl NaIRGenClibVtable._clib_alloc_vtable(name: str) -> ir.Value {
         raw, self.struct_types[name].as_pointer(), name="clib.vt.ptr"
     );
 }
+
+impl NaIRGenClibVtable._lower_clib_function_type(
+    arch_name: str, fname: str, t: any
+) -> ir.Type {
+    i8p = ir.IntType(8).as_pointer();
+    _sd = self._str_desc_ty;
+    _bt = self._get_bytes_struct_type();
+
+    def c_scalar(lowered: (ir.Type | None)) -> ir.Type {
+        if lowered is None {
+            return ir.IntType(64);
+        }
+        if _sd is not None and lowered == _sd {
+            return i8p;
+        }
+        if isinstance(lowered, ir.PointerType) and lowered.pointee == _bt {
+            return i8p;
+        }
+        return lowered;
+    }
+    ret_type: ir.Type = ir.VoidType();
+    if t.return_type is not None {
+        _r = self._lower_type(t.return_type);
+        if _r is not None {
+            if _sd is not None and _r == _sd {
+                if arch_name not in self.clib_fnptr_str_ret {
+                    self.clib_fnptr_str_ret[arch_name] = set();
+                }
+                self.clib_fnptr_str_ret[arch_name].add(fname);
+            }
+            ret_type = c_scalar(_r);
+        }
+    }
+    param_types: list[ir.Type] = [];
+    for p in (t.parameters or []) {
+        param_types.append(c_scalar(self._lower_type(p.param_type)));
+    }
+    return ir.FunctionType(ret_type, param_types).as_pointer();
+}
+
+impl NaIRGenClibVtable._clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    if target == i8p {
+        _bt = self._get_bytes_struct_type();
+        if isinstance(val.type, ir.PointerType) and val.type.pointee == _bt {
+            return self._bytes_data_ptr(val);
+        }
+        if isinstance(val.type, ir.PointerType) and val.type == i8p {
+            return self._membrane_str_out(self.builder, val);
+        }
+    }
+    return self._coerce_type(val, target);
+}
+
+impl NaIRGenClibVtable._clib_fnptr_ret(
+    arch_name: str, fname: str, result: ir.Value
+) -> ir.Value {
+    if fname in self.clib_fnptr_str_ret.get(arch_name, set())
+        and isinstance(result.type, ir.PointerType) {
+        wrapped = self._membrane_str_in(self.builder, result);
+        self._mark_owned(wrapped);
+        return wrapped;
+    }
+    return result;
+}

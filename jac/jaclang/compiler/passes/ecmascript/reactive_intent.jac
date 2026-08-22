@@ -2,7 +2,8 @@ import jaclang.compiler.passes.ecmascript.estree as es;
 
 obj StateField {
     has name: str,
-        init_expr: es.Expression;
+        init_expr: es.Expression,
+        bind_setter: bool = True;
 }
 
 obj RefField {
