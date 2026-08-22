@@ -205,6 +205,7 @@ glob NATIVE_SUPPORTED_STDLIB: set[str] = {
          "os",
          "random",
          "struct",
+         "builtins",
          "enum",
          "collections.abc"
      },

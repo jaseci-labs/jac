@@ -1,5 +1,6 @@
 import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree { fstring_escape_interior }
 import from jaclang.jac0core.constant { Tokens as Tok, is_mut_kind }
 import from jaclang.jac0core.passes { UniPass }
 

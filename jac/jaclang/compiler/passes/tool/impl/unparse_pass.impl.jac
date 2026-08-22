@@ -53,8 +53,7 @@ impl UnparsePass.exit_name(nd: uni.Name) -> None {
 
 impl UnparsePass.exit_string(nd: uni.String) -> None {
     if nd.parent and isinstance(nd.parent, uni.FString) {
-        escaped = nd.value.replace("{", "{{").replace("}", "}}");
-        nd.gen.jac = escaped.replace("#", "\\#");
+        nd.gen.jac = fstring_escape_interior(nd.value);
     } else {
         nd.gen.jac = nd.value;
     }
@@ -926,13 +925,33 @@ impl UnparsePass.exit_yield_expr(nd: uni.YieldExpr) -> None {
     nd.gen.jac = " ".join(parts);
 }
 
+impl UnparsePass._call_target_needs_parens(target: uni.Expr) -> bool {
+    return isinstance(
+        target,
+        (
+            uni.LambdaExpr,
+            uni.IfElseExpr,
+            uni.BinaryExpr,
+            uni.BoolExpr,
+            uni.CompareExpr,
+            uni.UnaryExpr,
+            uni.AwaitExpr,
+
+        ),
+    );
+}
+
 impl UnparsePass.exit_func_call(nd: uni.FuncCall) -> None {
     is_gencompr = len(nd.params) == 1 and isinstance(nd.params[0], uni.GenCompr);
     params_str = self._comma_sep(nd.params);
+    target_jac = nd.target.gen.jac;
+    if self._call_target_needs_parens(nd.target) {
+        target_jac = "(" + target_jac + ")";
+    }
     if is_gencompr {
-        result = nd.target.gen.jac + params_str;
+        result = target_jac + params_str;
     } else {
-        result = nd.target.gen.jac + "(" + params_str;
+        result = target_jac + "(" + params_str;
         if nd.genai_call {
             result = result + " by " + nd.genai_call.gen.jac;
         }

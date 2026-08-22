@@ -1,4 +1,4 @@
-# CLI Reference
+# re  CLI Reference
 
 The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac fmt`, `jac check --lint`), managing dependencies (`jac install`, `jac remove`, `jac update`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`, or `jac build --as native`). Think of it as combining the roles of `python`, `pip`, a test runner, `black`, and `flask` into a single unified tool.
 
@@ -1688,6 +1688,8 @@ jac tool <name> [args ...]
 | `jac2js <file>` | Convert Jac code to JavaScript (used for client frontend compilation) |
 | `grammar [--lark] [-o OUT]` | Extract and print the Jac grammar (EBNF, or `--lark` for Lark format) |
 | `ir [ast\|sym\|py] <file>` | Inspect compiler IR: AST, symbol table, or generated Python |
+
+`py2jac` maps Python complex literals (`1j`, `1 + 2j`, etc.) to `complex(re, im)` because Jac has no complex literal syntax. Adjacent f-strings folded by Python are emitted as a single f-string with semantic interior content. Complex literals in `match` value patterns (`case 1 + 2j:`) are rejected with **E5044** - use a guard or match real/imag parts separately.
 
 **Examples:**
 

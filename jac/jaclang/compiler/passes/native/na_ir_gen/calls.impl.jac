@@ -1212,7 +1212,8 @@ impl NaIRGenCalls._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.symbol_utils {
         erased_field_marker_default,
         erased_identity_call_arg,
-        is_erased_field_marker
+        is_erased_field_marker,
+        qualified_builtin_name
     }
 
     _identity_arg = erased_identity_call_arg(nd);
@@ -1230,7 +1231,11 @@ impl NaIRGenCalls._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     _call_kind = nd.call_kind;
 
     _mod_qual: (str | None) = None;
-    if _call_kind == "method" {
+    _qualified_builtin = qualified_builtin_name(nd.target);
+    if _qualified_builtin is not None {
+        func_name = _qualified_builtin;
+        _call_kind = "builtin";
+    } elif _call_kind == "method" {
         _mod_fn = self._native_module_call_target(nd);
         if _mod_fn is None {
             return self._codegen_method_call(nd);

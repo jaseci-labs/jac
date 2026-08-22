@@ -1587,6 +1587,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E5041 = _err("E5041", Category.CODEGEN, "Length mismatch in import names"),
      E5042 = _err("E5042", Category.CODEGEN, "Length mismatch in async for body"),
      E5043 = _err("E5043", Category.CODEGEN, "Bytecode compilation failed: {error}"),
+     E5044 = _err(
+         "E5044",
+         Category.CODEGEN,
+         "Complex literal in match value pattern is unsupported (Jac has no complex literal syntax)",
+         help="Jac parses `complex(re, im)` as a class pattern, not a value pattern. Rewrite the case as a guard (`case x if x == 1 + 2j:`) or match the real and imaginary parts separately."
+     ),
      W5050 = _warn(
          "W5050",
          Category.CODEGEN,

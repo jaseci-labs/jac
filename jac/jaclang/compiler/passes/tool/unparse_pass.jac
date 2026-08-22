@@ -1,9 +1,11 @@
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree { fstring_escape_interior }
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { OwnershipKind, is_mut_kind }
 
 obj UnparsePass(UniPass) {
     def _comma_sep(nodes: list) -> str;
+    def _call_target_needs_parens(target: uni.Expr) -> bool;
     def exit_node(nd: uni.UniNode) -> None;
     def default_exit(nd: uni.UniNode) -> None;
     def exit_token(nd: uni.Token) -> None;

@@ -1,9 +1,11 @@
 import ast as py_ast;
+import math;
 import os;
 import re;
 import from threading { Event }
 import from typing { TypeAlias, cast }
 import from jaclang.jac0core.unitree {
+    _decode_str_escapes,
     Ability,
     ArchBlockStmt,
     Archetype,
@@ -97,7 +99,7 @@ import from jaclang.jac0core.unitree {
     YieldExpr
 }
 import from jaclang.jac0core.constant { Tokens as Tok, RESERVED_IDENT_NAMES }
-import from jaclang.jac0core.diagnostics { E5041, E5042 }
+import from jaclang.jac0core.diagnostics { E5041, E5042, E5044 }
 import from jaclang.jac0core.passes.transform { Transform }
 
 glob T = TypeVar('T', bound=UniNode),
@@ -111,11 +113,27 @@ obj PyastBuildPass(Transform) {
         _source_lines: list[str] postinit,
         in_type_annotation: bool postinit,
         in_match_pattern: bool postinit,
-        in_fstring_expr: bool postinit;
+        in_fstring_expr: bool postinit,
+        _needs_builtins_import: bool postinit,
+        _builtins_alias: str postinit;
 
     def postinit -> None;
     def _get_source_segment(nd: py_ast.AST) -> (str | None);
     def _strip_string_continuations(seg: str) -> str;
+    def _fstring_constant_content(nd: py_ast.Constant, is_raw: bool) -> str;
+    def _make_number_literal(
+        nd: py_ast.AST, token: str, value: str, col_end: int | None = None
+    ) -> Expr;
+
+    def _numeric_literal(nd: py_ast.AST, n: float) -> Expr;
+    def _emit_float_call(nd: py_ast.AST, arg: str) -> FuncCall;
+    def _emit_complex_call(nd: py_ast.AST, re: float, im: float) -> FuncCall;
+    def _builtin_attr_ref(nd: py_ast.AST, attr: str) -> AtomTrailer;
+    def _make_builtins_import -> Import;
+    def _collect_used_identifiers(ast_root: py_ast.AST) -> set[str];
+    def _choose_builtins_alias(ast_root: py_ast.AST) -> str;
+    def _eval_complex_literal_ast(nd: py_ast.AST) -> (complex | float | int | None);
+    def _try_fold_complex_literal(nd: py_ast.BinOp) -> (FuncCall | None);
     def nu(nd: T) -> T;
     def name_node(
         nd: py_ast.AST,
@@ -156,13 +174,13 @@ obj PyastBuildPass(Transform) {
     def proc_assert(nd: py_ast.Assert) -> AssertStmt;
     def proc_attribute(nd: py_ast.Attribute) -> AtomTrailer;
     def proc_await(nd: py_ast.Await) -> AwaitExpr;
-    def proc_bin_op(nd: py_ast.BinOp) -> (AtomUnit | BinaryExpr);
+    def proc_bin_op(nd: py_ast.BinOp) -> (AtomUnit | BinaryExpr | FuncCall);
     def proc_unary_op(nd: py_ast.UnaryOp) -> UnaryExpr;
     def proc_bool_op(nd: py_ast.BoolOp) -> AtomUnit;
     def proc_break(nd: py_ast.Break) -> CtrlStmt;
     def proc_call(nd: py_ast.Call) -> FuncCall;
     def proc_compare(nd: py_ast.Compare) -> AtomUnit;
-    def proc_constant(nd: py_ast.Constant) -> Literal;
+    def proc_constant(nd: py_ast.Constant) -> Expr;
     def proc_continue(nd: py_ast.Continue) -> CtrlStmt;
     def proc_dict(nd: py_ast.Dict) -> DictVal;
     def proc_dict_comp(nd: py_ast.DictComp) -> DictCompr;

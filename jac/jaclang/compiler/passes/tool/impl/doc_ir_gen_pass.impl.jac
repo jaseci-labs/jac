@@ -291,15 +291,8 @@ impl DocIRGenPass.exit_special_var_ref(nd: uni.SpecialVarRef) -> None {
 }
 
 impl DocIRGenPass.exit_string(nd: uni.String) -> None {
-    is_escaped_curly = (
-        (nd.lit_value in ['{', '}'])
-        and nd.parent
-        and isinstance(nd.parent, uni.FString)
-    );
-    if is_escaped_curly {
-        nd.gen.doc_ir = self.concat(
-            [self.text(nd.value, source_token=nd), self.text(nd.value, source_token=nd)]
-        );
+    if nd.parent and isinstance(nd.parent, uni.FString) {
+        nd.gen.doc_ir = self.text(fstring_escape_interior(nd.value), source_token=nd);
         return;
     }
     nd.gen.doc_ir = self.text(nd.value, source_token=nd);
