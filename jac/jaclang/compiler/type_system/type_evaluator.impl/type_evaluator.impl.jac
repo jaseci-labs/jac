@@ -1878,6 +1878,15 @@ impl TypeEvaluator._get_type_of_expression_core(
 
             if scope := self._resolution_scope_for(expr) {
                 symbol = lookup_symtab(scope, expr.value, self.builtins_module);
+                if (
+                    symbol is not None
+                    and symbol.sym_type == SymbolType.HAS_VAR
+                    and isinstance(symbol.parent_tab, Archetype)
+                    and not self._is_non_expression_name(expr)
+                ) {
+                    expr.sym = None;
+                    symbol = self._lookup_bare_runtime_name(scope, expr.value);
+                }
 
                 if self._in_native_context()
                     and (symbol is None or symbol.parent_tab is self.builtins_module) {
