@@ -224,8 +224,6 @@ impl run_jab_image(
                             return rc;
                         }
                     } except NativeEntryStartedError as e {
-                        # The entry already ran; falling back to the JIT lane
-                        # would execute it a second time. Surface the failure.
                         console.error(str(e));
                         return 1;
                     }
@@ -275,7 +273,7 @@ def _jab_native_lib(img_root: object, entry_rel: str) -> (str | None) {
 }
 
 
-class NativeEntryStartedError(Exception) { }
+class NativeEntryStartedError(Exception) {}
 
 
 def _run_native_lib(lib_path: str, argv: list[str]) -> (int | None) {
@@ -295,9 +293,7 @@ def _run_native_lib(lib_path: str, argv: list[str]) -> (int | None) {
         return None;
     }
     if not _set_native_argv_in_dll(lib, argv) {
-        console.warning(
-            "proceeding into __jac_shared_init with argv unset (argc=0)"
-        );
+        console.warning("proceeding into __jac_shared_init with argv unset (argc=0)");
     }
     try {
         shared_init = lib.__jac_shared_init;
@@ -310,8 +306,6 @@ def _run_native_lib(lib_path: str, argv: list[str]) -> (int | None) {
     try {
         shared_init();
     } except Exception as e {
-        # Runtime bootstrap failure; the app entry has not run yet, so the
-        # caller may safely fall back to the execv/JIT lane.
         console.error(f"native codespace init failed ({lib_path}): {e}");
         return None;
     }

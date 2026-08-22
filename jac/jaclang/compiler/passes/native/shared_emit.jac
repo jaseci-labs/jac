@@ -95,9 +95,7 @@ def jac_entry_defined(llvm_ir_str: str) -> bool {
     comments or declarations must not count.
     """;
     import re;
-    return bool(
-        re.search(r'define[^@\n]*@"?jac_entry"?\s*\(', llvm_ir_str)
-    );
+    return bool(re.search(r'define[^@\n]*@"?jac_entry"?\s*\(', llvm_ir_str));
 }
 
 def aarch64_outline_atomics_ir -> str {
