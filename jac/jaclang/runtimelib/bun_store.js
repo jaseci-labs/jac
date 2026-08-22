@@ -2,9 +2,11 @@
 
 import { SQL } from "bun";
 import { createHash } from "node:crypto";
-import { SCHEMA_SQL, PROMOTIONS } from "./bun_schema.js";
+import { SCHEMA_SQL, SCHEMA_VERSION, PROMOTIONS } from "./bun_schema.js";
 
-export const SCHEMA_VERSION = 1;
+// SCHEMA_VERSION and SCHEMA_SQL come from the generated bun_schema.js (baked
+// from jaclang.runtimelib.store at artifact-build time) so both hosts hash
+// the same bytes.
 export const SCHEMA_STAMP_KEY = "schema_fingerprint";
 
 function pgOptionsFromEnv() {
@@ -43,60 +45,100 @@ export class BunStore {
     return this._sql;
   }
 
-  // Mirrors PgStore._schema_fingerprint in impl/store.impl.jac byte for byte:
-  // "<SCHEMA_VERSION>:<sha256(version, server major, SCHEMA_SQL, sorted
-  // promotion columns)[:24]>". Sharing the stamp key AND formula keeps bun and
-  // cpython hosts from invalidating each other's migrations on the same DB.
   async _schemaFingerprint(sql, promotions) {
     const res = await sql.unsafe("SHOW server_version_num");
     const raw = Array.isArray(res) && res.length ? String(Object.values(res[0])[0]) : "0";
     const serverMajor = Math.floor(Number(raw) / 10000);
-    const h = createHash("sha256");
-    h.update(String(SCHEMA_VERSION));
-    h.update(String(serverMajor));
-    for (const stmt of SCHEMA_SQL) {
-      h.update(stmt);
+    return computeSchemaFingerprint(SCHEMA_VERSION, serverMajor, SCHEMA_SQL, promotions);
+  }
+
+  // Mirrors PgStore._acquire_schema_lock: elect one migrator per database via
+  // a session advisory lock; losers poll until the winner stamps the matching
+  // fingerprint. Like cpython, applying DDL without the lock after the wait
+  // deadline is allowed but warned about.
+  async _acquireSchemaLock(sql, fingerprint) {
+    const WAIT_SECONDS = 30;
+    const POLL_START_MS = 50;
+    const POLL_MAX_MS = 500;
+    let delayMs = POLL_START_MS;
+    const deadline = Date.now() + WAIT_SECONDS * 1000;
+    for (;;) {
+      try {
+        const got = await sql.unsafe("SELECT pg_try_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
+        if (Array.isArray(got) && got.length && Boolean(Object.values(got[0])[0])) {
+          return true;
+        }
+      } catch (_) {
+        return false; // advisory locks unavailable — proceed unlocked.
+      }
+      if ((await this._schemaStamp()) === fingerprint) {
+        return false;
+      }
+      if (Date.now() >= deadline) {
+        console.warn(
+          `waited ${WAIT_SECONDS}s for the schema election; applying schema DDL without it`
+        );
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, delayMs));
+      delayMs = Math.min(delayMs * 2, POLL_MAX_MS);
     }
-    // str((arch, fld, col)) on the cpython side renders as this exact string.
-    for (const [arch, fld, col] of promotionColumns(promotions)) {
-      h.update(`('${arch}', '${fld}', '${col}')`);
+  }
+
+  async _releaseSchemaLock(sql) {
+    try {
+      await sql.unsafe("SELECT pg_advisory_unlock($1)", [SCHEMA_LOCK_KEY]);
+    } catch (_) { /* best effort */ }
+  }
+
+  async _schemaStamp() {
+    try {
+      return await this.getKv(SCHEMA_STAMP_KEY);
+    } catch (_) {
+      return null; // kv_state missing — fresh database.
     }
-    return `${SCHEMA_VERSION}:${h.digest("hex").slice(0, 24)}`;
   }
 
   async ensureSchema(promotions = PROMOTIONS) {
     const sql = this._ensureSql();
-    let stamped = null;
-    try {
-      stamped = await this.getKv(SCHEMA_STAMP_KEY);
-    } catch (_) {
-      stamped = null; // kv_state missing — fresh database.
-    }
     const fp = await this._schemaFingerprint(sql, promotions);
-    if (stamped === fp) {
+    if ((await this._schemaStamp()) === fp) {
       this._ready = true;
       return;
     }
-    await sql.unsafe("SET lock_timeout = '5s'");
+    // Schema election: only one host/process migrates; the rest wait for the
+    // matching stamp (same protocol as PgStore.ensure_schema).
+    const held = await this._acquireSchemaLock(sql, fp);
     try {
-      for (const stmt of SCHEMA_SQL) {
-        await sql.unsafe(stmt);
+      if ((await this._schemaStamp()) === fp) {
+        this._ready = true;
+        return;
       }
-      // Migration: anchors.seq is required by hydration's ORDER BY seq.
-      const hasSeq = await sql.unsafe(
-        "SELECT 1 FROM information_schema.columns"
-          + " WHERE table_name = 'anchors' AND column_name = 'seq'"
-      );
-      if (!Array.isArray(hasSeq) || hasSeq.length === 0) {
-        await sql.unsafe(
-          "ALTER TABLE anchors ADD COLUMN IF NOT EXISTS seq bigserial"
+      await sql.unsafe("SET lock_timeout = '5s'");
+      try {
+        for (const stmt of SCHEMA_SQL) {
+          await sql.unsafe(stmt);
+        }
+        // Migration: anchors.seq is required by hydration's ORDER BY seq.
+        const hasSeq = await sql.unsafe(
+          "SELECT 1 FROM information_schema.columns"
+            + " WHERE table_name = 'anchors' AND column_name = 'seq'"
         );
+        if (!Array.isArray(hasSeq) || hasSeq.length === 0) {
+          await sql.unsafe(
+            "ALTER TABLE anchors ADD COLUMN IF NOT EXISTS seq bigserial"
+          );
+        }
+        await this._applyPromotionDdl(sql, promotions);
+      } finally {
+        await sql.unsafe("SET lock_timeout = DEFAULT");
       }
-      await this._applyPromotionDdl(sql, promotions);
+      await this.setKv(SCHEMA_STAMP_KEY, fp);
     } finally {
-      await sql.unsafe("SET lock_timeout = DEFAULT");
+      if (held) {
+        await this._releaseSchemaLock(sql);
+      }
     }
-    await this.setKv(SCHEMA_STAMP_KEY, fp);
     this._ready = true;
   }
 
@@ -191,6 +233,32 @@ export class BunStore {
 let _sharedStore = null;
 
 const ROOT_KV_KEY = "__jac_shared_root_id";
+
+// Mirrors PgStore._schema_fingerprint byte for byte so bun and cpython hosts
+// compute identical stamps on the same database. Exported for the drift test
+// that pins JS output against the Python formula.
+export function computeSchemaFingerprint(schemaVersion, serverMajor, schemaSql, promotions) {
+  const h = createHash("sha256");
+  h.update(String(schemaVersion));
+  h.update(String(serverMajor));
+  for (const stmt of schemaSql) {
+    h.update(stmt);
+  }
+  // str((arch, fld, col)) on the cpython side renders as this exact string.
+  for (const [arch, fld, col] of promotionColumns(promotions)) {
+    h.update(`('${arch}', '${fld}', '${col}')`);
+  }
+  return `${schemaVersion}:${h.digest("hex").slice(0, 24)}`;
+}
+
+// sha256("jac:ensure_schema")[:8] as signed big-endian int — the same
+// advisory-lock key PgStore._schema_lock_key derives from _SCHEMA_LOCK_TAG.
+const SCHEMA_LOCK_KEY = BigInt.asIntN(
+  64,
+  BigInt(
+    "0x" + createHash("sha256").update("jac:ensure_schema").digest("hex").slice(0, 16)
+  )
+);
 
 // Mirrors PgStore._promotion_columns / _sanitize_ident in impl/store.impl.jac.
 function sanitizeIdent(name) {

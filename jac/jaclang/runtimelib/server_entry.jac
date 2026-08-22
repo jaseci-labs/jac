@@ -18,9 +18,6 @@ def emit_server_entry(
     handler_imports: list[str] = [];
 
     for w in walkers {
-        if not w.`pub {
-            continue;
-        }
         wn = w.name;
         mod = w.module.replace('.', '/');
         module_imports.append(f'import {{ {wn} as _W_{wn} }} from "./{mod}.js";');
@@ -33,9 +30,6 @@ def emit_server_entry(
         );
     }
     for f in functions {
-        if not f.`pub {
-            continue;
-        }
         fn = f.name;
         mod = f.module.replace('.', '/');
         module_imports.append(f'import {{ {fn} as _F_{fn} }} from "./{mod}.js";');
@@ -72,12 +66,13 @@ def emit_server_entry(
         (out_dir / 'bun_store.js').write_text(
             bun_store_src.read_text(encoding='utf-8'), encoding='utf-8'
         );
-        import from jaclang.runtimelib.store { SCHEMA_SQL }
+        import from jaclang.runtimelib.store { SCHEMA_SQL, SCHEMA_VERSION }
         schema_js = (
             '// GENERATED from jaclang.runtimelib.store.SCHEMA_SQL — do not edit.\n'
             + 'export const SCHEMA_SQL = '
             + repr([str(stmt) for stmt in SCHEMA_SQL])
             + ';\n'
+            + f'export const SCHEMA_VERSION = {int(SCHEMA_VERSION)};\n'
         );
         # Baked at build time from [database.indexes] via promotions_for() so
         # BunStore computes the same schema fingerprint as PgStore.

@@ -212,12 +212,17 @@ def build_bun_service_artifact(
     }
     pname = project_name or module_name;
     import from jaclang.runtimelib.session { promotions_for }
+    # Single enforcement point for endpoint visibility: only `pub` endpoints
+    # become network surface (routes, listings, handlers). Full lists are
+    # still exported from the module so non-pub symbols remain importable
+    # internally. Mirrors the cpython host, where non-pub endpoints default
+    # to auth-required and the bun host has no auth layer yet.
     rc = emit_server_entry(
         out_dir,
         pname,
         [{'rel': f"{module_name}.jac", 'js': js_code}],
-        walkers,
-        functions,
+        [w for w in walkers if w.`pub],
+        [f for f in functions if f.`pub],
         promotions=promotions_for(base_path)
     );
     if rc != 0 {

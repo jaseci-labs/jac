@@ -6,7 +6,7 @@ Derived from PLAN.md Priority 2 only — not from implementation internals.
 import os;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT, write_service }
+import from tests.support { JAC_ROOT, write_service, resolved_bun }
 import from jaclang.jac0core.host { HOST_BUN }
 import from jaclang.jac0core.sv_service_host {
     bun_service_artifact_path,
@@ -71,6 +71,75 @@ test "BunStore shares the PgStore anchor schema and version stamp" {
     assert 'SCHEMA_SQL' in bun_text , (
         "BunStore must consume the shared exported SCHEMA_SQL constant"
     );
+}
+
+
+test "BunStore fingerprint matches the PgStore formula byte for byte" {
+    # Drift pin: run computeSchemaFingerprint under real bun and compare with
+    # the Python formula (PgStore._schema_fingerprint) over identical inputs.
+    import subprocess;
+    import tempfile;
+    import hashlib;
+    import json;
+    import from pathlib { Path }
+    import from jaclang.runtimelib.store { SCHEMA_SQL, SCHEMA_VERSION }
+    import from tests.support { bun_runtime_available }
+
+    if not bun_runtime_available() {
+        print('[skip] bun runtime unavailable');
+        return;
+    }
+
+    promotions = {'arch_a': ['field1', 'field2'], 'b': ['x']};
+    stmts = [str(stmt) for stmt in SCHEMA_SQL];
+    server_major = 17;
+
+    h = hashlib.sha256();
+    h.update(str(SCHEMA_VERSION).encode());
+    h.update(str(server_major).encode());
+    for stmt in stmts {
+        h.update(stmt.encode());
+    }
+    for arch in sorted(promotions.keys()) {
+        for fld in promotions[arch] {
+            col = f"g_{arch}_{fld}";
+            h.update(f"('{arch}', '{fld}', '{col}')".encode());
+        }
+    }
+    expected = f"{SCHEMA_VERSION}:{h.hexdigest()[:24]}";
+
+    with tempfile.TemporaryDirectory(dir=None) as tmp {
+        tmp_path = Path(tmp);
+        (tmp_path / 'bun_store.js').write_bytes(
+            (_RUNTIMELIB / 'bun_store.js').read_bytes()
+        );
+        stub = (
+            'export const SCHEMA_SQL = '
+                + json.dumps(stmts) + ';\n'
+            + f'export const SCHEMA_VERSION = {int(SCHEMA_VERSION)};\n'
+            + 'export const PROMOTIONS = {};\n'
+        );
+        (tmp_path / 'bun_schema.js').write_text(stub, encoding='utf-8');
+        store_js = str(tmp_path / 'bun_store.js');
+        schema_js = str(tmp_path / 'bun_schema.js');
+        script = (
+            'import { computeSchemaFingerprint } from "' + store_js + '";\n'
+            'import { SCHEMA_SQL, SCHEMA_VERSION } from "' + schema_js + '";\n'
+            'const promos = '
+                + json.dumps(promotions) + ';\n'
+            'console.log(computeSchemaFingerprint('
+            'SCHEMA_VERSION, 17, SCHEMA_SQL, promos));'
+        );
+        proc = subprocess.run(
+            [str(resolved_bun() or 'bun'), '-e', script],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert proc.returncode == 0 , f"bun failed: {proc.stderr}";
+        got = proc.stdout.strip().splitlines()[-1].strip();
+        assert got == expected , f"fingerprint drift: js={got} py={expected}";
+    }
 }
 
 

@@ -96,6 +96,16 @@ def finalizeCallResponse(result: any, reports: any = []) -> dict {
     return {'result': serializeApiValue(result), 'reports': serializeApiValue(reports)};
 }
 
+def envelopeResponse(payload: dict) -> any {
+    # Mirrors _get_http_status in scale/server/impl/serve.impl.jac: failed
+    # transport envelopes are 500, successful ones 200.
+    status = 200;
+    if not payload.ok {
+        status = 500;
+    }
+    return Response.json(payload, {status: status});
+}
+
 def okEnvelope(data: any) -> dict {
     # Mirrors _transport_response_to_dict in jaclang/scale/server/impl/serve.impl.jac
     return {'ok': True, 'type': 'response', 'data': data, 'error': None};
@@ -221,11 +231,7 @@ def:pub startBunServer(opts: dict) {
         if fnMatch and method == 'POST' {
             name = decodeURIComponent(fnMatch[1]);
             payload = await handleFunctionCall(req, name, functionFns, params);
-            status = 200;
-            if not payload.ok {
-                status = 500;
-            }
-            return Response.json(payload, {status: status});
+            return envelopeResponse(payload);
         }
 
         walkerMatch = path.match('^/walker/([^/]+)(?:/([^/]+))?$');
@@ -236,11 +242,7 @@ def:pub startBunServer(opts: dict) {
                 nodeId = decodeURIComponent(walkerMatch[2]);
             }
             payload = await handleWalkerSpawn(req, name, nodeId, walkerFns);
-            status = 200;
-            if not payload.ok {
-                status = 500;
-            }
-            return Response.json(payload, {status: status});
+            return envelopeResponse(payload);
         }
 
         for carrier in restspec {
@@ -262,11 +264,7 @@ def:pub startBunServer(opts: dict) {
                 payload = await handleFunctionCall(
                     req, carrier.name, carrier_handlers, params
                 );
-                status = 200;
-            if not payload.ok {
-                status = 500;
-            }
-                return Response.json(payload, {status: status});
+                return envelopeResponse(payload);
             }
         }
 

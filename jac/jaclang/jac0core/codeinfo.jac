@@ -289,19 +289,6 @@ def native_stdlib_root -> (str | None) {
     return stdlib_dir if os.path.isdir(stdlib_dir) else None;
 }
 
-glob BUN_STDLIB_MODULES: tuple = (
-         'json',
-         'datetime',
-         'math',
-         'os',
-         'random',
-         'hashlib',
-         'uuid',
-         'time',
-         'urllib'
-     );
-
-
 def cl_stdlib_root -> (str | None) {
     import os;
     import jaclang;
