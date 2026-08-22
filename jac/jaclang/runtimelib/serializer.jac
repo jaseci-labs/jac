@@ -56,6 +56,7 @@ obj Serializer {
 
     static def register(cls: type) -> None;
     static def register_alias(old_name: str, cls: type) -> None;
+    static def unregister_module(module_name: str) -> int;
     static def is_auto_registered_module(module_name: str) -> bool;
     static def fingerprint(cls: type) -> str;
     static def repair(data: dict[str, object], cls: type) -> tuple;

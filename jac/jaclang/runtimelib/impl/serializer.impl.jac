@@ -353,6 +353,31 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
     Serializer._aliases[old_name] = new_name;
 }
 
+impl Serializer.unregister_module(module_name: str) -> int {
+    import from jaclang.runtimelib.typecache { invalidate as _invalidate_typecache }
+    dropped: list[str] = [];
+    for (key, cls) in list(Serializer._registry.items()) {
+        if getattr(cls, '__module__', '') == module_name {
+            dropped.append(key);
+        }
+    }
+    for key in dropped {
+        cls = Serializer._registry.pop(key, None);
+        if cls is not None {
+            _invalidate_typecache(cls);
+        }
+    }
+    if dropped {
+        gone = set(dropped);
+        for (old_name, target) in list(Serializer._aliases.items()) {
+            if target in gone {
+                Serializer._aliases.pop(old_name, None);
+            }
+        }
+    }
+    return len(dropped);
+}
+
 impl Serializer.repair(data: dict[str, object], cls: type) -> tuple {
     import from jaclang.runtimelib.schema_rules {
         apply_rules,

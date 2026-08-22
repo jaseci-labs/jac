@@ -171,6 +171,8 @@ def _suite_source(filepath: str) -> str;
 
 def _fresh_jac_state(clear_modules: bool = True) -> None;
 
+def _detach_from_parent(module_name: str) -> None;
+
 def _package_basedir(start_dir: str) -> str;
 
 def _outermost_package_root(start_dir: str, ceiling: str) -> str;

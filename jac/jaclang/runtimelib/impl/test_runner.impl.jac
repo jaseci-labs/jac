@@ -360,12 +360,30 @@ impl _cleanup_test_bases -> None {
     }
 }
 
+impl _detach_from_parent(module_name: str) -> None {
+    import sys;
+    (parent_name, _, child_name) = module_name.rpartition('.');
+    if not parent_name or not child_name {
+        return;
+    }
+    parent = sys.modules.get(parent_name);
+    if parent is None {
+        return;
+    }
+    try {
+        delattr(parent, child_name);
+    } except AttributeError {
+        ;
+    }
+}
+
 impl _fresh_jac_state(clear_modules: bool = True) -> None {
     import sys;
     import tempfile;
     import from concurrent.futures { ThreadPoolExecutor }
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.runtime { JacRuntime, JacRuntimeInterface }
+    import from jaclang.runtimelib.serializer { Serializer }
     import from jaclang.runtimelib.session { mark_scratch_base }
     if JacRuntime.exec_ctx is not None {
         JacRuntime.exec_ctx.mem.close();
@@ -376,6 +394,8 @@ impl _fresh_jac_state(clear_modules: bool = True) -> None {
                 not mod.__name__.startswith("jaclang.") and (mod.__name__ != "__main__")
             ) {
                 sys.modules.pop(mod.__name__, None);
+                Serializer.unregister_module(mod.__name__);
+                _detach_from_parent(mod.__name__);
             }
         }
         JacRuntime.loaded_modules.clear();
@@ -385,8 +405,10 @@ impl _fresh_jac_state(clear_modules: bool = True) -> None {
     mark_scratch_base(fresh_base);
     JacRuntime.set_base_path(fresh_base);
     JacRuntime.set_full_target_path(None);
+    outgoing_pool = JacRuntime.pool;
     JacRuntime.program = JacProgram();
     JacRuntime.pool = ThreadPoolExecutor();
+    outgoing_pool.shutdown(`wait=False, cancel_futures=True);
     JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(
         user_root=None, base_path_dir=fresh_base, full_target_path=None
     );
