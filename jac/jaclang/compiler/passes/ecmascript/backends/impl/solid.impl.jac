@@ -141,22 +141,17 @@ impl SolidBackend._jsx_attr(
         es.JsxIdentifier(name=self._map_attr_name(attr.name)), jac_node=attr.jac_node
     );
     if isinstance(attr, StaticAttr) {
-        if isinstance(attr.value, es.Literal) and attr.value.value is True {
+        if attr.value.value is True {
             value: (es.Literal | es.JsxExpressionContainer | None) = None;
         } elif (
-            isinstance(attr.value, es.Literal)
-            and isinstance(attr.value.value, str)
+            isinstance(attr.value.value, str)
             and not self._jsx_attr_str_safe(attr.value.value)
         ) {
             value = sync_loc(
                 es.JsxExpressionContainer(expression=attr.value), jac_node=attr.jac_node
             );
-        } elif isinstance(attr.value, es.Literal) {
-            value = attr.value;
         } else {
-            value = sync_loc(
-                es.JsxExpressionContainer(expression=attr.value), jac_node=attr.jac_node
-            );
+            value = attr.value;
         }
     } elif isinstance(attr, EventAttr) {
         value = sync_loc(

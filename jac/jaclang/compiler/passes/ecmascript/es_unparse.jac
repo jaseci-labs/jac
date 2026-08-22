@@ -3,7 +3,7 @@ import from jaclang.compiler.passes.ecmascript { estree as es }
 obj JSCodeGenerator {
     def init(indent: str = '  ') -> None;
 
-    has indent_str: str = '  ',
+    has indent_str: str,
         indent_level: int = 0,
         line_map: list[tuple[int, int, int]] = [],
         _current_line: int = 1,
