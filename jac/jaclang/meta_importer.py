@@ -130,20 +130,18 @@ def _retained_failure_details(file_path: str) -> str:
 def _module_scoped_alerts(program: object, file_path: str) -> list:
     """Collect compile alerts recorded against file_path (or its annexes).
 
-    `foo.jac` -> prefix `foo.` also matches annex paths such as
-    `foo.impl.jac` and `foo.impl/bar.jac`, so errors reported against
-    an impl file count as the module's own.
+    Delegates to ext_registry.is_module_scoped_path: `foo.jac` matches
+    annex paths such as `foo.impl.jac` and `foo.impl/bar.jac`, so errors
+    reported against an impl file count as the module's own.
     """
     norm = os.path.normpath(file_path)
-    stem = norm[:-4] if norm.endswith(".jac") else norm
-    prefix = stem + "."
     alerts = []
     for alert in getattr(program, "errors_had", []):
         try:
             alert_path = os.path.normpath(alert.loc.mod_path)
         except Exception:
             continue
-        if alert_path == norm or alert_path.startswith(prefix):
+        if ext_registry.is_module_scoped_path(alert_path, norm):
             alerts.append(alert)
     return alerts
 

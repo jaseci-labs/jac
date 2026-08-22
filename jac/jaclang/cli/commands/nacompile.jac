@@ -106,15 +106,18 @@ glob registry = get_registry();
     ],
     group="transform"
 )
-def nacompile(
+def nacompile(  # jac:ignore[W3030]
     filename: str,
     output: str = "",
     scrub: bool = False,
     target: str = "",
     shared: bool = False,
+    entry_lib: bool = False,
     debug: bool = False,
     gc: str = "",
     assert_no_rc: bool = False,
     enforce_nogc: bool = False,
     strict: bool = False
 ) -> int;
+
+def nacompile_sealed_pair(filename: str, exe_output: str, lib_output: str) -> int;

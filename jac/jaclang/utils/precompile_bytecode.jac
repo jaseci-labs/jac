@@ -2935,7 +2935,12 @@ def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
     }
     import from jaclang.project.config { get_config_for_path }
     import from jaclang.project.kinds { resolve_project_kind, resolve_entry }
-    import from jaclang.runtimelib.sealed_serve { CLIENT_DIST_REL, NATIVE_DIR_REL }
+    import from jaclang.runtimelib.sealed_serve {
+        CLIENT_DIST_REL,
+        NATIVE_DIR_REL,
+        interop_record_path,
+        native_lib_name
+    }
 
     config = get_config_for_path(pkg_path);
     if config is None {
@@ -2982,6 +2987,34 @@ def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
         if triples {
             caps.append("platform-locked");
             meta["triples"] = triples;
+        }
+
+        _interop = False;
+        _unresolved: list = [];
+        _stem = (
+            ext_registry.base_stem(os.path.basename(entry_path)) if entry_path else ""
+        );
+        for _t in triples {
+            if not _stem {
+                continue;
+            }
+            _rec = interop_record_path(str(native_dir / _t / native_lib_name(_stem)));
+            if not _rec.is_file() {
+                continue;
+            }
+            _interop = True;
+            try {
+                _unresolved = json.loads(_rec.read_text(encoding="utf-8")).get(
+                    "unresolved", []
+                );
+            } except Exception {
+                _unresolved = [];
+            }
+            break;
+        }
+        meta["native"] = {"interop": _interop};
+        if _unresolved {
+            meta["native"]["unresolved"] = _unresolved;
         }
     }
     return meta;

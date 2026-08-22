@@ -59,6 +59,9 @@ class BoundaryAnalysisPass(UniPass) {
     ) -> tuple[(str, list[str], list[str])];
 
     def _get_context(self: BoundaryAnalysisPass, nd: UniNode) -> InteropContext;
+    def _caller_context(
+        self: BoundaryAnalysisPass, nd: Import, import_context: InteropContext
+    ) -> InteropContext;
     def _extract_type_name(self: BoundaryAnalysisPass, expr: (UniNode | None)) -> str;
     def _in_native_module(self: BoundaryAnalysisPass) -> bool;
     def _native_source_module_of(
