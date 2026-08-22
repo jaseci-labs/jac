@@ -6,8 +6,6 @@ import shutil;
 import from tempfile { mkdtemp }
 import from pathlib { Path }
 
-import pytest;
-
 import from jaclang.runtimelib.storage { LocalStorage }
 
 """Create a temporary directory and LocalStorage instance."""
@@ -103,7 +101,7 @@ test "download to file object" {
 test "download nonexistent file raises" {
     (temp_dir, local_storage) = make_temp_storage();
     try {
-        with pytest.raises(FileNotFoundError) {
+        with testraises(FileNotFoundError) {
             local_storage.download("nonexistent.txt");
         }
     } finally {
@@ -215,7 +213,7 @@ test "get metadata" {
 test "get metadata nonexistent raises" {
     (temp_dir, local_storage) = make_temp_storage();
     try {
-        with pytest.raises(FileNotFoundError) {
+        with testraises(FileNotFoundError) {
             local_storage.get_metadata("nonexistent.txt");
         }
     } finally {

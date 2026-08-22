@@ -1,101 +1,21 @@
-import dis;
-import marshal;
 import os;
-import pdb;
-import re;
-import from functools { lru_cache }
-import from traceback { TracebackException }
+import type from jaclang.jac0core.srcloc { CodeLocInfo }
+import type from jaclang.jac0core.unitree { Expr }
 
-@lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str {
-    snake_string = re.sub('(?<!^)(?=[A-Z])', '_', pascal_string).lower();
-    return snake_string;
+    snake_string = '';
+    for (idx, ch) in enumerate(pascal_string) {
+        if (idx > 0) and (ch >= 'A') and (ch <= 'Z') {
+            snake_string += '_';
+        }
+        snake_string += ch;
+    }
+    return snake_string.lower();
 }
 
 def add_line_numbers(s: str) -> str {
     lines = s.split('\n');
     return '\n'.join(f"{(i + 1)}:       {line}" for (i, line) in enumerate(lines));
-}
-
-def dump_traceback(e: Exception) -> str {
-    trace_dump = '';
-    def byte_offset_to_char_offset(string: str, offset: int) -> int {
-        return len(string.encode('utf-8')[:offset].decode('utf-8', errors='replace'));
-    }
-    """Return (jac_filename, jac_source) if available, else (None, None).""";
-    def get_jac_source_info(py_filename: str) -> tuple[((str | None), (str | None))] {
-        return (None, None);
-    }
-    tb = TracebackException(`type(e), e, e.__traceback__, limit=None, compact=True);
-    trace_dump += f"Error: {str(e)}\n";
-    tb.stack.pop(0);
-    tb.stack.reverse();
-    dump_tab_width = 2;
-    """Check if a frame is part of the Jac internal runtime.""";
-    def is_internal_runtime_frame(filename: str) -> bool {
-        normalized: str = filename.replace('\\', '/');
-        return (
-            ('/jaclang/runtimelib/' in normalized)
-            or ('/jaclang/jac0core/' in normalized)
-            or ('/jaclang/vendor/' in normalized)
-            or ('/jaclang/plugin.py' in normalized)
-            or normalized.endswith('/jaclang/meta_importer.py')
-        );
-    }
-    seen_runtime_marker: bool = False;
-    collapse_internal: bool = True;
-    for (idx, frame) in enumerate(tb.stack) {
-        is_internal: bool = is_internal_runtime_frame(frame.filename);
-        if (is_internal and collapse_internal) {
-            if not seen_runtime_marker {
-                trace_dump += f"\n{(' ' * dump_tab_width)}... [internal runtime calls]";
-                seen_runtime_marker = True;
-            }
-            continue;
-        }
-        seen_runtime_marker = False;
-        func_signature: str = frame.name + ('()' if frame.name.isidentifier() else '');
-        (jac_filename, jac_source) = get_jac_source_info(frame.filename);
-        display_filename: str = jac_filename or frame.filename;
-        display_source: (str | None) = jac_source;
-        if (
-            (idx == 0)
-            and (
-                (frame.lineno is not None) and frame.line and (frame.line.strip() != '')
-            )
-        ) {
-            line_o = frame.line;
-            if frame?._original_line {
-                line_o = frame._original_line.rstrip();
-            } elif frame?._original_lines {
-                line_o = frame._original_lines.split('\n')[0].rstrip();
-            }
-            if ((frame.colno is not None) and (frame.end_colno is not None)) {
-                off_start = byte_offset_to_char_offset(line_o, frame.colno) - 1;
-                off_end = byte_offset_to_char_offset(line_o, frame.end_colno) - 1;
-                file_source = display_source;
-                if (file_source is None) {
-                    try {
-                        file_source = read_file_with_encoding(frame.filename);
-                    } except Exception {
-                        file_source = '';
-                    }
-                }
-                if file_source {
-                    lines = file_source.split('\n');
-                    for i in range((frame.lineno - 1)) {
-                        off_start += len(lines[i]) + 1;
-                        off_end += len(lines[i]) + 1;
-                    }
-                    trace_dump += pretty_print_source_location(
-                        display_filename, file_source, frame.lineno, off_start, off_end
-                    );
-                }
-            }
-        }
-        trace_dump += f"\n{(' ' * dump_tab_width)}at {func_signature} {display_filename}:{frame.lineno}";
-    }
-    return trace_dump;
 }
 
 class ANSIColors {
@@ -167,7 +87,11 @@ def pretty_print_source_location(
     pretty_dump = '';
     curr_line = start_line;
     while (curr_line < end_line) {
-        pretty_dump += f"%{line_num_width}d | " % curr_line;
+        gutter: str = str(curr_line);
+        while (len(gutter) < line_num_width) {
+            gutter = ' ' + gutter;
+        }
+        pretty_dump += gutter + " | ";
         idx_line_start = idx;
         while ((idx < flen) and (fb[idx] != NL)) {
             idx += 1;
@@ -182,7 +106,11 @@ def pretty_print_source_location(
         }
         pretty_dump += '\n';
         if (curr_line == error_line) {
-            pretty_dump += f"%{line_num_width}s | " % ' ';
+            blank_gutter: str = ' ';
+            while (len(blank_gutter) < line_num_width) {
+                blank_gutter = ' ' + blank_gutter;
+            }
+            pretty_dump += blank_gutter + " | ";
 
             prefix = fb[idx_line_start:pos_start].decode("utf-8", errors="replace");
             spaces = '';
@@ -199,7 +127,7 @@ def pretty_print_source_location(
             if (err_token_len < 1) {
                 err_token_len = 1;
             }
-            underline = '^' * err_token_len;
+            underline: str = '^' * err_token_len;
             if colors {
                 underline = f"{ANSIColors.RED}{underline}{ANSIColors.END}";
             }
@@ -215,7 +143,7 @@ def pretty_print_source_location(
 }
 
 def format_related_spans(
-    related: list[tuple[str, object]], *, colors: bool = False
+    related: list[tuple[str, CodeLocInfo]], *, colors: bool = False
 ) -> str {
     result = '';
     for (label, loc) in related {
@@ -250,13 +178,13 @@ def format_related_spans(
     return result;
 }
 
-class Jdb(pdb.Pdb) {
-    def init(self: Jdb, *args: any, **kwargs: any) -> None;
-    def has_breakpoint(self: Jdb, bytecode: bytes) -> bool;
-}
-
-glob debugger = Jdb(),
-     _JAC_TEXT_ENCODINGS = ['utf-8-sig', 'utf-8', 'utf-16', 'utf-16le', 'utf-16be'];
+glob _JAC_TEXT_ENCODINGS = [
+         'utf-8-sig',
+         'utf-8',
+         'utf-16',
+         'utf-16le',
+         'utf-16be'
+     ];
 
 def read_file_with_encoding(file_path: str) -> str {
     for encoding in _JAC_TEXT_ENCODINGS {
@@ -277,55 +205,15 @@ def read_file_with_encoding(file_path: str) -> str {
     );
 }
 
-import tomllib;
-
-class MalformedJacTomlError(tomllib.TOMLDecodeError) {
-    has file_path: str,
-        original: tomllib.TOMLDecodeError;
-
-    def init(
-        self: MalformedJacTomlError, file_path: str, original: tomllib.TOMLDecodeError
-    ) {
-        msg = f"jac.toml is malformed at {file_path}: {original}";
-        if hasattr(original, "doc") and hasattr(original, "pos") {
-            tomllib.TOMLDecodeError.__init__(
-                self, msg, getattr(original, "doc"), getattr(original, "pos")
-            );
-        } else {
-            tomllib.TOMLDecodeError.__init__(self, msg);
-        }
-        self.file_path = file_path;
-        self.original = original;
-    }
-}
-
-
-def read_toml_with_encoding(file_path: str) -> dict {
-    try {
-        return tomllib.loads(read_file_with_encoding(file_path));
-    } except tomllib.TOMLDecodeError as exc {
-        raise MalformedJacTomlError(file_path, exc);
-    }
-}
-
-def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
-    import sys;
-    sys.stderr.write(
-        f"warning: jac.toml is malformed ({exc.file_path}): {exc.original}; "
-        "ignoring [plugins].disabled. "
-        "Run a `jac` CLI command for the actionable error.\n"
-    );
-}
-
 
 def path_matches_exclude(
-    file_path: str, patterns: list, project_root: str = ""
+    file_path: str, patterns: list[str], project_root: str = ""
 ) -> bool {
     import from fnmatch { fnmatch }
     if not patterns {
         return False;
     }
-    norm = file_path.replace(os.sep, '/');
+    norm: str = file_path.replace(os.sep, '/');
     if project_root {
         root_prefix = project_root.replace(os.sep, '/').rstrip('/') + '/';
         if norm.startswith(root_prefix) {
@@ -340,8 +228,8 @@ def path_matches_exclude(
     for pattern in patterns {
         if '/' in pattern {
             if fnmatch(norm, pattern)
-            or fnmatch(norm, '*/' + pattern)
-            or fnmatch('_/' + norm, pattern) {
+                or fnmatch(norm, '*/' + pattern)
+                or fnmatch('_/' + norm, pattern) {
                 return True;
             }
         } else {
@@ -356,7 +244,33 @@ def path_matches_exclude(
 }
 
 
-def _is_version_info_access(expr: 'uni.Expr') -> bool {
+glob JACIGNORE_FILENAME: str = '.jacignore';
+
+
+def normalize_exclude_patterns(patterns: list) -> list[str] {
+    normalized: list[str] = [];
+    for raw in (patterns or []) {
+        stripped = raw.strip();
+        if stripped and not stripped.startswith('#') {
+            normalized.append(stripped.rstrip('/'));
+        }
+    }
+    return normalized;
+}
+
+
+def read_jacignore_patterns(project_root: str) -> list[str] {
+    ignore_file = os.path.join(project_root, JACIGNORE_FILENAME);
+    if not os.path.isfile(ignore_file) {
+        return [];
+    }
+    return normalize_exclude_patterns(
+        read_file_with_encoding(ignore_file).splitlines()
+    );
+}
+
+
+def _is_version_info_access(expr: Expr) -> bool {
     import jaclang.jac0core.unitree as uni;
 
     if not isinstance(expr, uni.AtomTrailer) {
@@ -373,24 +287,29 @@ def _is_version_info_access(expr: 'uni.Expr') -> bool {
     );
 }
 
-def _is_type_checking_ref(expr: 'uni.Expr') -> bool {
+def _is_type_checking_ref(expr: Expr) -> bool {
     import jaclang.jac0core.unitree as uni;
 
+    inner = expr;
     if isinstance(expr, uni.AtomUnit) {
-        expr = expr.value;
+        unwrapped = expr.value;
+        if not isinstance(unwrapped, uni.Expr) {
+            return False;
+        }
+        inner = unwrapped;
     }
-    if isinstance(expr, uni.Name) {
-        return expr.value == "TYPE_CHECKING";
+    if isinstance(inner, uni.Name) {
+        return inner.value == "TYPE_CHECKING";
     }
-    if isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+    if isinstance(inner, uni.AtomTrailer) and inner.is_attr {
         return (
-            isinstance(expr.right, uni.Name) and expr.right.value == "TYPE_CHECKING"
+            isinstance(inner.right, uni.Name) and inner.right.value == "TYPE_CHECKING"
         );
     }
     return False;
 }
 
-def _extract_version_tuple(expr: 'uni.Expr') -> tuple[int, int] | None {
+def _extract_version_tuple(expr: Expr) -> tuple[int, int] | None {
     import jaclang.jac0core.unitree as uni;
 
     if not isinstance(expr, uni.TupleVal) {
@@ -406,23 +325,26 @@ def _extract_version_tuple(expr: 'uni.Expr') -> tuple[int, int] | None {
     return (major.lit_value, minor.lit_value);
 }
 
-def evaluate_version_condition(condition: 'uni.Expr') -> bool | None {
+def evaluate_version_condition(condition: Expr) -> bool | None {
     import sys;
-    import operator;
     import jaclang.jac0core.unitree as uni;
     import from jaclang.jac0core.constant { Tokens as Tok }
 
     cond = condition;
-    if isinstance(cond, uni.AtomUnit) {
-        cond = cond.value;
+    if isinstance(condition, uni.AtomUnit) {
+        unwrapped = condition.value;
+        if not isinstance(unwrapped, uni.Expr) {
+            return None;
+        }
+        cond = unwrapped;
     }
 
     if _is_type_checking_ref(cond) {
         return True;
     }
     if isinstance(cond, uni.UnaryExpr)
-    and cond.op.name == Tok.NOT
-    and _is_type_checking_ref(cond.operand) {
+        and cond.op.name == Tok.NOT
+        and _is_type_checking_ref(cond.operand) {
         return False;
     }
     if not isinstance(cond, uni.CompareExpr) {
@@ -441,21 +363,24 @@ def evaluate_version_condition(condition: 'uni.Expr') -> bool | None {
     }
 
     current = (sys.version_info.major, sys.version_info.minor);
-    op_map: dict = {
-        ">=": operator.ge,
-        "GtE": operator.ge,
-        ">": operator.gt,
-        "Gt": operator.gt,
-        "<=": operator.le,
-        "LtE": operator.le,
-        "<": operator.lt,
-        "Lt": operator.lt,
-        "==": operator.eq,
-        "Eq": operator.eq,
-        "!=": operator.ne,
-        "NotEq": operator.ne
-    };
-
     op_str = cond.ops[0].value;
-    return op_map[op_str](current, target) if op_str in op_map else None;
+    if op_str in (">=", "GtE") {
+        return current >= target;
+    }
+    if op_str in (">", "Gt") {
+        return current > target;
+    }
+    if op_str in ("<=", "LtE") {
+        return current <= target;
+    }
+    if op_str in ("<", "Lt") {
+        return current < target;
+    }
+    if op_str in ("==", "Eq") {
+        return current == target;
+    }
+    if op_str in ("!=", "NotEq") {
+        return current != target;
+    }
+    return None;
 }

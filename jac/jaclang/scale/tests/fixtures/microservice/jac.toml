@@ -5,3 +5,17 @@ name = "microservice-fixtures"
 # its own tests. The jac.toml marks it as a separate project so a discovery scan
 # anchored at the parent fixtures/ tree treats it as a hard boundary and does not
 # absorb these services into an unrelated entry app (e.g. the monolith test_api).
+
+# The routes table is the authoritative service cut (#7772): every provider
+# module these fixtures import across the boundary is declared here so the
+# compiler lowers those imports to service RPC stubs.
+[scale.microservices.routes]
+calculator_service = "/calculator"
+dispatcher_service = "/dispatcher"
+inventory_service = "/inventory"
+math_service = "/math"
+notify_service = "/notify"
+order_service = "/order"
+level_a = "/level-a"
+level_b = "/level-b"
+level_c = "/level-c"

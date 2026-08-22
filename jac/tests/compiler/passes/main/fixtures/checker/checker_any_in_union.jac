@@ -14,8 +14,6 @@ plus a no-`Any` concrete-union assignment. Every function is well-typed and
 must produce zero errors.
 """
 
-import from typing { Any }
-
 obj Base {}
 
 obj Alpha(Base) {
@@ -30,13 +28,13 @@ obj Beta(Base) {
     has tag: str = "b";
 }
 
-def attr_on_union_with_any(pick: bool, alt: Any) -> None {
+def attr_on_union_with_any(pick: bool, alt: any) -> None {
     # `Alpha | Any` -- `.tag` exists on Alpha; Any absorbs, no "missing" error.
     item = Alpha() if pick else alt;
     print(item.tag);
 }
 
-def method_on_union_with_any(pick: bool, alt: Any) -> None {
+def method_on_union_with_any(pick: bool, alt: any) -> None {
     # Mirrors the issue's `stream.flush()`: a call on `Alpha | Any` in a
     # value-neutral position must not report the method missing from Any.
     item = Alpha() if pick else alt;
@@ -45,7 +43,7 @@ def method_on_union_with_any(pick: bool, alt: Any) -> None {
     }
 }
 
-def attr_on_multi_any(which: int, alt: Any) -> None {
+def attr_on_multi_any(which: int, alt: any) -> None {
     # `Alpha | Beta | Any` -- `.tag` exists on both concrete members.
     item = Alpha() if which == 0 else (Beta() if which == 1 else alt);
     print(item.tag);

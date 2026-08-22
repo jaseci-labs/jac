@@ -41,7 +41,8 @@ obj MachOLinker {
         shared: bool = False,
         export_symbols: list[str] = [],
         init_funcs: list[str] = [],
-        soname: str = "";
+        soname: str = "",
+        _commons: dict[str, tuple[(int, int)]] = {};
 
     static def link(
         obj_bytes: bytes,
@@ -61,6 +62,7 @@ obj MachOLinker {
         secs: list[MachOSection], syms: list[MachOSymbol], relocs: list[MachOReloc]
     ) -> None;
 
+    def _allocate_commons -> None;
     def _resolve_crossrefs -> None;
     def build_executable -> bytes;
     def build_shared_object -> bytes;

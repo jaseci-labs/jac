@@ -1,14 +1,39 @@
-import from fastapi_sso.sso.apple { AppleSSO }
-import from fastapi_sso.sso.base { SSOBase }
-import from jaclang.scale.sso.provider { FastAPISSOBase }
+import from jaclang.scale.sso.provider {
+    OAuth2CodeProvider,
+    SSOUserInfo,
+    decode_jwt_payload_unverified
+}
 
-obj AppleSSOProvider(FastAPISSOBase) {
-    def _make_sso -> SSOBase {
-        return AppleSSO(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=self.redirect_uri,
-            allow_insecure_http=self.allow_insecure_http
-        );
+obj AppleSSOProvider(OAuth2CodeProvider) {
+    def authorize_url -> str {
+        return 'https://appleid.apple.com/auth/authorize';
+    }
+
+    def token_url -> str {
+        return 'https://appleid.apple.com/auth/token';
+    }
+
+    def scope -> str {
+        return 'name email';
+    }
+
+    def extra_authorize_params -> dict[str, str] {
+        return {'response_mode': 'form_post'};
+    }
+
+    async def fetch_user(
+        access_token: str, token_payload: dict[str, any]
+    ) -> SSOUserInfo {
+        id_token = str(token_payload.get('id_token') or '');
+        if not id_token {
+            raise RuntimeError('Apple token response is missing id_token');
+        }
+        claims = decode_jwt_payload_unverified(id_token);
+        email = claims.get('email');
+        external_id = claims.get('sub');
+        if not email or not external_id {
+            raise RuntimeError('Apple id_token is missing email or sub');
+        }
+        return SSOUserInfo(email=str(email), external_id=str(external_id));
     }
 }

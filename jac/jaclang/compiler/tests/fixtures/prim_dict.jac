@@ -134,7 +134,7 @@ def dict_py() -> dict {
     };
 }
 
-cl def dict_cl() -> dict {
+def dict_cl() -> dict {
     d: dict = {"a": 1, "b": 2, "c": 3};
 
     get_hit: int = d.get("a", 0);
@@ -239,111 +239,203 @@ cl def dict_cl() -> dict {
     };
 }
 
-na {
-    def dict_na() -> dict[str, any] {
-        d: dict[str, int] = {"a": 100, "b": 200, "c": 300};
 
-        # dict_copy
-        dc1: dict[str, int] = {"x": 10, "y": 20};
-        dc1.clear();
-        dc2: dict[str, int] = {"a": 1, "b": 2, "c": 3};
-        dc3: dict[str, int] = dc2.copy();
-        dc2["a"] = 999;
+def dict_na() -> dict[str, any] {
+    d: dict[str, int] = {"a": 100, "b": 200, "c": 300};
 
-        # dict_extra
-        de: dict[str, int] = {"a": 1, "b": 2, "c": 3};
-        get_a: int = de.get("a", 0);
-        get_missing: int = de.get("z", -1);
-        get_exists: int = de.get("b", 99);
-        popped: int = de.pop("b", 0);
-        pop_len: int = len(de);
-        pop_default: int = de.pop("z", -1);
-        de2: dict[str, int] = {"c": 30, "d": 40};
-        de.update(de2);
-        upd_len: int = len(de);
-        upd_c: int = de["c"];
-        upd_d: int = de["d"];
-        de3: dict[str, int] = {"x": 10, "y": 20};
-        v: list[int] = list(de3.values());
+    # dict_copy
+    dc1: dict[str, int] = {"x": 10, "y": 20};
+    dc1.clear();
+    dc2: dict[str, int] = {"a": 1, "b": 2, "c": 3};
+    dc3: dict[str, int] = dc2.copy();
+    dc2["a"] = 999;
 
-        # dict_setdefault
-        ds1: dict[str, int] = {"a": 1, "b": 2};
-        sd_missing: int = ds1.setdefault("c", 99);
-        sd_missing_len: int = len(ds1);
-        sd_missing_c: int = ds1["c"];
-        ds2: dict[str, int] = {"x": 10, "y": 20};
-        sd_existing: int = ds2.setdefault("x", 999);
-        sd_existing_len: int = len(ds2);
-        sd_existing_x: int = ds2["x"];
-        ds3: dict[str, int] = {};
-        ds3.setdefault("a", 1);
-        ds3.setdefault("b", 2);
-        ds3.setdefault("a", 100);
-        sd_multi_len: int = len(ds3);
-        sd_multi_a: int = ds3["a"];
-        sd_multi_b: int = ds3["b"];
+    # dict_extra
+    de: dict[str, int] = {"a": 1, "b": 2, "c": 3};
+    get_a: int = de.get("a", 0);
+    get_missing: int = de.get("z", -1);
+    get_exists: int = de.get("b", 99);
+    popped: int = de.pop("b", 0);
+    pop_len: int = len(de);
+    pop_default: int = de.pop("z", -1);
+    de2: dict[str, int] = {"c": 30, "d": 40};
+    de.update(de2);
+    upd_len: int = len(de);
+    upd_c: int = de["c"];
+    upd_d: int = de["d"];
+    de3: dict[str, int] = {"x": 10, "y": 20};
+    v: list[int] = list(de3.values());
 
-        # containers in/not-in
-        d_in1: dict[str, int] = {"x": 1};
-        dict_in: int = 1 if "x" in d_in1 else 0;
-        dict_nin: int = 1 if "z" not in d_in1 else 0;
+    # dict_setdefault
+    ds1: dict[str, int] = {"a": 1, "b": 2};
+    sd_missing: int = ds1.setdefault("c", 99);
+    sd_missing_len: int = len(ds1);
+    sd_missing_c: int = ds1["c"];
+    ds2: dict[str, int] = {"x": 10, "y": 20};
+    sd_existing: int = ds2.setdefault("x", 999);
+    sd_existing_len: int = len(ds2);
+    sd_existing_x: int = ds2["x"];
+    ds3: dict[str, int] = {};
+    ds3.setdefault("a", 1);
+    ds3.setdefault("b", 2);
+    ds3.setdefault("a", 100);
+    sd_multi_len: int = len(ds3);
+    sd_multi_a: int = ds3["a"];
+    sd_multi_b: int = ds3["b"];
 
-        # dict |= (ior)
-        d_ior: dict[str, int] = {"a": 1, "b": 2};
-        d_ior |= {"b": 99, "c": 3};
-        ior_len: int = len(d_ior);
-        ior_b: int = d_ior["b"];
-        ior_c: int = d_ior["c"];
+    # containers in/not-in
+    d_in1: dict[str, int] = {"x": 1};
+    dict_in: int = 1 if "x" in d_in1 else 0;
+    dict_nin: int = 1 if "z" not in d_in1 else 0;
 
-        # items
-        di_items: dict[str, int] = {"a": 1, "b": 2, "c": 3};
-        items_len: int = len(di_items.items());
+    # dict |= (ior)
+    d_ior: dict[str, int] = {"a": 1, "b": 2};
+    d_ior |= {"b": 99, "c": 3};
+    ior_len: int = len(d_ior);
+    ior_b: int = d_ior["b"];
+    ior_c: int = d_ior["c"];
 
-        # popitem (single-key dict for deterministic result)
-        dp: dict[str, int] = {"pi_only": 77};
-        pi = dp.popitem();
-        pi_val: int = pi[1];
-        pi_after_len: int = len(dp);
+    # items
+    di_items: dict[str, int] = {"a": 1, "b": 2, "c": 3};
+    items_len: int = len(di_items.items());
 
+    # popitem (single-key dict for deterministic result)
+    dp: dict[str, int] = {"pi_only": 77};
+    pi = dp.popitem();
+    pi_val: int = pi[1];
+    pi_after_len: int = len(dp);
 
-        return {
-            "len": len(d),
-            "get_a_d4": d["a"],
-            "get_b_d4": d["b"],
-            "get_c_d4": d["c"],
-            "clear_len": len(dc1),
-            "copy_len": len(dc3),
-            "copy_a": dc3["a"],
-            "copy_b": dc3["b"],
-            "copy_c": dc3["c"],
-            "orig_modified": dc2["a"],
-            "get_a": get_a,
-            "get_missing": get_missing,
-            "get_exists": get_exists,
-            "popped": popped,
-            "pop_len": pop_len,
-            "pop_default": pop_default,
-            "upd_len": upd_len,
-            "upd_c": upd_c,
-            "upd_d": upd_d,
-            "vals_len": len(v),
-            "sd_missing": sd_missing,
-            "sd_missing_len": sd_missing_len,
-            "sd_missing_c": sd_missing_c,
-            "sd_existing": sd_existing,
-            "sd_existing_len": sd_existing_len,
-            "sd_existing_x": sd_existing_x,
-            "sd_multi_len": sd_multi_len,
-            "sd_multi_a": sd_multi_a,
-            "sd_multi_b": sd_multi_b,
-            "dict_in": dict_in,
-            "dict_nin": dict_nin,
-            "ior_len": ior_len,
-            "ior_b": ior_b,
-            "ior_c": ior_c,
-            "items_len": items_len,
-            "pi_val": pi_val,
-            "pi_after_len": pi_after_len
-        };
+    return {
+        "len": len(d),
+        "get_a_d4": d["a"],
+        "get_b_d4": d["b"],
+        "get_c_d4": d["c"],
+        "clear_len": len(dc1),
+        "copy_len": len(dc3),
+        "copy_a": dc3["a"],
+        "copy_b": dc3["b"],
+        "copy_c": dc3["c"],
+        "orig_modified": dc2["a"],
+        "get_a": get_a,
+        "get_missing": get_missing,
+        "get_exists": get_exists,
+        "popped": popped,
+        "pop_len": pop_len,
+        "pop_default": pop_default,
+        "upd_len": upd_len,
+        "upd_c": upd_c,
+        "upd_d": upd_d,
+        "vals_len": len(v),
+        "sd_missing": sd_missing,
+        "sd_missing_len": sd_missing_len,
+        "sd_missing_c": sd_missing_c,
+        "sd_existing": sd_existing,
+        "sd_existing_len": sd_existing_len,
+        "sd_existing_x": sd_existing_x,
+        "sd_multi_len": sd_multi_len,
+        "sd_multi_a": sd_multi_a,
+        "sd_multi_b": sd_multi_b,
+        "dict_in": dict_in,
+        "dict_nin": dict_nin,
+        "ior_len": ior_len,
+        "ior_b": ior_b,
+        "ior_c": ior_c,
+        "items_len": items_len,
+        "pi_val": pi_val,
+        "pi_after_len": pi_after_len
+    };
+}
+
+def dict_ctor_py() -> dict {
+    base: dict = {"a": 1, "b": 2};
+    copy1: dict = dict(base);
+    copy1["c"] = 3;
+    pairs: list = [["x", 10], ["y", 20]];
+    from_pairs: dict = dict(pairs);
+    empty: dict = dict();
+    return {
+        "orig_len": len(base),
+        "copy_len": len(copy1),
+        "copy_c": copy1["c"],
+        "orig_has_c": "c" in base,
+        "fp_x": from_pairs["x"],
+        "fp_y": from_pairs["y"],
+        "empty_len": len(empty)
+    };
+}
+
+def dict_ctor_cl() -> dict {
+    base: dict = {"a": 1, "b": 2};
+    copy1: dict = dict(base);
+    copy1["c"] = 3;
+    pairs: list = [["x", 10], ["y", 20]];
+    from_pairs: dict = dict(pairs);
+    empty: dict = dict();
+    return {
+        "orig_len": len(base),
+        "copy_len": len(copy1),
+        "copy_c": copy1["c"],
+        "orig_has_c": "c" in base,
+        "fp_x": from_pairs["x"],
+        "fp_y": from_pairs["y"],
+        "empty_len": len(empty)
+    };
+}
+
+def dict_ctor_na() -> dict {
+    return {};
+}
+
+def dict_iter_py() -> dict {
+    d: dict = {"a": 1, "b": 2, "c": 3};
+    seen: list = [];
+    total: int = 0;
+    for k in d {
+        seen.append(k);
+        total += d[k];
     }
+    dyn: any = {"x": 7, "y": 8};
+    dyn_seen: list = [];
+    for k2 in dyn {
+        dyn_seen.append(k2);
+    }
+    as_list: list = list(d);
+    as_sorted: list = sorted(d);
+    return {
+        "seen": seen,
+        "total": total,
+        "dyn_seen": dyn_seen,
+        "as_list": as_list,
+        "as_sorted": as_sorted,
+        "n": len(seen)
+    };
+}
+
+def dict_iter_cl() -> dict {
+    d: dict = {"a": 1, "b": 2, "c": 3};
+    seen: list = [];
+    total: int = 0;
+    for k in d {
+        seen.append(k);
+        total += d[k];
+    }
+    dyn: any = {"x": 7, "y": 8};
+    dyn_seen: list = [];
+    for k2 in dyn {
+        dyn_seen.append(k2);
+    }
+    as_list: list = list(d);
+    as_sorted: list = sorted(d);
+    return {
+        "seen": seen,
+        "total": total,
+        "dyn_seen": dyn_seen,
+        "as_list": as_list,
+        "as_sorted": as_sorted,
+        "n": len(seen)
+    };
+}
+
+def dict_iter_na() -> dict {
+    return {};
 }

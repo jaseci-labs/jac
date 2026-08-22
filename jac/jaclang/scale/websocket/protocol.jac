@@ -2,8 +2,7 @@ import asyncio;
 import json;
 import logging;
 import time;
-import from typing { Any }
-import from fastapi { WebSocket }
+import from jaclang.runtimelib.serving.ws { WebSocket }
 import from jaclang.scale.websocket.websocket { ConnectionContext, consume_rate_token }
 
 glob logger = logging.getLogger(__name__),
@@ -25,12 +24,12 @@ async def _ws_send_then_close(
     websocket: WebSocket, frame: dict, close_code: int, close_reason: str
 ) -> None;
 
-def ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any;
+def ws_pre_accept_auth(websocket: WebSocket, user_manager: any) -> any;
 
 async def ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict);
 
 async def ws_authenticate(
-    websocket: WebSocket, user_manager: Any, handshake_timeout: float, max_bytes: int
+    websocket: WebSocket, user_manager: any, handshake_timeout: float, max_bytes: int
 ) -> (dict, dict | None);
 
 async def ws_heartbeat_loop(
@@ -47,12 +46,12 @@ async def ws_handle_control(
     websocket: WebSocket,
     ctx: ConnectionContext,
     data: dict,
-    user_manager: Any,
+    user_manager: any,
     requires_auth: bool,
     msgs_per_sec: float,
     rate_capacity: float
 ) -> str;
 
 async def ws_execute_target(
-    websocket: WebSocket, label: str, name: str, awaitable: Any, target_timeout: float
-) -> (bool, Any);
+    websocket: WebSocket, label: str, name: str, awaitable: any, target_timeout: float
+) -> (bool, any);

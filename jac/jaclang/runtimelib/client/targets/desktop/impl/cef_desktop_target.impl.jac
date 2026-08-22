@@ -11,7 +11,7 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _jac_bin,
     _jac_subprocess_env,
     _patch_host_rpath,
-    _stage_pyembed_shim,
+    _stage_fused_runtime,
     _bundle_runtime,
     build_cef_dispatch,
     build_cef_subprocess,
@@ -19,7 +19,7 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
     _host_boot_py,
-    _jacpyembed_import_block
+    _fused_runtime_import_block
 }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
@@ -63,8 +63,8 @@ def _is_stale(output: Path, inputs: list[Path]) -> bool {
 
 def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
-    src = cef_dir / "cef_dispatch.na.jac";
-    stale = _is_stale(lib, [src, cef_dir / "cef_platform.na.jac"]);
+    src = cef_dir / "cef_dispatch.jac";
+    stale = _is_stale(lib, [src, cef_dir / "cef_platform.jac"]);
     if not stale {
         return lib;
     }
@@ -76,8 +76,8 @@ def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
 
 def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     helper = cef_dir / "cef-subprocess";
-    src = cef_dir / "cef_subprocess.na.jac";
-    stale = _is_stale(helper, [src, cef_dir / "cef_platform.na.jac"]);
+    src = cef_dir / "cef_subprocess.jac";
+    stale = _is_stale(helper, [src, cef_dir / "cef_platform.jac"]);
     if not stale {
         return helper;
     }
@@ -115,7 +115,9 @@ def _generate_host_source(
         "    cef_open_browser,\n"
         "    cef_run_loop,\n"
         "    cef_cleanup,\n"
-        "}\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
+        "}\n"
+        + _fused_runtime_import_block()
+        + "glob PY_EVAL: i32 = 258;\n"
         f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
         "with entry {\n"
         "    code: i32 = cef_execute_subprocess();\n"
@@ -126,31 +128,28 @@ def _generate_host_source(
         "    if rc != 1 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        "    engine_rc: i32 = jac_engine_boot();\n"
-        "    if engine_rc != 0 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
-        "    rc_py: i32 = jpy_PyRun_SimpleString(BOOT_PY);\n"
+        "    api = engine_boot().api;\n"
+        "    rc_py: i32 = api.PyRun_SimpleString(BOOT_PY);\n"
         "    if rc_py != 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        '    main_mod = jpy_PyImport_AddModule("__main__");\n'
-        "    d = jpy_PyModule_GetDict(main_mod);\n"
-        '    port_obj: int = jpy_PyRun_String("_ctx.port", PY_EVAL, d, d);\n'
+        '    main_mod = api.PyImport_AddModule("__main__");\n'
+        "    d = api.PyModule_GetDict(main_mod);\n"
+        '    port_obj: int = api.PyRun_String("_ctx.port", PY_EVAL, d, d);\n'
         "    if port_obj == 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        "    port = jpy_PyLong_AsLong(port_obj);\n"
+        "    port = api.PyLong_AsLong(port_obj);\n"
         "    url = f\"http://127.0.0.1:{port}/\";\n"
         "    cef_open_browser(\n"
         "        url,\n"
         f"        {json.dumps(title, ensure_ascii=False)},\n"
         f"        {width}, {height}\n"
         "    );\n"
-        "    ts = jpy_PyEval_SaveThread();\n"
+        "    ts = api.PyEval_SaveThread();\n"
         "    cef_run_loop();\n"
-        "    jpy_PyEval_RestoreThread(ts);\n"
-        "    jpy_Py_Finalize();\n"
+        "    api.PyEval_RestoreThread(ts);\n"
+        "    api.Py_Finalize();\n"
         "    cef_cleanup();\n"
         "}\n"
     );
@@ -175,7 +174,7 @@ def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
             shutil.copy2(src, out_dir / name);
         }
     }
-    for pak in cef_dist.glob("*.pak") {
+    for pak in cef_dist.`glob("*.pak") {
         shutil.copy2(pak, out_dir / pak.name);
     }
     locales_src = cef_dist / "locales";
@@ -241,7 +240,7 @@ impl CefDesktopTarget.build(
     shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");
     shutil.copy2(cef_subprocess, out_dir / "cef-subprocess");
     (out_dir / "cef-subprocess").chmod(0o755);
-    shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
+    shutil.copy2(cef_dir / "cef.jac", out_dir / "cef.jac");
     _stage_cef_runtime(cef_dist, out_dir);
 
     sv_root = entry_file.parent;
@@ -251,7 +250,7 @@ impl CefDesktopTarget.build(
     shutil.copytree(sv_root, out_dir / "sv", ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
-    _stage_pyembed_shim(out_dir);
+    _stage_fused_runtime(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
         win.title or app_name,
@@ -265,11 +264,11 @@ impl CefDesktopTarget.build(
         dispatch.max_queue,
         dispatch.debug,
     );
-    (out_dir / "host.na.jac").write_text(host_src);
+    (out_dir / "host.jac").write_text(host_src);
 
     console.print("  Compiling CEF native host (jac nacompile)...", style="muted");
     res = subprocess.run(
-        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name],
+        [_jac_bin(), "nacompile", "host.jac", "-o", app_name],
         cwd=str(out_dir),
         env=_jac_subprocess_env(),
     );

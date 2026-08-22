@@ -1,0 +1,6 @@
+[project]
+name = "value-ref-pinned-fixture"
+entry-point = "app.jac"
+
+[placement.pins]
+"app.log_it" = "server"

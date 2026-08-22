@@ -1,7 +1,7 @@
 """Consolidated micro suite tests for MICRO_JAC_FILES.
 
 Combines four previously-separate parametrized suites into one test per file:
-  - pyast gen: compile + jac_link check + parent scrub
+  - codegen: compile + position-completeness check + parent scrub
   - tree parent: re-compile + parent scrub (verifies cache path)
   - unparse roundtrip: unparse + re-compile + AST diff
   - format: format + re-compile + AST diff
@@ -19,6 +19,7 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.helpers { add_line_numbers }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_module }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
@@ -40,7 +41,7 @@ def micro_suite_combined_test(rel_path: str) -> None {
         return;
     }
 
-    # --- Phase 1: Compile + pyast gen checks ---
+    # --- Phase 1: Compile + codegen checks ---
     code_gen = JacProgram().compile(filename);
     assert code_gen is not None and code_gen.gen.py_ast is not None , (
         f"Compilation failed for {filename}"
@@ -49,12 +50,37 @@ def micro_suite_combined_test(rel_path: str) -> None {
     from_jac_str = ast3.dump(from_jac, indent=2);
     assert isinstance(from_jac, ast3.Module) , f"Not a module for {filename}";
     compile(from_jac, filename="<ast>", mode="exec");
+    # The loc-fill invariant (codegen-ir.md 5.1): the emitter stamps all
+    # four normalized position values at construction time and there is no
+    # fill pass behind it. A location-bearing node arriving here with a
+    # field missing means a recipe was built off something other than the
+    # one constructor that requires a source jac node -- which is what
+    # `fix_missing_locations` used to paper over.
+    #
+    # The stronger `lineno >= 1` half holds for every node kind but the two
+    # argued below. Both inherit a jac node that carries no position of its
+    # own, both were measured on the retired Python-AST lane and behave
+    # identically there, and neither is a property of the container: an
+    # f-string's format-spec `Constant` and the implicit `self`/`cls` `arg`
+    # of an ability reached through an annex. They are front-end debt, so
+    # the argument is recorded rather than the check dropped -- every other
+    # node kind still fails on a zero.
     for i in ast3.walk(from_jac) {
-        if not isinstance(i, (ast3.Load, ast3.Store, ast3.Del)) {
-            assert hasattr(i, "jac_link") , (
-                f"Missing jac_link in {filename}: {ast3.dump(i)}"
+        if "lineno" not in getattr(type(i), "_attributes", ()) {
+            continue;
+        }
+        for attr in ("lineno", "col_offset", "end_lineno", "end_col_offset") {
+            val = getattr(i, attr, None);
+            assert isinstance(val, int) , (
+                f"{filename}: {type(i).__name__} has no {attr}: {ast3.dump(i)}"
             );
         }
+        if isinstance(i, (ast3.Constant, ast3.arg)) {
+            continue;
+        }
+        assert i.lineno >= 1 , (
+            f"{filename}: {type(i).__name__} has lineno {i.lineno}: " f"{ast3.dump(i)}"
+        );
     }
     assert parent_scrub(code_gen) , f"Parent scrub failed for {filename}";
     assert len(from_jac_str) > 10 , f"AST dump too short for {filename}";
@@ -65,7 +91,7 @@ def micro_suite_combined_test(rel_path: str) -> None {
 
     # --- Phase 3: Unparse roundtrip ---
     before = ast3.dump(code_gen.gen.py_ast[0], indent=2);
-    unparsed = code_gen.unparse();
+    unparsed = unparse_module(code_gen);
     code_gen_unparsed = JacProgram().compile(use_str=unparsed, file_path=filename);
     assert code_gen_unparsed is not None and code_gen_unparsed.gen.py_ast is not None , (
         f"Re-compilation from unparse failed for {filename}"
@@ -106,7 +132,7 @@ def micro_suite_combined_test(rel_path: str) -> None {
             before_fmt = ast3.dump(code_gen.gen.py_ast[0], indent=2);
             after_fmt = ast3.dump(code_gen_fmt.gen.py_ast[0], indent=2);
             assert isinstance(code_gen, uni.Module)
-            and isinstance(code_gen_fmt, uni.Module) , "Parsed objects are not modules.";
+                and isinstance(code_gen_fmt, uni.Module) , "Parsed objects are not modules.";
             diff = "\n".join(
                 unified_diff(before_fmt.splitlines(), after_fmt.splitlines())
             );

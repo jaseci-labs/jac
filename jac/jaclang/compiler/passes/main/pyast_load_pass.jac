@@ -1,21 +1,110 @@
 import ast as py_ast;
 import os;
 import re;
-import from collections.abc { Sequence }
 import from threading { Event }
-import from typing { TypeAlias, TypeVar, cast }
-import jaclang.jac0core.unitree as uni;
+import from typing { TypeAlias, cast }
+import from jaclang.jac0core.unitree {
+    Ability,
+    ArchBlockStmt,
+    Archetype,
+    AssertStmt,
+    Assignment,
+    AtomExpr,
+    AtomTrailer,
+    AtomUnit,
+    AwaitExpr,
+    BinaryExpr,
+    Bool,
+    BoolExpr,
+    CfgExpr,
+    CodeBlockStmt,
+    CompareExpr,
+    CtrlStmt,
+    DeleteStmt,
+    DictCompr,
+    DictVal,
+    ElementStmt,
+    Ellipsis as UniEllipsis,
+    ElseIf,
+    ElseStmt,
+    EmptyToken,
+    Enum,
+    Except,
+    Expr,
+    ExprAsItem,
+    ExprStmt,
+    FString,
+    FinallyStmt,
+    Float,
+    FormattedValue,
+    FuncCall,
+    FuncSignature,
+    GenCompr,
+    IfElseExpr,
+    IfStmt,
+    Import,
+    InForStmt,
+    IndexSlice,
+    InnerCompr,
+    Int,
+    KVPair,
+    KWPair,
+    LambdaExpr,
+    ListCompr,
+    ListVal,
+    Literal,
+    MatchArch,
+    MatchAs,
+    MatchCase,
+    MatchKVPair,
+    MatchMapping,
+    MatchOr,
+    MatchPattern,
+    MatchSequence,
+    MatchSingleton,
+    MatchStar,
+    MatchStmt,
+    MatchValue,
+    MatchWild,
+    Module,
+    ModuleCode,
+    ModuleItem,
+    ModulePath,
+    MultiString,
+    Name,
+    NameAtom,
+    Null,
+    ParamKind,
+    ParamVar,
+    PythonModuleAst,
+    RaiseStmt,
+    ReturnStmt,
+    Semi,
+    SetCompr,
+    SetVal,
+    Slice,
+    Source,
+    SpecialVarRef,
+    String,
+    SubTag,
+    Token,
+    TryStmt,
+    TupleVal,
+    UnaryExpr,
+    UniNode,
+    WhileStmt,
+    WithStmt,
+    YieldExpr
+}
 import from jaclang.jac0core.constant { Tokens as Tok, RESERVED_IDENT_NAMES }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
 import from jaclang.jac0core.passes.transform { Transform }
-import type from jaclang.jac0core.program { JacProgram }
 
-glob T = TypeVar('T', bound=uni.UniNode),
+glob T = TypeVar('T', bound=UniNode),
      _reserved_keywords = RESERVED_IDENT_NAMES;
 
-obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
-    has ir_in: uni.PythonModuleAst,
-        prog: JacProgram,
+obj PyastBuildPass(Transform) {
+    has ir_in: PythonModuleAst,
         cancel_token: Event | None = None,
         mod_path: str postinit,
         orig_src: str postinit,
@@ -36,128 +125,129 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
         col_start: int = -1,
         end_line: int = -1,
         is_kwesc: bool = False
-    ) -> uni.Name;
+    ) -> Name;
 
-    def convert(nd: py_ast.AST) -> uni.UniNode;
-    def transform(ir_in: uni.PythonModuleAst) -> uni.Module;
+    def is_canceled -> bool;
+    def convert(nd: py_ast.AST) -> UniNode;
+    def transform(ir_in: PythonModuleAst) -> Module;
     def extract_with_entry(
-        body: list[uni.UniNode], exclude_types: TypeAlias = T
-    ) -> list[(T | uni.ModuleCode)];
+        body: list[UniNode], exclude_types: TypeAlias = T
+    ) -> list[(T | ModuleCode)];
 
-    def proc_module(nd: py_ast.Module) -> uni.Module;
+    def proc_module(nd: py_ast.Module) -> Module;
     def proc_function_def(
         nd: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
-    ) -> uni.Ability;
+    ) -> Ability;
 
-    def proc_async_function_def(nd: py_ast.AsyncFunctionDef) -> uni.Ability;
-    def proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.Enum);
-    def proc_return(nd: py_ast.Return) -> (uni.ReturnStmt | None);
-    def proc_delete(nd: py_ast.Delete) -> uni.DeleteStmt;
-    def proc_assign(nd: py_ast.Assign) -> uni.Assignment;
-    def proc_aug_assign(nd: py_ast.AugAssign) -> uni.Assignment;
-    def proc_ann_assign(nd: py_ast.AnnAssign) -> uni.Assignment;
-    def proc_for(nd: py_ast.For) -> uni.InForStmt;
-    def proc_async_for(nd: py_ast.AsyncFor) -> uni.InForStmt;
-    def proc_while(nd: py_ast.While) -> uni.WhileStmt;
-    def proc_if(nd: py_ast.If) -> uni.IfStmt;
-    def proc_with(nd: py_ast.With) -> uni.WithStmt;
-    def proc_async_with(nd: py_ast.AsyncWith) -> uni.WithStmt;
-    def proc_raise(nd: py_ast.Raise) -> uni.RaiseStmt;
-    def proc_assert(nd: py_ast.Assert) -> uni.AssertStmt;
-    def proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer;
-    def proc_await(nd: py_ast.Await) -> uni.AwaitExpr;
-    def proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryExpr);
-    def proc_unary_op(nd: py_ast.UnaryOp) -> uni.UnaryExpr;
-    def proc_bool_op(nd: py_ast.BoolOp) -> uni.AtomUnit;
-    def proc_break(nd: py_ast.Break) -> uni.CtrlStmt;
-    def proc_call(nd: py_ast.Call) -> uni.FuncCall;
-    def proc_compare(nd: py_ast.Compare) -> uni.AtomUnit;
-    def proc_constant(nd: py_ast.Constant) -> uni.Literal;
-    def proc_continue(nd: py_ast.Continue) -> uni.CtrlStmt;
-    def proc_dict(nd: py_ast.Dict) -> uni.DictVal;
-    def proc_dict_comp(nd: py_ast.DictComp) -> uni.DictCompr;
+    def proc_async_function_def(nd: py_ast.AsyncFunctionDef) -> Ability;
+    def proc_class_def(nd: py_ast.ClassDef) -> (Archetype | Enum);
+    def proc_return(nd: py_ast.Return) -> (ReturnStmt | None);
+    def proc_delete(nd: py_ast.Delete) -> DeleteStmt;
+    def proc_assign(nd: py_ast.Assign) -> Assignment;
+    def proc_aug_assign(nd: py_ast.AugAssign) -> Assignment;
+    def proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment;
+    def proc_for(nd: py_ast.For) -> InForStmt;
+    def proc_async_for(nd: py_ast.AsyncFor) -> InForStmt;
+    def proc_while(nd: py_ast.While) -> WhileStmt;
+    def proc_if(nd: py_ast.If) -> IfStmt;
+    def proc_with(nd: py_ast.With) -> WithStmt;
+    def proc_async_with(nd: py_ast.AsyncWith) -> WithStmt;
+    def proc_raise(nd: py_ast.Raise) -> RaiseStmt;
+    def proc_assert(nd: py_ast.Assert) -> AssertStmt;
+    def proc_attribute(nd: py_ast.Attribute) -> AtomTrailer;
+    def proc_await(nd: py_ast.Await) -> AwaitExpr;
+    def proc_bin_op(nd: py_ast.BinOp) -> (AtomUnit | BinaryExpr);
+    def proc_unary_op(nd: py_ast.UnaryOp) -> UnaryExpr;
+    def proc_bool_op(nd: py_ast.BoolOp) -> AtomUnit;
+    def proc_break(nd: py_ast.Break) -> CtrlStmt;
+    def proc_call(nd: py_ast.Call) -> FuncCall;
+    def proc_compare(nd: py_ast.Compare) -> AtomUnit;
+    def proc_constant(nd: py_ast.Constant) -> Literal;
+    def proc_continue(nd: py_ast.Continue) -> CtrlStmt;
+    def proc_dict(nd: py_ast.Dict) -> DictVal;
+    def proc_dict_comp(nd: py_ast.DictComp) -> DictCompr;
     def proc_ellipsis(nd: py_ast.Constant) { }
-    def proc_except_handler(nd: py_ast.ExceptHandler) -> uni.Except;
-    def proc_expr(nd: py_ast.Expr) -> uni.ExprStmt;
-    def proc_formatted_value(nd: py_ast.FormattedValue) -> uni.FormattedValue;
+    def proc_except_handler(nd: py_ast.ExceptHandler) -> Except;
+    def proc_expr(nd: py_ast.Expr) -> ExprStmt;
+    def proc_formatted_value(nd: py_ast.FormattedValue) -> FormattedValue;
     def proc_function_type(nd: py_ast.FunctionType) { }
     def proc_interactive(nd: py_ast.Interactive) { }
-    def proc_template_str(nd: py_ast.AST) -> uni.UniNode;
-    def proc_interpolation(nd: py_ast.AST) -> uni.UniNode;
-    def proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr;
-    def proc_global(nd: py_ast.Global) -> uni.Semi;
-    def proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr;
-    def proc_import(nd: py_ast.Import) -> uni.Import;
-    def proc_import_from(nd: py_ast.ImportFrom) -> uni.Import;
-    def proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString;
-    def proc_lambda(nd: py_ast.Lambda) -> uni.LambdaExpr;
-    def proc_list(nd: py_ast.List) -> uni.ListVal;
-    def proc_list_comp(nd: py_ast.ListComp) -> uni.ListCompr;
-    def proc_match(nd: py_ast.Match) -> uni.MatchStmt;
-    def proc_match_as(nd: py_ast.MatchAs) -> (uni.MatchAs | uni.MatchWild);
-    def proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch;
-    def proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapping;
-    def proc_match_or(nd: py_ast.MatchOr) -> uni.MatchOr;
-    def proc_match_sequence(nd: py_ast.MatchSequence) -> uni.MatchSequence;
-    def proc_match_singleton(nd: py_ast.MatchSingleton) -> uni.MatchSingleton;
-    def proc_match_star(nd: py_ast.MatchStar) -> uni.MatchStar;
-    def proc_match_value(nd: py_ast.MatchValue) -> uni.MatchValue;
-    def proc_name(nd: py_ast.Name) -> uni.Name;
-    def proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit;
-    def proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi;
-    def proc_pass(nd: py_ast.Pass) -> uni.Semi;
-    def proc_set(nd: py_ast.Set) -> uni.SetVal;
-    def _proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode;
-    def proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr;
-    def proc_slice(nd: py_ast.Slice) -> uni.IndexSlice;
-    def proc_starred(nd: py_ast.Starred) -> uni.UnaryExpr;
-    def proc_subscript(nd: py_ast.Subscript) -> uni.AtomTrailer;
-    def proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt;
-    def proc_try_star(nd: py_ast.TryStar) -> uni.TryStmt;
-    def proc_tuple(nd: py_ast.Tuple) -> uni.TupleVal;
-    def proc_yield(nd: py_ast.Yield) -> uni.YieldExpr;
-    def proc_yield_from(nd: py_ast.YieldFrom) -> uni.YieldExpr;
-    def proc_alias(nd: py_ast.alias) -> uni.ExprAsItem;
-    def proc_arg(nd: py_ast.arg) -> uni.ParamVar;
-    def proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature;
-    def operator(tok: Tok, value: str) -> uni.Token;
-    def proc_and(nd: py_ast.And) -> uni.Token;
-    def proc_or(nd: py_ast.Or) -> uni.Token;
-    def proc_add(nd: py_ast.Add) -> uni.Token;
-    def proc_bit_and(nd: py_ast.BitAnd) -> uni.Token;
-    def proc_bit_or(nd: py_ast.BitOr) -> uni.Token;
-    def proc_bit_xor(nd: py_ast.BitXor) -> uni.Token;
-    def proc_div(nd: py_ast.Div) -> uni.Token;
-    def proc_floor_div(nd: py_ast.FloorDiv) -> uni.Token;
-    def proc_l_shift(nd: py_ast.LShift) -> uni.Token;
-    def proc_mod(nd: py_ast.Mod) -> uni.Token;
-    def proc_mult(nd: py_ast.Mult) -> uni.Token;
-    def proc_mat_mult(nd: py_ast.MatMult) -> uni.Token;
-    def proc_pow(nd: py_ast.Pow) -> uni.Token;
-    def proc_r_shift(nd: py_ast.RShift) -> uni.Token;
-    def proc_sub(nd: py_ast.Sub) -> uni.Token;
-    def proc_invert(nd: py_ast.Invert) -> uni.Token;
-    def proc_not(nd: py_ast.Not) -> uni.Token;
-    def proc_u_add(nd: py_ast.UAdd) -> uni.Token;
-    def proc_u_sub(nd: py_ast.USub) -> uni.Token;
-    def proc_eq(nd: py_ast.Eq) -> uni.Token;
-    def proc_gt(nd: py_ast.Gt) -> uni.Token;
-    def proc_gt_e(nd: py_ast.GtE) -> uni.Token;
-    def proc_in(nd: py_ast.In) -> uni.Token;
-    def proc_is(nd: py_ast.Is) -> uni.Token;
-    def proc_is_not(nd: py_ast.IsNot) -> uni.Token;
-    def proc_lt(nd: py_ast.Lt) -> uni.Token;
-    def proc_lt_e(nd: py_ast.LtE) -> uni.Token;
-    def proc_not_eq(nd: py_ast.NotEq) -> uni.Token;
-    def proc_not_in(nd: py_ast.NotIn) -> uni.Token;
-    def proc_comprehension(nd: py_ast.comprehension) -> uni.InnerCompr;
-    def proc_keyword(nd: py_ast.keyword) -> uni.KWPair;
-    def proc_match_case(nd: py_ast.match_case) -> uni.MatchCase;
-    def proc_withitem(nd: py_ast.withitem) -> uni.ExprAsItem;
+    def proc_template_str(nd: py_ast.AST) -> UniNode;
+    def proc_interpolation(nd: py_ast.AST) -> UniNode;
+    def proc_generator_exp(nd: py_ast.GeneratorExp) -> GenCompr;
+    def proc_global(nd: py_ast.Global) -> Semi;
+    def proc_if_exp(nd: py_ast.IfExp) -> IfElseExpr;
+    def proc_import(nd: py_ast.Import) -> Import;
+    def proc_import_from(nd: py_ast.ImportFrom) -> Import;
+    def proc_joined_str(nd: py_ast.JoinedStr) -> MultiString;
+    def proc_lambda(nd: py_ast.Lambda) -> LambdaExpr;
+    def proc_list(nd: py_ast.List) -> ListVal;
+    def proc_list_comp(nd: py_ast.ListComp) -> ListCompr;
+    def proc_match(nd: py_ast.Match) -> MatchStmt;
+    def proc_match_as(nd: py_ast.MatchAs) -> (MatchAs | MatchWild);
+    def proc_match_class(nd: py_ast.MatchClass) -> MatchArch;
+    def proc_match_mapping(nd: py_ast.MatchMapping) -> MatchMapping;
+    def proc_match_or(nd: py_ast.MatchOr) -> MatchOr;
+    def proc_match_sequence(nd: py_ast.MatchSequence) -> MatchSequence;
+    def proc_match_singleton(nd: py_ast.MatchSingleton) -> MatchSingleton;
+    def proc_match_star(nd: py_ast.MatchStar) -> MatchStar;
+    def proc_match_value(nd: py_ast.MatchValue) -> MatchValue;
+    def proc_name(nd: py_ast.Name) -> Name;
+    def proc_named_expr(nd: py_ast.NamedExpr) -> AtomUnit;
+    def proc_nonlocal(nd: py_ast.Nonlocal) -> Semi;
+    def proc_pass(nd: py_ast.Pass) -> Semi;
+    def proc_set(nd: py_ast.Set) -> SetVal;
+    def _proc_compr(nd: py_ast.AST, compr_cls: type) -> UniNode;
+    def proc_set_comp(nd: py_ast.SetComp) -> ListCompr;
+    def proc_slice(nd: py_ast.Slice) -> IndexSlice;
+    def proc_starred(nd: py_ast.Starred) -> UnaryExpr;
+    def proc_subscript(nd: py_ast.Subscript) -> AtomTrailer;
+    def proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> TryStmt;
+    def proc_try_star(nd: py_ast.TryStar) -> TryStmt;
+    def proc_tuple(nd: py_ast.Tuple) -> TupleVal;
+    def proc_yield(nd: py_ast.Yield) -> YieldExpr;
+    def proc_yield_from(nd: py_ast.YieldFrom) -> YieldExpr;
+    def proc_alias(nd: py_ast.alias) -> ExprAsItem;
+    def proc_arg(nd: py_ast.arg) -> ParamVar;
+    def proc_arguments(nd: py_ast.arguments) -> FuncSignature;
+    def operator(tok: Tok, value: str) -> Token;
+    def proc_and(nd: py_ast.And) -> Token;
+    def proc_or(nd: py_ast.Or) -> Token;
+    def proc_add(nd: py_ast.Add) -> Token;
+    def proc_bit_and(nd: py_ast.BitAnd) -> Token;
+    def proc_bit_or(nd: py_ast.BitOr) -> Token;
+    def proc_bit_xor(nd: py_ast.BitXor) -> Token;
+    def proc_div(nd: py_ast.Div) -> Token;
+    def proc_floor_div(nd: py_ast.FloorDiv) -> Token;
+    def proc_l_shift(nd: py_ast.LShift) -> Token;
+    def proc_mod(nd: py_ast.Mod) -> Token;
+    def proc_mult(nd: py_ast.Mult) -> Token;
+    def proc_mat_mult(nd: py_ast.MatMult) -> Token;
+    def proc_pow(nd: py_ast.Pow) -> Token;
+    def proc_r_shift(nd: py_ast.RShift) -> Token;
+    def proc_sub(nd: py_ast.Sub) -> Token;
+    def proc_invert(nd: py_ast.Invert) -> Token;
+    def proc_not(nd: py_ast.Not) -> Token;
+    def proc_u_add(nd: py_ast.UAdd) -> Token;
+    def proc_u_sub(nd: py_ast.USub) -> Token;
+    def proc_eq(nd: py_ast.Eq) -> Token;
+    def proc_gt(nd: py_ast.Gt) -> Token;
+    def proc_gt_e(nd: py_ast.GtE) -> Token;
+    def proc_in(nd: py_ast.In) -> Token;
+    def proc_is(nd: py_ast.Is) -> Token;
+    def proc_is_not(nd: py_ast.IsNot) -> Token;
+    def proc_lt(nd: py_ast.Lt) -> Token;
+    def proc_lt_e(nd: py_ast.LtE) -> Token;
+    def proc_not_eq(nd: py_ast.NotEq) -> Token;
+    def proc_not_in(nd: py_ast.NotIn) -> Token;
+    def proc_comprehension(nd: py_ast.comprehension) -> InnerCompr;
+    def proc_keyword(nd: py_ast.keyword) -> KWPair;
+    def proc_match_case(nd: py_ast.match_case) -> MatchCase;
+    def proc_withitem(nd: py_ast.withitem) -> ExprAsItem;
     def proc_param_spec(nd: py_ast.ParamSpec) { }
     def proc_type_alias(nd: py_ast.TypeAlias) { }
     def proc_type_var(nd: py_ast.TypeVar) { }
     def proc_type_var_tuple(nd: py_ast.TypeVarTuple) { }
-    def convert_to_doc(string: uni.String) -> None;
-    def aug_op_map(tok_dict: dict, op: uni.Token) -> str;
+    def convert_to_doc(string: String) -> None;
+    def aug_op_map(tok_dict: dict, op: Token) -> str;
 }

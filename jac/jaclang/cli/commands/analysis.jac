@@ -9,59 +9,84 @@ glob registry = get_registry();
     tier="core",
     args=[
         Arg.create(
-            "paths", kind=ArgKind.MULTI, help="Paths to .jac files or directories"
+            "paths",
+            kind=ArgKind.MULTI_POSITIONAL,
+            help="Paths to .jac files or directories"
         ),
         Arg.create(
             "print_errs",
             typ=bool,
-            default=True,
+            `default=True,
             help="Print detailed error messages",
             short="e"
         ),
         Arg.create(
             "ignore",
-            kind=ArgKind.MULTI,
-            default=[],
+            kind=ArgKind.MULTI_OPTION,
+            `default=[],
             help="Directories or files to ignore (space separated)"
         ),
         Arg.create(
             "disable-error-code",
-            kind=ArgKind.MULTI,
-            default=[],
+            kind=ArgKind.MULTI_OPTION,
+            `default=[],
             help="Diagnostic codes or lint kebab aliases to suppress (same as [check].suppress in jac.toml; e.g. E1030 no-print)"
         ),
         Arg.create(
             "parse_only",
             typ=bool,
-            default=False,
+            `default=False,
             help="Only check syntax (skip type checking)",
             short="p"
         ),
         Arg.create(
             "nowarn",
             typ=bool,
-            default=False,
+            `default=False,
             help="Suppress warning output (warnings are still counted)"
         ),
         Arg.create(
             "lint",
             dest="lint_only",
             typ=bool,
-            default=False,
+            `default=False,
             short="",
             help="Report lint violations only (absorbs 'jac lint')"
         ),
         Arg.create(
             "fix",
             typ=bool,
-            default=False,
+            `default=False,
             short="",
             help="With --lint: auto-fix violations"
+        ),
+        Arg.create(
+            "native-coverage",
+            typ=bool,
+            `default=False,
+            short="",
+            help="Compile with codegen and report per-module native outcome (native / demoted / server) ranked by reason (needs the native toolchain)"
+        ),
+        Arg.create(
+            "placements",
+            typ=bool,
+            `default=False,
+            short="",
+            help="Report where every top-level element was placed (server / client / native / dual) with the evidence behind each decision"
+        ),
+        Arg.create(
+            "compile-stats",
+            typ=bool,
+            `default=False,
+            short="",
+            help="Report how much of each module's pass schedule the binary executed natively, and name every module that fell back to the staged pass loop"
         ),
 
     ],
     examples=[
         ("jac check myprogram.jac", "Check a single file"),
+        ("jac check . --native-coverage", "Rank modules by native compile outcome"),
+        ("jac check . --placements", "Show element placements with evidence"),
         ("jac check . --lint", "Report lint violations only"),
         ("jac check . --lint --fix", "Auto-fix lint violations"),
         ("jac check file1.jac file2.jac", "Check multiple files"),
@@ -88,7 +113,10 @@ def check(
     parse_only: bool = False,
     nowarn: bool = False,
     lint_only: bool = False,
-    fix: bool = False
+    fix: bool = False,
+    native_coverage: bool = False,
+    placements: bool = False,
+    compile_stats: bool = False
 ) -> int;
 
 def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
@@ -99,33 +127,35 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
     tier="core",
     args=[
         Arg.create(
-            "paths", kind=ArgKind.MULTI, help="Paths to .jac files or directories"
+            "paths",
+            kind=ArgKind.MULTI_POSITIONAL,
+            help="Paths to .jac files or directories"
         ),
         Arg.create(
             "to_screen",
             typ=bool,
-            default=False,
+            `default=False,
             help="Print to stdout instead of writing",
             short="s"
         ),
         Arg.create(
             "lintfix",
             typ=bool,
-            default=False,
+            `default=False,
             help="Also apply auto-lint fixes in the same pass",
             short="l"
         ),
         Arg.create(
             "check",
             typ=bool,
-            default=False,
+            `default=False,
             help="Check if files are formatted without modifying them (exit 1 if unformatted)",
             short="c"
         ),
         Arg.create(
             "cache",
             typ=bool,
-            default=False,
+            `default=False,
             help="Skip files already known to be formatted (content + config + version keyed)",
             short="C"
         ),
@@ -159,30 +189,33 @@ def format(
     args=[
         Arg.create(
             "paths",
-            kind=ArgKind.MULTI,
-            default=[],
+            kind=ArgKind.MULTI_POSITIONAL,
+            `default=[],
             help="Paths to .jac files or directories (default: project root)"
         ),
         Arg.create(
-            "staged", typ=bool, default=False, help="Only process git-staged .jac files"
+            "staged",
+            typ=bool,
+            `default=False,
+            help="Only process git-staged .jac files"
         ),
         Arg.create(
             "verify",
             typ=bool,
-            default=False,
+            `default=False,
             help="Verify only: do not rewrite files (exit 1 if unformatted)",
             short="v"
         ),
         Arg.create(
             "install",
             typ=bool,
-            default=False,
-            help="Install a git pre-commit hook that runs this command"
+            `default=False,
+            help="Install git pre-commit + commit-msg hooks"
         ),
         Arg.create(
             "force",
             typ=bool,
-            default=False,
+            `default=False,
             help="With --install: replace an existing foreign hook (a backup is kept)"
         ),
 
@@ -190,10 +223,10 @@ def format(
     examples=[
         ("jac precommit", "Format (lintfix) and check the whole project"),
         ("jac precommit --staged", "Run on staged '.jac' files only"),
-        ("jac precommit --install", "Install a .git/hooks/pre-commit hook"),
+        ("jac precommit --install", "Install the pre-commit + commit-msg hooks"),
         (
             "jac precommit --install --force",
-            "Replace an existing hook (kept as pre-commit.bak)"
+            "Replace existing hooks (kept as .bak backups)"
         ),
 
     ],
@@ -215,37 +248,46 @@ def precommit(
     args=[
         Arg.create(
             "paths",
-            kind=ArgKind.MULTI,
+            kind=ArgKind.MULTI_POSITIONAL,
             help="Paths to test files or directories",
-            default=[]
+            `default=[]
         ),
         Arg.create(
             "test_name",
-            default="",
+            `default="",
             help="Run specific test (without test_ prefix)",
             short="t"
         ),
         Arg.create(
-            "filter", default="", help="Filter test files (Unix patterns)", short="f"
+            "filter",
+            `default="",
+            help="Select tests by name expression (and/or/not, parens)",
+            short="f"
         ),
         Arg.create(
-            "xit", typ=bool, default=False, help="Stop on first failure", short="x"
+            "xit", typ=bool, `default=False, help="Stop on first failure", short="x"
         ),
         Arg.create(
-            "maxfail", typ=int, default=None, help="Stop after N failures", short="m"
+            "maxfail", typ=int, `default=None, help="Stop after N failures", short="m"
         ),
-        Arg.create("directory", default="", help="Test directory", short="d"),
+        Arg.create("directory", `default="", help="Test directory", short="d"),
         Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+            "verbose",
+            typ=bool,
+            `default=False,
+            help="Verbose output",
+            short="v",
+            config_key="test.verbose"
         ),
         Arg.create(
             "ignore",
-            default="",
-            help="Path to skip during collection (pytest --ignore)"
+            kind=ArgKind.MULTI_OPTION,
+            `default=[],
+            help="Paths to skip during collection (space separated)"
         ),
         Arg.create(
             "profile",
-            default="",
+            `default="",
             short="",
             help="Configuration profile to load (e.g. prod, staging)"
         ),
@@ -269,7 +311,7 @@ def `test(
     maxfail: int = None,
     directory: str = "",
     verbose: bool = False,
-    ignore: str = ""
+    ignore: (list | None) = None
 ) -> int;
 
 @registry.command(

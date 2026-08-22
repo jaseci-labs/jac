@@ -1,0 +1,3 @@
+with entry {
+    print("hello");
+}

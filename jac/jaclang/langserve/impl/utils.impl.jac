@@ -6,13 +6,51 @@ impl add_unique_text_edit(
     } else {
         for existing_edit in changes[key] {
             if existing_edit.range.start == new_edit.range.start
-            and existing_edit.range.end == new_edit.range.end
-            and existing_edit.new_text == new_edit.new_text {
+                and existing_edit.range.end == new_edit.range.end
+                and existing_edit.new_text == new_edit.new_text {
                 return;
             }
         }
         changes[key].append(new_edit);
     }
+}
+
+impl find_dts_decl_range(dts_path: str, name: str) -> Optional[lspt.Range] {
+    import re;
+    try {
+        with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
+            src = f.read();
+        }
+    } except OSError {
+        return None;
+    }
+    escaped = re.escape(name);
+    if name == 'default' {
+        patterns = [r'(?m)^[ \t]*export[ \t]+(default)\b'];
+    } else {
+        patterns = [
+            r'(?m)^[ \t]*(?:export[ \t]+)?(?:declare[ \t]+)?(?:abstract[ \t]+)?'
+            r'(?:const|let|var|function|class|interface|enum|namespace|type)'
+            r'[ \t]+('
+                + escaped
+                + r')\b',
+            r'export[ \t]+(?:type[ \t]+)?\{[^{}]*?\b(' + escaped + r')\b',
+
+        ];
+    }
+    for pat in patterns {
+        found = re.search(pat, src);
+        if found {
+            start = found.start(1);
+            line = src.count('\n', 0, start);
+            col = start - (src.rfind('\n', 0, start) + 1);
+            return lspt.Range(
+                start=lspt.Position(line=line, character=col),
+                end=lspt.Position(line=line, character=col + len(found.group(1)))
+            );
+        }
+    }
+    return None;
 }
 
 impl kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind {
@@ -52,8 +90,8 @@ impl get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol] {
     owner_syms = {owner_sym(tab) for tab in nd.kid_scope};
     for (key, item) in nd.names_in_scope.items() {
         if key in _BUILTIN_NAMES
-        or item in owner_syms
-        or item.decl.loc.mod_path != nd.loc.mod_path {
+            or item in owner_syms
+            or item.decl.loc.mod_path != nd.loc.mod_path {
             continue;
         }
         pos = create_range(item.decl.loc);
@@ -160,15 +198,16 @@ impl gen_diagnostics(
         )
         for error in errors
         if error.loc.mod_path == from_path
-    ] + [
-        lspt.Diagnostic(
-            range=create_range(warning.loc),
-            message=_message(warning),
-            severity=lspt.DiagnosticSeverity.Warning,
-            code=warning.code.code if warning.code else None,
-            source="jac"
-        )
-        for warning in warnings
-        if warning.loc.mod_path == from_path
-    ];
+    ]
+        + [
+            lspt.Diagnostic(
+                range=create_range(warning.loc),
+                message=_message(warning),
+                severity=lspt.DiagnosticSeverity.Warning,
+                code=warning.code.code if warning.code else None,
+                source="jac"
+            )
+            for warning in warnings
+            if warning.loc.mod_path == from_path
+        ];
 }

@@ -22,8 +22,10 @@ impl BaseAstGenPass._init_child_passes(
     return [];
 }
 
-impl BaseAstGenPass._flatten_ast_list(items: list[T | list[T] | None]) -> list[T] {
-    flattened: list[T] = [];
+impl BaseAstGenPass._flatten_ast_list(
+    items: list[AstNodeT | list[AstNodeT] | None]
+) -> list[AstNodeT] {
+    flattened: list[AstNodeT] = [];
     for item in items {
         if isinstance(item, `list) {
             flattened.extend(item);

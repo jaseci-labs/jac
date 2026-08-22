@@ -3,7 +3,6 @@
 From Pyright sample: typeVar4.py
 """
 
-import from typing { Callable, Generic, TypeVar }
 
 with entry {
     _T = TypeVar("_T");

@@ -7,14 +7,14 @@ import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib { sv_client as __jac_sv }
-import from starlette.testclient { TestClient }
+import from jaclang.runtimelib.serving.testing { ServingTestClient as TestClient }
 import from jaclang.scale.server.serve { JacAPIServer }
 
 glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
 
 def setup_env -> str {
     tmp = tempfile.mkdtemp();
-    for f in glob.glob(str(FIXTURES / "*")) {
+    for f in `glob.`glob(str(FIXTURES / "*")) {
         if Path(f).is_file() {
             shutil.copy2(f, Path(tmp) / Path(f).name);
         }
@@ -84,7 +84,8 @@ test "eager spawn: ensure_all registers URLs from env vars" {
     os.environ["JAC_SV_EAGER_ENV_MOD_URL"] = "http://eager-env-mod.example";
     try {
         __jac_sv.ensure_all(["eager_env_mod"]);
-        assert __jac_sv._registry.get("eager_env_mod") == "http://eager-env-mod.example";
+        assert __jac_sv._registry.get("eager_env_mod")
+            == "http://eager-env-mod.example";
     } finally {
         del os.environ["JAC_SV_EAGER_ENV_MOD_URL"];
         if "eager_env_mod" in __jac_sv._registry {
@@ -249,5 +250,132 @@ test "eager spawn: cycles do not deadlock or double-spawn" {
         __jac_sv.ensure_all = original_ensure_all;
         __jac_sv.clear_consumer_providers();
         __jac_sv.clear_test_clients();
+    }
+}
+
+
+# Peer URL resolution semantics. peer_url_env_key is the single definition of
+# the variable name that carries a peer's URL, shared by the writers (the k8s
+# manifest builder, the local process manager) and the readers, so the key
+# format is asserted as a literal rather than through the helper.
+
+glob _PROBE: str = "peer_url_probe";
+
+
+def _probe_env_restore(saved: str | None) {
+    key = __jac_sv.peer_url_env_key(_PROBE);
+    if saved is None {
+        os.environ.pop(key, None);
+    } else {
+        os.environ[key] = saved;
+    }
+    __jac_sv.unregister(_PROBE);
+}
+
+
+# Kubernetes names are RFC1123-safe, so a peer named orders_app is served by
+# orders-app-service. The env key keeps the raw name, and a reader that rebuilt
+# it from the Kubernetes name would look up the wrong variable.
+test "peer url: the env key keeps the raw module name" {
+    assert __jac_sv.peer_url_env_key("orders_app") == "JAC_SV_ORDERS_APP_URL";
+    assert __jac_sv.peer_url_env_key("main") == "JAC_SV_MAIN_URL";
+}
+
+
+test "peer url: unset, blank and whitespace all read as absent" {
+    key = __jac_sv.peer_url_env_key(_PROBE);
+    saved = os.environ.get(key);
+    try {
+        os.environ.pop(key, None);
+        assert __jac_sv.peer_url_from_env(_PROBE) == "";
+
+        os.environ[key] = "";
+        assert __jac_sv.peer_url_from_env(_PROBE) == "";
+
+        os.environ[key] = "   ";
+        assert __jac_sv.peer_url_from_env(_PROBE) == "";
+
+        os.environ[key] = " http://peer.invalid ";
+        assert __jac_sv.peer_url_from_env(_PROBE) == "http://peer.invalid";
+    } finally {
+        _probe_env_restore(saved);
+    }
+}
+
+
+test "peer url: an in-process registration wins over the env" {
+    key = __jac_sv.peer_url_env_key(_PROBE);
+    saved = os.environ.get(key);
+    try {
+        os.environ[key] = "http://from-env.invalid";
+        __jac_sv.register(_PROBE, "http://from-registry.invalid");
+
+        assert __jac_sv.resolve_url(_PROBE) == "http://from-registry.invalid";
+    } finally {
+        _probe_env_restore(saved);
+    }
+}
+
+
+test "peer url: the env is used when nothing is registered" {
+    key = __jac_sv.peer_url_env_key(_PROBE);
+    saved = os.environ.get(key);
+    try {
+        __jac_sv.unregister(_PROBE);
+        os.environ[key] = "http://from-env.invalid";
+
+        assert __jac_sv.resolve_url(_PROBE) == "http://from-env.invalid";
+    } finally {
+        _probe_env_restore(saved);
+    }
+}
+
+
+# Previously any value counted as present, so a blank one resolved to "" and the
+# caller failed later with no indication of where the empty URL came from.
+test "peer url: a blank env value raises instead of resolving to an empty URL" {
+    key = __jac_sv.peer_url_env_key(_PROBE);
+    saved = os.environ.get(key);
+    try {
+        __jac_sv.unregister(_PROBE);
+        os.environ[key] = "";
+
+        raised = "";
+        try {
+            __jac_sv.resolve_url(_PROBE);
+        } except RuntimeError as err {
+            raised = str(err);
+        }
+
+        assert raised , "a blank override resolved instead of raising";
+        assert key in raised , (
+            f"the error should name the variable to set, got: {raised}"
+        );
+    } finally {
+        _probe_env_restore(saved);
+    }
+}
+
+
+# _ensure_available registers what it resolves, so a blank value must not become
+# a registration or every later lookup would return the empty URL from cache.
+test "peer url: a blank env value is never registered" {
+    key = __jac_sv.peer_url_env_key(_PROBE);
+    saved = os.environ.get(key);
+    try {
+        __jac_sv.unregister(_PROBE);
+        os.environ[key] = "  ";
+
+        try {
+            __jac_sv._ensure_available(_PROBE);
+        } except Exception {
+            ;
+        }
+
+        assert _PROBE not in __jac_sv._registry , (
+            "a blank override was cached as a registration"
+        );
+    } finally {
+        _probe_env_restore(saved);
     }
 }

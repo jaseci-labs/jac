@@ -26,14 +26,13 @@ test "circle jac" {
 test "circle jac test" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
-    # jac test routes through pytest, which reports the run on stdout. Force
-    # serial collection (JAC_TEST_JOBS=0): when this test itself runs under
-    # `-n auto`, an inherited `auto` would make the in-process run spawn its own
-    # xdist pool and print "[3 items]" instead of the serial "collected 3 items".
+    # jac test reports the run on stdout. JAC_TEST_JOBS=0 keeps the in-process
+    # run single-process, so it does not fork its own worker pool inside the
+    # outer run and the summary line is not interleaved.
     prev_jobs = os.environ.get("JAC_TEST_JOBS");
     os.environ["JAC_TEST_JOBS"] = "0";
     try {
-        analysis.test(os.path.join(FIXTURES, "circle.jac"));
+        analysis.`test(os.path.join(FIXTURES, "circle.jac"));
     } finally {
         if prev_jobs is None {
             del os.environ["JAC_TEST_JOBS"];
@@ -43,7 +42,7 @@ test "circle jac test" {
     }
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
-    assert "collected 3 items" in stdout_value;
+    assert "3 passed" in stdout_value;
 }
 
 test "clean circle jac" {
@@ -52,8 +51,10 @@ test "clean circle jac" {
     execution.run(os.path.join(FIXTURES, "circle_clean.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
-    assert "Area of a circle with radius 5 using function: 78.53981633974483" in stdout_value;
-    assert "Area of a Circle with radius 5 using class: 78.53981633974483" in stdout_value;
+    assert "Area of a circle with radius 5 using function: 78.53981633974483"
+        in stdout_value;
+    assert "Area of a Circle with radius 5 using class: 78.53981633974483"
+        in stdout_value;
 }
 
 test "pure circle jac" {
@@ -62,8 +63,10 @@ test "pure circle jac" {
     execution.run(os.path.join(FIXTURES, "circle_pure.jac"));
     sys.stdout = sys.__stdout__;
     stdout_value = captured.getvalue();
-    assert "Area of a circle with radius 5 using function: 78.53981633974483" in stdout_value;
-    assert "Area of a Circle with radius 5 using class: 78.53981633974483" in stdout_value;
+    assert "Area of a circle with radius 5 using function: 78.53981633974483"
+        in stdout_value;
+    assert "Area of a Circle with radius 5 using class: 78.53981633974483"
+        in stdout_value;
 }
 
 test "pure circle impl not double generated" {
@@ -83,7 +86,7 @@ test "clean circle jac test" {
     os.environ["JAC_TEST_JOBS"] = "0";
     try {
         with suppress(SystemExit) {
-            analysis.test(os.path.join(FIXTURES, "circle_clean_tests.jac"));
+            analysis.`test(os.path.join(FIXTURES, "circle_clean_tests.jac"));
         }
     } finally {
         if prev_jobs is None {
@@ -94,7 +97,7 @@ test "clean circle jac test" {
     }
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
-    assert "collected 3 items" in stdout_value;
+    assert "3 passed" in stdout_value;
 }
 
 test "pure circle jac test" {
@@ -105,7 +108,7 @@ test "pure circle jac test" {
     os.environ["JAC_TEST_JOBS"] = "0";
     try {
         with suppress(SystemExit) {
-            analysis.test(os.path.join(FIXTURES, "circle_pure.test.jac"));
+            analysis.`test(os.path.join(FIXTURES, "circle_pure.test.jac"));
         }
     } finally {
         if prev_jobs is None {
@@ -116,7 +119,7 @@ test "pure circle jac test" {
     }
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
-    assert "collected 3 items" in stdout_value;
+    assert "3 passed" in stdout_value;
 }
 
 test "jac name in sys mods" {

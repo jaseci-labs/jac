@@ -65,9 +65,9 @@ def _boot_impl(entry_file: str, graph_path: str) {
             _runtime.close();
         } except Exception as e {
             sys.stderr.write(
-                "inprocess_dispatch: prior runtime close on re-boot failed: " + str(
-                    e
-                ) + "\n"
+                "inprocess_dispatch: prior runtime close on re-boot failed: "
+                    + str(e)
+                    + "\n"
             );
         }
         _runtime = None;
@@ -148,7 +148,8 @@ def shutdown {
 
     if _worker is not None and _worker.is_alive() {
         sys.stderr.write(
-            "inprocess_dispatch: worker still running after join timeout; " + "queue cleared -- worker will drain its local ref and exit\n"
+            "inprocess_dispatch: worker still running after join timeout; "
+                + "queue cleared -- worker will drain its local ref and exit\n"
         );
     }
     _tc = None;
@@ -195,9 +196,7 @@ def dispatch(payload_json: str) -> str {
     } except Exception {
         body = {"ok": False, "error": {"message": resp.text}};
     }
-    return json.dumps(
-        {"status": resp.status_code, "ok": resp.is_success, "body": body}
-    );
+    return json.dumps({"status": resp.status_code, "ok": resp.ok, "body": body});
 }
 
 
@@ -238,7 +237,7 @@ def dispatch_sync(payload_json: str, timeout_s: float = 0.0) -> str {
     );
     th.start();
 
-    done.wait(timeout_s);
+    done.`wait(timeout_s);
     if box["v"] is not None {
         return box["v"] as str;
     }
@@ -404,9 +403,11 @@ def _worker_loop {
 def handle(call_id: int, req_ptr: int, w: int) {
     if call_id == 0 or req_ptr == 0 {
         sys.stderr.write(
-            "inprocess_dispatch: handle() called with null pointer" " (call_id=" + str(
-                call_id
-            ) + ", req_ptr=" + str(req_ptr) + "); dropping\n"
+            "inprocess_dispatch: handle() called with null pointer" " (call_id="
+                + str(call_id)
+                + ", req_ptr="
+                + str(req_ptr)
+                + "); dropping\n"
         );
         return;
     }

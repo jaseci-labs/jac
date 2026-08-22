@@ -2,7 +2,7 @@ import uuid;
 import logging;
 import from contextvars { ContextVar }
 
-glob _trace_id: ContextVar[str] = ContextVar("_sv_trace_id", default="");
+glob _trace_id: ContextVar[str] = ContextVar("_sv_trace_id", `default="");
 
 def set_current_trace(trace_id: str | None) -> any {
     return _trace_id.set(trace_id or "");

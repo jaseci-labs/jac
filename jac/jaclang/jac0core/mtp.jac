@@ -129,7 +129,7 @@ def fetch_mtir(func: Callable) -> Info | None {
 
             if stem.endswith(".impl") {
                 stem = stem[:-5];
-            } elif stem.endswith(".cl") or stem.endswith(".sv") {
+            } elif stem.endswith(".cl") {
                 stem = stem[:-3];
             }
             module = stem;

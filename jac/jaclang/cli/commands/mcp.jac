@@ -10,27 +10,27 @@ glob registry = get_registry();
         Arg.create(
             "transport",
             typ=str,
-            default="stdio",
+            `default="stdio",
             help="Transport protocol: stdio, sse, or streamable-http",
             choices=["stdio", "sse", "streamable-http"]
         ),
         Arg.create(
             "port",
             typ=int,
-            default=3001,
+            `default=3001,
             help="Port for SSE/HTTP transports (default: 3001)"
         ),
         Arg.create(
             "host",
             typ=str,
-            default="127.0.0.1",
+            `default="127.0.0.1",
             help="Bind address for SSE/HTTP transports (default: 127.0.0.1)",
             short=""
         ),
         Arg.create(
             "mode",
             typ=str,
-            default="",
+            `default="",
             help="Tool/prompt exposure mode: lite, standard, or full (default: full)",
             choices=["lite", "standard", "full", ""],
             short=""
@@ -38,7 +38,7 @@ glob registry = get_registry();
         Arg.create(
             "inspect",
             typ=bool,
-            default=False,
+            `default=False,
             help="Print inventory of resources, tools, and prompts then exit",
             short=""
         )

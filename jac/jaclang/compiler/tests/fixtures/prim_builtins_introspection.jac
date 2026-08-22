@@ -94,15 +94,15 @@ def builtins_introspection_py() -> dict {
         "callable_input": 1 if callable(input) else 0,
         # emit_open
         "callable_open": 1 if callable(open) else 0,
+
     };
 }
 
-cl def builtins_introspection_cl() -> dict {
+def builtins_introspection_cl() -> dict {
     return {};
 }
 
-na {
-    def builtins_introspection_na() -> dict[str, any] {
-        return {};
-    }
+
+def builtins_introspection_na() -> dict[str, any] {
+    return {};
 }

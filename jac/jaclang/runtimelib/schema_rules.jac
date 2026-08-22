@@ -1,7 +1,6 @@
 import logging;
 import os;
 import threading;
-import from collections.abc { Callable }
 import from dataclasses { fields, is_dataclass }
 
 glob logger = logging.getLogger(__name__),

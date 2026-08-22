@@ -1,14 +1,16 @@
 import contextlib;
-import from collections.abc { Callable }
 import from pathlib { Path }
 import from types { ModuleType }
-import from typing { TYPE_CHECKING, Any }
+import from typing { TYPE_CHECKING }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.client.asset_processor { AssetProcessor }
 import from jaclang.runtimelib.client.import_processor { ImportProcessor }
 import from jaclang.runtimelib.client.jac_to_js { JacToJSCompiler }
-import from jaclang.runtimelib.client.route_scanner { RouteScanner }
-import from jaclang.jac0core.ext_registry { CLIENT_SUFFIX, ANNEX_SUFFIXES }
+import from jaclang.runtimelib.client.route_scanner {
+    RouteScanner,
+    resolve_route_exports
+}
+import from jaclang.jac0core.ext_registry { ANNEX_SUFFIXES }
 
 with entry {
     if TYPE_CHECKING { }
@@ -30,9 +32,9 @@ class JacClientCompiler {
             'JacClientErrorBoundary'
         ];
 
-        COMPOUND_EXTENSIONS = ['.native.cl.jac', CLIENT_SUFFIX] + list(ANNEX_SUFFIXES);
+        COMPOUND_EXTENSIONS = ['.native.jac'] + list(ANNEX_SUFFIXES);
 
-        PLATFORM_RUNTIME_FILES = {"react-native": "client_runtime_native.cl.jac"};
+        PLATFORM_RUNTIME_FILES = {"react-native": "client_runtime_native.jac"};
     }
 
     def init(
@@ -41,12 +43,14 @@ class JacClientCompiler {
         runtime_path: (Path | None),
         compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
         extract_exports_func: Callable[([any], list[str])],
-        extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])],
+        extract_globals_func: Callable[([any, ModuleType], dict[(str, any)])],
         compiled_dir: (Path | None) = None
     );
 
     def _get_client_dir(self: JacClientCompiler) -> Path;
+    def _collect_na_modules(self: JacClientCompiler, mod: any) -> None;
     def _jac_path_to_js(self: JacClientCompiler, rel_str: str) -> str;
+    def _native_variant(self: JacClientCompiler, path: Path) -> Path;
     def compile_runtime_utils(
         self: JacClientCompiler, runtime_filename: str
     ) -> tuple[str, list[str]];
@@ -58,7 +62,7 @@ class JacClientCompiler {
         module_path: Path,
         visited: (set[Path] | None) = None,
         collected_exports: (set[str] | None) = None,
-        collected_globals: (dict[(str, Any)] | None) = None,
+        collected_globals: (dict[(str, any)] | None) = None,
         source_root: (Path | None) = None,
         target_name: str = "web",
         skip_existing: bool = False
@@ -85,15 +89,19 @@ class JacClientCompiler {
         self: JacClientCompiler,
         visited: (set[Path] | None) = None,
         collected_exports: (set[str] | None) = None,
-        collected_globals: (dict[(str, Any)] | None) = None,
+        collected_globals: (dict[(str, any)] | None) = None,
         target_name: str = "web"
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
+    def _warn_pages_without_routes(
+        self: JacClientCompiler, scanner: RouteScanner
+    ) -> None;
+
     def _generate_routes_manifest(self: JacClientCompiler) -> None;
     def _write_source_map(
         self: JacClientCompiler,
-        mod: Any,
+        mod: any,
         source_file: str,
         output_path: Path,
         full_output: str

@@ -1,5 +1,5 @@
 """Impl annex for issue #6794. The event ability (which uses `skip`) and the
-driver are implemented HERE, split from their decls in osp_skip_annex.na.jac —
+driver are implemented HERE, split from their decls in osp_skip_annex.jac —
 so the `skip` is enclosed by an `ImplDef` carrying an `EventSignature` (`with
 Item entry`), not an inline `Ability`. The native capability check must treat
 that the same as an inline event-ability `skip`.

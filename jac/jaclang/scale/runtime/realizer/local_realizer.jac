@@ -3,7 +3,7 @@ import from jaclang.scale.runtime.planner.planner {
     plan_realization,
     TOPOLOGY_MICROSERVICE
 }
-import from jaclang.scale.runtime.discovery.discovery { should_enter_local_ms }
+import from jaclang.scale.runtime.routing { should_enter_local_ms }
 import from jaclang.scale.runtime.orchestrator.orchestrator { start_microservice_mode }
 
 glob logger = logging.getLogger(__name__);
@@ -23,9 +23,7 @@ obj LocalRealizer {
 
     def serve {
         plan = plan_realization(False, self._service_count() + 1);
-        logger.info(
-            f"LocalRealizer: {plan.topology} via {plan.gateway_mode} gateway, " + f"{plan.transport} transport, {plan.state_backend} state"
-        );
+        logger.info(f"LocalRealizer: {plan.topology} in {plan.environment}");
         if plan.topology == TOPOLOGY_MICROSERVICE {
             start_microservice_mode(self.ms_config);
         }

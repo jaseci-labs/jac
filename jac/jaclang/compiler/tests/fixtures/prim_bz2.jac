@@ -1,7 +1,7 @@
 """Bundled native ``bz2`` cross-backend equivalence fixture (#6978 Phase 2).
 
 The SAME ``import from bz2 { compress, decompress }`` binds CPython's ``bz2`` on
-the sv (Python) backend and the bundled ``na_stdlib/bz2.na.jac`` Mechanism-F
+the sv (Python) backend and the bundled ``na_stdlib/bz2.jac`` Mechanism-F
 module -- a thin pure-Jac surface over ``libbz2`` (the FFI floor) -- on the na
 (native LLVM) backend. Under this in-process JIT harness the floor dlopens the
 system ``libbz2``; the bundled ``libbz2.a`` archive (staged by the generic
@@ -86,70 +86,68 @@ def bz2_py() -> dict {
 }
 
 
-cl def bz2_cl() -> dict {
+def bz2_cl() -> dict {
     return {};
 }
 
 
-na {
-    def _digest_na(data: bytes) -> int {
-        acc: int = 2166136261;
-        n: int = len(data);
-        i: int = 0;
-        while i < n {
-            acc = (acc * 131 + data[i]) % 2147483647;
-            i += 1;
-        }
-        return acc;
+def _digest_na(data: bytes) -> int {
+    acc: int = 2166136261;
+    n: int = len(data);
+    i: int = 0;
+    while i < n {
+        acc = (acc * 131 + data[i]) % 2147483647;
+        i += 1;
     }
+    return acc;
+}
 
-    def bz2_na() -> dict[str, any] {
-        data = b"the quick brown fox jumps over the lazy dog. " * 40;
-        comp = compress(data);
-        comp6 = compress(data, 6);
-        back = decompress(comp);
-        empty_rt = decompress(compress(b""));
-        empty_plain = decompress(b"");
-        garbage_raises: int = 0;
-        try {
-            decompress(b"garbage");
-        } except Exception {
-            garbage_raises = 1;
-        }
-        trunc_raises: int = 0;
-        try {
-            decompress(comp[0:10]);
-        } except Exception {
-            trunc_raises = 1;
-        }
-        level0_raises: int = 0;
-        try {
-            compress(data, 0);
-        } except Exception {
-            level0_raises = 1;
-        }
-        level10_raises: int = 0;
-        try {
-            compress(data, 10);
-        } except Exception {
-            level10_raises = 1;
-        }
-        return {
-            "comp_digest": _digest_na(comp),
-            "comp6_digest": _digest_na(comp6),
-            "comp_len": len(comp),
-            "comp6_len": len(comp6),
-            "comp_smaller": 1 if len(comp) < len(data) else 0,
-            "roundtrip_ok": 1 if back == data else 0,
-            "roundtrip_len": len(back),
-            "back_digest": _digest_na(back),
-            "empty_ok": 1 if empty_rt == b"" else 0,
-            "empty_plain_ok": 1 if empty_plain == b"" else 0,
-            "garbage_raises": garbage_raises,
-            "trunc_raises": trunc_raises,
-            "level0_raises": level0_raises,
-            "level10_raises": level10_raises,
-
-        };
+def bz2_na() -> dict[str, any] {
+    data = b"the quick brown fox jumps over the lazy dog. " * 40;
+    comp = compress(data);
+    comp6 = compress(data, 6);
+    back = decompress(comp);
+    empty_rt = decompress(compress(b""));
+    empty_plain = decompress(b"");
+    garbage_raises: int = 0;
+    try {
+        decompress(b"garbage");
+    } except Exception {
+        garbage_raises = 1;
     }
+    trunc_raises: int = 0;
+    try {
+        decompress(comp[0:10]);
+    } except Exception {
+        trunc_raises = 1;
+    }
+    level0_raises: int = 0;
+    try {
+        compress(data, 0);
+    } except Exception {
+        level0_raises = 1;
+    }
+    level10_raises: int = 0;
+    try {
+        compress(data, 10);
+    } except Exception {
+        level10_raises = 1;
+    }
+    return {
+        "comp_digest": _digest_na(comp),
+        "comp6_digest": _digest_na(comp6),
+        "comp_len": len(comp),
+        "comp6_len": len(comp6),
+        "comp_smaller": 1 if len(comp) < len(data) else 0,
+        "roundtrip_ok": 1 if back == data else 0,
+        "roundtrip_len": len(back),
+        "back_digest": _digest_na(back),
+        "empty_ok": 1 if empty_rt == b"" else 0,
+        "empty_plain_ok": 1 if empty_plain == b"" else 0,
+        "garbage_raises": garbage_raises,
+        "trunc_raises": trunc_raises,
+        "level0_raises": level0_raises,
+        "level10_raises": level10_raises,
+
+    };
 }

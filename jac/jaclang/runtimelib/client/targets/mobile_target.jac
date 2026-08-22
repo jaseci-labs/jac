@@ -4,7 +4,7 @@ import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 
 obj MobileTarget(WebTarget) {
     has name: str = "mobile",
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = True,
         config_section: str = "mobile",
         output_dir: Path = Path("android/app/build/outputs");

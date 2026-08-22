@@ -31,45 +31,39 @@ def:pub place_order(items: list[CartItem], shipping: ShippingInfo) -> OrderSumma
         total = total + item.price * item.quantity;
     }
     tax = total * 0.08;
-    return OrderSummary(
-        order_id="ord-001",
-        items=items,
-        total=total,
-        tax=tax
-    );
+    return OrderSummary(order_id="ord-001", items=items, total=total, tax=tax);
 }
 
 def:pub update_item(order_id: str, item: CartItem) -> OrderSummary {
     return OrderSummary(
-        order_id=order_id,
-        items=[item],
-        total=item.price * item.quantity,
-        tax=0.0
+        order_id=order_id, items=[item], total=item.price * item.quantity, tax=0.0
     );
 }
 
-cl {
-    sv import from .typed_bidirectional { place_order, update_item }
 
-    def:pub app -> JsxElement {
-        has cart: list = [],
-            order: any = None;
+import from .typed_bidirectional { place_order, update_item }
 
-        async def checkout -> None {
-            items = [
-                CartItem(product_id="p1", name="Widget", quantity=2, price=9.99),
-                CartItem(product_id="p2", name="Gadget", quantity=1, price=24.99)
-            ];
-            shipping = ShippingInfo(address="123 Main", city="Anytown");
-            order = await place_order(items, shipping);
-        }
+def:pub app -> JsxElement {
+    has cart: list = [],
+        order: any = None;
 
-        return <div>
+    async def checkout -> None {
+        items = [
+            CartItem(product_id="p1", name="Widget", quantity=2, price=9.99),
+            CartItem(product_id="p2", name="Gadget", quantity=1, price=24.99)
+        ];
+        shipping = ShippingInfo(address="123 Main", city="Anytown");
+        order = await place_order(items, shipping);
+    }
+
+    return
+        <div>
             <h2>Order {order.order_id}</h2>
             <p>Total: {order.total} + Tax: {order.tax}</p>
-            {[<span key={i.product_id}>{i.name} x{i.quantity}</span>
-              for i in order.items]}
+            {[
+                <span key={i.product_id}>{i.name} x{i.quantity}</span>
+                for i in order.items
+            ]}
             <button onClick={checkout}>Checkout</button>
         </div>;
-    }
 }

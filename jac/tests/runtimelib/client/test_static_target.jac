@@ -10,7 +10,6 @@ over `file://`, so inlining is what makes disk-open work.
 import os;
 import shutil;
 import tempfile;
-import pytest;
 import from pathlib { Path }
 import from subprocess { run }
 
@@ -175,14 +174,14 @@ test "client build renders from file protocol" {
     try {
         import from playwright.sync_api { sync_playwright }
     } except ImportError {
-        pytest.skip("playwright not installed");
+        testskip("playwright not installed");
     }
     import from .test_helpers { get_env_with_npm, get_jac_command }
 
     tests_dir = os.path.dirname(__file__);
     example_src = os.path.join(os.path.dirname(tests_dir), "examples", "basic");
     if not os.path.isdir(example_src) {
-        pytest.skip(f"basic example not found: {example_src}");
+        testskip(f"basic example not found: {example_src}");
     }
 
     with tempfile.TemporaryDirectory() as temp_dir {
@@ -208,9 +207,7 @@ test "client build renders from file protocol" {
             timeout=600,
         );
         if build.returncode != 0 {
-            pytest.skip(
-                f"client build unavailable in this environment:\n{build.stderr}"
-            );
+            testskip(f"client build unavailable in this environment:\n{build.stderr}");
         }
         index_html = Path(project_dir) / ".jac" / "client" / "dist" / "index.html";
         assert index_html.exists() , "portable index.html should be produced";

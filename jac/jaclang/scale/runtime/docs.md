@@ -1,14 +1,23 @@
 # Microservice Mode
 
-Split your Jac app into independent services using `sv import`.
+Split your Jac app into independent services by declaring them in
+`[scale.microservices.routes]`.
 
 ## How It Works
 
-Write `sv import` - the compiler handles the rest:
+Declare the service cut in `jac.toml` - the compiler handles the rest.
+Providers are plain server modules exposing `def:pub` functions; consumers
+use plain imports, which lower to HTTP RPC stubs because the provider is in
+the routes table:
+
+```toml
+[scale.microservices.routes]
+cart_app = "/api/cart"
+```
 
 ```jac
 # orders_app.jac
-sv import from cart_app { get_cart, clear_cart }
+import from cart_app { get_cart, clear_cart }
 
 def:pub create_order(user_id: str) -> dict {
     cart = get_cart(user_id=user_id);      # cross-service call (HTTP under the hood)
@@ -19,12 +28,10 @@ def:pub create_order(user_id: str) -> dict {
 ```
 
 ```jac
-# cart_app.jac - exposes functions via sv {}
-sv {
-    def:pub get_cart(user_id: str) -> dict { ... }
-    def:pub clear_cart(user_id: str) -> bool { ... }
-    def:pub add_to_cart(user_id: str, product_id: str, qty: int) -> dict { ... }
-}
+# cart_app.jac - a plain server module; def:pub is the service surface
+def:pub get_cart(user_id: str) -> dict { ... }
+def:pub clear_cart(user_id: str) -> bool { ... }
+def:pub add_to_cart(user_id: str, product_id: str, qty: int) -> dict { ... }
 ```
 
 Locally: runtime spawns subprocesses, assigns ports, routes calls.
@@ -35,7 +42,7 @@ On K8s: runtime creates pods, uses K8s DNS, routes calls.
 
 ### 1. Create services
 
-Each service exposes `def:pub` functions via `sv {}`:
+Each service is a plain server module exposing `def:pub` functions:
 
 ```
 my-app/
@@ -43,7 +50,7 @@ my-app/
 ├── main.jac              # client UI + entry point
 ├── products_app.jac      # product catalog functions
 ├── cart_app.jac          # cart management functions
-├── orders_app.jac        # order functions (sv imports cart + products)
+├── orders_app.jac        # order functions (imports cart + products)
 ```
 
 **products_app.jac**:
@@ -53,42 +60,37 @@ node Product {
     has id: str, name: str, price: float;
 }
 
-sv {
-    def:pub list_products() -> list[dict] {
-        products: list[dict] = [];
-        for p in [-->](`?Product) {
-            products.append({"id": p.id, "name": p.name, "price": p.price});
-        }
-        return products;
+def:pub list_products() -> list[dict] {
+    products: list[dict] = [];
+    for p in [-->](`?Product) {
+        products.append({"id": p.id, "name": p.name, "price": p.price});
     }
-
-    def:pub get_product(product_id: str) -> dict | None { ... }
+    return products;
 }
+
+def:pub get_product(product_id: str) -> dict | None { ... }
 ```
 
-**orders_app.jac** - consumes other services:
+**orders_app.jac** - consumes other services with plain imports:
 
 ```jac
-sv import from cart_app { get_cart, clear_cart }
-sv import from products_app { get_product }
+import from cart_app { get_cart, clear_cart }
+import from products_app { get_product }
 
-sv {
-    def:pub create_order(user_id: str) -> dict {
-        cart = get_cart(user_id=user_id);
-        # ... validate, create order ...
-        clear_cart(user_id=user_id);
-        return {"order_id": "ord_1", "status": "confirmed"};
-    }
+def:pub create_order(user_id: str) -> dict {
+    cart = get_cart(user_id=user_id);
+    # ... validate, create order ...
+    clear_cart(user_id=user_id);
+    return {"order_id": "ord_1", "status": "confirmed"};
 }
 ```
 
 ### 2. Configure jac.toml
 
 ```toml
-[scale.microservices]
-enabled = true
-
-# Map module names to gateway URL prefixes (for client-facing routing)
+# The service cut: each key runs as its own service; the value is its
+# gateway URL prefix ("" derives /<module-slug>). Declaring routes IS what
+# turns microservice mode on; remove the table to run single-process.
 [scale.microservices.routes]
 products_app = "/api/products"
 cart_app = "/api/cart"
@@ -99,8 +101,12 @@ orders_app = "/api/orders"
 entry = "main.jac"
 ```
 
-Services are NOT declared individually - `sv import` handles discovery.
-The TOML only maps module names to gateway prefixes.
+Services ARE declared here, and only here - the routes table is the
+authoritative service cut. There is no discovery from source: a module
+becomes a service by being listed (`jac scale split <module>` adds an
+entry), and imports of a listed module compile to RPC stubs.
+`[scale.microservices.services.<name>].file` overrides the service's entry
+file (default `<name>.jac`).
 
 ### 3. Start
 
@@ -110,8 +116,8 @@ jac start main.jac
 
 Runtime automatically:
 
-1. Discovers providers from `sv import` statements (BFS traversal)
-2. Spawns each provider as a subprocess on auto-assigned port
+1. Reads the service cut from `[scale.microservices.routes]`
+2. Spawns each service as a subprocess on an auto-assigned port
 3. Starts gateway on :8000
 4. Routes client requests to services by prefix
 
@@ -153,10 +159,10 @@ pipe into `kubectl diff` or `kubectl apply -f -`.
 
 ## Inter-Service Communication
 
-**With `sv import` (recommended)**:
+**Plain imports of a routes-table module (recommended)**:
 
 ```jac
-sv import from cart_app { get_cart, clear_cart }
+import from cart_app { get_cart, clear_cart }
 
 # Just call it like a normal function - auth propagated automatically
 cart = get_cart(user_id="u123");
@@ -165,7 +171,7 @@ clear_cart(user_id="u123");
 
 Under the hood:
 
-1. Compiler generates HTTP stub
+1. Compiler sees `cart_app` in `[scale.microservices.routes]` and generates an HTTP stub
 2. Stub calls `sv_client.call("cart_app", "get_cart", {user_id: "u123"})`
 3. jac-scale hook: reads auth from request context, forwards Authorization header
 4. Cart service validates token, executes function, returns result
@@ -242,17 +248,19 @@ agent prompt fixtures, manifest files, etc.
 
 ## What Is and Isn't a Service
 
-Any module `sv import`ed somewhere is a service. No TOML declaration needed:
+A module is a service if and only if it is listed in
+`[scale.microservices.routes]`:
 
-| File | How it becomes a service |
-|------|------------------------|
-| `cart_app.jac` | Some module has `sv import from cart_app { ... }` |
-| `products_app.jac` | Some module has `sv import from products_app { ... }` |
-| `shared/models.jac` | Regular import, NOT a service |
+| File | Service? |
+|------|----------|
+| `cart_app.jac` | Yes - `cart_app` is a routes-table key, so imports of it become RPC |
+| `products_app.jac` | Yes - listed in the routes table |
+| `shared/models.jac` | No - not listed; imports stay in-process |
 | `main.jac` | Entry point, client UI |
 
-The TOML `[routes]` section only controls which services get **public gateway URLs**.
-A service without a route still works for internal `sv import` calls.
+The route value controls the service's **public gateway URL** (`""` derives
+`/<module-slug>`); an internal-only service can keep the derived prefix and
+simply never be called through the gateway.
 
 ## Architecture
 
@@ -262,7 +270,7 @@ Client --> Gateway (:8000) --> /api/products/* --> products_app (:18342)
                            --> /api/cart/*     --> cart_app     (:18103)
                            --> Static files, Admin UI
 
-Inter-service (sv import, direct - no gateway hop):
+Inter-service (RPC stub from a routes-table import, direct - no gateway hop):
   orders_app (:18567) --sv_client.call()--> cart_app (:18103)
 ```
 
@@ -273,7 +281,7 @@ Ports are auto-assigned: `18000 + hash(module_name) % 1000`, 100 retries.
 ```
 1. Client --> Gateway (Authorization: Bearer USER_TOKEN)
 2. Gateway forwards Authorization --> orders_app
-3. orders_app walker calls: get_cart(user_id)  [sv imported]
+3. orders_app walker calls: get_cart(user_id)  [imported from a routes-table service]
 4. jac-scale sv_service_call hook:
    a. Reads Authorization from execution context
    b. POST to cart_app with same Authorization header
@@ -298,10 +306,11 @@ Same code, different deployer:
 
 ## Kubernetes Deployment
 
-`jac start <file>.jac --scale` with `[scale.microservices].enabled = true`
+`jac start <file>.jac --scale` with services declared in
+`[scale.microservices.routes]`
 auto-routes to the microservice K8s target: one image built and pushed,
 then per-service `Deployment` + `ClusterIP Service` + autoscaler (HPA or KEDA `ScaledObject`) + PDB applied
-for every `sv import`-discovered service plus the gateway.
+for every `[scale.microservices.routes]` entry plus the gateway.
 
 Each pod boots with `JAC_SV_NAME=<service>` (`__gateway__` for gateway);
 the entrypoint reads it to know which service to host. Gateway resolves
@@ -318,10 +327,10 @@ code changes from local mode.
 | `cpu_request`/`cpu_limit` | unset | `"100m"`, `"2000m"` |
 | `memory_request`/`memory_limit` | unset | `"128Mi"`, `"4Gi"` |
 | `env` | `{}` | extra env vars |
-| `image_tag` | unset | per-service override (canary) |
-| `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
+| `rpc_timeout` | `10.0` | service RPC timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
-| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
+| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `50` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
+| `hpa.behavior` | `{}` | Raw HPA `behavior` fragment (`scaleUp`/`scaleDown`) deep-merged over the generated scale-rate defaults - same merge rules as `deployment_overlay`. Applies to both engines; for `keda` it only governs scaling while replicas are above zero - the drop to zero is still controlled by `autoscaler_cooldown` (the ScaledObject's `cooldownPeriod`). See example below. |
 | `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[scale.kubernetes.extra_triggers]]`. |
 | `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 
@@ -484,8 +493,9 @@ Default is 10s. Override for LLM / generation / long-running services:
 rpc_timeout = 120.0
 ```
 
-The override is read on every `sv` RPC and passed through to
-`httpx.Client(timeout=...)`.
+The override is read on every service RPC and applied as the
+transport timeout for connection setup and for reads while waiting
+on the response head.
 
 ### Streaming sv-to-sv RPC (generator returns)
 
@@ -503,9 +513,10 @@ def:pub stream_events(run_id: str) -> Iterator[dict] {
     yield {"type": "done"};
 }
 
-# Consumer service - exact same call shape as a non-streaming sv import,
-# the runtime reads Content-Type and returns a generator on SSE.
-sv import from llm_app { stream_events }
+# Consumer service - exact same call shape as a non-streaming service RPC
+# (llm_app is in the routes table); the runtime reads Content-Type and
+# returns a generator on SSE.
+import from llm_app { stream_events }
 
 for ev in stream_events(run_id="abc") {
     handle(ev);
@@ -519,21 +530,25 @@ and re-raise as a `RuntimeError` out of the consumer's iterator
 (so a normal `for ... in` loop sees the failure rather than a
 silently-truncated stream).
 
-Lifecycle: the consumer's generator owns the underlying httpx
+Lifecycle: the consumer's generator owns the underlying
 connection. Exhausting the iterator OR letting it go out of scope
 closes the connection cleanly. Dropping mid-stream (consumer
 disconnects) closes too - the producer's `finally` blocks run.
 
-`rpc_timeout` semantics on streaming: the timeout applies to
-*establishing* the connection and to each blocking read between
-events. A long, idle stream that sends no events for `rpc_timeout`
-seconds will time out, matching the behavior we want for a hung
-producer; a fast-stepping stream of any total duration is fine.
+`rpc_timeout` semantics on streaming: the timeout bounds
+*establishing* the connection and the wait for the response head.
+Once the head has arrived, reads of the event body are not bounded
+by `rpc_timeout`: a producer that stalls between events holds the
+consumer's iterator open until the connection drops (see #8429).
+A fast-stepping stream of any total duration is fine.
 
-Retries are skipped once the stream is open: an in-flight stream
-cannot be replayed without losing already-consumed events. Connect-
-time failures (DNS, refused) still retry + count against the breaker
-as they would for a non-streaming RPC.
+Retries happen only for connect-phase failures (DNS, refused,
+connect timeout), where the request provably never reached the peer.
+Any failure after the request is sent - a read timeout, a dropped
+connection, an HTTP error - fails fast without a replay, because the
+peer may already have executed the call. Every failed round trip in
+either phase records one circuit-breaker failure. This applies to
+streaming and non-streaming RPC alike.
 
 ### WebSockets + SSE proxy at the gateway
 
@@ -586,7 +601,7 @@ responses carry the standard envelope + `Retry-After` header.
 + `GET /metrics` - Prometheus exposition. Enable with
   `[scale.monitoring] enabled = true`.
 + `X-Trace-Id` - gateway mints one if the client omits it and threads
-  it through every downstream hop (including `sv` RPCs). Echoed back
+  it through every downstream hop (including service RPCs). Echoed back
   on every response.
 + `GET /docs` + `GET /openapi.json` - unified Swagger UI + merged
   OpenAPI doc across all healthy services.

@@ -110,7 +110,7 @@ walker setup_profile {
         # exists yet - so we create one and walk into it instead.
         visit [-->[?:Profile]] else {
             fresh = here ++> Profile(created_at=_now());
-            grant(fresh, level=ConnectPerm);
+            grant(fresh, level=AccessLevel.CONNECT);
             visit fresh;
         }
     }
@@ -266,7 +266,7 @@ walker create_tweet {
         new = here +>:Post():+> Tweet(
             content=self.content, author_username=here.username, created_at=_now()
         );
-        grant(new, level=WritePerm);
+        grant(new, level=AccessLevel.WRITE);
         report new;
     }
 }
@@ -286,7 +286,7 @@ walker create_channel {
             creator_username=here.username,
             created_at=_now()
         );
-        grant(new, level=ConnectPerm);
+        grant(new, level=AccessLevel.CONNECT);
         report new.to_bundle(False);
     }
 }
@@ -457,7 +457,7 @@ walker create_channel_tweet(find_channel) {
                 new = here +>:ChannelPost():+> Tweet(
                     content=self.content, author_username=me.username, created_at=_now()
                 );
-                grant(new, level=WritePerm);
+                grant(new, level=AccessLevel.WRITE);
                 report new;
             }
             disengage;

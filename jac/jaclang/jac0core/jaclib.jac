@@ -1,14 +1,17 @@
 import from jaclang.jac0core.archetype { GenericEdge, Root }
 import from jaclang.jac0core.archetype { ObjectSpatialFunction as DSFunc }
-import from jaclang.jac0core.archetype { ObjectSpatialPath as OPath }
 import from jaclang.jac0core.constant { EdgeDir }
 import from jaclang.jac0core.constructs { Archetype as Obj }
 import from jaclang.jac0core.constructs { EdgeArchetype as Edge }
 import from jaclang.jac0core.constructs { JsxElement }
 import from jaclang.jac0core.constructs { NodeArchetype as Node }
 import from jaclang.jac0core.constructs { WalkerArchetype as Walker }
+import from jaclang.jac0core.graph_query { GraphQuery, QHop, QPred }
 import from jaclang.jac0core.runtime { JacRuntimeInterface }
 glob __all__ = [
+         'GraphQuery',
+         'QHop',
+         'QPred',
          'Node',
          'Edge',
          'Walker',
@@ -16,7 +19,6 @@ glob __all__ = [
          'Root',
          'GenericEdge',
          'JsxElement',
-         'OPath',
          'DSFunc',
          'EdgeDir',
          'root',
@@ -53,11 +55,11 @@ glob __all__ = [
      connect = JacRuntimeInterface.connect,
      create_j_context = JacRuntimeInterface.create_j_context,
      disconnect = JacRuntimeInterface.disconnect,
-     `disengage = JacRuntimeInterface.disengage,
+     `disengage = JacRuntimeInterface.`disengage,
      get_context = JacRuntimeInterface.get_context,
-     root = JacRuntimeInterface.root,
-     `spawn = JacRuntimeInterface.spawn,
-     `visit = JacRuntimeInterface.visit,
+     `root = JacRuntimeInterface.root,
+     `spawn = JacRuntimeInterface.`spawn,
+     `visit = JacRuntimeInterface.`visit,
      arefs = JacRuntimeInterface.arefs,
      assign_all = JacRuntimeInterface.assign_all,
      build_edge = JacRuntimeInterface.build_edge,
@@ -74,7 +76,7 @@ glob __all__ = [
      log_report = JacRuntimeInterface.log_report,
      refs = JacRuntimeInterface.refs,
      safe_subscript = JacRuntimeInterface.safe_subscript,
-     `sem = JacRuntimeInterface.sem,
+     `sem = JacRuntimeInterface.`sem,
      on_entry = JacRuntimeInterface.on_entry,
      on_exit = JacRuntimeInterface.on_exit,
      set_trigger = JacRuntimeInterface.set_trigger,

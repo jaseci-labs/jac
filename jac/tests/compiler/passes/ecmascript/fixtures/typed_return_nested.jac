@@ -26,25 +26,31 @@ def:pub get_person(name: str) -> Person {
 
 def:pub list_people -> list[Person] {
     return [
-        Person(name="Alice", age=30, address=Address(street="1st", city="A", zip_code="111")),
-        Person(name="Bob", age=25, address=Address(street="2nd", city="B", zip_code="222"))
+        Person(
+            name="Alice",
+            age=30,
+            address=Address(street="1st", city="A", zip_code="111")
+        ),
+        Person(
+            name="Bob", age=25, address=Address(street="2nd", city="B", zip_code="222")
+        )
     ];
 }
 
-cl {
-    sv import from .typed_return_nested { get_person, list_people }
 
-    def:pub app -> JsxElement {
-        has person: any = None,
-            loading: bool = True;
+import from .typed_return_nested { get_person, list_people }
 
-        async can with entry {
-            person = await get_person("Alice");
-            loading = False;
-        }
+def:pub app -> JsxElement {
+    has person: any = None,
+        loading: bool = True;
 
-        return <div>
+    async can with entry {
+        person = await get_person("Alice");
+        loading = False;
+    }
+
+    return
+        <div>
             <span>{person.name} lives at {person.address.city}</span>
         </div>;
-    }
 }

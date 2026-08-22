@@ -1,7 +1,7 @@
 import struct;
 import from jaclang.compiler.passes.native.llvm { ir_layer_typed_pointers_enabled }
 import from jaclang.compiler.passes.native.llvm.ir._utils { _StrCaching }
-def _wrapname(x: Any) -> object {
+def _wrapname(x: any) -> object {
     return '"{0}"'.format(x.replace('\\', '\\5c').replace('"', '\\22'));
 }
 
@@ -19,23 +19,23 @@ class Type(_StrCaching) {
         raise NotImplementedError;
     }
 
-    def as_pointer(self: Type, addrspace: Any = 0) -> object {
+    def as_pointer(self: Type, addrspace: any = 0) -> object {
         return PointerType(self, addrspace);
     }
 
-    def __ne__(self: Type, other: Any) -> object {
+    def __ne__(self: Type, other: any) -> object {
         return not (self == other);
     }
 
-    def format_constant(self: Type, value: Any) -> object {
+    def format_constant(self: Type, value: any) -> object {
         return str(value);
     }
 
-    def wrap_constant_value(self: Type, value: Any) -> object {
+    def wrap_constant_value(self: Type, value: any) -> object {
         return value;
     }
 
-    def __call__(self: Type, value: Any) -> object {
+    def __call__(self: Type, value: any) -> object {
         import from jaclang.compiler.passes.native.llvm.ir { Constant }
         return Constant(self, value);
     }
@@ -50,7 +50,7 @@ class MetaDataType(Type) {
         raise TypeError;
     }
 
-    def __eq__(self: MetaDataType, other: Any) -> object {
+    def __eq__(self: MetaDataType, other: any) -> object {
         return isinstance(other, MetaDataType);
     }
 
@@ -72,7 +72,7 @@ class PointerType(Type) {
         null = 'null';
     }
 
-    def __new__(cls: Any, pointee: Any = None, addrspace: Any = 0) -> object {
+    def __new__(cls: any, pointee: any = None, addrspace: any = 0) -> object {
         if (
             (cls is PointerType)
             and (pointee is not None)
@@ -83,7 +83,7 @@ class PointerType(Type) {
         return super.__new__(cls);
     }
 
-    def init(self: PointerType, pointee: Any = None, addrspace: Any = 0) -> object {
+    def init(self: PointerType, pointee: any = None, addrspace: any = 0) -> object {
         assert ((pointee is None) or (`type(pointee) is PointerType));
         self.addrspace = addrspace;
     }
@@ -96,7 +96,7 @@ class PointerType(Type) {
         }
     }
 
-    def __eq__(self: PointerType, other: Any) -> object {
+    def __eq__(self: PointerType, other: any) -> object {
         return (isinstance(other, PointerType) and (self.addrspace == other.addrspace));
     }
 
@@ -106,7 +106,7 @@ class PointerType(Type) {
 }
 
 class _TypedPointerType(PointerType) {
-    def init(self: _TypedPointerType, pointee: Any, addrspace: Any = 0) -> object {
+    def init(self: _TypedPointerType, pointee: any, addrspace: any = 0) -> object {
         super.init(None, addrspace);
         assert ((pointee is not None) and (`type(pointee) is not PointerType));
         assert not isinstance(pointee, VoidType);
@@ -123,7 +123,7 @@ class _TypedPointerType(PointerType) {
         return super._to_string();
     }
 
-    def __eq__(self: _TypedPointerType, other: Any) -> object {
+    def __eq__(self: _TypedPointerType, other: any) -> object {
         if isinstance(other, _TypedPointerType) {
             return ((self.pointee, self.addrspace) == (other.pointee, other.addrspace));
         }
@@ -134,7 +134,7 @@ class _TypedPointerType(PointerType) {
         return hash(_TypedPointerType);
     }
 
-    def gep(self: _TypedPointerType, i: Any) -> object {
+    def gep(self: _TypedPointerType, i: any) -> object {
         if not isinstance(i.type, IntType) {
             raise TypeError(i.type);
         }
@@ -147,7 +147,7 @@ class VoidType(Type) {
         return 'void';
     }
 
-    def __eq__(self: VoidType, other: Any) -> object {
+    def __eq__(self: VoidType, other: any) -> object {
         return isinstance(other, VoidType);
     }
 
@@ -158,7 +158,7 @@ class VoidType(Type) {
 
 class FunctionType(Type) {
     def init(
-        self: FunctionType, return_type: Any, args: Any, var_arg: Any = False
+        self: FunctionType, return_type: any, args: any, var_arg: any = False
     ) -> object {
         self.return_type = return_type;
         self.args = `tuple(args);
@@ -180,7 +180,7 @@ class FunctionType(Type) {
         }
     }
 
-    def __eq__(self: FunctionType, other: Any) -> object {
+    def __eq__(self: FunctionType, other: any) -> object {
         if isinstance(other, FunctionType) {
             return (
                 (self.return_type == other.return_type)
@@ -204,7 +204,7 @@ class IntType(Type) {
         width: int;
     }
 
-    def __new__(cls: Any, bits: Any) -> object {
+    def __new__(cls: any, bits: any) -> object {
         if (0 <= bits <= 128) {
             try {
                 return cls._instance_cache[bits];
@@ -217,7 +217,7 @@ class IntType(Type) {
     }
 
     @classmethod
-    def __new(cls: Any, bits: Any) -> object {
+    def __new(cls: any, bits: any) -> object {
         assert (isinstance(bits, int) and (bits >= 0));
         self = super.__new__(cls);
         self.width = bits;
@@ -236,7 +236,7 @@ class IntType(Type) {
         return ('i%u' % (self.width, ));
     }
 
-    def __eq__(self: IntType, other: Any) -> object {
+    def __eq__(self: IntType, other: any) -> object {
         if isinstance(other, IntType) {
             return (self.width == other.width);
         } else {
@@ -248,7 +248,7 @@ class IntType(Type) {
         return hash(IntType);
     }
 
-    def format_constant(self: IntType, val: Any) -> object {
+    def format_constant(self: IntType, val: any) -> object {
         if isinstance(val, bool) {
             return str(val).lower();
         } else {
@@ -256,7 +256,7 @@ class IntType(Type) {
         }
     }
 
-    def wrap_constant_value(self: IntType, val: Any) -> object {
+    def wrap_constant_value(self: IntType, val: any) -> object {
         if (val is None) {
             return 0;
         }
@@ -264,11 +264,11 @@ class IntType(Type) {
     }
 }
 
-def _as_float(value: Any) -> object {
+def _as_float(value: any) -> object {
     return struct.unpack('f', struct.pack('f', value))[0];
 }
 
-def _as_half(value: Any) -> object {
+def _as_half(value: any) -> object {
     try {
         return struct.unpack('e', struct.pack('e', value))[0];
     } except struct.error {
@@ -277,7 +277,7 @@ def _as_half(value: Any) -> object {
 }
 
 def _format_float_as_hex(
-    value: Any, packfmt: Any, unpackfmt: Any, numdigits: Any
+    value: any, packfmt: any, unpackfmt: any, numdigits: any
 ) -> object {
     raw = struct.pack(packfmt, float(value));
     intrep = struct.unpack(unpackfmt, raw)[0];
@@ -285,16 +285,16 @@ def _format_float_as_hex(
     return out;
 }
 
-def _format_double(value: Any) -> object {
+def _format_double(value: any) -> object {
     return _format_float_as_hex(value, 'd', 'Q', 16);
 }
 
 class _BaseFloatType(Type) {
-    def __new__(cls: Any) -> object {
+    def __new__(cls: any) -> object {
         return cls._instance_cache;
     }
 
-    def __eq__(self: _BaseFloatType, other: Any) -> object {
+    def __eq__(self: _BaseFloatType, other: any) -> object {
         return isinstance(other, `type(self));
     }
 
@@ -303,7 +303,7 @@ class _BaseFloatType(Type) {
     }
 
     @classmethod
-    def _create_instance(cls: Any) -> object {
+    def _create_instance(cls: any) -> object {
         cls._instance_cache = super.__new__(cls);
     }
 }
@@ -317,7 +317,7 @@ class HalfType(_BaseFloatType) {
         return 'half';
     }
 
-    def format_constant(self: HalfType, value: Any) -> object {
+    def format_constant(self: HalfType, value: any) -> object {
         return _format_double(_as_half(value));
     }
 }
@@ -331,7 +331,7 @@ class FloatType(_BaseFloatType) {
         return 'float';
     }
 
-    def format_constant(self: FloatType, value: Any) -> object {
+    def format_constant(self: FloatType, value: any) -> object {
         return _format_double(_as_float(value));
     }
 }
@@ -345,7 +345,7 @@ class DoubleType(_BaseFloatType) {
         return 'double';
     }
 
-    def format_constant(self: DoubleType, value: Any) -> object {
+    def format_constant(self: DoubleType, value: any) -> object {
         return _format_double(value);
     }
 }
@@ -357,7 +357,7 @@ with entry {
 }
 
 class _Repeat(object) {
-    def init(self: _Repeat, value: Any, size: Any) -> object {
+    def init(self: _Repeat, value: any, size: any) -> object {
         self.value = value;
         self.size = size;
     }
@@ -366,7 +366,7 @@ class _Repeat(object) {
         return self.size;
     }
 
-    def __getitem__(self: _Repeat, item: Any) -> object {
+    def __getitem__(self: _Repeat, item: any) -> object {
         if (0 <= item < self.size) {
             return self.value;
         } else {
@@ -376,7 +376,7 @@ class _Repeat(object) {
 }
 
 class VectorType(Type) {
-    def init(self: VectorType, element: Any, count: Any) -> object {
+    def init(self: VectorType, element: any, count: any) -> object {
         self.element = element;
         self.count = count;
     }
@@ -395,10 +395,11 @@ class VectorType(Type) {
         return ("<%d x %s>" % (self.count, self.element));
     }
 
-    def __eq__(self: VectorType, other: Any) -> object {
+    def __eq__(self: VectorType, other: any) -> object {
         if isinstance(other, VectorType) {
             return ((self.element == other.element) and (self.count == other.count));
         }
+        return False;
     }
 
     def __hash__(self: VectorType) -> object {
@@ -409,14 +410,14 @@ class VectorType(Type) {
         return self;
     }
 
-    def format_constant(self: VectorType, value: Any) -> object {
+    def format_constant(self: VectorType, value: any) -> object {
         itemstring = ", ".join(
             ["{0} {1}".format(x.type, x.get_reference()) for x in value]
         );
         return "<{0}>".format(itemstring);
     }
 
-    def wrap_constant_value(self: VectorType, values: Any) -> object {
+    def wrap_constant_value(self: VectorType, values: any) -> object {
         import from jaclang.compiler.passes.native.llvm.ir { Value, Constant }
         if not isinstance(values, (`list, `tuple)) {
             if isinstance(values, Constant) {
@@ -442,7 +443,7 @@ class VectorType(Type) {
 }
 
 class Aggregate(Type) {
-    def wrap_constant_value(self: Aggregate, values: Any) -> object {
+    def wrap_constant_value(self: Aggregate, values: any) -> object {
         import from jaclang.compiler.passes.native.llvm.ir { Value, Constant }
         if not isinstance(values, (`list, `tuple)) {
             return values;
@@ -460,7 +461,7 @@ class Aggregate(Type) {
 }
 
 class ArrayType(Aggregate) {
-    def init(self: ArrayType, element: Any, count: Any) -> object {
+    def init(self: ArrayType, element: any, count: any) -> object {
         self.element = element;
         self.count = count;
     }
@@ -479,24 +480,25 @@ class ArrayType(Aggregate) {
         return ("[%d x %s]" % (self.count, self.element));
     }
 
-    def __eq__(self: ArrayType, other: Any) -> object {
+    def __eq__(self: ArrayType, other: any) -> object {
         if isinstance(other, ArrayType) {
             return ((self.element == other.element) and (self.count == other.count));
         }
+        return False;
     }
 
     def __hash__(self: ArrayType) -> object {
         return hash(ArrayType);
     }
 
-    def gep(self: ArrayType, i: Any) -> object {
+    def gep(self: ArrayType, i: any) -> object {
         if not isinstance(i.type, IntType) {
             raise TypeError(i.type);
         }
         return self.element;
     }
 
-    def format_constant(self: ArrayType, value: Any) -> object {
+    def format_constant(self: ArrayType, value: any) -> object {
         itemstring = ", ".join(
             ["{0} {1}".format(x.type, x.get_reference()) for x in value]
         );
@@ -513,7 +515,7 @@ class BaseStructType(Aggregate) {
         getter {
             return self._packed;
         }
-        setter(self: BaseStructType, val: Any) -> object {
+        setter(self: BaseStructType, val: any) -> object {
             self._packed = bool(val);
         }
     }
@@ -539,7 +541,7 @@ class BaseStructType(Aggregate) {
         return self._wrap_packed(ret);
     }
 
-    def format_constant(self: BaseStructType, value: Any) -> object {
+    def format_constant(self: BaseStructType, value: any) -> object {
         itemstring = ", ".join(
             ["{0} {1}".format(x.type, x.get_reference()) for x in value]
         );
@@ -547,14 +549,14 @@ class BaseStructType(Aggregate) {
         return self._wrap_packed(ret);
     }
 
-    def gep(self: BaseStructType, i: Any) -> object {
+    def gep(self: BaseStructType, i: any) -> object {
         if not isinstance(i.type, IntType) {
             raise TypeError(i.type);
         }
         return self.elements[i.constant];
     }
 
-    def _wrap_packed(self: BaseStructType, textrepr: Any) -> object {
+    def _wrap_packed(self: BaseStructType, textrepr: any) -> object {
         if self.packed {
             return '<{}>'.format(textrepr);
         } else {
@@ -568,7 +570,7 @@ class LiteralStructType(BaseStructType) {
         null = 'zeroinitializer';
     }
 
-    def init(self: LiteralStructType, elems: Any, packed: Any = False) -> object {
+    def init(self: LiteralStructType, elems: any, packed: any = False) -> object {
         self.elements = `tuple(elems);
         self.packed = packed;
     }
@@ -577,12 +579,13 @@ class LiteralStructType(BaseStructType) {
         return self.structure_repr();
     }
 
-    def __eq__(self: LiteralStructType, other: Any) -> object {
+    def __eq__(self: LiteralStructType, other: any) -> object {
         if isinstance(other, LiteralStructType) {
             return (
                 (self.elements == other.elements) and (self.packed == other.packed)
             );
         }
+        return False;
     }
 
     def __hash__(self: LiteralStructType) -> object {
@@ -596,7 +599,7 @@ class IdentifiedStructType(BaseStructType) {
     }
 
     def init(
-        self: IdentifiedStructType, context: Any, name: Any, packed: Any = False
+        self: IdentifiedStructType, context: any, name: any, packed: any = False
     ) -> object {
         assert name;
         self.context = context;
@@ -620,17 +623,18 @@ class IdentifiedStructType(BaseStructType) {
         return out;
     }
 
-    def __eq__(self: IdentifiedStructType, other: Any) -> object {
+    def __eq__(self: IdentifiedStructType, other: any) -> object {
         if isinstance(other, IdentifiedStructType) {
             return ((self.name == other.name) and (self.packed == other.packed));
         }
+        return False;
     }
 
     def __hash__(self: IdentifiedStructType) -> object {
         return hash(IdentifiedStructType);
     }
 
-    def set_body(self: IdentifiedStructType, *elems: Any) -> object {
+    def set_body(self: IdentifiedStructType, *elems: any) -> object {
         if not self.is_opaque {
             raise RuntimeError("{name} is already defined".format(name=self.name));
         }

@@ -13,9 +13,16 @@ impl traverse_graph(
     node_limit: int,
     edge_limit: int
 ) -> None {
-    for `edge in nd.__jac__.edges {
+    import from jaclang.jac0core.archetype { EdgeAnchor }
+    import from jaclang.jac0core.osp_graph_sv { sv_live_edges, sv_register_hydrated }
+    nd_anchor = nd.__jac__;
+    sv_register_hydrated(nd_anchor, fetch_stubs=True);
+    for `edge in sv_live_edges(nd_anchor, 3, None, True) {
+        if not isinstance(`edge, EdgeAnchor) {
+            continue;
+        }
         is_self_loop = id(`edge.source) == id(`edge.target);
-        is_in_edge = `edge.target == nd.__jac__;
+        is_in_edge = `edge.target == nd_anchor;
         if (
             (traverse and is_in_edge)
             or (`edge.archetype.__class__.__name__ in edge_type)
@@ -71,20 +78,18 @@ impl traverse_graph(
 impl collect_node_connections(
     current_node: NodeArchetype, visited_nodes: set, connections: set, edge_ids: set
 ) -> None {
+    import from jaclang.jac0core.archetype { EdgeAnchor }
+    import from jaclang.jac0core.osp_graph_sv { sv_live_edges, sv_register_hydrated }
     import from jaclang.jac0core.runtime { resolve_ref }
     if (current_node not in visited_nodes) {
         visited_nodes.add(current_node);
         node_anchor = current_node.__jac__;
-        edges = list(node_anchor.edges);
-        for edge_stub in edges {
-            if (edge_stub.id in edge_ids) {
+        sv_register_hydrated(node_anchor, fetch_stubs=True);
+        for edge_ in sv_live_edges(node_anchor, 3, None, True) {
+            if not isinstance(edge_, EdgeAnchor) or (edge_.id in edge_ids) {
                 continue;
             }
-            edge_ids.add(edge_stub.id);
-            edge_ = resolve_ref(edge_stub, node_anchor);
-            if edge_ is None {
-                continue;
-            }
+            edge_ids.add(edge_.id);
             source = resolve_ref(edge_.source, edge_);
             target = resolve_ref(edge_.target, edge_);
             if source and target {

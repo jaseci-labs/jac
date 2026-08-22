@@ -53,7 +53,7 @@ impl build(
         if gate_rc != 0 {
             console.error(
                 "Build gate failed: the project does not type-check.",
-                hint="Fix the errors above, or bypass once with --no-typecheck."
+                hint="Fix the errors above, or bypass once with --no_typecheck."
             );
             return gate_rc;
         }
@@ -80,7 +80,7 @@ impl build(
         if not entry_path or not os.path.isfile(entry_path) {
             console.error(
                 "No entry file for the native projection.",
-                hint="Set [project] entry-point or pass one: jac build main.na.jac --as native"
+                hint="Set [project] entry-point or pass one: jac build main.jac --as native"
             );
             return 1;
         }

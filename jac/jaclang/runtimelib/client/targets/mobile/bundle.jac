@@ -75,11 +75,11 @@ def _find_xcode_workspace(project_dir: Path) -> Path | None {
     if not ios_app.exists() {
         return None;
     }
-    workspaces = list(ios_app.glob("*.xcworkspace"));
+    workspaces = list(ios_app.`glob("*.xcworkspace"));
     if workspaces {
         return workspaces[0];
     }
-    projects = list(ios_app.glob("*.xcodeproj"));
+    projects = list(ios_app.`glob("*.xcodeproj"));
     if projects {
         return projects[0];
     }

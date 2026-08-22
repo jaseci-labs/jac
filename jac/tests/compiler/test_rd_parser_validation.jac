@@ -3,12 +3,12 @@ import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.unitree { Module }
-import from jaclang.jac0core.unitree { Test as JacTest }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 glob GAP_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "rd_parser_gaps"
@@ -16,7 +16,7 @@ glob GAP_DIR = os.path.join(
 
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
-        import from jaclang.jac0core.parser.parser { parse }
+        import from jaclang.jac0core.parser.frontend { parse }
         (module, had_error) = parse(source, file_path);
         if had_error {
             return None;
@@ -29,9 +29,7 @@ def parse_with_rd(source: str, file_path: str) -> Module | None {
 
 def rd_parser_test(filename: str) {
     source = read_file_with_encoding(filename);
-    saved_test_count = JacTest.TEST_COUNT;
     rd_ast = parse_with_rd(source, filename);
-    JacTest.TEST_COUNT = saved_test_count;
     assert rd_ast is not None , f"RD parser failed to parse {filename}";
 }
 
@@ -159,7 +157,7 @@ glob GAP_FILES = [
          "bare_semi_at_module_level": ";",
          "assignment_missing_semi": 'with entry { x = 5 }',
          "augmented_assign_missing_semi": 'with entry { x += 1 }',
-         "expression_stmt_missing_semi": 'with entry { print("hi") }',
+         "expression_stmt_missing_semi": 'with entry { print("hi") print("bye"); }',
          "report_missing_semi": 'with entry { report 5 }',
          "chained_assign_missing_semi": 'with entry { x = y = 5 }',
          "typed_assign_missing_semi": 'with entry { x: int = 5 }',
@@ -186,6 +184,9 @@ glob GAP_FILES = [
          "enum_inside_function": "def foo() { enum Color { RED } }"
      },
      MUST_REJECT_VALIDATION: dict[str, str] = {
+         # A tail expression without ';' parses (implicit-return candidate)
+         # but is only legal at the end of a function body — E2084 here.
+         "expression_stmt_tail_no_semi_module_level": 'with entry { print("hi") }',
          "pass_keyword": "with entry { match x { case 1: pass; } }",
          "with_exit_at_module_level": 'with exit { print("bye"); }',
          "empty_match_body": "with entry { match x { } }",
@@ -195,6 +196,7 @@ glob GAP_FILES = [
          "walrus_complex_lhs": "with entry { (a + b) := 5; }",
          "walrus_call_lhs": "with entry { foo() := 5; }",
          "walrus_subscript_lhs": "with entry { a[0] := 5; }",
+         "walrus_attr_lhs": "with entry { a.b := 5; }",
          "assign_to_root": 'with entry { root = "s"; }',
          "assign_to_super": "with entry { super = 1; }",
          "for_in_target_root": "with entry { for root in [1, 2] { } }",
@@ -218,7 +220,7 @@ glob GAP_FILES = [
 
 def parse_and_validate(source: str, file_path: str) -> bool {
     try {
-        import from jaclang.jac0core.parser.parser { parse }
+        import from jaclang.jac0core.parser.frontend { parse }
         (module, had_error) = parse(source, file_path);
         if had_error {
             return True;
@@ -227,7 +229,7 @@ def parse_and_validate(source: str, file_path: str) -> bool {
             return True;
         }
         prog = JacProgram();
-        validation = ASTValidationPass(ir_in=module, prog=prog);
+        validation = run_pass(ASTValidationPass, module, prog);
         return len(prog.errors_had) > 0;
     } except Exception {
         return True;

@@ -5,16 +5,16 @@ import tempfile;
 import contextlib;
 import from pathlib { Path }
 
-# Hash throwaway fixture credentials at minimum bcrypt cost so it does not dominate test time.
+# Hash throwaway fixture credentials at minimum scrypt cost so it does not dominate test time.
 with entry {
-    os.environ.setdefault('JAC_SCALE_BCRYPT_ROUNDS', '4');
+    os.environ.setdefault('JAC_SCALE_PASSWORD_HASH_COST', '10');
 }
 
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
     fixtures_dir = Path(__file__).parent / "fixtures";
     tmp = tempfile.mkdtemp();
 
-    for f in glob.glob(str(fixtures_dir / "*")) {
+    for f in `glob.`glob(str(fixtures_dir / "*")) {
         if Path(f).is_file() {
             shutil.copy2(f, Path(tmp) / Path(f).name);
         }

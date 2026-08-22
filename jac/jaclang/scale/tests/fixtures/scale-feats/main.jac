@@ -5,7 +5,7 @@ Demonstrates jac-scale specific features that require FastAPI:
 - UploadFile handling
 """
 
-import from fastapi { UploadFile }
+import from jaclang.runtimelib.serving.datatypes { UploadFile }
 import from uuid { uuid4 }
 
 # Initialize storage with custom base path
@@ -16,8 +16,8 @@ glob storage = store(base_path="./uploads");
 # ============================================================================
 """Upload a file to storage."""
 walker:pub upload_file {
-    has file: UploadFile;
-    has folder: str = "documents";
+    has file: UploadFile,
+        folder: str = "documents";
 
     can process with Root entry {
         # Generate unique filename
@@ -45,8 +45,8 @@ walker:pub upload_file {
 
 """List files in storage."""
 walker:pub list_files {
-    has folder: str = "";
-    has recursive: bool = False;
+    has folder: str = "",
+        recursive: bool = False;
 
     can process with Root entry {
         files = [];
@@ -110,8 +110,8 @@ walker:pub file_exists {
 
 """Copy a file within storage."""
 walker:pub copy_file {
-    has source: str;
-    has destination: str;
+    has source: str,
+        destination: str;
 
     can process with Root entry {
         if not storage.exists(self.source) {
@@ -129,8 +129,8 @@ walker:pub copy_file {
 
 """Move a file within storage."""
 walker:pub move_file {
-    has source: str;
-    has destination: str;
+    has source: str,
+        destination: str;
 
     can process with Root entry {
         if not storage.exists(self.source) {

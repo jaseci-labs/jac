@@ -125,6 +125,26 @@ glob id_bag: dict = {},
          'Semi': '#f1cfc4'
      };
 
+def node_to_dict(nd: UniNode) -> dict[(str, str)] {
+    ret = {
+        'node': str(`type(nd).__name__),
+        'kid': str(
+            [
+                node_to_dict(x)
+                for x in nd.kid
+                if x
+            ]
+        ),
+        'line': str(nd.loc.first_line),
+        'col': str(nd.loc.col_start)
+    };
+    if isinstance(nd, uni.Token) {
+        ret['name'] = nd.name;
+        ret['value'] = nd.value;
+    }
+    return ret;
+}
+
 def printgraph_ast_tree(
     root_node: UniNode, dot_lines: (list[str] | None) = None
 ) -> str {
@@ -431,7 +451,8 @@ def get_symtab_tree_str(
                 ('|' + (' ' * (len(marker) - 1))) if draw else (' ' * len(marker))
                 for draw in level_markers[:-1]
             ]
-        ) + marker
+        )
+            + marker
             if level_markers
             else ''
     );
@@ -442,7 +463,8 @@ def get_symtab_tree_str(
         }
     }
     return (
-        line + ''.join(
+        line
+        + ''.join(
             get_symtab_tree_str(
                 child,
                 marker,

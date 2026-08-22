@@ -20,9 +20,13 @@ import from jaclang.compiler.passes.native.linker_common {
 
 """Build a 60-byte `ar` member header (GNU layout: space-padded fields)."""
 def _ar_hdr(name: str, size: int) -> bytes {
-    out = name.ljust(16) + "0".ljust(12) + "0".ljust(6) + "0".ljust(6) + "100644".ljust(
-        8
-    ) + str(size).ljust(10) + "`\n";
+    out = name.ljust(16)
+        + "0".ljust(12)
+        + "0".ljust(6)
+        + "0".ljust(6)
+        + "100644".ljust(8)
+        + str(size).ljust(10)
+        + "`\n";
     return out.encode("ascii");
 }
 
@@ -40,10 +44,17 @@ def _mk_gnu_ar -> tuple[bytes, int, int] {
     off_idx_data = 8 + 60;
     off_a = off_idx_data + idx_data_len;  # a.o header offset
     off_b = off_a + 60 + len(obj_a);  # b.o header offset
-    idx = struct.pack(">I", 2) + struct.pack(">I", off_a) + struct.pack(">I", off_b) + b"sym_a\x00sym_b\x00";
-    archive = b"!<arch>\n" + _ar_hdr("/", len(idx)) + idx + _ar_hdr(
-        "a.o/", len(obj_a)
-    ) + obj_a + _ar_hdr("b.o/", len(obj_b)) + obj_b;
+    idx = struct.pack(">I", 2)
+        + struct.pack(">I", off_a)
+        + struct.pack(">I", off_b)
+        + b"sym_a\x00sym_b\x00";
+    archive = b"!<arch>\n"
+        + _ar_hdr("/", len(idx))
+        + idx
+        + _ar_hdr("a.o/", len(obj_a))
+        + obj_a
+        + _ar_hdr("b.o/", len(obj_b))
+        + obj_b;
     return (archive, off_a, off_b);
 }
 
@@ -76,7 +87,7 @@ test "ar parse + symbol index + selection (synthetic GNU)" {
 """Locate a bundled libexpat.a from any pbs build, or None."""
 def _find_bundled_expat -> (str | None) {
     jac_dir = Path(__file__).resolve().parents[4];
-    hits = list(jac_dir.glob(".pbs-build/*/python/build/lib/libexpat.a"));
+    hits = list(jac_dir.`glob(".pbs-build/*/python/build/lib/libexpat.a"));
     return str(hits[0]) if hits else None;
 }
 

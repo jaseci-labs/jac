@@ -32,7 +32,7 @@ impl JacMcpServer.start -> None {
         serve_sse(engine, self.host, self.port);
     } else {
         _logger.error(f"Unknown transport: {self.transport}");
-        sys.exit(1);
+        sys.`exit(1);
     }
 }
 

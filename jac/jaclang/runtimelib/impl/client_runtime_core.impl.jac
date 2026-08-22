@@ -72,8 +72,8 @@ impl __isFresh(`entry: dict) -> bool {
 
 impl __cacheGet(key: str) -> dict {
     state = __getCacheState();
-    entry = state["cache"][key];
-    if not entry {
+    `entry = state["cache"][key];
+    if not `entry {
         return None;
     }
 
@@ -82,7 +82,7 @@ impl __cacheGet(key: str) -> dict {
         state["order"].splice(idx, 1);
     }
     state["order"].push(key);
-    return entry;
+    return `entry;
 }
 
 impl __cacheSet(key: str, data: any, ttl: int) -> None {
@@ -201,6 +201,11 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
         response = await __nativeInvoke("function", function_name, "", args);
         if not response["ok"] {
+            if response["status"] == 401 {
+                __removeLocalStorage("jac_token");
+                window.location.reload();
+                return {};
+            }
             raise Exception(
                 f"Function {function_name} failed: {__nativeErrorMsg(response)}"
             );
@@ -227,6 +232,11 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
         {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+            window.location.reload();
+            return {};
+        }
         error_text = await response.text();
         raise Exception(f"Function {function_name} failed: {error_text}");
     }
@@ -278,7 +288,7 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
             reader_info = effects[endpoint_name];
             if reader_info and not reader_info["is_writer"] {
                 if writer_touches.includes("*")
-                or __overlaps(reader_info["touches"], writer_touches) {
+                    or __overlaps(reader_info["touches"], writer_touches) {
                     __invalidateEndpoint(endpoint_name);
                 }
             }
@@ -291,9 +301,9 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     if left == "login"
-    or left == "signup"
-    or left == "logout"
-    or left == "refresh_token" {
+        or left == "signup"
+        or left == "logout"
+        or left == "refresh_token" {
         return await __doWalkerFetch(left, right, fields);
     }
     endpoint_key = f"walker:{left}";
@@ -499,9 +509,9 @@ impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") ->
     broker = __jacDesktopBroker();
     if broker {
         start_url = (
-            f"{broker}/oauth/start?platform={encodeURIComponent(platform)}" + f"&operation={encodeURIComponent(
-                operation
-            )}" + f"&api_base={encodeURIComponent(base)}"
+            f"{broker}/oauth/start?platform={encodeURIComponent(platform)}"
+            + f"&operation={encodeURIComponent(operation)}"
+            + f"&api_base={encodeURIComponent(base)}"
         );
         started = await fetch(start_url);
         if not started.ok {
@@ -604,12 +614,24 @@ impl __jacInstallErrorHandlers -> None {
 }
 
 impl ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement {
-    return
+    <div
+        role="alert"
+        style={{
+            minHeight: "100vh",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "#f9fafb",
+            fontFamily: "system-ui, sans-serif",
+
+        }}
+    >
         <div
             role="alert"
             style={{
                 minHeight: "100vh",
                 display: "flex",
+                flexDirection: "column",
                 justifyContent: "center",
                 alignItems: "center",
                 backgroundColor: "#f9fafb",
@@ -617,56 +639,43 @@ impl ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement {
 
             }}
         >
-            <div
-                role="alert"
+            <h2 style={{color: "#dc2626", marginBottom: "12px"}}>
+                🚨 Something went wrong
+            </h2>
+            <p style={{color: "#374151", marginBottom: "16px"}}>
+                An unexpected error occurred. Please try again.
+            </p>
+            <pre
                 style={{
-                    minHeight: "100vh",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    backgroundColor: "#f9fafb",
-                    fontFamily: "system-ui, sans-serif",
+                    color: "#991b1b",
+                    background: "#fee2e2",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    overflowX: "auto",
+                    marginBottom: "16px",
 
                 }}
             >
-                <h2 style={{color: "#dc2626", marginBottom: "12px"}}>
-                    🚨 Something went wrong
-                </h2>
-                <p style={{color: "#374151", marginBottom: "16px"}}>
-                    An unexpected error occurred. Please try again.
-                </p>
-                <pre
-                    style={{
-                        color: "#991b1b",
-                        background: "#fee2e2",
-                        padding: "12px",
-                        borderRadius: "8px",
-                        fontSize: "14px",
-                        overflowX: "auto",
-                        marginBottom: "16px",
+                {error.message}
+            </pre>
+            <button
+                onClick={lambda { resetErrorBoundary(); }}
+                style={{
+                    backgroundColor: "#2563eb",
+                    color: "#fff",
+                    padding: "10px 16px",
+                    borderRadius: "8px",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "14px",
 
-                    }}
-                >
-                    {error.message}
-                </pre>
-                <button
-                    onClick={lambda { resetErrorBoundary(); }}
-                    style={{
-                        backgroundColor: "#2563eb",
-                        color: "#fff",
-                        padding: "10px 16px",
-                        borderRadius: "8px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "14px",
-
-                    }}
-                >
-                    🔄 Try again
-                </button>
-            </div>
-        </div>;
+                }}
+            >
+                🔄 Try again
+            </button>
+        </div>
+    </div>
 }
 
 impl errorOverlay(filePath: str, errors: str) -> JsxElement {
@@ -768,8 +777,8 @@ impl __unwrapFormSchema(schema: any) -> any {
         if not schema.shape {
             if schema._def and schema._def.schema {
                 actualSchema = schema._def.schema;
-            } elif schema.def and schema.def.schema {
-                actualSchema = schema.def.schema;
+            } elif schema.`def and schema.`def.schema {
+                actualSchema = schema.`def.schema;
             }
         }
     } except Exception as e {

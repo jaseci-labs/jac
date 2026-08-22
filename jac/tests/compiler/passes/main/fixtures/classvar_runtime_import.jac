@@ -7,7 +7,6 @@ ClassVar` into `if typing.TYPE_CHECKING:`, dataclass can't find it,
 treats `paths` as a regular field with a mutable default, and crashes
 with "mutable default <class 'dict'> for field paths".
 """
-import from typing { ClassVar }
 
 obj Registry {
     with entry {

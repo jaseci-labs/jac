@@ -1,12 +1,12 @@
-impl is_property_decorator_type(decorator_type: types.TypeBase) -> bool {
-    if not isinstance(decorator_type, types.ClassType) {
+impl is_property_decorator_type(decorator_type: TypeBase) -> bool {
+    if not isinstance(decorator_type, ClassType) {
         return False;
     }
     return decorator_type.is_builtin("property");
 }
 
-impl is_cached_property_decorator_type(decorator_type: types.TypeBase) -> bool {
-    if not isinstance(decorator_type, types.ClassType) {
+impl is_cached_property_decorator_type(decorator_type: TypeBase) -> bool {
+    if not isinstance(decorator_type, ClassType) {
         return False;
     }
     return (

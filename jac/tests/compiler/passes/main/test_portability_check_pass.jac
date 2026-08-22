@@ -149,6 +149,33 @@ test "functional methods (every, some, find) produce W6002 warnings" {
     assert any("find" in w and "findIndex" not in w for w in warning_msgs) , f"Expected W6002 warning for '.find()', got: {warning_msgs}";
 }
 
+test "str.find with string arguments produces no W6002 warning" {
+    file_path = os.path.join(FIXTURES, "py_str_find.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warnings = get_warnings_with_code(prog, "W6002");
+    warning_msgs = [str(w) for w in warnings];
+    assert not any("find" in w for w in warning_msgs) , f"str.find is Python-congruent and must not warn, got: {warning_msgs}";
+}
+
+test "find with a lambda callback produces W6002 warning" {
+    file_path = os.path.join(FIXTURES, "js_methods.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    count = count_warning_code(prog, "W6002");
+    warnings = get_warnings_with_code(prog, "W6002");
+    warning_msgs = [str(w) for w in warnings];
+    find_hits = len(
+        [
+            w
+            for w in warning_msgs
+            if ".find(" in w
+        ]
+    );
+    assert find_hits >= 2 , f"Expected find warnings for both function-ref and lambda callbacks, got: {warning_msgs}";
+    assert count >= 16 , f"Expected the lambda find call to add a W6002, got count: {count}";
+}
+
 test "conversion methods (toFixed, toString) produce W6002 warnings" {
     file_path = os.path.join(FIXTURES, "js_methods.jac");
     prog = JacProgram();
@@ -170,6 +197,43 @@ test "multiple JS methods produce correct count of W6002 warnings" {
     # hasOwnProperty, entries, keys, values (4)
     # toFixed, toPrecision, toString (3)
     assert count >= 15 , f"Expected at least 15 W6002 warnings for JS methods, got: {count}";
+}
+
+test "user-defined methods sharing JS names do not warn W6002" {
+    file_path = os.path.join(FIXTURES, "user_defined_members.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warnings = get_warnings_with_code(prog, "W6002");
+    warning_msgs = [str(w) for w in warnings];
+    assert not any("parse" in w for w in warning_msgs) , f"Config.parse is a declared method, must not warn: {warning_msgs}";
+    assert not any("assign" in w for w in warning_msgs) , f"Config.assign is a declared method, must not warn: {warning_msgs}";
+    # The fixture calls .push twice: once on Config (declared) and once on a
+    # bare list (JS idiom). Only the list call may warn.
+    push_hits = len(
+        [
+            w
+            for w in warning_msgs
+            if "push" in w
+        ]
+    );
+    assert push_hits == 1 , f"Expected exactly the list .push() call to warn, got: {warning_msgs}";
+}
+
+test "user-declared length field access does not warn W6004" {
+    file_path = os.path.join(FIXTURES, "user_defined_members.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warnings = get_warnings_with_code(prog, "W6004");
+    warning_msgs = [str(w) for w in warnings];
+    # cfg.length resolves to the declared field; items.length stays JS slop.
+    length_hits = len(
+        [
+            w
+            for w in warning_msgs
+            if "length" in w
+        ]
+    );
+    assert length_hits == 1 , f"Expected exactly the list .length access to warn, got: {warning_msgs}";
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

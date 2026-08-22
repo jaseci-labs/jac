@@ -4,7 +4,7 @@ import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 
 obj PWATarget(WebTarget) {
     has name: str = "pwa",
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "client.pwa",
         output_dir: Path = Path(".jac/client/dist");

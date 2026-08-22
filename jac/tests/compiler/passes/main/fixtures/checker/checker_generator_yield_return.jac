@@ -1,4 +1,4 @@
-import from collections.abc { Generator, Iterator, Iterable }
+import from collections.abc { Generator }
 
 def gen_ok -> Generator[int, None, None] {
     yield 1;

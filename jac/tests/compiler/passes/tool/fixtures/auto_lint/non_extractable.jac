@@ -14,7 +14,7 @@ class Obj {
     has attr: int = 10;
 }
 
-glob obj = Obj();
+glob `obj = Obj();
 glob arr = [1, 2, 3];
 
 # === Section 1: Non-pure expressions (should stay in with entry) ===

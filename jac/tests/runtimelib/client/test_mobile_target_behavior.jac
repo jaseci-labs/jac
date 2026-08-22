@@ -17,7 +17,6 @@ import socket;
 import subprocess;
 import sys;
 import unittest.mock;
-import pytest;
 import from contextlib { redirect_stdout, redirect_stderr }
 
 import from jaclang.runtimelib.client.targets.mobile.deps {
@@ -160,7 +159,7 @@ test "port availability check raises when port is already bound" {
     busy_port = s.getsockname()[1];
     s.listen(1);
     try {
-        with pytest.raises(RuntimeError) as exc_info {
+        with testraises(RuntimeError) as exc_info {
             _assert_mobile_port_available(busy_port, "API");
         }
         msg = str(exc_info.value);

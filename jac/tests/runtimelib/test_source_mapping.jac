@@ -61,10 +61,10 @@ test "scan handles subdirectories" {
         components = compiled / "components";
         components.mkdir(parents=True);
         (components / "Button.js").write_text(
-            "/* Source: /project/components/Button.cl.jac */\n"
+            "/* Source: /project/components/Button.jac */\n"
         );
         comments = _scan_source_comments(compiled);
-        assert any("Button.cl.jac" in v for v in comments.values());
+        assert any("Button.jac" in v for v in comments.values());
     }
 }
 
@@ -159,7 +159,9 @@ def _create_mapper_with_map(tmpdir: str) -> SourceMapper {
 test "resolve stack trace to jac files" {
     with TemporaryDirectory() as tmpdir {
         mapper = _create_mapper_with_map(tmpdir);
-        stack = "TypeError: Cannot read property\n" + "    at MyComponent (http://localhost:8001/static/client.js:1:0)\n" + "    at React.render (http://localhost:8001/static/client.js:1:100)";
+        stack = "TypeError: Cannot read property\n"
+            + "    at MyComponent (http://localhost:8001/static/client.js:1:0)\n"
+            + "    at React.render (http://localhost:8001/static/client.js:1:100)";
         resolved = mapper.resolve_stack_trace(stack);
         assert "main.jac" in resolved;
         assert "TypeError: Cannot read property" in resolved;
@@ -212,7 +214,9 @@ def _create_mapper_with_artifact_and_node_modules(tmpdir: str) -> SourceMapper {
 test "non-source frames are dropped by default, .jac frames kept" {
     with TemporaryDirectory() as tmpdir {
         mapper = _create_mapper_with_artifact_and_node_modules(tmpdir);
-        stack = "    at foo (http://x/client.js:1:0)\n" + "    at bar (http://x/client.js:2:0)\n" + "    at baz (http://x/client.js:3:0)";
+        stack = "    at foo (http://x/client.js:1:0)\n"
+            + "    at bar (http://x/client.js:2:0)\n"
+            + "    at baz (http://x/client.js:3:0)";
         resolved = mapper.resolve_stack_trace(stack);
         # Only the .jac-resolving frame survives; stray artifact and
         # node_modules are both inside .jac/ and get filtered.
@@ -228,7 +232,9 @@ test "non-source frames are dropped by default, .jac frames kept" {
 test "verbose mode keeps all resolved frames" {
     with TemporaryDirectory() as tmpdir {
         mapper = _create_mapper_with_artifact_and_node_modules(tmpdir);
-        stack = "    at foo (http://x/client.js:1:0)\n" + "    at bar (http://x/client.js:2:0)\n" + "    at baz (http://x/client.js:3:0)";
+        stack = "    at foo (http://x/client.js:1:0)\n"
+            + "    at bar (http://x/client.js:2:0)\n"
+            + "    at baz (http://x/client.js:3:0)";
         resolved = mapper.resolve_stack_trace(stack, verbose=True);
         assert "main.jac" in resolved;
         assert "stray.js" in resolved;
@@ -288,15 +294,13 @@ test "es compiler produces exact line mapping for function body statements" {
         # Write a .jac file with distinct statements on known lines
         jac_file = Path(tmpdir) / "test_precision.jac";
         jac_source = (
-            'cl {\n'  # line 1
-            '    def:pub app() -> Any {\n'  # line 2
-            '        has x: int = 1;\n'  # line 3
-            '        has y: int = 2;\n'  # line 4
-            '        has z: str = "hello";\n'  # line 5
-            '        has w: bool = True;\n'  # line 6
-            '        return <div>{x + y}</div>;\n'  # line 7
-            '    }\n'  # line 8
-            '}\n'  # line 9
+            'def:pub app() -> Any {\n'  # line 1
+            '    has x: int = 1;\n'  # line 2
+            '    has y: int = 2;\n'  # line 3
+            '    has z: str = "hello";\n'  # line 4
+            '    has w: bool = True;\n'  # line 5
+            '    return <div>{x + y}</div>;\n'  # line 6
+            '}\n'  # line 7
         );
         jac_file.write_text(jac_source);
         # Compile
@@ -322,16 +326,16 @@ test "es compiler produces exact line mapping for function body statements" {
                 jac_line = out_to_jac[out_line];
                 # Verify: has x: int = 1 -> should map to .jac line 3
                 if 'let x = 1' in stripped or 'useState(1)' in stripped {
-                    assert jac_line == 3 , f"'x = 1' on JS line {out_line} mapped to .jac:{jac_line}, expected 3";
+                    assert jac_line == 2 , f"'x = 1' on JS line {out_line} mapped to .jac:{jac_line}, expected 2";
                 }
                 # has y: int = 2 -> .jac line 4
                 if 'let y = 2' in stripped or 'useState(2)' in stripped {
-                    assert jac_line == 4 , f"'y = 2' on JS line {out_line} mapped to .jac:{jac_line}, expected 4";
+                    assert jac_line == 3 , f"'y = 2' on JS line {out_line} mapped to .jac:{jac_line}, expected 3";
                 }
                 # has z: str = "hello" -> .jac line 5
                 if '"hello"' in stripped
-                and ('let z' in stripped or 'useState' in stripped) {
-                    assert jac_line == 5 , f"'z = hello' on JS line {out_line} mapped to .jac:{jac_line}, expected 5";
+                    and ('let z' in stripped or 'useState' in stripped) {
+                    assert jac_line == 4 , f"'z = hello' on JS line {out_line} mapped to .jac:{jac_line}, expected 4";
                 }
             }
         }
@@ -359,7 +363,7 @@ test "source mapper invalidates on file change" {
         # Modify a .map file to invalidate cache
         time.sleep(0.1);
         dist_dir = Path(tmpdir) / ".jac" / "client" / "dist";
-        for f in dist_dir.glob("*.js.map") {
+        for f in dist_dir.`glob("*.js.map") {
             f.write_text(f.read_text());  # touch to change mtime
         }
         mapper2 = SourceMapper.from_bundle(tmpdir);

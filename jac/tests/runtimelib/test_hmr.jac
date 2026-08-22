@@ -22,15 +22,8 @@ test "watcher can be instantiated" {
         assert watcher is not None;
         assert watcher.watch_paths == [str(temp_dir)];
         assert watcher.pattern == "*.jac";
-        assert watcher.additional_patterns == [
-            "*.tsx",
-            "*.js",
-            "*.css",
-            "*.scss",
-            "*.png",
-            "*.jpg",
-            "*.jpeg"
-        ];
+        assert watcher.additional_patterns
+            == ["*.tsx", "*.js", "*.css", "*.scss", "*.png", "*.jpg", "*.jpeg"];
         assert watcher._running is False;
     }
 }
@@ -41,7 +34,7 @@ test "pattern matches jac files" {
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
         # Test main pattern (*.jac)
         assert watcher._matches_pattern("app.jac") is True;
-        assert watcher._matches_pattern("component.cl.jac") is True;
+        assert watcher._matches_pattern("component.jac") is True;
         # Test additional patterns
         assert watcher._matches_pattern("app.tsx") is True;
         assert watcher._matches_pattern("script.js") is True;
@@ -160,9 +153,9 @@ test "get js filename" {
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
         # Test various input file names
-        # Note: .cl.jac files become .js (not .cl.js)
+        # Note: .jac files become .js (not .cl.js)
         assert reloader._get_js_filename("app.jac") == "app.js";
-        assert reloader._get_js_filename("component.cl.jac") == "component.js";
+        assert reloader._get_js_filename("component.jac") == "component.js";
         assert reloader._get_js_filename("/path/to/module.jac") == "module.js";
     }
 }
@@ -211,14 +204,11 @@ test "build status records errors and recovers" {
         # Fresh reloader is healthy
         assert reloader.build_status() == {"status": "ok", "error": None};
         # An error carries the failing file, message and layer
-        reloader.record_error("app.cl.jac", "Missing ';'");
+        reloader.record_error("app.jac", "Missing ';'");
         status = reloader.build_status();
         assert status["status"] == "error";
-        assert status["error"] == {
-            "file": "app.cl.jac",
-            "message": "Missing ';'",
-            "source": "jac"
-        };
+        assert status["error"]
+            == {"file": "app.jac", "message": "Missing ';'", "source": "jac"};
         # Recovery clears the error completely
         reloader.record_ok();
         assert reloader.build_status() == {"status": "ok", "error": None};
@@ -276,7 +266,7 @@ test "build status folds in vite and browser-load layers with jac precedence" {
             )
         );
         assert reloader.build_status()["error"]["source"] == "vite";
-        reloader.record_error("app.cl.jac", "syntax");
+        reloader.record_error("app.jac", "syntax");
         assert reloader.build_status()["error"]["source"] == "jac";
         reloader.record_ok();
         assert reloader.build_status()["error"]["source"] == "vite";
@@ -400,7 +390,7 @@ test "recompile signals a full reload only when the export set changes" {
         temp_dir = Path(tmp);
         compiled = temp_dir / ".jac" / "client" / "compiled";
         compiled.mkdir(parents=True);
-        src = temp_dir / "widget.cl.jac";
+        src = temp_dir / "widget.jac";
         src.write_text("def:pub Widget() -> JsxElement { return <p>w</p>; }");
         js = compiled / "widget.js";
         with_export = "function Widget() {}\nexport {Widget};\n";
@@ -427,6 +417,38 @@ test "recompile signals a full reload only when the export set changes" {
         jcc.next_code = "function Renamed() {}\nexport {Renamed};\n";
         reloader._recompile_client_unified(str(src));
         assert signal.exists() , "a renamed export must force a reload";
+    }
+}
+
+test "reloading a broken module reports its errors once per reload" {
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.meta_importer { _module_scoped_alerts }
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        broken = temp_dir / "broken_reload.jac";
+        broken.write_text("def broken_repro( -> {{{ SYNTAX ERROR\n");
+        resolved = str(broken.resolve());
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="broken_reload", watcher=watcher
+        );
+        # `errors_had` is append-only and `_module_scoped_alerts` -- what the
+        # overlay, /__build_status and editor diagnostics all read -- scans the
+        # whole list. Without the eviction `_reload_server_module` performs,
+        # saving a broken file three times reports the same syntax error 3x.
+        counts = [];
+        for _ in range(3) {
+            reloader._reload_server_module(resolved);
+            counts.append(len(_module_scoped_alerts(Jac.program, resolved)));
+        }
+        try {
+            assert counts[0] > 0 , "a broken module must report at least one alert";
+            assert counts == [counts[0], counts[0], counts[0]] , f"alerts accumulated across reloads: {counts}";
+        } finally {
+            # Long-lived global program: do not leak this file's alerts into
+            # whatever else runs in this worker.
+            Jac.program.drop_module_alerts(resolved);
+        }
     }
 }
 

@@ -14,6 +14,28 @@ test "int" {
     run_with_both("prim_int.jac", "int_py", "int_cl", "int_na");
 }
 
+test "dict ctor" {
+    run_with_both(
+        "prim_dict.jac", "dict_ctor_py", "dict_ctor_cl", "dict_ctor_na", require=["cl"]
+    );
+}
+
+test "dict iteration" {
+    run_with_both(
+        "prim_dict.jac", "dict_iter_py", "dict_iter_cl", "dict_iter_na", require=["cl"]
+    );
+}
+
+test "numeric parse" {
+    run_with_both(
+        "prim_float.jac", "numparse_py", "numparse_cl", "numparse_na", require=["cl"]
+    );
+}
+
+test "enums" {
+    run_with_both("prim_enums.jac", "enums_py", "enums_cl", "enums_na", require=["cl"]);
+}
+
 test "float" {
     run_with_both("prim_float.jac", "float_py", "float_cl", "float_na");
 }
@@ -25,7 +47,7 @@ test "complex" {
 }
 
 test "str" {
-    run_with_both("prim_str.jac", "str_py", "str_cl", "str_na");
+    run_with_both("prim_str.jac", "str_py", "str_cl", "str_na", require=["na"]);
 }
 
 test "string escapes" {
@@ -56,6 +78,36 @@ test "bytes case" {
 
 test "bytes test methods" {
     run_with_both("prim_bytes.jac", "bytes_test_py", "bytes_test_cl", "bytes_test_na");
+}
+
+test "bytearray core" {
+    run_with_both(
+        "prim_bytearray.jac",
+        "bytearray_core_py",
+        "bytearray_core_cl",
+        "bytearray_core_na",
+        require=["na"]
+    );
+}
+
+test "bytearray slices" {
+    run_with_both(
+        "prim_bytearray.jac",
+        "bytearray_slices_py",
+        "bytearray_slices_cl",
+        "bytearray_slices_na",
+        require=["na"]
+    );
+}
+
+test "bytearray pack_into" {
+    run_with_both(
+        "prim_bytearray.jac",
+        "bytearray_pack_py",
+        "bytearray_pack_cl",
+        "bytearray_pack_na",
+        require=["na"]
+    );
 }
 
 test "list" {
@@ -146,6 +198,55 @@ test "dict" {
     run_with_both("prim_dict.jac", "dict_py", "dict_cl", "dict_na");
 }
 
+test "native print renders bools as True and False" {
+    run_with_both(
+        "prim_print_bool.jac", "pbool_py", "pbool_cl", "pbool_na", require=["cl", "na"]
+    );
+    # The native print of an i1 must go through the True/False string
+    # select, not the %lld integer path that rendered bools as 1/0.
+    (eng, na_ir) = compile_native("prim_print_bool.jac");
+    llvm_txt = str(na_ir.gen.llvm_ir);
+    assert (".repr.true" in llvm_txt) and (".repr.false" in llvm_txt) , (
+        "print(bool) must select the True/False repr strings natively"
+    );
+}
+
+test "unboxed scalars are never None on any backend" {
+    run_with_both(
+        "prim_none_identity.jac", "nid_py", "nid_cl", "nid_na", require=["cl", "na"]
+    );
+}
+
+test "dict get miss is a real None on every backend" {
+    run_with_both(
+        "prim_dict_get_none.jac", "dgn_py", "dgn_cl", "dgn_na", require=["cl", "na"]
+    );
+}
+
+test "phi str box" {
+    run_with_both(
+        "prim_phi_str_box.jac",
+        "phi_str_box_py",
+        "phi_str_box_cl",
+        "phi_str_box_na",
+        require=["na"]
+    );
+}
+
+test "dict struct-pointer value families" {
+    run_with_both(
+        "prim_dict_struct_vals.jac",
+        "dict_struct_vals_py",
+        "dict_struct_vals_cl",
+        "dict_struct_vals_na",
+        require=["na"]
+    );
+}
+
+test "membership over an element-erased container" {
+    run_with_both("prim_in_erased.jac", "in_erased_py", "in_erased_cl", "in_erased_na");
+}
+
 test "set" {
     run_with_both("prim_set.jac", "set_py", "set_cl", "set_na");
 }
@@ -166,6 +267,34 @@ test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
 }
 
+test "builtins format long" {
+    run_with_both(
+        "prim_format_builtin.jac",
+        "fmt_long_py",
+        "fmt_long_cl",
+        "fmt_long_na",
+        require=["na"]
+    );
+}
+
+test "fstring repr conversion" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fconv_py", "fconv_cl", "fconv_na", require=["na"]
+    );
+}
+
+test "fstring dynamic spec" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fdyn_py", "fdyn_cl", "fdyn_na", require=["na"]
+    );
+}
+
+test "fstring repr containers" {
+    run_with_both(
+        "prim_fstring_conv.jac", "fcont_py", "fcont_cl", "fcont_na", require=["na"]
+    );
+}
+
 test "math" {
     run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
 }
@@ -182,9 +311,133 @@ test "os" {
     run_with_both("prim_os.jac", "os_py", "os_cl", "os_na", require=["na"]);
 }
 
+test "os environ" {
+    run_with_both(
+        "prim_os_environ.jac", "environ_py", "environ_cl", "environ_na", require=["na"]
+    );
+}
+
 test "os.path bundled" {
     run_with_both(
         "prim_ospath.jac", "ospath_py", "ospath_cl", "ospath_na", require=["na"]
+    );
+}
+
+test "closures nested capture" {
+    run_with_both(
+        "prim_closures.jac", "closures_py", "closures_cl", "closures_na", require=["na"]
+    );
+}
+
+test "closures escaping" {
+    run_with_both(
+        "prim_closures.jac",
+        "closures_escape_py",
+        "closures_escape_cl",
+        "closures_escape_na",
+        require=["na"]
+    );
+}
+
+test "bundled statistics" {
+    run_with_both(
+        "prim_statistics.jac",
+        "statistics_py",
+        "statistics_cl",
+        "statistics_na",
+        require=["na"]
+    );
+}
+
+test "bundled keyword" {
+    run_with_both(
+        "prim_keyword.jac", "keyword_py", "keyword_cl", "keyword_na", require=["na"]
+    );
+}
+
+test "bundled shutil" {
+    import platform;
+    if platform.system() == "Darwin" {
+        # The dirent floor is darwin-correct (#7626 C3), but rmtree also
+        # rides os-path intrinsics whose stat-buffer layout is still
+        # glibc-shaped, so the full shutil surface aborts on darwin.
+        # Un-skip when the stat seam gets its own per-OS floor.
+        testskip("darwin shutil runtime parity blocked on the stat-layout seam");
+    }
+    run_with_both(
+        "prim_shutil.jac", "shutil_py", "shutil_cl", "shutil_na", require=["na"]
+    );
+}
+
+test "generic classes specialize" {
+    run_with_both(
+        "prim_generic_classes.jac",
+        "generic_classes_py",
+        "generic_classes_cl",
+        "generic_classes_na",
+        require=["na"]
+    );
+}
+
+test "generic functions monomorphize" {
+    run_with_both(
+        "prim_generics.jac", "generics_py", "generics_cl", "generics_na", require=["na"]
+    );
+}
+
+test "closures transitive sibling captures" {
+    run_with_both(
+        "prim_closures_transitive.jac",
+        "transitive_py",
+        "transitive_cl",
+        "transitive_na",
+        require=["na"]
+    );
+}
+
+test "closures forward mutual recursion" {
+    run_with_both(
+        "prim_closures_transitive.jac",
+        "fwd_mutual_py",
+        "fwd_mutual_cl",
+        "fwd_mutual_na",
+        require=["na"]
+    );
+}
+
+test "closures as adapter callbacks" {
+    run_with_both(
+        "prim_closures.jac",
+        "closures_adapters_py",
+        "closures_adapters_cl",
+        "closures_adapters_na",
+        require=["na"]
+    );
+}
+
+test "generators yield" {
+    run_with_both(
+        "prim_generators.jac", "gens_py", "gens_cl", "gens_na", require=["na"]
+    );
+}
+
+test "varargs parameter forms" {
+    run_with_both(
+        "prim_varargs.jac", "varargs_py", "varargs_cl", "varargs_na", require=["na"]
+    );
+}
+
+test "container repr" {
+    run_with_both("prim_repr.jac", "repr_py", "repr_cl", "repr_na", require=["na"]);
+}
+
+test "chained comparisons with membership and identity" {
+    run_with_both(
+        "prim_chain_cmp.jac",
+        "chain_cmp_py",
+        "chain_cmp_cl",
+        "chain_cmp_na",
+        require=["na"]
     );
 }
 
@@ -210,6 +463,12 @@ test "fractions bundled" {
     );
 }
 
+# Besides digest congruence, this test pins the native call-arity contract:
+# module-qualified bundled calls (hmac.new binds an arity-2 name-keyed extern
+# over the three-parameter native kernel) rely on signature-sanctioned extra
+# arguments passing through _codegen_bound_args UNTRUNCATED to reach the real
+# linked symbol via the call ABI. Truncating to the extern's declared arity
+# starves the symbol and segfaults this test at runtime.
 test "hashlib + hmac bundled" {
     run_with_both(
         "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]
@@ -446,6 +705,23 @@ test "exception as binding" {
     assert f() == 1;
 }
 
+test "runtime list index miss raises ValueError" {
+    # Native list.index returned -1 on a miss instead of raising -- and
+    # xs[-1] is a *valid* index, so the poison spread silently (#7922).
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_list_index_miss_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
+test "runtime setdefault no-default inserts a real None" {
+    # Native setdefault() with no default inserted a fabricated zero of
+    # the value type; for nullable (pointer) value slots it must insert
+    # None like Python (#7922).
+    (eng, _) = compile_native("prim_runtime_errors.jac");
+    f = get_func(eng, "test_setdefault_none_na", ctypes.c_int64);
+    assert f() == 1;
+}
+
 test "runtime divzero caught exact" {
     (eng, _) = compile_native("prim_runtime_errors.jac");
     f = get_func(eng, "test_divzero_catch_exact_na", ctypes.c_int64);
@@ -524,5 +800,55 @@ test "builtins introspection" {
         "builtins_introspection_py",
         "builtins_introspection_cl",
         "builtins_introspection_na"
+    );
+}
+
+test "match sequence" {
+    run_with_both(
+        "prim_match.jac",
+        "match_seq_py",
+        "match_seq_cl",
+        "match_seq_na",
+        require=["cl", "na"]
+    );
+}
+
+test "match star" {
+    run_with_both(
+        "prim_match.jac",
+        "match_star_py",
+        "match_star_cl",
+        "match_star_na",
+        require=["cl", "na"]
+    );
+}
+
+test "match mapping" {
+    run_with_both(
+        "prim_match.jac",
+        "match_map_py",
+        "match_map_cl",
+        "match_map_na",
+        require=["cl", "na"]
+    );
+}
+
+test "match class" {
+    run_with_both(
+        "prim_match.jac",
+        "match_arch_py",
+        "match_arch_cl",
+        "match_arch_na",
+        require=["cl", "na"]
+    );
+}
+
+test "new builtin and positional ctors" {
+    run_with_both("prim_new.jac", "new_py", "new_cl", "new_na", require=["na"]);
+}
+
+test "hetero containers round trip" {
+    run_with_both(
+        "prim_hetero.jac", "hetero_py", "hetero_cl", "hetero_na", require=["na"]
     );
 }

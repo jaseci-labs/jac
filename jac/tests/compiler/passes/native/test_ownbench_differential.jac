@@ -27,12 +27,15 @@ import from pathlib { Path }
 glob OWNBENCH = str(Path(__file__).resolve().parents[4] / "examples" / "ownbench"),
      MODES = ["none", "rc", "cycles"],
      SMALL_ARGS: dict[str, list[str]] = {
-         "binarytrees": ["8"],
-         "vecdot": ["500", "5"],
-         "histogram": ["5000", "3"],
-         "vm": ["200", "50"],
-         "rbtree": ["1000", "2"],
-         "deriv": ["20", "3"],
+         "own_binarytrees": ["8"],
+         "own_vecdot": ["500", "5"],
+         "own_histogram": ["5000", "3"],
+         "own_vm": ["200", "50"],
+         "own_rbtree": ["1000", "2"],
+         "own_deriv": ["20", "3"],
+         "own_aos": ["300", "3"],
+         "own_strops": ["150", "3"],
+         "own_parse": ["200", "3"],
 
      };
 
@@ -47,10 +50,9 @@ def _mode_flags(mode: str) -> list[str] {
 """Compile `src` to `out_bin` under `mode`; assert success."""
 def _nacompile(src: str, mode: str, out_bin: str) {
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "nacompile", src] + _mode_flags(mode) + [
-            "-o",
-            out_bin
-        ],
+        [sys.executable, "-m", "jaclang", "nacompile", src]
+            + _mode_flags(mode)
+            + ["-o", out_bin],
         capture_output=True,
         text=True,
         timeout=300,
@@ -83,7 +85,7 @@ def _digest(out_bin: str, args: list[str]) -> str {
 
 """Compile+run `kernel` under all three modes; assert identical digests."""
 def _assert_differential_identity(kernel: str) {
-    src = os.path.join(OWNBENCH, "kernels", f"{kernel}.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", f"{kernel}.jac");
     assert os.path.exists(src) , f"kernel missing: {src}";
     args = SMALL_ARGS[kernel];
     with tempfile.TemporaryDirectory() as tmp {
@@ -106,33 +108,74 @@ def _assert_differential_identity(kernel: str) {
 }
 
 test "ownbench differential identity: binarytrees (drop-order witness)" {
-    _assert_differential_identity("binarytrees");
+    _assert_differential_identity("own_binarytrees");
 }
 
 test "ownbench differential identity: vecdot" {
-    _assert_differential_identity("vecdot");
+    _assert_differential_identity("own_vecdot");
 }
 
 test "ownbench differential identity: histogram" {
-    _assert_differential_identity("histogram");
+    _assert_differential_identity("own_histogram");
 }
 
 test "ownbench differential identity: vm" {
-    _assert_differential_identity("vm");
+    _assert_differential_identity("own_vm");
 }
 
 test "ownbench differential identity: rbtree" {
-    _assert_differential_identity("rbtree");
+    _assert_differential_identity("own_rbtree");
 }
 
 test "ownbench differential identity: deriv (own-param transfer stress)" {
-    _assert_differential_identity("deriv");
+    _assert_differential_identity("own_deriv");
+}
+
+test "ownbench differential identity: aos (own fields + archetype lists)" {
+    _assert_differential_identity("own_aos");
+}
+
+test "ownbench differential identity: strops (string-representation oracle)" {
+    _assert_differential_identity("own_strops");
+}
+
+test "ownbench differential identity: parse (zero-copy view oracle)" {
+    _assert_differential_identity("own_parse");
+}
+
+test "ownbench erasure round-trip: aos reproduces annotated digest" {
+    src = os.path.join(OWNBENCH, "kernels", "own_aos.jac");
+    eraser = os.path.join(OWNBENCH, "harness", "erase.jac");
+    args = SMALL_ARGS["own_aos"];
+    with tempfile.TemporaryDirectory() as tmp {
+        erased = subprocess.run(
+            [sys.executable, "-m", "jaclang", "run", eraser, src],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        );
+        assert erased.returncode == 0 , f"erase.jac failed: {erased.stderr}";
+        bare_src = os.path.join(tmp, "own_aos_bare.jac");
+        with open(bare_src, "w") as f {
+            f.write(erased.stdout);
+        }
+        annotated_bin = os.path.join(tmp, "own_aos_rc");
+        bare_bin = os.path.join(tmp, "own_aos_bare_rc");
+        _nacompile(src, "rc", annotated_bin);
+        _nacompile(bare_src, "rc", bare_bin);
+        annotated = _digest(annotated_bin, args);
+        bare = _digest(bare_bin, args);
+        assert annotated == bare , (
+            f"erased build diverges from annotated build:\n"
+            f"--- annotated ---\n{annotated}\n--- bare ---\n{bare}"
+        );
+    }
 }
 
 test "ownbench erasure round-trip: deriv reproduces annotated digest" {
-    src = os.path.join(OWNBENCH, "kernels", "deriv.na.jac");
+    src = os.path.join(OWNBENCH, "kernels", "own_deriv.jac");
     eraser = os.path.join(OWNBENCH, "harness", "erase.jac");
-    args = SMALL_ARGS["deriv"];
+    args = SMALL_ARGS["own_deriv"];
     with tempfile.TemporaryDirectory() as tmp {
         erased = subprocess.run(
             [sys.executable, "-m", "jaclang", "run", eraser, src],
@@ -146,12 +189,12 @@ test "ownbench erasure round-trip: deriv reproduces annotated digest" {
                 f"erase.jac left annotation pattern '{leftover}' behind"
             );
         }
-        bare_src = os.path.join(tmp, "deriv_bare.na.jac");
+        bare_src = os.path.join(tmp, "own_deriv_bare.jac");
         with open(bare_src, "w") as f {
             f.write(erased.stdout);
         }
-        annotated_bin = os.path.join(tmp, "deriv_rc");
-        bare_bin = os.path.join(tmp, "deriv_bare_rc");
+        annotated_bin = os.path.join(tmp, "own_deriv_rc");
+        bare_bin = os.path.join(tmp, "own_deriv_bare_rc");
         _nacompile(src, "rc", annotated_bin);
         _nacompile(bare_src, "rc", bare_bin);
         annotated = _digest(annotated_bin, args);

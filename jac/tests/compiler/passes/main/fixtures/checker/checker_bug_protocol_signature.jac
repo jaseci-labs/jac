@@ -9,8 +9,6 @@ Expected: MyClass should NOT satisfy Drawable because its draw() signature
 is incompatible (takes int instead of str, returns str instead of None).
 """
 
-import from typing { Protocol }
-
 class Drawable(Protocol) {
     def draw(canvas: str) -> None;
 }

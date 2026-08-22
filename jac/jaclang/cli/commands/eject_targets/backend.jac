@@ -100,40 +100,33 @@ def emit_backend(
         );
     }
 
-    sql = str(db.get("driver", "")).lower() in ["sqlalchemy", "sqlite", "sql"];
-    db_basename = _default_db_basename(project_name) if sql else "";
-    if sql {
-        console.print(
-            "  ✔ SQLAlchemy persistence (vendored runtime backend)", style="success"
+    driver = str(db.get("driver", "")).lower();
+    if driver not in ["", "postgres", "postgresql", "pg"] {
+        console.error(
+            f"  backend: [eject.db] driver = '{driver}' is not supported: the "
+            "jaclang runtime persists natively to Postgres (an external server "
+            "via JAC_DB_URL, or an embedded runtime-managed one). Remove "
+            "[eject.db] or set driver = \"postgres\"."
         );
+        return 1;
     }
 
     _emit_main_py(
-        backend_dir,
-        project_name,
-        walkers_full,
-        functions_full,
-        sql,
-        db_basename,
-        has_env,
-        entry_module
+        backend_dir, project_name, walkers_full, functions_full, has_env, entry_module
     );
 
     import from jaclang.publish.runtime_vendor { vendor_runtime }
     uses_llm = _uses_llm(emitted_codes);
-    sql_seeds = ["jaclang.runtimelib.storage.sqlalchemy_memory"] if sql else [];
     try {
-        vendored = vendor_runtime(
-            backend_dir, emitted_codes, include_byllm=uses_llm, extra_seeds=sql_seeds
-        );
+        vendored = vendor_runtime(backend_dir, emitted_codes, include_byllm=uses_llm);
     } except ValueError as e {
         console.error(f"  {e}");
         return 1;
     }
     console.print(
-        f"  ✔ vendored jaclang runtime ({vendored} modules" + (
-            ", incl. byllm" if uses_llm else ""
-        ) + ")",
+        f"  ✔ vendored jaclang runtime ({vendored} modules"
+            + (", incl. byllm" if uses_llm else "")
+            + ")",
         style="success"
     );
 
@@ -147,9 +140,6 @@ def emit_backend(
     }
 
     detected_caps: set = set();
-    if sql {
-        detected_caps.add("data.sql");
-    }
     if uses_llm {
         detected_caps.add("llm");
     }
@@ -188,16 +178,6 @@ def _capability_requirements(caps: set) -> list[str] {
 }
 
 
-def _default_db_basename(project_name: str) -> str {
-    chars: list = [];
-    for ch in project_name.lower() {
-        chars.append(ch if ch.isalnum() else "_");
-    }
-    name = "".join(chars).strip("_");
-    return name or "jac_db";
-}
-
-
 def _first_duplicate(names: list) -> str {
     seen: set = set();
     for n in names {
@@ -217,10 +197,10 @@ def _uses_llm(codes: list) -> bool {
             line = raw.strip();
             for m in ["byllm", "jaclang.byllm"] {
                 if (line == "import " + m)
-                or line.startswith("import " + m + " ")
-                or line.startswith("import " + m + ".")
-                or line.startswith("from " + m + " ")
-                or line.startswith("from " + m + ".") {
+                    or line.startswith("import " + m + " ")
+                    or line.startswith("import " + m + ".")
+                    or line.startswith("from " + m + " ")
+                    or line.startswith("from " + m + ".") {
                     return True;
                 }
             }
@@ -241,11 +221,12 @@ def _rewrite_imports(py_code: str, remap: dict) -> str {
             orig_s = str(orig);
             new_s = str(new);
             if line.startswith("from " + orig_s + " import ") {
-                line = "from " + new_s + " import " + line[len(
-                    "from " + orig_s + " import "
-                ):];
+                line = "from "
+                    + new_s
+                    + " import "
+                    + line[len("from " + orig_s + " import "):];
             } elif (line == "import " + orig_s)
-            or line.startswith("import " + orig_s + " ") {
+                or line.startswith("import " + orig_s + " ") {
                 line = "import " + new_s + line[len("import " + orig_s):];
             }
         }
@@ -352,7 +333,7 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
     }
     for node in tree.body {
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and (node.name in func_names) {
+            and (node.name in func_names) {
             all_args = node.args.args;
             defaults = node.args.defaults;
 
@@ -446,12 +427,12 @@ def _safe_model_default(default_src: str) -> str {
         return "None";
     }
     if isinstance(expr, ast.Call)
-    and isinstance(expr.func, ast.Name)
-    and (expr.func.id == "field") {
+        and isinstance(expr.func, ast.Name)
+        and (expr.func.id == "field") {
         inner = None;
         for kw in expr.keywords {
             if (kw.arg in ["factory", "default_factory"])
-            and isinstance(kw.value, ast.Lambda) {
+                and isinstance(kw.value, ast.Lambda) {
                 inner = kw.value.body;
             } elif kw.arg == "default" {
                 inner = kw.value;
@@ -476,8 +457,6 @@ def _emit_main_py(
     project_name: str,
     walkers: list,
     functions: list,
-    sql: bool,
-    db_basename: str,
     has_env: bool,
     entry_module: str
 ) {
@@ -496,7 +475,10 @@ def _emit_main_py(
     lines: list[str] = [
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
         'runs the compiled walkers on the jaclang runtime with jaclang-native auth',
-        '(register/login via UserManager; :pub walkers open, others token-gated)."""',
+        '(register/login via UserManager; :pub walkers open, others token-gated).',
+        'Graph state persists through the runtime\'s Postgres-native store: set',
+        'JAC_DB_URL to use an external server, otherwise the runtime provisions',
+        'an embedded database automatically."""',
         'import inspect',
         'import json',
         'import os',
@@ -552,24 +534,6 @@ def _emit_main_py(
     for f in functions {
         fn = str(f["name"]);
         lines.append("from " + str(f["module"]) + " import " + fn + " as _F_" + fn);
-    }
-
-    if sql {
-        lines += [
-            'from jaclang.jac0core.runtime import JacRuntime as _Jac',
-            'from jaclang.runtimelib.storage.sqlalchemy_memory import SqlAlchemyMemory',
-            '',
-            '_DB_URL = os.environ.get("JAC_DB_URL") or (',
-            '    "sqlite:///" + os.path.join(_BASE, ' + repr(
-                str(db_basename) + ".db"
-            ) + ')',
-            ')',
-            '',
-            '',
-            '_Jac.set_persistent_memory_provider(',
-            '    lambda config: SqlAlchemyMemory(_DB_URL)',
-            ')'
-        ];
     }
 
     lines += [
@@ -721,9 +685,12 @@ def _emit_main_py(
                 ftype = _safe_model_type(str(fld["type"]));
                 if fld["has_default"] {
                     lines.append(
-                        "    " + fname + ": " + ftype + " = " + _safe_model_default(
-                            str(fld["default"])
-                        )
+                        "    "
+                            + fname
+                            + ": "
+                            + ftype
+                            + " = "
+                            + _safe_model_default(str(fld["default"]))
                     );
                 } else {
                     lines.append("    " + fname + ": " + ftype);
@@ -737,7 +704,11 @@ def _emit_main_py(
         lines.append('@app.post("/walker/' + wn + '")');
         lines.append('@app.post("/walker/' + wn + '/{node_id}")');
         lines.append(
-            "async def run_" + wn + "(body: " + model + ", node_id: str = \"\", authorization: str = Header(default=None)):"
+            "async def run_"
+                + wn
+                + "(body: "
+                + model
+                + ", node_id: str = \"\", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append("    fields = dict(body.model_dump())");
@@ -768,10 +739,10 @@ def _emit_main_py(
                     sig.append(pname + ": " + utype + " = File(...)");
                 } else {
                     ftype = _safe_model_type(str(p["type"]));
-                    default = _safe_model_default(str(p["default"]))
+                    `default = _safe_model_default(str(p["default"]))
                         if p["has_default"]
                         else "...";
-                    sig.append(pname + ": " + ftype + " = Form(" + default + ")");
+                    sig.append(pname + ": " + ftype + " = Form(" + `default + ")");
                 }
             }
             sig.append("authorization: str = Header(default=None)");
@@ -785,7 +756,9 @@ def _emit_main_py(
             lines.append("    user = _username(authorization, " + required + ")");
             lines.append("    fields = {" + kw + "}");
             lines.append(
-                "    return _respond_fn(await _em.execute_function(_F_" + fn + ", fields, user))"
+                "    return _respond_fn(await _em.execute_function(_F_"
+                    + fn
+                    + ", fields, user))"
             );
             continue;
         }
@@ -799,9 +772,12 @@ def _emit_main_py(
                 ptype = _safe_model_type(str(p["type"]));
                 if p["has_default"] {
                     lines.append(
-                        "    " + pname + ": " + ptype + " = " + _safe_model_default(
-                            str(p["default"])
-                        )
+                        "    "
+                            + pname
+                            + ": "
+                            + ptype
+                            + " = "
+                            + _safe_model_default(str(p["default"]))
                     );
                 } else {
                     lines.append("    " + pname + ": " + ptype);
@@ -814,11 +790,17 @@ def _emit_main_py(
         lines.append("");
         lines.append('@app.post("/function/' + fn + '")');
         lines.append(
-            "async def call_" + fn + "(body: " + model + ", authorization: str = Header(default=None)):"
+            "async def call_"
+                + fn
+                + "(body: "
+                + model
+                + ", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append(
-            "    return _respond_fn(await _em.execute_function(_F_" + fn + ", dict(body.model_dump()), user))"
+            "    return _respond_fn(await _em.execute_function(_F_"
+                + fn
+                + ", dict(body.model_dump()), user))"
         );
     }
 
@@ -871,7 +853,13 @@ def _emit_main_py(
         '',
         '@app.get("/__health")',
         'def __health() -> dict:',
-        '    return {"project": ' + repr(project_name) + ', "walkers": ' + walker_list_lit + ', "functions": ' + func_list_lit + "}",
+        '    return {"project": '
+            + repr(project_name)
+            + ', "walkers": '
+            + walker_list_lit
+            + ', "functions": '
+            + func_list_lit
+            + "}",
         '',
         '',
         '# Serve the built frontend (../frontend/dist) when present so one',
@@ -909,7 +897,7 @@ def _req_key(req: str) -> str {
 
 
 def _emit_requirements(backend_dir: Path, extra_reqs: list) {
-    lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    lines: list[str] = ["fastapi>=0.121", "uvicorn[standard]>=0.38"];
     seen: set = {_req_key(r) for r in lines};
     for req in extra_reqs {
         key = _req_key(str(req));

@@ -1,75 +1,99 @@
-"""Tests for standalone-file DB naming fix (bug #4401).
+"""Tests for standalone-file DB naming (bug #4401, ported to Postgres).
 
 Verifies that:
-  1. running simple_persistent.jac creates simple_persistent.db (not main.db)
-  2. running simple_node_connection.jac creates simple_node_connection.db
-  3. running simple_persistent.jac a second time does NOT error
+  1. running simple_persistent.jac and simple_node_connection.jac lands
+     each file in its own database on the shared embedded server
+  2. running simple_persistent.jac a second time does NOT error
      (previously crashed with "pop from empty list" due to DB state mismatch)
+  3. a file inside a project directory uses the project name from jac.toml
 """
 
 import os;
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
+import from jaclang.runtimelib.pgembed { PgRuntime }
+import from jaclang.runtimelib.session { project_db_name, shared_pg_data_dir }
+import from jaclang.runtimelib.store { PgStore, TxnIsolation }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
-test "different standalone files get separate db files" {
-    db_dir = Path(FIXTURES) / ".jac" / "data";
-    db_persistent = db_dir / "simple_persistent.db";
-    db_connection = db_dir / "simple_node_connection.db";
+
+def _database_names -> list[str] {
+    rt = PgRuntime(data_dir=shared_pg_data_dir(), database="postgres");
+    st = PgStore(conninfo=rt.ensure());
+    st.begin(TxnIsolation.READ_COMMITTED);
+    names = [str(r[0]) for r in st.rows("SELECT datname FROM pg_database", {})];
+    st.commit();
+    st.close();
+    return names;
+}
+
+
+test "different standalone files get separate databases" {
+    db_persistent = project_db_name(
+        FIXTURES, os.path.join(FIXTURES, "simple_persistent.jac")
+    );
+    db_connection = project_db_name(
+        FIXTURES, os.path.join(FIXTURES, "simple_node_connection.jac")
+    );
+    assert db_persistent != db_connection , (
+        "Standalone files must map to distinct databases"
+    );
+    assert db_persistent.startswith("jac_simple_persistent_");
+    assert db_connection.startswith("jac_simple_node_connection_");
 
     _orig_base = Jac.get_base_path_dir();
     try {
         Jac.set_base_path(FIXTURES);
 
-        # Run first file
-        execution.run(filename=os.path.join(FIXTURES, "simple_persistent.jac"));
-        assert db_persistent.exists() , f"Expected {db_persistent} to exist";
-
-        # Run second file
+        # The database is provisioned by the first access to persistent state,
+        # so these files have to actually touch the graph: simple_persistent
+        # declares walkers only, hence the explicit spawn.
+        execution.enter(
+            filename=os.path.join(FIXTURES, "simple_persistent.jac"),
+            entrypoint="create"
+        );
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
-        assert db_connection.exists() , f"Expected {db_connection} to exist";
 
         rc = execution.run(filename=os.path.join(FIXTURES, "simple_persistent.jac"));
         assert rc == 0 , (
             f"Second run of simple_persistent.jac file failed with return code {rc} - bug #4401 regression"
         );
 
-        # Both should be separate files
-        assert db_persistent != db_connection;
-        assert db_persistent.exists() and db_connection.exists() , (
-            "Both DB files should exist independently"
+        names = _database_names();
+        assert db_persistent in names , (
+            f"Expected database {db_persistent} on the shared server"
         );
-        assert not (db_dir / "main.db").exists() , (
-            "main.db should not exist for a standalone named file"
+        assert db_connection in names , (
+            f"Expected database {db_connection} on the shared server"
         );
     } finally {
         Jac.set_base_path(_orig_base);
-        for f in [db_persistent, db_connection] {
-            if f.exists() {
-                f.unlink();
-            }
-        }
     }
 }
 
+
 test "running file with same name as project uses project DB name" {
-    db_dir = Path(FIXTURES) / ".jac" / "data";
-    db_project = db_dir / "test_db_naming.db";
     file_path = Path(FIXTURES) / "test_project";
 
     _orig_base = Jac.get_base_path_dir();
     try {
         Jac.set_base_path(FIXTURES);
 
-        # Run the file in a subdirectory with a jac.toml that has the same name as the file (test_project)
-        execution.run(filename=os.path.join(file_path, "main.jac"));
-        assert db_project.exists() , f"Expected {db_project} to exist";
+        execution.enter(
+            filename=os.path.join(file_path, "main.jac"), entrypoint="create"
+        );
+
+        # jac.toml names the project test_db_naming; the database carries
+        # that name (suffixed with the base-path digest), not "main".
+        matches = [
+            n
+            for n in _database_names()
+            if n.startswith("jac_test_db_naming_")
+        ];
+        assert matches , "Expected a jac_test_db_naming_* database on the shared server";
     } finally {
         Jac.set_base_path(_orig_base);
-        if db_project.exists() {
-            db_project.unlink();
-        }
     }
 }

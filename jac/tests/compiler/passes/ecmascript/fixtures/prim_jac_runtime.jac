@@ -5,6 +5,7 @@ The def version runs on the Python backend; the cl def version compiles to JS
 and exercises the _jac.* runtime calls.
 """
 
+
 # =============================================================================
 # int namespace: mod, bit_length, bit_count
 # (to_bytes/from_bytes skipped — bytes are not JSON-serializable)
@@ -14,14 +15,14 @@ def jac_rt_int_py() -> dict {
     # mod — Python semantics: result sign matches divisor
     a: int = -7;
     b: int = 3;
-    mod_np: int = a % b;        # 2
+    mod_np: int = a % b;  # 2
     c: int = 7;
     d: int = -3;
-    mod_pn: int = c % d;        # -2
+    mod_pn: int = c % d;  # -2
     e: int = -7;
     f: int = -3;
-    mod_nn: int = e % f;        # -1
-    mod_pp: int = 10 % 3;       # 1
+    mod_nn: int = e % f;  # -1
+    mod_pp: int = 10 % 3;  # 1
 
     # bit_length
     n0: int = 0;
@@ -39,14 +40,20 @@ def jac_rt_int_py() -> dict {
     bc_255: int = n255.bit_count();
 
     return {
-        "mod_np": mod_np, "mod_pn": mod_pn,
-        "mod_nn": mod_nn, "mod_pp": mod_pp,
-        "bl_0": bl_0, "bl_5": bl_5, "bl_255": bl_255,
-        "bc_7": bc_7, "bc_10": bc_10, "bc_255": bc_255
+        "mod_np": mod_np,
+        "mod_pn": mod_pn,
+        "mod_nn": mod_nn,
+        "mod_pp": mod_pp,
+        "bl_0": bl_0,
+        "bl_5": bl_5,
+        "bl_255": bl_255,
+        "bc_7": bc_7,
+        "bc_10": bc_10,
+        "bc_255": bc_255
     };
 }
 
-cl def jac_rt_int_cl() -> dict {
+def jac_rt_int_cl() -> dict {
     a: int = -7;
     b: int = 3;
     mod_np: int = a % b;
@@ -72,10 +79,16 @@ cl def jac_rt_int_cl() -> dict {
     bc_255: int = n255.bit_count();
 
     return {
-        "mod_np": mod_np, "mod_pn": mod_pn,
-        "mod_nn": mod_nn, "mod_pp": mod_pp,
-        "bl_0": bl_0, "bl_5": bl_5, "bl_255": bl_255,
-        "bc_7": bc_7, "bc_10": bc_10, "bc_255": bc_255
+        "mod_np": mod_np,
+        "mod_pn": mod_pn,
+        "mod_nn": mod_nn,
+        "mod_pp": mod_pp,
+        "bl_0": bl_0,
+        "bl_5": bl_5,
+        "bl_255": bl_255,
+        "bc_7": bc_7,
+        "bc_10": bc_10,
+        "bc_255": bc_255
     };
 }
 
@@ -88,7 +101,7 @@ def jac_rt_float_py() -> dict {
     # mod — Python semantics for floats
     fa: float = -7.5;
     fb: float = 2.0;
-    fmod1: float = fa % fb;       # 0.5
+    fmod1: float = fa % fb;  # 0.5
 
     # as_integer_ratio
     half: float = 0.5;
@@ -101,14 +114,10 @@ def jac_rt_float_py() -> dict {
     r2_0: int = ratio2[0];
     r2_1: int = ratio2[1];
 
-    return {
-        "fmod1": fmod1,
-        "ratio_half": [r0, r1],
-        "ratio_quarter": [r2_0, r2_1]
-    };
+    return {"fmod1": fmod1, "ratio_half": [r0, r1], "ratio_quarter": [r2_0, r2_1]};
 }
 
-cl def jac_rt_float_cl() -> dict {
+def jac_rt_float_cl() -> dict {
     fa: float = -7.5;
     fb: float = 2.0;
     fmod1: float = fa % fb;
@@ -123,11 +132,7 @@ cl def jac_rt_float_cl() -> dict {
     r2_0: int = ratio2[0];
     r2_1: int = ratio2[1];
 
-    return {
-        "fmod1": fmod1,
-        "ratio_half": [r0, r1],
-        "ratio_quarter": [r2_0, r2_1]
-    };
+    return {"fmod1": fmod1, "ratio_half": [r0, r1], "ratio_quarter": [r2_0, r2_1]};
 }
 
 # =============================================================================
@@ -202,28 +207,47 @@ def jac_rt_str_py() -> dict {
     not_ttl: bool = "hello world".istitle();
 
     return {
-        "capitalize": cap, "title": ttl, "swapcase": swp,
-        "count": cnt, "count_range": cnt_range,
-        "find": fnd, "find_miss": fnd_miss, "rfind": rfnd,
-        "index": idx, "rindex": ridx,
-        "startswith": sw, "startswith_off": sw_off,
-        "endswith": ew, "endswith_off": ew_off,
-        "replace": rep, "replace_count": rep_cnt,
-        "strip": stripped, "lstrip": lstripped, "rstrip": rstripped,
+        "capitalize": cap,
+        "title": ttl,
+        "swapcase": swp,
+        "count": cnt,
+        "count_range": cnt_range,
+        "find": fnd,
+        "find_miss": fnd_miss,
+        "rfind": rfnd,
+        "index": idx,
+        "rindex": ridx,
+        "startswith": sw,
+        "startswith_off": sw_off,
+        "endswith": ew,
+        "endswith_off": ew_off,
+        "replace": rep,
+        "replace_count": rep_cnt,
+        "strip": stripped,
+        "lstrip": lstripped,
+        "rstrip": rstripped,
         "char_strip": char_strip,
-        "removeprefix": no_pre, "removesuffix": no_suf,
+        "removeprefix": no_pre,
+        "removesuffix": no_suf,
         "removeprefix_miss": no_pre_miss,
-        "split": parts, "split_max": parts_max,
+        "split": parts,
+        "split_max": parts_max,
         "rsplit": rparts,
-        "partition": part_list, "rpartition": rpart_list,
-        "format": fmt, "format_idx": fmt_idx,
-        "center": centered, "zfill": zfilled, "zfill_neg": zfilled_neg,
-        "isnumeric": is_num, "isnumeric_false": not_num,
-        "istitle": is_ttl, "istitle_false": not_ttl
+        "partition": part_list,
+        "rpartition": rpart_list,
+        "format": fmt,
+        "format_idx": fmt_idx,
+        "center": centered,
+        "zfill": zfilled,
+        "zfill_neg": zfilled_neg,
+        "isnumeric": is_num,
+        "isnumeric_false": not_num,
+        "istitle": is_ttl,
+        "istitle_false": not_ttl
     };
 }
 
-cl def jac_rt_str_cl() -> dict {
+def jac_rt_str_cl() -> dict {
     s: str = "hello world";
 
     cap: str = s.capitalize();
@@ -279,24 +303,43 @@ cl def jac_rt_str_cl() -> dict {
     not_ttl: bool = "hello world".istitle();
 
     return {
-        "capitalize": cap, "title": ttl, "swapcase": swp,
-        "count": cnt, "count_range": cnt_range,
-        "find": fnd, "find_miss": fnd_miss, "rfind": rfnd,
-        "index": idx, "rindex": ridx,
-        "startswith": sw, "startswith_off": sw_off,
-        "endswith": ew, "endswith_off": ew_off,
-        "replace": rep, "replace_count": rep_cnt,
-        "strip": stripped, "lstrip": lstripped, "rstrip": rstripped,
+        "capitalize": cap,
+        "title": ttl,
+        "swapcase": swp,
+        "count": cnt,
+        "count_range": cnt_range,
+        "find": fnd,
+        "find_miss": fnd_miss,
+        "rfind": rfnd,
+        "index": idx,
+        "rindex": ridx,
+        "startswith": sw,
+        "startswith_off": sw_off,
+        "endswith": ew,
+        "endswith_off": ew_off,
+        "replace": rep,
+        "replace_count": rep_cnt,
+        "strip": stripped,
+        "lstrip": lstripped,
+        "rstrip": rstripped,
         "char_strip": char_strip,
-        "removeprefix": no_pre, "removesuffix": no_suf,
+        "removeprefix": no_pre,
+        "removesuffix": no_suf,
         "removeprefix_miss": no_pre_miss,
-        "split": parts, "split_max": parts_max,
+        "split": parts,
+        "split_max": parts_max,
         "rsplit": rparts,
-        "partition": part_list, "rpartition": rpart_list,
-        "format": fmt, "format_idx": fmt_idx,
-        "center": centered, "zfill": zfilled, "zfill_neg": zfilled_neg,
-        "isnumeric": is_num, "isnumeric_false": not_num,
-        "istitle": is_ttl, "istitle_false": not_ttl
+        "partition": part_list,
+        "rpartition": rpart_list,
+        "format": fmt,
+        "format_idx": fmt_idx,
+        "center": centered,
+        "zfill": zfilled,
+        "zfill_neg": zfilled_neg,
+        "isnumeric": is_num,
+        "isnumeric_false": not_num,
+        "istitle": is_ttl,
+        "istitle_false": not_ttl
     };
 }
 
@@ -348,19 +391,27 @@ def jac_rt_list_py() -> dict {
 
     return {
         "sort_desc": nums,
-        "count_2": cnt_2, "count_3": cnt_3, "count_miss": cnt_0,
+        "count_2": cnt_2,
+        "count_3": cnt_3,
+        "count_miss": cnt_0,
         "after_remove": removable,
-        "index": idx, "index_start": idx_start,
+        "index": idx,
+        "index_start": idx_start,
         "repeat": repeated,
-        "eq_true": eq_t, "eq_false": eq_f,
-        "lt_true": lt_t, "lt_false": lt_f, "gt_true": gt_t,
-        "le_true": le_t, "le_true2": le_t2, "ge_true": ge_t,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "lt_false": lt_f,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "le_true2": le_t2,
+        "ge_true": ge_t,
         "lt_shorter": lt_len,
         "imul": grow
     };
 }
 
-cl def jac_rt_list_cl() -> dict {
+def jac_rt_list_cl() -> dict {
     nums: list = [3, 1, 4, 1, 5, 9, 2, 6];
     nums.sort(key=lambda (x) { -x; });
 
@@ -397,13 +448,21 @@ cl def jac_rt_list_cl() -> dict {
 
     return {
         "sort_desc": nums,
-        "count_2": cnt_2, "count_3": cnt_3, "count_miss": cnt_0,
+        "count_2": cnt_2,
+        "count_3": cnt_3,
+        "count_miss": cnt_0,
         "after_remove": removable,
-        "index": idx, "index_start": idx_start,
+        "index": idx,
+        "index_start": idx_start,
         "repeat": repeated,
-        "eq_true": eq_t, "eq_false": eq_f,
-        "lt_true": lt_t, "lt_false": lt_f, "gt_true": gt_t,
-        "le_true": le_t, "le_true2": le_t2, "ge_true": ge_t,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "lt_false": lt_f,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "le_true2": le_t2,
+        "ge_true": ge_t,
         "lt_shorter": lt_len,
         "imul": grow
     };
@@ -442,17 +501,21 @@ def jac_rt_dict_py() -> dict {
     eq_f: bool = da == dc;
 
     return {
-        "pop_val": popped, "pop_default": pop_default,
+        "pop_val": popped,
+        "pop_default": pop_default,
         "after_pop": d,
-        "popitem_key": popitem_key, "popitem_val": popitem_val,
-        "sd_existing": sd_existing, "sd_new": sd_new,
+        "popitem_key": popitem_key,
+        "popitem_val": popitem_val,
+        "sd_existing": sd_existing,
+        "sd_new": sd_new,
         "after_setdefault": d3,
         "after_clear": d4,
-        "eq_true": eq_t, "eq_false": eq_f
+        "eq_true": eq_t,
+        "eq_false": eq_f
     };
 }
 
-cl def jac_rt_dict_cl() -> dict {
+def jac_rt_dict_cl() -> dict {
     d: dict = {"a": 1, "b": 2, "c": 3};
     popped: int = d.pop("b");
     pop_default: int = d.pop("z", -1);
@@ -476,13 +539,17 @@ cl def jac_rt_dict_cl() -> dict {
     eq_f: bool = da == dc;
 
     return {
-        "pop_val": popped, "pop_default": pop_default,
+        "pop_val": popped,
+        "pop_default": pop_default,
         "after_pop": d,
-        "popitem_key": popitem_key, "popitem_val": popitem_val,
-        "sd_existing": sd_existing, "sd_new": sd_new,
+        "popitem_key": popitem_key,
+        "popitem_val": popitem_val,
+        "sd_existing": sd_existing,
+        "sd_new": sd_new,
         "after_setdefault": d3,
         "after_clear": d4,
-        "eq_true": eq_t, "eq_false": eq_f
+        "eq_true": eq_t,
+        "eq_false": eq_f
     };
 }
 
@@ -538,11 +605,12 @@ def jac_rt_set_py() -> dict {
         "proper_subset": proper_sub,
         "not_proper_subset": not_proper_sub,
         "proper_superset": proper_sup,
-        "eq_true": eq_t, "eq_false": eq_f
+        "eq_true": eq_t,
+        "eq_false": eq_f
     };
 }
 
-cl def jac_rt_set_cl() -> dict {
+def jac_rt_set_cl() -> dict {
     s1: set = {1, 2, 3, 4};
     s1.remove(3);
     after_remove: list = sorted(list(s1));
@@ -581,7 +649,8 @@ cl def jac_rt_set_cl() -> dict {
         "proper_subset": proper_sub,
         "not_proper_subset": not_proper_sub,
         "proper_superset": proper_sup,
-        "eq_true": eq_t, "eq_false": eq_f
+        "eq_true": eq_t,
+        "eq_false": eq_f
     };
 }
 
@@ -614,16 +683,20 @@ def jac_rt_tuple_py() -> dict {
     lt_len: bool = d < a;
 
     return {
-        "count": cnt, "index": idx,
+        "count": cnt,
+        "index": idx,
         "repeat": repeated,
-        "eq_true": eq_t, "eq_false": eq_f,
-        "lt_true": lt_t, "gt_true": gt_t,
-        "le_true": le_t, "ge_true": ge_t,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "ge_true": ge_t,
         "lt_shorter": lt_len
     };
 }
 
-cl def jac_rt_tuple_cl() -> dict {
+def jac_rt_tuple_cl() -> dict {
     t: tuple = (1, 2, 3, 2, 1);
 
     cnt: int = t.count(2);
@@ -645,11 +718,15 @@ cl def jac_rt_tuple_cl() -> dict {
     lt_len: bool = d < a;
 
     return {
-        "count": cnt, "index": idx,
+        "count": cnt,
+        "index": idx,
         "repeat": repeated,
-        "eq_true": eq_t, "eq_false": eq_f,
-        "lt_true": lt_t, "gt_true": gt_t,
-        "le_true": le_t, "ge_true": ge_t,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "ge_true": ge_t,
         "lt_shorter": lt_len
     };
 }
@@ -709,18 +786,24 @@ def jac_rt_builtin_py() -> dict {
     pow_mod: int = pow(2, 10, 100);
 
     return {
-        "round_int": r1, "round_digits": r2,
-        "sum": s, "sum_start": s_start,
-        "sorted": srt, "sorted_key": srt_key,
-        "enumerate": enum_result, "enumerate_start": enum_start,
-        "zip": zip_result, "zip_uneven": zip_uneven,
+        "round_int": r1,
+        "round_digits": r2,
+        "sum": s,
+        "sum_start": s_start,
+        "sorted": srt,
+        "sorted_key": srt_key,
+        "enumerate": enum_result,
+        "enumerate_start": enum_start,
+        "zip": zip_result,
+        "zip_uneven": zip_uneven,
         "map": map_result,
         "filter": filter_result,
-        "pow": pow_basic, "pow_mod": pow_mod
+        "pow": pow_basic,
+        "pow_mod": pow_mod
     };
 }
 
-cl def jac_rt_builtin_cl() -> dict {
+def jac_rt_builtin_cl() -> dict {
     r1: int = round(3.7);
     r2: float = round(3.14159, 2);
 
@@ -760,13 +843,19 @@ cl def jac_rt_builtin_cl() -> dict {
     pow_mod: int = pow(2, 10, 100);
 
     return {
-        "round_int": r1, "round_digits": r2,
-        "sum": s, "sum_start": s_start,
-        "sorted": srt, "sorted_key": srt_key,
-        "enumerate": enum_result, "enumerate_start": enum_start,
-        "zip": zip_result, "zip_uneven": zip_uneven,
+        "round_int": r1,
+        "round_digits": r2,
+        "sum": s,
+        "sum_start": s_start,
+        "sorted": srt,
+        "sorted_key": srt_key,
+        "enumerate": enum_result,
+        "enumerate_start": enum_start,
+        "zip": zip_result,
+        "zip_uneven": zip_uneven,
         "map": map_result,
         "filter": filter_result,
-        "pow": pow_basic, "pow_mod": pow_mod
+        "pow": pow_basic,
+        "pow_mod": pow_mod
     };
 }

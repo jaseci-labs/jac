@@ -10,7 +10,12 @@ bundler anymore.
 
 import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.runtimelib.client_bundle { ClientBundleBuilder, ClientBundleError }
+import from types { ModuleType }
+import from jaclang.runtimelib.client_bundle {
+    ClientBundle,
+    ClientBundleBuilder,
+    ClientBundleError
+}
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -46,8 +51,8 @@ test "dev vite config registers the port reporter; build config does not" {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     with tempfile.TemporaryDirectory() as tmp {
         bundler = ViteBundler(Path(tmp));
-        entry = Path(tmp) / "main.js";
-        dev_config = bundler.create_vite_config(entry, is_dev=True);
+        `entry = Path(tmp) / "main.js";
+        dev_config = bundler.create_vite_config(`entry, is_dev=True);
         dev_content = dev_config.read_text();
         # The plugin writes the bound port to .dev-port on "listening" —
         # the jac CLI reads it instead of parsing Vite's stdout.
@@ -62,7 +67,7 @@ test "dev vite config registers the port reporter; build config does not" {
         assert "jacForceReload()," in dev_content;
         assert ".jac-force-reload" in dev_content;
         assert 'type: "full-reload", path: "*", jacTriggered: true' in dev_content;
-        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        build_content = bundler.create_vite_config(`entry, is_dev=False).read_text();
         assert "jac-port-reporter" not in build_content;
         assert "jac-build-error-overlay" not in build_content;
         assert "jacForceReload" not in build_content;
@@ -74,13 +79,13 @@ test "dev vite config registers error reporter; overlay is gated to module-load 
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     with tempfile.TemporaryDirectory() as tmp {
         bundler = ViteBundler(Path(tmp));
-        entry = Path(tmp) / "main.js";
-        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        `entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(`entry, is_dev=True);
         dev_content = dev_cfg.read_text();
         assert "jac-error-reporter" in dev_content;
         # Overlay must only fire for module-load failures, not every runtime error
         assert 'phase === "load"' in dev_content;
-        build_cfg = bundler.create_vite_config(entry, is_dev=False);
+        build_cfg = bundler.create_vite_config(`entry, is_dev=False);
         build_content = build_cfg.read_text();
         assert "jac-error-reporter" not in build_content;
     }
@@ -111,8 +116,8 @@ test "dev config wires fast refresh and index.html installs the hook before the 
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     with tempfile.TemporaryDirectory() as tmp {
         bundler = ViteBundler(Path(tmp));
-        entry = Path(tmp) / "main.js";
-        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        `entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(`entry, is_dev=True);
         dev_content = dev_cfg.read_text();
         assert 'import jacFastRefresh from "./jac-fast-refresh.js"' in dev_content;
         assert "jacFastRefresh()," in dev_content;
@@ -130,10 +135,9 @@ test "dev config wires fast refresh and index.html installs the hook before the 
         html = (Path(tmp) / "index.html").read_text();
         assert "injectIntoGlobalHook" in html;
         # The refresh hook must install before React loads with the app entry
-        assert html.index('"/@react-refresh"') < html.index(
-            'import("/compiled/_entry.js")'
-        );
-        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert html.index('"/@react-refresh"')
+            < html.index('import("/compiled/_entry.js")');
+        build_content = bundler.create_vite_config(`entry, is_dev=False).read_text();
         assert "jacFastRefresh" not in build_content;
     }
 }
@@ -143,10 +147,11 @@ test "dev config wires the layered dev-status bridge; build config does not" {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     with tempfile.TemporaryDirectory() as tmp {
         bundler = ViteBundler(Path(tmp));
-        entry = Path(tmp) / "main.js";
-        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        `entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(`entry, is_dev=True);
         dev_content = dev_cfg.read_text();
-        assert 'import jacDevStatus, { reportClientLoad } from "./jac-dev-status.js"' in dev_content;
+        assert 'import jacDevStatus, { reportClientLoad } from "./jac-dev-status.js"'
+            in dev_content;
         assert "jacDevStatus()," in dev_content;
         # Browser load-phase failures feed the client slot via the reporter
         assert "reportClientLoad(data)" in dev_content;
@@ -166,7 +171,170 @@ test "dev config wires the layered dev-status bridge; build config does not" {
         bundler._ensure_dev_index_html(Path(tmp));
         html = (Path(tmp) / "index.html").read_text();
         assert 'import.meta.hot.send("jac:client-ready")' in html;
-        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        build_content = bundler.create_vite_config(`entry, is_dev=False).read_text();
         assert "jacDevStatus" not in build_content;
     }
+}
+
+"""Lay out a build dir the way `bun install` does: the real package plus the
+`node_modules/.bin/vite` shim, which carries Vite's `#!/usr/bin/env node`
+shebang."""
+def _stub_vite_install(build_dir: Path) {
+    bin_dir = build_dir / "node_modules" / "vite" / "bin";
+    bin_dir.mkdir(parents=True);
+    `entry = bin_dir / "vite.js";
+    `entry.write_text("#!/usr/bin/env node\nconsole.log('vite-stub ok');\n");
+    `entry.chmod(0o755);
+    (bin_dir.parent / "package.json").write_text(
+        '{"name": "vite", "version": "0.0.0", "bin": {"vite": "bin/vite.js"}}'
+    );
+    shim_dir = build_dir / "node_modules" / ".bin";
+    shim_dir.mkdir(parents=True);
+    (shim_dir / "vite").symlink_to("../vite/bin/vite.js");
+}
+
+test "vite builds run under bun with no node on PATH" {
+    import os;
+    import subprocess;
+    import sys;
+    import tempfile;
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client.vite_bundler { _build_vite_command }
+
+    if sys.platform == "win32" {
+        testskip("shebang dispatch is POSIX-only");
+    }
+    if get_bun() is None {
+        testskip("bun is required but could not be located/installed");
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp) / "client";
+        build_dir.mkdir();
+        _stub_vite_install(build_dir);
+        # Jac provisions bun and never provisions node, so a client build has to
+        # work on a machine that has no node at all.
+        empty_dir = Path(tmp) / "empty-path";
+        empty_dir.mkdir();
+        env = dict(os.environ);
+        env["PATH"] = str(empty_dir);
+        result = subprocess.run(
+            _build_vite_command(build_dir, ["build"]),
+            cwd=build_dir,
+            env=env,
+            capture_output=True,
+            text=True
+        );
+        assert result.returncode == 0 , (
+            f"vite build needs node on PATH: {result.stderr or result.stdout}"
+        );
+        assert "vite-stub ok" in result.stdout;
+    }
+}
+
+test "vite commands address vite's js entry, not the bunx shim" {
+    import tempfile;
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client.vite_bundler {
+        _build_vite_command,
+        _build_vite_dev_command
+    }
+
+    if get_bun() is None {
+        testskip("bun is required but could not be located/installed");
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp) / "client";
+        build_dir.mkdir();
+        _stub_vite_install(build_dir);
+        build_cmd = _build_vite_command(build_dir, ["build", "--config", "c.js"]);
+        # `bun x vite` hands off to the .bin shim and its node shebang; naming
+        # the entry keeps the run inside bun.
+        assert "x" not in build_cmd;
+        assert build_cmd[1].endswith("vite.js");
+        assert build_cmd[2:] == ["build", "--config", "c.js"];
+        dev_cmd = _build_vite_dev_command(
+            build_dir, Path("configs/vite.dev.config.js"), 3000
+        );
+        assert "x" not in dev_cmd;
+        assert dev_cmd[1].endswith("vite.js");
+        assert "--port" in dev_cmd;
+    }
+}
+
+test "a missing vite install is an error, not a silent bunx fallback" {
+    import tempfile;
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+    import from jaclang.runtimelib.client.vite_bundler { _build_vite_command }
+
+    if get_bun() is None {
+        testskip("bun is required but could not be located/installed");
+    }
+    # install_packages runs before every build, so an unresolvable vite means
+    # that install failed. Falling back to `bun x vite` would paper over it by
+    # reintroducing the node dependency this whole path exists to remove.
+    with tempfile.TemporaryDirectory() as tmp {
+        build_dir = Path(tmp) / "client";
+        build_dir.mkdir();
+        try {
+            _build_vite_command(build_dir, ["build"]);
+            assert False , "expected ClientBundleError when vite is absent";
+        } except ClientBundleError as e {
+            assert "node_modules" in str(e);
+        }
+    }
+}
+
+obj _CountingBuilder(ClientBundleBuilder) {
+    has digest: str = "d1",
+        builds: int = 0;
+
+    override def _compile_bundle(
+        module: ModuleType, module_path: Path
+    ) -> ClientBundle {
+        self.builds += 1;
+        return ClientBundle(
+            module_name=module.__name__,
+            code="js",
+            client_functions=[],
+            client_globals=[],
+            hash="h"
+        );
+    }
+
+    override def _emitted_digest -> str {
+        return self.digest;
+    }
+}
+
+test "a changed emitted tree invalidates the cached bundle" {
+    (module, ) = Jac.jac_import("client_app", FIXTURES);
+    builder = _CountingBuilder();
+    builder.build(module);
+    assert builder.builds == 1;
+    builder.build(module);
+    assert builder.builds == 1 , "unchanged inputs must serve the cached bundle";
+    builder.digest = "d2";
+    builder.build(module);
+    assert builder.builds == 2 , "changed emitted output must rebuild the bundle";
+}
+
+test "emitted tree digest tracks content not just mtimes" {
+    import os;
+    import tempfile;
+    import from jaclang.runtimelib.client_bundle { emitted_tree_digest }
+    tmp = tempfile.mkdtemp(prefix="jac_emit_digest_");
+    js_path = os.path.join(tmp, "a.js");
+    with open(js_path, "w") as f {
+        f.write("export const a = 1;");
+    }
+    first = emitted_tree_digest(Path(tmp));
+    st = os.stat(js_path);
+    with open(js_path, "w") as f {
+        f.write("export const a = 2;");
+    }
+    os.utime(js_path, ns=(st.st_atime_ns, st.st_mtime_ns));
+    second = emitted_tree_digest(Path(tmp));
+    assert first != second , "content changes must change the digest even at equal mtimes";
+    assert emitted_tree_digest(Path(tmp) / "missing") == "" , "missing tree digests empty";
 }

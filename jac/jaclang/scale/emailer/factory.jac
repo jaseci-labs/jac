@@ -1,6 +1,5 @@
 import importlib;
 import logging;
-import from typing { Any }
 import from jaclang.scale.emailer.emailer { Emailer }
 
 glob _registry: dict[str, type] = {},
@@ -36,7 +35,7 @@ def _import_dotted(path: str) -> type {
 }
 
 def _instantiate(
-    cls: type, provider: str, config: dict[str, Any], from_address: str, enabled: bool
+    cls: type, provider: str, config: dict[str, any], from_address: str, enabled: bool
 ) -> Emailer | None {
     try {
         return cls(config=config, from_address=from_address, enabled=enabled);
@@ -52,7 +51,7 @@ def _instantiate(
     }
 }
 
-def create(config: dict[str, Any]) -> Emailer | None {
+def create(config: dict[str, any]) -> Emailer | None {
     provider = (config.get('provider') or '').strip();
     if not provider {
         logger.info(

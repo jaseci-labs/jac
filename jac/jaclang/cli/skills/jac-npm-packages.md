@@ -1,6 +1,6 @@
 ---
 name: jac-npm-packages
-description: How to add npm packages to jac.toml and import them in .cl.jac files, plus DOM/value refs with `Ref[T]` fields, ref forwarding, and React hooks (useCallback, useMemo). Load when a task uses third-party npm libraries or needs a ref. This covers CONSUMING npm packages - to PUBLISH a Jac package to npm, see `jac-packaging`.
+description: How to add npm packages to jac.toml and import them in client `.jac` files, plus DOM/value refs with `Ref[T]` fields, ref forwarding, and React hooks (useCallback, useMemo). Load when a task uses third-party npm libraries or needs a ref. This covers CONSUMING npm packages - to PUBLISH a Jac package to npm, see `jac-packaging`.
 ---
 
 > **jac-shadcn projects** (has `[jac-shadcn]` in jac.toml): the template ships only `clsx`, `tailwind-merge`, and `tw-animate-css` in `[dependencies.npm]`. Each shadcn component's own peer deps (radix-ui, etc.) are added automatically when you run `jac install --shadcn <component>` - don't add those by hand. Any *other* npm package (charts, icons, ...) you still add yourself, as below.
@@ -49,10 +49,10 @@ def:pub TextInput() -> JsxElement {
     def handle_click(e: MouseEvent) {
         if inputRef.current { inputRef.current.focus(); }
     }
-    return <div>
+    <div>
         <input ref={inputRef} type="text" />
         <button onClick={handle_click}>Focus</button>
-    </div>;
+    </div>
 }
 ```
 
@@ -69,13 +69,13 @@ A component opts into receiving a ref by declaring a **trailing parameter typed 
 
 ```jac
 def:pub FancyInput(placeholder: str, ref: Ref[HTMLInputElement] = Ref()) -> JsxElement {
-    return <input ref={ref} placeholder={placeholder} className="fancy" />;
+    <input ref={ref} placeholder={placeholder} className="fancy" />
 }
 
 # Parent: point a ref at the component, reach the inner <input>
 def:pub ParentForm() -> JsxElement {
     has inputRef: Ref[HTMLInputElement] = Ref();
-    return <FancyInput ref={inputRef} placeholder="Type here" />;
+    <FancyInput ref={inputRef} placeholder="Type here" />
 }
 ```
 
@@ -88,7 +88,7 @@ def:pub ParentForm() -> JsxElement {
 `has` = useState, `can with entry` = useEffect, `Ref[T]` field = useRef. For the rest, import directly:
 
 ```jac
-import from react { useCallback, useMemo, useContext, createContext }
+import from "react" { useCallback, useMemo, useContext, createContext }
 ```
 
 ```jac
@@ -97,10 +97,10 @@ def:pub FileUploader() -> JsxElement {
     triggerPicker: any = useCallback(lambda {
         if fileInputRef.current { fileInputRef.current.click(); }
     }, []);
-    return <div>
+    <div>
         <input ref={fileInputRef} type="file" style={{"display": "none"}} />
         <button onClick={triggerPicker}>Upload</button>
-    </div>;
+    </div>
 }
 ```
 

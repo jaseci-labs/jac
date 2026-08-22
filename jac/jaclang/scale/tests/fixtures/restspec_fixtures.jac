@@ -282,7 +282,7 @@ obj TreeNode {
 }
 
 def _tree_depth(n: TreeNode) -> int {
-    return 1 + max([_tree_depth(c) for c in n.children], default=0);
+    return 1 + max([_tree_depth(c) for c in n.children], `default=0);
 }
 
 def _tree_count(n: TreeNode) -> int {
@@ -318,4 +318,49 @@ def create_tree_func(`root: TreeNode) -> dict {
         "depth": _tree_depth(`root),
         "node_count": _tree_count(`root)
     };
+}
+
+# ============================================================================
+# Raw response body: @restspec(envelope=False) + produces
+# Public (`:pub`) so the raw-body path is exercised without an auth header --
+# the motivating case is an unauthenticated `curl | bash` installer script.
+# ============================================================================
+"""Raw body with an explicit content type."""
+@restspec(
+    method=HTTPMethod.GET,
+    path="/raw/script.sh",
+    produces="text/x-shellscript",
+    envelope=False
+)
+def:pub raw_script -> str {
+    return "#!/usr/bin/env bash\necho jac\n";
+}
+
+"""Raw body with no `produces` falls back to text/plain."""
+@restspec(method=HTTPMethod.GET, path="/raw/plain", envelope=False)
+def:pub raw_plain -> str {
+    return "plain body";
+}
+
+"""A non-str return under envelope=False is JSON-encoded into the body, but
+without the transport envelope wrapping it."""
+@restspec(
+    method=HTTPMethod.GET, path="/raw/json", produces="application/json", envelope=False
+)
+def:pub raw_json -> dict {
+    return {"a": 1};
+}
+
+"""Envelope stays on by default -- regression guard for the opt-in."""
+@restspec(method=HTTPMethod.GET, path="/raw/enveloped")
+def:pub still_enveloped -> str {
+    return "wrapped";
+}
+
+
+"""Function with a custom path and NO method= (#8000 f3): must default to
+POST and register a live route instead of an unroutable "" method."""
+@restspec(path="/custom/no-method-func")
+def no_method_func -> dict {
+    return {"message": "no_method_func executed"};
 }

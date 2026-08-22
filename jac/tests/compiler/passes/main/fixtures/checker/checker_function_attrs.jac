@@ -1,7 +1,6 @@
 """Test function type attribute access."""
 
 import types;
-import from typing { Callable }
 
 def takes_callable(func: Callable[[int], int]) -> None {
     _code = func.__code__;

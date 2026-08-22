@@ -46,7 +46,7 @@ curl -X POST http://localhost:8000/user/register -H "Content-Type: application/j
   "identities": [{"type": "username", "value": "alice"},
                  {"type": "email", "value": "a@example.com"}],
   "credential": {"type": "password", "password": "secret123"},
-  "profile": {"firstname": "Alice"}}'              # profile optional; 201, no token
+  "profile": {"firstname": "Alice"}}'              # profile optional; response includes a token
 
 curl -X POST http://localhost:8000/user/login -H "Content-Type: application/json" -d '{
   "identity": {"type": "username", "value": "alice"},
@@ -94,4 +94,6 @@ No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/G
 - Don't "fix" a 401 by making the endpoint `:pub` - that changes whose graph it runs on, not just who may call it.
 - `:pub` and authenticated endpoints can live in the same file - visibility is per-declaration.
 - Client calls to an authenticated endpoint without a session raise an error containing `"UNAUTHORIZED"` - catch and redirect to login (`jac-cl-auth`).
-- `register` returns **no token** - call `/user/login` after it. Keep `root_id` from the login response if you plan to use per-user grants (`jac-sv-multi-user`).
+- `register` returns a token too (verified), but `login`'s response is the canonical source of `token` + `root_id` - keep `root_id` if you plan to use per-user grants (`jac-sv-multi-user`).
+
+Deep dive bundled with the CLI: `jac guide reference/persistence` (auth + per-user roots in the full persistence reference).

@@ -68,8 +68,8 @@ def _extract_result(body: any) -> list[any] {
         raw = data["result"];
         out: list[any] = [];
         if raw {
-            for entry in raw {
-                out.append(entry);
+            for `entry in raw {
+                out.append(`entry);
             }
         }
         return out;

@@ -50,7 +50,7 @@ impl Scheduler.stop -> None {
     }
 }
 
-impl Scheduler.wait -> None {
+impl Scheduler.`wait -> None {
     if not self._running {
         return;
     }
@@ -58,7 +58,7 @@ impl Scheduler.wait -> None {
         return;
     }
     try {
-        while not self._done_event.wait(timeout=0.5) { }
+        while not self._done_event.`wait(timeout=0.5) { }
     } except KeyboardInterrupt {
         logger.info("Scheduler interrupted, shutting down...");
     }
@@ -80,13 +80,13 @@ impl Scheduler._run_loop -> None {
     while self._running {
         self._pick_up_new_tasks(heap);
         if not heap {
-            self._stop_event.wait(timeout=1.0);
+            self._stop_event.`wait(timeout=1.0);
             continue;
         }
         (next_ts, idx, task) = heap[0];
         delay = next_ts - datetime.datetime.now(datetime.timezone.utc).timestamp();
         if delay > 0 {
-            self._stop_event.wait(timeout=delay);
+            self._stop_event.`wait(timeout=delay);
         }
         if not self._running {
             break;
@@ -228,7 +228,7 @@ impl Scheduler._execute(task: ScheduledTask) -> None {
         if task.is_walker {
             import from jaclang { JacRuntimeInterface as Jac }
             walker_instance = task.target();
-            Jac.spawn(walker_instance, Jac.root());
+            Jac.`spawn(walker_instance, Jac.root());
         } else {
             task.target();
         }

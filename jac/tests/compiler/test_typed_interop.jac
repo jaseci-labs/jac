@@ -56,14 +56,14 @@ def compile_inline(code: str, prog: JacProgram | None = None) -> object {
 test "all typed fixtures compile with correct stubs" {
     function_fixtures = [
         "typed_return_obj.jac",
-        "typed_return_obj_client.cl.jac",
+        "typed_return_obj_client.jac",
         "typed_return_nested.jac",
         "typed_return_enum.jac",
         "typed_optional_union.jac",
         "typed_collection_return.jac",
         "typed_args_obj.jac",
         "typed_bidirectional.jac",
-        "typed_bidirectional_client.cl.jac"
+        "typed_bidirectional_client.jac"
     ];
     spawn_fixtures = [
         "typed_walker_spawn.jac",
@@ -86,13 +86,13 @@ test "all typed fixtures compile with correct stubs" {
 
 # Existing non-typed fixtures still compile (regression guard)
 test "existing fixtures still compile" {
-    mod = compile_fixture("separated_client.cl.jac");
+    mod = compile_fixture("separated_client.jac");
     assert "__jacSpawn" in mod.gen.js;
-    mod = compile_fixture("separated_defpub_client.cl.jac");
+    mod = compile_fixture("separated_defpub_client.jac");
     assert "__jacCallFunction" in mod.gen.js;
-    mod = compile_fixture("mixed_cl_default.cl.jac");
+    mod = compile_fixture("mixed_cl_default.jac");
     assert mod.gen.js.strip();
-    mod = compile_fixture("mixed_sv_default.sv.jac");
+    mod = compile_fixture("mixed_sv_default.jac");
     assert mod.gen.js.strip();
 }
 
@@ -142,7 +142,8 @@ test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
     assert (
         "AnalyticsReport._from_wire(__jac_sv_client.call('sv_relative_provider', "
         "'analyze'"
-    ) in py , "sv->sv typed return must be rehydrated via <RetType>._from_wire(...)";
+    )
+        in py , "sv->sv typed return must be rehydrated via <RetType>._from_wire(...)";
     # The imported archetype must lower to a boundary stub *class* (carrying
     # `_from_wire`), never a function stub that would RPC the type name itself.
     assert "class AnalyticsReport:" in py , (
@@ -153,13 +154,13 @@ test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
     );
 }
 
-# A `.cl.jac` that `sv import`s a function AND the obj type it returns must not
+# A `.jac` that `sv import`s a function AND the obj type it returns must not
 # emit an `async function <Type>()` RPC stub for the type. The type already
 # lowers to a wire `class <Type>`, so a second `<Type>` declaration collides at
 # bundle time with `The symbol "<Type>" has already been declared` (#6795 -- the
 # cl->sv analog of the Python-path #6710 fix). Only the function gets a stub.
 test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
-    js = compile_fixture("sv_import_type_client.cl.jac").gen.js;
+    js = compile_fixture("svc_kwargs/sv_import_type_client.jac").gen.js;
     assert "async function Todo(" not in js , (
         "an sv-imported type must not degrade into a callable RPC function stub"
     );
@@ -171,7 +172,7 @@ test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
 
 # Inline cl block with def:pub produces __jacCallFunction
 test "inline cl block with defpub generates stubs" {
-    code = '"""Test."""\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> Any {\n        data = await get_data("World");\n        return <div>{data}</div>;\n    }\n}\n';
+    code = '"""Test."""\n\nimport os;\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\ndef:pub app() -> Any {\n    data = await get_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(code);
     js = mod.gen.js;
     assert "__jacCallFunction" in js;
@@ -180,7 +181,7 @@ test "inline cl block with defpub generates stubs" {
 
 # Endpoint effects correctly classify readers and writers
 test "endpoint effects classify readers and writers" {
-    code = '"""Test."""\n\nnode Item { has name: str; }\n\nwalker read_items {\n    can visit_root with Root entry { report [-->]; }\n}\n\nwalker add_item {\n    has name: str;\n    can do_add with Root entry { here ++> Item(name=self.name); }\n}\n\ndef:pub get_count() -> int { return 0; }\n\ndef:pub delete_all() -> None { items = []; del items; }\n\ncl {\n    def:pub app() {\n        root spawn read_items();\n        root spawn add_item(name="x");\n        c = await get_count();\n        await delete_all();\n    }\n}\n';
+    code = '"""Test."""\n\nnode Item { has name: str; }\n\nwalker read_items {\n    can visit_root with Root entry { report [-->]; }\n}\n\nwalker add_item {\n    has name: str;\n    can do_add with Root entry { here ++> Item(name=self.name); }\n}\n\ndef:pub get_count() -> int { return 0; }\n\ndef:pub delete_all() -> None { items = []; del items; }\n\ndef:pub app() -> Any {\n    root spawn read_items();\n    root spawn add_item(name="x");\n    c = await get_count();\n    await delete_all();\n    return <div>{c}</div>;\n}\n';
     mod = compile_inline(code);
     effects = mod.gen.client_manifest.endpoint_effects;
     assert "walker:read_items" in effects;
@@ -363,7 +364,7 @@ test "tight: nested __to_wire serializes inner fields" {
     mod = compile_fixture("typed_return_nested.jac");
     js = mod.gen.js;
     assert "this.address.__to_wire()" in js
-    or "this.address ? this.address.__to_wire()" in js , "Person.__to_wire should serialize nested Address field";
+        or "this.address ? this.address.__to_wire()" in js , "Person.__to_wire should serialize nested Address field";
 }
 
 # list[Obj] field in __from_wire should .map each element

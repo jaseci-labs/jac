@@ -1,20 +1,10 @@
 impl IdentityStorage.hash_password(password: str) -> str {
-    rounds = get_scale_config().get_auth_config()['password_hash_rounds'];
-    return str(
-        bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=rounds)).decode(
-            'utf-8'
-        )
-    );
+    cost = get_scale_config().get_auth_config()['password_hash_cost'];
+    return _scrypt_hash(password, n=2 ** int(cost));
 }
 
 impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool {
-    try {
-        return bool(
-            bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
-        );
-    } except ValueError {
-        return False;
-    }
+    return _scrypt_verify(password, password_hash);
 }
 
 impl IdentityStorage.create_user(
@@ -144,6 +134,23 @@ impl IdentityStorage.ensure_user_by_id(user_id: str) -> str | None {
     return root_id;
 }
 
+impl IdentityStorage.reset_root(user_id: str) -> str | None {
+    import from jaclang.jac0core.constructs { Root }
+    import from jaclang { JacRuntime as Jac }
+
+    existing = self.get_user_by_id(user_id);
+    if not existing {
+        return None;
+    }
+    user_root = Root();
+    Jac.save(user_root);
+    Jac.commit(user_root);
+    root_id = user_root.__jac__.id.hex;
+    now = datetime.now(UTC).isoformat();
+    self._update_fields(user_id, {'root_id': root_id, 'updated_at': now});
+    return root_id;
+}
+
 impl IdentityStorage.authenticate(
     identifier: str, password: str
 ) -> dict[str, any] | None {
@@ -195,9 +202,9 @@ impl IdentityStorage.update_password(
     found = False;
     for cred in credentials {
         if cred.get('type') == 'password'
-        and IdentityStorage.verify_password(
-            current_password, cred.get('password_hash', '')
-        ) {
+            and IdentityStorage.verify_password(
+                current_password, cred.get('password_hash', '')
+            ) {
             found = True;
             break;
         }
@@ -234,6 +241,43 @@ impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str
     }
     self._update_credentials(user_id, credentials);
     return {'user_id': user_id, 'message': 'Password updated successfully'};
+}
+
+impl IdentityStorage.expire_legacy_credentials(
+    user_id: (str | None) = None
+) -> list[str] {
+    ids: list[str] = [];
+    if user_id is not None {
+        ids = [user_id];
+    } else {
+        offset = 0;
+        while True {
+            page = self.list_all_users(limit=500, offset=offset);
+            if not page {
+                break;
+            }
+            ids.extend([str(u['user_id']) for u in page]);
+            offset += 500;
+        }
+    }
+    expired: list[str] = [];
+    now = datetime.now(UTC).isoformat();
+    for uid in ids {
+        has_legacy = False;
+        for cred in self._get_credentials(uid) {
+            if cred.get('type') == 'password'
+                and _is_prescrypt(str(cred.get('password_hash', ''))) {
+                has_legacy = True;
+            }
+        }
+        if has_legacy
+            and self._update_fields(
+                uid, {'requires_password_reset': True, 'updated_at': now}
+            ) {
+            expired.append(uid);
+        }
+    }
+    return expired;
 }
 
 impl IdentityStorage.get_root_id(user_id: str) -> str | None {

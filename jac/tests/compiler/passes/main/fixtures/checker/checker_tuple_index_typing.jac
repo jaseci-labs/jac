@@ -17,7 +17,7 @@ def per_position_ok(t: tuple[str, bytes]) -> None {
 def three_slots_ok(t: tuple[int, str, bytes]) -> None {
     a: int = t[0];  # <-- ok
     s: str = t[1];  # <-- ok
-    by: bytes = t[2];  # <-- ok
+    `by: bytes = t[2];  # <-- ok
 }
 
 

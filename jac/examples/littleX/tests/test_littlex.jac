@@ -8,7 +8,6 @@ Run with:  jac test test_littlex.jac
 """
 
 import os;
-import pytest;
 import from tempfile { mkdtemp }
 import from jaclang.runtimelib.testing { JacTestClient, TestResponse }
 

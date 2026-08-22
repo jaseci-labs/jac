@@ -1,20 +1,30 @@
-import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree {
+    AtomUnit,
+    BinaryExpr,
+    Bool,
+    Float,
+    Int,
+    MultiString,
+    String,
+    UnaryExpr,
+    UniNode
+}
 
-def fold_const(expr: (uni.UniNode | None)) -> tuple {
+def fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
     if expr is None {
         return (False, None);
     }
-    if isinstance(expr, uni.Int) or isinstance(expr, uni.Float) {
+    if isinstance(expr, Int) or isinstance(expr, Float) {
         return (True, expr.lit_value);
     }
-    if isinstance(expr, uni.Bool) {
+    if isinstance(expr, Bool) {
         return (True, bool(expr.lit_value));
     }
-    if isinstance(expr, uni.String) {
+    if isinstance(expr, String) {
         v = expr.lit_value;
         return (isinstance(v, str), v if isinstance(v, str) else None);
     }
-    if isinstance(expr, uni.MultiString) {
+    if isinstance(expr, MultiString) {
         parts: list[str] = [];
         for s in (expr.strings or []) {
             (ok, v) = fold_const(s);
@@ -25,10 +35,10 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
         }
         return (True, "".join(parts));
     }
-    if isinstance(expr, uni.AtomUnit) {
+    if isinstance(expr, AtomUnit) {
         return fold_const(expr.value);
     }
-    if isinstance(expr, uni.UnaryExpr) {
+    if isinstance(expr, UnaryExpr) {
         (ok, v) = fold_const(expr.operand);
         if not ok {
             return (False, None);
@@ -52,7 +62,7 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
         }
         return (False, None);
     }
-    if isinstance(expr, uni.BinaryExpr) {
+    if isinstance(expr, BinaryExpr) {
         (lok, lv) = fold_const(expr.left);
         if not lok {
             return (False, None);
@@ -87,25 +97,24 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
                     return (True, lv % rv);
                 }
                 if opv == "**"
-                and isinstance(lv, int)
-                and isinstance(rv, int)
-                and rv >= 0
-                and abs(lv) < 1024
-                and rv < 63 {
+                    and isinstance(lv, int)
+                    and isinstance(rv, int)
+                    and abs(lv) < 1024
+                    and abs(rv) < 63 {
                     return (True, lv ** rv);
                 }
                 if opv == "<<"
-                and isinstance(lv, int)
-                and isinstance(rv, int)
-                and 0 <= rv
-                and rv < 64 {
+                    and isinstance(lv, int)
+                    and isinstance(rv, int)
+                    and 0 <= rv
+                    and rv < 64 {
                     return (True, lv << rv);
                 }
                 if opv == ">>"
-                and isinstance(lv, int)
-                and isinstance(rv, int)
-                and 0 <= rv
-                and rv < 64 {
+                    and isinstance(lv, int)
+                    and isinstance(rv, int)
+                    and 0 <= rv
+                    and rv < 64 {
                     return (True, lv >> rv);
                 }
                 if opv == "&" and isinstance(lv, int) and isinstance(rv, int) {
@@ -119,10 +128,10 @@ def fold_const(expr: (uni.UniNode | None)) -> tuple {
                 }
             }
             if opv == "*"
-            and isinstance(lv, str)
-            and isinstance(rv, int)
-            and 0 <= rv
-            and rv < 4096 {
+                and isinstance(lv, str)
+                and isinstance(rv, int)
+                and 0 <= rv
+                and rv < 4096 {
                 return (True, lv * rv);
             }
         } except Exception {

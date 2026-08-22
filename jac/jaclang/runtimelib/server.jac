@@ -7,31 +7,46 @@ import os;
 import secrets;
 import sqlite3;
 import threading;
-import from collections.abc { Callable }
-import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
-import from typing {
-    Any,
-    AsyncGenerator,
-    Generator,
-    Literal,
-    TypeAlias,
-    get_type_hints
-}
+import from typing { AsyncGenerator, Generator, TypeAlias, get_type_hints }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
-import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
+import from jaclang.runtimelib.transport { TransportResponse, Meta }
+import from jaclang.runtimelib.serving.app { ServingApp, transport_to_response }
+import from jaclang.runtimelib.serving.datatypes {
+    HTMLResponse,
+    JSONResponse,
+    Request,
+    Response as ServingResponse
+}
+import from jaclang.runtimelib.serving.endpoint {
+    APIParameter,
+    HTTPMethod,
+    JEndPoint,
+    ParameterType
+}
+import from jaclang.runtimelib.serving.middleware {
+    cors_middleware,
+    custom_headers_middleware
+}
+import from jaclang.runtimelib.serving.openapi { register_docs_endpoints }
+import from jaclang.runtimelib.serving.server { ServingServer }
+import from jaclang.runtimelib.static_files { find_static_candidate, is_asset_request }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
 import from jaclang.jac0core.constant { Constants as Con }
 import type from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
 
-glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
-         (str, 'JsonValue')
-     ],
+glob JsonValue: TypeAlias = None
+         | str
+         | int
+         | float
+         | bool
+         | list['JsonValue']
+         | dict[(str, 'JsonValue')],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
 obj UserManager {
@@ -63,27 +78,27 @@ obj ExecutionManager {
         user_manager: UserManager;
 
     async def execute_function(
-        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+        func: Callable[(..., any)], args: dict[(str, any)], username: str
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_sync(
-        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+        func: Callable[(..., any)], args: dict[(str, any)], username: str
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_async(
-        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+        func: Callable[(..., any)], args: dict[(str, any)], username: str
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+        walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker_sync(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+        walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker_async(
-        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+        walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def report_collector(call_state: CallState) -> dict[str, JsonValue];
@@ -95,16 +110,21 @@ obj ExecutionManager {
 obj ModuleIntrospector {
     has module_name: str,
         base_path: (str | None),
+        module_file: (str | None) = None,
         _module: any = None,
-        _functions: dict[(str, Callable[(..., Any)])] = {},
+        _functions: dict[(str, Callable[(..., any)])] = {},
         _walkers: dict[(str, type[WalkerArchetype])] = {},
-        _client_functions: dict[(str, Callable[(..., Any)])] = {},
-        _client_manifest: dict[(str, Any)] = {},
+        _client_functions: dict[(str, Callable[(..., any)])] = {},
+        _client_manifest: dict[(str, any)] = {},
         _bundle: any = None,
         _bundle_error: (str | None) = None,
+        _bundle_epoch: int = 0,
         _bundle_builder: any postinit,
+        _bundle_lock: any postinit,
         _function_access: dict[(str, bool)] = {},
-        _walker_access: dict[(str, bool)] = {};
+        _walker_access: dict[(str, bool)] = {},
+        _spa_routes_loaded: bool = False,
+        _spa_route_patterns: (list[str] | None) = None;
 
     def postinit -> None;
     def load(force_reload: bool = False) -> None;
@@ -113,39 +133,27 @@ obj ModuleIntrospector {
     def _collect_cross_boundary_endpoints -> None;
     def _register_sealed_bindings(sm: dict[str, any], img_root: str) -> None;
     def _fill_endpoint_effect_defaults -> None;
-    def _collect_functions -> dict[str, Callable[(..., Any)]];
+    def _collect_functions -> dict[str, Callable[(..., any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
     def _check_module_freshness -> None;
-    def get_functions -> dict[str, Callable[(..., Any)]];
+    def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
-    def get_client_functions -> dict[str, Callable[(..., Any)]];
+    def get_client_functions -> dict[str, Callable[(..., any)]];
     def resolve_root_app(configured: str = "") -> str;
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
+    def introspect_callable(func: Callable[(..., any)]) -> dict[str, any];
     def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def ensure_bundle -> str;
+    def _invalidate_bundle -> None;
     def render_page(
-        function_name: str, args: dict[(str, Any)], username: str
+        function_name: str, args: dict[(str, any)], username: str
     ) -> dict[str, any];
 
+    def spa_fallback_status(url_path: str) -> int;
+    def has_client_route(url_path: str) -> bool;
+    def _load_spa_routes -> (list[str] | None);
+    def _spa_route_matches(pattern: str, segments: list[str]) -> bool;
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-}
-
-obj ResponseBuilder {
-    static def send_json(
-        handler: BaseHTTPRequestHandler,
-        status: StatusCode,
-        data: dict[(str, JsonValue)]
-    ) -> None;
-
-    static def send_html(
-        handler: BaseHTTPRequestHandler, status: StatusCode, body: str
-    ) -> None;
-
-    static def send_javascript(handler: BaseHTTPRequestHandler, code: str) -> None;
-    static def send_css(handler: BaseHTTPRequestHandler, css: str) -> None;
-    static def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None;
-    static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
 }
 
 obj AuthHandler {
@@ -183,11 +191,11 @@ obj ExecutionHandler {
         user_manager: UserManager;
 
     async def call_function(
-        name: str, args: dict[(str, Any)], username: str
+        name: str, args: dict[(str, any)], username: str
     ) -> TransportResponse;
 
     async def spawn_walker(
-        name: str, fields: dict[(str, Any)], username: str
+        name: str, fields: dict[(str, any)], username: str
     ) -> TransportResponse;
 }
 
@@ -195,6 +203,7 @@ obj JacAPIServer {
     has module_name: str,
         port: int = 8000,
         base_path: str = "",
+        module_file: (str | None) = None,
         is_sv_sibling: bool = False,
         user_manager: UserManager postinit,
         execution_manager: ExecutionManager postinit,
@@ -202,23 +211,28 @@ obj JacAPIServer {
         auth_handler: AuthHandler postinit,
         introspection_handler: IntrospectionHandler postinit,
         execution_handler: ExecutionHandler postinit,
-        server: (HTTPServer | None) postinit,
+        server: any postinit,
+        app: any postinit,
         scheduler: Scheduler postinit;
+
+    def _make_user_manager -> UserManager;
 
     obj RestSpecs {
         has method: str = "",
             path: str = "",
             protocol: APIProtocol = APIProtocol.HTTP,
-            broadcast: bool = False;
+            broadcast: bool = False,
+            produces: str = "",
+            envelope: bool = True;
     }
 
     def postinit -> None;
-    def create_handler -> type[BaseHTTPRequestHandler];
+    def build_app -> ServingApp;
     def load_module(force_reload: bool = False) -> None;
 
     has module: object { getter; }
 
-    def get_functions -> dict[str, Callable[(..., Any)]];
+    def get_functions -> dict[str, Callable[(..., any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
     def print_endpoint_docs -> None;
     def _ensure_sv_siblings -> None;

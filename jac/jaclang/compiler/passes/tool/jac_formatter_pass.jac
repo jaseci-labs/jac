@@ -4,7 +4,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.diagnostics { W5050, E5051 }
 import from jaclang.jac0core.passes { Transform }
 
-obj JacFormatPass(Transform[uni.Module, uni.Module]) {
+obj JacFormatPass(Transform) {
     has _pending_suffixes: list[str] = [],
         _line_has_content: bool = False,
         _rendering_suffix: bool = False;
@@ -32,4 +32,13 @@ obj JacFormatPass(Transform[uni.Module, uni.Module]) {
         align_spaces: int = 0,
         trailing_width: int = 0
     ) -> str;
+}
+
+def format_module(mod: uni.Module) -> str {
+    import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
+    import from jaclang.jac0core.compiler { run_pass }
+    import from jaclang.jac0core.program { JacProgram }
+    return run_pass(
+        JacFormatPass, run_pass(DocIRGenPass, mod, JacProgram()).ir_out, JacProgram()
+    ).ir_out.gen.jac;
 }

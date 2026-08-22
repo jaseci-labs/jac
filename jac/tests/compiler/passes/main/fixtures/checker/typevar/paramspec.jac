@@ -5,7 +5,7 @@ Callable[([Callable[(P, T)]], Callable[(P, T)])] is the Jac form of the
 decorator pattern Callable[[Callable[P, T]], Callable[P, T]].
 """
 
-import from typing { Callable, ParamSpec, TypeVar, TypeVarTuple }
+import from typing { ParamSpec, TypeVarTuple }
 
 glob P = ParamSpec('P'),
      T = TypeVar('T'),

@@ -37,8 +37,8 @@ glob _UNTYPED_BODY: str = (
          "\n"
          "def fetch -> dict[str, str] {\n"
          "    resp = untyped_client.get(\"http://example.com\");\n"
-         "    print(resp.status_code);\n"
-         "    print(resp.headers);\n"
+         "    _ = resp.status_code;\n"
+         "    _ = resp.headers;\n"
          "    return resp.json();\n"
          "}\n"
      ),
@@ -47,7 +47,7 @@ glob _UNTYPED_BODY: str = (
          "\n"
          "def fetch -> dict[str, str] {\n"
          "    resp = get(\"http://example.com\");\n"
-         "    print(resp.headers);\n"
+         "    _ = resp.headers;\n"
          "    return resp.json();\n"
          "}\n"
      );
@@ -68,13 +68,25 @@ def _write_pkg(base_dir: str, name: str, body: str) -> str {
 def _check(src: str, search_dir: str) -> JacProgram {
     sys.path.insert(0, search_dir);
     importlib.invalidate_caches();
+    # Snapshot loaded modules so any test package imported for introspection
+    # can be evicted afterwards: a lingering sys.modules entry makes
+    # find_spec short-circuit to a now-deleted temp path and misclassifies a
+    # later same-named module (order-dependent flake across workers).
+    modules_before = set(sys.modules.keys());
     try {
         prog = JacProgram();
         prog.compile(file_path="untyped_tp_src.jac", use_str=src, type_check=True);
         return prog;
     } finally {
         sys.path.remove(search_dir);
+        for name in (set(sys.modules.keys()) - modules_before) {
+            sys.modules.pop(name, None);
+        }
         importlib.invalidate_caches();
+        # `import from` of an installed untyped .py module can load it into
+        # sys.modules; resolve_module() consults find_spec before sys.path, so
+        # a later project-local case must not inherit that cached origin.
+        sys.modules.pop("untyped_client", None);
     }
 }
 

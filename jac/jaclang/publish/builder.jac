@@ -1,7 +1,7 @@
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
-glob _WHEEL_TIMESTAMP: tuple = (2016, 1, 1, 0, 0, 0),
+glob _WHEEL_TIMESTAMP: tuple[int, int, int, int, int, int] = (2016, 1, 1, 0, 0, 0),
      _SDIST_MTIME: int = 1451606400;
 
 obj WheelBuilder {

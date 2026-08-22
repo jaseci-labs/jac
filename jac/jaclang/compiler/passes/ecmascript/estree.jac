@@ -50,7 +50,7 @@ obj ExpressionStatement(Node) {
 }
 
 obj BlockStatement(Node) {
-    has body: List[Statement] = [],
+    has body: list[Statement] = [],
         `type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
@@ -251,6 +251,12 @@ obj AwaitExpression(Node) {
         `type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
 }
 
+obj YieldExpression(Node) {
+    has argument: (Expression | None) = None,
+        delegate: bool = False,
+        `type: TypingLiteral['YieldExpression'] = 'YieldExpression';
+}
+
 obj TemplateLiteral(Node) {
     has quasis: list[TemplateElement] = [],
         expressions: list[Expression] = [],
@@ -434,11 +440,48 @@ obj IndexInfo {
     has value: (Node | None) = None;
 }
 
-glob Statement = ExpressionStatement | BlockStatement | ReturnStatement | BreakStatement | ContinueStatement | IfStatement | SwitchStatement | ThrowStatement | TryStatement | WhileStatement | ForStatement | ForOfStatement | FunctionDeclaration | VariableDeclaration | ClassDeclaration,
+glob Statement = ExpressionStatement
+         | BlockStatement
+         | ReturnStatement
+         | BreakStatement
+         | ContinueStatement
+         | IfStatement
+         | SwitchStatement
+         | ThrowStatement
+         | TryStatement
+         | WhileStatement
+         | ForStatement
+         | ForOfStatement
+         | FunctionDeclaration
+         | VariableDeclaration
+         | ClassDeclaration,
      Expression = (
-         Identifier | Literal | ThisExpression | ArrayExpression | ObjectExpression | FunctionExpression | ArrowFunctionExpression | UnaryExpression | BinaryExpression | AssignmentExpression | LogicalExpression | MemberExpression | ConditionalExpression | CallExpression | NewExpression | AwaitExpression | TemplateLiteral | JsxElement | JsxFragment
+         Identifier
+         | Literal
+         | ThisExpression
+         | ArrayExpression
+         | ObjectExpression
+         | FunctionExpression
+         | ArrowFunctionExpression
+         | UnaryExpression
+         | BinaryExpression
+         | AssignmentExpression
+         | LogicalExpression
+         | MemberExpression
+         | ConditionalExpression
+         | CallExpression
+         | NewExpression
+         | AwaitExpression
+         | YieldExpression
+         | TemplateLiteral
+         | JsxElement
+         | JsxFragment
      ),
-     Pattern = Identifier | ArrayPattern | ObjectPattern | AssignmentPattern | RestElement,
+     Pattern = Identifier
+         | ArrayPattern
+         | ObjectPattern
+         | AssignmentPattern
+         | RestElement,
      Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration,
      ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
 

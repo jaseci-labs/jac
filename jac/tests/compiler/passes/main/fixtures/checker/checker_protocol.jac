@@ -1,4 +1,3 @@
-import from typing { Protocol }
 
 obj SizeProtocol {
     def __len__()  -> int {

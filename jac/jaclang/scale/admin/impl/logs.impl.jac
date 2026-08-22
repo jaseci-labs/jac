@@ -3,10 +3,10 @@ import json as json_module;
 import logging;
 import time;
 import re;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
 import from jaclang.runtimelib.transport { TransportResponse }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -89,9 +89,8 @@ def _service_to_pod_regex(service: str) -> str {
 def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
     try {
         ns = int(ts_nanos);
-        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000)) + f".{(
-            ns % 1_000_000_000
-        ):09d}Z";
+        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000))
+            + f".{(ns % 1_000_000_000):09d}Z";
     } except (ValueError, TypeError) {
         ts_iso = "";
     }
@@ -135,7 +134,7 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
         }
     }
 
-    trace_match = _TRACE_PREFIX_RE.match(body);
+    trace_match = _TRACE_PREFIX_RE.`match(body);
     if trace_match {
         out["trace_id"] = trace_match.group(1);
     }
@@ -179,27 +178,21 @@ def _build_logql(
 
 
 async def _loki_request(path: str, params: dict) -> dict {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { ClientConnectionError, arequest }
     base = _loki_base_url();
     url = f"{base}{path}";
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(8.0, connect=3.0)
-        ) as client {
-            response = await client.get(url, params=params);
-            response.raise_for_status();
-            return response.json();
-        }
-    } except httpx.TimeoutException as e {
-        raise ConnectionError(f"Loki timeout at {url}: {e}");
-    } except httpx.RequestError as e {
+        response = await arequest("GET", url, params=params, timeout=8.0);
+    } except ClientConnectionError as e {
         raise ConnectionError(f"Loki request failed at {url}: {e}");
-    } except httpx.HTTPStatusError as e {
-        body = e.response.text[:200] if e.response else "";
+    }
+    if not response.ok() {
+        body = response.text()[:200];
         raise ConnectionError(
-            f"Loki returned HTTP {e.response.status_code} at {url}: {body}"
+            f"Loki returned HTTP {response.status_code} at {url}: {body}"
         );
     }
+    return response.json();
 }
 
 
@@ -208,12 +201,12 @@ def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] 
     data = payload.get("data") or {};
     for stream in (data.get("result") or []) {
         labels: dict = stream.get("stream") or {};
-        for entry in (stream.get("values") or []) {
-            if len(entry) < 2 {
+        for `entry in (stream.get("values") or []) {
+            if len(`entry) < 2 {
                 continue;
             }
-            ts_nanos = str(entry[0]);
-            body = str(entry[1]);
+            ts_nanos = str(`entry[0]);
+            body = str(`entry[1]);
             out.append(_parse_log_body(body, labels, ts_nanos));
         }
     }
@@ -425,9 +418,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
                     name="trace_id",
                     data_type="string",
                     required=True,
-                    default=None,
+                    default_value=None,
                     description="K-12 trace id (full UUID or 8-char short form)",
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,

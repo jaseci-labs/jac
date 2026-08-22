@@ -5,17 +5,17 @@ import from jaclang.scale.runtime.gateway.service_registry {
 }
 
 test "service entry has correct defaults" {
-    entry = ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders");
-    assert entry.port == 0;
-    assert entry.url == "";
-    assert entry.pid is None;
-    assert entry.status == ServiceStatus.REGISTERED;
-    assert entry.replicas == 1;
-    assert entry.env == {};
+    `entry = ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders");
+    assert `entry.port == 0;
+    assert `entry.url == "";
+    assert `entry.pid is None;
+    assert `entry.status == ServiceStatus.REGISTERED;
+    assert `entry.replicas == 1;
+    assert `entry.env == {};
 }
 
 test "service entry accepts custom fields" {
-    entry = ServiceEntry(
+    `entry = ServiceEntry(
         name="payments",
         file="payments.jac",
         prefix="/api/payments",
@@ -23,9 +23,9 @@ test "service entry accepts custom fields" {
         replicas=3,
         env={"STRIPE_KEY": "sk_test"}
     );
-    assert entry.port == 8002;
-    assert entry.replicas == 3;
-    assert entry.env["STRIPE_KEY"] == "sk_test";
+    assert `entry.port == 8002;
+    assert `entry.replicas == 3;
+    assert `entry.env["STRIPE_KEY"] == "sk_test";
 }
 
 test "register and lookup by path" {

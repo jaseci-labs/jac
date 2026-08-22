@@ -26,7 +26,7 @@ impl ReadWriteLock.postinit -> None {
 impl ReadWriteLock.acquire_read -> None {
     with self._cond {
         while self._writer or self._writers_waiting > 0 {
-            self._cond.wait();
+            self._cond.`wait();
         }
         self._readers += 1;
     }
@@ -45,7 +45,7 @@ impl ReadWriteLock.acquire_write -> None {
     with self._cond {
         self._writers_waiting += 1;
         while self._writer or self._readers > 0 {
-            self._cond.wait();
+            self._cond.`wait();
         }
         self._writers_waiting -= 1;
         self._writer = True;

@@ -11,7 +11,7 @@ obj AnalyticsReport {
 walker:pub Analyze {
     has count: int;
 
-    can run with `root entry {
+    can run with Root entry {
         report AnalyticsReport(count=self.count, label="analyzed");
     }
 }

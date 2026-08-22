@@ -21,7 +21,7 @@ obj SavableObject {
 
 walker create_custom_object {
     can enter1 with Root entry {
-        self.obj = SavableObject(
+        self.`obj = SavableObject(
             val=0,
             arr=[],
             json={},
@@ -36,15 +36,15 @@ walker create_custom_object {
             ),
             enum_field=Enum.A
         );
-        save(self.obj);
+        save(self.`obj);
 
         # commit the object to db
-        commit(self.obj);
+        commit(self.`obj);
     }
 
     can exit1 with Root exit {
-        print(jid(self.obj));
-        print(self.obj);
+        print(jid(self.`obj));
+        print(self.`obj);
     }
 }
 

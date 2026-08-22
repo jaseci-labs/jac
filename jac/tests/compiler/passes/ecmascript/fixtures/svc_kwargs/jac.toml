@@ -1,0 +1,11 @@
+[project]
+name = "svc-kwargs-fixture"
+
+[scale.microservices.routes]
+sv_import_kwargs = "/kwargs"
+sv_import_kwargs_dup_server = "/kwargs-dup"
+sv_import_posonly_kwonly_server = "/posonly"
+sv_import_cl_block_server = "/clblock"
+sv_import_type_provider = "/typeprov"
+[placement.pins]
+"sv_import_posonly_kwonly_client" = "client"

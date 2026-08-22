@@ -8,6 +8,7 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 """Return ``proj_dir/.jac/client/node_modules``."""
 def client_node_modules(proj_dir: Path) -> Path {
@@ -42,19 +43,23 @@ def write_client_jac_project(
 ) -> Path {
     strict_block = '\n[check]\nuntyped-external = "error"\n' if strict else '';
     (proj_dir / "jac.toml").write_text(
-        '[project]\nname = "' + project_name + '"\nversion = "0.1.0"\n'
-        'entry-point = "' + entry_point + '"\n\n'
-        '[dependencies.npm]\n' + npm_dep_lines + strict_block
+        '[project]\nname = "'
+            + project_name
+            + '"\nversion = "0.1.0"\n' 'entry-point = "'
+            + entry_point
+            + '"\n\n' '[dependencies.npm]\n'
+            + npm_dep_lines
+            + strict_block
     );
     (proj_dir / "lib").mkdir(parents=True, exist_ok=True);
     return proj_dir;
 }
 
-"""Compile and type-check a client ``.cl.jac`` file; return program + codes."""
+"""Compile and type-check a client ``.jac`` file; return program + codes."""
 def check_npm_file(path: Path) -> tuple[JacProgram, list[str], list[str]] {
     program = JacProgram();
     mod = program.compile(str(path));
-    TypeCheckPass(ir_in=mod, prog=program);
+    run_pass(TypeCheckPass, mod, program);
     err_codes = [
         e.code.code
         for e in program.errors_had
@@ -144,7 +149,7 @@ def make_npm_client_project(proj_dir: Path, strict: bool = False) -> Path {
     write_client_jac_project(
         proj_dir,
         "npmfixture",
-        "lib/utils.cl.jac",
+        "lib/utils.jac",
         'clsx = "^2.1.1"\ntailwind-merge = "^2.5.0"\n',
         strict=strict
     );
@@ -183,7 +188,7 @@ def make_iface_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "ifacefixture", "lib/app.cl.jac", 'cfgpkg = "^1.0.0"\n'
+        proj_dir, "ifacefixture", "lib/app.jac", 'cfgpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -222,7 +227,7 @@ def make_relational_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "relfixture", "lib/app.cl.jac", 'relpkg = "^1.0.0"\n'
+        proj_dir, "relfixture", "lib/app.jac", 'relpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -252,7 +257,7 @@ def make_generic_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "genfixture", "lib/app.cl.jac", 'genpkg = "^1.0.0"\n'
+        proj_dir, "genfixture", "lib/app.jac", 'genpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -294,7 +299,7 @@ def make_modifiers_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "modfixture", "lib/app.cl.jac", 'modpkg = "^1.0.0"\n'
+        proj_dir, "modfixture", "lib/app.jac", 'modpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -327,7 +332,7 @@ def make_cyclic_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "cycfixture", "lib/app.cl.jac", 'cycpkg = "^1.0.0"\n'
+        proj_dir, "cycfixture", "lib/app.jac", 'cycpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -358,7 +363,7 @@ def make_callable_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "callfixture", "lib/app.cl.jac", 'callpkg = "^1.0.0"\n'
+        proj_dir, "callfixture", "lib/app.jac", 'callpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
@@ -408,7 +413,7 @@ def make_degrade_npm_project(proj_dir: Path) -> Path {
         }
     );
     write_client_jac_project(
-        proj_dir, "degfixture", "lib/app.cl.jac", 'degpkg = "^1.0.0"\n'
+        proj_dir, "degfixture", "lib/app.jac", 'degpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }

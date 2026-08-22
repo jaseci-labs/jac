@@ -12,10 +12,15 @@ Run: jac start main.jac
 """
 
 # Client-side UI - served as static SPA by the gateway
-cl {
-    import from .frontend { app as ClientApp }
 
-    def:pub app -> any {
-        return <ClientApp/>;
-    }
+import from .frontend { app as ClientApp }
+import from shared.models { qty_label }
+
+def:pub app -> any {
+    <ClientApp/>
+}
+
+
+def:pub cart_label(qty: int) -> str {
+    return qty_label(qty);
 }

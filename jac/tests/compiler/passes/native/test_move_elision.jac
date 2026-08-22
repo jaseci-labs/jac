@@ -17,7 +17,7 @@ move-lowering fires identically with `type_check=True` and `type_check=False`
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
@@ -39,7 +39,9 @@ def compile_fixture(
 ) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
     ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), type_check=type_check
+        file_path=str(os.path.join(FIXTURES, fixture)),
+        type_check=type_check,
+        options=native_force_opts()
     );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
@@ -71,8 +73,8 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
 
 test "move-lowering elides exactly the `b = a` alias retain" {
     # A/B on identical IR: the ONLY difference is whether the move is lowered.
-    off = retain_calls("move_elision.na.jac", False);
-    on = retain_calls("move_elision.na.jac", True);
+    off = retain_calls("move_elision.jac", False);
+    on = retain_calls("move_elision.jac", True);
     assert off - on == 1 , f"move-lowering should elide exactly one retain call; off={off} on={on}";
     # `take(x: Box)` receives an i64 (pointer-as-int), so the aliasing `b = a`
     # is the sole retain; move-lowering removes it entirely.
@@ -82,14 +84,14 @@ test "move-lowering elides exactly the `b = a` alias retain" {
 test "move-lowering is independent of type_check (native-owned proof)" {
     # The proof lives in the native codegen path, not the type-check schedule, so
     # `nacompile`'s `type_check=False` gets the same elision the checker path does.
-    on_unchecked = retain_calls("move_elision.na.jac", True, False);
-    on_checked = retain_calls("move_elision.na.jac", True, True);
+    on_unchecked = retain_calls("move_elision.jac", True, False);
+    on_checked = retain_calls("move_elision.jac", True, True);
     assert on_unchecked == 0 , f"expected 0 retains with type_check=False, got {on_unchecked}";
     assert on_checked == 0 , f"expected 0 retains with type_check=True, got {on_checked}";
 }
 
 test "move-lowering nulls the source slot (keeps the free sound)" {
-    (eng, ir) = compile_fixture("move_elision.na.jac");
+    (eng, ir) = compile_fixture("move_elision.jac");
     text = str(ir.gen.llvm_ir);
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is
@@ -98,7 +100,7 @@ test "move-lowering nulls the source slot (keeps the free sound)" {
 }
 
 test "move-lowering is sound at runtime: correct result, no leak, no double free" {
-    (eng, _) = compile_fixture("move_elision.na.jac");
+    (eng, _) = compile_fixture("move_elision.jac");
     f = get_func(eng, "run_moves", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
     # A heavy loop: a double free would corrupt the heap and crash here; a leak

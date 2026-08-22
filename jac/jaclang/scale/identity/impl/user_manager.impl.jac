@@ -23,23 +23,34 @@ impl JacScaleUserManager.postinit -> None {
         }
     }
 
-    db_config = get_scale_config().get_database_config();
-    mongodb_uri = db_config.get('mongodb_uri');
-
-    if mongodb_uri is not None {
-        import from jaclang.scale.persistence.db { get_mongo_client }
-        client = get_mongo_client();
-        db = client['jac_db'];
-        self._identity_storage = MongoIdentityStorage(users_col=db['users']);
-        self._identity_storage.ensure_indexes();
-    } else {
-        import os;
-        base_for_data = os.environ.get('JAC_DATA_PATH', self.base_path);
-        data_dir = os.path.join(base_for_data, '.jac', 'data');
-        os.makedirs(data_dir, exist_ok=True);
-        db_path = os.path.join(data_dir, 'users.db');
-        self._identity_storage = SqliteIdentityStorage(db_path=db_path);
+    import from jaclang.scale.persistence.pg {
+        NO_DATABASE_RESOLVED,
+        shared_store,
+        shared_store_failure
     }
+    store = shared_store();
+    if store is None {
+        raise RuntimeError(
+            'identity storage requires a reachable Postgres database: '
+            f"{shared_store_failure() or NO_DATABASE_RESOLVED}. Refusing to "
+            'fall back to a second credential store; fix the database and '
+            'restart.'
+        );
+    }
+    self._identity_storage = PgIdentityStorage(store=store);
+    self._gateway_owned_identity = _serves_gateway_owned_identity();
+}
+
+
+def _serves_gateway_owned_identity -> bool {
+    import os;
+    sv_name = os.environ.get('JAC_SV_NAME', '').strip();
+    if not sv_name or sv_name == '__gateway__' {
+        return False;
+    }
+    ms_config = get_scale_config().get_microservices_config();
+    identity_config = dict(ms_config.get('identity', {}));
+    return bool(identity_config.get('gateway_owned', True));
 }
 
 impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, any] {
@@ -117,6 +128,21 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
         _root_id_request_cache.set(new_cache);
     }
     return result;
+}
+
+impl JacScaleUserManager.reset_root(identifier: str) -> str | None {
+    user = self.get_user(identifier);
+    if not user {
+        return None;
+    }
+    new_root = self._identity_storage.reset_root(str(user.get('user_id') or ''));
+    if new_root {
+        cache = _root_id_request_cache.get();
+        if cache is not None {
+            _root_id_request_cache.set(None);
+        }
+    }
+    return new_root;
 }
 
 impl JacScaleUserManager.ensure_user_root(user_id: str) -> str | None {
@@ -206,12 +232,12 @@ impl JacScaleUserManager.create_jwt_token(
             payload['role'] = role;
         }
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM);
+    return jwt_encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM);
 }
 
 impl JacScaleUserManager.get_jwt_claims(token: str) -> dict | None {
     try {
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
+        return jwt_decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
     } except Exception as e {
         logger.debug(f"Failed to decode JWT token: {str(e)}");
         return None;
@@ -235,10 +261,10 @@ impl JacScaleUserManager.validate_jwt_token_detail(
         };
     }
     try {
-        decoded = jwt.decode(
-            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
+        decoded = jwt_decode(
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], verify_exp=True
         );
-    } except jwt.ExpiredSignatureError {
+    } except JWTExpiredError {
         return {
             'status': 'expired',
             'user_id': None,
@@ -272,12 +298,21 @@ impl JacScaleUserManager.validate_jwt_token_detail(
         };
     }
     if check_existence and not self.user_exists(user_id) {
-        return {
-            'status': 'unknown_user',
-            'user_id': None,
-            'exp': decoded.get('exp'),
-            'reason': 'User associated with token no longer exists'
-        };
+        provisioned = self.ensure_user_root(user_id)
+            if self._gateway_owned_identity
+            else None;
+        if not provisioned {
+            return {
+                'status': 'unknown_user',
+                'user_id': None,
+                'exp': decoded.get('exp'),
+                'reason': 'User associated with token no longer exists'
+            };
+        }
+        logger.info(
+            f"Provisioned a local root for gateway-issued user {user_id} "
+            f"on this service"
+        );
     }
     return {
         'status': 'ok',
@@ -289,8 +324,8 @@ impl JacScaleUserManager.validate_jwt_token_detail(
 
 impl JacScaleUserManager.refresh_jwt_token(token: str) -> str | None {
     try {
-        decoded = jwt.decode(
-            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
+        decoded = jwt_decode(
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM], verify_exp=True
         );
         if decoded.get('type') == 'api_key' {
             return None;
@@ -600,6 +635,21 @@ impl JacScaleUserManager.set_requires_password_reset(
         return {'error': 'User not found'};
     }
     return {'message': 'Password reset requirement updated', 'user_id': user_id};
+}
+
+impl JacScaleUserManager.expire_legacy_credentials(
+    username: (str | None) = None
+) -> dict[str, any] {
+    target_id: (str | None) = None;
+    if username is not None {
+        user = self.get_user(username);
+        if not user {
+            return {'error': 'User not found'};
+        }
+        target_id = str(user.get('user_id', username));
+    }
+    expired = self._identity_storage.expire_legacy_credentials(target_id);
+    return {'expired_user_ids': expired, 'count': len(expired)};
 }
 
 impl JacScaleUserManager.is_password_required(user_id: str) -> bool {

@@ -13,7 +13,6 @@ import sys;
 import tempfile;
 import shutil;
 import importlib;
-import pytest;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import from unittest.mock { patch }
@@ -24,10 +23,9 @@ import from jaclang.cli.commands { execution, transform }
 import from jaclang.jac0core.jir { get_jir_cache_dir, get_module_cache_path }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.jac0core.helpers {
-    read_file_with_encoding,
-    read_toml_with_encoding
-}
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_module }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
+import from jaclang.jac0core.tomlio { read_toml_with_encoding }
 import tomllib;
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
@@ -52,12 +50,15 @@ test "pyfunc 1" {
     py_out_path = os.path.join(FIXTURES, "pyfunc_1.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "def greet2(**kwargs: Any) -> None {" in output;
     assert output.count("with entry {") == 14;
@@ -72,12 +73,15 @@ test "pyfunc 2" {
     py_out_path = os.path.join(FIXTURES, "pyfunc_2.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "class X {\n    with entry {\n        a_b = 67;" in output;
     assert "br = b'Hello\\\\\\\\nWorld'" in output;
@@ -90,12 +94,15 @@ test "pyfunc 3" {
     py_out_path = os.path.join(FIXTURES, "pyfunc_3.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "if (0 <= x <= 5) {" in output;
     assert "  case _:\n" in output;
@@ -108,12 +115,15 @@ test "pyfunc binop" {
     py_out_path = os.path.join(FIXTURES, "pyfunc_binop.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp {
         tmp.write(output);
@@ -142,12 +152,15 @@ test "py2jac" {
     py_out_path = os.path.join(FIXTURES, "py2jac.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "match Container(inner=Inner(x=a, y=b)) {\n" in output;
     assert "case Container(inner = Inner(x = a, y = 0)):\n" in output;
@@ -155,23 +168,48 @@ test "py2jac" {
     assert "case _:\n" in output;
 }
 
+test "py2jac metaclass" {
+    Jac.attach_program(JacProgram());
+    py_out_path = os.path.join(FIXTURES, "py2jac_metaclass.py");
+    with open(py_out_path) as f {
+        file_source = f.read();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
+    }
+    # The class keyword `metaclass=Meta` must survive py2jac, alongside the
+    # positional base class.
+    assert "class Foo(Base, metaclass=Meta)" in output;
+}
+
 test "py2jac params" {
     Jac.attach_program(JacProgram());
     py_out_path = os.path.join(FIXTURES, "py2jac_params.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert (
-        "def isinstance(`obj: object, class_or_tuple: _ClassInfo, /) -> bool {" in output
+        "def isinstance(`obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
+        in output
     );
     assert (
-        "def len(`obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {" in output
+        "def len(`obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
+        in output
     );
 }
 
@@ -195,12 +233,15 @@ test "py2jac augassign and doc" {
     py_out_path = os.path.join(FIXTURES, "py2jac_augassign_doc.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "x += 2;" in output;
     assert '"""inner doc"""; def inner()' in output;
@@ -211,12 +252,15 @@ test "py2jac reassign semantics" {
     py_out_path = os.path.join(FIXTURES, "py2jac_reassign.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        jac_code = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        jac_code = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
 
     # Key check: reassignments should NOT use 'let'
@@ -251,12 +295,15 @@ test "py namedexpr" {
     py_out_path = os.path.join(FIXTURES, "py_namedexpr.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "(x := 10)" in output;
 }
@@ -266,12 +313,15 @@ test "py bool parentheses" {
     py_out_path = os.path.join(FIXTURES, "py_bool_expr.py");
     with open(py_out_path) as f {
         file_source = f.read();
-        output = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
-            ),
-            prog=JacProgram()
-        ).ir_out.unparse();
+        output = unparse_module(
+            PyastBuildPass(
+                ir_in=uni.PythonModuleAst(
+                    py_ast.parse(file_source),
+                    orig_src=uni.Source(file_source, py_out_path)
+                ),
+                prog=JacProgram()
+            ).ir_out
+        );
     }
     assert "(prev_token_index is None)" in output;
     assert "(next_token_index is None)" in output;
@@ -308,7 +358,7 @@ test "deep imports interp mode" {
     # Delete JIR cache files to force recompilation
     cache_dir = get_jir_cache_dir() / "modules";
     if cache_dir.exists() {
-        for cache_file in cache_dir.glob("*deep_import*") {
+        for cache_file in cache_dir.`glob("*deep_import*") {
             cache_file.unlink();
         }
     }
@@ -329,7 +379,8 @@ test "deep imports interp mode" {
     stdout_value = captured.getvalue();
     # Main module must be registered in the hub; transitive imports may also
     # appear when their bytecode isn't cached yet, so only assert presence.
-    assert os.path.join(FIXTURES, "deep_import_interp.jac") in Jac.get_program().mod.hub;
+    assert os.path.join(FIXTURES, "deep_import_interp.jac")
+        in Jac.get_program().mod.hub;
     assert "one level deeperslHello World!" in stdout_value;
 
     Jac.set_base_path(FIXTURES);
@@ -338,7 +389,8 @@ test "deep imports interp mode" {
     # Main module must be in the hub. Typed-tree inference resolves imports
     # during analysis, so transitive imports may also appear; assert
     # presence rather than exact count (same contract as jac_import above).
-    assert os.path.join(FIXTURES, "deep_import_interp.jac") in Jac.get_program().mod.hub;
+    assert os.path.join(FIXTURES, "deep_import_interp.jac")
+        in Jac.get_program().mod.hub;
 }
 
 test "deep outer imports from loc" {
@@ -602,7 +654,8 @@ test "import jac from py" {
 
     stdout_value = captured.getvalue();
     assert (
-        stdout_value == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
+        stdout_value
+        == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4"
         "\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n"
     );
 }

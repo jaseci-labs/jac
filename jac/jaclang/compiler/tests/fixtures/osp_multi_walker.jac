@@ -10,10 +10,13 @@ cl runs it in-process through the portable kernel (a local-archetype walker
 lowers `spawn` to `osp_spawn`, not the `__jacSpawn` server RPC).
 """
 
-node Item { has val: int; }
+node Item {
+    has val: int;
+}
 
 walker Acc {
     has total: int = 0;
+
     can grab with Item entry {
         self.total = self.total + here.val;
     }
@@ -28,24 +31,22 @@ def multi_walker_py() -> dict[str, any] {
     return {"a": a.total, "b": b.total};
 }
 
-na {
-    def multi_walker_na() -> dict[str, any] {
-        a = Acc();
-        b = Acc();
-        a spawn Item(val=5);
-        b spawn Item(val=100);
-        a spawn Item(val=5);
-        return {"a": a.total, "b": b.total};
-    }
+
+def multi_walker_na() -> dict[str, any] {
+    a = Acc();
+    b = Acc();
+    a spawn Item(val=5);
+    b spawn Item(val=100);
+    a spawn Item(val=5);
+    return {"a": a.total, "b": b.total};
 }
 
-cl {
-    def multi_walker_cl() -> dict[str, any] {
-        a = Acc();
-        b = Acc();
-        a spawn Item(val=5);
-        b spawn Item(val=100);
-        a spawn Item(val=5);
-        return {"a": a.total, "b": b.total};
-    }
+
+def multi_walker_cl() -> dict[str, any] {
+    a = Acc();
+    b = Acc();
+    a spawn Item(val=5);
+    b spawn Item(val=100);
+    a spawn Item(val=5);
+    return {"a": a.total, "b": b.total};
 }

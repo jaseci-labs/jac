@@ -34,7 +34,7 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             )
         );
         second_is_usage = isinstance(second, dict)
-        and all(k in _usage_keys for k in second.keys());
+            and all(k in _usage_keys for k in second.keys());
         if first_is_tool and second_is_usage {
             output = first;
             usage = second;
@@ -48,8 +48,8 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     }
 
     if isinstance(output, list)
-    and len(output) > 0
-    and isinstance(output[0], MockToolCall) {
+        and len(output) > 0
+        and isinstance(output[0], MockToolCall) {
         tool_calls = [o.to_tool_call() for o in output];
         self.log_info(
             f"Mock LLM call completed with {len(tool_calls)} batch tool calls"

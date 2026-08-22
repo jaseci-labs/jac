@@ -13,7 +13,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
     }
     tp = _unwrap_newtype(_unwrap_annotated(tp));
 
-    if tp in (Any, object) {
+    if tp in (typing.Any, object) {
         return random.choice(
             [_rand_str(), random.randint(0, 9999), True, None, random.uniform(0, 1)]
         );
@@ -66,7 +66,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
 
     origin = get_origin(tp);
     if origin in (list, set, frozenset, deque) {
-        elem_type = get_args(tp)[0] if get_args(tp) else Any;
+        elem_type = get_args(tp)[0] if get_args(tp) else typing.Any;
         size = random.randint(0, 5);
         elems = [
             random_value_for_type(elem_type, _depth=_depth + 1, _max_depth=_max_depth)
@@ -94,8 +94,8 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         }
     }
     if origin is dict {
-        key_t = get_args(tp)[0] if get_args(tp) else Any;
-        val_t = get_args(tp)[1] if len(get_args(tp)) > 1 else Any;
+        key_t = get_args(tp)[0] if get_args(tp) else typing.Any;
+        val_t = get_args(tp)[1] if len(get_args(tp)) > 1 else typing.Any;
         def mk_key -> any {
             k = random_value_for_type(key_t, _depth=_depth + 1, _max_depth=_max_depth);
             try {
@@ -117,7 +117,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         req: set[str] = getattr(tp, '__required_keys__', set());
         opt: set[str] = getattr(tp, '__optional_keys__', set());
         anns = tp.__annotations__;
-        out: dict = {};
+        out: dict[str, any] = {};
         for k in req {
             out[k] = random_value_for_type(
                 anns[k], _depth=_depth + 1, _max_depth=_max_depth
@@ -152,10 +152,10 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         } except Exception {
             type_hints = {};
         }
-        kwargs: dict = {};
+        kwargs: dict[str, any] = {};
         for f in dc_fields(tp) {
             if f.init {
-                if f.default is not MISSING or f.default_factory is not MISSING {
+                if f.`default is not MISSING or f.default_factory is not MISSING {
                     if random.random() < 0.35 {
                         continue;
                     }
@@ -193,12 +193,14 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
                 tp.__bound__, _depth=_depth + 1, _max_depth=_max_depth
             );
         }
-        return random_value_for_type(Any, _depth=_depth + 1, _max_depth=_max_depth);
+        return random_value_for_type(
+            typing.Any, _depth=_depth + 1, _max_depth=_max_depth
+        );
     }
 
     if get_origin(tp) is Callable {
         args = get_args(tp);
-        ret_t = Any;
+        ret_t = typing.Any;
         if args and len(args) == 2 {
             ret_t = args[1];
         }
@@ -211,21 +213,23 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
     }
 
     if tp in (list, set, frozenset, tuple, dict, deque) {
-        return random_value_for_type(Any, _depth=_depth + 1, _max_depth=_max_depth);
+        return random_value_for_type(
+            typing.Any, _depth=_depth + 1, _max_depth=_max_depth
+        );
     }
 
     if isinstance(tp, type) {
         try {
             sig = inspect.signature(tp);
-            kwargs: dict = {};
+            kwargs: dict[str, any] = {};
             for (name, param) in sig.parameters.items() {
                 if name == 'self' {
                     continue;
                 }
                 ann = param.annotation
                     if param.annotation is not inspect._empty
-                    else Any;
-                if param.default is not inspect._empty and random.random() < 0.4 {
+                    else typing.Any;
+                if param.`default is not inspect._empty and random.random() < 0.4 {
                     continue;
                 }
                 if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD) {

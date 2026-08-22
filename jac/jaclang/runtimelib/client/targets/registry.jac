@@ -43,7 +43,7 @@ def get_target_type(name: str) -> TargetType {
 class ClientTarget {
     has name: str,
         project_dir: Optional[Path] = None,
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "",
         required_dependencies: list[str] = [],
@@ -92,6 +92,9 @@ def get_target_registry -> TargetRegistry {
     import from jaclang.runtimelib.client.targets.registry { TargetRegistry }
     if _registry is None {
         _registry = TargetRegistry();
+
+        import from jaclang.runtimelib.client.targets.register { register_targets }
+        register_targets();
     }
     return _registry;
 }

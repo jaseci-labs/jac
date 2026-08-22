@@ -18,43 +18,54 @@ program-lifetime graph arena so locations are not refcount-freed mid-walk. cl is
 unwired here, so the cross-backend assert is na vs py.
 """
 
-node N { has val: int; }
+node N {
+    has val: int;
+}
 
 walker Ex {
     has log: list = [];
+
     can enter with N entry {
         self.log.append(here.val);
         visit [-->];
     }
+
     can leave with N exit {
         self.log.append(0 - here.val);
     }
 }
 
 def exit_ordering_py() -> dict[str, any] {
-    root_n = N(val=1); a = N(val=2); b = N(val=3);
-    root_n ++> a; root_n ++> b;
+    root_n = N(val=1);
+    a = N(val=2);
+    b = N(val=3);
+    root_n ++> a;
+    root_n ++> b;
     w = Ex();
     w spawn root_n;
     return {"order": w.log};
 }
 
-na {
-    def exit_ordering_na() -> dict[str, any] {
-        root_n = N(val=1); a = N(val=2); b = N(val=3);
-        root_n ++> a; root_n ++> b;
-        w = Ex();
-        w spawn root_n;
-        return {"order": w.log};
-    }
+
+def exit_ordering_na() -> dict[str, any] {
+    root_n = N(val=1);
+    a = N(val=2);
+    b = N(val=3);
+    root_n ++> a;
+    root_n ++> b;
+    w = Ex();
+    w spawn root_n;
+    return {"order": w.log};
 }
 
-cl {
-    def exit_ordering_cl() -> dict[str, any] {
-        root_n = N(val=1); a = N(val=2); b = N(val=3);
-        root_n ++> a; root_n ++> b;
-        w = Ex();
-        w spawn root_n;
-        return {"order": w.log};
-    }
+
+def exit_ordering_cl() -> dict[str, any] {
+    root_n = N(val=1);
+    a = N(val=2);
+    b = N(val=3);
+    root_n ++> a;
+    root_n ++> b;
+    w = Ex();
+    w spawn root_n;
+    return {"order": w.log};
 }

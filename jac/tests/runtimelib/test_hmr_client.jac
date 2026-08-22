@@ -448,7 +448,7 @@ test "reload with code change preserves functionality" {
 # --- TestHMRClientCodeRecompilation ---
 
 # NOTE: test "client JS file updated on change" is commented out because it was
-# marked with @pytest.mark.xfail in the Python version due to HotReloader having
+# marked xfail in the Python version due to HotReloader having
 # a global state issue causing cross-test contamination.
 #
 # test "client JS file updated on change" {
@@ -462,11 +462,7 @@ test "jacjsx import added in real compilation" {
         compiled_dir.mkdir(parents=True, exist_ok=True);
         app_file = unique_dir / "app.jac";
         app_file.write_text(
-            "cl {\n"
-            "    def app() {\n"
-            "        return <div>Hello</div>;\n"
-            "    }\n"
-            "}\n"
+            "    def app() {\n" "        return <div>Hello</div>;\n" "    }\n"
         );
         watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
         reloader = HotReloader(
@@ -484,11 +480,9 @@ test "jacjsx import added in real compilation" {
         error_file = unique_dir / ".jac" / "client" / ".jac-build-error.json";
         bad_file = unique_dir / "app.jac";
         bad_file.write_text(
-            "cl {\n"
             "    def app() {\n"
             "        return <div UNCLOSED;\n"  # malformed JSX / syntax error
             "    }\n"
-            "}\n"
         );
         reloader._recompile_client_code(str(bad_file));
         assert not entry_file.exists() , "_entry.js must not be created just to display an error";
@@ -500,11 +494,7 @@ test "jacjsx import added in real compilation" {
         assert reloader.build_status()["status"] == "error";
         # --- fix the error: recovery clears the mirrored error ---
         bad_file.write_text(
-            "cl {\n"
-            "    def app() {\n"
-            "        return <div>Fixed</div>;\n"
-            "    }\n"
-            "}\n"
+            "    def app() {\n" "        return <div>Fixed</div>;\n" "    }\n"
         );
         reloader._recompile_client_code(str(bad_file));
         reloader.record_ok();  # _process_change settles to ok after a clean rebuild
@@ -523,13 +513,11 @@ test "client recompile preserves directory structure" {
         components_dir = unique_dir / "components";
         components_dir.mkdir(parents=True, exist_ok=True);
         # Create a component file in the subdirectory
-        component_file = components_dir / "Button.cl.jac";
+        component_file = components_dir / "Button.jac";
         component_file.write_text(
-            "cl {\n"
             "    def Button() {\n"
             "        return <button>Click me</button>;\n"
             "    }\n"
-            "}\n"
         );
         watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
         reloader = HotReloader(
@@ -730,17 +718,16 @@ test "server impl file reloads base jac file" {
     }
 }
 
-"""Test that changing a .impl.jac file triggers recompilation of its base .cl.jac file."""
+"""Test that changing a .impl.jac file triggers recompilation of its base .jac file."""
 test "client impl file reloads base cl.jac file" {
     with TemporaryDirectory() as tmpdir {
         unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
         unique_dir.mkdir(parents=True, exist_ok=True);
         compiled_dir = unique_dir / ".jac" / "client" / "compiled";
         compiled_dir.mkdir(parents=True, exist_ok=True);
-        # Create base client-side .cl.jac file
-        base_file = unique_dir / "Button.cl.jac";
+        # Create base client-side .jac file
+        base_file = unique_dir / "Button.jac";
         base_file.write_text(
-            "cl {\n"
             "    obj ButtonProps {\n"
             "        def get_label() -> str;\n"
             "    }\n"
@@ -749,16 +736,13 @@ test "client impl file reloads base cl.jac file" {
             "        label = props.get_label();\n"
             "        return <button>{label}</button>;\n"
             "    }\n"
-            "}\n"
         );
         # Create .impl.jac file - Version 1
         impl_file = unique_dir / "Button.impl.jac";
         impl_file.write_text(
-            "cl {\n"
             "    impl ButtonProps.get_label() -> str {\n"
             '        return "Click Me";\n'
             "    }\n"
-            "}\n"
         );
         watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
         reloader = HotReloader(
@@ -772,11 +756,9 @@ test "client impl file reloads base cl.jac file" {
         assert "Click Me" in content1;
         # Version 2: Update impl file to change label
         impl_file.write_text(
-            "cl {\n"
             "    impl ButtonProps.get_label() -> str {\n"
             '        return "Submit Now";\n'
             "    }\n"
-            "}\n"
         );
         # Simulate impl file change - should trigger base file recompilation
         reloader._process_change(str(impl_file));
@@ -789,28 +771,22 @@ test "client impl file reloads base cl.jac file" {
 }
 
 # --- TestHMRRecursiveDependency ---
-"""When app.cl.jac imports Button.cl.jac, recompiling app should also generate Button.js."""
+"""When app.jac imports Button.jac, recompiling app should also generate Button.js."""
 test "dependency compiled when imported file recompiled" {
     with TemporaryDirectory() as tmpdir {
         unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
         unique_dir.mkdir(parents=True, exist_ok=True);
         # Button component in components/
-        btn_file = unique_dir / "Button.cl.jac";
+        btn_file = unique_dir / "Button.jac";
         btn_file.write_text(
-            "cl {\n"
-            "    def Button() {\n"
-            "        return <button>Click</button>;\n"
-            "    }\n"
-            "}\n"
+            "    def Button() {\n" "        return <button>Click</button>;\n" "    }\n"
         );
         # App imports Button
-        app_file = unique_dir / "app.cl.jac";
+        app_file = unique_dir / "app.jac";
         app_file.write_text(
-            "cl import from .Button { Button }\n"
-            "cl {\n"
-            "    def App() {\n"
-            "        return <div><Button /></div>;\n"
-            "    }\n"
+            "import from .Button { Button }\n"
+            "def App() {\n"
+            "    return <div><Button /></div>;\n"
             "}\n"
         );
         watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
@@ -820,7 +796,7 @@ test "dependency compiled when imported file recompiled" {
         # Compile app - should recursively compile Button as a dependency
         reloader._recompile_client_code(str(app_file));
         compiled_dir = unique_dir / ".jac" / "client" / "compiled" / "Button.js";
-        assert compiled_dir.exists() , "Button.js should be compiled as a dependency of app.cl.jac";
+        assert compiled_dir.exists() , "Button.js should be compiled as a dependency of app.jac";
     }
 }
 
@@ -856,9 +832,7 @@ test "routing activates when pages are created after startup" {
         unique_dir.mkdir(parents=True, exist_ok=True);
         (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
         main_file = unique_dir / "main.jac";
-        main_file.write_text(
-            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
-        );
+        main_file.write_text("def app() {\n    return <div>App</div>;\n}\n");
         # No pages/ yet: a refresh must not fabricate routing artifacts
         reloader._refresh_routing(str(main_file));
         assert not (compiled_dir / "_routes.js").exists();
@@ -867,7 +841,7 @@ test "routing activates when pages are created after startup" {
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+            "def View() -> JsxPage {\n    return <div>Home</div>;\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         index_js = compiled_dir / "pages" / "index.js";
@@ -879,7 +853,7 @@ test "routing activates when pages are created after startup" {
         # (e.g. the directory was moved into place)
         about_file = pages_dir / "about.jac";
         about_file.write_text(
-            "cl {\n    def page() {\n        return <div>About</div>;\n    }\n}\n"
+            "def View() -> JsxPage {\n    return <div>About</div>;\n}\n"
         );
         index_mtime = index_js.stat().st_mtime_ns;
         reloader._refresh_routing(str(index_file));
@@ -888,8 +862,8 @@ test "routing activates when pages are created after startup" {
         assert (compiled_dir / "pages" / "about.js").exists() , "rescan should compile pages that missed their change event";
         assert index_js.stat().st_mtime_ns == index_mtime , "rescan must not recompile pages whose output already exists";
         assert compiler._has_pages;
-        entry = (compiled_dir / "_entry.js").read_text();
-        assert "BrowserRouter" in entry , "entry must upgrade to the router form without a restart";
+        `entry = (compiled_dir / "_entry.js").read_text();
+        assert "BrowserRouter" in `entry , "entry must upgrade to the router form without a restart";
     }
 }
 
@@ -899,12 +873,12 @@ test "router entry survives an error then fix cycle" {
         unique_dir.mkdir(parents=True, exist_ok=True);
         (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
         (unique_dir / "main.jac").write_text(
-            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+            "def app() {\n    return <div>App</div>;\n}\n"
         );
         pages_dir = unique_dir / "pages";
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
-        good_source = "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n";
+        good_source = "def View() -> JsxPage {\n    return <div>Home</div>;\n}\n";
         index_file.write_text(good_source);
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -914,7 +888,7 @@ test "router entry survives an error then fix cycle" {
         # Break the page: the app entry is untouched; the error goes out-of-band
         entry_mtime = entry_file.stat().st_mtime_ns;
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div UNCLOSED;\n    }\n}\n"
+            "def View() -> JsxPage {\n    return <div UNCLOSED;\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -927,7 +901,7 @@ test "router entry survives an error then fix cycle" {
         error_data = json.loads(error_file.read_text());
         assert "index.jac" in str(error_data["file"]) , "mirrored error must name the failing file";
         assert "Failed to compile" in str(error_data["message"])
-        and "index.jac" in str(error_data["message"]) , "mirrored error must carry the actual compiler message";
+            and "index.jac" in str(error_data["message"]) , "mirrored error must carry the actual compiler message";
         # Fix the page: router still intact, mirrored error cleared
         index_file.write_text(good_source);
         reloader._recompile_client_code(str(index_file));
@@ -943,13 +917,13 @@ test "asset deletion removes the copy without touching the entry" {
         unique_dir.mkdir(parents=True, exist_ok=True);
         (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
         (unique_dir / "main.jac").write_text(
-            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+            "def app() {\n    return <div>App</div>;\n}\n"
         );
         pages_dir = unique_dir / "pages";
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+            "def View() -> JsxPage {\n    return <div>Home</div>;\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -977,13 +951,13 @@ test "no-op routing refresh does not rewrite entry or routes" {
         unique_dir.mkdir(parents=True, exist_ok=True);
         (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
         (unique_dir / "main.jac").write_text(
-            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+            "def app() {\n    return <div>App</div>;\n}\n"
         );
         pages_dir = unique_dir / "pages";
         pages_dir.mkdir();
         index_file = pages_dir / "index.jac";
         index_file.write_text(
-            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+            "def View() -> JsxPage {\n    return <div>Home</div>;\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
@@ -1006,7 +980,7 @@ test "deleted client module drops its stale compiled output" {
         (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
         components_dir = unique_dir / "components";
         components_dir.mkdir();
-        footer_file = components_dir / "Footer.cl.jac";
+        footer_file = components_dir / "Footer.jac";
         footer_file.write_text(
             "def:pub Footer() {\n    return <footer>hi</footer>;\n}\n"
         );
@@ -1029,7 +1003,7 @@ def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple {
     unique_dir.mkdir(parents=True, exist_ok=True);
     (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
     (unique_dir / "main.jac").write_text(
-        "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        "def app() {\n    return <div>App</div>;\n}\n"
     );
     pages_dir = unique_dir / "pages";
     pages_dir.mkdir();
@@ -1039,7 +1013,7 @@ def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple {
         page_file = pages_dir / rel;
         page_file.parent.mkdir(parents=True, exist_ok=True);
         page_file.write_text(
-            f"cl {{\n    def page() {{\n        return <div>{label}</div>;\n    }}\n}}\n"
+            f"def View() -> JsxPage {{\n    return <div>{label}</div>;\n}}\n"
         );
         reloader._recompile_client_code(str(page_file));
     }
@@ -1099,5 +1073,21 @@ test "renaming a page moves its route" {
         assert "PagesHome" in routes and "PagesIndex" not in routes , "the route must move to the new name";
         assert (compiled_dir / "pages" / "home.js").exists();
         assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
+    }
+}
+
+test "hyphenated page filenames sanitize to valid JS identifiers in _routes.js" {
+    with TemporaryDirectory() as tmpdir {
+        (reloader, compiled_dir, pages_dir) = _routed_project(
+            tmpdir, extra_pages={"features/about-connections.jac": "About"}
+        );
+        routes = (compiled_dir / "_routes.js").read_text();
+        assert "PagesFeaturesAboutConnections" in routes;
+        for line in routes.splitlines() {
+            if line.startswith("import ") {
+                imported_name = line.split(" as ")[1].split(" ")[0];
+                assert "-" not in imported_name , f"invalid JS identifier: {imported_name}";
+            }
+        }
     }
 }

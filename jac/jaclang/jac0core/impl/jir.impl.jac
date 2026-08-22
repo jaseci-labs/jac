@@ -22,13 +22,7 @@ impl JirHeader.is_compatible -> bool {
     if self.python_version != expected_py {
         return False;
     }
-    import from importlib.metadata { version as pkg_version }
-    try {
-        jac_ver = pkg_version('jaclang');
-    } except Exception {
-        jac_ver = "0.0.0";
-    }
-    expected_jac = zlib.crc32(jac_ver.encode()) & 0xFFFFFFFF;
+    expected_jac = zlib.crc32(jaclang_version().encode()) & 0xFFFFFFFF;
     if self.jaclang_version_hash != expected_jac {
         return False;
     }

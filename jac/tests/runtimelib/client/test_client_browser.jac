@@ -14,7 +14,6 @@ headless Chromium. Skips cleanly when Playwright/Chromium is unavailable.
 """
 
 import time;
-import pytest;
 import from subprocess { Popen }
 import from tempfile { TemporaryDirectory }
 
@@ -30,7 +29,7 @@ def _require_playwright -> any {
     try {
         import from playwright.sync_api { sync_playwright }
     } except ImportError {
-        pytest.skip("playwright not installed");
+        testskip("playwright not installed");
     }
     return sync_playwright;
 }
@@ -90,7 +89,7 @@ test "auto cache dedupes reader and invalidates on write" {
                     page.on(
                         "request",
                         lambda (req: any) { "/walker/ping_server" in req.url
-                        and ping_requests.append(req.url); },
+                            and ping_requests.append(req.url); },
                     );
                     _goto(page, base, "/");
                     ping_btn = page.locator('[data-testid="ping-btn"]');
@@ -197,25 +196,25 @@ test "auth round trip in old and new calling forms" {
 
                     assert _click_and_wait_status(
                         page, user_old, password, "signup-old"
-                    ) == "signup_old_ok";
+                    )
+                        == "signup_old_ok";
 
                     page.locator('[data-testid="logout-btn"]').click();
                     page.wait_for_timeout(500);
-                    assert _click_and_wait_status(
-                        page, user_old, password, "login-old"
-                    ) == "login_old_ok";
+                    assert _click_and_wait_status(page, user_old, password, "login-old")
+                        == "login_old_ok";
 
                     page.locator('[data-testid="logout-btn"]').click();
                     page.wait_for_timeout(500);
                     assert _click_and_wait_status(
                         page, user_new, password, "signup-new"
-                    ) == "signup_new_ok";
+                    )
+                        == "signup_new_ok";
 
                     page.locator('[data-testid="logout-btn"]').click();
                     page.wait_for_timeout(500);
-                    assert _click_and_wait_status(
-                        page, user_new, password, "login-new"
-                    ) == "login_new_ok";
+                    assert _click_and_wait_status(page, user_new, password, "login-new")
+                        == "login_new_ok";
                 } finally {
                     browser.close();
                 }

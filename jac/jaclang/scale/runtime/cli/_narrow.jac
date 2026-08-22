@@ -1,7 +1,4 @@
-import from typing { Any }
-
-
-def dget(blob: Any, key: str) -> dict {
+def dget(blob: any, key: str) -> dict {
     if not isinstance(blob, dict) {
         return {};
     }
@@ -10,7 +7,7 @@ def dget(blob: Any, key: str) -> dict {
 }
 
 
-def lget(blob: Any, key: str) -> list {
+def lget(blob: any, key: str) -> list {
     if not isinstance(blob, dict) {
         return [];
     }
@@ -19,7 +16,7 @@ def lget(blob: Any, key: str) -> list {
 }
 
 
-def sget(blob: Any, key: str) -> str | None {
+def sget(blob: any, key: str) -> str | None {
     if not isinstance(blob, dict) {
         return None;
     }
@@ -28,7 +25,7 @@ def sget(blob: Any, key: str) -> str | None {
 }
 
 
-def bget(blob: Any, key: str, fallback: bool) -> bool {
+def bget(blob: any, key: str, fallback: bool) -> bool {
     if not isinstance(blob, dict) {
         return fallback;
     }
@@ -37,7 +34,7 @@ def bget(blob: Any, key: str, fallback: bool) -> bool {
 }
 
 
-def iget(blob: Any, key: str, fallback: int) -> int {
+def iget(blob: any, key: str, fallback: int) -> int {
     if not isinstance(blob, dict) {
         return fallback;
     }
@@ -53,13 +50,29 @@ def iget(blob: Any, key: str, fallback: int) -> int {
 }
 
 
-def pod_spec(deployment: Any) -> dict {
+def fget(blob: any, key: str, fallback: float) -> float {
+    if not isinstance(blob, dict) {
+        return fallback;
+    }
+    val = blob.get(key);
+    if val is None {
+        return fallback;
+    }
+    try {
+        return float(val);
+    } except Exception {
+        return fallback;
+    }
+}
+
+
+def pod_spec(deployment: any) -> dict {
     return dget(dget(dget(deployment, "spec"), "template"), "spec");
 }
 
 
 def effective_resources(
-    deployment: Any
+    deployment: any
 ) -> tuple[str | None, str | None, str | None, str | None] {
     containers = lget(pod_spec(deployment), "containers");
     if not containers or not isinstance(containers[0], dict) {

@@ -1,10 +1,11 @@
-import from typing { Callable }
 import from threading { Thread, Event as _ThreadStop, Lock }
 import from jaclang.scale.events.broker {
     EventStreamBroker,
     Event,
     RetryPolicy,
-    HealthStatus
+    HealthStatus,
+    StreamPosition,
+    starts_at_earliest
 }
 import from jaclang.scale.events.streams._stream_common { consumer_loop, wait_or_stop }
 import logging;
@@ -79,7 +80,7 @@ obj LocalEventStream(EventStreamBroker) {
                 return;
             }
             log = self._topics.get(topic, []);
-            if start_from == "earliest" {
+            if starts_at_earliest(start_from) {
                 self._offsets[key] = 0;
             } else {
                 self._offsets[key] = len(log);
@@ -101,7 +102,7 @@ obj LocalEventStream(EventStreamBroker) {
         group: str | None = None,
         max_messages: int = 1,
         timeout_seconds: float = 5.0,
-        start_from: str = "latest"
+        start_from: str = StreamPosition.LATEST.value
     ) -> list[Event] {
         grp = group or self._default_group;
         self._ensure_offset(topic, grp, start_from);
@@ -128,7 +129,7 @@ obj LocalEventStream(EventStreamBroker) {
             if self._stop_event.is_set() {
                 return [];
             }
-            sig.wait(timeout=min(remaining, 1.0));
+            sig.`wait(timeout=min(remaining, 1.0));
             if self._stop_event.is_set() {
                 return [];
             }
@@ -190,7 +191,7 @@ obj LocalEventStream(EventStreamBroker) {
         handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
-        start_from: str = "latest"
+        start_from: str = StreamPosition.LATEST.value
     ) {
         grp = group or self._default_group;
         retry_policy = retry or self._default_retry;

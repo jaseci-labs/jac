@@ -1,12 +1,12 @@
-import from typing { Any, BinaryIO, Generator }
+import from typing { BinaryIO, Generator }
 import from jaclang.scale.storage.bucket_storage { BucketStorage }
 
 class GcsStorage(BucketStorage) {
     has bucket: str,
         public_read: bool = False,
         project_id: (str | None) = None,
-        _client: Any = None,
-        _bucket: Any = None;
+        _client: any = None,
+        _bucket: any = None;
 
     def init(
         self: GcsStorage,
@@ -33,7 +33,7 @@ class GcsStorage(BucketStorage) {
         self: GcsStorage, prefix: str = "", recursive: bool = False
     ) -> Generator[str, None, None];
 
-    override def get_metadata(self: GcsStorage, path: str) -> dict[str, Any];
+    override def get_metadata(self: GcsStorage, path: str) -> dict[str, any];
     override def copy(self: GcsStorage, source: str, destination: str) -> bool;
     override def get_url(
         self: GcsStorage, path: str, expires_in: (int | None) = 3600

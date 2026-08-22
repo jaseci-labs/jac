@@ -1,4 +1,4 @@
-import circle_clean;
+import from circle_clean { Circle, RAD, ShapeType, calculate_area }
 
 glob expected_area = 78.53981633974483;
 

@@ -30,7 +30,7 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      WIN_TRIPLE = "x86_64-pc-windows-msvc",
-     FIXTURE = "pe_smoke.na.jac";
+     FIXTURE = "pe_smoke.jac";
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -44,9 +44,35 @@ def _inject_pe_entry(ir: str) -> str {
         if ("@exit" in ir or '@"exit"' in ir)
         else 'declare void @exit(i32)\n\n';
     fltused = "" if "@_fltused" in ir else '@_fltused = global i32 0\n\n';
-    return ir + (
-        '\n' + glob_ir + exit_decl + fltused + 'declare i32 @__getmainargs(ptr, ptr, ptr, i32, ptr)\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '  store i32 %argc, ptr @__jac_argc\n' + '  store ptr %argv, ptr @__jac_argv\n' + '  call void @jac_entry()\n' + '  ret i32 0\n' + '}\n\n' + 'define void @_jac_win_start() {\n' + 'entry:\n' + '  %argc.addr = alloca i32\n' + '  %argv.addr = alloca ptr\n' + '  %env.addr = alloca ptr\n' + '  %si = alloca i32\n' + '  store i32 0, ptr %si\n' + '  %gr = call i32 @__getmainargs(ptr %argc.addr, ptr %argv.addr, ptr %env.addr, i32 0, ptr %si)\n' + '  %ac = load i32, ptr %argc.addr\n' + '  %av = load ptr, ptr %argv.addr\n' + '  %r = call i32 @main(i32 %ac, ptr %av)\n' + '  call void @exit(i32 %r)\n' + '  ret void\n' + '}\n'
-    );
+    return ir
+        + (
+            '\n'
+            + glob_ir
+            + exit_decl
+            + fltused
+            + 'declare i32 @__getmainargs(ptr, ptr, ptr, i32, ptr)\n\n'
+            + 'define i32 @main(i32 %argc, ptr %argv) {\n'
+            + 'entry:\n'
+            + '  store i32 %argc, ptr @__jac_argc\n'
+            + '  store ptr %argv, ptr @__jac_argv\n'
+            + '  call void @jac_entry()\n'
+            + '  ret i32 0\n'
+            + '}\n\n'
+            + 'define void @_jac_win_start() {\n'
+            + 'entry:\n'
+            + '  %argc.addr = alloca i32\n'
+            + '  %argv.addr = alloca ptr\n'
+            + '  %env.addr = alloca ptr\n'
+            + '  %si = alloca i32\n'
+            + '  store i32 0, ptr %si\n'
+            + '  %gr = call i32 @__getmainargs(ptr %argc.addr, ptr %argv.addr, ptr %env.addr, i32 0, ptr %si)\n'
+            + '  %ac = load i32, ptr %argc.addr\n'
+            + '  %av = load ptr, ptr %argv.addr\n'
+            + '  %r = call i32 @main(i32 %ac, ptr %av)\n'
+            + '  call void @exit(i32 %r)\n'
+            + '  ret void\n'
+            + '}\n'
+        );
 }
 
 
@@ -214,6 +240,92 @@ test "imports resolve to msvcrt.dll via the import directory" {
     }
     # the glibc-only malloc_usable_size must be aliased to msvcrt's _msize
     assert "malloc_usable_size" not in syms;
+}
+
+test "data import: dllimport global resolves through an IAT slot (#7626 C4)" {
+    # A `dllimport` data global makes LLVM reference `__imp_ext_counter`;
+    # the linker must import `ext_counter`, give it an IAT slot, emit NO
+    # .text call thunk for it, and resolve the reference to the slot.
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    src = (
+        'target triple = "x86_64-pc-windows-msvc"\n'
+        + '@ext_counter = external dllimport global i64\n'
+        + 'declare void @exit(i32)\n'
+        + 'define i64 @read_it() {\n'
+        + 'entry:\n'
+        + '  %v = load i64, i64* @ext_counter\n'
+        + '  ret i64 %v\n'
+        + '}\n'
+        + 'define void @_jac_win_start() {\n'
+        + 'entry:\n'
+        + '  %r = call i64 @read_it()\n'
+        + '  call void @exit(i32 0)\n'
+        + '  ret void\n'
+        + '}\n'
+    );
+    mod = llvm.parse_assembly(src);
+    mod.verify();
+    tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(
+        opt=2, codemodel="large"
+    );
+    relobj = tm.emit_object(mod);
+    img = link_pe(relobj);
+    pe = parse_pe(img);
+    _all_names: list = [];
+    for (_d, _ns) in pe["imports"].items() {
+        _all_names.extend(_ns);
+    }
+    assert "ext_counter" in _all_names , (
+        f"expected 'ext_counter' among imports, got {pe['imports']}"
+    );
+    assert "__imp_ext_counter" not in _all_names , (
+        "the __imp_ prefix must be stripped before the hint/name table"
+    );
+}
+
+test "data import: direct reference to imported data is a loud link error (#7626 C4)" {
+    # Without dllimport the object carries a direct reference to the
+    # data symbol; PE cannot absorb the IAT indirection there, so the
+    # linker must refuse with guidance instead of emitting a thunk that
+    # would read the slot address as the value (the old silent-garbage
+    # failure).
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    src = (
+        'target triple = "x86_64-pc-windows-msvc"\n'
+        + '@stdout = external global i8*\n'
+        + 'declare void @exit(i32)\n'
+        + 'define i8* @read_it() {\n'
+        + 'entry:\n'
+        + '  %v = load i8*, i8** @stdout\n'
+        + '  ret i8* %v\n'
+        + '}\n'
+        + 'define void @_jac_win_start() {\n'
+        + 'entry:\n'
+        + '  %r = call i8* @read_it()\n'
+        + '  call void @exit(i32 0)\n'
+        + '  ret void\n'
+        + '}\n'
+    );
+    mod = llvm.parse_assembly(src);
+    mod.verify();
+    tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(
+        opt=2, codemodel="large"
+    );
+    relobj = tm.emit_object(mod);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "a.exe");
+    raised = False;
+    try {
+        PeLinker.link(obj_bytes=relobj, output_path=out);
+    } except ValueError as e {
+        raised = True;
+        assert "__imp_stdout" in str(e) , (
+            f"error should point at the __imp_ fix, got: {e}"
+        );
+    }
+    assert raised , "direct data-import reference must refuse to link";
 }
 
 test "linking is deterministic" {

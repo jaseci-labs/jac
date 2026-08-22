@@ -1,5 +1,6 @@
 import re;
-import from jaclang.jac0core.unitree { Module, Ability }
+import from jaclang.jac0core.unitree { Module, Ability, UniNode }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 
 glob _SCALAR_MAP: dict[str, str] = {
          "int": "number",
@@ -54,15 +55,8 @@ def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
         base = s[:s.index("[")].strip();
         inner = s[s.index("[") + 1:-1];
         args = [a.strip() for a in _split_top(inner, ",")];
-        if base in (
-            "list",
-            "List",
-            "Sequence",
-            "Iterable",
-            "set",
-            "Set",
-            "frozenset"
-        ) {
+        if base
+            in ("list", "List", "Sequence", "Iterable", "set", "Set", "frozenset") {
             elem = _map_type(args[0], False, ts) if args and args[0] else any_t;
             return f"Array<{elem}>";
         }
@@ -118,11 +112,11 @@ def _param_type(param: any) -> str | None {
         return None;
     }
     inner = tag?.tag;
-    if inner is None or not hasattr(inner, "unparse") {
+    if not isinstance(inner, UniNode) {
         return None;
     }
     try {
-        return inner.unparse();
+        return unparse_node(inner);
     } except Exception {
         return None;
     }
@@ -148,9 +142,9 @@ def _block_for_ability(ability: Ability) -> str | None {
     }
 
     ret = sig?.return_type if sig else None;
-    if ret is not None and hasattr(ret, "unparse") {
+    if isinstance(ret, UniNode) {
         try {
-            rt_str = ret.unparse();
+            rt_str = unparse_node(ret);
         } except Exception {
             rt_str = "";
         }
@@ -191,9 +185,9 @@ impl inject_jsdoc(js: str, blocks: dict[str, str]) -> str {
     out = js;
     for (name, block) in blocks.items() {
         pattern = re.compile(
-            r"(?m)^([ \t]*)((?:export\s+)?(?:async\s+)?(?:function|class)\s+" + re.escape(
-                name
-            ) + r"\b)"
+            r"(?m)^([ \t]*)((?:export\s+)?(?:async\s+)?(?:function|class)\s+"
+                + re.escape(name)
+                + r"\b)"
         );
 
         def _repl(m: any) -> str {

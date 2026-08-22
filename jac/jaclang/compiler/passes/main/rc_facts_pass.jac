@@ -1,8 +1,56 @@
-import from collections.abc { Sequence }
 import from typing { TypeAlias }
-import jaclang.jac0core.unitree as uni;
-import jaclang.compiler.passes.main.dataflow as dataflow;
-import from jaclang.jac0core.constant { OwnershipKind, SymbolStorage, is_borrow_kind }
+import from jaclang.jac0core.unitree {
+    Ability,
+    Archetype,
+    Assignment,
+    AtomTrailer,
+    BinaryExpr,
+    BoolExpr,
+    CompareExpr,
+    ConnectOp,
+    CtrlStmt,
+    DictCompr,
+    DictVal,
+    Expr,
+    ExprStmt,
+    FString,
+    FuncCall,
+    FuncSignature,
+    IfElseExpr,
+    IfStmt,
+    InForStmt,
+    IterForStmt,
+    KWPair,
+    LambdaExpr,
+    ListCompr,
+    ListVal,
+    Module,
+    ModuleCode,
+    MultiString,
+    Name,
+    NameAtom,
+    OpenStmt,
+    ParamVar,
+    RaiseStmt,
+    ReturnStmt,
+    SetVal,
+    String,
+    Symbol,
+    Test,
+    Token,
+    UnaryExpr,
+    UniCFGNode,
+    UniNode,
+    WhileStmt,
+    YieldExpr
+}
+import from jaclang.compiler.passes.main.dataflow { solve_backward_gen_kill }
+import from jaclang.jac0core.constant {
+    OwnershipKind,
+    SymbolStorage,
+    Tokens as Tok,
+    is_borrow_kind
+}
 import from jaclang.jac0core.passes.transform { Transform }
 
 glob SymId: TypeAlias = int;
@@ -14,44 +62,42 @@ enum Ownership {
     UNKNOWN = "unknown"
 }
 
-def result_ownership(expr: (uni.Expr | None)) -> Ownership {
+def result_ownership(expr: (Expr | None)) -> Ownership {
     if expr is None {
         return Ownership.UNKNOWN;
     }
-    if isinstance(expr, uni.FuncCall) {
+    if isinstance(expr, FuncCall) {
         return Ownership.OWNED;
     }
-    if isinstance(
-        expr, (uni.ListVal, uni.SetVal, uni.DictVal, uni.ListCompr, uni.DictCompr)
-    ) {
+    if isinstance(expr, (ListVal, SetVal, DictVal, ListCompr, DictCompr)) {
         return Ownership.OWNED;
     }
-    if isinstance(expr, uni.FString) {
+    if isinstance(expr, FString) {
         return Ownership.OWNED;
     }
-    if isinstance(expr, uni.MultiString) {
-        if len(expr.strings) == 1 and not isinstance(expr.strings[0], uni.FString) {
+    if isinstance(expr, MultiString) {
+        if len(expr.strings) == 1 and not isinstance(expr.strings[0], FString) {
             return Ownership.STATIC;
         }
         return Ownership.OWNED;
     }
-    if isinstance(expr, uni.String) {
+    if isinstance(expr, String) {
         return Ownership.STATIC;
     }
-    if isinstance(expr, (uni.Name, uni.AtomTrailer)) {
+    if isinstance(expr, (Name, AtomTrailer)) {
         return Ownership.BORROWED;
     }
     return Ownership.UNKNOWN;
 }
 
-def loop_body_locals(body: (Sequence[uni.UniNode] | None)) -> list[str] {
+def loop_body_locals(body: (Sequence[UniNode] | None)) -> list[str] {
     out: list[str] = [];
     seen: set[str] = set();
     if not body {
         return out;
     }
     for stmt in body {
-        for nm in stmt.get_all_sub_nodes(typ=uni.Name) {
+        for nm in stmt.get_all_sub_nodes(typ=Name) {
             sym = nm.sym;
             if sym is None or not sym.defn {
                 continue;
@@ -65,9 +111,8 @@ def loop_body_locals(body: (Sequence[uni.UniNode] | None)) -> list[str] {
     return out;
 }
 
-obj RcFactsPass(Transform[uni.Module, uni.Module]) {
-    has ir_in: uni.Module,
-        prog: any,
+obj RcFactsPass(Transform) {
+    has ir_in: Module,
         cancel_token: any = None,
         _node_use: dict[int, set[SymId]] = {},
         _node_def: dict[int, set[SymId]] = {};
@@ -76,27 +121,42 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
         REQUIRES: tuple = ('cfg', );
 
     def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
-    def _stamp_param_rebound(ir_in: uni.Module) -> None;
-    def _stamp_escapes(ir_in: uni.Module) -> None;
-    def _stamp_region_handles(ir_in: uni.Module) -> None;
-    def _asn_makes_region_handle(nd: uni.Assignment) -> bool;
-    def _use_ok_for_stack(nm: uni.NameAtom) -> bool;
-    def _enclosing_fn_scope(nd: uni.UniNode) -> (uni.UniNode | None);
-    def _is_param_sym(sym: uni.Symbol) -> bool;
-    def _stamp_last_use(ir_in: uni.Module) -> None;
+    def transform(ir_in: Module) -> Module;
+    def _stamp_param_rebound(ir_in: Module) -> None;
+    def _stamp_escapes(ir_in: Module) -> None;
+    def _call_use_stack_safe(nm: NameAtom, sym: Symbol) -> bool;
+    def _borrow_arg_callee_ok(bx: UnaryExpr) -> bool;
+    def _scalar_attr_read(nm: NameAtom) -> bool;
+    def _stamp_region_handles(ir_in: Module) -> None;
+    def _asn_makes_region_handle(nd: Assignment) -> bool;
+    def _use_ok_for_stack(nm: NameAtom) -> bool;
+    def _enclosing_fn_scope(nd: UniNode) -> (UniNode | None);
+    def _is_param_sym(sym: Symbol) -> bool;
+    def _stamp_last_use(ir_in: Module) -> None;
+    def _stamp_move_in(ir_in: Module) -> None;
+    def _stamp_anon_regions(ir_in: Module) -> None;
+    def _scan_anon_region_block(
+        body: Sequence[UniNode]
+    ) -> list[tuple[int, int, list[str]]];
+
+    def _arch_of_call(expr: (UniNode | None)) -> (Archetype | None);
+    def _connect_chain_leaves(expr: UniNode) -> (list[Name] | None);
+    def _blessed_arch_call(fc: FuncCall, member_sids: set[int]) -> bool;
+    def _anon_extent_poisoned(
+        body: Sequence[UniNode], open_idx: int, close_idx: int, member_sids: set[int]
+    ) -> bool;
+
     def _collect_last_use(
-        owner: uni.UniNode, body: Sequence[uni.UniNode], out: dict[int, list[str]]
+        owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
     ) -> None;
 
-    def _param_plainly_rebound(sym: uni.Symbol) -> bool;
-    def _stamp_move_lowerable(ir_in: uni.Module) -> None;
-    def _cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None);
-    def _is_def_name(nm: uni.Name) -> bool;
-    def _is_alias_value(nm: uni.Name) -> bool;
-    def _move_candidate_source(nd: uni.Assignment) -> (uni.Name | None);
-    def _live_transfer(nd: uni.UniCFGNode, out_set: set[SymId]) -> set[SymId];
+    def _param_plainly_rebound(sym: Symbol) -> bool;
+    def _stamp_move_lowerable(ir_in: Module) -> None;
+    def _cfg_owner(sub: UniNode) -> (UniCFGNode | None);
+    def _is_def_name(nm: NameAtom) -> bool;
+    def _is_alias_value(nm: Name) -> bool;
+    def _move_candidate_source(nd: Assignment) -> (Name | None);
     def _solve_liveness(
-        cfg_nodes: list[uni.UniCFGNode], tracked: set[SymId]
+        cfg_nodes: list[UniCFGNode], tracked: set[SymId]
     ) -> dict[int, set[SymId]];
 }

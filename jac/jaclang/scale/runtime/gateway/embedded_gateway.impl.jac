@@ -1,15 +1,12 @@
-import uvicorn;
-
-
 impl EmbeddedGateway._service_prefixes -> list[str] {
     return [e.prefix for e in self.registry.entries.values()];
 }
 
 
 impl EmbeddedGateway._service_for_prefix(prefix: str) -> str {
-    for (_name, entry) in self.registry.entries.items() {
-        if entry.prefix == prefix {
-            return entry.name;
+    for (_name, `entry) in self.registry.entries.items() {
+        if `entry.prefix == prefix {
+            return `entry.name;
         }
     }
     return "";
@@ -71,7 +68,7 @@ impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
 
             if resolved.is_relative_to(dist.resolve()) and resolved.is_file() {
                 ctype: str = mimetypes.guess_type(str(resolved))[0]
-                or "application/octet-stream";
+                    or "application/octet-stream";
                 return Response(content=resolved.read_bytes(), media_type=ctype);
             }
         } except OSError {
@@ -105,7 +102,7 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
         remainder: str = path[len(decision.service):];
         payload: dict[str, any] = {};
         try {
-            body: bytes = await request.body();
+            body: bytes = request.body;
             if body {
                 import json;
                 payload = json.loads(body.decode("utf-8"));
@@ -118,20 +115,20 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
             return resp;
         }
     }
-    accept: str = request.headers.get("accept", "");
+    accept: str = str(request.headers.get("accept") or "");
     return self._serve_static(path, accept);
 }
 
 
 impl EmbeddedGateway.setup -> None {
-    app = FastAPI(title="Jac Embedded Gateway");
+    app = ServingApp(title="Jac Embedded Gateway");
     gw = self;
 
-    @app.middleware("http")
     async def dispatcher(request: Request, call_next: object) -> Response {
         return await gw.dispatch(request);
     }
 
+    app.add_middleware(dispatcher);
     self.middleware.install(app);
 
     self.app = app;
@@ -143,7 +140,7 @@ impl EmbeddedGateway.serve -> None {
         self.setup();
     }
     _logger.info(f"Embedded gateway serving in-process on {self.host}:{self.port}");
-    config = uvicorn.Config(getattr(self, "app"), host=self.host, port=self.port);
-    server = uvicorn.Server(config);
-    server.run();
+    import from jaclang.runtimelib.serving.server { ServingServer }
+    serving = ServingServer(app=self.app, host=self.host, port=self.port);
+    serving.run();
 }

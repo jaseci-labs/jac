@@ -10,6 +10,7 @@ import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.bccache { discover_annex_files, discover_base_file }
+import from jaclang.jac0core.treeprinter { node_to_dict }
 import from jaclang.cli.commands { execution }
 
 glob FIXTURES = os.path.join(
@@ -21,7 +22,7 @@ test "pygen jac cli" {
     out.compile(os.path.join(FIXTURES, "base.jac"));
     assert not out.errors_had;
     mod = out.mod.hub[os.path.join(FIXTURES, "impl", "imps.jac")];
-    assert "56" in str(mod.to_dict());
+    assert "56" in str(node_to_dict(mod));
 }
 
 """Basenames of the annex files whose statements were spliced into a module."""
@@ -95,9 +96,8 @@ test "annexable by shared folder" {
     assert shared in annexes , "Expected shared folder impl to be discovered";
     assert discover_base_file(shared) == os.path.join(FIXTURES, "autoimpl.jac");
     # ...and its statements are spliced into the head.
-    assert "autoimpl.shared.impl.jac" in _merged_annex_files(
-        list(prog.mod.hub.values())[0]
-    ) , "Expected shared folder impl to be merged into head";
+    assert "autoimpl.shared.impl.jac"
+        in _merged_annex_files(list(prog.mod.hub.values())[0]) , "Expected shared folder impl to be merged into head";
 }
 
 test "double empty anx" {

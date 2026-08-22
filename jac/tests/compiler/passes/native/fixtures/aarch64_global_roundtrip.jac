@@ -13,5 +13,5 @@ def add(a: int, b: int) -> int { return a + b; }
 
 with entry {
     total = add(40, 2);
-    sys.exit(total);
+    sys.`exit(total);
 }

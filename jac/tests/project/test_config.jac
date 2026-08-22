@@ -457,10 +457,39 @@ test "dev section parsing" {
     assert cfg.dev.jaclang_source == "jac";
     assert cfg.dev.test_jobs == "4";
 
-    # A bare integer test_jobs is coerced to str so it flows into pytest's `-n`.
+    # A bare integer test_jobs is coerced to str so it flows into the runner's
+    # worker count.
     config_mod._config = None;
     as_int = JacConfig.from_toml_str("\n[dev]\ntest_jobs = 0\n");
     assert as_int.dev.test_jobs == "0";
+}
+
+test "parse build native_closure_cap" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 8\n");
+    assert cfg.build.native_closure_cap == 8;
+
+    config_mod._config = None;
+    base = JacConfig.from_toml_str("\n[build]\ntypecheck = true\n");
+    assert base.build.native_closure_cap == 256;
+
+    config_mod._config = None;
+    bad = JacConfig.from_toml_str("\n[build]\nnative_closure_cap = 0\n");
+    assert bad.build.native_closure_cap == 256 , "invalid cap falls back to default";
+}
+
+test "closure cap override resolves through effective_native_closure_cap" {
+    import from jaclang.jac0core.codeinfo {
+        set_native_closure_cap,
+        effective_native_closure_cap
+    }
+    set_native_closure_cap(3);
+    try {
+        assert effective_native_closure_cap() == 3;
+    } finally {
+        set_native_closure_cap(0);
+    }
+    assert effective_native_closure_cap() == 256;
 }
 
 test "parse full config" {
@@ -488,10 +517,10 @@ test "parse full config" {
     assert cfg.build.typecheck is True;
 
     # Test config
-    assert cfg.test.directory == "tests";
-    assert cfg.test.verbose is True;
-    assert cfg.test.fail_fast is True;
-    assert cfg.test.max_failures == 5;
+    assert cfg.`test.directory == "tests";
+    assert cfg.`test.verbose is True;
+    assert cfg.`test.fail_fast is True;
+    assert cfg.`test.max_failures == 5;
 
     # Serve config
     assert cfg.serve.port == 9000;
@@ -531,7 +560,7 @@ test "profile inheritance" {
     cfg = JacConfig.from_toml_str(toml_str);
     cfg.apply_profile("staging");
     assert cfg.serve.port == 9000;
-    assert cfg.test.verbose is True;
+    assert cfg.`test.verbose is True;
 }
 
 test "apply nonexistent profile" {
@@ -568,7 +597,8 @@ test "add git dependency" {
         "my-plugin", "https://github.com/user/plugin.git", dep_type="git"
     );
     assert "my-plugin" in cfg.git_dependencies;
-    assert cfg.git_dependencies["my-plugin"]["git"] == "https://github.com/user/plugin.git";
+    assert cfg.git_dependencies["my-plugin"]["git"]
+        == "https://github.com/user/plugin.git";
 }
 
 test "add npm dependency" {
@@ -1284,8 +1314,8 @@ test "overlay priority order" {
         local_toml.write_text("[test]\nverbose = false\n");
         cfg = JacConfig.load(jac_toml);
         cfg.apply_profile_overlay("prod");
-        assert cfg.test.fail_fast is True;
-        assert cfg.test.verbose is False;
+        assert cfg.`test.fail_fast is True;
+        assert cfg.`test.verbose is False;
     }
 }
 
@@ -1754,13 +1784,10 @@ jaclang = ">=0.15.2"
         saved = toml_path.read_text();
         # Must remain a parseable array of inline tables, not a repr string.
         parsed = tomllib.loads(saved);
-        assert parsed["project"]["authors"] == [
-            {"name": "Jason Mars", "email": "jason@mars.ninja"}
-        ] , "authors must survive save() as inline tables";
-        assert parsed["project"]["maintainers"] == [
-            {"name": "A", "email": "a@b.c"},
-            {"name": "D", "email": "d@e.f"}
-        ] , "maintainers must survive save() as inline tables";
+        assert parsed["project"]["authors"]
+            == [{"name": "Jason Mars", "email": "jason@mars.ninja"}] , "authors must survive save() as inline tables";
+        assert parsed["project"]["maintainers"]
+            == [{"name": "A", "email": "a@b.c"}, {"name": "D", "email": "d@e.f"}] , "maintainers must survive save() as inline tables";
         # save() must not leave behind a stray empty [plugins] table.
         assert "plugins" not in parsed , "empty [plugins] table must not be emitted";
         assert parsed["dependencies"]["rich"] == ">=13.0.0";
@@ -1878,5 +1905,45 @@ test "discover flags configs found in an ancestor directory" {
         assert cfg_nested.discovered_from_ancestor , (
             "config discovered by climbing out of cwd must be flagged"
         );
+    }
+}
+
+# ===========================================================================
+# TestLegacyPluginsTable
+# ===========================================================================
+test "legacy plugins table warns on load" {
+    config_mod._config = None;
+    import io;
+    import from contextlib { redirect_stderr }
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"demo\"\n\n"
+            "[plugins.scale.websocket]\nmax_message_bytes = 1\n"
+        );
+        buf = io.StringIO();
+        with redirect_stderr(buf) {
+            cfg = JacConfig.load(temp_project / "jac.toml");
+        }
+        err = buf.getvalue();
+        assert "[plugins]" in err , f"expected legacy-plugins warning, got: {err!r}";
+        assert "scale" in err , err;
+        assert cfg.get_plugin_config("scale") == {} , (
+            "legacy [plugins.scale] must not be treated as [scale]"
+        );
+    }
+}
+
+test "no legacy warning without a plugins table" {
+    config_mod._config = None;
+    import io;
+    import from contextlib { redirect_stderr }
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        buf = io.StringIO();
+        with redirect_stderr(buf) {
+            JacConfig.load(temp_project / "jac.toml");
+        }
+        assert "[plugins]" not in buf.getvalue() , buf.getvalue();
     }
 }

@@ -29,7 +29,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
           libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-          libasound2
+          libasound2t64
 
     - name: Build notes-app example
       run: |
@@ -73,60 +73,234 @@ jobs:
   # Exercises the real `curl ... | bash` path daily: install.sh breakage is
   # usually caused by release/tag changes elsewhere, which the PR-time check in
   # ci.yml (path-gated on scripts/install.sh) can never catch.
+  # Same body as ci.yml's installer-test (see _installer.yml). ci.yml runs it
+  # when scripts/install.sh changes; this runs it daily, so a release that
+  # ships a missing or broken asset is caught without an installer PR.
   installer-live:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 8 * * *' }}
-    runs-on: ${{ matrix.os }}
+    uses: ./.github/workflows/_installer.yml
+
+  # The darwin native lane: sealed macOS kit + the Mach-O / wasm-floor /
+  # libSystem-equivalence tests that consume it. Off the PR critical path
+  # (44-68 min, and 60 runs of evidence that it duplicated the Linux seal
+  # refusal); see _macos-native.yml. ci.yml still runs it on a `macos` label.
+  # This is also the only caller that runs on main, so it is what seeds the
+  # shared macOS caches -- setup-jac gates every cache save to main.
+  macos-native:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    uses: ./.github/workflows/_macos-native.yml
+
+  # PR CI runs the suite chunked across runners; this is the unchunked
+  # single-process full-suite run (materializer-leak watchdog) against a
+  # cold sealed build.
+  sealed-suite:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (sealed binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Set up Zig 0.16.0 (vendor static-musl runtime)
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.16.0
+        use-cache: false
+
+    - name: Vendor static-musl runtime
+      working-directory: jac
+      run: zig build vendor-musl --summary all
+
+    - name: Full suite against the sealed binary
+      working-directory: jac
+      run: |
+        set -uxo pipefail
+        WORK="$(mktemp -d)"
+        HOME="$WORK" JAC_TEST_JOBS=auto jac test tests/ | tee /tmp/sealed.log
+        rc=${PIPESTATUS[0]}
+        {
+          echo "## sealed full-suite result"
+          echo '```'
+          grep -E '^(FAILED|ERROR)|passed|failed' /tmp/sealed.log | tail -40 || true
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$rc"
+
+  # Real-app microservice e2e on kind. Two pod-base legs: `slim` = the plain
+  # python default; `official-image` = an image built from this checkout's
+  # binary via docker/jaclang.Dockerfile (baked-runtime path).
+  k8s-real-e2e:
+    name: microservice e2e (k8s, ${{ matrix.base }})
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x86_64
-          - os: macos-14
-            platform: macos-aarch64
+        base: [slim, official-image]
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+      # Ship the jac built from this checkout to the pods via channel LOCAL.
+      JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: true
 
-      - name: Require a native binary asset on the latest release
+      - name: Set up jac (sealed binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install the jac binary as the deploy driver
+        run: |
+          chmod +x "$JAC_SCALE_BINARY_PATH"
+          mkdir -p "$HOME/.local/bin"
+          cp "$JAC_SCALE_BINARY_PATH" "$HOME/.local/bin/jac"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/jac" --version
+
+      - name: Install scale deploy deps
+        run: |
+          jac install \
+            "python-dotenv>=1.2.1,<2.0.0" \
+            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" "humanize>=4.0.0" \
+            --global
+
+      - name: Set up kind cluster
+        # Single node labelled ingress-ready + host 80/443 mapped so
+        # ingress-nginx's kind provider can bind them.
+        run: |
+          curl -fsSL -o ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          curl -fsSL -o ./kind.sha256 https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64.sha256sum
+          echo "$(cut -d' ' -f1 ./kind.sha256)  ./kind" | sha256sum -c -
+          chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
+          curl -fsSL -o kubectl https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
+          curl -fsSL -o kubectl.sha256 https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl.sha256
+          echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -
+          sudo install kubectl /usr/local/bin/kubectl
+          cat > /tmp/kind.yaml <<'EOF'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+                - |
+                  kind: InitConfiguration
+                  nodeRegistration:
+                    kubeletExtraArgs:
+                      node-labels: "ingress-ready=true"
+              extraPortMappings:
+                - { containerPort: 80, hostPort: 80, protocol: TCP }
+                - { containerPort: 443, hostPort: 443, protocol: TCP }
+          EOF
+          kind create cluster --name jac --config /tmp/kind.yaml --wait 150s
+          kubectl get nodes -o wide
+
+      - name: Verify pod DNS + egress (fail fast)
+        run: |
+          kubectl -n kube-system rollout status deploy/coredns --timeout=180s
+          for attempt in 1 2 3; do
+            kubectl delete pod netcheck --ignore-not-found --wait=true
+            kubectl run netcheck --image=busybox:1.36 --restart=Never --command -- \
+              sh -c 'nslookup deb.debian.org && wget -q --spider http://deb.debian.org/ && echo NETCHECK_OK'
+            if kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/netcheck --timeout=60s; then
+              kubectl logs netcheck
+              kubectl delete pod netcheck --ignore-not-found
+              exit 0
+            fi
+            kubectl logs netcheck || true
+            echo "WARN: netcheck attempt ${attempt} failed; retrying..."
+            sleep 5
+          done
+          echo "::error::Pod networking/egress is broken on this runner (DNS or CNI), so no app pod can bootstrap."
+          kubectl describe pod netcheck || true
+          kubectl get pods -n kube-system -o wide || true
+          kubectl delete pod netcheck --ignore-not-found
+          exit 1
+
+      - name: Deploy ingress-nginx + metrics-server (kind, best-effort)
+        continue-on-error: true
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.5/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod \
+              --selector=app.kubernetes.io/component=controller --timeout=180s \
+              || echo "WARN: ingress controller not ready; ingress path will skip"
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+          kubectl -n kube-system patch deployment metrics-server --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' \
+            || echo "WARN: metrics-server patch failed"
+          # Preload the provisioner's postgres image so the DB pod never
+          # depends on runner egress.
+          docker pull postgres:18
+          kind load docker-image postgres:18 --name jac
+
+      - name: Show cluster info
+        run: |
+          kubectl version
+          kubectl cluster-info
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: Build the official base image from this checkout's binary (official-image leg)
+        if: matrix.base == 'official-image'
+        run: |
+          mkdir -p /tmp/imgctx/amd64
+          cp "$JAC_SCALE_BINARY_PATH" /tmp/imgctx/amd64/jac
+          docker build --build-arg TARGETARCH=amd64 \
+              -f docker/jaclang.Dockerfile -t jaclang-e2e:nightly /tmp/imgctx
+          kind load docker-image jaclang-e2e:nightly --name jac
+          echo "E2E_POD_BASE_IMAGE=jaclang-e2e:nightly" >> "$GITHUB_ENV"
+
+      - name: Run K8s microservice real-app e2e
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLUSTER_TYPE: kind
         run: |
-          set -euo pipefail
-          if ! gh release view --repo "$GITHUB_REPOSITORY" \
-               --json assets --jq '.assets[].name' 2>/dev/null \
-               | grep -q "jac-.*-${{ matrix.platform }}$"; then
-            echo "::error::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset; 'curl ... | bash' is broken for this platform."
-            exit 1
-          fi
+          bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
+              jac/jaclang/scale/tests/fixtures/k8s_e2e
 
-      - name: "install: download + run the binary"
+      # Same cluster, separate namespace: deploy examples/sdk-deploy through
+      # the programmatic SDK (ScaleClient). official-image leg only.
+      - name: Run SDK programmatic deploy e2e (ScaleClient)
+        if: matrix.base == 'official-image'
         env:
-          # install.sh authenticates its GitHub API calls when a token is set;
-          # shared runners (macOS especially) exhaust the unauthenticated
-          # per-IP rate limit.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/install.sh
+          CLUSTER_TYPE: kind
+        run: bash jac/jaclang/scale/tests/deploy/sdk_deploy_real_e2e.sh
 
-      - name: "install: verify jac"
+      - name: Dump kubectl state on failure
+        if: failure()
+        env:
+          NS: jac-e2e
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          which jac
-          jac --version
-
-      - name: "install: run a test program"
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          echo 'with entry { print("hello from the jac binary"); }' > /tmp/test_install.jac
-          jac /tmp/test_install.jac
-
-      - name: "install: uninstall"
-        run: bash scripts/install.sh --uninstall
-
-      - name: "install: verify removal"
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          if command -v jac &>/dev/null; then
-            echo "FAIL: jac still found after uninstall"
-            exit 1
-          fi
-          echo "PASS: jac removed"
+          echo "=== nodes ==="; kubectl get nodes -o wide || true
+          echo "=== all pods (every namespace) ==="; kubectl get pods -A -o wide || true
+          echo "=== events (${NS}, time-sorted) ==="
+          kubectl get events -n "${NS}" --sort-by='.lastTimestamp' || true
+          echo "=== per-pod status + all container logs (${NS}) ==="
+          for pod in $(kubectl get pods -n "${NS}" -o name 2>/dev/null); do
+            echo "############################## ${pod} ##############################"
+            echo "----- phase + container readiness -----"
+            kubectl get -n "${NS}" "${pod}" -o jsonpath='phase={.status.phase}{"\n"}{range .status.initContainerStatuses[*]}init/{.name}: ready={.ready} restarts={.restartCount} state={.state}{"\n"}{end}{range .status.containerStatuses[*]}main/{.name}: ready={.ready} restarts={.restartCount} state={.state}{"\n"}{end}' 2>/dev/null || true
+            echo ""
+            echo "----- describe (Init Containers -> Events) -----"
+            kubectl describe -n "${NS}" "${pod}" 2>/dev/null | sed -n '/Init Containers:/,/^[^ ]/p;/Events:/,$p' || true
+            for c in $(kubectl get -n "${NS}" "${pod}" -o jsonpath='{range .spec.initContainers[*]}{.name}{"\n"}{end}{range .spec.containers[*]}{.name}{"\n"}{end}' 2>/dev/null); do
+              echo "----- logs ${pod} [${c}] (tail 120) -----"
+              kubectl logs -n "${NS}" "${pod}" -c "${c}" --tail=120 2>&1 | tail -120 || true
+              kubectl logs -n "${NS}" "${pod}" -c "${c}" --previous --tail=60 2>/dev/null | tail -60 || true
+            done
+          done
+          echo "=== ingress status ==="; kubectl describe ingress -n "${NS}" || true
+          echo "=== ingress controller logs ==="
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50 || true

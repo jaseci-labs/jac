@@ -116,13 +116,13 @@ obj FsPlugin(DesktopPlugin) {
         }
         entries = [];
         try {
-            for entry in sorted(path.iterdir()) {
+            for `entry in sorted(path.iterdir()) {
                 entries.append(
                     {
-                        "name": entry.name,
-                        "is_dir": entry.is_dir(),
-                        "is_file": entry.is_file(),
-                        "size": entry.stat().st_size if entry.is_file() else 0
+                        "name": `entry.name,
+                        "is_dir": `entry.is_dir(),
+                        "is_file": `entry.is_file(),
+                        "size": `entry.stat().st_size if `entry.is_file() else 0
                     }
                 );
             }

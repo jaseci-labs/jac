@@ -2,9 +2,9 @@ import os;
 import asyncio;
 import logging;
 import time;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
+import from jaclang.runtimelib.serving.endpoint {
     HTTPMethod,
     JEndPoint,
     APIParameter,
@@ -67,11 +67,12 @@ def _traces_chain(p: dict) -> dict {
                 "name": "config tracing.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[scale.microservices.tracing].enabled" + (
-                    " = true"
-                        if p.get("cfg_enabled", False)
-                        else " = false (tracing off)"
-                )
+                "detail": "[scale.microservices.tracing].enabled"
+                    + (
+                        " = true"
+                            if p.get("cfg_enabled", False)
+                            else " = false (tracing off)"
+                    )
             },
             {
                 "name": "install_tracing() active",
@@ -110,9 +111,12 @@ def _logs_chain(p: dict) -> dict {
                 "name": "config logs.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[scale.microservices.logs].enabled" + (
-                    " = true" if p.get("cfg_enabled", False) else " = false (logs off)"
-                )
+                "detail": "[scale.microservices.logs].enabled"
+                    + (
+                        " = true"
+                            if p.get("cfg_enabled", False)
+                            else " = false (logs off)"
+                    )
             },
             {
                 "name": "Loki /ready reachable",
@@ -153,40 +157,13 @@ def _metrics_chain(p: dict) -> dict {
 }
 
 
-def _mongo_chain(p: dict) -> dict {
+def _postgres_chain(p: dict) -> dict {
     return short_circuit_chain(
         [
             {
-                "name": "Mongo client configured",
-                "ok": p.get("configured", False),
-                "detail": str(p.get("detail", ""))
-            },
-            {
-                "name": "Mongo ping reachable",
+                "name": "Postgres reachable",
                 "ok": p.get("ping", False),
-                "detail": "admin.command('ping') succeeded"
-                    if p.get("ping", False)
-                    else "ping failed - admin API cannot bootstrap (UserManager)"
-            }
-        ]
-    );
-}
-
-
-def _redis_chain(p: dict) -> dict {
-    return short_circuit_chain(
-        [
-            {
-                "name": "Redis client configured",
-                "ok": p.get("configured", False),
                 "detail": str(p.get("detail", ""))
-            },
-            {
-                "name": "Redis ping reachable",
-                "ok": p.get("ping", False),
-                "detail": "PING succeeded"
-                    if p.get("ping", False)
-                    else "ping failed at the resolved redis_url"
             }
         ]
     );
@@ -201,7 +178,8 @@ def _admin_api_chain(registered: bool) -> dict {
                 "ok": registered,
                 "detail": "self.server is set - /admin/* routes are live"
                     if registered
-                    else "self.server is None - _install_admin_api() failed " + "(Mongo unreachable?); /admin/* falls to the SPA catchall"
+                    else "self.server is None - _install_admin_api() failed "
+                        + "(database unreachable?); /admin/* falls to the SPA catchall"
             }
         ]
     );
@@ -243,15 +221,11 @@ def _mask_uri(uri: str) -> str {
 
 
 async def _http_ready(base: str, path: str) -> bool {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { arequest }
     url = base.rstrip("/") + path;
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_PROBE_TIMEOUT_S, connect=_PROBE_TIMEOUT_S)
-        ) as cl {
-            resp = await cl.get(url);
-            return resp.status_code < 500;
-        }
+        resp = await arequest("GET", url, timeout=_PROBE_TIMEOUT_S);
+        return resp.status_code < 500;
     } except Exception as e {
         logger.debug(f"ready probe {url} failed: {e}");
         return False;
@@ -260,18 +234,21 @@ async def _http_ready(base: str, path: str) -> bool {
 
 
 async def _tempo_recent_count -> int {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { arequest }
     base = _tempo_base_url();
     now_s = int(time.time());
     params = {"q": "{ }", "limit": "1", "start": str(now_s - 300), "end": str(now_s)};
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_PROBE_TIMEOUT_S, connect=_PROBE_TIMEOUT_S)
-        ) as cl {
-            resp = await cl.get(base.rstrip("/") + "/api/search", params=params);
-            resp.raise_for_status();
-            return len(resp.json().get("traces", []) or []);
+        resp = await arequest(
+            "GET",
+            base.rstrip("/") + "/api/search",
+            params=params,
+            timeout=_PROBE_TIMEOUT_S
+        );
+        if not resp.ok() {
+            raise ConnectionError(f"tempo returned {resp.status_code}");
         }
+        return len(resp.json().get("traces", []) or []);
     } except Exception as e {
         logger.debug(f"tempo recent-count probe failed: {e}");
         return 0;
@@ -280,7 +257,7 @@ async def _tempo_recent_count -> int {
 
 
 async def _loki_recent_count -> int {
-    import httpx;
+    import from jaclang.runtimelib.serving.client { arequest }
     base = _loki_base_url();
     ns = _app_namespace();
     selector = f'{{namespace="{ns}"}}' if ns else '{namespace=~".+"}';
@@ -293,20 +270,21 @@ async def _loki_recent_count -> int {
         "direction": "backward"
     };
     try {
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_PROBE_TIMEOUT_S, connect=_PROBE_TIMEOUT_S)
-        ) as cl {
-            resp = await cl.get(
-                base.rstrip("/") + "/loki/api/v1/query_range", params=params
-            );
-            resp.raise_for_status();
-            data = resp.json().get("data", {}) or {};
-            total = 0;
-            for stream in (data.get("result", []) or []) {
-                total += len(stream.get("values", []) or []);
-            }
-            return total;
+        resp = await arequest(
+            "GET",
+            base.rstrip("/") + "/loki/api/v1/query_range",
+            params=params,
+            timeout=_PROBE_TIMEOUT_S
+        );
+        if not resp.ok() {
+            raise ConnectionError(f"loki returned {resp.status_code}");
         }
+        data = resp.json().get("data", {}) or {};
+        total = 0;
+        for stream in (data.get("result", []) or []) {
+            total += len(stream.get("values", []) or []);
+        }
+        return total;
     } except Exception as e {
         logger.debug(f"loki recent-count probe failed: {e}");
         return 0;
@@ -314,54 +292,24 @@ async def _loki_recent_count -> int {
 }
 
 
-def _mongo_ping_blocking(uri: str) -> bool {
-    client: any = None;
+def _postgres_ping_blocking -> tuple[bool, str] {
     try {
-        import from pymongo { MongoClient }
-        client = MongoClient(
-            uri,
-            serverSelectionTimeoutMS=int(_PROBE_TIMEOUT_S * 1000),
-            connectTimeoutMS=int(_PROBE_TIMEOUT_S * 1000)
-        );
-        client.admin.command("ping");
-        return True;
-    } except Exception as e {
-        logger.debug(f"mongo ping failed: {e}");
-        return False;
-    } finally {
-        if client is not None {
-            try {
-                client.close();
-            } except Exception {
-                logger.debug("mongo client close failed");
-            }
+        import from jaclang.scale.persistence.pg {
+            NO_DATABASE_RESOLVED,
+            shared_store,
+            shared_store_failure
         }
-    }
-}
-
-
-def _redis_ping_blocking(url: str) -> bool {
-    client: any = None;
-    try {
-        import redis;
-        client = redis.from_url(
-            url,
-            socket_connect_timeout=_PROBE_TIMEOUT_S,
-            socket_timeout=_PROBE_TIMEOUT_S
-        );
-        client.ping();
-        return True;
-    } except Exception as e {
-        logger.debug(f"redis ping failed: {e}");
-        return False;
-    } finally {
-        if client is not None {
-            try {
-                client.close();
-            } except Exception {
-                logger.debug("redis client close failed");
-            }
+        store = shared_store();
+        if store is None {
+            return (False, shared_store_failure() or NO_DATABASE_RESOLVED);
         }
+        ok = store.is_available();
+        return (
+            ok,
+            "SELECT 1 succeeded" if ok else "SELECT 1 failed at the resolved database"
+        );
+    } except Exception as e {
+        return (False, f"probe failed: {e}");
     }
 }
 
@@ -413,45 +361,9 @@ async def _probe_metrics -> dict {
 }
 
 
-async def _probe_mongo -> dict {
-    try {
-        uri = str(
-            get_scale_config().get_database_config().get("mongodb_uri", "") or ""
-        );
-    } except Exception {
-        uri = "";
-    }
-    configured = bool(uri);
-    ping = await asyncio.to_thread(_mongo_ping_blocking, uri) if configured else False;
-    return _mongo_chain(
-        {
-            "configured": configured,
-            "detail": _mask_uri(uri)
-                if configured
-                else "no MONGODB_URI / database.mongodb_uri",
-            "ping": ping
-        }
-    );
-}
-
-
-async def _probe_redis -> dict {
-    try {
-        url = str(get_scale_config().get_database_config().get("redis_url", "") or "");
-    } except Exception {
-        url = "";
-    }
-    configured = bool(url);
-    ping = await asyncio.to_thread(_redis_ping_blocking, url) if configured else False;
-    return _redis_chain(
-        {
-            "configured": configured,
-            "detail": _mask_uri(url)
-                if configured
-                else "no REDIS_URL / database.redis_url",
-            "ping": ping
-        }
-    );
+async def _probe_postgres -> dict {
+    (ping, detail) = await asyncio.to_thread(_postgres_ping_blocking);
+    return _postgres_chain({"ping": ping, "detail": detail});
 }
 
 
@@ -467,13 +379,12 @@ impl JacAPIServerOps.register_ops_endpoints -> None {
         registered = self?.server is not None;
         signals["admin_api"] = _admin_api_chain(registered);
 
-        probe_names = ["traces", "logs", "metrics", "mongo", "redis"];
+        probe_names = ["traces", "logs", "metrics", "postgres"];
         results = await asyncio.gather(
             _probe_traces(),
             _probe_logs(),
             _probe_metrics(),
-            _probe_mongo(),
-            _probe_redis(),
+            _probe_postgres(),
             return_exceptions=True
         );
         for (idx, r) in enumerate(results) {
@@ -495,7 +406,7 @@ impl JacAPIServerOps.register_ops_endpoints -> None {
             parameters=[],
             response_model=None,
             tags=["Operations"],
-            summary="Signal self-check (traces/logs/metrics/mongo/redis/admin)",
+            summary="Signal self-check (traces/logs/metrics/postgres/admin)",
             description=(
                 "Per signal a {status, chain[]} where each chain step is "
                 "{name, ok, detail}, evaluated short-circuit so the first "

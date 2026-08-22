@@ -20,8 +20,7 @@ import gdb;
 
 class JacLoadSymbols(gdb.Command) {
     """Load Jac native debug symbols from a .symmap file."""
-
-    def __init__(self: JacLoadSymbols) {
+    def init(self: JacLoadSymbols) {
         gdb.Command.__init__(self, "jac-load-symbols", gdb.COMMAND_USER);
     }
 
@@ -33,10 +32,10 @@ class JacLoadSymbols(gdb.Command) {
         if env_path and os.path.isfile(env_path) {
             return env_path;
         }
-        candidates = glob.glob("/tmp/jac_debug*.symmap");
-        candidates += glob.glob("**/.jac/cache/native/*.symmap", recursive=True);
+        candidates = `glob.`glob("/tmp/jac_debug*.symmap");
+        candidates += `glob.`glob("**/.jac/cache/native/*.symmap", recursive=True);
         # Legacy location from before native artifacts moved into .jac/cache.
-        candidates += glob.glob("**/.jac_ir/*.symmap", recursive=True);
+        candidates += `glob.`glob("**/.jac_ir/*.symmap", recursive=True);
         if candidates {
             candidates.sort(key=lambda (p) { os.path.getmtime(p); }, reverse=True);
             return candidates[0];
@@ -56,7 +55,11 @@ class JacLoadSymbols(gdb.Command) {
         }
         try {
             with open(symmap_path) as f {
-                lines = [ln.strip() for ln in f if ln.strip()];
+                lines = [
+                    ln.strip()
+                    for ln in f
+                    if ln.strip()
+                ];
             }
         } except Exception as e {
             gdb.write(f"Error reading {symmap_path}: {e}\n");
@@ -100,7 +103,7 @@ class JacLoadSymbols(gdb.Command) {
                     fn_obj_offsets[parts[7]] = int(parts[1], 16);
                 }
             }
-        } except Exception {}
+        } except Exception { }
 
         # Compute section base: fn_jit_addr - fn_obj_offset
         section_base = int(text_addr, 16);
@@ -136,8 +139,7 @@ class JacLoadSymbols(gdb.Command) {
 
 class JacAutoSymbols(gdb.Command) {
     """Automatically search for and load Jac debug symbols after a crash."""
-
-    def __init__(self: JacAutoSymbols) {
+    def init(self: JacAutoSymbols) {
         gdb.Command.__init__(self, "jac-auto-symbols", gdb.COMMAND_USER);
     }
 
@@ -157,8 +159,7 @@ class JacBacktrace(gdb.Command) {
 
     Filters out Python, ctypes, ffi, and libc frames so only the
     native Jac call chain is visible."""
-
-    def __init__(self: JacBacktrace) {
+    def init(self: JacBacktrace) {
         gdb.Command.__init__(self, "jac-bt", gdb.COMMAND_USER);
     }
 
@@ -218,5 +219,7 @@ with entry {
     JacLoadSymbols();
     JacAutoSymbols();
     JacBacktrace();
-    gdb.write("[jac-gdb] Helper loaded. Commands: jac-bt, jac-load-symbols, jac-auto-symbols\n");
+    gdb.write(
+        "[jac-gdb] Helper loaded. Commands: jac-bt, jac-load-symbols, jac-auto-symbols\n"
+    );
 }

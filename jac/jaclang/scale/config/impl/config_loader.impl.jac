@@ -2,6 +2,16 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
     return "scale";
 }
 
+impl JacScaleConfig.get_config_schema(self: JacScaleConfig) -> dict[str, any] {
+    import from jaclang.scale.config.validation { scale_schema_options }
+    return {"section": "scale", "options": scale_schema_options()};
+}
+
+impl JacScaleConfig.get_config_strict_env(self: JacScaleConfig) -> str {
+    import from jaclang.scale.config.validation { STRICT_ENV }
+    return STRICT_ENV;
+}
+
 impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     return {
         'jwt': {
@@ -18,27 +28,14 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'firebase': {'project_id': ''}
         },
         'database': {
-            'type': None,
-            'mongodb_uri': None,
-            'redis_url': None,
-            'project_id': None,
-            'shelf_db_path': '.jac/data/anchor_store.db',
-            'redis_max_memory': '200mb',
-            'redis_eviction_policy': 'allkeys-lru',
-            'redis_eviction_samples': 5,
-            'redis_default_ttl': 3600,
-            'redis_max_connections': 20,
-            'redis_enable_keyspace_notifications': False,
-            'redis_l1_invalidation_enabled': True,
-            'redis_l1_invalidation_channel': 'jac:anchor:invalidate',
-            'redis_cpu_request': '100m',
-            'redis_cpu_limit': '500m',
-            'redis_memory_request': '128Mi',
-            'redis_memory_limit': '1Gi'
+            'url': None,
+            'deploy_mode': 'image',
+            'postgres_image': 'postgres:18',
+            'postgres_storage': '2Gi'
         },
         'websocket': {
             'backplane': None,
-            'redis_url': None,
+            'allowed_origins': [],
             'max_message_bytes': 65536,
             'max_connections_per_target': 5000,
             'max_connections_per_user': 10,
@@ -49,18 +46,9 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         'kubernetes': {
             'namespace': 'default',
             'container_port': 8000,
-            'mongodb_enabled': True,
-            'redis_enabled': True,
-            'redis_dashboard': False,
-            'mongodb_dashboard': False,
-            'mongo_express_username': 'admin',
-            'mongo_express_password': 'admin',
-            'redis_insight_username': 'admin',
-            'redis_insight_password': 'admin',
-            'mongodb_root_username': 'admin',
-            'mongodb_root_password': 'password',
-            'redis_username': 'admin',
-            'redis_password': 'password',
+            'database_mode': 'auto',
+            'database_url': '',
+            'database_namespace': '',
             'ingress_node_port': 30080,
             'ingress_limit_rps': 20,
             'ingress_limit_burst_multiplier': 5,
@@ -152,7 +140,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'reset_url_template': '',
             'verify_url_template': '',
             'token_collection': 'auth_tokens',
-            'password_hash_rounds': 12
+            'password_hash_cost': 14
         },
         'microservices': {
             'gateway_port': 8000,
@@ -200,46 +188,31 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
                 FIREBASE_AUTH_PROJECT_ID_ENV,
                 firebase_config.get('project_id', '') or None
             )
-            or ''
+                or ''
         }
     };
 }
 
-impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] {
+impl JacScaleConfig.get_deploy_database_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     db_config = config.get('database', {});
     return {
-        'type': db_config.get('type'),
-        'mongodb_uri': os.environ.get('MONGODB_URI') or db_config.get('mongodb_uri'),
-        'redis_url': os.environ.get('REDIS_URL') or db_config.get('redis_url'),
-        'project_id': resolve_firebase_project_id(
-            FIRESTORE_PROJECT_ID_ENV, db_config.get('project_id')
-        ),
-        'shelf_db_path': db_config.get('shelf_db_path', '.jac/data/anchor_store.db'),
-        'redis_max_memory': db_config.get('redis_max_memory', '200mb'),
-        'redis_eviction_policy': db_config.get('redis_eviction_policy', 'allkeys-lru'),
-        'redis_eviction_samples': int(db_config.get('redis_eviction_samples', 5)),
-        'redis_default_ttl': int(db_config.get('redis_default_ttl', 3600)),
-        'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
-        'redis_enable_keyspace_notifications': db_config.get(
-            'redis_enable_keyspace_notifications', False
-        ),
-        'redis_l1_invalidation_enabled': db_config.get(
-            'redis_l1_invalidation_enabled', True
-        ),
-        'redis_l1_invalidation_channel': db_config.get(
-            'redis_l1_invalidation_channel', 'jac:anchor:invalidate'
-        ),
-        'redis_cpu_request': db_config.get('redis_cpu_request', '100m'),
-        'redis_cpu_limit': db_config.get('redis_cpu_limit', '500m'),
-        'redis_memory_request': db_config.get('redis_memory_request', '128Mi'),
-        'redis_memory_limit': db_config.get('redis_memory_limit', '1Gi')
+        'url': db_config.get('url'),
+        'deploy_mode': db_config.get('deploy_mode', 'image'),
+        'postgres_image': db_config.get('postgres_image', 'postgres:18'),
+        'postgres_storage': db_config.get('postgres_storage', '2Gi')
     };
+}
+
+impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] {
+    resolved = self.get_deploy_database_config();
+    resolved['url'] = os.environ.get('JAC_DB_URL') or resolved['url'];
+    return resolved;
 }
 
 impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    k8s_config = config.get('kubernetes', {});
+    k8s_config = dict(config.get('kubernetes', {}));
 
     monitoring = self.get_monitoring_config();
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
@@ -276,7 +249,8 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
         'docs_enabled': server_config.get('docs_enabled', True),
         'suppress_health_check_logs': bool(
             server_config.get('suppress_health_check_logs', False)
-        )
+        ),
+        'structured_logs': bool(server_config.get('structured_logs', True))
     };
 }
 
@@ -411,11 +385,9 @@ impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any]
     if backplane is not None {
         backplane = str(backplane).lower();
     }
-    ws_redis_url = ws_config.get('redis_url')
-    or self.get_database_config().get('redis_url');
     return {
         'backplane': backplane,
-        'redis_url': ws_redis_url,
+        'allowed_origins': [str(o) for o in (ws_config.get('allowed_origins') or [])],
         'max_message_bytes': int(_ws_positive(ws_config, 'max_message_bytes', 65536)),
         'max_connections_per_target': int(
             _ws_positive(ws_config, 'max_connections_per_target', 5000)
@@ -433,6 +405,20 @@ impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any]
 
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     if _scale_config_instance is not None {
+        if (
+            project_dir is not None
+            and Path(project_dir).resolve()
+                != _scale_config_instance.project_dir.resolve()
+        ) {
+            raise RuntimeError(
+                f"get_scale_config(project_dir={project_dir}) called after the "
+                f"config was already loaded for "
+                f"{_scale_config_instance.project_dir}. Call "
+                "reset_scale_config() first, or pass the config explicitly; "
+                "returning the cached instance would silently read the wrong "
+                "project's config."
+            );
+        }
         return _scale_config_instance;
     }
     new_instance = JacScaleConfig(project_dir);
@@ -440,23 +426,27 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     return new_instance;
 }
 
+impl peek_scale_config -> JacScaleConfig | None {
+    return _scale_config_instance;
+}
+
 impl reset_scale_config -> None {
     _scale_config_instance = None;
 }
 
-impl resolve_password_hash_rounds(configured_rounds: int) -> int {
-    env_val = os.environ.get('JAC_SCALE_BCRYPT_ROUNDS');
+impl resolve_password_hash_cost(configured_cost: int) -> int {
+    env_val = os.environ.get('JAC_SCALE_PASSWORD_HASH_COST');
     if not env_val {
-        return max(4, min(31, configured_rounds));
+        return max(10, min(15, configured_cost));
     }
     try {
-        rounds = int(env_val);
+        cost = int(env_val);
     } except ValueError as e {
         raise ValueError(
-            f"JAC_SCALE_BCRYPT_ROUNDS must be an integer in 4..31, got: {env_val!r}"
+            f"JAC_SCALE_PASSWORD_HASH_COST must be an integer in 10..15, got: {env_val!r}"
         ) from e;
     }
-    return max(4, min(31, rounds));
+    return max(10, min(15, cost));
 }
 
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
@@ -480,7 +470,7 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
     };
 }
 
-impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     emailer_config = config.get('emailer', {}) or {};
     smtp_config = dict(emailer_config.get('smtp', {}) or {});
@@ -503,7 +493,7 @@ impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, Any] {
     };
 }
 
-impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     auth_config = config.get('auth', {}) or {};
     return {
@@ -516,8 +506,8 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
         'reset_url_template': auth_config.get('reset_url_template', ''),
         'verify_url_template': auth_config.get('verify_url_template', ''),
         'token_collection': auth_config.get('token_collection', 'auth_tokens'),
-        'password_hash_rounds': resolve_password_hash_rounds(
-            int(auth_config.get('password_hash_rounds', 12))
+        'password_hash_cost': resolve_password_hash_cost(
+            int(auth_config.get('password_hash_cost', 14))
         ),
         'forgot_password_rate_per_hour': int(
             auth_config.get('forgot_password_rate_per_hour', 3)
@@ -532,13 +522,29 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
 
 impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    ms_config = config.get('microservices', {});
+    return normalize_microservices_config(config.get('microservices', {}));
+}
+
+
+impl normalize_microservices_config(
+    ms_config: dict[str, any], env_routes_fallback: bool = True
+) -> dict[str, any] {
+    if 'enabled' in ms_config and not _ms_enabled_deprecation_warned {
+        _ms_enabled_deprecation_warned = True;
+        import logging;
+        logging.getLogger(__name__).warning(
+            "jac.toml [scale.microservices] `enabled` is deprecated: declaring "
+            "[scale.microservices.routes] is what turns microservice mode on, "
+            "and a deployed fleet pod ignores this key. Delete it (remove the "
+            "routes table to run single-process); a future release drops it."
+        );
+    }
     client_config = ms_config.get('client', {});
     cors_config = ms_config.get('cors', {});
     rl_config = ms_config.get('rate_limit', {});
 
     routes: dict[str, any] = dict(ms_config.get('routes', {}));
-    if not routes {
+    if not routes and env_routes_fallback {
         import json;
         env_routes: str = os.environ.get('JAC_SV_ROUTES', '');
         if env_routes {
@@ -555,27 +561,37 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         }
     }
 
+    service_files: dict = dict(ms_config.get('service_files', {}) or {});
+    if routes {
+        import from jaclang.scale.runtime.routing { ensure_main_service }
+        ensure_main_service(routes, service_files);
+    }
+
     raw_client_entry = client_config.get('entry', None);
-    if raw_client_entry is False {
+
+    if raw_client_entry is False or raw_client_entry == '' {
         resolved_client_entry: str = '';
     } elif raw_client_entry {
         resolved_client_entry: str = str(raw_client_entry);
     } else {
         try {
             import from jaclang.project.config { get_config }
-            resolved_client_entry: str = get_config().entry_point or 'main.jac';
+            cfg = get_config();
+            resolved_client_entry: str = (cfg.project.entry_point if cfg else '')
+                or 'main.jac';
         } except Exception {
             resolved_client_entry: str = 'main.jac';
         }
     }
 
-    return {
+    normalized = {
         'enabled': ms_config.get('enabled', None),
         'gateway_port': int(ms_config.get('gateway_port', 8000)),
         'gateway_host': ms_config.get('gateway_host', '0.0.0.0'),
         'drain_timeout_seconds': float(ms_config.get('drain_timeout_seconds', 10)),
         'http_forward_timeout': float(ms_config.get('http_forward_timeout', 30)),
         'routes': routes,
+        'service_files': service_files,
         'services': dict(ms_config.get('services', {})),
         'rate_limit': {
             'enabled': bool(rl_config.get('enabled', False)),
@@ -597,20 +613,29 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         'client': {
             'entry': resolved_client_entry,
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
-            'base_route': client_config.get('base_route', '/')
+            'base_route': client_config.get('base_route', '/'),
+            'static_mounts': list(client_config.get('static_mounts', []) or [])
+        },
+        'identity': {
+            'gateway_owned': bool(
+                dict(ms_config.get('identity', {})).get('gateway_owned', True)
+            )
         },
         'ingress': dict(ms_config.get('ingress', {})),
         'shared_volumes': list(ms_config.get('shared_volumes', [])),
         'logs': dict(ms_config.get('logs', {})),
         'tracing': dict(ms_config.get('tracing', {}))
     };
-}
-
-impl JacScaleConfig.microservices_declared(self: JacScaleConfig) -> bool {
-    declared = self.get_jac_config().get_plugin_config(self.get_plugin_name()).get(
-        'microservices'
-    );
-    return isinstance(declared, dict) and bool(declared);
+    for boot_key in (
+        'boot_health_timeout',
+        'boot_max_wait',
+        'health_monitor_interval'
+    ) {
+        if boot_key in ms_config {
+            normalized[boot_key] = ms_config[boot_key];
+        }
+    }
+    return normalized;
 }
 
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {

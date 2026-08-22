@@ -7,11 +7,10 @@ token out of the body).
 
 Loaded via `provider = "test_emailer_fake:FakeEmailer"` in jac.toml.
 """
-import from typing { Any }
 import from jaclang.scale.emailer.emailer { Emailer }
 
 # Shared mailbox - tests inspect and clear this between cases.
-glob SENT: list[dict[str, Any]] = [];
+glob SENT: list[dict[str, any]] = [];
 
 obj FakeEmailer(Emailer) {
     override def is_ready -> bool {

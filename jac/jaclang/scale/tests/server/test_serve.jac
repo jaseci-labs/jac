@@ -12,8 +12,10 @@ import time;
 import uuid;
 import shutil;
 import requests;
-import pytest;
-import jwt as pyjwt;
+import from jaclang.runtimelib.serving.authcrypt {
+    jwt_decode as _jwt_decode,
+    jwt_encode as _jwt_encode
+}
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
@@ -129,10 +131,10 @@ def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
         try {
-            server_process.wait(timeout=5);
+            server_process.`wait(timeout=5);
         } except subprocess.TimeoutExpired {
             server_process.kill();
-            server_process.wait();
+            server_process.`wait();
         }
     }
     time.sleep(0.2);
@@ -149,7 +151,7 @@ def _create_expired_token(username: str, days_ago: int = 1) -> str {
         "exp": past_time + timedelta(hours=1),
         "iat": past_time
     };
-    return pyjwt.encode(payload, secret, algorithm=algorithm);
+    return _jwt_encode(payload, secret, algorithm=algorithm);
 }
 
 def _create_very_old_token(username: str, days_ago: int = 15) -> str {
@@ -162,7 +164,7 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
         "exp": past_time + timedelta(hours=1),
         "iat": past_time
     };
-    return pyjwt.encode(payload, secret, algorithm=algorithm);
+    return _jwt_encode(payload, secret, algorithm=algorithm);
 }
 
 glob sv_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
@@ -485,10 +487,8 @@ test "token refresh functionality" {
             assert error_entry["type"] == "missing";
         } else {
             assert "error" in refresh_result;
-            assert refresh_result["error"] in [
-                "Token is required",
-                "Invalid or expired token"
-            ];
+            assert refresh_result["error"]
+                in ["Token is required", "Invalid or expired token"];
         }
 
         response = client.post("/user/refresh-token", json={"token": ""});
@@ -571,8 +571,8 @@ test "token refresh functionality" {
         secret = "supersecretkey_for_testing_only!";
         algorithm = "HS256";
 
-        original_payload = pyjwt.decode(token, secret, algorithms=[algorithm]);
-        new_payload = pyjwt.decode(new_token, secret, algorithms=[algorithm]);
+        original_payload = _jwt_decode(token, secret, algorithms=[algorithm]);
+        new_payload = _jwt_decode(new_token, secret, algorithms=[algorithm]);
 
         assert original_payload["user_id"] == new_payload["user_id"];
         assert new_payload["sub"] == new_payload["user_id"];
@@ -585,11 +585,11 @@ test "token refresh functionality" {
             "exp": datetime.now(UTC) + timedelta(days=1),
             "iat": datetime.now(UTC)
         };
-        legacy_token = pyjwt.encode(legacy_payload, secret, algorithm=algorithm);
+        legacy_token = _jwt_encode(legacy_payload, secret, algorithm=algorithm);
         response = client.post("/user/refresh-token", json={"token": legacy_token});
         assert response.status_code == 200;
         refreshed = extract_data(response.json())["token"];
-        refreshed_payload = pyjwt.decode(refreshed, secret, algorithms=[algorithm]);
+        refreshed_payload = _jwt_decode(refreshed, secret, algorithms=[algorithm]);
         assert refreshed_payload["sub"] == user_id;
 
         api_key_payload = {
@@ -598,7 +598,7 @@ test "token refresh functionality" {
             "exp": datetime.now(UTC) + timedelta(days=1),
             "iat": datetime.now(UTC)
         };
-        api_key_token = pyjwt.encode(api_key_payload, secret, algorithm=algorithm);
+        api_key_token = _jwt_encode(api_key_payload, secret, algorithm=algorithm);
         response = client.post("/user/refresh-token", json={"token": api_key_token});
         assert response.status_code == 401;
     } finally {
@@ -734,10 +734,12 @@ test "/user/me rejects missing or invalid token with 401" {
         assert client.get("/user/me").status_code == 401;
         assert client.get(
             "/user/me", headers={"Authorization": "Bearer not-a-real-token"}
-        ).status_code == 401;
+        ).status_code
+            == 401;
         assert client.raw_client.patch(
             "/user/me", json={"profile": {"firstname": "Alice"}}
-        ).status_code == 401;
+        ).status_code
+            == 401;
     } finally {
         client.close();
     }
@@ -1022,7 +1024,7 @@ test "walker calls" {
             "exp": now + timedelta(days=1),
             "iat": now
         };
-        fake_token = pyjwt.encode(payload, secret, algorithm="HS256");
+        fake_token = _jwt_encode(payload, secret, algorithm="HS256");
 
         response = client.post(
             "/walker/PrivateCreateTask",
@@ -1191,13 +1193,15 @@ test "user management operations" {
 }
 
 test "websocket functionality" {
-    import websockets;
+    import from jaclang.runtimelib.serving.client { aws_connect }
     sp = setup_serve_server();
     try {
         async def test_echo {
-            async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
-                await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}));
-                response = json.loads(await ws.recv());
+            async with await aws_connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
+                await ws.send_text(
+                    json.dumps({"message": "hello", "client_id": "test-1"})
+                );
+                response = json.loads(await ws.receive_text());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
@@ -1212,9 +1216,9 @@ test "websocket functionality" {
         asyncio.run(test_echo());
 
         async def test_minimal {
-            async with websockets.connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
-                await ws.send(json.dumps({}));
-                response = json.loads(await ws.recv());
+            async with await aws_connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
+                await ws.send_text(json.dumps({}));
+                response = json.loads(await ws.receive_text());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
@@ -1228,12 +1232,12 @@ test "websocket functionality" {
         asyncio.run(test_minimal());
 
         async def test_multiple {
-            async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
+            async with await aws_connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 for i in range(3) {
-                    await ws.send(
+                    await ws.send_text(
                         json.dumps({"message": f"msg-{i}", "client_id": f"client-{i}"})
                     );
-                    response = json.loads(await ws.recv());
+                    response = json.loads(await ws.receive_text());
                     assert response["ok"] is True;
                     data = response["data"];
                     rpt = data;
@@ -1256,36 +1260,44 @@ test "websocket functionality" {
             f"Expected 400/404/405, got {response.status_code}: {response.text}"
         );
 
-        async def test_nonexistent {
+        async def _assert_ws_rejected(url: str, what: str) {
+            connected = False;
+            err: any = None;
             try {
-                async with websockets.connect(
-                    f"{sv_ws_url}/ws/NonExistentWalker"
-                ) as ws {
-                    await ws.recv();
-                    pytest.fail("Expected connection to be rejected");
+                async with await aws_connect(url) as ws {
+                    await ws.receive_text();
+                    connected = True;
                 }
-            } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
+            } except Exception as e {
+                err = e;
             }
+            assert not connected , (
+                f"WS upgrade to {what} should have been rejected but connected "
+                f"and received a frame"
+            );
+            resp = err?.response;
+            status = resp?.status_code if resp is not None else err?.status_code;
+            assert status is not None and status >= 400 , (
+                f"WS upgrade to {what} must be rejected at the handshake with a 4xx; "
+                f"got {type(err).__name__} (status={status}). An accepted-then-closed "
+                f"connection or a timeout must not count as a rejection."
+            );
         }
-        asyncio.run(test_nonexistent());
-
-        async def test_http_via_ws {
-            try {
-                async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
-                    await ws.recv();
-                    pytest.fail("Expected connection to be rejected for HTTP walker");
-                }
-            } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;
-            }
-        }
-        asyncio.run(test_http_via_ws());
+        asyncio.run(
+            _assert_ws_rejected(
+                f"{sv_ws_url}/ws/NonExistentWalker", "NonExistentWalker"
+            )
+        );
+        asyncio.run(
+            _assert_ws_rejected(
+                f"{sv_ws_url}/ws/CreateTask", "the HTTP-only walker CreateTask"
+            )
+        );
 
         async def test_private_no_auth {
-            async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
-                await ws.send(json.dumps({"message": "hello"}));
-                response = json.loads(await ws.recv());
+            async with await aws_connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
+                await ws.send_text(json.dumps({"message": "hello"}));
+                response = json.loads(await ws.receive_text());
                 assert response["ok"] is False , f"Expected ok=False, got {response}";
                 assert response["error"]["code"] == "UNAUTHORIZED";
                 assert "token" in response["error"]["message"].lower();
@@ -1318,11 +1330,11 @@ test "websocket functionality" {
         token = response.json()["data"]["token"];
 
         async def test_private_with_token(t: str) {
-            async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
-                await ws.send(
+            async with await aws_connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
+                await ws.send_text(
                     json.dumps({"message": "authenticated hello", "token": t})
                 );
-                response = json.loads(await ws.recv());
+                response = json.loads(await ws.receive_text());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
@@ -1359,11 +1371,11 @@ test "websocket functionality" {
         query_token = response.json()["data"]["token"];
 
         async def test_query_token(t: str) {
-            async with websockets.connect(
+            async with await aws_connect(
                 f"{sv_ws_url}/ws/PrivateWebSocket?token={t}"
             ) as ws {
-                await ws.send(json.dumps({"message": "query auth hello"}));
-                response = json.loads(await ws.recv());
+                await ws.send_text(json.dumps({"message": "query auth hello"}));
+                response = json.loads(await ws.receive_text());
                 assert response["ok"] is True , f"Expected ok=True, got {response}";
                 data = response["data"];
                 rpt = data;
@@ -1376,17 +1388,17 @@ test "websocket functionality" {
         asyncio.run(test_query_token(query_token));
 
         async def test_broadcast {
-            async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws1 {
-                async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws2 {
+            async with await aws_connect(f"{sv_ws_url}/ws/BroadcastChat") as ws1 {
+                async with await aws_connect(f"{sv_ws_url}/ws/BroadcastChat") as ws2 {
                     await asyncio.sleep(0.1);
-                    await ws1.send(
+                    await ws1.send_text(
                         json.dumps({"message": "hello everyone", "sender": "client1"})
                     );
                     response1 = json.loads(
-                        await asyncio.wait_for(ws1.recv(), timeout=5)
+                        await asyncio.wait_for(ws1.receive_text(), timeout=5)
                     );
                     response2 = json.loads(
-                        await asyncio.wait_for(ws2.recv(), timeout=5)
+                        await asyncio.wait_for(ws2.receive_text(), timeout=5)
                     );
                     assert response1["ok"] is True , f"Client1 expected ok=True: {response1}";
                     assert response2["ok"] is True , f"Client2 expected ok=True: {response2}";
@@ -1412,11 +1424,11 @@ test "websocket functionality" {
         asyncio.run(test_broadcast());
 
         async def test_private_broadcast_no_auth {
-            async with websockets.connect(
+            async with await aws_connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat"
             ) as ws {
-                await ws.send(json.dumps({"message": "hello", "room": "general"}));
-                response = json.loads(await ws.recv());
+                await ws.send_text(json.dumps({"message": "hello", "room": "general"}));
+                response = json.loads(await ws.receive_text());
                 assert response["ok"] is False;
                 assert response["error"]["code"] == "UNAUTHORIZED";
             }
@@ -1453,21 +1465,21 @@ test "websocket functionality" {
         }
 
         async def test_private_broadcast_with_auth(u: list) {
-            async with websockets.connect(
+            async with await aws_connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[0]['token']}"
             ) as ws1 {
-                async with websockets.connect(
+                async with await aws_connect(
                     f"{sv_ws_url}/ws/PrivateBroadcastChat?token={u[1]['token']}"
                 ) as ws2 {
                     await asyncio.sleep(0.1);
-                    await ws1.send(
+                    await ws1.send_text(
                         json.dumps({"message": "secret broadcast", "room": "team"})
                     );
                     response1 = json.loads(
-                        await asyncio.wait_for(ws1.recv(), timeout=5)
+                        await asyncio.wait_for(ws1.receive_text(), timeout=5)
                     );
                     response2 = json.loads(
-                        await asyncio.wait_for(ws2.recv(), timeout=5)
+                        await asyncio.wait_for(ws2.receive_text(), timeout=5)
                     );
                     assert response1["ok"] is True;
                     assert response2["ok"] is True;
@@ -1771,10 +1783,11 @@ test "dev mode operations" {
 }
 
 test "dev mode named endpoints and HMR refresh" {
+    greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
     sp = setup_dev_mode_server();
     try {
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-        assert response.status_code == 200;
+        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} before any HMR edit: {response.text[:300]!r}";
         paths = response.json().get("paths", {});
 
         assert "/walker/CreateTask" in paths , f"Expected /walker/CreateTask in OpenAPI paths, got: {list(
@@ -1787,7 +1800,6 @@ test "dev mode named endpoints and HMR refresh" {
         assert "/walker/{walker_name}" not in paths , "Generic /walker/{walker_name} should not exist";
         assert "/function/{function_name}" not in paths , "Generic /function/{function_name} should not exist";
 
-        greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
         with open(str(dm_test_file), 'a') as f {
             f.write(greet_walker);
         }
@@ -1798,7 +1810,7 @@ test "dev mode named endpoints and HMR refresh" {
         time.sleep(1);
 
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-        assert response.status_code == 200;
+        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} after the HMR edit: {response.text[:300]!r}";
         paths = response.json().get("paths", {});
 
         assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
@@ -1808,7 +1820,7 @@ test "dev mode named endpoints and HMR refresh" {
         response = requests.post(
             f"{dm_base_url}/walker/Greet", json={"name": "Jaseci"}, timeout=10
         );
-        assert response.status_code == 200;
+        assert response.status_code == 200 , f"POST /walker/Greet returned {response.status_code} after HMR picked the walker up: {response.text[:300]!r}";
         data = _extract_data_dev(response.json());
         assert data["reports"][0]["message"] == "Hello, Jaseci!";
     } finally {
@@ -1992,7 +2004,7 @@ test "server startup - port fallback integration" {
         if sp2 {
             sp2.terminate();
             try {
-                sp2.wait(timeout=5);
+                sp2.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 sp2.kill();
             }
@@ -2010,7 +2022,10 @@ test "health check filter is disabled by default" {
         get_scale_config,
         reset_scale_config
     }
-    import from jaclang.scale.jserver.jfast_api { ConsoleLogHandler, HealthCheckFilter }
+    import from jaclang.scale.server.native_server {
+        ConsoleLogHandler,
+        HealthCheckFilter
+    }
 
     reset_scale_config();
     cfg = get_scale_config();
@@ -2030,11 +2045,12 @@ test "health check filter is disabled by default" {
 
 test "health check filter suppresses health endpoint log records" {
     import logging;
-    import from jaclang.scale.jserver.jfast_api { HealthCheckFilter }
+    import from jaclang.scale.server.native_server { HealthCheckFilter }
+    import from jaclang.runtimelib.serving.server { ACCESS_LOGGER_NAME }
 
     def make_record(msg: str) -> logging.LogRecord {
         return logging.LogRecord(
-            name="uvicorn.access",
+            name=ACCESS_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
@@ -2075,7 +2091,8 @@ test "health check filter suppresses health endpoint log records" {
 
 test "health check filter blocks records when attached to a handler" {
     import logging;
-    import from jaclang.scale.jserver.jfast_api { HealthCheckFilter }
+    import from jaclang.scale.server.native_server { HealthCheckFilter }
+    import from jaclang.runtimelib.serving.server { ACCESS_LOGGER_NAME }
 
     class _CapturingHandler(logging.Handler) {
         has captured: list = [];
@@ -2087,7 +2104,7 @@ test "health check filter blocks records when attached to a handler" {
 
     def make_record(msg: str) -> logging.LogRecord {
         return logging.LogRecord(
-            name="uvicorn.access",
+            name=ACCESS_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
@@ -2133,9 +2150,7 @@ test "pwa target uses jac-scale server" {
     with tempfile.TemporaryDirectory() as temp_dir {
         temp_path = Path(temp_dir);
         main_jac = temp_path / "main.jac";
-        main_jac.write_text(
-            'cl { def:pub app -> JsxElement { return <div>Test</div>; } }'
-        );
+        main_jac.write_text('def:pub app -> JsxElement { return <div>Test</div>; }');
         jac_toml = temp_path / "jac.toml";
         jac_toml.write_text(
             '''[project]
@@ -2175,7 +2190,7 @@ theme_color = "#000000"
         } finally {
             server.terminate();
             try {
-                server.wait(timeout=5);
+                server.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 server.kill();
             }
@@ -2238,7 +2253,7 @@ test "jwt middleware: per-user isolation and token rejection" {
             tok_b
         )}";
 
-        forged = pyjwt.encode(
+        forged = _jwt_encode(
             {"username": "x", "exp": datetime.now(UTC) + timedelta(hours=1)},
             "wrong_key",
             algorithm="HS256"

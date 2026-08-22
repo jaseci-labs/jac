@@ -19,7 +19,8 @@ import from jaclang.jac0core.diagnostics { E5092 }
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
-        call_kwargs: dict = {};
+        call_kwargs: dict = {},
+        arg_nodes: list = [];
 }
 
 
@@ -1177,6 +1178,14 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_set_elem_loop(
+        self: NativeSetEmitter,
+        ctx: NativeEmitCtx,
+        src_set: ir.Value,
+        prefix: str,
+        body_cb: object
+    ) -> None;
+
     def _emit_set_relation(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
@@ -1506,11 +1515,22 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p = ctx.pass_ref;
         b = get_builder(p);
         i64 = ir.IntType(64);
+        if p._opt_ptr_payload_of(arg_val.type) is not None {
+            arg_val = b.extract_value(arg_val, 1, name="id.opt");
+        }
         if isinstance(arg_val.type, ir.PointerType) {
             return b.ptrtoint(arg_val, i64, name="id.ptr");
         }
         if isinstance(arg_val.type, ir.IntType) {
             return p._coerce_type(arg_val, i64);
+        }
+        if isinstance(arg_val.type, ir.DoubleType) {
+            return b.bitcast(arg_val, i64, name="id.f64");
+        }
+        if isinstance(arg_val.type, ir.FloatType) {
+            return b.zext(
+                b.bitcast(arg_val, ir.IntType(32), name="id.f32"), i64, name="id.f32.w"
+            );
         }
         return None;
     }
@@ -1590,10 +1610,14 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return p._emit_float_repr(arg_val);
         }
         if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
-            fmt = p._get_snprintf_fmt("'%s'");
-            fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
-            b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
-            return buf_ptr;
+            str_repr = b.call(p._repr_str_fn(), [arg_val], name="repr.str");
+            return p._mark_owned(str_repr);
+        }
+        if isinstance(arg_val.type, (ir.PointerType, ir.LiteralStructType)) {
+            cont_s = p._emit_container_repr(arg_val, ctx.type_key or None);
+            if cont_s is not None {
+                return cont_s;
+            }
         }
         return None;
     }
@@ -1819,22 +1843,16 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         base = args[0];
         exp = args[1];
         if len(args) >= 3
-        and isinstance(base.type, ir.IntType)
-        and isinstance(exp.type, ir.IntType)
-        and isinstance(args[2].type, ir.IntType) {
+            and isinstance(base.type, ir.IntType)
+            and isinstance(exp.type, ir.IntType)
+            and isinstance(args[2].type, ir.IntType) {
             return self.emit_pow_mod(ctx, base, exp, args[2]);
         }
-        if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
-            return p._codegen_int_pow(base, exp);
+        exp_node = None;
+        if len(ctx.arg_nodes) >= 2 {
+            exp_node = ctx.arg_nodes[1];
         }
-        if isinstance(base.type, ir.DoubleType)
-        and isinstance(exp.type, ir.DoubleType) {
-            pow_fn = p._get_or_declare_extern(
-                "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
-            );
-            return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
-        }
-        return None;
+        return p._codegen_pow(base, exp, exp_node);
     }
 
     def emit_pow_mod(

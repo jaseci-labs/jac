@@ -1,6 +1,6 @@
 """Test: JS-idiomatic methods should produce portability warnings."""
 
-def use_array_methods() -> None {
+def use_array_methods {
     items: list = [1, 2, 3];
     items.push(4);
     items.forEach(print);
@@ -11,7 +11,7 @@ def use_array_methods() -> None {
     items.includes(3);
 }
 
-def use_string_methods() -> None {
+def use_string_methods {
     s = "hello world";
     c = s.charAt(0);
     code = s.charCodeAt(0);
@@ -20,22 +20,27 @@ def use_string_methods() -> None {
     trimmed = s.trim();
 }
 
-def use_functional_methods() -> None {
+def check(x: int) -> bool {
+    return x > 1;
+}
+
+def use_functional_methods {
     items: list = [1, 2, 3];
     items.every(check);
     items.some(check);
     items.find(check);
+    items.find(lambda (x: int) { x > 1; });
     items.findIndex(check);
 }
 
-def use_object_methods() -> None {
+def use_object_methods {
     d: dict = {"a": 1};
     d.hasOwnProperty("a");
     d.assign(d);
     d.freeze();
 }
 
-def use_conversion_methods() -> None {
+def use_conversion_methods {
     n = 3.14159;
     s = n.toFixed(2);
     s2 = n.toPrecision(4);

@@ -1,8 +1,8 @@
 import from jaclang.scale.shared.utils { authenticate_or_fail }
-import from jaclang.scale._optdeps.pymongo { PyMongoError }
+import from jaclang.runtimelib.pgwire { PgWireError }
 
 def _err_response(e: Exception) -> TransportResponse {
-    if isinstance(e, PyMongoError) {
+    if isinstance(e, (PgWireError, OSError)) {
         logger.error(f"Storage failure on /jobs: {type(e).__name__}: {e}");
         return TransportResponse.fail(
             code='STORAGE_UNAVAILABLE',
@@ -19,13 +19,13 @@ def _err_response(e: Exception) -> TransportResponse {
 }
 
 def _require_auth(
-    request: Any, user_manager: Any
+    request: any, user_manager: any
 ) -> tuple[str | None, TransportResponse | None] {
     return authenticate_or_fail(request.headers.get('Authorization'), user_manager);
 }
 
 def _ensure_authorized(
-    job: dict | None, user_id: str, user_manager: Any
+    job: dict | None, user_id: str, user_manager: any
 ) -> TransportResponse | None {
     not_found = TransportResponse.fail(
         code='NOT_FOUND', message='Job not found', meta=Meta(extra={'http_status': 404})
@@ -117,9 +117,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -139,9 +139,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             request_model=UpdateJobRequest,
@@ -162,9 +162,9 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
                     name='job_id',
                     data_type='str',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Job ID',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -194,7 +194,7 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
 
         introspector = self.introspector;
         target_obj = (introspector._walkers or {}).get(walker_or_function)
-        or (introspector._functions or {}).get(walker_or_function);
+            or (introspector._functions or {}).get(walker_or_function);
 
         if target_obj is None {
             return TransportResponse.fail(

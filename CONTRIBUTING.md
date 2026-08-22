@@ -22,7 +22,7 @@ git remote -v
 
 **Setting Up Your Dev Environment**
 
-`jaclang` ships as the single `jac` binary (a Zig launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
+`jaclang` ships as the single `jac` binary (a native Jac launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
 
 **1. Install Zig**
 
@@ -39,9 +39,9 @@ zig version          # must print 0.16.0
 
 (The vendored typeshed stdlib stubs are not committed -- `zig build` fetches them at the pinned commit on first build, so there is nothing to check out manually.)
 
-**2. Build the binary and set up plugins + pre-commit**
+**2. Build the binary and set up plugins + git hooks**
 
-The bootstrap script builds the binary, puts it on PATH for the current shell, installs the plugins editable, and sets up pre-commit:
+The bootstrap script builds the binary, puts it on PATH for the current shell, installs the plugins editable, and installs the git hooks (`jac precommit --install`):
 
 ```bash
 ./scripts/fresh_env.sh
@@ -66,7 +66,7 @@ With this enabled, `import jaclang` resolves to `jac/jaclang` (it's prepended to
 
 **Faster builds: `zig build -Ddev`.** `fresh_env.sh` builds with `zig build -Ddev`, which *bakes* this link into the binary: the compiler is not bundled at all (no ~100 MB tree copy, no JIR precompile -- a much smaller, faster build), and the binary reroutes `import jaclang` to the build-root source from any directory, so the loop holds with no `[dev]` stanza in scope. It's the fastest build and the right default for compiler work; the tradeoff is the binary hard-depends on that source dir, so it's dev-only and not distributable. Use `-Djaclang-dir=PATH` to bake an explicit compiler dir, or a plain `zig build` for the fully self-contained release binary. Because the compiler imports the native passes at startup, a `-Ddev` binary still needs the LLVMPY_* shim **placed in the linked tree** (the same `zig build fetch-llvm` prerequisite as a release build -- `-Ddev` then compiles and places it automatically; without it the build stops with a clear message). `fresh_env.sh` runs `fetch-llvm` for you.
 
-The stanza is read from the **nearest `jac.toml`** (like every other config setting), so it ships in *both* the repo root and `jac/jac.toml` (both pointing at the same source) -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To force the loop *off* for a single command -- e.g. to test the shipped binary's bundled + precompiled jaclang instead of your edits -- set `JAC_NO_DEV_SOURCE=1` (CI's binary self-test does this).
+The stanza is read from the **nearest ancestor `jac.toml`** (like every other config setting), so the single root `jac.toml` covers every directory in the repo -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To force the loop *off* for a single command -- e.g. to test the shipped binary's bundled + precompiled jaclang instead of your edits -- set `JAC_NO_DEV_SOURCE=1` (CI's binary self-test does this).
 
 You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the bundled CPython version.
 
@@ -90,14 +90,23 @@ test_jobs = "auto"   # "auto" = one worker per core; "0" = serial; or a fixed co
 **Build something awesome, or fix something that's broken**
 
 See Rules below.
-And check [`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml) to see our lint strategy.
+Formatting and linting are enforced by `jac precommit` (configured via `[check.lint]` in [`jac.toml`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac.toml)); markdown lint and the em-dash ban run on every PR via pre-commit.ci ([`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml)).
 
-**This is how we run the docs.**
+**This is how the docs work.**
+
+The entire documentation set lives in the jaclang package at
+`jac/jaclang/cli/docs/` (with `nav.json` defining the section hierarchy) and
+ships inside the `jac` binary. `jac guide` serves it offline, the MCP server
+exposes it as `jac://docs/*` resources, and the website renders the same
+corpus -- there is no separate docs build. Edit the markdown in place, then:
 
 ```bash
-pip install -e docs # <-- Not a real package more of a script
-python docs/scripts/mkdocs_serve.py
+jac run scripts/validate_docs_code.jac        # syntax-check the code blocks
+cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
 ```
+
+Adding or removing a page means updating `jac/jaclang/cli/docs/nav.json` in
+the same PR (a test pins the manifest to the files on disk).
 
 **Pushing Your First PR**
 
@@ -126,7 +135,7 @@ python docs/scripts/mkdocs_serve.py
 
 > **Tip: PR Best Practices**
 >
-> - Make sure all pre-commit checks pass before pushing
+> - Make sure `jac precommit` passes before pushing
 > - Run tests locally using the test script above
 > - Keep your PR focused on a single feature or fix
 > - Write clear commit messages and PR descriptions
@@ -136,11 +145,11 @@ python docs/scripts/mkdocs_serve.py
 
 Every PR that changes package code must include a release note fragment file:
 
-1. Create a file at `docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md`
+1. Create a file at `release_notes/unreleased/<package>/<PR#>.<category>.md`
    - **Packages**: `jaclang`, `byllm`
    - **Note**: The Jac client and desktop runtimes, the `scale` deployment subsystem, and the MCP server are now part of `jaclang` core (under `jac/jaclang/runtimelib/client/`, `jac/jaclang/scale/`, and `jac/jaclang/cli/mcp/`); changes to them use the `jaclang` package fragment.
    - **Categories**: `feature`, `bugfix`, `breaking`, `refactor`, or `docs`
-   - **Example**: `docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`
+   - **Example**: `release_notes/unreleased/jaclang/1234.bugfix.md`
 
 2. Add one or more bullet points:
 
@@ -209,7 +218,7 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 
 1. Go to **GitHub Actions** -> **Release**
 2. Click **Run workflow**, set `action` to `create-pr`, and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
-3. The workflow bumps the version in `jac/jac.toml` (the single source of truth) and opens a PR from a `release/*` branch
+3. The workflow bumps the version in the root `jac.toml` (the single source of truth) and opens a PR from a `release/*` branch
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
@@ -234,4 +243,4 @@ Every step is idempotent: re-running a partial release converges instead of erro
 | Auto-merge won't enable / PR won't merge | Auto-merge needs the PR's required status checks to be attached; do the close/reopen above first so the checks exist on the PR |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
 | Binaries missing from the release | Re-run **Build jac native binaries** via `workflow_dispatch` with the release tag (e.g. `v0.30.4`); it rebuilds and re-attaches idempotently. An empty tag builds artifacts only (a dry run that attaches nothing) |
-| Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from `jac/jac.toml` |
+| Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from the root `jac.toml` |

@@ -179,11 +179,11 @@ obj NpmProvider(EcosystemProvider) {
     override def parse_spec(spec: str) -> tuple[str, str] {
         import re;
         spec = spec.strip();
-        scoped = re.match(r"^(@[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+)@(.+)$", spec);
+        scoped = re.`match(r"^(@[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+)@(.+)$", spec);
         if scoped {
             return (scoped.group(1), scoped.group(2));
         }
-        plain = re.match(r"^([a-zA-Z0-9_.-]+)@(.+)$", spec);
+        plain = re.`match(r"^([a-zA-Z0-9_.-]+)@(.+)$", spec);
         if plain {
             return (plain.group(1), plain.group(2));
         }

@@ -7,17 +7,13 @@ import from jaclang.runtimelib.client.mobile_setup_env {
 }
 import os;
 
-import from jaclang.runtimelib.client.targets.register {
-    register_targets,
-    sync_client_target_choices
-}
+import from jaclang.runtimelib.client.targets.register { sync_client_target_choices }
 import from jaclang.runtimelib.client.targets.registry { ClientTarget }
 import from pathlib { Path }
 
 glob registry = get_registry();
 
 with entry {
-    register_targets();
     sync_client_target_choices();
 }
 
@@ -31,7 +27,7 @@ with entry {
         Arg.create(
             "platform",
             typ=str,
-            default=None,
+            `default=None,
             help="Platform for mobile setup (android, ios, all)",
             choices=["android", "ios", "all"],
             short="p"
@@ -297,9 +293,13 @@ def _npm_context -> tuple | None {
     return (config, provider);
 }
 
-def run_npm_add(packages: list, dev: bool) -> int {
+def run_npm_add(packages: list, dev: bool, install_global: bool = False) -> int {
     import from jaclang.project.providers { InstallContext }
     import from jaclang.cli.console { console }
+
+    if install_global {
+        return run_npm_add_global(packages, dev);
+    }
 
     npm_ctx = _npm_context();
     if npm_ctx is None {
@@ -343,6 +343,55 @@ def run_npm_add(packages: list, dev: bool) -> int {
     }
 }
 
+def run_npm_add_global(packages: list, dev: bool) -> int {
+    import subprocess;
+    import from jaclang.cli.console { console }
+    import from jaclang.runtimelib.client.bun_installer {
+        get_bun,
+        bun_unavailable_message
+    }
+    import from jaclang.project.tool_paths { node_root }
+
+    if not packages {
+        console.error(
+            "Provide at least one npm package to install globally.",
+            hint="e.g. 'jac install --npm --global eslint'"
+        );
+        return 1;
+    }
+    bun = get_bun();
+    if bun is None {
+        console.error(bun_unavailable_message());
+        return 1;
+    }
+    dest = node_root("global");
+    dest.mkdir(parents=True, exist_ok=True);
+    pkg_json = dest / "package.json";
+    if not pkg_json.exists() {
+        pkg_json.write_text(
+            '{\n  "name": "jac-global-tools",\n  "private": true\n}\n', encoding="utf-8"
+        );
+    }
+    cmd: list = [bun, "add"];
+    if dev {
+        cmd.append("--dev");
+    }
+    cmd.extend(packages);
+    console.print(
+        f"\n📦 Installing {len(packages)} npm tool(s) globally into {dest}", style="bold"
+    );
+    result = subprocess.run(cmd, cwd=str(dest));
+    if result.returncode != 0 {
+        console.error("Global npm install failed.");
+        return 1;
+    }
+    console.success(
+        f"Installed {len(packages)} npm tool(s) globally — "
+        "run with 'jac x --global <tool>'"
+    );
+    return 0;
+}
+
 def run_npm_remove(packages: list, dev: bool) -> int {
     import from jaclang.project.providers { InstallContext }
     import from jaclang.cli.console { console }
@@ -380,8 +429,8 @@ def _auto_client_target(config: JacConfig, requested: str, project_dir: Path) ->
     }
     import from jaclang.project.kinds { resolve_entry, resolve_project_kind }
     try {
-        entry = resolve_entry(config, str(project_dir));
-        if resolve_project_kind(config, entry) == "web-static" {
+        `entry = resolve_entry(config, str(project_dir));
+        if resolve_project_kind(config, `entry) == "web-static" {
             return "static";
         }
     } except Exception {

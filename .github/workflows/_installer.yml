@@ -1,0 +1,105 @@
+name: Installer smoke
+
+# The documented `curl ... | bash` path, exercised against the LIVE latest
+# release. Two callers share this one copy:
+#   - ci.yml  (installer-test): PR lane, gated on scripts/install.sh changing.
+#   - nightly.yml (installer-live): daily, so a release that ships a missing
+#     or broken asset is caught even when nobody touches the installer.
+#
+# It was duplicated between those two files and had already drifted: only the
+# ci.yml copy linted install.sh, and only the ci.yml copy inherited
+# JAC_NO_DEV_SOURCE (see the env note below). Two copies of an installer test
+# converge on being one wrong copy, so the body lives here.
+
+on:
+  workflow_call:
+    inputs:
+      shellcheck:
+        description: >-
+          Lint scripts/install.sh from the checkout. On for the PR lane, whose
+          whole trigger is that file changing. Off for the scheduled lane,
+          which is testing the PUBLISHED installer -- linting the checkout
+          there would report on a file the run never executes.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# This job installs the SHIPPED binary and must run it, not the checkout's
+# compiler. The repo root's jac.toml sets `[dev] jaclang_source = "jac"`, and
+# every step below runs with the checkout as cwd, so without this the
+# installed binary would be rerouted to in-repo compiler source and the test
+# would stop proving anything about the artifact users download. ci.yml sets
+# this at its own workflow level; a called workflow does not inherit the
+# caller's env, so it is declared here -- which also closes the gap on the
+# nightly lane, which never set it.
+env:
+  JAC_NO_DEV_SOURCE: "1"
+
+jobs:
+  installer:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-14
+            platform: macos-aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: ShellCheck install.sh
+        if: inputs.shellcheck && runner.os == 'Linux'
+        run: shellcheck scripts/install.sh
+
+      # A missing asset on the latest release is a release regression that
+      # breaks `curl ... | bash` -- fail loudly instead of skipping.
+      - name: Require a native binary asset on the latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view --repo "$GITHUB_REPOSITORY" \
+               --json assets --jq '.assets[].name' 2>/dev/null \
+               | grep -q "jac-.*-${{ matrix.platform }}$"; then
+            echo "::error::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset; 'curl ... | bash' is broken for this platform."
+            exit 1
+          fi
+
+      - name: "install: download + run the binary"
+        env:
+          # install.sh authenticates its GitHub API calls when a token is set;
+          # shared runners (macOS especially) exhaust the unauthenticated
+          # per-IP rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/install.sh
+
+      - name: "install: verify jac"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          which jac
+          jac --version
+
+      - name: "install: run a test program"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          echo 'with entry { print("hello from the jac binary"); }' > /tmp/test_install.jac
+          jac /tmp/test_install.jac
+
+      - name: "install: uninstall"
+        run: bash scripts/install.sh --uninstall
+
+      - name: "install: verify removal"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          if command -v jac &>/dev/null; then
+            echo "FAIL: jac still found after uninstall"
+            exit 1
+          fi
+          echo "PASS: jac removed"

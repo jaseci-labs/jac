@@ -10,17 +10,17 @@ glob registry = get_registry();
         Arg.create(
             "action",
             kind=ArgKind.POSITIONAL,
-            default="show",
+            `default="show",
             help="Action: show, get, set, reset, list"
         ),
         Arg.create(
-            "key", kind=ArgKind.POSITIONAL, default="", help="Configuration key"
+            "key", kind=ArgKind.POSITIONAL, `default="", help="Configuration key"
         ),
-        Arg.create("value", kind=ArgKind.POSITIONAL, default="", help="Value to set"),
-        Arg.create("group", default="", help="Config group filter", short="g"),
+        Arg.create("value", kind=ArgKind.POSITIONAL, `default="", help="Value to set"),
+        Arg.create("group", `default="", help="Config group filter", short="g"),
         Arg.create(
             "output",
-            default="table",
+            `default="table",
             help="Output format: table, json, toml",
             short="o"
         ),

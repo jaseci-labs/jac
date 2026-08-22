@@ -7,7 +7,6 @@ import sys;
 import warnings;
 import unittest.mock;
 
-import pytest;
 import yaml;
 import from fixtures { python_lib_mode }
 
@@ -91,7 +90,6 @@ test "params format" {
         "messages",
         "tools",
         "response_format",
-        "temperature",
         "max_tokens",
 
     ];
@@ -99,18 +97,39 @@ test "params format" {
         assert key in extracted_dict , f"Missing key: {key}";
     }
 
+    # Temperature is omitted entirely when the caller never sets one, so the
+    # provider (or an aggregator like OpenRouter) applies its own default
+    # instead of byLLM forcing an unsupported value. See issue #7687.
+    assert "temperature" not in extracted_dict , "temperature must be omitted when unset";
+
     add_message = extracted_dict["messages"];
     assert add_message[0]["role"] == "system" , "First message should be of role 'system'";
     assert add_message[1]["role"] == "user" , "Second message should be of role 'user'";
     assert add_message[3]["role"] == "tool" , "Fourth message should be of role 'tool'";
     assert (
-        add_message[3]["content"] == "The current wind speed in Puttalam is about 18-22 km/h."
+        add_message[3]["content"]
+        == "The current wind speed in Puttalam is about 18-22 km/h."
     ) , "Content mismatch";
 
     add_tool = extracted_dict["tools"][0];
     assert add_tool["type"] == "function" , "First tool should be of type 'function'";
     assert add_tool["function"]["name"] == "get_live_wind_speed" , "First tool function should be 'get_live_wind_speed'";
     assert "city" in add_tool["function"]["parameters"]["properties"] , "get_live_wind_speed function should have 'city' parameter";
+}
+
+test "temperature passed through when set" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("llm_params_temp", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    dict_str = stdout_value[stdout_value.find("{"):stdout_value.rfind("}") + 1];
+    extracted_dict = yaml.safe_load(dict_str);
+
+    assert "temperature" in extracted_dict , "temperature must be present when the caller sets it";
+    assert extracted_dict["temperature"] == 0.3 , f"expected temperature 0.3, got {extracted_dict.get(
+        'temperature'
+    )}";
 }
 
 test "image input" {
@@ -138,7 +157,8 @@ test "streaming output" {
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
     assert (
-        "The orca whale, or killer whale, is one of the most intelligent and adaptable marine predators" in stdout_value
+        "The orca whale, or killer whale, is one of the most intelligent and adaptable marine predators"
+        in stdout_value
     );
 }
 
@@ -293,7 +313,8 @@ test "with llm type" {
     assert "14/03/1879" in stdout_value;
     assert (
         'University (University) (obj) = type(__module__="with_llm_type", __doc__=None, '
-        "_jac_entry_funcs_`=[`], _jac_exit_funcs_=[], __init__=function(__wrapped__=function()))" not in stdout_value
+        "_jac_entry_funcs_`=[`], _jac_exit_funcs_=[], __init__=function(__wrapped__=function()))"
+        not in stdout_value
     );
     desired_output_count = stdout_value.count(
         "Person(name='Jason Mars', dob='1994-01-01', age=30)"
@@ -302,7 +323,11 @@ test "with llm type" {
 }
 
 test "with llm image" {
-    pytest.importorskip("PIL", reason="This test requires Pillow to be installed");
+    try {
+        import PIL;
+    } except ImportError {
+        testskip("This test requires Pillow to be installed");
+    }
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     jac_import("with_llm_image", base_path=FIXTURE_DIR + "/");
@@ -324,7 +349,11 @@ test "webp image support" {
 }
 
 test "with llm video" {
-    pytest.importorskip("cv2", reason="This test requires OpenCV to be installed");
+    try {
+        import cv2;
+    } except ImportError {
+        testskip("This test requires OpenCV to be installed");
+    }
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     jac_import("with_llm_video", base_path=FIXTURE_DIR + "/");
@@ -414,8 +443,8 @@ test "visit by for routing" {
 
 test "streaming visit by routes and streams tokens to handler" {
     # `visit [-->] by model(stream=True, stream_handler=fn)` streams the routing
-    # decision token-by-token to the handler (the jac ai --ui firehose path)
-    # while the structured choice still selects the successor edge.
+    # decision token-by-token to the handler (the path a live token feed
+    # consumes) while the structured choice still selects the successor edge.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     jac_import("streaming_visit_by", base_path=FIXTURE_DIR + "/");
@@ -477,7 +506,8 @@ test "max react iterations" {
     assert "WIND_TOOL_CALLS: 1" in stdout_value;
     assert "UNIT_TOOL_CALLS: 1" in stdout_value;
     assert (
-        "Based on the tool calls and their results above, provide only your final answer." in stdout_value
+        "Based on the tool calls and their results above, provide only your final answer."
+        in stdout_value
     );
 }
 
@@ -628,6 +658,69 @@ test "api key masking formats" {
     assert len("x") <= 1;
 }
 
+test "resolved api_base reaches the litellm call" {
+    # `make_model_params` resolves api_base, then dispatch pops it off `params`
+    # into `self.api_base`, an attribute only the proxy and http_client
+    # branches read. On the default litellm path a configured base_url was
+    # therefore dropped and requests went to the provider's own endpoint
+    # (api.openai.com for gpt-*) instead of the configured gateway.
+    if not hasattr(_byllm_llm_mod.litellm, "completion") {
+        testskip("litellm is not installed");
+    }
+    seen: dict[str, object] = {};
+
+    def _fake_completion(**kwargs: object) -> dict[str, object] {
+        seen.clear();
+        seen.update(kwargs);
+        return {
+            "model": "gpt-4o-mini",
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {}
+        };
+    }
+    def _dispatched_api_base(model: Model) -> object {
+        with unittest.mock.patch.object(
+            _byllm_llm_mod.litellm, "completion", _fake_completion
+        ) {
+            model.dispatch_no_streaming(
+                MTRuntime(
+                    messages=[
+                        Message(role=MessageRole.SYSTEM, content="s"),
+                        Message(role=MessageRole.USER, content="u")
+                    ],
+                    resp_type=str,
+                    stream=False,
+                    tools=[],
+                    call_params={},
+                    mtir=None
+                )
+            );
+        }
+        return seen.get("api_base");
+    }
+    configured = Model(
+        model_name="gpt-4o-mini",
+        api_key="sk-test",
+        config={"base_url": "https://gateway.example.com/v1"}
+    );
+    assert _dispatched_api_base(configured) == "https://gateway.example.com/v1" , "a configured base_url must reach litellm";
+
+    # With nothing configured the loader's empty-string default must normalise
+    # to None so litellm keeps the provider's endpoint, never DEFAULT_BASE_URL.
+    with unittest.mock.patch.dict(
+        _byllm_llm_mod._model_config, {"base_url": ""}, clear=True
+    ) {
+        bare = Model(model_name="gpt-4o-mini", api_key="sk-test");
+        assert _dispatched_api_base(bare) is None , "api_base must stay unset when nothing configures one";
+    }
+}
+
+
 test "api key not in verbose output" {
     import from loguru { logger }
 
@@ -712,7 +805,9 @@ test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
 # so that is the correct unit to test.
 glob _TestPerson = dataclasses.make_dataclass(
          "Person", [("name", str), ("age", int)]
-     );
+     ),
+     _TestUnionField = dataclasses.make_dataclass("UnionField", [("value", str | int)]),
+     _TestFieldless = dataclasses.make_dataclass("Fieldless", []);
 
 test "output conversion error on plain text" {
     # LLM returns a narrative string instead of JSON
@@ -924,6 +1019,215 @@ test "finish tool error not raised for valid type" {
     result = finish_tool({"name": "Alice", "age": 30});
     assert result.name == "Alice" , f"Expected name='Alice', got '{result.name}'";
     assert result.age == 30 , f"Expected age=30, got '{result.age}'";
+}
+
+# finish_tool argument robustness (issue #8169).
+test "finish tool argument resolution heals recoverable shapes" {
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    person = {"name": "Bob", "age": 25};
+    for (sent, why) in [
+        ({"final_output": person}, "canonical name"),
+        ({"output": person}, "misnamed argument"),
+        (person, "flattened kwargs")
+    ] {
+        parsed = finish_tool.parse_arguments(sent);
+        assert parsed["final_output"].name == "Bob" , f"{why}: got {parsed}";
+    }
+    bare = Tool.make_finish_tool(str).parse_arguments("just the answer");  # type: ignore[arg-type]
+    assert bare == {"final_output": "just the answer"} , f"bare payload: got {bare}";
+    # Output type whose OWN field is named final_output, sent flattened.
+    self_named = dataclasses.make_dataclass(
+        "_SelfNamed", [("final_output", str), ("score", int)]
+    );
+    parsed = Tool.make_finish_tool(self_named).parse_arguments(
+        {"final_output": "ok", "score": 5}
+    );
+    assert parsed["final_output"].score == 5 , f"self-named flattened: got {parsed}";
+}
+
+test "unusable tool arguments raise recoverable errors" {
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    def _sample_tool(city: str) -> str {
+        return city;
+    }
+    regular = Tool(func=_sample_tool);
+    for (tool, sent, needle) in [
+        (finish_tool, {}, "final_output"),
+        (finish_tool, {"a": 1, "b": 2}, "final_output"),
+        (regular, {"location": "Paris"}, "'city'"),
+        (regular, {"return": "Paris"}, "'city'"),
+        (regular, ["Paris"], "JSON object")
+    ] {
+        raised = False;
+        try {
+            tool.parse_arguments(sent);
+        } except ValueError as e {
+            raised = True;
+            assert needle in str(e) , f"{sent}: got {e}";
+        }
+        assert raised , f"Expected ValueError for {sent}";
+    }
+}
+
+test "finish tool invocation failure raises FinishToolError not TypeError" {
+    finish_tool = Tool.make_finish_tool(_TestPerson);
+    raised = False;
+    try {
+        finish_tool();
+    } except FinishToolError as e {
+        raised = True;
+        assert "final_output" in str(e) , f"got: {e}";
+    }
+    assert raised , "Expected FinishToolError for argument-less finish call";
+}
+
+"""Model, finish_tool-only mt_run, and a fake response carrying `arguments`."""
+def _finish_env(arguments: str) -> tuple {
+    model = Model(model_name="test-model");
+    mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            Message(role=MessageRole.USER, content="Who?")
+        ],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[Tool.make_finish_tool(_TestPerson)],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    fake_fn = types.SimpleNamespace(name="finish_tool", arguments=arguments);
+    fake_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": None,
+                    "tool_calls": [types.SimpleNamespace(id="call_1", function=fake_fn)]
+                }
+            }
+        ],
+
+    };
+    return (model, mt_run, fake_response);
+}
+
+
+def _dispatch_finish_call(arguments: str) -> object {
+    (model, mt_run, fake_response) = _finish_env(arguments);
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", return_value=fake_response
+    ) {
+        return model.dispatch_no_streaming(mt_run);
+    }
+}
+
+test "misnamed finish argument is healed end to end" {
+    result = _dispatch_finish_call('{"output": {"name": "Dana", "age": 33}}');
+    finish_tc = result.tool_calls[0];
+    assert finish_tc.is_finish_call() , "Healed call should still be the finish call";
+    assert finish_tc.get_output().name == "Dana" , "Expected healed typed output";
+}
+
+# An error report that classified as the finish call would become the typed output.
+test "unusable finish arguments are recovered end to end" {
+    result = _dispatch_finish_call('{"a": 1, "b": 2}');
+    err_tc = result.tool_calls[0];
+    assert not err_tc.is_finish_call() , (
+        "Recovered error call must not masquerade as the finish call"
+    );
+    content = str(err_tc().content);
+    assert "Tool error" in content and "final_output" in content , f"got: {content}";
+}
+
+test "async dispatch heals a misnamed finish argument" {
+    import asyncio;
+    (model, mt_run, fake_response) = _finish_env(
+        '{"output": {"name": "Eli", "age": 44}}'
+    );
+
+    async def _fake_async_call(params: dict) -> object {
+        return fake_response;
+    }
+
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream_async", _fake_async_call
+    ) {
+        result = asyncio.run(model.adispatch_no_streaming(mt_run));
+    }
+    finish_tc = result.tool_calls[0];
+    assert finish_tc.is_finish_call() , "Async healed call should be the finish call";
+    assert finish_tc.get_output().name == "Eli" , "Expected healed typed output";
+}
+
+# The max-iterations terminal has no retry loop: heal or degrade, never raise.
+test "forced final answer heals or degrades without raising" {
+    for (arguments, expect_typed) in [
+        ('{"output": {"name": "Fay", "age": 51}}', True),
+        ('{"a": 1, "b": 2}', False)
+    ] {
+        (model, mt_run, fake_response) = _finish_env(arguments);
+        with unittest.mock.patch.object(
+            model, "model_call_no_stream", return_value=fake_response
+        ) {
+            out = model._force_final_answer(mt_run);
+        }
+        if expect_typed {
+            assert out.name == "Fay" , f"Expected healed typed output, got: {out}";
+        } else {
+            assert not isinstance(out, _TestPerson) , f"Expected degradation, got: {out}";
+        }
+    }
+}
+
+test "recovery re-prompt heals a misnamed finish argument" {
+    (model, mt_run, fake_response) = _finish_env(
+        '{"output": {"name": "Gus", "age": 29}}'
+    );
+    with unittest.mock.patch.object(
+        model, "model_call_no_stream", return_value=fake_response
+    ) {
+        recovery = model._attempt_recovery(mt_run);
+    }
+    assert recovery is not None , "Recovery should run for a structured resp_type";
+    finish_tc = recovery.tool_calls[0];
+    assert finish_tc.is_finish_call() , "Recovered call should be the finish call";
+    assert finish_tc.get_output().name == "Gus" , "Expected healed typed output";
+}
+
+# Some backends downgrade json_schema to json_object and reject requests whose
+# messages lack the word "json" (issue #8114).
+test "response format requests always carry the json word" {
+    def _params(resp_type: type, tools: list) -> dict {
+        model = Model(model_name="test-model");
+        mt_run = MTRuntime(
+            messages=[
+                Message(role=MessageRole.SYSTEM, content="sys"),
+                Message(role=MessageRole.USER, content="do the thing")
+            ],
+            resp_type=resp_type,
+            stream=False,
+            tools=tools,
+            call_params={},
+            mtir=None  # type: ignore[arg-type]
+        );
+        return model.make_model_params(mt_run);
+    }
+    for (label, resp_type, tools, want_rf) in [
+        ("typed no tools", _TestPerson, [], True),
+        ("scalar no tools", int, [], True),
+        # A union field compiles to anyOf with no top-level type, and a fieldless
+        # obj to empty properties: both yield no schema hint lines, so the lead
+        # sentence must not depend on those lines existing.
+        ("union field", _TestUnionField, [], True),
+        ("fieldless obj", _TestFieldless, [], True),
+        ("plain str", str, [], False),
+        ("typed with tools", _TestPerson, [Tool.make_finish_tool(_TestPerson)], False)
+    ] {
+        params = _params(resp_type, tools);
+        has_rf = params.get("response_format") is not None;
+        has_json = "json" in str(params.get("messages", [])).lower();
+        assert has_rf == want_rf , f"{label}: unexpected response_format={has_rf}";
+        assert has_json == want_rf , f"{label}: json-word={has_json} but rf={has_rf}";
+    }
 }
 
 # =============================================================================
@@ -1368,9 +1672,8 @@ test "prompt caching marks system, last non-system message, and last tool for an
     assert "cache_control" not in messages[1];
     assert "cache_control" not in messages[2];
     assert "cache_control" not in messages[3].get("content")[0];
-    assert messages[3].get("content")[-1].get(
-        "cache_control"
-    ) == _CACHE_CONTROL_EPHEMERAL;
+    assert messages[3].get("content")[-1].get("cache_control")
+        == _CACHE_CONTROL_EPHEMERAL;
     # Only last tool marked
     assert "cache_control" not in tools[0];
     assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
@@ -1382,9 +1685,8 @@ test "prompt caching disabled via config" {
         'get_prompt_caching_config',
         return_value={'enabled': False}
     ) {
-        assert _is_prompt_caching_eligible(
-            "anthropic/claude-sonnet-4-20250514"
-        ) == False;
+        assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514")
+            == False;
     }
 }
 
@@ -1778,4 +2080,147 @@ test "typed retry only fires for structured output failures" {
     assert len(mod.error_llm.seen_prompts) == 1 , f"non-conversion error must not retry, got {len(
         mod.error_llm.seen_prompts
     )}";
+}
+
+
+"""A tool requiring an argument; calling it with none raises inside Tool.__call__,
+exercising the handled tool-failure path (issue #7657)."""
+def _needs_arg_tool(x: int) -> str {
+    return str(x);
+}
+
+
+test "tool call failure logs at WARNING not ERROR (issue #7657)" {
+    import logging;
+
+    # Capture every log record emitted anywhere (the types-module logger
+    # propagates to root) while a tool fails and is handled.
+    buf = io.StringIO();
+    handler = logging.StreamHandler(buf);
+    handler.setLevel(int(logging.DEBUG));
+    handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"));
+    root_logger = logging.getLogger();
+    prev_level = root_logger.level;
+    root_logger.addHandler(handler);
+    root_logger.setLevel(int(logging.DEBUG));
+    try {
+        t = Tool(func=_needs_arg_tool);
+        result = t();  # missing required arg -> raises -> caught -> returned to model
+    } finally {
+        root_logger.removeHandler(handler);
+        root_logger.setLevel(prev_level);
+    }
+    captured = buf.getvalue();
+
+    # (a) the failure is still handed back to the model as a recoverable
+    # observation -- behaviour must be unchanged by the logging fix.
+    assert isinstance(result, str) , f"expected str, got {type(result).__name__}";
+    assert result.startswith("Tool error:") , f"unexpected return: {result!r}";
+
+    # (b) logged once at WARNING, message names the failing tool.
+    assert "WARNING" in captured , f"expected a WARNING record, got: {captured!r}";
+    assert "_needs_arg_tool" in captured , f"WARNING should name the tool, got: {captured!r}";
+
+    # (c) the regression itself: never ERROR level, never a stack trace.
+    assert "ERROR" not in captured , f"handled tool failure must not log at ERROR: {captured!r}";
+    assert "Traceback (most recent call last)" not in captured , f"handled tool failure must not emit a traceback: {captured!r}";
+}
+
+
+"""A tool body that raises at call time; used to exercise the failure path on a
+callable that has no __name__ (issue #7657, PR #7665)."""
+def _raising_tool -> str {
+    raise ValueError("kaboom");
+}
+
+
+test "tool failure on a callable without __name__ is handled, not escaped (issue #7657)" {
+    import functools;
+
+    # functools.partial is callable but has no __name__. Before the fix,
+    # Tool.get_name() read self.func.__name__ directly, so is_finish_tool() (and
+    # the failure log) raised AttributeError on such a callable, and a tool that
+    # threw at runtime escaped as AttributeError instead of reaching the model as
+    # a "Tool error: ..." observation.
+    escaped = None;
+    result = None;
+    try {
+        t = Tool(func=functools.partial(_raising_tool));
+        result = t();  # underlying raises -> caught -> returned, not escaped
+    } except Exception as e {
+        escaped = e;
+    }
+
+    assert escaped is None , f"handled failure escaped as {type(escaped).__name__}: {escaped}";
+    assert isinstance(result, str) , f"expected str, got {type(result).__name__}";
+    assert result.startswith("Tool error:") , f"unexpected return: {result!r}";
+}
+
+
+test "a tool call cut off mid-arguments is reported to the model (issue #7657)" {
+    # Streaming leaves finish_reason empty exactly when a call was cut short, so
+    # keying truncation off "length" alone misses the real case: the unparseable
+    # arguments are replaced with "{}" and the tool is then invoked bare.
+    cut_off = types.SimpleNamespace(
+        name="write_code",
+        arguments='{"file_path": "/app/Landing.jac", "content": "node Landing { has t'
+    );
+    message = {
+        "tool_calls": [
+            types.SimpleNamespace(id="call_1", function=cut_off, type="function")
+        ],
+        "content": ""
+    };
+    damaged = _byllm_llm_mod._sanitize_tool_calls(message);
+    assert "call_1" in damaged , f"damaged call must be reported, got {damaged!r}";
+    # finish_reason is "tool_calls" for a corrupted batch, so the truncation
+    # guard cannot be what reports it.
+    assert not _byllm_llm_mod._truncated_call_ids(message, "tool_calls") , "the truncation guard must not be the thing catching this";
+
+    # A tool that genuinely takes no arguments is normal, not damage.
+    blank = {
+        "tool_calls": [
+            types.SimpleNamespace(
+                id="call_2",
+                function=types.SimpleNamespace(name="list_files", arguments=""),
+                type="function"
+            )
+        ],
+        "content": ""
+    };
+    assert not _byllm_llm_mod._sanitize_tool_calls(blank) , "an argument-less call must not be reported as truncated";
+}
+
+
+"""A tool with required parameters, for exercising the damaged/truncated split."""
+def _writer_tool(file_path: str, content: str) -> str {
+    return f"wrote {len(content)} bytes to {file_path}";
+}
+
+
+test "damaged and truncated calls get the advice that fits the cause (issue #7657)" {
+    tool = Tool(func=_writer_tool);
+
+    def _get_tool(name: str) -> object {
+        return tool;
+    }
+    mt_run = types.SimpleNamespace(get_tool=_get_tool);
+    fn = types.SimpleNamespace(name="_writer_tool", arguments='{"file_path"');
+    call = types.SimpleNamespace(id="call_1", function=fn, type="function");
+
+    # A genuine max_tokens truncation really was too large, so splitting helps.
+    truncated = _byllm_llm_mod._parse_tool_calls(
+        mt_run, [call], `set(["call_1"]), `set()
+    );
+    truncated_msg = str(truncated[0].tool.func());
+    assert "smaller payload" in truncated_msg , f"a truncated call should be told to split: {truncated_msg!r}";
+
+    # A call corrupted in transit was never too large; telling it to split would
+    # make the agent fragment files for no reason.
+    damaged = _byllm_llm_mod._parse_tool_calls(
+        mt_run, [call], `set(), `set(["call_1"])
+    );
+    damaged_msg = str(damaged[0].tool.func());
+    assert "same call again unchanged" in damaged_msg , f"a damaged call should be told to re-send: {damaged_msg!r}";
+    assert "smaller payload" not in damaged_msg , f"a damaged call must not be told to split: {damaged_msg!r}";
 }

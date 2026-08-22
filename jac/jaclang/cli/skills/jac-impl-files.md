@@ -1,6 +1,6 @@
 ---
 name: jac-impl-files
-description: Splitting declarations from method bodies via impl blocks, .impl.jac files, impl/ and .impl/ directory layouts, client-component handler annexes, variant modules (.sv/.cl/.na), .test.jac annexes, and package layout. Load when a source file grows past ~100 lines, or to separate a clean public-API surface from implementation.
+description: Splitting declarations from method bodies via impl blocks, .impl.jac files, impl/ and .impl/ directory layouts, client-component handler annexes, .test.jac annexes, and package layout. Load when a source file grows past ~100 lines, or to separate a clean public-API surface from implementation.
 ---
 
 A `.jac` file declares fields, enums, method signatures. Implementations live in `impl <name>` blocks - inline in the same file, or in auto-discovered `.impl.jac` annex files. The compiler auto-pairs them by **basename** - no `import` between them. Three layouts work (all verified):
@@ -61,10 +61,10 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 
 ## Client components: the handler annex
 
-The standard answer to "my `.cl.jac` component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use web-app` scaffold ships and the dominant pattern in real Jac frontends - the `.cl.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
+The standard answer to "my client component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use web-app` scaffold ships and the dominant pattern in real Jac frontends - the component `.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
 
 ```jac
-# frontend.cl.jac - state + stubs + render
+# frontend.jac - state + stubs + render
 def:pub app -> JsxElement {
     has items: list[str] = [],
         draft: str = "",
@@ -75,18 +75,18 @@ def:pub app -> JsxElement {
     async def loadItems -> None;            # handler stubs - bodies in the annex
     async def addItem -> None;
 
-    return <div>
+    <div>
         <input value={draft} onChange={lambda (e: ChangeEvent) { draft = e.target.value; }}/>
         <button onClick={addItem}>Add</button>
         {if loading { <p>Loading...</p> }}
         {for it in items { <li key={it}>{it}</li> }}
-    </div>;
+    </div>
 }
 
 # frontend.impl.jac - bodies; `has` state is bare (no self.), writes re-render
 impl app.loadItems -> None {
     loading = True;
-    items = ["first", "second"];            # real code: await a sv import call here
+    items = ["first", "second"];            # real code: await a server RPC call here
     loading = False;
 }
 
@@ -97,7 +97,7 @@ impl app.addItem -> None {
 }
 ```
 
-(Shown as one file - it also compiles merged - but in practice the `impl` blocks go in `frontend.impl.jac`, paired by basename as usual.) The annex sees the head file's imports, including `sv import` stubs. Architecture-level guidance (stateful shell, prop-drilled sections) is in `jac-cl-organization`.
+(Shown as one file - it also compiles merged - but in practice the `impl` blocks go in `frontend.impl.jac`, paired by basename as usual.) The annex sees the head file's imports, including server RPC stubs. Architecture-level guidance (stateful shell, prop-drilled sections) is in `jac-cl-organization`.
 
 ## Rules
 
@@ -112,7 +112,7 @@ impl app.addItem -> None {
 ## Other annexes and module variants
 
 - **`.test.jac`**: `mod.test.jac` is the test annex - `test name { assert ...; }` blocks that see `mod`'s symbols without imports; run with `jac test` (see `jac-testing`).
-- **Variant modules**: `mod.sv.jac` (server), `mod.cl.jac` (client), `mod.na.jac` (native) are auto-discovered and merged into one logical module `mod`. Head-module precedence: `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac` - the highest-precedence existing file is the head; the rest attach as variant annexes. Variant impls pair by full name (`mod.sv.impl.jac` implements `mod.sv.jac` decls); a head `mod.impl.jac` may implement declarations from *any* variant.
+- **No codespace filename variants.** Placement is inferred (or pinned/forced) -- there are no `.sv`/`.cl`/`.na` module files. One logical module is one `.jac` file; per-space behavior comes from inference over its content, with `[placement.pins]` as the override.
 - **Packages need no `__init__.jac`.** Any directory with `.jac` files is importable (`import from utils.math_utils { add }`). Add `__init__.jac` only as a re-export barrel (`import from .operations { add }` so consumers write `import from mathlib { add }`) or for package-init code.
 
 ## See also

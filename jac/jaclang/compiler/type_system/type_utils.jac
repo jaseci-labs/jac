@@ -1,8 +1,36 @@
 import from enum { Enum }
-import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree {
+    Ability,
+    ArchHas,
+    Archetype,
+    AstDocNode,
+    ElseIf,
+    ElseStmt,
+    Enum as UniEnum,
+    Expr,
+    HasVar,
+    IfStmt,
+    KWPair,
+    Module,
+    ModulePath,
+    Symbol,
+    UnaryExpr,
+    UniNode,
+    UniScopeNode
+}
 import from jaclang.jac0core.constant { Tokens as Tok }
-import from jaclang.jac0core.unitree { Symbol }
-import from . { types }
+import from .types {
+    AnyType,
+    ClassType,
+    FunctionType,
+    ModuleType,
+    ParamKind,
+    Parameter,
+    TypeBase,
+    TypeVarType,
+    UnionType,
+    UnknownType
+}
 
 class PropertyWriteKind(Enum) {
     with entry {
@@ -14,45 +42,36 @@ class PropertyWriteKind(Enum) {
 
 obj PropertyWriteResult {
     has kind: PropertyWriteKind,
-        write_type: (types.TypeBase | None) = None;
+        write_type: (TypeBase | None) = None;
 }
 
 obj ClassMember {
     has symbol: Symbol,
-        class_type: types.ClassType,
+        class_type: ClassType,
         overloads: list[Symbol];
 }
 
-def compute_mro_linearization(
-    cls: types.ClassType, _visiting: (set | None) = None
-) -> None;
+def compute_mro_linearization(cls: ClassType, _visiting: (set | None) = None) -> None;
 
-def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
+def primitive_type_name_of(ty: (TypeBase | None)) -> (str | None);
 
-def expr_primitive_name(prog: object, expr_node: uni.UniNode) -> str;
+def expr_primitive_name(prog: object, expr_node: UniNode) -> str;
 
 obj ParamAssignmentTracker {
-    has params: list[types.Parameter],
+    has params: list[Parameter],
         curr_param_idx: int = 0,
-        matched_params: set[types.Parameter] = set(),
-        spread_filled: set[types.Parameter] = set(),
-        varargs: (types.Parameter | None) = None,
-        kwargs: (types.Parameter | None) = None;
+        matched_params: set[Parameter] = set(),
+        spread_filled: set[Parameter] = set(),
+        varargs: (Parameter | None) = None,
+        kwargs: (Parameter | None) = None;
 
     def postinit -> None;
-    def lookup_named_parameter(param_name: str) -> (types.Parameter | None);
+    def lookup_named_parameter(param_name: str) -> (Parameter | None);
     def _mark_all_named_params_as_matched -> None;
     def _mark_all_positional_params_as_matched -> None;
-    def match_named_argument(arg: uni.KWPair) -> (types.Parameter | None);
-    def match_positional_argument(arg: uni.Expr) -> (types.Parameter | None);
-    def get_unmatched_required_params -> list[types.Parameter];
-}
-
-obj CompletionItem {
-    has label: str,
-        kind: int,
-        detail: (str | None) = None,
-        documentation: (str | None) = None;
+    def match_named_argument(arg: KWPair) -> (Parameter | None);
+    def match_positional_argument(arg: Expr) -> (Parameter | None);
+    def get_unmatched_required_params -> list[Parameter];
 }
 
 enum CompletionItemKind {
@@ -83,41 +102,42 @@ enum CompletionItemKind {
     TypeParameter = 25,
 }
 
+obj CompletionItem {
+    has label: str,
+        kind: CompletionItemKind,
+        detail: (str | None) = None,
+        documentation: (str | None) = None;
+}
+
 def doc_of_sym(sym: Symbol) -> (str | None);
 
 def completion_item_from_sym(name: str, sym: Symbol) -> CompletionItem;
 
-def completion_kind_from_sym(sym: Symbol) -> int;
+def completion_kind_from_sym(sym: Symbol) -> CompletionItemKind;
 
-def get_completion_items(
-    ty: (types.TypeBase | uni.UniScopeNode)
-) -> list[CompletionItem];
+def get_completion_items(ty: (TypeBase | UniScopeNode)) -> list[CompletionItem];
 
 def lookup_symtab(
-    symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
+    symtable: UniScopeNode, name: str, builtins_to_inject: Module
 ) -> (Symbol | None);
 
 def collect_member_syms(
-    scope: uni.UniScopeNode, name: str, deep: bool = False
+    scope: UniScopeNode, name: str, deep: bool = False
 ) -> list[Symbol];
 
 def class_implements_protocol(
-    cls: types.ClassType, proto: types.ClassType, evaluator: any = None
+    cls: ClassType, proto: ClassType, evaluator: any = None
 ) -> bool;
 
-def get_generator_type_args(
-    return_type: types.TypeBase
-) -> (list[types.TypeBase] | None);
+def get_generator_type_args(return_type: TypeBase) -> (list[TypeBase] | None);
 
 def get_generator_yield_type(
-    declared_return_type: types.TypeBase, is_async: bool
-) -> (types.TypeBase | None);
+    declared_return_type: TypeBase, is_async: bool
+) -> (TypeBase | None);
 
-def get_declared_generator_return_type(
-    return_type: types.TypeBase
-) -> (types.TypeBase | None);
+def get_declared_generator_return_type(return_type: TypeBase) -> (TypeBase | None);
 
-def is_generator_family_type(return_type: types.TypeBase) -> bool;
+def is_generator_family_type(return_type: TypeBase) -> bool;
 
 obj ModuleSourceFlags {
     has is_stub_file: bool = False,
@@ -128,22 +148,25 @@ obj ModuleSourceFlags {
 
 def compute_module_source_flags(file_path: str) -> ModuleSourceFlags;
 
-def convert_to_instance(ty: types.TypeBase) -> types.TypeBase;
+def convert_to_instance(ty: TypeBase) -> TypeBase;
 
-def synthesize_self_type_var -> types.TypeVarType;
+def synthesize_self_type_var -> TypeVarType;
 
 def apply_solved_type_vars(
-    ty: types.TypeBase,
-    solution: dict[str, types.TypeBase],
-    class_type: (types.ClassType | None) = None
-) -> types.TypeBase;
+    ty: TypeBase,
+    solution: dict[str, TypeBase],
+    class_type: (ClassType | None) = None,
+    shadowed: (set[str] | None) = None
+) -> TypeBase;
 
-def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];
+def build_type_var_solution(class_type: ClassType) -> dict[str, TypeBase];
+
+def shadowed_type_var_names(
+    solution: dict[str, TypeBase], declaring_class: (ClassType | None)
+) -> (set[str] | None);
 
 def build_solution_from_specialized_class(
-    class_type: types.ClassType
-) -> dict[str, types.TypeBase];
+    class_type: ClassType
+) -> dict[str, TypeBase];
 
-def specialize_for_base_class(
-    src_type: types.ClassType, base_class: types.ClassType
-) -> types.ClassType;
+def specialize_for_base_class(src_type: ClassType, base_class: ClassType) -> ClassType;

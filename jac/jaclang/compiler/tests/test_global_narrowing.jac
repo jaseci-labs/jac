@@ -27,7 +27,11 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.bccache { discover_base_file }
 
 glob BATCH_DIR = str(
-         Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures" / "global_narrowing"
+         Path(jaclang.__file__).parent
+             / "compiler"
+             / "tests"
+             / "fixtures"
+             / "global_narrowing"
      );
 
 
@@ -79,6 +83,7 @@ def check_src(src: str, search_dir: str) -> JacProgram {
             sys.path.remove(search_dir);
         }
         importlib.invalidate_caches();
+        sys.modules.pop("untyped_client", None);
     }
 }
 

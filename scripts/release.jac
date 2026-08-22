@@ -14,7 +14,7 @@ import argparse;
 import from pathlib { Path }
 import tomlkit;
 import from collect_release_notes { assemble_package }
-import from release_utils { PACKAGES, bump_version, set_output }
+import from release_utils { PACKAGES, bump_version, get_manifest_path, set_output }
 """Read the version string from a jac.toml file."""
 def read_version(jac_toml_path: Path) -> str {
     data = tomlkit.loads(jac_toml_path.read_text());
@@ -30,7 +30,7 @@ def update_jac_toml_version(jac_toml_path: Path, new_version: str) {
 
 """Collect release note fragments and assemble into the release notes file.
 
-    Reads fragments from docs/docs/community/release_notes/unreleased/<package>/,
+    Reads fragments from release_notes/unreleased/<package>/,
     inserts a new (Latest Release) section, demotes the old one, and deletes
     the consumed fragment files.
     """
@@ -49,7 +49,7 @@ def parse_args -> argparse.Namespace {
         parser.add_argument(
             f"--{pkg_name}",
             choices=bump_choices,
-            default="skip",
+            `default="skip",
             help=f"Version bump type for {pkg_name} (default: skip)"
         );
     }
@@ -74,7 +74,11 @@ def main -> None {
                     "name": pkg_name,
                     "bump": bump_type,
                     "dir": pkg_info.dir,
-                    "jac_toml": f"{pkg_info.dir}/jac.toml",
+                    "jac_toml": str(
+                        get_manifest_path(repo_root, pkg_info.dir).relative_to(
+                            repo_root
+                        )
+                    ),
                     "release_notes": pkg_info.release_notes,
                     "pypi_name": pkg_info.pypi,
                     "notes_display": pkg_info.notes_display
@@ -141,9 +145,8 @@ def main -> None {
     pkg_versions = [f"{name}-{new_ver}" for (name, _, new_ver) in version_updates];
     branch_name = "release/" + "_".join(pkg_versions);
     pr_title = (
-        "release: " + ", ".join(
-            f"{name} {new_ver}" for (name, _, new_ver) in version_updates
-        )
+        "release: "
+        + ", ".join(f"{name} {new_ver}" for (name, _, new_ver) in version_updates)
     );
     pr_body = "## Release\n\n";
     for (name, old, new_ver) in version_updates {

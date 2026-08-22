@@ -7,7 +7,7 @@ name: Build jac native binaries
 #     GITHUB_TOKEN-created release emits no release.published event); the
 #     release event is the safety net for releases published by a real user.
 #   - channel=dev: cache-accelerated host-native builds re-published under the
-#     rolling `dev` prerelease. Called by release-dev.yml on pushes to main.
+#     rolling `dev` prerelease. Called by release-dev.yml on its nightly cron.
 
 on:
   workflow_call:
@@ -20,6 +20,17 @@ on:
         description: "release: cold + glibc-pinned; dev: cached + host-native."
         required: false
         default: release
+        type: string
+      only:
+        # Diagnostic lane: build ONE leg instead of the whole matrix, so a
+        # single red platform can be iterated on without burning three other
+        # runners per attempt. Empty (the default) keeps the channel's full
+        # leg list. `plan` rejects a non-empty filter whenever `tag` is set,
+        # so a release can never ship a partial matrix by mistake -- that
+        # guard is what lets workflow_dispatch expose this too.
+        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list."
+        required: false
+        default: ""
         type: string
     # Called workflows do not see the caller's repo secrets unless passed
     # explicitly; without these the docker-image job skips its push steps.
@@ -38,31 +49,99 @@ on:
         description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
         required: false
         type: string
+      # `channel` and `only` mirror the workflow_call inputs so a one-leg
+      # diagnostic build is a dispatch away. This replaces macos-seal-probe.yml,
+      # a wrapper whose whole body was a workflow_call with only=macos-aarch64
+      # and which was never run once.
+      channel:
+        description: "release: cold + glibc-pinned; dev: cached + host-native."
+        required: false
+        default: release
+        type: choice
+        options: [release, dev]
+      only:
+        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list. Rejected when `tag` is set."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  # Emits the per-channel leg list the build matrix consumes. A matrix
+  # `exclude` cannot drop a leg here: exclude keys must name matrix *vector*
+  # keys, and this matrix is include-only, so strategy evaluation fails
+  # outright ("Matrix exclude key 'platform' does not match any key within
+  # the matrix"). Promoting `platform` to a vector key would not help either:
+  # include entries are re-applied after exclude, re-adding the dropped leg.
+  #
+  # One native runner per target so the smoke test runs on real hardware.
+  # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
+  # on the release channel; the dev channel builds host-native so it can
+  # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
+  # encode a target triple). macOS-ARM builds host-native on both
+  # channels. The Intel-Mac leg pins the macOS floor (12.0) the same way
+  # the Linux legs pin glibc -- unpinned it would inherit the runner's
+  # macOS 15 and exclude older Intel Macs; its LLVM slice is llvm-slice's
+  # from-source build (upstream ships no macOS-x64 for the pinned
+  # release). macos-15-intel is GitHub's last Intel image (retires Fall
+  # 2027).
+  #
+  # The Intel-Mac leg is release-only: it exists to pin the macOS 12.0
+  # floor for versioned releases, and on the dev channel it was the
+  # critical path (~24 min/merge on the slow Intel runners) for a
+  # rolling prerelease Intel users don't consume. Versioned releases
+  # still ship macos-x86_64: inputs.channel is empty on the release event and
+  # defaults to `release` on dispatch, so those keep the full list.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.legs.outputs.include }}
+    steps:
+      - name: Select build legs for the channel
+        id: legs
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          ONLY: ${{ inputs.only }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          LEGS='[
+            {"os": "ubuntu-latest",    "platform": "linux-x86_64",  "zig_target": "x86_64-linux-gnu.2.17"},
+            {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
+            {"os": "macos-14",         "platform": "macos-aarch64"},
+            {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0"}
+          ]'
+          if [ "$CHANNEL" = "dev" ]; then
+            LEGS="$(jq -c 'map(select(.platform != "macos-x86_64"))' <<<"$LEGS")"
+          fi
+          # `only` is a diagnostic lane, never a release path: uploading a
+          # filtered matrix to a real tag would publish a release missing
+          # assets for the legs it dropped. workflow_call never pairs them;
+          # this guard is what makes the dispatch input safe to expose.
+          if [ -n "${ONLY:-}" ] && [ -n "${TAG:-}" ]; then
+            echo "::error::platform filter '$ONLY' cannot be combined with tag '$TAG': a filtered matrix would publish a release missing assets."
+            exit 1
+          fi
+          if [ -n "${ONLY:-}" ]; then
+            LEGS="$(jq -c --arg only "$ONLY" \
+              '($only | split(",") | map(ltrimstr(" ") | rtrimstr(" "))) as $want
+               | map(select(.platform as $p | $want | index($p)))' <<<"$LEGS")"
+            # A typo in the filter must not green-light an empty matrix.
+            [ "$(jq -c 'length' <<<"$LEGS")" -gt 0 ] || {
+              echo "::error::platform filter '$ONLY' matched no leg on channel '${CHANNEL:-release}'"
+              exit 1
+            }
+          fi
+          echo "include=$(jq -c . <<<"$LEGS")" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        # One native runner per target so the smoke test runs on real hardware.
-        # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
-        # on the release channel; the dev channel builds host-native so it can
-        # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
-        # encode a target triple). macOS builds host-native on both channels.
-        # No Intel-Mac leg: LLVM ships no macOS-x64 prebuilt for the pinned
-        # release.
-        include:
-          - os: ubuntu-latest
-            platform: linux-x86_64
-            zig_target: x86_64-linux-gnu.2.17
-          - os: ubuntu-24.04-arm
-            platform: linux-aarch64
-            zig_target: aarch64-linux-gnu.2.17
-          - os: macos-14
-            platform: macos-aarch64
+        include: ${{ fromJSON(needs.plan.outputs.include) }}
     runs-on: ${{ matrix.os }}
     env:
       # -Dtarget flag for zig build: set on release-channel Linux legs, empty
@@ -90,10 +169,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
-          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
 
-      # Keyed on llvm_release.zig to match the entries setup-jac seeds (the
-      # old release-dev key hashed payload.zig, so it never matched them and
+      # Keyed on bootstrap/pins.json to match the entries setup-jac seeds (the
+      # old release-dev key hashed the payload tool, so it never matched them and
       # duplicated the ~0.5 GB tree into the cache pool).
       - name: Restore cached LLVM (dev channel)
         if: inputs.channel == 'dev' && steps.shim-cache.outputs.cache-hit != 'true'
@@ -101,28 +180,128 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/.llvm-build
-          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+
+      # Identity of the compiler this build runs, as git blob ids over the same
+      # file set jir.jac hashes for its module keys (jaclang.jac0core.jir:
+      # COMPILER_DIGEST_ROOTS, .jac/.py only, test material excluded). Same
+      # rule as the step in .github/actions/setup-jac, which seeds the entries
+      # this leg reads; keep the three in lockstep.
+      - name: Fingerprint the compiler tree (dev channel)
+        if: inputs.channel == 'dev'
+        id: compiler-fp
+        shell: bash
+        run: |
+          list="$(git ls-tree -r HEAD -- \
+            jac/jaclang/jac0.py \
+            jac/jaclang/jac0core \
+            jac/jaclang/compiler \
+            jac/jaclang/utils/precompile_bytecode.jac \
+            | grep -E '\.(jac|py)$' \
+            | grep -vE '(^|/)(tests|test)/|\.test\.jac$' || true)"
+          n="$(printf '%s\n' "$list" | grep -c . || true)"
+          if [ "$n" -lt 100 ]; then
+            echo "::error::compiler fingerprint listed only $n file(s): the roots moved. Update this step and COMPILER_DIGEST_ROOTS in jaclang/jac0core/jir.jac together."
+            exit 1
+          fi
+          fp="$(printf '%s\n' "$list" | git hash-object --stdin)"
+          echo "fp=${fp:0:16} ($n compiler sources)"
+          echo "fp=${fp:0:16}" >> "$GITHUB_OUTPUT"
 
       # mkpayload re-validates every seeded .jir per module, so a stale tree
-      # from the previous push is safe and exactly what restore-keys is for.
+      # from the previous push is safe and exactly what restore-keys is for --
+      # but only within one compiler. Module keys carry a compiler-content
+      # digest (#8178), so a seed from a different compiler tree can no longer
+      # be mis-served; the fingerprint in the key PREFIX keeps it from being
+      # inherited at all, since such a seed would only ever miss. A
+      # compiler-touching commit therefore forfeits the seed by construction.
       - name: Restore cached JIR precompile tree (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
           path: jac/.precompiled-build
-          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-${{ hashFiles('jac/jaclang/**') }}
           restore-keys: |
-            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
+            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-c${{ steps.compiler-fp.outputs.fp }}-
 
-      # The Zig package store (.zig-cache/p): the neovim fork + its transitive
-      # PUC Lua source off lua.org's FTP (the build's flakiest fetch), mini.nvim,
-      # tree-sitter-jac, etc. Content-addressed source packages -- immutable, so
-      # (unlike the payload-artifact caches above, kept dev-only to avoid
-      # shipping stale bits) this is safe on BOTH channels, and a release is
-      # exactly when a lua.org blip must not fail the build. Same key as
-      # setup-jac so the Linux-x86_64 leg reuses the entry main seeds; a cross
-      # -Dtarget build fetches the same source, so os/arch is the right axis.
-      - name: Cache the Zig package store (avoids re-fetching Lua/neovim deps)
+      # pbs + bun: the two read-mostly runtime trees `zig build` otherwise
+      # re-downloads and re-extracts on every push to main (the ~600 MB
+      # python-build-standalone tree is the slow one; measured at several
+      # minutes per leg). Keys mirror setup-jac verbatim so the Linux-x86_64
+      # leg shares the entry main seeds; the other legs self-seed here (no
+      # other workflow runs on their runners). Dev channel only: the release
+      # channel builds cold on purpose.
+      - name: Restore cached python-build-standalone tree (dev channel)
+        if: inputs.channel == 'dev'
+        uses: actions/cache@v4
+        with:
+          path: jac/.pbs-build
+          key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+
+      - name: Restore cached bun runtime (dev channel)
+        if: inputs.channel == 'dev'
+        uses: actions/cache@v4
+        with:
+          path: jac/.bun-build
+          key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/runtimelib/client/bun_installer.jac') }}
+
+      # The payload's compressed deps-layer frame (mkpayload --layer-cache):
+      # content-addressed and verified by decompress + byte-compare before
+      # reuse, so a stale restore can only miss, never mis-serve (same
+      # contract as the JIR tree above). Key mirrors setup-jac verbatim.
+      - name: Restore cached payload deps-layer frame (dev channel)
+        if: inputs.channel == 'dev'
+        uses: actions/cache@v4
+        with:
+          path: jac/.payload-layers
+          key: payload-layers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/**', 'jac/bootstrap/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/native/**', 'jac/jaclang/runtimelib/client/bun_installer.jac', 'jac/jaclang/compiler/passes/native/wasm_rt/**') }}
+          restore-keys: |
+            payload-layers-${{ runner.os }}-${{ runner.arch }}-
+
+      # Release channel: fetch the prebuilt, target-pinned shim that
+      # build-shims.yml publishes on the rolling `deps` prerelease instead of
+      # range-fetching the ~0.5 GB LLVM slice and re-linking the shim cold
+      # (the most expensive step of a release build). The asset name embeds
+      # the hash of the shim's complete input set, so a hit means "built from
+      # exactly these inputs"; the sha256 sidecar guards transport, and the
+      # floor-verification steps below re-check whatever shim gets bundled.
+      # A miss (e.g. right after a shim-input change, before build-shims has
+      # run on a matching tree) falls back to today's cold from-source build,
+      # which then self-seeds the asset.
+      - name: Fetch prebuilt shim from the deps release (release channel)
+        if: inputs.channel != 'dev'
+        id: shim-fetch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+        run: |
+          set -euo pipefail
+          EXT=so
+          [ "$RUNNER_OS" = "macOS" ] && EXT=dylib
+          ASSET="libjacllvm-${{ matrix.platform }}-${SHIM_KEY}.${EXT}"
+          mkdir -p .shim-fetch
+          if gh release download deps --repo "$GITHUB_REPOSITORY" \
+               --pattern "$ASSET" --pattern "$ASSET.sha256" \
+               --dir .shim-fetch --clobber 2>/dev/null \
+             && [ -f ".shim-fetch/$ASSET" ] && [ -f ".shim-fetch/$ASSET.sha256" ] \
+             && ( cd .shim-fetch && shasum -a 256 -c "$ASSET.sha256" ); then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "file=$GITHUB_WORKSPACE/.shim-fetch/$ASSET" >> "$GITHUB_OUTPUT"
+          else
+            echo "No usable prebuilt shim asset $ASSET; falling back to the cold from-source build."
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      # The Zig package store (.zig-cache/p): every git/tarball dependency
+      # `zig build` fetches, as pinned by build.zig.zon. Content-addressed
+      # source packages -- immutable, so (unlike the payload-artifact caches
+      # above, kept dev-only to avoid shipping stale bits) this is safe on BOTH
+      # channels, and a release is exactly when an upstream fetch blip must not
+      # fail the build. Same key as setup-jac so the Linux-x86_64 leg reuses the
+      # entry main seeds; a cross -Dtarget build fetches the same source, so
+      # os/arch is the right axis.
+      - name: Cache the Zig package store (avoids re-fetching zon deps)
         uses: actions/cache@v4
         with:
           path: .zig-cache/p
@@ -148,32 +327,253 @@ jobs:
 
       - name: Read version (from jac.toml)
         id: ver
-        working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # The native backend statically links a pinned LLVM; fetch it per target
-      # before `zig build`. Skipped on a dev-channel shim-cache hit (-Dshim-bin
-      # needs no LLVM at all) or LLVM-cache hit (tree already restored). Both
-      # gates are vacuous on the release channel: the restore steps are
-      # skipped there, so their cache-hit outputs are empty and the fetch runs.
+      # before `zig build`. Skipped when a prebuilt shim is in hand (-Dshim-bin
+      # needs no LLVM at all): the dev-channel shim cache, the release-channel
+      # deps-release fetch, or a dev-channel LLVM-cache hit (tree already
+      # restored). The cross-channel gates are vacuous: each channel's skipped
+      # restore/fetch steps leave their outputs empty, so only its own paths
+      # decide.
       - name: Fetch LLVM for the jacllvm shim
-        if: steps.shim-cache.outputs.cache-hit != 'true' && steps.llvm-cache.outputs.cache-hit != 'true'
+        if: >-
+          steps.shim-cache.outputs.cache-hit != 'true' &&
+          steps.llvm-cache.outputs.cache-hit != 'true' &&
+          steps.shim-fetch.outputs.hit != 'true'
         working-directory: jac
         run: zig build fetch-llvm $DTARGET --summary all
 
+      # Backstop, no longer the load-bearing fix. Each materializer crossing
+      # strands that crossing's native tree (the unitree parent/kid cycles
+      # defeat plain RC and the artifact collector is not yet multi-module-safe
+      # to arm, #8139), and while the seal compiled every NATIVE_SEAL_ROOTS
+      # entry in ONE process that accumulation summed over all thirteen roots
+      # into a peak no hosted Linux runner could hold: on cd049457a both Linux
+      # legs died mid-seal with "the runner has received a shutdown signal" and
+      # exit 143 -- no zig diagnostic, no failed command, the signature of a
+      # runner whose memory is gone. The seal now runs a worker process per
+      # root, so the stranded trees die with each worker and the peak is
+      # JAC_SEAL_JOBS times ONE root's high-water mark instead of the sum. This
+      # step stays because the seal must still survive JAC_SEAL_JOBS=1 (the
+      # documented sequential fallback) and because the stranded pages are cold
+      # -- written once, never read again -- so swap holds them for the price of
+      # the paging. Retire it when the crossing reclaims its tree in process.
+      - name: Swap headroom for the sealed precompile (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          echo "--- before"
+          free -h
+          swapon --show || true
+          df -h
+          # Prefer the runner's scratch volume: the build stages the payload on
+          # the workspace volume, so a swapfile there competes with it.
+          WORK_DEV="$(df -P "$RUNNER_TEMP" | awk 'NR==2 {print $1}')"
+          MNT_DEV="$(df -P /mnt 2>/dev/null | awk 'NR==2 {print $1}' || true)"
+          if [ -n "$MNT_DEV" ] && [ "$MNT_DEV" != "$WORK_DEV" ]; then
+            SWAP_DIR=/mnt
+            RESERVE_GB=2
+          else
+            SWAP_DIR="$RUNNER_TEMP"
+            RESERVE_GB=25
+          fi
+          AVAIL_GB=$(( $(df -Pk "$SWAP_DIR" | awk 'NR==2 {print $4}') / 1048576 ))
+          SIZE_GB=$(( AVAIL_GB - RESERVE_GB ))
+          if [ "$SIZE_GB" -gt 24 ]; then
+            SIZE_GB=24
+          fi
+          if [ "$SIZE_GB" -lt 4 ]; then
+            echo "::error::$SWAP_DIR has ${AVAIL_GB}G free, too little to spare;" \
+                 "the seal needs swap headroom at this root count and would exhaust the runner"
+            exit 1
+          fi
+          SWAP_FILE="$SWAP_DIR/jac-seal-swap"
+          sudo fallocate -l "${SIZE_GB}G" "$SWAP_FILE" \
+            || sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count=$(( SIZE_GB * 1024 ))
+          sudo chmod 600 "$SWAP_FILE"
+          sudo mkswap "$SWAP_FILE"
+          sudo swapon "$SWAP_FILE"
+          echo "--- after"
+          free -h
+          swapon --show
+
+      # The seal loads every artifact it emits and calls into it, so a
+      # miscompiled artifact kills the worker in native code with nothing but a
+      # signal number (#8313). ReportCrash turns that into a symbolicated .ips
+      # report, which the on-failure step below prints -- but only if the agent
+      # is loaded, and the hosted image does not guarantee that. Best-effort and
+      # before the build, because a report is only written for a crash that
+      # happens after the agent is up.
+      - name: Arm macOS crash reporting (so a native abort names itself)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          set +e
+          launchctl load -w /System/Library/LaunchAgents/com.apple.ReportCrash.plist
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.ReportCrash.Root.plist
+          defaults write com.apple.CrashReporter DialogType none
+          launchctl list | grep -i reportcrash
+          exit 0
+
       - name: Build the jac binary (one command)
         working-directory: jac
+        env:
+          # Size the seal's worker pool for a hosted runner. The auto-size
+          # divides free memory by a worker's budget and caps at the core
+          # count, which on a 16 GiB / 4 vCPU Linux runner lands at four; pin
+          # three so the fan-out leaves the runner its own headroom and the
+          # swapfile above stays a backstop rather than a working set. The
+          # macOS legs keep the auto-size (smaller memory, swap that grows on
+          # demand), which is what an empty value selects.
+          JAC_SEAL_JOBS: ${{ runner.os == 'Linux' && '3' || '' }}
         # On a dev-channel shim-cache hit, stage the shim outside its in-tree
         # place path: the build copies -Dshim-bin back there, and a self-copy
-        # would read the file it is truncating. Mirrors setup-jac.
+        # would read the file it is truncating. Mirrors setup-jac. The
+        # release-channel deps-release fetch already lives outside the tree.
         run: |
           SHIM_ARG=()
           if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
             mkdir -p .shim-build
             cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
             SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
+          elif [ "${{ steps.shim-fetch.outputs.hit }}" = "true" ]; then
+            SHIM_ARG=(-Dshim-bin="${{ steps.shim-fetch.outputs.file }}")
           fi
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
+
+      # A macOS leg that dies inside a sealed artifact must say WHERE. On any
+      # failure of the build above this (1) prints every crash report the OS
+      # wrote -- the .ips carries the aborting thread's frames plus dyld's or
+      # malloc's own message, neither of which reaches the worker's stderr on
+      # modern macOS -- and (2) reproduces the artifact load standalone under
+      # lldb for a symbolicated backtrace. Gated on failure(), so a green leg
+      # pays nothing. This stays after #8313 is closed: #8302, #8307 and #8313
+      # each cost a release cycle to a bare signal number, and the next one
+      # should name itself on the first red run.
+      - name: Name the native crash (macOS crash reports + lldb replay)
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        working-directory: jac
+        run: |
+          set +e
+          # ReportCrash writes asynchronously; the failing step can beat it.
+          sleep 25
+
+          echo "::group::macOS crash reports"
+          FOUND=0
+          for d in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            [ -d "$d" ] || continue
+            for f in "$d"/*; do
+              case "$f" in *.ips|*.crash) ;; *) continue ;; esac
+              [ -f "$f" ] || continue
+              FOUND=1
+              echo "===== $f"
+              cat "$f"
+              echo
+            done
+          done
+          if [ "$FOUND" = 0 ]; then
+            echo "(no crash report on this runner -- ReportCrash is not loaded on the image;"
+            echo " the lldb replay below is then the only naming mechanism)"
+          fi
+          echo "::endgroup::"
+
+          # python-build-standalone's interpreter is the one the seal worker
+          # runs, so the replay loads each artifact into the same process image
+          # the abort happened in. Not -type f: pbs ships bin/python3 as a
+          # symlink, and /usr/bin/python3 is SIP-protected -- lldb cannot debug
+          # it, so falling back to it silently turns the replay into a no-op.
+          PY="$(ls "$PWD"/.pbs-build/*/python/install/bin/python3.* 2>/dev/null | head -1)"
+          [ -n "$PY" ] || PY="$(ls "$PWD"/.pbs-build/*/python/install/bin/python3 2>/dev/null | head -1)"
+          [ -n "$PY" ] || PY=/usr/bin/python3
+          echo "replay interpreter: $PY"
+
+          cat > "$RUNNER_TEMP/jac-load-probe.py" <<'PROBE'
+          import ctypes, sys
+
+          path = sys.argv[1]
+          print("dlopen: %s" % path, flush=True)
+          lib = ctypes.CDLL(path)
+          print("dlopen ok", flush=True)
+          init = ctypes.cast(getattr(lib, "__jac_shared_init"), ctypes.c_void_p).value
+          print("calling __jac_shared_init", flush=True)
+          ctypes.CFUNCTYPE(None)(init)()
+          print("__jac_shared_init returned", flush=True)
+          try:
+              probe = ctypes.cast(getattr(lib, "jac_str_new"), ctypes.c_void_p).value
+          except AttributeError:
+              probe = 0
+          if probe:
+              print("calling jac_str_new", flush=True)
+              made = ctypes.CFUNCTYPE(
+                  ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64
+              )(probe)(b"jac", 3)
+              print("jac_str_new -> %r" % (made,), flush=True)
+          print("LOAD PROBE OK", flush=True)
+          PROBE
+
+          echo "::group::lldb replay of every sealed artifact this build emitted"
+          find "$PWD" "$GITHUB_WORKSPACE/.zig-cache" -name 'libjac_*.dylib' -type f 2>/dev/null \
+            | sort -u > "$RUNNER_TEMP/jac-dylibs.txt"
+          if ! [ -s "$RUNNER_TEMP/jac-dylibs.txt" ]; then
+            echo "(no libjac_*.dylib on the runner: the seal died before it emitted one)"
+          fi
+          : > "$RUNNER_TEMP/jac-dylibs-bad.txt"
+          while IFS= read -r dl; do
+            [ -n "$dl" ] || continue
+            echo "===== $dl ($(wc -c < "$dl") bytes)"
+            # Plain run first: the artifact's own diagnostics (an uncaught
+            # native exception prints its message before aborting) reach this
+            # step's stdout directly, which the build tool's captured-stdio
+            # view of the seal never shows.
+            perl -e 'alarm 240; exec @ARGV' \
+              "$PY" "$RUNNER_TEMP/jac-load-probe.py" "$dl" 2>&1 | tail -40
+            rc="${PIPESTATUS[0]:-1}"
+            echo "----- exit: $rc"
+            [ "$rc" = 0 ] || echo "$dl" >> "$RUNNER_TEMP/jac-dylibs-bad.txt"
+            perl -e 'alarm 240; exec @ARGV' \
+              lldb --batch -o run -k "thread backtrace all" -k "image list -o -f" \
+                   -k quit -- "$PY" "$RUNNER_TEMP/jac-load-probe.py" "$dl" 2>&1 | tail -80
+          done < "$RUNNER_TEMP/jac-dylibs.txt"
+          echo "::endgroup::"
+          exit 0
+
+      # The .ips reports and a symbol dump per artifact, so an abort that the
+      # log only shows as an address can be symbolicated after the run.
+      - name: Collect the crash evidence
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/jac-crash-evidence"
+          mkdir -p "$OUT"
+          for d in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            [ -d "$d" ] && cp -f "$d"/*.ips "$d"/*.crash "$OUT"/ 2>/dev/null
+          done
+          while IFS= read -r dl; do
+            [ -n "$dl" ] || continue
+            nm -n "$dl" > "$OUT/$(basename "$dl").nm" 2>/dev/null
+            otool -l "$dl" > "$OUT/$(basename "$dl").otool" 2>/dev/null
+          done < "$RUNNER_TEMP/jac-dylibs.txt"
+          # The artifacts that actually failed their standalone load ride along
+          # whole: a miscompiled artifact is only diagnosable with its bytes,
+          # and the runner is gone by the time anyone reads this.
+          while IFS= read -r dl; do
+            [ -n "$dl" ] || continue
+            cp -f "$dl" "$OUT"/ 2>/dev/null
+          done < "$RUNNER_TEMP/jac-dylibs-bad.txt"
+          ls -la "$OUT"
+          exit 0
+
+      - name: Upload the crash evidence
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-crash-evidence-${{ matrix.platform }}
+          path: ${{ runner.temp }}/jac-crash-evidence
+          if-no-files-found: ignore
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
@@ -231,7 +631,7 @@ jobs:
           check() {
             local f="$1" hi
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
-            hi="$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            hi="$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1 || true)"
             : "${hi:=0}"
             echo "$f -> max GLIBC_$hi (floor $FLOOR)"
             if [ "$(printf '%s\n%s\n' "$FLOOR" "$hi" | sort -V | tail -1)" != "$FLOOR" ]; then
@@ -243,6 +643,84 @@ jobs:
           [ -f "$SHIM" ] || zig build jacllvm -Dtarget=${{ matrix.zig_target }} --summary all
           [ -f "$SHIM" ] || SHIM="zig-out/lib/libjacllvm.so"
           check "$SHIM"
+          # Sealed AOT compiler artifacts (the materializer root carrying
+          # the parser, plus unitree): materialize the payload once, then
+          # hold EVERY shipped artifact to the same glibc floor. The sealed
+          # parser serves all parse trees with no bytecode fallback, so a
+          # missing artifact here is a broken binary.
+          WORK="$(mktemp -d)"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin ./zig-out/bin/jac --version >/dev/null
+          ARTS="$(find "$WORK/.cache/jac/rt" -path '*/_precompiled/native/*' -name 'libjac_*.so')"
+          [ -n "$ARTS" ] || { echo "::error::no sealed native artifacts (libjac_*.so) in the payload"; exit 1; }
+          while IFS= read -r a; do check "$a"; done <<< "$ARTS"
+
+      # Intel-mac mirror of the glibc check: neither the launcher nor the shim
+      # may require a macOS newer than the zig_target floor, and the shim must
+      # carry no Homebrew load commands (its from-source slice is built with
+      # every external OFF, so a brew dep here means the slice regressed).
+      # Release channel only: dev binaries are host-native with no pinned floor.
+      - name: Verify macOS floor (from zig_target)
+        if: runner.os == 'macOS' && inputs.channel != 'dev' && matrix.zig_target
+        working-directory: jac
+        env:
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euxo pipefail
+          FLOOR="${ZIG_TARGET##*macos.}"
+          check() {
+            local f="$1" minos
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            minos="$(otool -l "$f" | awk '/minos/ {print $2; exit}')"
+            echo "$f -> minos $minos (floor $FLOOR)"
+            if [ "$(printf '%s\n%s\n' "$FLOOR" "$minos" | sort -V | tail -1)" != "$FLOOR" ]; then
+              echo "::error::$f requires macOS $minos (> $FLOOR)"; exit 1
+            fi
+          }
+          check zig-out/bin/jac
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.dylib"
+          check "$SHIM"
+          if otool -L "$SHIM" | grep -E "/opt/homebrew|/usr/local"; then
+            echo "::error::$SHIM links Homebrew dylibs; the from-source slice must not."; exit 1
+          fi
+          # Sealed AOT compiler artifacts (the materializer root carrying
+          # the parser, plus unitree): materialize the payload once, then
+          # hold EVERY shipped artifact to the minos floor and the
+          # no-Homebrew rule. The sealed parser serves all parse trees with
+          # no bytecode fallback, so a missing artifact is a broken binary.
+          WORK="$(mktemp -d)"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin ./zig-out/bin/jac --version >/dev/null
+          ARTS="$(find "$WORK/.cache/jac/rt" -path '*/_precompiled/native/*' -name 'libjac_*.dylib')"
+          [ -n "$ARTS" ] || { echo "::error::no sealed native artifacts (libjac_*.dylib) in the payload"; exit 1; }
+          while IFS= read -r a; do
+            check "$a"
+            if otool -L "$a" | grep -E "/opt/homebrew|/usr/local"; then
+              echo "::error::$a links Homebrew dylibs."; exit 1
+            fi
+          done <<< "$ARTS"
+
+      # A release-channel cold build just produced (and floor-verified) the
+      # shim the deps release was missing: publish it so the next release with
+      # the same inputs skips the LLVM fetch + link. Best-effort -- shipping
+      # the release binaries must not fail on a seeding hiccup. Runs after the
+      # floor checks on purpose: a floor regression fails the job before
+      # anything is published.
+      - name: Seed the deps release with the built shim (release channel)
+        if: inputs.channel != 'dev' && steps.shim-fetch.outputs.hit != 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSET="${{ steps.shim-fetch.outputs.asset }}"
+          mkdir -p dist-shim
+          cp jac/jaclang/compiler/passes/native/llvm/libjacllvm.* "dist-shim/$ASSET"
+          ( cd dist-shim && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          gh release create deps --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "Prebuilt build dependencies (rolling)" \
+            --notes "Content-addressed prebuilt build artifacts (LLVMPY shims). Consumed by build-binaries.yml; not for direct download." \
+            2>/dev/null || true
+          gh release upload deps --repo "$GITHUB_REPOSITORY" \
+            "dist-shim/$ASSET" "dist-shim/$ASSET.sha256" --clobber
 
       - name: Package asset (+ checksum)
         id: pkg
@@ -308,7 +786,6 @@ jobs:
 
       - name: Read version (from jac.toml)
         id: ver
-        working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # Dev-channel legs keep no workflow artifact; that path pulls the
@@ -385,7 +862,6 @@ jobs:
 
       - name: Read version (from jac.toml)
         id: ver
-        working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # Dev-channel legs keep no workflow artifact; that path pulls the
@@ -448,13 +924,24 @@ jobs:
       - name: Compute image tags
         id: tags
         if: env.DOCKERHUB_USERNAME != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           IMAGE="jaseci/jaclang"
+          VERSION="${{ steps.ver.outputs.version }}"
           if [ "${{ inputs.channel }}" = "dev" ]; then
             TAGS="$IMAGE:dev"
           else
-            TAGS="$IMAGE:${{ steps.ver.outputs.version }},$IMAGE:latest"
+            # :latest never moves backwards: a backport (0.34.8 after 0.35.0)
+            # pushes its version tag only. Mirrors release.yml's publish guard.
+            TAGS="$IMAGE:${VERSION}"
+            latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || echo "")"
+            if [ "$(printf '%s\n%s\n' "${latest_tag#v}" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
+              TAGS="$TAGS,$IMAGE:latest"
+            else
+              echo "Backport: $latest_tag stays :latest, pushing $IMAGE:$VERSION only."
+            fi
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 

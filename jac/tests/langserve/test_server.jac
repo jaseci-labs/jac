@@ -3,7 +3,10 @@
 import contextlib;
 import os;
 import sys;
+import from pathlib { Path }
+import from tempfile { TemporaryDirectory }
 import from tests.support { JAC_ROOT }
+import from tests.compiler.passes.main.checker_npm_harness { make_npm_client_project }
 
 import jaclang.lsp.types as lspt;
 
@@ -27,7 +30,7 @@ def _clear_jac_modules {
         k
         for k in list(sys.modules.keys())
         if not k.startswith(("jaclang", "test", "_"))
-        and hasattr(sys.modules.get(k), "__jac_mod__")
+            and hasattr(sys.modules.get(k), "__jac_mod__")
     ];
     for mod_name in jac_modules_to_clear {
         sys.modules.pop(mod_name, None);
@@ -37,7 +40,7 @@ def _clear_jac_modules {
 """Set up test environment.
 
 Note: _fresh_jac_state() runs automatically before each Jac test via the
-pytest plugin, which resets JacRuntime. We only need to handle server-
+test runner, which resets JacRuntime. We only need to handle server-
 specific setup here.
 """
 def setup_test {
@@ -97,18 +100,14 @@ test "test_impl_stay_connected" {
         lsp.type_check_file(circle_file);
         pos = lspt.Position(20, 8);
         assert (
-            "Circle class inherits from Shape." in lsp.get_hover_info(
-                circle_file, pos
-            ).contents.value
+            "Circle class inherits from Shape."
+            in lsp.get_hover_info(circle_file, pos).contents.value
         );
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
         assert (
-            "ability) calculate_area\n( radius : float ) -> float" in lsp.get_hover_info(
-                circle_impl_file, pos
-            ).contents.value.replace(
-                "'", ""
-            )
+            "ability) calculate_area\n( radius : float ) -> float"
+            in lsp.get_hover_info(circle_impl_file, pos).contents.value
         );
     } finally {
         teardown_test();
@@ -123,11 +122,8 @@ test "test_impl_auto_discover" {
         lsp.type_check_file(circle_impl_file);
         pos = lspt.Position(8, 11);
         assert (
-            "(public ability) calculate_area\n( radius : float ) -> float" in lsp.get_hover_info(
-                circle_impl_file, pos
-            ).contents.value.replace(
-                "'", ""
-            )
+            "(public ability) calculate_area\n( radius : float ) -> float"
+            in lsp.get_hover_info(circle_impl_file, pos).contents.value
         );
     } finally {
         teardown_test();
@@ -152,33 +148,27 @@ test "test_go_to_definition" {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"));
         lsp.type_check_file(circle_file);
-        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(
-            lsp.get_definition(circle_file, lspt.Position(9, 16))
-        );
-        assert "fixtures/circle_pure.jac:13:9-13:14" in str(
-            lsp.get_definition(circle_file, lspt.Position(20, 16))
-        );
+        assert "fixtures/circle_pure.impl.jac:8:5-8:19"
+            in str(lsp.get_definition(circle_file, lspt.Position(9, 16)));
+        assert "fixtures/circle_pure.jac:13:9-13:14"
+            in str(lsp.get_definition(circle_file, lspt.Position(20, 16)));
 
         goto_defs_file = uris.from_fs_path(fixture_path("goto_def_tests.jac"));
         lsp.type_check_file(goto_defs_file);
 
         # Test if the visitor keyword goes to the walker definition
-        assert "fixtures/goto_def_tests.jac:8:7-8:17" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(4, 14))
-        );
+        assert "fixtures/goto_def_tests.jac:8:7-8:17"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(4, 14)));
         # Test if the here keyword goes to the node definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(10, 14))
-        );
+        assert "fixtures/goto_def_tests.jac:0:5-0:13"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(10, 14)));
         # Test the SomeNode node inside the visit statement goes to its definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(11, 21))
-        );
+        assert "fixtures/goto_def_tests.jac:0:5-0:13"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(11, 21)));
 
         # Test when the left of assignment is a list.
-        assert "fixtures/goto_def_tests.jac:16:5-16:8" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(17, 10))
-        );
+        assert "fixtures/goto_def_tests.jac:16:5-16:8"
+            in str(lsp.get_definition(goto_defs_file, lspt.Position(17, 10)));
 
         # Test go-to-definition for self-member assigned in impl file.
         # t2.program (line 25) should go to 'has program' declaration (line 12).
@@ -246,9 +236,8 @@ test "test_go_to_definition_method_manual_impl" {
         );
         lsp.type_check_file(decldef_main_file);
         lsp.type_check_file(decldef_file);
-        assert "decl_defs_main.jac:7:8-7:17" in str(
-            lsp.get_definition(decldef_file, lspt.Position(2, 20))
-        );
+        assert "decl_defs_main.jac:7:8-7:17"
+            in str(lsp.get_definition(decldef_file, lspt.Position(2, 20)));
     } finally {
         teardown_test();
     }
@@ -267,16 +256,19 @@ test "test_go_to_definition_md_path" {
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jaclang/__init__.py:17:"),
+            # jaclang/__init__.py now exposes JacRuntimeInterface lazily via
+            # PEP 562 __getattr__ (no static import binding), so go-to-def
+            # resolves to the module file at 0:0-0:0 instead of a line.
+            (10, 34, "jaclang/__init__.py:0:0-0:0"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
             (11, 47, "jaclang/jac0core/constant.jac:2:5-2:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:38:4-38:12"),
+            (18, 5, "compiler/type_system/types.jac:37:4-37:12"),
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
-            (24, 40, "jaclang/lsp/server.jac:92:4-92:18"),
+            (24, 40, "jaclang/lsp/server.jac:93:4-93:18"),
             (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];
@@ -292,18 +284,63 @@ test "test_go_to_definition_md_path" {
     }
 }
 
+test "test_go_to_definition_string_imports" {
+    setup_test();
+    try {
+        with TemporaryDirectory() as td {
+            proj = make_npm_client_project(Path(td));
+            src = proj / "lib" / "gotodef.jac";
+            src.write_text(
+                'import from "clsx" { clsx }\n'
+                'import from "tailwind-merge" { twMerge }\n'
+                'import from "not-installed-pkg" { ghost }\n'
+                'import from "@jac/runtime" { Link }\n\n'
+                'def:pub use_all(*inputs: any) -> str {\n'
+                '    print(ghost);\n'
+                '    print(Link);\n'
+                '    return twMerge(clsx(inputs));\n'
+                '}\n'
+            );
+            lsp = create_server(str(proj));
+            furi = uris.from_fs_path(str(src));
+            lsp.type_check_file(furi);
+            # Bug 1 (#7839): an item imported from an npm package must land on
+            # its declaration inside the package's .d.ts, not self-jump.
+            clsx_item = str(lsp.get_definition(furi, lspt.Position(0, 22)));
+            assert "clsx.d.mts:3:24-3:28" in clsx_item , f"clsx item: {clsx_item}";
+            tw_item = str(lsp.get_definition(furi, lspt.Position(1, 33)));
+            assert "types.d.ts:0:14-0:21" in tw_item , f"twMerge item: {tw_item}";
+            # Bug 2 (#7839): a string module path must open the resolved
+            # module (declarations for npm packages, the file itself for
+            # jac-resolvable specs) -- not return null.
+            clsx_path = str(lsp.get_definition(furi, lspt.Position(0, 14)));
+            assert "clsx.d.mts:0:0-0:0" in clsx_path , f"clsx path: {clsx_path}";
+            tw_path = str(lsp.get_definition(furi, lspt.Position(1, 15)));
+            assert "types.d.ts:0:0-0:0" in tw_path , f"tailwind-merge path: {tw_path}";
+            rt_path = str(lsp.get_definition(furi, lspt.Position(3, 15)));
+            assert "client_runtime.jac:0:0-0:0" in rt_path , f"@jac/runtime path: {rt_path}";
+            # Bug 3 (#7839): an unresolvable item degrades to "no definition"
+            # instead of a silent self-jump at the queried token.
+            ghost_def = lsp.get_definition(furi, lspt.Position(2, 35));
+            assert ghost_def is None , f"ghost must have no definition: {ghost_def}";
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_go_to_definition_jsx_component" {
     setup_test();
     try {
         lsp = create_server();
-        jsx_file = uris.from_fs_path(fixture_path("jsx_goto_def.cl.jac"));
+        jsx_file = uris.from_fs_path(fixture_path("jsx_goto_def.jac"));
         lsp.type_check_file(jsx_file);
-        # Cursor inside the <MyButton ...> tag name on line 11 (0-indexed 10).
+        # Cursor inside the <MyButton ...> tag name on line 12 (0-indexed 11).
         # `        <MyButton ...` -- 'M' is at column 9, so col 12 lands on 'u'.
-        result = str(lsp.get_definition(jsx_file, lspt.Position(10, 12)));
-        # Expect to land on the MyButton function declaration on line 3
-        # (0-indexed 2): `def MyButton(...` -- 'MyButton' spans cols 4-12.
-        assert "jsx_goto_def.cl.jac:2:4-2:12" in result , f"Unexpected go-to-def result for JSX tag: {result}";
+        result = str(lsp.get_definition(jsx_file, lspt.Position(11, 12)));
+        # Expect to land on the MyButton function declaration on line 4
+        # (0-indexed 3): `def MyButton(...` -- 'MyButton' spans cols 4-12.
+        assert "jsx_goto_def.jac:3:4-3:12" in result , f"Unexpected go-to-def result for JSX tag: {result}";
     } finally {
         teardown_test();
     }
@@ -334,9 +371,10 @@ test "test_go_to_definition_connect_filter" {
         ];
 
         for (line, char, expected) in positions {
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
-            );
+            assert expected
+                in str(
+                    lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+                );
         }
     } finally {
         teardown_test();
@@ -356,9 +394,10 @@ test "test_go_to_definition_atom_trailer" {
         ];
 
         for (line, char, expected) in positions {
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
-            );
+            assert expected
+                in str(
+                    lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+                );
         }
     } finally {
         teardown_test();
@@ -400,14 +439,14 @@ test "test_completion" {
             Case(pos=lspt.Position(8, 8), expected=["bar", "baz"]),
 
         ];
-        for case in test_cases {
+        for `case in test_cases {
             results = asyncio.run(
                 lsp.get_completion(
-                    base_module_file, case.pos, completion_trigger=case.trigger
+                    base_module_file, `case.pos, completion_trigger=`case.trigger
                 )
             );
             completions = results.items;
-            for completion in case.expected {
+            for completion in `case.expected {
                 assert completion in str(completions);
             }
         }
@@ -614,9 +653,12 @@ test "test_go_to_def_import_star" {
         ];
 
         for (line, char, expected) in positions {
-            assert expected in str(
-                lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
-            );
+            assert expected
+                in str(
+                    lsp.get_definition(
+                        import_star_file, lspt.Position(line - 1, char - 1)
+                    )
+                );
         }
     } finally {
         teardown_test();
@@ -864,8 +906,8 @@ test "test_hover_types" {
 
         ];
 
-        for case in hover_cases {
-            (line, col, expected, should_not_contain) = case;
+        for `case in hover_cases {
+            (line, col, expected, should_not_contain) = `case;
             hover = lsp.get_hover_info(
                 narrowing_file, lspt.Position(line - 1, col - 1)
             );
@@ -1040,8 +1082,8 @@ test "test_hover_lhs_assignment" {
             (52, 12, "destructure_named_tuple read x", "int", "None"),
 
         ];
-        for case in cases {
-            (line, col, desc, expected, should_not_contain) = case;
+        for `case in cases {
+            (line, col, desc, expected, should_not_contain) = `case;
             hover = lsp.get_hover_info(lhs_file, lspt.Position(line - 1, col - 1));
             assert hover is not None , f"Hover should exist for {desc} at line {line}";
             assert expected in hover.contents.value , f"{desc}: expected '{expected}' in hover, got: {hover.contents.value}";
@@ -1118,8 +1160,10 @@ test "test_namedtuple_hover" {
         # Run all hover tests
         for (line, col, name, expected_type) in hover_tests {
             hover = lsp.get_hover_info(namedtuple_file, lspt.Position(line, col));
-            assert hover is not None , f"Hover for '{name}' at line {line + 1} should exist";
-            assert expected_type in hover.contents.value , f"'{name}' at line {line + 1}: expected '{expected_type}', got: {hover.contents.value}";
+            assert hover is not None , f"Hover for '{name}' at line {line
+                + 1} should exist";
+            assert expected_type in hover.contents.value , f"'{name}' at line {line
+                + 1}: expected '{expected_type}', got: {hover.contents.value}";
         }
     } finally {
         teardown_test();
@@ -1205,17 +1249,16 @@ test "test_jir_cache_invalidated_on_version_mismatch" {
 
     setup_test();
     try {
-        lsp = create_server();
-        # Type-check the caller to force JIR cache creation for the dependency.
-        caller_file = uris.from_fs_path(fixture_path("cross_module_func_caller.jac"));
-        lsp.type_check_file(caller_file);
-
-        # Locate the JIR cache for the dependency module.
+        # A full compile writes the bytecode module cache; dependency loads
+        # derive trees per process and persist nothing (#8190).
+        import from jaclang.jac0core.compiler { JacCompiler }
+        import from jaclang.jac0core.program { JacProgram }
         dep_src = fixture_path("cross_module_func.jac");
+        JacCompiler().get_bytecode(dep_src, JacProgram());
         cache_path = get_module_cache_path(dep_src);
 
         # Sanity: cache should exist and be valid right now.
-        assert cache_path.exists() , "JIR cache was not written";
+        assert cache_path.exists() , "module cache was not written";
         assert is_module_cache_valid(dep_src, cache_path) , "Fresh cache should be valid";
 
         # Tamper: overwrite jaclang_version_hash with a fake value.
@@ -1244,10 +1287,10 @@ test "test_cross_module_imported_func_sem_token" {
         # "greet_user" on line 3 (import) should have FUNCTION sem token, not PROPERTY.
         import_tok = lsp.get_token_at_position(caller_file, lspt.Position(2, 35));
         assert import_tok is not None , "Expected token at import line";
-        sem = import_tok.sem_token;
-        assert sem is not None , "Expected sem_token for imported function";
-        assert sem[0] == JacSemTokenType.FUNCTION , (
-            f"Expected FUNCTION sem token for imported function, got: {sem[0]}"
+        `sem = import_tok.sem_token;
+        assert `sem is not None , "Expected sem_token for imported function";
+        assert `sem[0] == JacSemTokenType.FUNCTION , (
+            f"Expected FUNCTION sem token for imported function, got: {`sem[0]}"
         );
 
         # "greet_user" on line 5 (call site) should also have FUNCTION sem token.

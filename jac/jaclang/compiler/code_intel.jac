@@ -6,6 +6,7 @@ import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.passes { Alert }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 import from jaclang.jac0core.jir {
     SEC_SYMINDEX,
     SECTIONS_MAGIC,
@@ -319,9 +320,9 @@ def _write_index_cache(file: str, idx: ModuleIndex) {
             string_pool_size=0
         );
         empty_payload = zlib.compress(bytes(1), 1);
-        blob = header.to_bytes() + empty_payload + write_sections(
-            {SEC_SYMINDEX: payload}
-        );
+        blob = header.to_bytes()
+            + empty_payload
+            + write_sections({SEC_SYMINDEX: payload});
         path = _index_cache_path(file);
         path.parent.mkdir(parents=True, exist_ok=True);
         tmp = path.with_suffix(".tmp");
@@ -738,7 +739,7 @@ obj CodeIntelligence {
             return "";
         }
         try {
-            return str(expr.unparse()).strip();
+            return str(unparse_node(expr)).strip();
         } except Exception as e {
             _ = e;
             return "";

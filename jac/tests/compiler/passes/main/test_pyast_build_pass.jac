@@ -11,7 +11,9 @@ import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_module }
 import from jaclang.jac0core.helpers { pascal_to_snake }
+import from jaclang.jac0core.parser.lexer { tokenize_full }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.unitree { PythonModuleAst, Source }
 
@@ -30,9 +32,11 @@ test "synced to latest py ast" {
             method
             for method in dir(unparser_cls)
             if method.startswith("visit_")
-        ] + list(unparser_cls.binop.keys()) + list(unparser_cls.unop.keys()) + list(
-            unparser_cls.boolops.keys()
-        ) + list(unparser_cls.cmpops.keys())
+        ]
+        + list(unparser_cls.binop.keys())
+        + list(unparser_cls.unop.keys())
+        + list(unparser_cls.boolops.keys())
+        + list(unparser_cls.cmpops.keys())
     );
     node_names = [
         pascal_to_snake(method.replace("visit_", "")) for method in visit_methods
@@ -62,12 +66,14 @@ test "str2doc" {
     with open(os.path.join(FIXTURES, "str2doc.py")) as f {
         file_source = f.read();
     }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source), orig_src=Source(file_source, "str2doc.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse();
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source), orig_src=Source(file_source, "str2doc.py")
+            ),
+            prog=JacProgram()
+        ).ir_out
+    );
     assert '"""This is a test function."""\ndef foo()' in code;
     # \n and \t must remain as escape sequences, not real control characters
     assert '"""hello\\nworld"""' in code;
@@ -78,13 +84,15 @@ test "fstring triple quotes" {
     with open(os.path.join(FIXTURES, "py2jac_fstrings.py")) as f {
         file_source = f.read();
     }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source),
-            orig_src=Source(file_source, "py2jac_fstrings.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse();
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_fstrings.py")
+            ),
+            prog=JacProgram()
+        ).ir_out
+    );
     assert 'f"""Hello\n{name}"""' in code;
     assert "f'''Hello\n{name}'''''''" not in code;
     assert 'f"""Hello\n{name}"""""""' not in code;
@@ -95,13 +103,15 @@ test "py2jac escape sequences" {
     with open(os.path.join(FIXTURES, "py2jac_escape_sequences.py")) as f {
         file_source = f.read();
     }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source),
-            orig_src=Source(file_source, "py2jac_escape_sequences.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse();
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_escape_sequences.py")
+            ),
+            prog=JacProgram()
+        ).ir_out
+    );
 
     # No actual ESC character (0x1b) should leak into output
     assert chr(0x1b) not in code;
@@ -124,18 +134,50 @@ test "py2jac escape sequences" {
     assert "\\x00" in code;
 }
 
+"""`\\N{name}` is the one escape Jac cannot render, so converted code refuses."""
+test "py2jac named unicode escape stays loud" {
+    file_source = "unicode_named = \"\\N{LATIN SMALL LETTER A}\"\n";
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_named_unicode.py")
+            ),
+            prog=JacProgram()
+        ).ir_out,
+        requires_format=False
+    );
+    assert "\\N{LATIN SMALL LETTER A}" in code , (
+        f"the escape was rewritten on the way out, into:\n{code}"
+    );
+
+    # Resolving a character name needs the Unicode name database, which the
+    # compiler does not carry, so Jac has no exact rendering for this escape.
+    # The emitted code therefore has to refuse at E0110 rather than compile to
+    # a string that silently differs from the Python original.
+    (_toks, _comments, diags, errs) = tokenize_full(code, "py2jac_named_unicode.jac");
+    assert errs , f"the converted Jac lexes clean, so the escape went silent:\n{code}";
+    codes = {
+        d.code_str
+        for d in diags
+        if d.is_error
+    };
+    assert "E0110" in codes , f"refused with {sorted(codes)}, not E0110";
+}
+
 """Implicit string concat across a backslash line-continuation must emit valid Jac (#6928)."""
 test "py2jac line continuation string concat" {
     with open(os.path.join(FIXTURES, "py2jac_line_continuation.py")) as f {
         file_source = f.read();
     }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source),
-            orig_src=Source(file_source, "py2jac_line_continuation.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse(
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_line_continuation.py")
+            ),
+            prog=JacProgram()
+        ).ir_out,
         requires_format=False
     );
 
@@ -164,12 +206,15 @@ test "py2jac binop operator precedence" {
     with open(os.path.join(FIXTURES, "py2jac_binop.py")) as f {
         file_source = f.read();
     }
-    code = PyastBuildPass(
-        ir_in=PythonModuleAst(
-            py_ast.parse(file_source), orig_src=Source(file_source, "py2jac_binop.py")
-        ),
-        prog=JacProgram()
-    ).ir_out.unparse();
+    code = unparse_module(
+        PyastBuildPass(
+            ir_in=PythonModuleAst(
+                py_ast.parse(file_source),
+                orig_src=Source(file_source, "py2jac_binop.py")
+            ),
+            prog=JacProgram()
+        ).ir_out
+    );
 
     assert "((a + b) + c)" not in code , f"Same-op chain not flattened in: {code}";
     assert "((a - b) - c)" not in code , f"Same-op chain not flattened in: {code}";

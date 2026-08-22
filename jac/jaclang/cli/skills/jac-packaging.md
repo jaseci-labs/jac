@@ -70,16 +70,16 @@ There is no `jac publish` command - use `twine` (separate pip install). In CI au
 
 ## Publishing to npm
 
-`jac build --as npm` compiles client modules (`.cl.jac` and plain `.jac` under the package dir) to ES-module JavaScript, generates `package.json` + a `.d.ts` per module (TypeScript consumers get full type-checking), and packs `dist/<name>-<version>.tgz`. To produce both a wheel and an npm tarball, run both commands - there is no combined projection.
+`jac build --as npm` compiles the package's modules (`.jac` files under the package dir) to ES-module JavaScript - a `kind = "js-package"` project has no server, so every module is placed client by construction, `pub` or not, on every compile path (`jac build`, `jac tool jac2js`, `jac check`) - then generates `package.json` + a `.d.ts` per module (TypeScript consumers get full type-checking), and packs `dist/<name>-<version>.tgz`. To produce both a wheel and an npm tarball, run both commands - there is no combined projection.
 
 ```toml
 [npm]
 name = "@yourscope/greetui"     # scoped npm name (defaults to normalized project name)
-entry = "greetui/index.cl.jac"  # entry module (defaults to an index.* module)
+entry = "greetui/index.jac"     # entry module (defaults to an index.* module)
 ```
 
-- Modules that use JSX or the reactive API automatically get `@jaseci/runtime` wired into `dependencies` (a normal, React-independent npm package). Modules that explicitly `import from react` get `react`/`react-dom` as `peerDependencies`.
-- **sv-boundary rejection**: a module with an `sv` import/call cannot run from a plain `npm install`, so the build fails with `'<file>' crosses a server boundary and cannot be published as a standalone npm package. npm packages must be pure client code`. Keep server-coupled code in your app, not the library.
+- Modules that use JSX or the reactive API automatically get `@jaseci/runtime` wired into `dependencies` (a normal, React-independent npm package). Modules that explicitly `import from "react"` get `react`/`react-dom` as `peerDependencies`.
+- **Server-boundary rejection**: a module that imports or calls server-placed code cannot run from a plain `npm install`, so the build fails with `'<file>' crosses a server boundary and cannot be published as a standalone npm package. npm packages must be pure client code`. Keep server-coupled code in your app, not the library.
 - `jac` builds the tarball only - upload with `npm publish dist/<name>-<version>.tgz --access public` (CI: `NODE_AUTH_TOKEN`).
 
 ## What lands in the wheel

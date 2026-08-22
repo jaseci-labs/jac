@@ -10,11 +10,13 @@ class _LinkElement(ctypes.Structure) {
         ];
     }
 }
+
 class _SymbolAddress(ctypes.Structure) {
     with entry {
         _fields_ = [("name", c_char_p), ("address", c_uint64)];
     }
 }
+
 """
     Create a library for linking by OrcJIT
 
@@ -40,6 +42,7 @@ class JITLibraryBuilder {
         self.__exports = `set();
         self.__imports = {};
     }
+
     """
         Adds a compilation unit to the library using LLVM IR as the input
         format.
@@ -47,7 +50,7 @@ class JITLibraryBuilder {
         This takes a string or an object that can be converted to a string,
         including IRBuilder, that contains LLVM IR.
         """
-    def add_ir(self: JITLibraryBuilder, llvmir: Any) -> object {
+    def add_ir(self: JITLibraryBuilder, llvmir: any) -> object {
         self.__entries.append((0, str(llvmir).encode('utf-8')));
         return self;
     }
@@ -60,7 +63,7 @@ class JITLibraryBuilder {
         contains native assembly, which will be
         parsed by LLVM.
         """
-    def add_native_assembly(self: JITLibraryBuilder, asm: Any) -> object {
+    def add_native_assembly(self: JITLibraryBuilder, asm: any) -> object {
         self.__entries.append((1, str(asm).encode('utf-8')));
         return self;
     }
@@ -71,7 +74,7 @@ class JITLibraryBuilder {
         This takes the bytes of the contents of an object artifact which will be
         loaded by LLVM.
         """
-    def add_object_img(self: JITLibraryBuilder, data: Any) -> object {
+    def add_object_img(self: JITLibraryBuilder, data: any) -> object {
         self.__entries.append((2, `bytes(data)));
         return self;
     }
@@ -82,7 +85,7 @@ class JITLibraryBuilder {
         This takes a string or path-like object that references an object file
         which will be loaded by LLVM.
         """
-    def add_object_file(self: JITLibraryBuilder, file_path: Any) -> object {
+    def add_object_file(self: JITLibraryBuilder, file_path: any) -> object {
         with open(file_path, "rb") as f {
             self.__entries.append((2, f.read()));
         }
@@ -95,7 +98,7 @@ class JITLibraryBuilder {
         The name of the library must match the one provided in a previous link
         command.
         """
-    def add_jit_library(self: JITLibraryBuilder, name: Any) -> object {
+    def add_jit_library(self: JITLibraryBuilder, name: any) -> object {
         self.__entries.append((3, str(name).encode('utf-8')));
         return self;
     }
@@ -116,7 +119,7 @@ class JITLibraryBuilder {
         Register the *address* of global symbol *name*.  This will make
         it usable (e.g. callable) from LLVM-compiled functions.
         """
-    def import_symbol(self: JITLibraryBuilder, name: Any, address: Any) -> object {
+    def import_symbol(self: JITLibraryBuilder, name: any, address: any) -> object {
         self.__imports[str(name)] = c_uint64(address);
         return self;
     }
@@ -129,7 +132,7 @@ class JITLibraryBuilder {
         JIT linked library. The addresses will be
         available when the link method is called.
         """
-    def export_symbol(self: JITLibraryBuilder, name: Any) -> object {
+    def export_symbol(self: JITLibraryBuilder, name: any) -> object {
         self.__exports.add(str(name));
         return self;
     }
@@ -152,7 +155,7 @@ class JITLibraryBuilder {
         When the resource tracker is destroyed, the library will be cleaned up,
         however, the name of the library cannot be reused.
         """
-    def link(self: JITLibraryBuilder, lljit: Any, library_name: Any) -> object {
+    def link(self: JITLibraryBuilder, lljit: any, library_name: any) -> object {
         assert not lljit.closed , "Cannot add to closed JIT";
         encoded_library_name = str(library_name).encode('utf-8');
         assert (len(encoded_library_name) > 0) , "Library cannot be empty";
@@ -212,15 +215,16 @@ class JITLibraryBuilder {
     "leaf" libraries need to be tracked.
     """
 class ResourceTracker(ffi.ObjectRef) {
-    def init(self: ResourceTracker, ptr: Any, name: Any, addresses: Any) -> object {
+    def init(self: ResourceTracker, ptr: any, name: any, addresses: any) -> object {
         self.__addresses = addresses;
         self.__name = name;
         ffi.ObjectRef.init(self, ptr);
     }
+
     """
         Get the address of an exported symbol as an integer
         """
-    def __getitem__(self: ResourceTracker, item: Any) -> object {
+    def __getitem__(self: ResourceTracker, item: any) -> object {
         return self.__addresses[item];
     }
 
@@ -228,6 +232,7 @@ class ResourceTracker(ffi.ObjectRef) {
     def name(self: ResourceTracker) -> object {
         return self.__name;
     }
+
     def _dispose(self: ResourceTracker) -> object {
         with ffi.OutputString() as outerr {
             if self._capi.LLVMPY_LLJIT_Dylib_Tracker_Dispose(self, outerr) {
@@ -249,10 +254,11 @@ class ResourceTracker(ffi.ObjectRef) {
     new named library instead.
     """
 class LLJIT(ffi.ObjectRef) {
-    def init(self: LLJIT, ptr: Any) -> object {
+    def init(self: LLJIT, ptr: any) -> object {
         self._td = None;
         ffi.ObjectRef.init(self, ptr);
     }
+
     """
         Find a function in this dynamic library and construct a new tracking
         object for it
@@ -266,7 +272,7 @@ class LLJIT(ffi.ObjectRef) {
         fn : str
            the name of the function to get
         """
-    def lookup(self: LLJIT, dylib: Any, fn: Any) -> object {
+    def lookup(self: LLJIT, dylib: any, fn: any) -> object {
         assert not self.closed , "Cannot lookup in closed JIT";
         address = ctypes.c_uint64();
         with ffi.OutputString() as outerr {
@@ -310,10 +316,10 @@ class LLJIT(ffi.ObjectRef) {
     Create an LLJIT instance
     """
 def create_lljit_compiler(
-    target_machine: Any = None,
+    target_machine: any = None,
     *,
-    use_jit_link: Any = False,
-    suppress_errors: Any = False
+    use_jit_link: any = False,
+    suppress_errors: any = False
 ) -> object {
     with ffi.OutputString() as outerr {
         lljit = ffi.lib.LLVMPY_CreateLLJITCompiler(
@@ -363,4 +369,3 @@ with entry {
     ];
     ffi.lib.LLVMPY_LLJIT_Dylib_Tracker_Dispose.restype = c_bool;
 }
-

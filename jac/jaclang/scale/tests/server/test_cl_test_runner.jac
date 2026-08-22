@@ -1,6 +1,6 @@
 """Integration test: the jaclang cl test runner against jac-scale's server.
 
-jac-scale swaps in its own `JacAPIServer` (uvicorn-backed `JFastApiServer`) via
+jac-scale swaps in its own `JacAPIServer` (native-serving `NativeJServer`) via
 the `get_api_server_class` / `create_server` plugin hooks. This test guards that
 the cl test runner boots the *active plugin's* server -- not a hard-coded base
 class -- by running a real full-stack cl test (signup -> login -> walker spawn)
@@ -13,7 +13,7 @@ import from pathlib { Path }
 import from jaclang.runtimelib.cl_test_runner { run_cl_test_file }
 
 glob FIXTURE = str(
-         Path(__file__).parent.parent / "fixtures" / "cl_fullstack" / "test_echo.cl.jac"
+         Path(__file__).parent.parent / "fixtures" / "cl_fullstack" / "test_echo.jac"
      );
 
 test "cl runner boots jac-scale server for a full-stack client test" {

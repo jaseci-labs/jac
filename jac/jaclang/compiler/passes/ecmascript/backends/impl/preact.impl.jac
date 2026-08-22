@@ -14,7 +14,7 @@ impl PreactBackend.import_source(symbol: str) -> str {
 }
 
 impl PreactBackend.runtime_source_basename -> str {
-    return "client_runtime.cl.jac";
+    return "client_runtime.jac";
 }
 
 impl PreactBackend.vite_aliases -> dict[str, str] {

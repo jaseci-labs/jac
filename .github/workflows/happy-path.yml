@@ -1,0 +1,130 @@
+name: happy-path
+
+# Validates the documented quickstart end to end, exactly as a fresh user runs
+# it: curl-install the self-contained jac binary, clone jac_site, jac install,
+# jac start, then drive the served site headlessly with `jac browse`.
+#
+# No checkout on purpose: the run must succeed on a bare machine using only
+# the published install script and the released binary it fetches.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/install.sh"
+      - ".github/workflows/happy-path.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/happy-path.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: happy-path-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  happy-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install jac (documented curl one-liner)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: jac is on PATH and runs
+        run: jac --version
+
+      - name: Clone jac_site
+        run: git clone --depth 1 https://github.com/jaseci-labs/jac_site
+
+      - name: jac install (first run pulls npm deps)
+        working-directory: jac_site
+        run: jac install
+
+      - name: jac start in the background
+        working-directory: jac_site
+        run: |
+          nohup jac start > "$RUNNER_TEMP/jac-start.log" 2>&1 &
+          echo "jac start launched (pid $!)"
+
+      - name: Wait for http://localhost:8000
+        run: |
+          for i in $(seq 1 600); do
+            if curl -fsS -o /dev/null http://localhost:8000/; then
+              echo "server answered after ~${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::server did not answer on :8000 within 10 minutes"
+          tail -n 200 "$RUNNER_TEMP/jac-start.log"
+          exit 1
+
+      # Each `jac browse` invocation reconnects to the same headless-Chrome
+      # session over CDP, so the steps below share one browser.
+      # Retried: the engine only waits 10s for Chrome's DevToolsActivePort,
+      # which a cold start on a loaded 2-core runner can miss.
+      - name: "browse: open the site"
+        run: |
+          for i in 1 2 3; do
+            if jac browse open http://localhost:8000; then
+              exit 0
+            fi
+            echo "browser launch attempt ${i} failed; retrying"
+            jac browse close || true
+            sleep 5
+          done
+          echo "::error::browser failed to launch after 3 attempts"
+          exit 1
+
+      - name: "browse: page has a title"
+        run: |
+          title="$(jac browse get title)"
+          echo "title: ${title}"
+          test -n "${title}"
+
+      - name: "browse: rendered page mentions Jac"
+        run: |
+          for i in $(seq 1 30); do
+            text="$(jac browse get text body || true)"
+            if printf '%s' "$text" | grep -qi 'jac'; then
+              echo "found 'jac' in rendered page text"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::page text never mentioned 'jac'"
+          jac browse snapshot || true
+          exit 1
+
+      - name: "browse: interactive snapshot is non-empty"
+        run: |
+          snap="$(jac browse snapshot)"
+          printf '%s\n' "$snap" | head -n 40
+          test -n "$snap"
+
+      - name: "browse: dump console output (informational)"
+        run: jac browse console || true
+
+      - name: "browse: screenshot"
+        run: jac browse screenshot "$RUNNER_TEMP/happy-path.png"
+
+      - name: "browse: close"
+        if: always()
+        run: jac browse close || true
+
+      - name: Upload screenshot + server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: happy-path
+          path: |
+            ${{ runner.temp }}/happy-path.png
+            ${{ runner.temp }}/jac-start.log
+          if-no-files-found: ignore

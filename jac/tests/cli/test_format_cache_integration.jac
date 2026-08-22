@@ -256,7 +256,8 @@ test "lintfix cache does not share entries across excluded vs included paths" {
     # path (and vice versa) when lintfix is on.
     repo = make_project();
     (Path(repo) / "jac.toml").write_text(
-        '[project]\nname = "ft"\nversion = "0.0.1"\n\n' + '[check.lint]\nexclude = ["vendor/**"]\n'
+        '[project]\nname = "ft"\nversion = "0.0.1"\n\n'
+            + '[check.lint]\nexclude = ["vendor/**"]\n'
     );
     old = os.getcwd();
     os.chdir(repo);

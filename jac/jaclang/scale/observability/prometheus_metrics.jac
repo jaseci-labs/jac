@@ -1,4 +1,3 @@
-import from typing { Callable }
 import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale._optdeps.prometheus {
     Counter,
@@ -8,7 +7,7 @@ import from jaclang.scale._optdeps.prometheus {
     CONTENT_TYPE_LATEST,
     CollectorRegistry
 }
-import from fastapi.responses { Response }
+import from jaclang.runtimelib.serving.datatypes { Response }
 
 glob DEFAULT_BUCKETS: tuple = (
          0.005,
@@ -51,6 +50,17 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         if self._registry is None {
             self._registry = CollectorRegistry();
         }
+
+        try {
+            import from prometheus_client {
+                ProcessCollector,
+                PlatformCollector,
+                GCCollector
+            }
+            ProcessCollector(registry=self._registry);
+            PlatformCollector(registry=self._registry);
+            GCCollector(registry=self._registry);
+        } except Exception { }
 
         buckets = self.config.get("histogram_buckets");
         if buckets {
@@ -165,6 +175,10 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             );
         }
         return metrics_endpoint;
+    }
+
+    def expose -> bytes {
+        return generate_latest(self._registry);
     }
 
     def is_enabled -> bool {

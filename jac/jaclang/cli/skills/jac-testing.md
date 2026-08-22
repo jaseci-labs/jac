@@ -36,16 +36,17 @@ A `test "some name"` block becomes unittest case `test_some_name` (spaces -> und
 ## File naming - two traps
 
 - **Never name files `test_*.jac`** (e.g. `test_utils.jac`) - the `test_` prefix collides with Python's test-module import machinery. Use `utils_tests.jac`, or the annex form below.
+- **Calling a `def:priv` endpoint from a `.test.jac` annex draws `W2037`** ("private to module") - the annex counts as a separate module for access modifiers even though it sees the declarations. Warning-only; tests still run. For a clean `jac check`, put those tests in the main file or use in-file `test` blocks.
 - **`<mod>.test.jac` is an ANNEX, not a standalone file.** Like `.impl.jac`, it attaches to a same-basename module: `people.test.jac` pairs with `people.jac`, and you run `jac test people.jac`. A `.test.jac` with no base module fails with `No module named '<mod>'`. The annex sees the module's declarations without imports - ideal for keeping tests out of the main file.
 
-## Graph state: tests share a persisted root
+## Graph state: parallel workers + a persisted root
 
-Verified behavior: tests in a file run **in declaration order against one shared `root`**, and anything hung off `root` also **persists to `.jac/data` between runs**. Two consequences:
+Verified behavior: `jac test` runs test blocks **in parallel across isolated workers**, so tests in one file do NOT share in-memory graph state and do NOT run in declaration order (no CLI flag forces serial; set `JAC_TEST_JOBS=0` in the environment or `test_jobs = "0"` under `[dev]` in `jac.toml` when you need it). Anything hung off `root` still **persists to `.jac/data` between runs**. Two consequences:
 
-- A later test sees nodes created by an earlier test in the same run.
-- A green suite can go red on re-run because last run's nodes are still there - or crash with `NodeAnchor <id> is not a valid reference` when stale persisted anchors meet recompiled code.
+- Never rely on one test seeing nodes another test created in the same run - each test builds and asserts on its own data.
+- A green suite can go red on re-run because last run's persisted nodes are still there - or crash with `NodeAnchor <id> is not a valid reference` when stale persisted anchors meet recompiled code.
 
-Fix both the same way: `jac clean --all --force` (or `jac clean --data`) before the run. Write graph assertions defensively - count nodes you just created (or filter by a unique field) rather than asserting totals on `root`.
+Fix the persistence half with `jac clean --all --force` (or `jac clean --data`) before the run. Write graph assertions defensively - count nodes you just created (or filter by a unique field) rather than asserting totals on `root`.
 
 ## Testing walkers: spawn + `.reports`
 
@@ -73,15 +74,54 @@ The spawn expression returns the walker instance; every `report` it made is in `
 
 ## Expecting an exception
 
-No `pytest.raises` - use try/except with a guard assert:
+`testraises` is ambient - no import:
 
 ```jac
 test "divide by zero raises" {
-    try {
+    with testraises(ZeroDivisionError) {
         divide(10, 0);
-        assert False, "should have raised";
-    } except ZeroDivisionError {
-        assert True;
+    }
+}
+```
+
+Bind it to inspect the exception, or pass `` `match `` to require a message
+pattern (`match` is a Jac keyword, hence the backtick):
+
+```jac
+test "reports the offending name" {
+    with testraises(ValueError) as ei {
+        parse("bad input");
+    }
+    assert "bad input" in str(ei.value);
+}
+
+test "rejects an unknown target" {
+    with testraises(RuntimeError, `match="no native parser") {
+        compile_native(src);
+    }
+}
+```
+
+An exception of an unlisted type propagates rather than being swallowed, and a
+block that raises nothing fails with `DID NOT RAISE`.
+
+## Skipping and failing outright
+
+`testskip` and `testfail` are ambient too. `skip` alone is a Jac keyword (the
+walker skip statement), hence the `testskip` spelling:
+
+```jac
+test "needs a C toolchain" {
+    import shutil;
+    if not shutil.which("gcc") {
+        testskip("gcc not installed");
+    }
+    build_shared_lib();
+}
+
+test "unreachable branch" {
+    if unexpected_state() {
+        testfail("parser produced a node with no location");
     }
 }
 ```
@@ -106,21 +146,28 @@ Each case runs and reports independently (`square_0`, `square_1`, ...); pass `id
 
 ## In-process endpoint tests: JacTestClient
 
-For testing served endpoints (`walker:pub` / `def:pub`) without starting a real server, use the Python-side client from pytest:
+For testing served endpoints (`walker:pub` / `def:pub`) without starting a real server, use `JacTestClient`:
 
-```python
-from jaclang.runtimelib.testing import JacTestClient
+```jac
+import tempfile;
+import from jaclang.runtimelib.testing { JacTestClient }
 
-def test_task_crud(tmp_path):
-    client = JacTestClient.from_file("app.jac", base_path=str(tmp_path))
-    client.register_user("testuser", "password123")            # auth in one line
-    resp = client.post("/walker/CreateTask", json={"title": "My Task"})
-    assert resp.ok and resp.status_code == 200
-    assert len(client.post("/walker/GetTasks").json()["reports"]) == 1
-    client.close()
+test "task crud" {
+    client = JacTestClient.from_file(
+        "app.jac", base_path=tempfile.mkdtemp()
+    );
+    try {
+        client.register_user("testuser", "password123");
+        resp = client.post("/walker/CreateTask", json={"title": "My Task"});
+        assert resp.ok and resp.status_code == 200;
+        assert len(client.post("/walker/GetTasks").json()["reports"]) == 1;
+    } finally {
+        client.close();
+    }
+}
 ```
 
-`base_path=tmp_path` keeps each test's persisted graph isolated. Also available: `get/put/request`, `login`, `set_auth_token`, `resp.data` (unwrapped envelope), `client.reload()` (HMR).
+Give each test its own `base_path` to keep persisted graphs isolated. Also available: `get/put/request`, `login`, `set_auth_token`, `resp.data` (unwrapped envelope), `client.reload()` (HMR).
 
 ## Pitfalls
 
@@ -132,3 +179,5 @@ def test_task_crud(tmp_path):
 - `jac-debugging` - the check/fix loop, stale-cache triage (`jac clean` vs `jac purge`)
 - `jac-config` - `[test]` defaults, `[scripts]` (`test = "jac test -v"`)
 - `jac-walker-patterns` - report/reports semantics being asserted here
+
+Deep dive bundled with the CLI: `jac guide reference/testing` (full test-runner reference).

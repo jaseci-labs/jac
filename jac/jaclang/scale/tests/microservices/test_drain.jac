@@ -120,7 +120,7 @@ test "middleware passes through when not draining and tracks inflight=0 after" {
     called: dict[str, int] = {"n": 0};
 
     async def next_handler(req: object) -> object {
-        import from fastapi.responses { JSONResponse }
+        import from jaclang.runtimelib.serving.datatypes { JSONResponse }
         called["n"] += 1;
         return JSONResponse(status_code=200, content={"ok": True});
     }
@@ -165,7 +165,7 @@ test "middleware accounts inflight across concurrent in-flight requests" {
     observed: list[int] = [];
 
     async def next_handler(req: object) -> object {
-        import from fastapi.responses { JSONResponse }
+        import from jaclang.runtimelib.serving.datatypes { JSONResponse }
         observed.append(inflight());
         return JSONResponse(status_code=200, content={"ok": True});
     }
@@ -206,34 +206,54 @@ test "middleware decrements inflight even when handler raises" {
 
 
 obj _FakeServer {
-    has handle_exit_calls: list = [];
+    has stop_calls: int = 0;
 
-    def handle_exit(sig: object, frame: object) {
-        self.handle_exit_calls.append((sig, frame));
+    def request_stop {
+        self.stop_calls += 1;
     }
 }
 
+"""Capture the handlers install_signal_drain registers, without touching
+this process's real signal disposition."""
+def _install_capturing_signals(srv: any, timeout_s: float) -> dict {
+    import signal;
+    import unittest.mock;
+    registered: dict = {};
 
-test "install_signal_drain wraps handle_exit and configures drain timeout" {
+    def _fake_signal(signum: any, handler: any) -> any {
+        registered[int(signum)] = handler;
+        return None;
+    }
+    patcher: any = unittest.mock.patch.object(signal, "signal", _fake_signal);
+    with patcher {
+        install_signal_drain(srv, timeout_s=timeout_s);
+    }
+    return registered;
+}
+
+
+test "install_signal_drain registers termination handlers and sets the timeout" {
+    import signal;
     reset_drain();
     srv = _FakeServer();
-    orig = srv.handle_exit;
-    install_signal_drain(srv, timeout_s=3.0);
-    assert srv.handle_exit is not orig;
+    registered = _install_capturing_signals(srv, 3.0);
+    assert int(signal.SIGTERM) in registered;
+    assert int(signal.SIGINT) in registered;
     assert drain_timeout_s() == 3.0;
     reset_drain();
 }
 
 
-test "wrapped handle_exit starts drain then calls original" {
+test "termination handler starts drain then stops the server" {
+    import signal;
     reset_drain();
     srv = _FakeServer();
-    install_signal_drain(srv, timeout_s=2.0);
+    registered = _install_capturing_signals(srv, 2.0);
     assert not is_draining();
 
-    srv.handle_exit(15, None);
+    handler: any = registered[int(signal.SIGTERM)];
+    handler(int(signal.SIGTERM), None);
     assert is_draining();
-    assert len(srv.handle_exit_calls) == 1;
-    assert srv.handle_exit_calls[0] == (15, None);
+    assert srv.stop_calls == 1;
     reset_drain();
 }

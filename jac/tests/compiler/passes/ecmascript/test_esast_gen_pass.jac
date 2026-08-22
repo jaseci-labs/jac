@@ -8,6 +8,7 @@ import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 """Signals-style test backend: wraps a reactive read as `name()` so the
 value-read seam (contract §4.1.1) can be audited without a real Solid backend.
@@ -31,6 +32,30 @@ obj _ThunkViewBackend(ReactBackend) {
 
 impl _ThunkViewBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
     return es.CallExpression(callee=es.Identifier(name="__view"), arguments=[expr]);
+}
+
+"""The react state lowering as it stood before #8224: the store cell and no
+setter. Standing in for the regression lets the free-identifier audit be tested
+on the exact shape it exists to catch, without reverting the fix."""
+obj _DropSetterBackend(ReactBackend) {
+    def lower_state_field(s: any) -> list[es.Statement];
+}
+
+impl _DropSetterBackend.lower_state_field(s: any) -> list[es.Statement] {
+    return [
+        es.VariableDeclaration(
+            declarations=[
+                es.VariableDeclarator(
+                    id=es.Identifier(name=self._state_cell_name(s.name)),
+                    init=es.CallExpression(
+                        callee=es.Identifier(name="useJacState"),
+                        arguments=[s.init_expr]
+                    )
+                )
+            ],
+            kind="const"
+        )
+    ];
 }
 
 glob FIXTURES = os.path.join(
@@ -79,7 +104,7 @@ def compile_to_esast(filename: str) -> es.Program {
         f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    es_pass = run_pass(EsastGenPass, ir, prog);
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
@@ -97,7 +122,7 @@ def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program 
         f"Compilation errors in {filename}: {[str(e) for e in _fatal]}"
     );
 
-    es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);
+    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
     es_ir = es_pass.ir_out;
 
     assert isinstance(es_ir.gen.es_ast, es.Program);
@@ -315,83 +340,93 @@ test "reactive state generates use state" {
     es_ast = compile_to_esast(fixture_path("reactive_state.jac"));
     js_code = es_to_js(es_ast);
 
-    # Check that useState is imported from @jac/runtime (auto-injected)
-    assert 'import { useState } from "@jac/runtime"' in js_code , (
-        "useState should be auto-imported from @jac/runtime"
+    # Check that the store hook is imported from @jac/runtime (auto-injected)
+    assert 'import { useJacState } from "@jac/runtime"' in js_code , (
+        "useJacState should be auto-imported from @jac/runtime"
     );
 
-    # Check that has declarations generate useState destructuring
-    # has count: int = 0; -> const [count, setCount] = useState(0);
-    assert "const [count, setCount] = useState(0)" in js_code , (
-        "has count should generate useState destructuring"
+    # Check that has declarations generate store cells
+    # has count: int = 0; -> const __jacS_count = useJacState(0);
+    assert "const __jacS_count = useJacState(0)" in js_code , (
+        "has count should generate a store cell"
     );
-    assert 'const [name, setName] = useState("test")' in js_code , (
-        "has name should generate useState destructuring"
+    assert 'const __jacS_name = useJacState("test")' in js_code , (
+        "has name should generate a store cell"
     );
 
     # Check that assignments to reactive vars generate setter calls
-    # count = count + 1; -> setCount(count + 1);
-    assert "setCount((count + 1))" in js_code , (
+    # count = count + 1; -> __jacS_count.set(__jacS_count.val + 1);
+    assert "__jacS_count.set((__jacS_count.val + 1))" in js_code , (
         "Assignment to reactive var should use setter"
     );
-    assert "setCount(42)" in js_code , "Direct assignment should use setter";
-    assert "setName(" in js_code , "Assignment to name should use setName";
+    assert "__jacS_count.set(42)" in js_code , "Direct assignment should use setter";
+    assert "__jacS_name.set(" in js_code , (
+        "Assignment to name should use its cell setter"
+    );
 }
 
 test "reactive state in cl jac file" {
-    es_ast = compile_to_esast(fixture_path("reactive_state.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("reactive_state.jac"));
     js_code = es_to_js(es_ast);
 
-    # Check that useState is imported from @jac/runtime (auto-injected)
-    assert 'import { useState } from "@jac/runtime"' in js_code , (
-        "useState should be auto-imported from @jac/runtime in .cl.jac files"
+    # Check that the store hook is imported from @jac/runtime (auto-injected)
+    assert 'import { useJacState } from "@jac/runtime"' in js_code , (
+        "useJacState should be auto-imported from @jac/runtime in .jac files"
     );
 
-    # Check that has declarations generate useState destructuring
-    # has count: int = 0; -> const [count, setCount] = useState(0);
-    assert "const [count, setCount] = useState(0)" in js_code , (
-        "has count should generate useState destructuring in .cl.jac files"
+    # Check that has declarations generate store cells
+    # has count: int = 0; -> const __jacS_count = useJacState(0);
+    assert "const __jacS_count = useJacState(0)" in js_code , (
+        "has count should generate a store cell in .jac files"
     );
-    assert 'const [name, setName] = useState("test")' in js_code , (
-        "has name should generate useState destructuring in .cl.jac files"
+    assert 'const __jacS_name = useJacState("test")' in js_code , (
+        "has name should generate a store cell in .jac files"
     );
 
-    # Check that assignments to reactive vars generate setter calls
-    # count = count + 1; -> setCount(count + 1);
-    assert "setCount((count + 1))" in js_code , (
-        "Assignment to reactive var should use setter in .cl.jac files"
+    # Check that assignments to reactive vars generate cell setter calls
+    # count = count + 1; -> __jacS_count.set(__jacS_count.val + 1);
+    assert "__jacS_count.set((__jacS_count.val + 1))" in js_code , (
+        "Assignment to reactive var should use the cell setter in .jac files"
     );
-    assert "setCount(42)" in js_code , "Direct assignment should use setter";
-    assert "setName(" in js_code , "Assignment to name should use setName";
+    assert "__jacS_count.set(42)" in js_code , (
+        "Direct assignment should use the cell setter"
+    );
+    assert "__jacS_name.set(" in js_code , (
+        "Assignment to name should use its cell setter"
+    );
 }
 
 test "reactive state scoping across functions" {
     es_ast = compile_to_esast(fixture_path("reactive_state_scoping.jac"));
     js_code = es_to_js(es_ast);
 
-    assert "const [cart, setCart] = useState([])" in js_code;
-    assert "setCart(useCart())" not in js_code;
+    assert "const __jacS_cart = useJacState([])" in js_code;
+    assert "__jacS_cart.set(useCart())" not in js_code;
     assert "let cart = useCart()" in js_code;
 }
 
-test "react read seam lowers a reactive read to a bare identifier (#6677)" {
-    # The #6677 contract: lower_state_read(name) -> bare Identifier on hooks
-    # backends. This is the no-op that keeps React/Preact output byte-identical.
+test "react read seam lowers a reactive read to a store cell member" {
+    # The client state contract: lower_state_read(name) -> `__jacS_<name>.val`
+    # on hooks backends, a synchronous read of the latest written value.
     read_node = ReactBackend().lower_state_read("count");
-    assert isinstance(read_node, es.Identifier) , "react read seam must return an Identifier";
-    assert read_node.name == "count";
+    assert isinstance(read_node, es.MemberExpression) , (
+        "react read seam must return a MemberExpression"
+    );
+    assert read_node.object.name == "__jacS_count";
+    assert read_node.property.name == "val";
 }
 
-test "react read seam keeps reactive reads unwrapped (zero-diff)" {
-    # Under React the value-read seam must not alter reactive reads anywhere.
+test "react read seam routes every value position through the cell" {
+    # Under React every reactive value read is a synchronous cell read; write
+    # targets and dict string keys never route through the read seam.
     js_code = es_to_js(
         compile_to_esast_with_backend(
-            fixture_path("reactive_read_audit.cl.jac"), ReactBackend()
+            fixture_path("reactive_read_audit.jac"), ReactBackend()
         )
     );
-    assert "let doubled = (count + count)" in js_code;
-    assert 'let info = {"count": count}' in js_code;
-    assert "[count]" in js_code , "JSX child read stays a bare identifier";
+    assert "let doubled = (__jacS_count.val + __jacS_count.val)" in js_code;
+    assert 'let info = {"count": __jacS_count.val}' in js_code;
+    assert "[__jacS_count.val]" in js_code , "JSX child read samples the cell";
     assert "count()" not in js_code , "React must never wrap a reactive read";
 }
 
@@ -401,7 +436,7 @@ test "read seam wraps only value positions under a signals backend" {
     # property keys, and string literals MUST NOT.
     js_code = es_to_js(
         compile_to_esast_with_backend(
-            fixture_path("reactive_read_audit.cl.jac"), _WrapReadBackend()
+            fixture_path("reactive_read_audit.jac"), _WrapReadBackend()
         )
     );
 
@@ -414,7 +449,9 @@ test "read seam wraps only value positions under a signals backend" {
     assert 'let info = {"count": count()}' in js_code , "dict value wraps, key untouched";
 
     # Write target lowers to its setter — never an assignment to a call.
-    assert "setCount((count() + 1))" in js_code , "write target uses setter; RHS read wraps";
+    assert "__jacS_count.set((count() + 1))" in js_code , (
+        "write target uses the cell setter; RHS read routes through the read seam"
+    );
     assert "count() =" not in js_code , "a reactive write target must not be wrapped";
 
     # Member property keys and attribute string literals are reconstructed from
@@ -435,12 +472,14 @@ test "react view seam keeps dynamic JSX unwrapped (zero-diff)" {
     # Under React the dynamic-view seam must not alter JSX children or attributes.
     js_code = es_to_js(
         compile_to_esast_with_backend(
-            fixture_path("reactive_view_audit.cl.jac"), ReactBackend()
+            fixture_path("reactive_view_audit.jac"), ReactBackend()
         )
     );
     assert "__view(" not in js_code , "React must never thunk a dynamic JSX position";
-    assert '"value": count' in js_code , "dynamic attribute stays a bare read";
-    assert "[count]" in js_code , "dynamic JSX child stays a bare read";
+    assert '"value": __jacS_count.val' in js_code , (
+        "dynamic attribute samples the cell"
+    );
+    assert "[__jacS_count.val]" in js_code , "dynamic JSX child samples the cell";
 }
 
 test "view seam thunks only dynamic positions under a signals backend" {
@@ -449,13 +488,15 @@ test "view seam thunks only dynamic positions under a signals backend" {
     # value MUST route through the seam; event handlers and static literals MUST NOT.
     js_code = es_to_js(
         compile_to_esast_with_backend(
-            fixture_path("reactive_view_audit.cl.jac"), _ThunkViewBackend()
+            fixture_path("reactive_view_audit.jac"), _ThunkViewBackend()
         )
     );
 
     # Dynamic attribute value and dynamic child route through the seam.
-    assert '"value": __view(count)' in js_code , "dynamic attribute value should thunk";
-    assert "[__view(count)]" in js_code , "dynamic JSX child should thunk";
+    assert '"value": __view(__jacS_count.val)' in js_code , (
+        "dynamic attribute value should thunk"
+    );
+    assert "[__view(__jacS_count.val)]" in js_code , "dynamic JSX child should thunk";
 
     # Event handler is emitted as-is — never view-wrapped.
     assert '"onClick":' in js_code , "event handler attribute is still emitted";
@@ -469,20 +510,22 @@ test "view seam thunks only dynamic positions under a signals backend" {
 test "reactive writes transform inside nested and deferred closures" {
     # Regression for #6459: a reactive `has` write must lower to its setter at
     # any closure depth, not only in the direct handler scope.
-    es_ast = compile_to_esast(fixture_path("reactive_state_closures.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("reactive_state_closures.jac"));
     js_code = es_to_js(es_ast);
 
     # Direct handler scope.
-    assert "setSeen(true)" in js_code , "direct handler write should use setter";
+    assert "__jacS_seen.set(true)" in js_code , (
+        "direct handler write should use the cell setter"
+    );
     # Inside a setTimeout(...) callback (deferred closure). If the write had not
     # transformed it would emit `armed = true` and `setArmed` would be absent.
     assert "setTimeout(" in js_code , "deferred fixture should emit setTimeout";
-    assert "setArmed(true)" in js_code , (
-        "write inside setTimeout closure should use setter"
+    assert "__jacS_armed.set(true)" in js_code , (
+        "write inside setTimeout closure should use the cell setter"
     );
     # Inside an immediately-invoked nested lambda.
-    assert "setFired(true)" in js_code , (
-        "write inside nested closure should use setter"
+    assert "__jacS_fired.set(true)" in js_code , (
+        "write inside nested closure should use the cell setter"
     );
     # The raw reactive assignment form must never leak through.
     assert "armed = true" not in js_code , "deferred write must not stay a bare assignment";
@@ -491,7 +534,7 @@ test "reactive writes transform inside nested and deferred closures" {
 test "varargs parameter lowers to JS rest parameter" {
     # Regression: `*args` was dropped from the emitted signature, leaving the
     # body referencing an undefined name (broke the shadcn `cn(*inputs)` helper).
-    es_ast = compile_to_esast(fixture_path("vararg_params.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("vararg_params.jac"));
     js_code = es_to_js(es_ast);
 
     assert "function collect(...items)" in js_code , (
@@ -574,8 +617,8 @@ test "reactive effects with dependencies" {
     # Check that useEffect is called
     assert "useEffect(" in js_code , "useEffect should be called";
 
-    # Check that dependency array contains userId and loading (tuple syntax)
-    assert "[userId, loading])" in js_code , (
+    # Dependency array: `userId` is a prop (bare), `loading` samples the cell.
+    assert "[userId, __jacS_loading.val])" in js_code , (
         "Effect with (userId, loading) tuple should have both in dependency array"
     );
 }
@@ -610,7 +653,7 @@ test "jsx comprehension with filter" {
 }
 
 test "jsx html entity decoding in text and attributes" {
-    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.jac"));
     js_code = es_to_js(es_ast);
 
     # Attribute value: &amp; must be decoded to &
@@ -646,7 +689,7 @@ test "jsx block comment is a no-op child" {
     # `{#* ... *#}` inside JSX children must compile cleanly and produce no
     # rendered output — the comment body must not leak into the generated JS,
     # and surrounding sibling elements must render normally.
-    es_ast = compile_to_esast(fixture_path("jsx_block_comment.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("jsx_block_comment.jac"));
     js_code = es_to_js(es_ast);
 
     assert "JSX_COMMENT_PROBE" not in js_code , (
@@ -673,20 +716,19 @@ test "stale has read emits W3041" {
         if w.code and w.code.code == "W3041"
     ];
     assert len(w3041_hits) >= 1 , (
-        "Expected W3041 diagnostic for stale `has` field read, got: " + str(
-            [(w.code.code if w.code else "?") for w in prog.warnings_had]
-        )
+        "Expected W3041 diagnostic for stale `has` field read, got: "
+        + str([(w.code.code if w.code else "?") for w in prog.warnings_had])
     );
 }
 
 test "single-`props` component definition warns W5015" {
-    fixture = fixture_path("component_props_idiom.cl.jac");
+    fixture = fixture_path("component_props_idiom.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=fixture, no_cgen=True);
     assert not prog.errors_had , (
         f"Compilation errors in {fixture}: {[str(e) for e in prog.errors_had]}"
     );
-    EsastGenPass(ir_in=ir, prog=prog);
+    run_pass(EsastGenPass, ir, prog);
 
     w5015 = [
         w
@@ -716,7 +758,7 @@ test "single-`props` component definition warns W5015" {
 }
 
 test "props-destructured component direct calls preserve wrapping and spreads" {
-    es_ast = compile_to_esast(fixture_path("component_direct_call_props_wrap.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("component_direct_call_props_wrap.jac"));
 
     funcs: dict[str, es.FunctionDeclaration] = {};
     for nd in es_ast.body {
@@ -782,8 +824,51 @@ test "props-destructured component direct calls preserve wrapping and spreads" {
     assert isinstance(plain_spread_call.arguments[0], es.SpreadElement);
 }
 
+test "implicit JSX returns lower like explicit returns" {
+    es_ast = compile_to_esast(fixture_path("component_implicit_jsx_return.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    # A tail JSX element without ';' compiles to a ReturnStatement and the
+    # component still gets the single-`props` destructure ABI.
+    badge = funcs["ImplicitBadge"];
+    assert len(badge.params) == 1;
+    assert isinstance(badge.params[0], es.Identifier);
+    assert badge.params[0].name == "props";
+    badge_ret = badge.body.body[-1];
+    assert isinstance(badge_ret, es.ReturnStatement) , (
+        "implicit JSX tail must lower to a ReturnStatement"
+    );
+
+    # Statements before the tail expression are kept ahead of the return.
+    after_stmts = funcs["ImplicitAfterStmts"];
+    after_ret = after_stmts.body.body[-1];
+    assert isinstance(after_ret, es.ReturnStatement);
+    assert len(after_stmts.body.body) >= 2 , (
+        "leading statements must be preserved before the implicit return"
+    );
+
+    # An early explicit return can mix with an implicit tail return.
+    guarded = funcs["GuardedImplicit"];
+    guarded_ret = guarded.body.body[-1];
+    assert isinstance(guarded_ret, es.ReturnStatement);
+
+    # Call sites wrap args into a props object, same as explicit-return components.
+    direct_ret = funcs["direct_call_implicit"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
+}
+
 test "conditional JSX returns still trigger props-destructure lowering" {
-    es_ast = compile_to_esast(fixture_path("component_conditional_jsx_return.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("component_conditional_jsx_return.jac"));
 
     funcs: dict[str, es.FunctionDeclaration] = {};
     for nd in es_ast.body {
@@ -816,7 +901,7 @@ test "conditional JSX returns still trigger props-destructure lowering" {
 }
 
 test "union JsxElement return type still triggers props-destructure lowering" {
-    es_ast = compile_to_esast(fixture_path("component_union_jsx_return.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("component_union_jsx_return.jac"));
 
     funcs: dict[str, es.FunctionDeclaration] = {};
     for nd in es_ast.body {
@@ -842,7 +927,7 @@ test "components with JSX slots compile to function declarations" {
     # `def:pub Name(...) -> JsxElement { return ... }` is the universal
     # component shape. JSX `{...}` slots in child position with statement
     # bodies lower to an IIFE that accumulates JSX into a fragment.
-    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("view_basic.jac"));
     js_code = es_to_js(es_ast);
 
     func_names = {
@@ -859,31 +944,31 @@ test "components with JSX slots compile to function declarations" {
     assert "__jac_view_kids" in js_code , (
         "slot bodies should lower to a `__jac_view_kids` accumulator IIFE:\n" + js_code
     );
-    assert "__jac_view_kids = []" in js_code , "accumulator should be initialized";
-    assert "__jac_view_kids.push(" in js_code , (
-        "each JSX statement should append to the accumulator in O(1)"
+    assert "__jac_view_kids = [" in js_code , "accumulator should be initialized";
+    assert "__jac_view_kids[0] = " in js_code , (
+        "each JSX statement should write the child position it reserved"
     );
     assert "__jacJsx" in js_code , "JSX should still lower to __jacJsx calls";
 
-    # `has` fields inside a component keep the existing auto-`useState` wiring.
-    assert 'const [heading, setHeading] = useState("Items")' in js_code , (
-        "has field in a component should generate useState"
+    # `has` fields inside a component lower to store cells.
+    assert 'const __jacS_heading = useJacState("Items")' in js_code , (
+        "has field in a component should generate a store cell"
     );
-    assert "setHeading(" in js_code , (
-        "assignment to a has-field should use the generated setter"
+    assert "__jacS_heading.set(" in js_code , (
+        "assignment to a has-field should use the cell setter"
     );
 
     # Public components are exported.
     assert "export {" in js_code , "components should be exported";
     export_line = js_code.strip().split("\n")[-1];
     assert "Badge" in export_line
-    and "ItemRow" in export_line
-    and "ItemList" in export_line
-    and "Divider" in export_line , "all four components should be exported";
+        and "ItemRow" in export_line
+        and "ItemList" in export_line
+        and "Divider" in export_line , "all four components should be exported";
 }
 
 test "JSX slot statement-position control flow lowers to statements" {
-    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("view_basic.jac"));
     js_code = es_to_js(es_ast);
 
     # `if`/`else` slot yields content in both branches.
@@ -903,7 +988,7 @@ test "try/awaiting in JSX slot lowers to <JacAwaiting> wrapper on cl" {
     # `<JacAwaiting fallback={<>{...awaiting...}</>}>{...try...}</JacAwaiting>`
     # element. The runtime wrapper lives in `@jac/runtime` and is auto-
     # imported when the synthesized element shows up in the bundle.
-    es_ast = compile_to_esast(fixture_path("view_awaiting.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("view_awaiting.jac"));
     js_code = es_to_js(es_ast);
 
     func_names = {
@@ -912,14 +997,15 @@ test "try/awaiting in JSX slot lowers to <JacAwaiting> wrapper on cl" {
         if isinstance(nd, es.FunctionDeclaration) and nd.id
     };
     assert "UserCardSkeleton" in func_names
-    and "UserCardView" in func_names
-    and "UserPanel" in func_names;
+        and "UserCardView" in func_names
+        and "UserPanel" in func_names;
 
     # The wrapper component is referenced as a JSX tag (the cl lowering
     # synthesizes the element with `JacAwaiting` as the identifier).
     assert "__jacJsx(JacAwaiting," in js_code , (
         "the cl-target try/awaiting lowering should emit a "
-        "<JacAwaiting> wrapper element:\n" + js_code
+        "<JacAwaiting> wrapper element:\n"
+        + js_code
     );
     # The wrapper must be auto-imported from @jac/runtime so user code
     # doesn't have to know the runtime export name.
@@ -953,14 +1039,14 @@ test "try/awaiting in JSX slot lowers to <JacAwaiting> wrapper on cl" {
     # the `children` prop of the JacAwaiting element.
     for (op, cl) in [("{", "}"), ("(", ")"), ("[", "]")] {
         assert js_code.count(op) == js_code.count(cl) , (
-            f"unbalanced {op}{cl} pairs in view_awaiting.cl.jac output"
+            f"unbalanced {op}{cl} pairs in view_awaiting.jac output"
         );
     }
 }
 
 test "dynamic JSX tags resolve at runtime" {
     # Phase 2: `<@expr />` — the JSX tag is an expression, not a static name.
-    es_ast = compile_to_esast(fixture_path("view_dynamic_tag.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("view_dynamic_tag.jac"));
     js_code = es_to_js(es_ast);
 
     func_names = {
@@ -969,9 +1055,9 @@ test "dynamic JSX tags resolve at runtime" {
         if isinstance(nd, es.FunctionDeclaration) and nd.id
     };
     assert "Box" in func_names
-    and "Icon" in func_names
-    and "Panel" in func_names
-    and "Demo" in func_names;
+        and "Icon" in func_names
+        and "Panel" in func_names
+        and "Demo" in func_names;
 
     # A dynamic tag lowers to `__jacJsx(<expr>, ...)` — the tag is the value
     # of the expression, never a quoted string of the identifier itself.
@@ -999,7 +1085,7 @@ test "unsafe_html builtin emits a raw-HTML marker call" {
     # call so the runtime can wrap the value in a sentinel object that the
     # JSX flattener turns into `dangerouslySetInnerHTML`. The bare global
     # `unsafe_html(...)` would be undefined at runtime.
-    es_ast = compile_to_esast(fixture_path("unsafe_html_basic.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("unsafe_html_basic.jac"));
     js_code = es_to_js(es_ast);
 
     # Each component lowers to a plain function declaration.
@@ -1016,7 +1102,8 @@ test "unsafe_html builtin emits a raw-HTML marker call" {
     # is not defined` in the browser).
     assert "_jac.builtin.unsafe_html(" in js_code , (
         "unsafe_html(x) should lower to `_jac.builtin.unsafe_html(x)` "
-        "(matching the `jid` and other ambient-builtin lowerings):\n" + js_code
+        "(matching the `jid` and other ambient-builtin lowerings):\n"
+        + js_code
     );
     # The bare-global form must not appear -- it would be undefined.
     # Both call sites in the fixture must be routed.
@@ -1046,7 +1133,8 @@ test "unsafe_html builtin emits a raw-HTML marker call" {
     parent_window = js_code[parent_idx:parent_idx + 250];
     assert "_jac.builtin.unsafe_html(c.body_html)" in parent_window , (
         "the unsafe_html() result must be passed as a normal child of "
-        "its enclosing element, unmodified at compile time:\n" + parent_window
+        "its enclosing element, unmodified at compile time:\n"
+        + parent_window
     );
 
     # The static JSX siblings (article / section / footer) keep their
@@ -1062,7 +1150,7 @@ test "JSX child position accepts statement-form control flow" {
     # branch's JSX statements contribute to the enclosing element's
     # rendered children list -- no wrapping `{[... for x in xs]}`
     # comprehension and no nested ternaries required.
-    es_ast = compile_to_esast(fixture_path("jsx_child_control_flow.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("jsx_child_control_flow.jac"));
     js_code = es_to_js(es_ast);
 
     func_names = {
@@ -1082,7 +1170,8 @@ test "JSX child position accepts statement-form control flow" {
     has_for_loop = ("for (" in js_code) or ("for(" in js_code);
     assert has_for_loop , (
         "ItemList's statement-position `for` should lower to a JS `for` "
-        "loop driving the children accumulator (not a `.map()`):\n" + js_code
+        "loop driving the children accumulator (not a `.map()`):\n"
+        + js_code
     );
 
     # ItemList: the <ul> element's children come from the loop, so the
@@ -1117,7 +1206,7 @@ test "JSX child position accepts statement-form control flow" {
 test "unsafe_html marker has the correct shape" {
     # The runtime function lives inside the `_jac` prelude; verify the
     # shape so the jac-client and bare-serve adapters can rely on it.
-    es_ast = compile_to_esast(fixture_path("unsafe_html_basic.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("unsafe_html_basic.jac"));
     js_code = es_to_js(es_ast);
 
     # The prelude defines `unsafe_html(html)` that returns
@@ -1126,7 +1215,8 @@ test "unsafe_html marker has the correct shape" {
     assert "unsafe_html(html)" in js_code;
     assert "__jacUnsafeHtml: String(html" in js_code , (
         "runtime must coerce the argument with String() so non-string\n"
-        "values (e.g. numbers from a walker) don't blow up:\n" + js_code
+        "values (e.g. numbers from a walker) don't blow up:\n"
+        + js_code
     );
 }
 
@@ -1136,7 +1226,7 @@ test "skip in a plain function body lowers to an early return" {
     # must lower to a bare `return;`, mirroring the Python target. It must
     # NOT become `continue;`, which is illegal JavaScript outside a loop and
     # crashes the client build at runtime (issue #6206).
-    es_ast = compile_to_esast(fixture_path("skip_early_return.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("skip_early_return.jac"));
     js_code = es_to_js(es_ast);
 
     nodes = walk_es_nodes(es_ast);
@@ -1147,7 +1237,8 @@ test "skip in a plain function body lowers to an early return" {
     ];
     assert len(continues) == 0 , (
         "skip in a function body must not emit `continue;` (illegal JS "
-        "outside a loop):\n" + js_code
+        "outside a loop):\n"
+        + js_code
     );
     assert "continue;" not in js_code , js_code;
     assert "return;" in js_code , (
@@ -1156,19 +1247,20 @@ test "skip in a plain function body lowers to an early return" {
 }
 
 test "user function shadowing a builtin name is called, not the builtin" {
-    es_ast = compile_to_esast(fixture_path("shadow_builtin.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("shadow_builtin.jac"));
     user_len_calls = [
         nd
         for nd in walk_es_nodes(es_ast)
         if isinstance(nd, es.CallExpression)
-        and isinstance(nd.callee, es.Identifier)
-        and nd.callee.name == "len"
+            and isinstance(nd.callee, es.Identifier)
+            and nd.callee.name == "len"
     ];
     # The builtin path would emit a raw primitive-emitter expression instead of
     # a CallExpression to the user-defined `len`.
     assert len(user_len_calls) >= 1 , (
         "expected a call to the user-defined len(), but the builtin emitter "
-        "was used instead:\n" + es_to_js(es_ast)
+        "was used instead:\n"
+        + es_to_js(es_ast)
     );
 }
 
@@ -1177,23 +1269,98 @@ test "augmented reactive assignments do not double-apply the lhs" {
     # setCount(count + (count + 5)).  The bug was that exit_assignment built
     # the full BinaryExpression and also passed aug_op to StateUpdate, causing
     # lower_state_update to wrap it a second time.
-    es_ast = compile_to_esast(fixture_path("reactive_aug_assign.cl.jac"));
+    es_ast = compile_to_esast(fixture_path("reactive_aug_assign.jac"));
     js = es_to_js(es_ast);
 
-    # Each setter call must appear exactly once as a simple binary: setCount((count op N)).
-    # gen_binary_expression always wraps in parens, so the argument is (count op N).
-    assert "setCount((count + 5))" in js , (
-        "expected setCount((count + 5)) but got:\n" + js
+    # Each setter call must appear exactly once as a simple binary:
+    # __jacS_count.set((__jacS_count.val op N)). gen_binary_expression always
+    # wraps in parens, so the argument is (….val op N).
+    assert "__jacS_count.set((__jacS_count.val + 5))" in js , (
+        "expected __jacS_count.set((__jacS_count.val + 5)) but got:\n" + js
     );
-    assert "setCount((count - 2))" in js , (
-        "expected setCount((count - 2)) but got:\n" + js
+    assert "__jacS_count.set((__jacS_count.val - 2))" in js , (
+        "expected __jacS_count.set((__jacS_count.val - 2)) but got:\n" + js
     );
-    assert "setCount((count * 3))" in js , (
-        "expected setCount((count * 3)) but got:\n" + js
+    assert "__jacS_count.set((__jacS_count.val * 3))" in js , (
+        "expected __jacS_count.set((__jacS_count.val * 3)) but got:\n" + js
     );
-    # Double-application fingerprint: with parens from gen_binary_expression the bug
-    # produces setCount((count + (count + 5))) — catch the nested `(count + (count` shape.
-    assert "setCount((count + (count" not in js , (
+    # Double-application fingerprint: with parens from gen_binary_expression the
+    # bug produces .set((__jacS_count.val + (__jacS_count.val + 5))) — catch the
+    # nested `(__jacS_count.val + (__jacS_count.val` shape.
+    assert "(__jacS_count.val + (__jacS_count.val" not in js , (
         "double-application bug detected in:\n" + js
+    );
+}
+
+"""Diagnostic code strings carried by a list of alerts."""
+def _codes_of(alerts: list) -> list[str] {
+    return [
+        a.code.code
+        for a in alerts
+        if a.code is not None
+    ];
+}
+
+"""Compile a fixture the whole way through client codegen, keeping its alerts."""
+def compile_fixture_reporting(filename: str) -> JacProgram {
+    prog = JacProgram();
+    prog.compile(file_path=fixture_path(filename), type_check=True);
+    return prog;
+}
+
+"""Run the ES pass with a backend and hand back the program's alerts."""
+def codegen_alerts(filename: str, backend: object) -> list {
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path(filename), no_cgen=True, type_check=True);
+    run_pass(EsastGenPass, ir, prog, backend=backend);
+    return list(prog.errors_had);
+}
+
+test "an emitted module may not reference a name it never binds" {
+    # The property behind #8072 and #8224, standing in for the lowering bug
+    # rather than describing it: _DropSetterBackend is the pre-fix react
+    # lowering, emitting the state cell and no setter. `setTheme` is a name the
+    # compiler resolved -- the checker registers it for every client `has`
+    # field -- so emitting it unbound is a ReferenceError the audit has to
+    # catch, and this test fails the moment the binding is dropped again.
+    errs = [
+        e
+        for e in codegen_alerts("state_setter_value_ref.jac", _DropSetterBackend())
+        if e.code is not None and e.code.code == "E5101"
+    ];
+    assert len(errs) == 1 , (
+        "dropping the setter binding must be an error, got "
+        f"{_codes_of(
+            codegen_alerts('state_setter_value_ref.jac', _DropSetterBackend())
+        )}"
+    );
+    assert "setTheme" in str(errs[0]) , (
+        f"E5101 must name the unbound identifier; got {errs[0]!s}"
+    );
+    assert "state_setter_value_ref.jac" in str(errs[0]) , (
+        f"E5101 must point at the Jac source that names it; got {errs[0]!s}"
+    );
+}
+
+test "the audit leaves ordinary client modules alone" {
+    # Ambient browser globals, runtime imports and the framework's own required
+    # globals are bindings the module legitimately does not declare.
+    prog = compile_fixture_reporting("state_setter_value_ref.jac");
+    assert "E5101" not in _codes_of(prog.errors_had) , (
+        "the audit must not fire on a module whose names are all bound: "
+        f"{[str(e) for e in prog.errors_had]}"
+    );
+}
+
+test "a client state setter used as a value is bound by codegen" {
+    # #8224: `has theme` names both `theme` and `setTheme`; handing the setter
+    # to a constructor is the ordinary hook shape and must emit a real binding.
+    es_ast = compile_to_esast(fixture_path("state_setter_value_ref.jac"));
+    js = es_to_js(es_ast);
+    assert "const setTheme = " in js , (
+        f"the emitted module must declare setTheme; got:\n{js}"
+    );
+    assert "setTheme: setTheme" in js , (
+        f"the setter reference must stay an ordinary reference; got:\n{js}"
     );
 }

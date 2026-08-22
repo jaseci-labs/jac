@@ -1,16 +1,13 @@
 import yaml;
-import from typing { Any }
 import from jaclang.cli.console { console }
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.microservice.manifest_builder {
-    GATEWAY_NAME
-}
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { GATEWAY_NAME }
 import from jaclang.scale.runtime.cli.diagnostics {
     Diagnostic,
     PlanValidator,
     has_errors
 }
-import from jaclang.scale.runtime.cli._narrow { dget, iget, lget, pod_spec, sget }
+import from jaclang.scale.runtime.cli._narrow { dget, fget, iget, lget, pod_spec, sget }
 
 
 def _diags_for(diagnostics: list[Diagnostic], service: str | None) -> list[Diagnostic] {
@@ -48,7 +45,7 @@ obj HPAView {
         max_replicas: int,
         cpu_target: int;
 
-    static def from_manifest(hpa: Any) -> HPAView | None {
+    static def from_manifest(hpa: any) -> HPAView | None {
         if not isinstance(hpa, dict) {
             return None;
         }
@@ -64,7 +61,7 @@ obj HPAView {
 obj PDBView {
     has max_unavailable: int | None;
 
-    static def from_manifest(pdb: Any) -> PDBView | None {
+    static def from_manifest(pdb: any) -> PDBView | None {
         if not isinstance(pdb, dict) {
             return None;
         }
@@ -98,7 +95,7 @@ obj ServiceView {
         mounts: list[tuple[str, str]] = [];
 
     static def from_manifests(
-        name: str, deployment: Any, hpa: Any, pdb: Any, route_path: str | None
+        name: str, deployment: any, hpa: any, pdb: any, route_path: str | None
     ) -> ServiceView {
         containers = lget(pod_spec(deployment), "containers");
         container: dict = {};
@@ -229,7 +226,7 @@ obj IngressRuleView {
 obj IngressView {
     has rules: list[IngressRuleView];
 
-    static def from_manifest(ingress: Any, routes: dict) -> IngressView | None {
+    static def from_manifest(ingress: any, routes: dict) -> IngressView | None {
         if not isinstance(ingress, dict) {
             return None;
         }
@@ -266,14 +263,26 @@ obj IngressView {
 }
 
 
-def _render_cluster_wide(bundle: Any, ms_cfg: Any) -> None {
+def _render_cluster_wide(bundle: any, ms_cfg: any) -> None {
     lines: list[str] = [];
 
     rl = dget(ms_cfg, "rate_limit");
     if isinstance(rl, dict) and rl.get("enabled") {
-        rpm = iget(rl, "requests_per_minute", 0);
-        if rpm {
-            lines.append(f"  rate_limit:  {rpm}/min per IP");
+        tiers: list[str] = [];
+        per_ip = iget(rl, "per_ip_rpm", 0);
+        if per_ip > 0 {
+            tiers.append(f"{per_ip}/min per IP");
+        }
+        per_user = iget(rl, "per_user_rpm", 0);
+        if per_user > 0 {
+            tiers.append(f"{per_user}/min per user");
+        }
+        if tiers {
+            burst = fget(rl, "burst_multiplier", 0.0);
+            suffix = f" (burst x{burst:g})" if burst > 0 else "";
+            lines.append(f"  rate_limit:  {', '.join(tiers)}{suffix}");
+        } else {
+            lines.append("  rate_limit:  enabled, but both tiers are 0 (no limit)");
         }
     }
 
@@ -305,7 +314,7 @@ def _render_cluster_wide(bundle: Any, ms_cfg: Any) -> None {
 }
 
 
-def _render_totals(bundle: Any) {
+def _render_totals(bundle: any) {
     def _n(key: str, label: str) -> str | None {
         n = len(dget(bundle, key));
         return f"{n} {label}{'s' if n != 1 else ''}" if n else None;
@@ -320,9 +329,9 @@ def _render_totals(bundle: Any) {
         ("pdbs", "PDB"),
         ("pvcs", "PVC")
     ] {
-        entry = _n(key, label);
-        if entry {
-            parts.append(entry);
+        `entry = _n(key, label);
+        if `entry {
+            parts.append(`entry);
         }
     }
     if isinstance(bundle, dict) and bundle.get("ingress") {
@@ -343,12 +352,16 @@ obj Plan {
         services: list[ServiceView],
         ingress: IngressView | None;
 
-    static def from_target(target: Any, app_config: AppConfig) -> Plan {
+    static def from_target(target: any, app_config: AppConfig) -> Plan {
         bundle_raw = target.generate_manifests(app_config);
         bundle: dict = bundle_raw if isinstance(bundle_raw, dict) else {};
+        render_autoscalers = target?.render_autoscaler_manifests;
+        if render_autoscalers is not None {
+            bundle["autoscaler_manifests"] = render_autoscalers(bundle);
+        }
         (ms_cfg, svc_configs) = Plan._load_ms_cfg();
 
-        routes_any: Any = ms_cfg.get("routes", {});
+        routes_any: any = ms_cfg.get("routes", {});
         routes: dict = {};
         if isinstance(routes_any, dict) {
             routes = routes_any;
@@ -405,9 +418,9 @@ obj Plan {
     static def _load_ms_cfg -> tuple[dict, dict] {
         try {
             import from jaclang.scale.config.config_loader { get_scale_config }
-            raw: Any = get_scale_config().get_microservices_config();
+            raw: any = get_scale_config().get_microservices_config();
             ms_cfg: dict = raw if isinstance(raw, dict) else {};
-            services_raw: Any = ms_cfg.get("services", {});
+            services_raw: any = ms_cfg.get("services", {});
             svc_configs: dict = {};
             if isinstance(services_raw, dict) {
                 for (name, cfg) in services_raw.items() {
@@ -534,6 +547,9 @@ obj Plan {
                 out.append(m);
             }
         }
+        for m in lget(self.bundle, "autoscaler_manifests") {
+            out.append(m);
+        }
         if self.bundle.get("ingress") {
             out.append(self.bundle["ingress"]);
         }
@@ -543,7 +559,7 @@ obj Plan {
 
 
 def print_plan(
-    target: Any, app_config: AppConfig, show_yaml: bool = False
+    target: any, app_config: AppConfig, show_yaml: bool = False
 ) -> tuple[dict, list[Diagnostic]] {
     plan = Plan.from_target(target, app_config);
     diagnostics = plan.validate();

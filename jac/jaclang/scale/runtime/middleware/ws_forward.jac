@@ -1,6 +1,6 @@
-import logging;
-import aiohttp;
 import asyncio;
+import logging;
+import from jaclang.runtimelib.serving.client { ClientConnectionError, aws_connect }
 
 glob _logger = logging.getLogger(__name__),
      _WS_HOP_BY_HOP: set[str] = {
@@ -51,7 +51,7 @@ async def _pump_client_to_upstream(client_ws: any, upstream_ws: any) {
                 break;
             }
             if "text" in frame and frame["text"] is not None {
-                await upstream_ws.send_str(frame["text"]);
+                await upstream_ws.send_text(frame["text"]);
             } elif "bytes" in frame and frame["bytes"] is not None {
                 await upstream_ws.send_bytes(frame["bytes"]);
             }
@@ -64,20 +64,15 @@ async def _pump_client_to_upstream(client_ws: any, upstream_ws: any) {
 
 async def _pump_upstream_to_client(upstream_ws: any, client_ws: any) {
     try {
-        async for msg in upstream_ws {
-            if msg.type == aiohttp.WSMsgType.TEXT {
-                await client_ws.send_text(msg.data);
-            } elif msg.type == aiohttp.WSMsgType.BINARY {
-                await client_ws.send_bytes(msg.data);
-            } elif msg.type in (
-                aiohttp.WSMsgType.CLOSE,
-                aiohttp.WSMsgType.CLOSED,
-                aiohttp.WSMsgType.CLOSING
-            ) {
+        while True {
+            frame = await upstream_ws.receive();
+            if frame.get("type", "") == "websocket.disconnect" {
                 break;
-            } elif msg.type == aiohttp.WSMsgType.ERROR {
-                _logger.warning(f"ws: upstream error: {upstream_ws.exception()}");
-                break;
+            }
+            if "text" in frame and frame["text"] is not None {
+                await client_ws.send_text(frame["text"]);
+            } elif "bytes" in frame and frame["bytes"] is not None {
+                await client_ws.send_bytes(frame["bytes"]);
             }
         }
     } except Exception as e {
@@ -94,42 +89,33 @@ async def websocket_forward(
 ) -> None {
     ws_url: str = _to_ws_scheme(upstream_url);
     hs_headers: dict[str, str] = _select_handshake_headers(request_headers);
-    session = aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=None, sock_connect=timeout)
-    );
     try {
+        upstream_ws = await aws_connect(
+            ws_url, headers=hs_headers, timeout=float(timeout)
+        );
+    } except (ClientConnectionError, OSError) as e {
+        _logger.error(f"ws: upstream handshake failed: {e}");
         try {
-            upstream_ws = await session.ws_connect(ws_url, headers=hs_headers);
-        } except (aiohttp.ClientError, aiohttp.WSServerHandshakeError, OSError) as e {
-            _logger.error(f"ws: upstream handshake failed: {e}");
-            try {
-                await client_ws.close(code=1011);
-            } except Exception {
-                ;
-            }
-            return;
+            await client_ws.close(code=1011);
+        } except Exception {
+            ;
         }
-        try {
-            await asyncio.gather(
-                _pump_client_to_upstream(client_ws, upstream_ws),
-                _pump_upstream_to_client(upstream_ws, client_ws),
-                return_exceptions=True
-            );
-        } finally {
-            try {
-                await upstream_ws.close();
-            } except Exception {
-                ;
-            }
-            try {
-                await client_ws.close();
-            } except Exception {
-                ;
-            }
-        }
+        return;
+    }
+    try {
+        await asyncio.gather(
+            _pump_client_to_upstream(client_ws, upstream_ws),
+            _pump_upstream_to_client(upstream_ws, client_ws),
+            return_exceptions=True
+        );
     } finally {
         try {
-            await session.close();
+            await upstream_ws.close();
+        } except Exception {
+            ;
+        }
+        try {
+            await client_ws.close();
         } except Exception {
             ;
         }

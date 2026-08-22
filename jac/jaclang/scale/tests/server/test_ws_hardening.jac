@@ -3,7 +3,12 @@ auth handshake (query-token and first-frame, with tagged reject reasons), and
 the control-frame path (rate limiting, token expiry, refresh).
 """
 import asyncio;
+import os;
+import shutil;
 import time;
+import from tempfile { mkdtemp }
+import from jaclang.scale.config.config_loader { reset_scale_config }
+import from jaclang.scale.identity.user_manager { JacScaleUserManager }
 import from jaclang.scale.tests.scale_test_client { make_client }
 import from jaclang.scale.websocket.websocket {
     WebSocketConnectionManager,
@@ -12,7 +17,6 @@ import from jaclang.scale.websocket.websocket {
 import from jaclang.scale.websocket.backplane {
     BaseBackplane,
     MemoryBackplane,
-    RedisBackplane,
     build_backplane
 }
 import from jaclang.scale.websocket.protocol { ws_handle_control, ws_heartbeat_loop }
@@ -47,10 +51,22 @@ obj _FakeWebSocket {
 }
 
 
-"""User manager stub whose tokens always validate as a different identity."""
-obj _FakeUserManager {
-    def validate_jwt_token_detail(token: any) -> dict {
-        return {'status': 'ok', 'user_id': 'someone_else', 'exp': None};
+"""Build a real JacScaleUserManager backed by a temp SQLite identity store.
+
+The control-frame tests drive the real `validate_jwt_token_detail` / `create_jwt_token`
+so the token-swap and expiry defenses are checked against production validation logic,
+not a canned return.
+"""
+def _real_user_manager -> tuple[str, JacScaleUserManager] {
+    test_dir = mkdtemp();
+    reset_scale_config();
+    return (test_dir, JacScaleUserManager(base_path=test_dir));
+}
+
+
+def _cleanup_user_manager(test_dir: str) {
+    if os.path.exists(test_dir) {
+        shutil.rmtree(test_dir);
     }
 }
 
@@ -101,16 +117,15 @@ test "the websocket config block is read from [scale.websocket]" {
         'max_anonymous_per_target': 100,
         'max_message_bytes': 65536
     };
-    for (key, default) in counts.items() {
+    for (key, `default) in counts.items() {
         assert key in cfg , f"get_websocket_config() is missing '{key}'";
         value = cfg[key];
         assert isinstance(value, int) , f"'{key}' should be an int, got {value!r}";
-        assert value == default , f"'{key}' default drifted: {value} != {default}";
+        assert value == `default , f"'{key}' default drifted: {value} != {`default}";
     }
     assert cfg['messages_per_second'] == 20.0;
     assert cfg['target_timeout_seconds'] == 30.0;
     assert 'backplane' in cfg;
-    assert 'redis_url' in cfg;
 }
 
 
@@ -135,30 +150,17 @@ test "a non-positive websocket limit is rejected at load" {
     # fractional values survive instead of truncating to zero
     assert _ws_positive({'messages_per_second': 0.5}, 'messages_per_second', 20) == 0.5;
     assert (
-        _ws_positive(
-            {'target_timeout_seconds': 1.5}, 'target_timeout_seconds', 30
-        ) == 1.5
+        _ws_positive({'target_timeout_seconds': 1.5}, 'target_timeout_seconds', 30)
+        == 1.5
     );
 }
 
 
 test "build_backplane selects the backplane the config names" {
+    import from jaclang.scale.websocket.backplane { PgBackplane }
     assert isinstance(build_backplane({}), MemoryBackplane);
-    assert isinstance(
-        build_backplane({'backplane': 'memory', 'redis_url': 'redis://x:6379'}),
-        MemoryBackplane
-    );
-    assert isinstance(
-        build_backplane({'backplane': 'redis', 'redis_url': 'redis://x:6379'}),
-        RedisBackplane
-    );
-    assert isinstance(build_backplane({'redis_url': 'redis://x:6379'}), RedisBackplane);
-    try {
-        build_backplane({'backplane': 'redis'});
-        assert False , "redis backplane with no redis_url should raise";
-    } except ValueError as e {
-        assert '[scale.websocket]' in str(e) , f"error names the wrong config block: {e}";
-    }
+    assert isinstance(build_backplane({'backplane': 'memory'}), MemoryBackplane);
+    assert isinstance(build_backplane({'backplane': 'pg'}), PgBackplane);
     try {
         build_backplane({'backplane': 'kafka'});
         assert False , "unknown backplane should raise";
@@ -237,32 +239,25 @@ test "a concurrent registration never survives on an unsubscribed target" {
 
 
 test "control frames are charged against the rate limit" {
-    async def body -> str {
-        ws = _FakeWebSocket();
-        ctx = _ctx('X');
-        ctx.rate_tokens = 1.0;
-        first = await ws_handle_control(
-            ws,
-            ctx,
-            {'type': 'refresh', 'token': 'any'},
-            _FakeUserManager(),
-            False,
-            1.0,
-            1.0
-        );
-        second = await ws_handle_control(
-            ws,
-            ctx,
-            {'type': 'refresh', 'token': 'any'},
-            _FakeUserManager(),
-            False,
-            1.0,
-            1.0
-        );
-        code = ws.sent[0]['error']['code'] if ws.sent else 'no_frame';
-        return f"{first}|{second}|{code}";
+    (test_dir, um) = _real_user_manager();
+    try {
+        async def body -> str {
+            ws = _FakeWebSocket();
+            ctx = _ctx('X');
+            ctx.rate_tokens = 1.0;
+            first = await ws_handle_control(
+                ws, ctx, {'type': 'refresh', 'token': 'any'}, um, False, 1.0, 1.0
+            );
+            second = await ws_handle_control(
+                ws, ctx, {'type': 'refresh', 'token': 'any'}, um, False, 1.0, 1.0
+            );
+            code = ws.sent[0]['error']['code'] if ws.sent else 'no_frame';
+            return f"{first}|{second}|{code}";
+        }
+        assert asyncio.run(body()) == "continue|continue|RATE_LIMITED";
+    } finally {
+        _cleanup_user_manager(test_dir);
     }
-    assert asyncio.run(body()) == "continue|continue|RATE_LIMITED";
 }
 
 
@@ -282,57 +277,120 @@ test "the heartbeat closes a connection whose token has expired" {
 
 
 test "the rate limiter rejects a message once the bucket is empty" {
-    async def body -> str {
-        ws = _FakeWebSocket();
-        ctx = _ctx('X');
-        ctx.rate_tokens = 1.0;
-        first = await ws_handle_control(
-            ws, ctx, {'message': 'one'}, _FakeUserManager(), False, 1.0, 1.0
-        );
-        second = await ws_handle_control(
-            ws, ctx, {'message': 'two'}, _FakeUserManager(), False, 1.0, 1.0
-        );
-        code = ws.sent[0]['error']['code'] if ws.sent else 'no_frame';
-        return f"{first}|{second}|{code}";
+    (test_dir, um) = _real_user_manager();
+    try {
+        async def body -> str {
+            ws = _FakeWebSocket();
+            ctx = _ctx('X');
+            ctx.rate_tokens = 1.0;
+            first = await ws_handle_control(
+                ws, ctx, {'message': 'one'}, um, False, 1.0, 1.0
+            );
+            second = await ws_handle_control(
+                ws, ctx, {'message': 'two'}, um, False, 1.0, 1.0
+            );
+            code = ws.sent[0]['error']['code'] if ws.sent else 'no_frame';
+            return f"{first}|{second}|{code}";
+        }
+        assert asyncio.run(body()) == "proceed|continue|RATE_LIMITED";
+    } finally {
+        _cleanup_user_manager(test_dir);
     }
-    assert asyncio.run(body()) == "proceed|continue|RATE_LIMITED";
 }
 
 
 test "an expired token closes the connection with a tagged reason" {
-    async def body -> str {
-        ws = _FakeWebSocket();
-        ctx = _ctx('X', user='u1');
-        ctx.exp = time.time() - 1.0;
-        ctx.rate_tokens = 5.0;
-        verdict = await ws_handle_control(
-            ws, ctx, {'message': 'hi'}, _FakeUserManager(), True, 10.0, 10.0
-        );
-        frame = ws.sent[0]['error'] if ws.sent else {};
-        close_code = ws.closed[0][0] if ws.closed else 0;
-        return f"{verdict}|{frame.get('code')}|{frame.get('reason')}|{close_code}";
+    (test_dir, um) = _real_user_manager();
+    try {
+        async def body -> str {
+            ws = _FakeWebSocket();
+            ctx = _ctx('X', user='u1');
+            ctx.exp = time.time() - 1.0;
+            ctx.rate_tokens = 5.0;
+            verdict = await ws_handle_control(
+                ws, ctx, {'message': 'hi'}, um, True, 10.0, 10.0
+            );
+            frame = ws.sent[0]['error'] if ws.sent else {};
+            close_code = ws.closed[0][0] if ws.closed else 0;
+            return f"{verdict}|{frame.get('code')}|{frame.get('reason')}|{close_code}";
+        }
+        assert asyncio.run(body()) == "break|UNAUTHORIZED|expired|4401";
+    } finally {
+        _cleanup_user_manager(test_dir);
     }
-    assert asyncio.run(body()) == "break|UNAUTHORIZED|expired|4401";
 }
 
 
 test "a refresh frame on a public endpoint does not disconnect the client" {
-    async def body -> str {
-        ws = _FakeWebSocket();
-        ctx = _ctx('X');
-        ctx.rate_tokens = 5.0;
-        verdict = await ws_handle_control(
-            ws,
-            ctx,
-            {'type': 'refresh', 'token': 'any'},
-            _FakeUserManager(),
-            False,
-            10.0,
-            10.0
-        );
-        return f"{verdict}|{len(ws.sent)}|{len(ws.closed)}";
+    (test_dir, um) = _real_user_manager();
+    try {
+        async def body -> str {
+            ws = _FakeWebSocket();
+            ctx = _ctx('X');
+            ctx.rate_tokens = 5.0;
+            verdict = await ws_handle_control(
+                ws, ctx, {'type': 'refresh', 'token': 'any'}, um, False, 10.0, 10.0
+            );
+            return f"{verdict}|{len(ws.sent)}|{len(ws.closed)}";
+        }
+        assert asyncio.run(body()) == "continue|0|0";
+    } finally {
+        _cleanup_user_manager(test_dir);
     }
-    assert asyncio.run(body()) == "continue|0|0";
+}
+
+
+test "a refresh with the connection's own valid token is accepted" {
+    (test_dir, um) = _real_user_manager();
+    try {
+        owner = um.create_user("ws_owner", "Secret123!");
+        owner_id = owner["user_id"];
+        owner_token = um.create_jwt_token(owner_id);
+        async def body -> str {
+            ws = _FakeWebSocket();
+            ctx = _ctx('X', user=owner_id);
+            ctx.rate_tokens = 5.0;
+            verdict = await ws_handle_control(
+                ws, ctx, {'type': 'refresh', 'token': owner_token}, um, True, 10.0, 10.0
+            );
+            frame = ws.sent[0] if ws.sent else {};
+            return f"{verdict}|{len(ws.closed)}|{frame.get('type')}|{frame.get('ok')}";
+        }
+        assert asyncio.run(body()) == "continue|0|refreshed|True";
+    } finally {
+        _cleanup_user_manager(test_dir);
+    }
+}
+
+
+test "a refresh carrying another user's real token is rejected as an identity mismatch" {
+    (test_dir, um) = _real_user_manager();
+    try {
+        user_a = um.create_user("ws_user_a", "Secret123!");
+        user_b = um.create_user("ws_user_b", "Secret123!");
+        a_id = user_a["user_id"];
+        b_id = user_b["user_id"];
+        token_a = um.create_jwt_token(a_id);
+        assert a_id != b_id;
+        assert um.validate_jwt_token_detail(token_a)["user_id"] == a_id;
+        async def body -> str {
+            ws = _FakeWebSocket();
+            ctx = _ctx('X', user=b_id);
+            ctx.rate_tokens = 5.0;
+            verdict = await ws_handle_control(
+                ws, ctx, {'type': 'refresh', 'token': token_a}, um, True, 10.0, 10.0
+            );
+            frame = ws.sent[0]['error'] if ws.sent else {};
+            close_code = ws.closed[0][0] if ws.closed else 0;
+            close_reason = ws.closed[0][1] if ws.closed else '';
+            return f"{verdict}|{frame.get('reason')}|{close_code}|{close_reason}";
+        }
+        assert (
+            asyncio.run(body()) == "break|identity_mismatch|4401|identity_mismatch"
+        );
+    } finally {
+        _cleanup_user_manager(test_dir);
+    }
 }
 
 

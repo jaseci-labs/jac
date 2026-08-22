@@ -28,22 +28,22 @@ test "local deployer creates process manager on first use" {
 test "local deployer url_for returns loopback URL" {
     reg = ServiceRegistry();
     deployer = LocalDeployer(registry=reg);
-    entry = ServiceEntry(
+    `entry = ServiceEntry(
         name="orders", file="orders.jac", prefix="/api/orders", port=18042
     );
-    assert deployer.url_for(entry) == "http://127.0.0.1:18042";
+    assert deployer.url_for(`entry) == "http://127.0.0.1:18042";
 }
 
 test "local deployer url_for tracks port mutations" {
     reg = ServiceRegistry();
     deployer = LocalDeployer(registry=reg);
-    entry = ServiceEntry(
+    `entry = ServiceEntry(
         name="orders", file="orders.jac", prefix="/api/orders", port=0
     );
 
-    assert deployer.url_for(entry) == "http://127.0.0.1:0";
-    entry.port = 18999;
-    assert deployer.url_for(entry) == "http://127.0.0.1:18999";
+    assert deployer.url_for(`entry) == "http://127.0.0.1:0";
+    `entry.port = 18999;
+    assert deployer.url_for(`entry) == "http://127.0.0.1:18999";
 }
 
 test "process manager wires deployer reference via _ensure_pm" {
@@ -59,8 +59,8 @@ test "process manager _url_for uses deployer.url_for when wired" {
     reg = ServiceRegistry();
     deployer = LocalDeployer(registry=reg);
     pm = deployer._ensure_pm();
-    entry = ServiceEntry(name="cart", file="cart.jac", prefix="/api/cart", port=18123);
-    assert pm._url_for(entry) == "http://127.0.0.1:18123";
+    `entry = ServiceEntry(name="cart", file="cart.jac", prefix="/api/cart", port=18123);
+    assert pm._url_for(`entry) == "http://127.0.0.1:18123";
 }
 
 test "deploy service starts subprocess" {
@@ -91,7 +91,7 @@ test "stop service stops subprocess" {
 
     mock_proc = unittest.mock.MagicMock();
     mock_proc.pid = 100;
-    mock_proc.wait = unittest.mock.MagicMock(return_value=0);
+    mock_proc.`wait = unittest.mock.MagicMock(return_value=0);
     pm.processes["orders"] = mock_proc;
 
     result = deployer.stop_service("orders");
@@ -107,7 +107,7 @@ test "restart service stops then starts" {
 
     old_proc = unittest.mock.MagicMock();
     old_proc.pid = 100;
-    old_proc.wait = unittest.mock.MagicMock(return_value=0);
+    old_proc.`wait = unittest.mock.MagicMock(return_value=0);
     pm.processes["orders"] = old_proc;
 
     new_proc = unittest.mock.MagicMock();
@@ -128,7 +128,7 @@ test "scale to 0 stops service" {
 
     mock_proc = unittest.mock.MagicMock();
     mock_proc.pid = 100;
-    mock_proc.wait = unittest.mock.MagicMock(return_value=0);
+    mock_proc.`wait = unittest.mock.MagicMock(return_value=0);
     pm.processes["orders"] = mock_proc;
 
     deployer.scale_service("orders", 0);
@@ -194,7 +194,7 @@ test "destroy all stops everything" {
     for name in ["orders", "cart"] {
         mock_proc = unittest.mock.MagicMock();
         mock_proc.pid = 100;
-        mock_proc.wait = unittest.mock.MagicMock(return_value=0);
+        mock_proc.`wait = unittest.mock.MagicMock(return_value=0);
         pm.processes[name] = mock_proc;
     }
 

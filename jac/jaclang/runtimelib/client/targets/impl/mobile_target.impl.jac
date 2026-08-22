@@ -1,7 +1,7 @@
 import os;
 import platform as platform_mod;
 import from pathlib { Path }
-import from typing { Any, Optional, cast }
+import from typing { Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.mobile_dev_host {
@@ -104,7 +104,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     needs_ios = "ios" in platforms;
 
     if (not needs_android or android_dir.exists())
-    and (not needs_ios or ios_dir.exists()) {
+        and (not needs_ios or ios_dir.exists()) {
         return;
     }
 
@@ -268,7 +268,7 @@ impl MobileTarget.dev(
         _mobile_setup_android_port_reverse(vite_port, server_port);
     }
 
-    cast(Any, bundler).create_vite_config(
+    cast(any, bundler).create_vite_config(
         entry_file,
         api_base_url_override="",
         is_dev=True,

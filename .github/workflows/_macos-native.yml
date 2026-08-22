@@ -1,0 +1,98 @@
+name: macOS native
+
+# The darwin native lane: the sealed macOS kit and the Mach-O / wasm-floor /
+# libSystem-equivalence tests that consume it. Two callers share this one copy:
+#   - nightly.yml (macos-native): daily, the default home for this lane.
+#   - ci.yml      (macos-native): PR lane, OPT-IN via the `macos` label, plus
+#     workflow_dispatch.
+#
+# Why it is not on every PR: the macOS kit is 44-68 min of critical path
+# (macos-26-arm64, ~3x the Linux leg for the same cold 622-module
+# precompile+seal) and it gated merge. Over 60 consecutive CI runs it refused
+# 12 seals -- and Linux `build-kit` refused in all 12 of the same runs, so the
+# darwin leg contributed no unique signal while costing the whole graph its
+# wall clock. `test-native-macos` failed once in the same window, on a
+# type-check diagnostic that is platform-independent.
+#
+# That is an argument about WHERE it runs, not about whether it matters:
+# Mach-O linking and the musl-vs-libSystem binding divergence are real
+# darwin-only surfaces, which is why this runs nightly and stays one label
+# away on any PR that touches them.
+#
+# Nightly runs on main, so it is also what seeds the shared macOS caches
+# (setup-jac gates every cache save to main).
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build-kit-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Materialize typeshed + wasm libc floor
+        working-directory: jac
+        run: |
+          zig build fetch-typeshed --summary all
+          zig build vendor-wasm-libc --summary all
+
+      - name: Verify the kit is complete
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          for p in zig-out/bin/jac jaclang/vendor/typeshed/stdlib \
+                   .pbs-build/wasm32/libc; do
+            [ -e "$p" ] || { echo "::error::kit is missing $p"; exit 1; }
+          done
+
+      - name: Upload the kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-kit-macos
+          path: |
+            jac/zig-out/bin/jac
+            jac/jaclang/vendor/typeshed/stdlib
+            jac/.pbs-build/wasm32/libc
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+  test-native-macos:
+    needs: build-kit-macos
+    runs-on: macos-latest
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: ./.github/actions/jac-kit
+        with:
+          name: jac-kit-macos
+      - name: Run native Mach-O linker regression tests
+        run: |
+          jac test jac/tests/compiler/passes/native/test_shared_lib.jac
+          jac test jac/tests/compiler/passes/native/test_exec_link.jac
+      - name: Run na->wasm floor + import-contract tests
+        run: jac test jac/tests/compiler/passes/native/test_wasm_build.jac
+      - name: Run bundled-stdlib equivalence pins (darwin)
+        env:
+          JAC_TEST_JOBS: "0"
+        # Pure-compute na modules that must agree on darwin; str/bytes guard
+        # the libc-binding divergence (musl static vs libSystem).
+        run: >-
+          jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
+          -f "shutil or path or textwrap or keyword or str or bytes"

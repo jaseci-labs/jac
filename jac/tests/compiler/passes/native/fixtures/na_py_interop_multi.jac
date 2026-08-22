@@ -7,7 +7,7 @@ This extends na_py_interop.jac to also test:
 Call chain:
   with entry {}  (Python)
     → call_native(x)  (Python)
-      → triple(x)  (native, from na_math_utils.na)
+      → triple(x)  (native, from na_math_utils)
       → native_compute(x)  (native, local)
         → py_double(x)  (Python - sv↔na interop)
         → add_ten(...)  (native, from na_transformers.na)
@@ -27,28 +27,28 @@ def py_double(x: int) -> int {
     return x * 2;
 }
 
-na {
-    # Import native functions from .na.jac modules
-    import from na_math_utils { triple }
-    import from na_transformers { add_ten }
 
-    # Native function that uses:
-    # - py_double (sv function, sv↔na interop)
-    # - add_ten (na function from na_transformers.na, na↔na linking)
-    def native_compute(x: int) -> int {
-        doubled = py_double(x);  # sv↔na: calls Python function
-        return add_ten(doubled);  # na↔na: calls imported native function
-    }
+# Import native functions from native-inferred .jac modules
+import from na_math_utils { triple }
+import from na_transformers { add_ten }
 
-    # Main native entry point that uses:
-    # - triple (na function from na_math_utils.na)
-    # - native_compute (local na function)
-    def native_entry(x: int) -> int {
-        tripled = triple(x);  # na↔na: calls imported native function
-        computed = native_compute(x);  # na→na: calls local native function
-        return tripled + computed;
-    }
+# Native function that uses:
+# - py_double (sv function, sv↔na interop)
+# - add_ten (na function from na_transformers, na↔na linking)
+def native_compute(x: int) -> int {
+    doubled = py_double(x);  # sv↔na: calls Python function
+    return add_ten(doubled);  # na↔na: calls imported native function
 }
+
+# Main native entry point that uses:
+# - triple (na function from na_math_utils)
+# - native_compute (local na function)
+def native_entry(x: int) -> int {
+    tripled = triple(x);  # na↔na: calls imported native function
+    computed = native_compute(x);  # na→na: calls local native function
+    return tripled + computed;
+}
+
 
 # Python function that calls into the na block.
 def call_native(x: int) -> int {

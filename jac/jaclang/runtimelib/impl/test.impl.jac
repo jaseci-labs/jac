@@ -103,6 +103,111 @@ impl JacTestResult.postinit -> None {
     super.init(self.stream, self.descriptions, self.verbosity);
 }
 
+impl invoke_native_test(
+    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
+) -> None {
+    import ctypes;
+    import os;
+    import sys;
+    import tempfile;
+    if engine is None {
+        raise RuntimeError(f"native engine unavailable for {test_name}");
+    }
+    addr = engine.get_function_address(symbol);
+    if addr == 0 {
+        raise RuntimeError(f"native test symbol missing: {symbol}");
+    }
+    native_fn = ctypes.CFUNCTYPE(ctypes.c_char_p)(addr);
+    def run_glob_inits {
+        done = engine?._jac_glob_inits_done;
+        if done is None {
+            done = set();
+            try {
+                setattr(engine, "_jac_glob_inits_done", done);
+            } except Exception {
+                ;
+            }
+        }
+        for init_sym in (init_symbols or []) {
+            if init_sym in done {
+                continue;
+            }
+            done.add(init_sym);
+            init_addr = engine.get_function_address(init_sym);
+            if init_addr {
+                (ctypes.CFUNCTYPE(None)(init_addr))();
+            }
+        }
+    }
+    mirrors: list = [];
+    for (fd, name) in ((1, "stdout"), (2, "stderr")) {
+        stream = getattr(sys, name, None);
+        stream_fd: (int | None) = None;
+        if stream is not None {
+            try {
+                stream_fd = stream.fileno();
+            } except Exception {
+                stream_fd = None;
+            }
+        }
+        if stream_fd != fd {
+            mirrors.append((fd, name));
+        }
+    }
+    if not mirrors {
+        run_glob_inits();
+        msg = native_fn();
+        if msg is not None {
+            raise AssertionError(msg.decode("utf-8", "replace"));
+        }
+        return;
+    }
+    saved: dict = {};
+    sinks: dict = {};
+    for (fd, name) in mirrors {
+        saved[fd] = os.dup(fd);
+        sink = tempfile.TemporaryFile();
+        os.dup2(sink.fileno(), fd);
+        sinks[fd] = (sink, name);
+    }
+    msg: any = None;
+    try {
+        run_glob_inits();
+        msg = native_fn();
+    } finally {
+        try {
+            ctypes.CDLL(None).fflush(None);
+        } except Exception {
+            ;
+        }
+        for (fd, (sink, name)) in sinks.items() {
+            os.dup2(saved[fd], fd);
+            os.close(saved[fd]);
+            data = b"";
+            try {
+                sink.flush();
+                sink.seek(0);
+                data = sink.read();
+            } finally {
+                sink.close();
+            }
+            if data {
+                stream = getattr(sys, name, None);
+                if stream is not None {
+                    try {
+                        stream.write(data.decode("utf-8", "replace"));
+                    } except Exception {
+                        ;
+                    }
+                }
+            }
+        }
+    }
+    if msg is not None {
+        raise AssertionError(msg.decode("utf-8", "replace"));
+    }
+}
+
 impl parametrize(
     base_name: str,
     params: Iterable,

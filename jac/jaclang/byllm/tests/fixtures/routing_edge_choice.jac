@@ -26,7 +26,7 @@ obj PriorityRouterMock(MockLLM) {
         for line in text.splitlines() {
             norm = line.replace('"', "'");
             if "priority='high'" in norm {
-                m = re.match(r"\s*([A-Za-z0-9_]+)\)", line);
+                m = re.`match(r"\s*([A-Za-z0-9_]+)\)", line);
                 if m {
                     chosen = m.group(1);
                     break;

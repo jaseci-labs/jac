@@ -21,25 +21,27 @@ def _build_shadcn_template_info -> dict[str, any] | None;
     help="Re-theme a jac-shadcn project: regenerate global.css from [jac-shadcn]",
     args=[
         Arg.create(
-            "style", typ=str, default=None, help="Component style preset", short=""
+            "style", typ=str, `default=None, help="Component style preset", short=""
         ),
         Arg.create(
-            "baseColor", typ=str, default=None, help="Base neutral palette", short=""
+            "baseColor", typ=str, `default=None, help="Base neutral palette", short=""
         ),
-        Arg.create("theme", typ=str, default=None, help="Accent color theme", short=""),
-        Arg.create("font", typ=str, default=None, help="Font family", short=""),
         Arg.create(
-            "radius", typ=str, default=None, help="Border radius preset", short=""
+            "theme", typ=str, `default=None, help="Accent color theme", short=""
+        ),
+        Arg.create("font", typ=str, `default=None, help="Font family", short=""),
+        Arg.create(
+            "radius", typ=str, `default=None, help="Border radius preset", short=""
         ),
         Arg.create(
             "menuAccent",
             typ=str,
-            default=None,
+            `default=None,
             help="Menu accent (subtle|bold)",
             short=""
         ),
         Arg.create(
-            "menuColor", typ=str, default=None, help="Menu color scheme", short=""
+            "menuColor", typ=str, `default=None, help="Menu color scheme", short=""
         )
     ],
     examples=[

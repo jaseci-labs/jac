@@ -10,26 +10,26 @@ glob registry = get_registry();
         Arg.create(
             "action",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="symbol | uses | map | walkers | slice | diag"
         ),
         Arg.create(
             "target",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Symbol name, node type, archetype-kind filter, or file path"
         ),
         Arg.create(
             "text",
             kind=ArgKind.FLAG,
             typ=bool,
-            default=False,
+            `default=False,
             help="Human-readable text instead of the default JSON"
         ),
         Arg.create(
             "depth",
             typ=int,
-            default=1,
+            `default=1,
             help="Type-dependency depth for `slice` (default 1)",
             short="d"
         ),

@@ -11,7 +11,6 @@ logged and dropped (the server keeps running with email features off).
 
 import logging;
 import os;
-import from typing { Any }
 import from jaclang.scale.abstractions.emailer { Emailer }
 import from sendgrid { SendGridAPIClient }
 import from sendgrid.helpers.mail { Mail }
@@ -21,7 +20,7 @@ glob _logger = logging.getLogger("sendgrid-emailer");
 
 obj SendGridEmailer(Emailer) {
     # Typed as Any because Jac's checker has no stubs for the sendgrid SDK.
-    has _client: Any = None;
+    has _client: any = None;
 
     override def postinit {
         api_key = os.environ.get("SENDGRID_API_KEY", "");

@@ -2,10 +2,19 @@ import io;
 import json;
 import re;
 import from pathlib { Path }
-import from typing { Any }
 import from urllib.parse { urlencode }
 import type from jaclang.project.config { JacConfig }
 import type from jaclang.runtimelib.server { JacAPIServer }
+import from jaclang.runtimelib.serving.client { run_blocking }
+import from jaclang.runtimelib.serving.datatypes {
+    Headers,
+    QueryParams,
+    Request,
+    Response,
+    URL,
+    parse_query_string
+}
+import from jaclang.runtimelib.serving.testing { dispatch_and_collect }
 
 obj TestResponse {
     has status_code: int,
@@ -23,9 +32,9 @@ obj JacTestClient {
     has _jac_file: str,
         _base_path: str,
         _server: (JacAPIServer | None) = None,
-        _handler_class: (type | None) = None,
+        _app: any = None,
         _auth_token: (str | None) = None,
-        _hot_reloader: (Any | None) = None,
+        _hot_reloader: (any | None) = None,
         _config: (JacConfig | None) = None;
 
     static def from_file(
@@ -72,8 +81,6 @@ obj JacTestClient {
         body: (bytes | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
-
-    def _parse_response(raw_response: bytes) -> TestResponse;
 
     has server: JacAPIServer { getter; }
     has user_manager: any { getter; }

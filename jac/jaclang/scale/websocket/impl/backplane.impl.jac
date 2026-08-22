@@ -1,9 +1,15 @@
+import uuid as _uuid;
+
+glob _NOTIFY_LIMIT = 7000,
+     _SPILL_TTL_SECONDS = 60;
+
+
 impl MemoryBackplane.start{
     if not self._warned {
         logger.warning(
             "WS MemoryBackplane in use: broadcasts are limited to this "
             "process. For multi-worker deployments configure "
-            "[scale.websocket].backplane = 'redis'."
+            "[scale.websocket].backplane = 'pg'."
         );
         self._warned = True;
     }
@@ -18,14 +24,14 @@ impl MemoryBackplane.publish(channel: str, message: dict) -> None {
     await asyncio.gather(*tasks, return_exceptions=True);
 }
 
-impl MemoryBackplane.subscribe(channel: str, handler: Any) {
+impl MemoryBackplane.subscribe(channel: str, handler: any) {
     if channel not in self._subs {
         self._subs[channel] = [];
     }
     self._subs[channel].append(handler);
 }
 
-impl MemoryBackplane.unsubscribe(channel: str, handler: Any) {
+impl MemoryBackplane.unsubscribe(channel: str, handler: any) {
     handlers = self._subs.get(channel);
     if handlers is None {
         return;
@@ -44,180 +50,140 @@ impl MemoryBackplane.close{
     self._subs = {};
 }
 
-impl RedisBackplane._get_lock -> Any {
-    if self._lock is None {
-        self._lock = asyncio.Lock();
-    }
-    return self._lock;
+
+impl PgBackplane._pg_channel(channel: str) -> str {
+    return f"jac_ws_{channel}";
 }
 
-impl RedisBackplane.start -> None {
-    if self._client is not None {
+
+impl PgBackplane.start -> None {
+    if self._store is not None {
         return;
     }
-    try {
-        import redis.asyncio as redis_async;
-    } except ImportError as e {
+    import from jaclang.scale.persistence.pg { shared_store }
+    store = await asyncio.to_thread(shared_store);
+    if store is None {
         raise RuntimeError(
-            "RedisBackplane selected but `redis` is not installed. "
-            "Run: pip install redis"
-        ) from e;
+            "PgBackplane selected but no database is reachable "
+            "(set JAC_DB_URL or [plugins.scale.database] url)."
+        );
     }
-    self._client = redis_async.from_url(
-        self.url, decode_responses=True, health_check_interval=30
-    );
-    self._pubsub = self._client.pubsub();
-    logger.info(f"WS RedisBackplane connected url={self.url}");
+    self._store = store;
+    self._loop = asyncio.get_running_loop();
+    logger.info("WS PgBackplane attached to the shared store");
 }
 
-impl RedisBackplane._reader_loop -> None {
+
+impl PgBackplane.publish(channel: str, message: dict) -> None {
+    await self.start();
+    payload = json.dumps(message);
+    if len(payload.encode('utf-8')) > _NOTIFY_LIMIT {
+        key = f"wsmsg:{_uuid.uuid4()}";
+        def _spill {
+            self._store.kv_put_ttl(key, payload, _SPILL_TTL_SECONDS);
+            self._store.notify(self._pg_channel(channel), json.dumps({'__kv': key}));
+        }
+        await asyncio.to_thread(_spill);
+    } else {
+        await asyncio.to_thread(self._store.notify, self._pg_channel(channel), payload);
+    }
+}
+
+
+impl PgBackplane._on_notify(channel: str, payload: str) -> None {
+    if self._closed or self._loop is None {
+        return;
+    }
     try {
-        while not self._closed {
-            try {
-                msg = await self._pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=1.0
+        data = json.loads(payload);
+        if isinstance(data, dict) and '__kv' in data {
+            key = str(data['__kv']);
+            got = self._store.kv_get(key);
+            if got is None {
+                logger.warning(
+                    f"PgBackplane: spilled payload {key} missing on {channel}; "
+                    "dropping broadcast"
                 );
-            } except Exception as e {
-                logger.warning(f"WS Redis get_message failed: {e}");
-                await asyncio.sleep(1.0);
-                continue;
+                return;
             }
-            if msg is None {
-                continue;
-            }
-            channel = msg.get('channel');
-            raw = msg.get('data');
-            if not channel or raw is None {
-                continue;
-            }
-            try {
-                payload = json.loads(str(raw));
-            } except Exception as e {
-                logger.warning(f"WS Redis payload decode failed: {e}");
-                continue;
-            }
-            handlers = list(self._handlers.get(str(channel), []));
-            if handlers {
-                tasks = [h(channel, payload) for h in handlers];
-                await asyncio.gather(*tasks, return_exceptions=True);
-            }
+            data = json.loads(got);
         }
-    } except asyncio.CancelledError {
-        return;
-    }
-}
-
-impl RedisBackplane.publish(channel: str, message: dict) -> None {
-    if self._client is None {
-        logger.warning('WS RedisBackplane publish before start; dropping');
-        return;
-    }
-    try {
-        await self._client.publish(channel, json.dumps(message));
     } except Exception as e {
-        logger.error(f"WS Redis publish failed channel={channel}: {e}");
+        logger.warning(f"PgBackplane: bad payload on {channel}: {e}");
+        return;
+    }
+    for (name, handlers) in list(self._handlers.items()) {
+        if self._pg_channel(name) == channel and handlers {
+            coro: any = self._dispatch(name, data);
+            asyncio.run_coroutine_threadsafe(coro, self._loop);
+        }
     }
 }
 
-impl RedisBackplane.subscribe(channel: str, handler: Any) {
-    lock = self._get_lock();
-    await lock.acquire();
-    try {
-        if channel not in self._handlers {
-            await self._pubsub.subscribe(channel);
-            self._handlers[channel] = [];
-        }
-        self._handlers[channel].append(handler);
-        if self._reader_task is None and not self._closed {
-            self._reader_task = asyncio.create_task(self._reader_loop());
-        }
-    } finally {
-        lock.release();
+
+impl PgBackplane._dispatch(channel: str, message: dict) -> None {
+    handlers = list(self._handlers.get(channel, []));
+    if handlers {
+        tasks = [h(channel, message) for h in handlers];
+        await asyncio.gather(*tasks, return_exceptions=True);
     }
 }
 
-impl RedisBackplane.unsubscribe(channel: str, handler: Any) {
-    lock = self._get_lock();
-    await lock.acquire();
+
+impl PgBackplane.subscribe(channel: str, handler: any) {
+    await self.start();
+    if channel not in self._handlers {
+        self._handlers[channel] = [];
+    }
+    self._handlers[channel].append(handler);
+    pg_chan = self._pg_channel(channel);
+    if pg_chan not in self._listening {
+        self._listening.add(pg_chan);
+        cb = lambda (payload: str) { self._on_notify(pg_chan, payload); };
+        await asyncio.to_thread(self._store.listen, pg_chan, cb);
+    }
+}
+
+
+impl PgBackplane.unsubscribe(channel: str, handler: any) {
+    handlers = self._handlers.get(channel);
+    if handlers is None {
+        return;
+    }
     try {
-        handlers = self._handlers.get(channel);
-        if handlers is None {
-            return;
-        }
-        try {
-            handlers.remove(handler);
-        } except ValueError {
-            return;
-        }
-        if handlers {
-            return;
-        }
+        handlers.remove(handler);
+    } except ValueError {
+        return;
+    }
+    if not handlers {
         del self._handlers[channel];
-        if self._pubsub is None {
-            return;
-        }
-        try {
-            await self._pubsub.unsubscribe(channel);
-        } except Exception as e {
-            logger.debug(f"WS Redis unsubscribe failed: {e}");
-        }
-    } finally {
-        lock.release();
     }
 }
 
-impl RedisBackplane.close{
+
+impl PgBackplane.close{
     self._closed = True;
-    if self._reader_task is not None {
-        self._reader_task.cancel();
-        try {
-            await self._reader_task;
-        } except Exception as e {
-            logger.debug(f"WS Redis reader close exception: {e}");
-        }
-    }
-    if self._pubsub is not None {
-        try {
-            closer = getattr(self._pubsub, 'aclose', self._pubsub.close);
-            await closer();
-        } except Exception as e {
-            logger.debug(f"WS Redis pubsub close exception: {e}");
-        }
-    }
-    if self._client is not None {
-        try {
-            closer = getattr(self._client, 'aclose', self._client.close);
-            await closer();
-        } except Exception as e {
-            logger.debug(f"WS Redis client close exception: {e}");
-        }
-    }
+    self._handlers = {};
 }
+
 
 impl build_backplane(cfg: dict) -> BaseBackplane {
     backplane = cfg.get('backplane');
-    url = cfg.get('redis_url');
     if backplane == 'memory' {
         return MemoryBackplane();
     }
-    if backplane == 'redis' {
-        if not url {
-            raise ValueError(
-                "[scale.websocket].backplane = 'redis' but no redis_url "
-                "is configured (set it in [scale.websocket] or "
-                "[scale.database])."
-            );
-        }
-        return RedisBackplane(url=str(url));
+    if backplane == 'pg' {
+        return PgBackplane();
     }
     if backplane is not None {
         raise ValueError(
             f"Unknown [scale.websocket].backplane value: {backplane!r}. "
-            "Expected 'memory' or 'redis'."
+            "Expected 'memory' or 'pg'."
         );
     }
-    if url {
-        return RedisBackplane(url=str(url));
+    import from jaclang.scale.persistence.pg { scale_db_url }
+    if scale_db_url() {
+        return PgBackplane();
     }
     return MemoryBackplane();
 }

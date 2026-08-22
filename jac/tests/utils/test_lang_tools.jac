@@ -64,7 +64,8 @@ test "sym sym dot" {
     jac_file = os.path.join(LANG_FIXTURES, "hello.jac");
     out = tool.ir(["sym", jac_file]);
     assert (
-        "\n|   +-- ConnectionAbortedError\n|   |   +-- public var\n|   +-- ConnectionError\n|" not in out
+        "\n|   +-- ConnectionAbortedError\n|   |   +-- public var\n|   +-- ConnectionError\n|"
+        not in out
     );
     check_list = ["######", "# hello #", "######", "SymTable::Module(hello)"];
     for i in check_list {
@@ -78,6 +79,22 @@ test "uninode doc" {
     tool = AstTool();
     auto_uni = tool.autodoc_uninode();
     assert (
-        "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr , CodeBlockStmt| body" in auto_uni
+        "## LambdaExpr\n```mermaid\nflowchart LR\nLambdaExpr -->|Expr , CodeBlockStmt| body"
+        in auto_uni
     );
+}
+
+test "uni dispatch annexes in sync and unduplicated" {
+    import from jaclang.jac0core.gen_uni_dispatch { verify_all, abs_path, UNI_PASS_SRC }
+    stale = verify_all();
+    assert stale == [] , f"stale dispatch artifacts: {stale}";
+    src = open(abs_path(UNI_PASS_SRC), encoding="utf-8").read();
+    decls: list[str] = [];
+    for line in src.splitlines() {
+        s = line.strip();
+        if s.startswith("def enter_") or s.startswith("def exit_") {
+            decls.append(s.split("(")[0]);
+        }
+    }
+    assert len(decls) == len(set(decls)) , "duplicate visitor declarations in uni_pass.jac";
 }

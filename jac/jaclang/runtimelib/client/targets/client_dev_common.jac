@@ -3,9 +3,10 @@ import shutil;
 import socket;
 import subprocess;
 import from pathlib { Path }
-import from typing { Any, Optional, cast }
+import from typing { Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
+import from jaclang.runtimelib.sv_client { headless_start_args }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 
 def port_bind_error(port: int) -> Optional[str] {
@@ -121,16 +122,7 @@ def ensure_watchdog_common(target_name: str) -> bool {
 def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any {
     import sys;
     return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "start",
-            str(entry_file),
-            "--port",
-            str(port),
-            "--no_client"
-        ],
+        [sys.executable, "-m", "jaclang"] + headless_start_args(str(entry_file), port),
         cwd=str(project_dir),
         stdout=None,
         stderr=None
@@ -182,7 +174,7 @@ obj _ClientHmrHandler {
             }
             invalidate_runtime_module_cache([pth, str(self.entry_file)]);
             compile_out = cast(
-                Any, self.compiler.jac_compiler.compile_module(self.entry_file)
+                any, self.compiler.jac_compiler.compile_module(self.entry_file)
             );
             mod2 = compile_out[1];
             if not mod2 {
@@ -249,7 +241,7 @@ def terminate_dev_processes(
         }
         try {
             p.terminate();
-            p.wait(timeout=timeout);
+            p.`wait(timeout=timeout);
         } except Exception {
             try {
                 p.kill();
@@ -263,7 +255,7 @@ def install_dev_signal_handlers {
     import sys;
     import from typing { cast }
     def on_signal(signum: int, frame: any) {
-        sys.exit(0);
+        sys.`exit(0);
     }
     signal.signal(cast(int, signal.SIGINT), on_signal);
     signal.signal(cast(int, signal.SIGTERM), on_signal);

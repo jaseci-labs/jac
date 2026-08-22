@@ -1,4 +1,6 @@
 import tempfile;
+import from jaclang.jac0core.treeprinter { node_to_dict, print_ast_tree }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_module }
 import os;
 import sys;
 import threading;
@@ -202,8 +204,8 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
         }
 
         formatted = code;
-        if result_prog.mod and result_prog.mod?.unparse {
-            formatted = result_prog.mod.unparse();
+        if result_prog.mod {
+            formatted = unparse_module(result_prog.mod.main);
         }
 
         changed = formatted != code;
@@ -246,10 +248,7 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
             return {"jac_code": "", "warnings": errors or ["Conversion failed"]};
         }
 
-        jac_code = "";
-        if ir?.unparse {
-            jac_code = ir.unparse();
-        }
+        jac_code = unparse_module(ir);
 
         return {"jac_code": jac_code, "warnings": warnings};
     }
@@ -289,9 +288,9 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
         }
 
         if fmt == "json" {
-            ast_output = json.dumps(ir.to_dict(), default=str);
+            ast_output = json.dumps(node_to_dict(ir), `default=str);
         } else {
-            ast_output = ir.pp();
+            ast_output = print_ast_tree(ir);
         }
 
         return {"ast": ast_output, "valid": len(errors) == 0, "errors": errors};
@@ -338,8 +337,8 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
         changed = False;
         if auto_fix and prog.mod and prog.mod.main and prog.mod.main.gen {
             fixed_code = prog.mod.main.gen.jac;
-            if fixed_code is None and hasattr(prog.mod.main, "unparse") {
-                fixed_code = prog.mod.main.unparse();
+            if fixed_code is None {
+                fixed_code = unparse_module(prog.mod.main);
             }
             changed = fixed_code is not None and fixed_code != code;
         }
@@ -431,7 +430,7 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
         return {"js_code": js_code, "warnings": warnings};
     }
     (success, result) = run_with_timeout(
-        _snippet_task(code, _do_jac2js, suffix=".cl.jac"), timeout=DEFAULT_TIMEOUT
+        _snippet_task(code, _do_jac2js, suffix=".jac"), timeout=DEFAULT_TIMEOUT
     );
     if not success {
         return {"js_code": "", "warnings": [str(result)]};
@@ -497,7 +496,7 @@ impl CompilerBridge.run_snippet(
 
         try {
             try {
-                proc.wait(timeout=timeout);
+                proc.`wait(timeout=timeout);
                 _join_reader(t_out, "stdout");
                 _join_reader(t_err, "stderr");
             } except subprocess.TimeoutExpired {
@@ -512,7 +511,7 @@ impl CompilerBridge.run_snippet(
                         os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
                     }
                 } except Exception { }
-                proc.wait();
+                proc.`wait();
                 _join_reader(t_out, "stdout");
                 _join_reader(t_err, "stderr");
                 return {
@@ -622,11 +621,7 @@ impl CompilerBridge.graph_viz_snippet(
 
 impl CompilerBridge.list_templates -> dict[str, any] {
     def _do_list_templates -> dict[str, any] {
-        import from jaclang.project.template_registry {
-            get_template_registry,
-            initialize_template_registry
-        }
-        initialize_template_registry();
+        import from jaclang.project.template_registry { get_template_registry }
         registry = get_template_registry();
         templates = registry.list_templates();
         result: list[dict[str, str]] = [];

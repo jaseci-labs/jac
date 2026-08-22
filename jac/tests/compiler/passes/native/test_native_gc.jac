@@ -6,11 +6,11 @@ with it disabled (`JAC_NO_GC=1`). Maximum resident set size is captured via
 `/usr/bin/time -v` and we assert that GC reduces peak RSS.
 
 Fixtures exercised:
-  - chess.na.jac           (interactive game; we pipe "quit" to exit early)
-  - perf_alloc_storm.na.jac
-  - perf_retain_release.na.jac
-  - perf_string_concat.na.jac
-  - perf_deep_call_chain.na.jac
+  - chess.jac           (interactive game; we pipe "quit" to exit early)
+  - perf_alloc_storm.jac
+  - perf_retain_release.jac
+  - perf_string_concat.jac
+  - perf_deep_call_chain.jac
 """
 
 import os;
@@ -25,7 +25,7 @@ glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      # Programs whose RSS savings are too small / noisy to gate on (still verified to
      # run, but the strict GC < no-GC inequality is downgraded to a non-regression
      # check to avoid flakes on systems with high allocator slack).
-     LENIENT_FIXTURES = {"perf_alloc_storm.na.jac"};
+     LENIENT_FIXTURES = {"perf_alloc_storm.jac"};
 
 
 """Run /usr/bin/time -v on `binary` and return (rss_kb, exit_code, stdout_head).
@@ -62,7 +62,10 @@ def _run_with_time(
         env=env,
     );
     # `/usr/bin/time` writes its summary to stderr after the child's own stderr.
-    rss_kb = 0;
+    # NOTE: some kernels (WSL2) report maxrss at 1 MiB granularity, so a
+    # genuine reading of 0 means "peaked below the reporting floor", which a
+    # tight allocator legitimately hits. -1 means the summary line was absent.
+    rss_kb = -1;
     if is_bsd_time {
         m = re.search(r"(\d+)\s+maximum resident set size", proc.stderr);
         if m {
@@ -112,14 +115,14 @@ def _measure_gc_savings(
     timeout: int = 180,
 ) -> tuple[int, int] {
     with tempfile.TemporaryDirectory() as tmp {
-        bin_path = os.path.join(tmp, fixture.replace(".na.jac", ""));
+        bin_path = os.path.join(tmp, fixture.replace(".jac", ""));
         _nacompile(fixture, bin_path);
         # GC enabled (default).
         (gc_rss, gc_rc, _gc_out) = _run_with_time(
             bin_path, env_extra=None, stdin_data=stdin_data, timeout=timeout
         );
         assert gc_rc == 0 , f"{fixture} (with GC) exited non-zero: {gc_rc}";
-        assert gc_rss > 0 , f"{fixture} (with GC) failed to capture RSS";
+        assert gc_rss >= 0 , f"{fixture} (with GC) failed to capture RSS";
         # GC disabled — every allocation leaks until process exit.
         (nogc_rss, nogc_rc, _nogc_out) = _run_with_time(
             bin_path,
@@ -128,7 +131,7 @@ def _measure_gc_savings(
             timeout=timeout,
         );
         assert nogc_rc == 0 , f"{fixture} (JAC_NO_GC=1) exited non-zero: {nogc_rc}";
-        assert nogc_rss > 0 , f"{fixture} (JAC_NO_GC=1) failed to capture RSS";
+        assert nogc_rss >= 0 , f"{fixture} (JAC_NO_GC=1) failed to capture RSS";
         if fixture in LENIENT_FIXTURES {
             # Lenient: just don't regress badly.
             assert gc_rss <= nogc_rss + lenient_slack_kb , (
@@ -175,7 +178,7 @@ def _measure_cycle_collection(
     timeout: int = 180,
 ) -> tuple[int, int, int] {
     with tempfile.TemporaryDirectory() as tmp {
-        bin_path = os.path.join(tmp, fixture.replace(".na.jac", ""));
+        bin_path = os.path.join(tmp, fixture.replace(".jac", ""));
         _nacompile(fixture, bin_path);
         (on_rss, on_rc, _o) = _run_with_time(
             bin_path, env_extra={"JAC_GC_CYCLES": "1"}, timeout=timeout
@@ -189,7 +192,7 @@ def _measure_cycle_collection(
             bin_path, env_extra={"JAC_NO_GC": "1"}, timeout=timeout
         );
         assert nogc_rc == 0 , f"{fixture} (JAC_NO_GC=1) exited non-zero: {nogc_rc}";
-        assert on_rss > 0 and off_rss > 0 and nogc_rss > 0 , (
+        assert on_rss >= 0 and off_rss >= 0 and nogc_rss >= 0 , (
             f"{fixture}: failed to capture RSS (on={on_rss} off={off_rss} nogc={nogc_rss})"
         );
         saved = nogc_rss - on_rss;
@@ -210,29 +213,25 @@ def _measure_cycle_collection(
 
 # --- Tests ------------------------------------------------------------------
 test "gc reduces rss for perf_alloc_storm" {
-    (gc, nogc) = _measure_gc_savings("perf_alloc_storm.na.jac");
+    (gc, nogc) = _measure_gc_savings("perf_alloc_storm.jac");
     print(f"[alloc_storm] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
 
 test "gc reduces rss for perf_retain_release" {
     # 1M reassignments -> ~100 MB leak without GC.
-    (gc, nogc) = _measure_gc_savings(
-        "perf_retain_release.na.jac", min_savings_kb=10240
-    );
+    (gc, nogc) = _measure_gc_savings("perf_retain_release.jac", min_savings_kb=10240);
     print(f"[retain_release] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
 
 test "gc reduces rss for perf_string_concat" {
     # String churn allocates fresh buffers each iter; without GC RSS balloons.
-    (gc, nogc) = _measure_gc_savings("perf_string_concat.na.jac", min_savings_kb=10240);
+    (gc, nogc) = _measure_gc_savings("perf_string_concat.jac", min_savings_kb=10240);
     print(f"[string_concat] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
 
 test "gc reduces rss for perf_deep_call_chain" {
     # Per-frame Frame() allocations pile up in 200x5000 calls without GC.
-    (gc, nogc) = _measure_gc_savings(
-        "perf_deep_call_chain.na.jac", min_savings_kb=10240
-    );
+    (gc, nogc) = _measure_gc_savings("perf_deep_call_chain.jac", min_savings_kb=10240);
     print(f"[deep_call_chain] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
 
@@ -242,7 +241,7 @@ test "gc reduces rss for chess" {
     # Each iteration allocates a fresh `legal_moves` list plus piece dicts —
     # without GC these all leak, ballooning RSS into the hundreds of MB.
     (gc, nogc) = _measure_gc_savings(
-        "chess.na.jac", stdin_data="", min_savings_kb=51200, timeout=120
+        "chess.jac", stdin_data="", min_savings_kb=51200, timeout=120
     );
     print(f"[chess] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
@@ -253,7 +252,7 @@ test "cycle_collect: reclaims mutually-referential struct cycles under load" {
     # its sibling's refcount at 1), so only the trial-deletion collector frees
     # them. With cycles ON, RSS stays flat; with cycles OFF or no GC it balloons.
     (on, off, nogc) = _measure_cycle_collection(
-        "cycle_collect_storm.na.jac", min_savings_kb=10240
+        "cycle_collect_storm.jac", min_savings_kb=10240
     );
     print(f"[cycle_struct] on={on} KB  off={off} KB  nogc={nogc} KB");
 }
@@ -265,7 +264,7 @@ test "cycle_collect: reclaims cycles routed through a container's elements" {
     # every pair even with collection on. This is the container-trace regression
     # guard — the delta only survives if `__rc_trace_list_*` walks the elements.
     (on, off, nogc) = _measure_cycle_collection(
-        "cycle_collect_container.na.jac", min_savings_kb=10240
+        "cycle_collect_container.jac", min_savings_kb=10240
     );
     print(f"[cycle_container] on={on} KB  off={off} KB  nogc={nogc} KB");
 }
@@ -276,6 +275,6 @@ test "gc reclaims owned temporaries across consumption seams" {
     # call arguments. If any seam fails to release its temporary the leak
     # survives even with GC on, so the GC-vs-no-GC delta collapses. With the
     # releases in place GC keeps RSS flat while no-GC balloons.
-    (gc, nogc) = _measure_gc_savings("perf_owned_temps.na.jac", min_savings_kb=10240);
+    (gc, nogc) = _measure_gc_savings("perf_owned_temps.jac", min_savings_kb=10240);
     print(f"[owned_temps] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }

@@ -98,8 +98,8 @@ def _node_run_desc(node_arch: object, wkr: object) -> str {
         if not _ability_fires(osf, wkr) {
             continue;
         }
-        sem = msem.get(osf.name, "");
-        parts.append(osf.name + (f": {sem}" if sem else ""));
+        `sem = msem.get(osf.name, "");
+        parts.append(osf.name + (f": {`sem}" if `sem else ""));
     }
     return "; ".join(parts);
 }
@@ -178,7 +178,12 @@ def _route_context -> tuple {
 
 
 def _candidate_for(item: object, here_anchor: object) -> tuple {
-    import from jaclang.jac0core.archetype { NodeArchetype, EdgeArchetype }
+    import from jaclang.jac0core.archetype {
+        EdgeAnchor,
+        EdgeArchetype,
+        NodeAnchor,
+        NodeArchetype
+    }
     if isinstance(item, EdgeArchetype) {
         ea = item.__jac__;
         direction = "out";
@@ -195,9 +200,17 @@ def _candidate_for(item: object, here_anchor: object) -> tuple {
     node_arch = item;
     edge_arch = None;
     direction = "out";
-    if here_anchor is not None {
+    if isinstance(here_anchor, NodeAnchor) {
+        import from jaclang.jac0core.osp_graph_sv {
+            sv_live_edges,
+            sv_register_hydrated
+        }
         here_arch = here_anchor.archetype;
-        for ea in here_anchor.edges {
+        sv_register_hydrated(here_anchor, fetch_stubs=True);
+        for ea in sv_live_edges(here_anchor, 3, None, True) {
+            if not isinstance(ea, EdgeAnchor) {
+                continue;
+            }
             other = None;
             dir2 = "out";
             if ea.source.archetype is here_arch {
@@ -310,7 +323,8 @@ def route_visit(candidates: list, model: object) -> list {
         user_parts.append("\n".join([f"{k} = {v}" for (k, v) in incl_info.items()]));
     }
 
-    sys_txt = "You are routing a graph walker. Choose which candidate node(s) the " + "walker should visit next, by handle. Return only valid handles.";
+    sys_txt = "You are routing a graph walker. Choose which candidate node(s) the "
+        + "walker should visit next, by handle. Return only valid handles.";
     if select == 1 {
         sys_txt += " Choose exactly one.";
     } elif isinstance(select, int) and not isinstance(select, bool) {

@@ -4,7 +4,7 @@ import from .sem_manager { SemTokManager }
 
 obj ModuleManager {
     has program: JacProgram,
-        sem_managers: dict;
+        sem_managers: dict[str, SemTokManager];
 
     def update(
         file_path: str,

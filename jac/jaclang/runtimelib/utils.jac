@@ -1,5 +1,4 @@
 import platform;
-import from collections.abc { Callable }
 import from pathlib { Path }
 import from uuid { UUID }
 import type from jaclang.jac0core.constructs { NodeArchetype }
@@ -50,6 +49,15 @@ def release_arch(raw: str) -> str {
 
 def host_arch -> str {
     return release_arch(platform.machine());
+}
+
+
+def host_os -> str {
+    sysname = platform.system().strip().lower();
+    if sysname == "darwin" {
+        return "macos";
+    }
+    return sysname;
 }
 
 

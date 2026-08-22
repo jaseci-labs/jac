@@ -1,6 +1,5 @@
 """Fixture for E1120: Type does not implement protocol."""
 
-import from typing { Protocol }
 
 class Drawable(Protocol) {
     def draw(self) -> None { ... }

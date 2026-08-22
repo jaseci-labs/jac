@@ -1026,8 +1026,8 @@ test "understand returns knowledge map with key sections and guide URIs" {
     assert "knowledge_map" in result;
     km = result["knowledge_map"];
     assert "Language Syntax" in km
-    and "Object-Spatial Programming" in km
-    and "Full-Stack Development" in km;
+        and "Object-Spatial Programming" in km
+        and "Full-Stack Development" in km;
     assert "jac://guide/pitfalls" in km and "jac://guide/jac-walker-patterns" in km;
     assert "jac://docs/" not in km;
 }

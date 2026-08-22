@@ -19,7 +19,6 @@ import os;
 import shutil;
 import tempfile;
 import time;
-import pytest;
 import from subprocess { Popen, run }
 import from urllib.error { HTTPError }
 import from urllib.request { urlopen }
@@ -66,12 +65,12 @@ def _copy_littlex_into(dest: any) {
         ".pytest_cache",
         "__pycache__"
     };
-    for entry in os.listdir(src) {
-        if entry in skip_names {
+    for `entry in os.listdir(src) {
+        if `entry in skip_names {
             continue;
         }
-        src_path = os.path.join(src, entry);
-        dst_path = os.path.join(dest, entry);
+        src_path = os.path.join(src, `entry);
+        dst_path = os.path.join(dest, `entry);
         if os.path.isdir(src_path) {
             shutil.copytree(
                 src_path,
@@ -111,7 +110,7 @@ def _setup_littlex_project(temp_dir: any) -> tuple {
         env=env,
     );
     if add_result.returncode != 0 {
-        pytest.fail(
+        testfail(
             f"jac install --npm failed for littleX (bun/npm unavailable?)\n"
             f"STDOUT:\n{add_result.stdout[:2000]}\n"
             f"STDERR:\n{add_result.stderr[:2000]}\n"
@@ -126,13 +125,13 @@ def _require_playwright -> any {
     try {
         import from playwright.sync_api { sync_playwright }
     } except ImportError {
-        pytest.skip("playwright not installed");
+        testskip("playwright not installed");
     }
     return sync_playwright;
 }
 
 # ---- Playwright auth-form drivers (selectors verified against
-#      littleX/components/AuthForm.cl.jac) ----
+#      littleX/components/AuthForm.jac) ----
 # littleX has NO /login or /signup routes: the app renders <AuthForm> inline
 # at the root whenever the user is not logged in. The form fields are
 # id="lx-username" (type=text) and id="lx-password" (type=password); the

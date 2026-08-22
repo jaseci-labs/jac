@@ -81,10 +81,10 @@ test "admin login non-admin user rejected" {
             "/admin/login", json={"username": username, "password": "userpass123"}
         );
         assert response.status_code in [401, 403]
-        or (
-            response.status_code == 200
-            and extract_data(response.json()).get("requires_password_reset")
-        );
+            or (
+                response.status_code == 200
+                and extract_data(response.json()).get("requires_password_reset")
+            );
     } finally {
         client.close();
     }
@@ -628,7 +628,7 @@ test "admin UI build emits admin based assets and keeps useEffect lambda" {
         );
         assert 'href="/admin/' in index_html;
 
-        bundles = list(dist.glob("client.*.js"));
+        bundles = list(dist.`glob("client.*.js"));
         assert bundles , "no client bundle emitted";
         js = bundles[0].read_text(encoding="utf-8");
         assert ".useEffect([])" not in js , (

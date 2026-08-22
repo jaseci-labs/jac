@@ -1,7 +1,6 @@
-import from collections.abc { Callable }
 import from pathlib { Path }
 import from types { ModuleType }
-import from typing { TYPE_CHECKING, Any }
+import from typing { TYPE_CHECKING }
 
 with entry {
     if TYPE_CHECKING {
@@ -12,7 +11,7 @@ with entry {
 obj JacToJSCompiler {
     has _compile_to_js: Callable[([Path], tuple[(str, (ModuleType | None))])],
         _extract_client_exports: Callable[([any], list[str])],
-        _extract_client_globals: Callable[([any, ModuleType], dict[(str, Any)])];
+        _extract_client_globals: Callable[([any, ModuleType], dict[(str, any)])];
 
     def compile_module(
         module_path: Path

@@ -1,6 +1,6 @@
 import from ctypes { c_int, c_char_p, POINTER }
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
-def link_modules(dst: Any, src: Any) -> object {
+def link_modules(dst: any, src: any) -> object {
     with ffi.OutputString() as outerr {
         err = ffi.lib.LLVMPY_LinkModules(dst, src, outerr);
         src.detach();
@@ -9,6 +9,7 @@ def link_modules(dst: Any, src: Any) -> object {
         }
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_LinkModules.argtypes = [
         ffi.LLVMModuleRef,
@@ -17,4 +18,3 @@ with entry {
     ];
     ffi.lib.LLVMPY_LinkModules.restype = c_int;
 }
-

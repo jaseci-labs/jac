@@ -64,16 +64,17 @@ isolated root automatically. `walker:priv` enforces auth. `walker:pub` = public.
 
 ### [E] Full-Stack Development (Codespaces)
 
-Single .jac file = complete full-stack app. `sv {}` = server code. `cl {}` = client code
-(React/JSX). `.cl.jac` files default to client mode (no `cl {}` wrapper needed).
+Single .jac file = complete full-stack app. Placement is inferred: JSX/npm imports = client
+code (React/JSX); python imports and graph archetypes = server. Overrides go in jac.toml
+(`[placement.pins]`), never in the source.
 
-**Client components**: `cl def:pub Name(prop: str) -> JsxElement { ... }`
+**Client components**: `def:pub Name(prop: str) -> JsxElement { ... }` (the JSX places it client)
 **Reactive state**: `has count: int = 0;` = React useState. Assignment `count = count + 1;` triggers
 a re-render. NEVER mutate directly (`items.append(x)` won't re-render - use `items = items + [x];`).
 **Effects**: `async can with entry { ... }` = useEffect on mount. `can with exit { ... }` = cleanup.
 **Events**: `onChange={lambda e: ChangeEvent { name = e.target.value; }}` - ambient DOM types, no import.
 **Calling server from client** (critical pattern):
-  `sv import from ..main { my_walker }` - import server walker into client code
+  `import from ..main { my_walker }` - plain import of a server walker into client code
   `response = root spawn my_walker(field=value);` - spawns walker via HTTP automatically
   `data = response.reports[0][0];` - access walker report results
 **Auth built-ins**: `jacLogin(user, pass)`, `jacSignup(user, pass)`, `jacLogout()`, `jacIsLoggedIn()`
@@ -85,7 +86,7 @@ a re-render. NEVER mutate directly (`items.append(x)` won't re-render - use `ite
   jac://guide/jac-cl-organization      splitting client code, importing server walkers
   jac://guide/jac-cl-styling           styling client components
   jac://guide/jac-cl-js-interop        DOM refs and JS value interop
-  jac://guide/jac-npm-packages         adding npm packages, importing them in .cl.jac
+  jac://guide/jac-npm-packages         adding npm packages, importing them in .jac
   jac://guide/jac-scaffold             scaffolding a new project
   jac://guide/jac-project-kinds        project kinds: server / client / fullstack / native
   jac://guide/jac-shadcn-components    shadcn/ui components for cl blocks
@@ -105,8 +106,9 @@ Available example categories (use ONLY these names with get_example):
 
 ### [G] Code Organization & Project Structure
 
-.jac (server default), .impl.jac (implementations), .cl.jac (client), .sv.jac (server-explicit),
-.test.jac (tests). impl/ subdirectory for method bodies. Declaration/impl separation pattern.
+.jac (placement inferred; server default), .impl.jac (implementations), .jac (client
+implementation variant), .test.jac (tests). impl/ subdirectory for method bodies.
+Declaration/impl separation pattern.
 
   jac://guide/jac-impl-files        declaration/impl separation, impl/ layout
   jac://guide/jac-cl-organization   organizing client modules

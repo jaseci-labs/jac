@@ -7,12 +7,12 @@
 #   vhs scripts/readme_demo.tape
 #
 # Then swap the <picture> block at the top of README.md to point at the GIF:
-#   docs/docs/assets/readme/demo.gif
+#   .github/assets/readme/demo.gif
 #
 # Run this from a machine WITHOUT jac installed (or a container) so the
 # install step records honestly.
 
-Output docs/docs/assets/readme/demo.gif
+Output .github/assets/readme/demo.gif
 
 Set FontSize 16
 Set Width 1100

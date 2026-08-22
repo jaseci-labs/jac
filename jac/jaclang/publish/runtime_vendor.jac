@@ -7,9 +7,9 @@ glob _SEEDS: list[str] = [
          "jaclang.jac0core.runtime",
          "jaclang.jac0core.archetype",
          "jaclang.runtimelib.server",
-         "jaclang.runtimelib.memory",
+         "jaclang.runtimelib.session",
+         "jaclang.runtimelib.store",
          "jaclang.runtimelib.serializer",
-         "jaclang.runtimelib.changeset",
          "jaclang.runtimelib.builtin"
      ],
      _BYLLM_SEEDS: list[str] = [
@@ -33,10 +33,7 @@ glob _SEEDS: list[str] = [
          "jaclang.jac0core.unitree",
          "jaclang.jac0core.bccache",
          "jaclang.jac0core.jir",
-         "jaclang.jac0core.native_accel",
-         "jaclang.jac0core.native_marshal",
          "jaclang.jac0core.interop_bridge",
-         "jaclang.jac0core.gen_jir_registry",
          "jaclang.jac0core.gen_uni_dispatch",
          "jaclang.jac0core.cli_boot",
          "jaclang.runtimelib.client",
@@ -50,7 +47,7 @@ glob _SEEDS: list[str] = [
      _ALLOW_EXACT: list[str] = [
          "jaclang.cli.console",
          "jaclang.cli.banners",
-         "jaclang.scale.jserver.jserver"
+         "jaclang.runtimelib.serving.endpoint"
      ],
      _VENDORED_INIT: str = '''"""Vendored jaclang runtime.
 
@@ -73,7 +70,7 @@ sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 __all__ = ["JacRuntime", "JacRuntimeInterface"]
 ''',
      _BYLLM_INIT_EXTRA: str = '',
-     _CLOSURE_CACHE: dict[tuple, dict[str, str]] = {};
+     _CLOSURE_CACHE: dict[tuple[str, bool, tuple[str, ...]], dict[str, str]] = {};
 
 
 def _pkg_root -> Path {
@@ -129,7 +126,7 @@ def scan_jaclang_imports(py_src: str) -> set[str] {
         for child in py_ast.iter_child_nodes(nd) {
             tc = in_tc;
             if isinstance(child, py_ast.If)
-            and ("TYPE_CHECKING" in py_ast.unparse(child.test)) {
+                and ("TYPE_CHECKING" in py_ast.unparse(child.`test)) {
                 tc = True;
             }
             if (not tc) and isinstance(child, py_ast.Import) {
@@ -165,7 +162,7 @@ def _compile_runtime_module(pkg_root: Path, path: Path) -> str {
     if str(path).startswith(str(pkg_root / "jac0core")) {
         import from jaclang.jac0 { compile_jac, discover_impl_files }
         jac_source = path.read_text(encoding="utf-8");
-        impl_sources: list = [];
+        impl_sources: list[tuple[str, str]] = [];
         for impl_path in discover_impl_files(str(path)) {
             impl_sources.append(
                 (Path(impl_path).read_text(encoding="utf-8"), impl_path)
@@ -213,7 +210,9 @@ def _strip_impl_patch_lines(src: str) -> str {
 
 
 def build_runtime_closure(
-    user_codes: list, include_byllm: bool = False, extra_seeds: (list | None) = None
+    user_codes: list[str],
+    include_byllm: bool = False,
+    extra_seeds: (list[str] | None) = None
 ) -> dict[str, str] {
     pkg_root = _pkg_root();
     seeds: list[str] = list(_SEEDS);
@@ -229,10 +228,25 @@ def build_runtime_closure(
             return True;
         }
         if (not include_byllm)
-        and ((mod == "jaclang.byllm") or mod.startswith("jaclang.byllm.")) {
+            and ((mod == "jaclang.byllm") or mod.startswith("jaclang.byllm.")) {
             return True;
         }
         return False;
+    }
+    bad_seeds: list[str] = [];
+    for s in (extra_seeds or []) {
+        seed = str(s);
+        if _deny(seed) or (_module_to_file(pkg_root, seed) is None) {
+            bad_seeds.append(seed);
+        }
+    }
+    if bad_seeds {
+        raise ValueError(
+            "runtime vendor: requested seed module(s) do not resolve to a "
+            "vendorable module: "
+                + ", ".join(sorted(bad_seeds))
+                + "."
+        );
     }
     for code in user_codes {
         for imp in scan_jaclang_imports(str(code)) {
@@ -299,7 +313,7 @@ def build_runtime_closure(
         }
     }
 
-    dirs: set = set();
+    dirs: set[str] = set();
     for rel_path in list(closure.keys()) {
         parts = rel_path.split("/")[:-1];
         for i in range(1, len(parts) + 1) {
@@ -320,9 +334,9 @@ def build_runtime_closure(
 
 def vendor_runtime(
     backend_dir: Path,
-    user_codes: list,
+    user_codes: list[str],
     include_byllm: bool = False,
-    extra_seeds: (list | None) = None
+    extra_seeds: (list[str] | None) = None
 ) -> int {
     closure = build_runtime_closure(
         user_codes, include_byllm=include_byllm, extra_seeds=extra_seeds

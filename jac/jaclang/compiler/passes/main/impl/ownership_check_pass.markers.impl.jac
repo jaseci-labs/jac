@@ -1,4 +1,3 @@
-import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.diagnostics { E1309 }
 
 impl OwnershipCheckPass._emit_marker_diagnostics -> None {
@@ -10,9 +9,13 @@ impl OwnershipCheckPass._emit_marker_diagnostics -> None {
         if nd.type_tag is not None and nd.type_tag.ownership == OwnershipKind.IMM {
             continue;
         }
+        if isinstance(nd.value, UnaryExpr)
+            and nd.value.ownership == OwnershipKind.IMM {
+            continue;
+        }
         for tgt in nd.target {
-            base: uni.Expr = tgt;
-            while isinstance(base, uni.AtomTrailer) {
+            base: Expr = tgt;
+            while isinstance(base, AtomTrailer) {
                 base = base.target;
             }
             root_sid = self._sym_id(base);
@@ -24,21 +27,32 @@ impl OwnershipCheckPass._emit_marker_diagnostics -> None {
 
     for sid in self.imm_decl {
         for nm in self.name_uses_by_sym.get(sid, []) {
-            cur: uni.UniNode = nm;
+            cur: UniNode = nm;
             p = cur.parent;
-            while isinstance(p, uni.AtomTrailer) and p.target is cur {
+            while isinstance(p, AtomTrailer) and p.target is cur {
                 cur = p;
                 p = cur.parent;
             }
-            if isinstance(p, uni.UnaryExpr) and is_mut_kind(p.ownership) {
+            if isinstance(p, UnaryExpr) and is_mut_kind(p.ownership) {
                 self._emit_imm_mutation(sid, nm, self.imm_decl.get(sid));
             }
+        }
+    }
+
+    for region in self.ir_in.get_all_sub_nodes(OpenStmt) {
+        hnm = self._open_handle_name(region);
+        if hnm is None {
+            continue;
+        }
+        hsid = self._sym_id(hnm);
+        if hsid is not None and hsid in self.imm_decl {
+            self._emit_imm_mutation(hsid, region, self.imm_decl.get(hsid));
         }
     }
 }
 
 impl OwnershipCheckPass._emit_imm_mutation(
-    sid: SymId, site: uni.UniNode, decl: uni.Name | None
+    sid: SymId, site: UniNode, decl: Name | None
 ) -> None {
     name = decl.sym_name if decl is not None else "";
     related = [(f"`imm` '{name}' declared here", decl)] if decl is not None else None;

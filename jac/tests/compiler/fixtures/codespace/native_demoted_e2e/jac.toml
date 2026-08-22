@@ -1,0 +1,7 @@
+[project]
+name = "native-demoted-e2e-fixture"
+entry-point = "app.jac"
+
+[placement.pins]
+models = "native"
+app = "client"

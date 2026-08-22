@@ -1,0 +1,6 @@
+[project]
+name = "pinned-dead-fixture"
+entry-point = "infer_import_dead_client.jac"
+
+[placement.pins]
+infer_import_dead_service = "server"

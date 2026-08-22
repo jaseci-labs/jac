@@ -1,6 +1,5 @@
 import from jaclang.byllm.lib { Model, Image }
 import from jaclang.jac0core.archetype { Root }
-import from typing { List, Dict }
 import os;
 
 def clear_terminal {
@@ -18,9 +17,9 @@ obj Response {
     has follow_up_questions: str,
         summary: str,
         when: str,
-        who: List[str],
+        who: list[str],
         what: str,
-        where: List[str],
+        where: list[str],
         terminate_conversation: bool,
         show_summary: bool;
 }
@@ -41,10 +40,10 @@ def update_memory_details(
     utterance: str = "",
     summary: str = "",
     when: str = "",
-    who: List[str] = [],
-    where: List[str] = [],
+    who: list[str] = [],
+    where: list[str] = [],
     what: str = "",
-    conversation: List[dict] = [],
+    conversation: list[dict] = [],
     show_summary: bool = False,
     terminate_conversation: bool = False
 ) -> Response by llm();
@@ -97,9 +96,9 @@ walker update_session {
         self.show_summary = response.show_summary;
         here.terminate_conversation = response.terminate_conversation;
         self.terminate_conversation = response.terminate_conversation;
-        here.conversation = here.conversation + [
-            {"role": "user", "content": self.utterance}
-        ] + [{"role": "assistant", "content": response.follow_up_questions}];
+        here.conversation = here.conversation
+            + [{"role": "user", "content": self.utterance}]
+            + [{"role": "assistant", "content": response.follow_up_questions}];
 
         if response.show_summary {
             if response.terminate_conversation {

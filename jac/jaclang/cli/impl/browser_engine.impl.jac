@@ -226,7 +226,7 @@ impl _find_chrome -> str {
         if not pw.exists() {
             continue;
         }
-        for d in sorted(pw.glob("chromium-*"), reverse=True) {
+        for d in sorted(pw.`glob("chromium-*"), reverse=True) {
             for rel in [
                 "chrome-linux64/chrome",
                 "chrome-linux/chrome",
@@ -492,8 +492,8 @@ impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tu
             continue;
         }
         if prev is not None
-        and abs(st["x"] - prev[0]) < 1
-        and abs(st["y"] - prev[1]) < 1 {
+            and abs(st["x"] - prev[0]) < 1
+            and abs(st["y"] - prev[1]) < 1 {
             return (st["x"], st["y"]);
         }
         prev = (st["x"], st["y"]);
@@ -562,7 +562,7 @@ impl cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> st
 }
 
 impl cmd_navigate(session: str, url: str) -> str {
-    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
+    if not re.`match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
         url = "https://" + url;
     }
     cdp = connect(session);
@@ -678,7 +678,7 @@ impl _format_console_event(method: str, params: dict) -> (str | None) {
     if method == "Runtime.exceptionThrown" {
         d = params.get("exceptionDetails", {});
         desc = (d.get("exception") or {}).get("description")
-        or d.get("text", "uncaught exception");
+            or d.get("text", "uncaught exception");
         return f"[error] {desc}";
     }
     if method == "Log.entryAdded" {
@@ -873,7 +873,7 @@ impl cmd_sessions(session: str) -> str {
         return "(no sessions)";
     }
     lines = [];
-    for f in sorted(cache.glob("session-*.json")) {
+    for f in sorted(cache.`glob("session-*.json")) {
         try {
             st = json.loads(f.read_text());
             status = "alive" if _pid_alive(st["pid"]) else "dead";

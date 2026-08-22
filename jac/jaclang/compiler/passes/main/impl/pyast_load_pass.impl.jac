@@ -1,4 +1,4 @@
-impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
+impl PyastBuildPass.aug_op_map(tok_dict: dict, op: Token) -> str {
     op.value += '=';
     for (_key, value) in tok_dict.items() {
         if (value == op.value) {
@@ -8,7 +8,7 @@ impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
     return _key;
 }
 
-impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
+impl PyastBuildPass.convert_to_doc(string: String) -> None {
     val = string.value;
     if val.startswith('"""') or val.startswith("'''") {
         return;
@@ -21,61 +21,61 @@ impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
     string.value = f'"""{content}"""';
 }
 
-impl PyastBuildPass.proc_withitem(nd: py_ast.withitem) -> uni.ExprAsItem {
+impl PyastBuildPass.proc_withitem(nd: py_ast.withitem) -> ExprAsItem {
     context_expr = self.convert(nd.context_expr);
     optional_vars = self.convert(nd.optional_vars) if nd.optional_vars else None;
     if (
-        isinstance(context_expr, uni.Expr)
-        and (isinstance(optional_vars, uni.Expr) or (optional_vars is None))
+        isinstance(context_expr, Expr)
+        and (isinstance(optional_vars, Expr) or (optional_vars is None))
     ) {
-        return uni.ExprAsItem(
+        return ExprAsItem(
             expr=context_expr,
             alias=optional_vars or None,
             kid=[context_expr, optional_vars] if optional_vars else [context_expr]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_match_case(nd: py_ast.match_case) -> uni.MatchCase {
+impl PyastBuildPass.proc_match_case(nd: py_ast.match_case) -> MatchCase {
     pattern = self.convert(nd.pattern);
     guard = self.convert(nd.guard) if nd.guard else None;
     body = [self.convert(i) for i in nd.body];
     valid = [
         i
         for i in body
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (
-        isinstance(pattern, uni.MatchPattern)
-        and (isinstance(guard, uni.Expr) or (guard is None))
+        isinstance(pattern, MatchPattern)
+        and (isinstance(guard, Expr) or (guard is None))
     ) {
-        return uni.MatchCase(
+        return MatchCase(
             pattern=pattern,
             guard=guard,
             body=valid,
             kid=[pattern, guard, *valid] if guard else [pattern, *valid]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> uni.KWPair {
+impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> KWPair {
     arg = None;
     if nd.arg {
         arg = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in _reserved_keywords));
     }
     value = self.convert(nd.value);
-    if isinstance(value, uni.Expr) {
-        return uni.KWPair(key=arg, value=value, kid=[arg, value] if arg else [value]);
+    if isinstance(value, Expr) {
+        return KWPair(key=arg, value=value, kid=[arg, value] if arg else [value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_comprehension(nd: py_ast.comprehension) -> uni.InnerCompr {
+impl PyastBuildPass.proc_comprehension(nd: py_ast.comprehension) -> InnerCompr {
     target = self.convert(nd.target);
     iter = self.convert(nd.iter);
     if (len(nd.ifs) != 0) {
@@ -83,14 +83,14 @@ impl PyastBuildPass.proc_comprehension(nd: py_ast.comprehension) -> uni.InnerCom
         valid = [
             ifs
             for ifs in ifs_list
-            if isinstance(ifs, uni.Expr)
+            if isinstance(ifs, Expr)
         ];
     } else {
         valid = None;
     }
     is_async = nd.is_async > 0;
-    if (isinstance(target, uni.Expr) and isinstance(iter, uni.Expr)) {
-        return uni.InnerCompr(
+    if (isinstance(target, Expr) and isinstance(iter, Expr)) {
+        return InnerCompr(
             is_async=is_async,
             target=target,
             collection=iter,
@@ -98,128 +98,128 @@ impl PyastBuildPass.proc_comprehension(nd: py_ast.comprehension) -> uni.InnerCom
             kid=[target, iter, *valid] if valid else [target, iter]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_not_in(nd: py_ast.NotIn) -> uni.Token {
+impl PyastBuildPass.proc_not_in(nd: py_ast.NotIn) -> Token {
     return self.operator(Tok.KW_NIN, 'not in');
 }
 
-impl PyastBuildPass.proc_not_eq(nd: py_ast.NotEq) -> uni.Token {
+impl PyastBuildPass.proc_not_eq(nd: py_ast.NotEq) -> Token {
     return self.operator(Tok.NE, '!=');
 }
 
-impl PyastBuildPass.proc_lt_e(nd: py_ast.LtE) -> uni.Token {
+impl PyastBuildPass.proc_lt_e(nd: py_ast.LtE) -> Token {
     return self.operator(Tok.LTE, '<=');
 }
 
-impl PyastBuildPass.proc_lt(nd: py_ast.Lt) -> uni.Token {
+impl PyastBuildPass.proc_lt(nd: py_ast.Lt) -> Token {
     return self.operator(Tok.LT, '<');
 }
 
-impl PyastBuildPass.proc_is_not(nd: py_ast.IsNot) -> uni.Token {
+impl PyastBuildPass.proc_is_not(nd: py_ast.IsNot) -> Token {
     return self.operator(Tok.KW_ISN, 'is not');
 }
 
-impl PyastBuildPass.proc_is(nd: py_ast.Is) -> uni.Token {
+impl PyastBuildPass.proc_is(nd: py_ast.Is) -> Token {
     return self.operator(Tok.KW_IS, 'is');
 }
 
-impl PyastBuildPass.proc_in(nd: py_ast.In) -> uni.Token {
+impl PyastBuildPass.proc_in(nd: py_ast.In) -> Token {
     return self.operator(Tok.KW_IN, 'in');
 }
 
-impl PyastBuildPass.proc_gt_e(nd: py_ast.GtE) -> uni.Token {
+impl PyastBuildPass.proc_gt_e(nd: py_ast.GtE) -> Token {
     return self.operator(Tok.GTE, '>=');
 }
 
-impl PyastBuildPass.proc_gt(nd: py_ast.Gt) -> uni.Token {
+impl PyastBuildPass.proc_gt(nd: py_ast.Gt) -> Token {
     return self.operator(Tok.GT, '>');
 }
 
-impl PyastBuildPass.proc_eq(nd: py_ast.Eq) -> uni.Token {
+impl PyastBuildPass.proc_eq(nd: py_ast.Eq) -> Token {
     return self.operator(Tok.EE, '==');
 }
 
-impl PyastBuildPass.proc_u_sub(nd: py_ast.USub) -> uni.Token {
+impl PyastBuildPass.proc_u_sub(nd: py_ast.USub) -> Token {
     return self.operator(Tok.MINUS, '-');
 }
 
-impl PyastBuildPass.proc_u_add(nd: py_ast.UAdd) -> uni.Token {
+impl PyastBuildPass.proc_u_add(nd: py_ast.UAdd) -> Token {
     return self.operator(Tok.PLUS, '+');
 }
 
-impl PyastBuildPass.proc_not(nd: py_ast.Not) -> uni.Token {
+impl PyastBuildPass.proc_not(nd: py_ast.Not) -> Token {
     return self.operator(Tok.NOT, 'not');
 }
 
-impl PyastBuildPass.proc_invert(nd: py_ast.Invert) -> uni.Token {
+impl PyastBuildPass.proc_invert(nd: py_ast.Invert) -> Token {
     return self.operator(Tok.BW_NOT, '~');
 }
 
-impl PyastBuildPass.proc_sub(nd: py_ast.Sub) -> uni.Token {
+impl PyastBuildPass.proc_sub(nd: py_ast.Sub) -> Token {
     return self.operator(Tok.MINUS, '-');
 }
 
-impl PyastBuildPass.proc_r_shift(nd: py_ast.RShift) -> uni.Token {
+impl PyastBuildPass.proc_r_shift(nd: py_ast.RShift) -> Token {
     return self.operator(Tok.RSHIFT, '>>');
 }
 
-impl PyastBuildPass.proc_pow(nd: py_ast.Pow) -> uni.Token {
+impl PyastBuildPass.proc_pow(nd: py_ast.Pow) -> Token {
     return self.operator(Tok.STAR_POW, '**');
 }
 
-impl PyastBuildPass.proc_mat_mult(nd: py_ast.MatMult) -> uni.Token {
+impl PyastBuildPass.proc_mat_mult(nd: py_ast.MatMult) -> Token {
     return self.operator(Tok.DECOR_OP, '@');
 }
 
-impl PyastBuildPass.proc_mult(nd: py_ast.Mult) -> uni.Token {
+impl PyastBuildPass.proc_mult(nd: py_ast.Mult) -> Token {
     return self.operator(Tok.STAR_MUL, '*');
 }
 
-impl PyastBuildPass.proc_mod(nd: py_ast.Mod) -> uni.Token {
+impl PyastBuildPass.proc_mod(nd: py_ast.Mod) -> Token {
     return self.operator(Tok.MOD, '%');
 }
 
-impl PyastBuildPass.proc_l_shift(nd: py_ast.LShift) -> uni.Token {
+impl PyastBuildPass.proc_l_shift(nd: py_ast.LShift) -> Token {
     return self.operator(Tok.LSHIFT, '<<');
 }
 
-impl PyastBuildPass.proc_floor_div(nd: py_ast.FloorDiv) -> uni.Token {
+impl PyastBuildPass.proc_floor_div(nd: py_ast.FloorDiv) -> Token {
     return self.operator(Tok.FLOOR_DIV, '//');
 }
 
-impl PyastBuildPass.proc_div(nd: py_ast.Div) -> uni.Token {
+impl PyastBuildPass.proc_div(nd: py_ast.Div) -> Token {
     return self.operator(Tok.DIV, '/');
 }
 
-impl PyastBuildPass.proc_bit_xor(nd: py_ast.BitXor) -> uni.Token {
+impl PyastBuildPass.proc_bit_xor(nd: py_ast.BitXor) -> Token {
     return self.operator(Tok.BW_XOR, '^');
 }
 
-impl PyastBuildPass.proc_bit_or(nd: py_ast.BitOr) -> uni.Token {
+impl PyastBuildPass.proc_bit_or(nd: py_ast.BitOr) -> Token {
     return self.operator(Tok.BW_OR, '|');
 }
 
-impl PyastBuildPass.proc_bit_and(nd: py_ast.BitAnd) -> uni.Token {
+impl PyastBuildPass.proc_bit_and(nd: py_ast.BitAnd) -> Token {
     return self.operator(Tok.BW_AND, '&');
 }
 
-impl PyastBuildPass.proc_add(nd: py_ast.Add) -> uni.Token {
+impl PyastBuildPass.proc_add(nd: py_ast.Add) -> Token {
     return self.operator(Tok.PLUS, '+');
 }
 
-impl PyastBuildPass.proc_or(nd: py_ast.Or) -> uni.Token {
+impl PyastBuildPass.proc_or(nd: py_ast.Or) -> Token {
     return self.operator(Tok.KW_OR, 'or');
 }
 
-impl PyastBuildPass.proc_and(nd: py_ast.And) -> uni.Token {
+impl PyastBuildPass.proc_and(nd: py_ast.And) -> Token {
     return self.operator(Tok.KW_AND, 'and');
 }
 
-impl PyastBuildPass.operator(tok: Tok, value: str) -> uni.Token {
-    return uni.Token(
+impl PyastBuildPass.operator(tok: Tok, value: str) -> Token {
+    return Token(
         orig_src=self.orig_src,
         name=tok,
         value=value,
@@ -232,23 +232,23 @@ impl PyastBuildPass.operator(tok: Tok, value: str) -> uni.Token {
     );
 }
 
-impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
-    def _apply_kind(params: list, kind: uni.ParamKind) -> list {
+impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> FuncSignature {
+    def _apply_kind(params: list, kind: ParamKind) -> list {
         for param in params {
-            cast(uni.ParamVar, param).param_kind = kind;
+            cast(ParamVar, param).param_kind = kind;
         }
         return params;
     }
     posonlyargs = _apply_kind(
-        [self.convert(arg) for arg in nd.posonlyargs], uni.ParamKind.POSONLY
+        [self.convert(arg) for arg in nd.posonlyargs], ParamKind.POSONLY
     );
-    args = _apply_kind([self.convert(arg) for arg in nd.args], uni.ParamKind.NORMAL);
+    args = _apply_kind([self.convert(arg) for arg in nd.args], ParamKind.NORMAL);
     vararg_node = self.convert(nd.vararg) if nd.vararg else None;
-    vararg: (uni.ParamVar | None) = None;
-    if (vararg_node and isinstance(vararg_node, uni.ParamVar)) {
+    vararg: (ParamVar | None) = None;
+    if (vararg_node and isinstance(vararg_node, ParamVar)) {
         vararg = vararg_node;
-        vararg.param_kind = uni.ParamKind.VARARG;
-        vararg.unpack = uni.Token(
+        vararg.param_kind = ParamKind.VARARG;
+        vararg.unpack = Token(
             orig_src=self.orig_src,
             name=Tok.STAR_MUL,
             value='*',
@@ -262,28 +262,24 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
         vararg.add_kids_left([vararg.unpack]);
     }
     kwonlyargs = _apply_kind(
-        [self.convert(arg) for arg in nd.kwonlyargs], uni.ParamKind.KWONLY
+        [self.convert(arg) for arg in nd.kwonlyargs], ParamKind.KWONLY
     );
     for i in range(len(kwonlyargs)) {
         kwa = kwonlyargs[i];
         kwd = nd.kw_defaults[i];
         kwdefault = self.convert(kwd) if kwd else None;
 
-        if (
-            kwdefault
-            and isinstance(kwa, uni.ParamVar)
-            and isinstance(kwdefault, uni.Expr)
-        ) {
+        if (kwdefault and isinstance(kwa, ParamVar) and isinstance(kwdefault, Expr)) {
             kwa.value = kwdefault;
             kwa.add_kids_right([kwa.value]);
         }
     }
     kwarg_node = self.convert(nd.kwarg) if nd.kwarg else None;
-    kwarg: (uni.ParamVar | None) = None;
-    if (kwarg_node and isinstance(kwarg_node, uni.ParamVar)) {
+    kwarg: (ParamVar | None) = None;
+    if (kwarg_node and isinstance(kwarg_node, ParamVar)) {
         kwarg = kwarg_node;
-        kwarg.param_kind = uni.ParamKind.KWARG;
-        kwarg.unpack = uni.Token(
+        kwarg.param_kind = ParamKind.KWARG;
+        kwarg.unpack = Token(
             orig_src=self.orig_src,
             name=Tok.STAR_POW,
             value='**',
@@ -301,12 +297,10 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
         if not defaults {
             break;
         }
-        default = defaults.pop();
+        `default = defaults.pop();
 
-        if (
-            default and isinstance(para, uni.ParamVar) and isinstance(default, uni.Expr)
-        ) {
-            para.value = default;
+        if (`default and isinstance(para, ParamVar) and isinstance(`default, Expr)) {
+            para.value = `default;
             para.add_kids_right([para.value]);
         }
     }
@@ -317,7 +311,7 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
         kids.append(vararg) if vararg else None;
         kids.extend(kwonlyargs) if kwonlyargs else None;
         kids.append(kwarg) if kwarg else None;
-        return uni.FuncSignature(
+        return FuncSignature(
             posonly_params=posonlyargs,
             params=args,
             varargs=vararg,
@@ -327,7 +321,7 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
             kid=kids
         );
     } else {
-        return uni.FuncSignature(
+        return FuncSignature(
             posonly_params=posonlyargs,
             params=[],
             varargs=vararg,
@@ -339,63 +333,63 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
     }
 }
 
-impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> uni.ParamVar {
+impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> ParamVar {
     name = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in _reserved_keywords));
     self.in_type_annotation = True;
     ann_expr = self.convert(nd.annotation)
         if nd.annotation
         else self.name_node(nd, 'Any');
     self.in_type_annotation = False;
-    if not isinstance(ann_expr, uni.Expr) {
-        raise self.ice('Expected annotation to be an expression');
+    if not isinstance(ann_expr, Expr) {
+        raise RuntimeError(self.ice('Expected annotation to be an expression'));
     }
-    annot = uni.SubTag[uni.Expr](tag=ann_expr, kid=[ann_expr]);
-    paramvar = uni.ParamVar(
+    annot = SubTag[Expr](tag=ann_expr, kid=[ann_expr]);
+    paramvar = ParamVar(
         name=name, type_tag=annot, unpack=None, value=None, kid=[name, annot]
     );
     return paramvar;
 }
 
-impl PyastBuildPass.proc_alias(nd: py_ast.alias) -> uni.ExprAsItem {
+impl PyastBuildPass.proc_alias(nd: py_ast.alias) -> ExprAsItem {
     name = self.name_node(nd, nd.name);
     asname = self.name_node(nd, nd.asname) if nd.asname else None;
-    return uni.ExprAsItem(
+    return ExprAsItem(
         expr=name, alias=asname, kid=[name, asname] if asname else [name]
     );
 }
 
-impl PyastBuildPass.proc_yield_from(nd: py_ast.YieldFrom) -> uni.YieldExpr {
+impl PyastBuildPass.proc_yield_from(nd: py_ast.YieldFrom) -> YieldExpr {
     value = self.convert(nd.value);
-    if isinstance(value, uni.Expr) {
-        return uni.YieldExpr(expr=value, with_from=True, kid=[value]);
+    if isinstance(value, Expr) {
+        return YieldExpr(expr=value, with_from=True, kid=[value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_yield(nd: py_ast.Yield) -> uni.YieldExpr {
+impl PyastBuildPass.proc_yield(nd: py_ast.Yield) -> YieldExpr {
     value = self.convert(nd.value) if nd.value else None;
-    if isinstance(value, uni.Expr) {
-        return uni.YieldExpr(expr=value, with_from=False, kid=[value]);
+    if isinstance(value, Expr) {
+        return YieldExpr(expr=value, with_from=False, kid=[value]);
     } elif not value {
-        return uni.YieldExpr(
+        return YieldExpr(
             expr=None, with_from=False, kid=[self.operator(Tok.KW_YIELD, 'yield')]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_tuple(nd: py_ast.Tuple) -> uni.TupleVal {
+impl PyastBuildPass.proc_tuple(nd: py_ast.Tuple) -> TupleVal {
     elts = [self.convert(elt) for elt in nd.elts];
     if (len(nd.elts) != 0) {
         valid_elts = [
             i
             for i in elts
-            if isinstance(i, (uni.Expr, uni.KWPair))
+            if isinstance(i, (Expr, KWPair))
         ];
         if (len(elts) != len(valid_elts)) {
-            raise self.ice('Length mismatch in tuple elts');
+            raise RuntimeError(self.ice('Length mismatch in tuple elts'));
         }
         kid = elts;
     } else {
@@ -404,34 +398,34 @@ impl PyastBuildPass.proc_tuple(nd: py_ast.Tuple) -> uni.TupleVal {
         valid_elts = [];
         kid = [l_paren, r_paren];
     }
-    return uni.TupleVal(values=valid_elts, kid=kid);
+    return TupleVal(values=valid_elts, kid=kid);
 }
 
-impl PyastBuildPass.proc_try_star(nd: py_ast.TryStar) -> uni.TryStmt {
+impl PyastBuildPass.proc_try_star(nd: py_ast.TryStar) -> TryStmt {
     return self.proc_try(nd);
 }
 
-impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
+impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> TryStmt {
     body = [self.convert(i) for i in nd.body];
     valid = [
         i
         for i in body
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(valid) != len(body)) {
-        raise self.ice('Length mismatch in try body');
+        raise RuntimeError(self.ice('Length mismatch in try body'));
     }
     valid_body = valid;
-    kid: list[uni.UniNode] = [*valid_body];
+    kid: list[UniNode] = [*valid_body];
     if (len(nd.handlers) != 0) {
         handlers = [self.convert(i) for i in nd.handlers];
         valid_handlers = [
             i
             for i in handlers
-            if isinstance(i, uni.Except)
+            if isinstance(i, Except)
         ];
         if (len(handlers) != len(valid_handlers)) {
-            raise self.ice('Length mismatch in try handlers');
+            raise RuntimeError(self.ice('Length mismatch in try handlers'));
         }
         excepts = valid_handlers;
         kid.extend(valid_handlers);
@@ -443,13 +437,13 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
         valid_orelse = [
             i
             for i in orelse
-            if isinstance(i, uni.CodeBlockStmt)
+            if isinstance(i, CodeBlockStmt)
         ];
         if (len(orelse) != len(valid_orelse)) {
-            raise self.ice('Length mismatch in try orelse');
+            raise RuntimeError(self.ice('Length mismatch in try orelse'));
         }
         else_body = valid_orelse;
-        elsestmt = uni.ElseStmt(body=else_body, kid=else_body);
+        elsestmt = ElseStmt(body=else_body, kid=else_body);
         kid.extend(else_body);
     } else {
         else_body = None;
@@ -459,19 +453,19 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
         valid_finalbody = [
             i
             for i in finalbody
-            if isinstance(i, uni.CodeBlockStmt)
+            if isinstance(i, CodeBlockStmt)
         ];
         if (len(finalbody) != len(valid_finalbody)) {
-            raise self.ice('Length mismatch in try finalbody');
+            raise RuntimeError(self.ice('Length mismatch in try finalbody'));
         }
-        finally_stmt_obj: (uni.FinallyStmt | None) = (
-            fin_append := uni.FinallyStmt(body=valid_finalbody, kid=valid_finalbody)
+        finally_stmt_obj: (FinallyStmt | None) = (
+            fin_append := FinallyStmt(body=valid_finalbody, kid=valid_finalbody)
         );
         kid.append(fin_append);
     } else {
         finally_stmt_obj = None;
     }
-    ret = uni.TryStmt(
+    ret = TryStmt(
         body=valid_body,
         excepts=excepts,
         else_body=elsestmt if else_body else None,
@@ -482,29 +476,29 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
     return ret;
 }
 
-impl PyastBuildPass.proc_subscript(nd: py_ast.Subscript) -> uni.AtomTrailer {
+impl PyastBuildPass.proc_subscript(nd: py_ast.Subscript) -> AtomTrailer {
     value = self.convert(nd.value);
     slice = self.convert(nd.slice);
-    if (not isinstance(slice, uni.IndexSlice) and isinstance(slice, uni.Expr)) {
-        slice_node = uni.Slice(start=slice, stop=None, step=None, kid=[slice]);
-        slice = uni.IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
+    if (not isinstance(slice, IndexSlice) and isinstance(slice, Expr)) {
+        slice_node = Slice(start=slice, stop=None, step=None, kid=[slice]);
+        slice = IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
     }
     if (
-        not isinstance(slice, uni.IndexSlice)
-        and isinstance(slice, uni.TupleVal)
+        not isinstance(slice, IndexSlice)
+        and isinstance(slice, TupleVal)
         and slice.values
     ) {
-        slices: list[uni.Slice] = [];
+        slices: list[Slice] = [];
         for index_slice in slice.values {
-            if not isinstance(index_slice, uni.IndexSlice) {
-                raise self.ice();
+            if not isinstance(index_slice, IndexSlice) {
+                raise RuntimeError(self.ice());
             }
             slices.append(index_slice.slices[0]);
         }
-        slice = uni.IndexSlice(slices=slices, is_range=True, kid=list(slices));
+        slice = IndexSlice(slices=slices, is_range=True, kid=list(slices));
     }
-    if (isinstance(value, uni.Expr) and isinstance(slice, uni.IndexSlice)) {
-        return uni.AtomTrailer(
+    if (isinstance(value, Expr) and isinstance(slice, IndexSlice)) {
+        return AtomTrailer(
             target=value,
             right=slice,
             is_attr=False,
@@ -512,21 +506,21 @@ impl PyastBuildPass.proc_subscript(nd: py_ast.Subscript) -> uni.AtomTrailer {
             kid=[value, slice]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_starred(nd: py_ast.Starred) -> uni.UnaryExpr {
+impl PyastBuildPass.proc_starred(nd: py_ast.Starred) -> UnaryExpr {
     star_tok = self.operator(Tok.STAR_MUL, '*');
     value = self.convert(nd.value);
-    if isinstance(value, uni.Expr) {
-        return uni.UnaryExpr(operand=value, op=star_tok, kid=[value, star_tok]);
+    if isinstance(value, Expr) {
+        return UnaryExpr(operand=value, op=star_tok, kid=[value, star_tok]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> uni.IndexSlice {
+impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> IndexSlice {
     lower = self.convert(nd.lower) if nd.lower else None;
     upper = self.convert(nd.upper) if nd.upper else None;
     step = self.convert(nd.step) if nd.step else None;
@@ -539,62 +533,62 @@ impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> uni.IndexSlice {
         valid_kid = [self.operator(Tok.COLON, ':')];
     }
     if (
-        (isinstance(lower, uni.Expr) or (lower is None))
-        and (isinstance(upper, uni.Expr) or (upper is None))
-        and (isinstance(step, uni.Expr) or (step is None))
+        (isinstance(lower, Expr) or (lower is None))
+        and (isinstance(upper, Expr) or (upper is None))
+        and (isinstance(step, Expr) or (step is None))
     ) {
-        slice_node = uni.Slice(start=lower, stop=upper, step=step, kid=valid_kid);
-        return uni.IndexSlice(slices=[slice_node], is_range=True, kid=[slice_node]);
+        slice_node = Slice(start=lower, stop=upper, step=step, kid=valid_kid);
+        return IndexSlice(slices=[slice_node], is_range=True, kid=[slice_node]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass._proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode {
+impl PyastBuildPass._proc_compr(nd: py_ast.AST, compr_cls: type) -> UniNode {
     elt = self.convert(nd.elt);
     generators = [self.convert(gen) for gen in nd.generators];
     valid = [
         gen
         for gen in generators
-        if isinstance(gen, uni.InnerCompr)
+        if isinstance(gen, InnerCompr)
     ];
     if (len(generators) != len(valid)) {
-        raise self.ice('Length mismatch in list comp generators');
+        raise RuntimeError(self.ice('Length mismatch in list comp generators'));
     }
-    if isinstance(elt, uni.Expr) {
+    if isinstance(elt, Expr) {
         return compr_cls(out_expr=elt, compr=valid, kid=[elt, *valid]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
-    return self._proc_compr(nd, uni.SetCompr);
+impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> ListCompr {
+    return self._proc_compr(nd, SetCompr);
 }
 
-impl PyastBuildPass.proc_set(nd: py_ast.Set) -> uni.SetVal {
+impl PyastBuildPass.proc_set(nd: py_ast.Set) -> SetVal {
     if (len(nd.elts) != 0) {
         elts = [self.convert(i) for i in nd.elts];
         valid = [
             i
             for i in elts
-            if isinstance(i, uni.Expr)
+            if isinstance(i, Expr)
         ];
         if (len(valid) != len(elts)) {
-            raise self.ice('Length mismatch in set body');
+            raise RuntimeError(self.ice('Length mismatch in set body'));
         }
-        kid: list[uni.UniNode] = [*valid];
+        kid: list[UniNode] = [*valid];
     } else {
         valid = [];
         l_brace = self.operator(Tok.LBRACE, '{');
         r_brace = self.operator(Tok.RBRACE, '}');
         kid = [l_brace, r_brace];
     }
-    return uni.SetVal(values=valid, kid=kid);
+    return SetVal(values=valid, kid=kid);
 }
 
-impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> uni.Semi {
-    return uni.Semi(
+impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> Semi {
+    return Semi(
         orig_src=self.orig_src,
         name=Tok.SEMI,
         value=';',
@@ -607,17 +601,17 @@ impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> uni.Semi {
     );
 }
 
-impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.Semi {
+impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> Semi {
     return self.proc_pass(cast(py_ast.Pass, nd));
 }
 
-impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit {
+impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> AtomUnit {
     target = self.convert(nd.target);
     value = self.convert(nd.value);
-    if (isinstance(value, uni.Expr) and isinstance(target, uni.Name)) {
+    if (isinstance(value, Expr) and isinstance(target, Name)) {
         op = self.operator(Tok.WALRUS_EQ, ':=');
-        if isinstance(value, uni.IfElseExpr) {
-            value = uni.AtomUnit(
+        if isinstance(value, IfElseExpr) {
+            value = AtomUnit(
                 value=value,
                 kid=[
                     self.operator(Tok.LPAREN, '('),
@@ -626,17 +620,17 @@ impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> uni.AtomUnit {
                 ]
             );
         }
-        expr = uni.BinaryExpr(left=target, op=op, right=value, kid=[target, op, value]);
-        return uni.AtomUnit(
+        expr = BinaryExpr(left=target, op=op, right=value, kid=[target, op, value]);
+        return AtomUnit(
             value=expr,
             kid=[self.operator(Tok.LPAREN, '('), expr, self.operator(Tok.RPAREN, ')')]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_name(nd: py_ast.Name) -> uni.Name {
+impl PyastBuildPass.proc_name(nd: py_ast.Name) -> Name {
     should_escape = (
         (nd.id in _reserved_keywords)
         and not self.in_type_annotation
@@ -647,25 +641,23 @@ impl PyastBuildPass.proc_name(nd: py_ast.Name) -> uni.Name {
     return ret;
 }
 
-impl PyastBuildPass.proc_match_value(nd: py_ast.MatchValue) -> uni.MatchValue {
+impl PyastBuildPass.proc_match_value(nd: py_ast.MatchValue) -> MatchValue {
     value = self.convert(nd.value);
-    if isinstance(value, uni.Expr) {
-        return uni.MatchValue(value=value, kid=[value]);
+    if isinstance(value, Expr) {
+        return MatchValue(value=value, kid=[value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_match_star(nd: py_ast.MatchStar) -> uni.MatchStar {
+impl PyastBuildPass.proc_match_star(nd: py_ast.MatchStar) -> MatchStar {
     name = self.name_node(nd, nd.name or '_');
-    return uni.MatchStar(name=name, is_list=True, kid=[name]);
+    return MatchStar(name=name, is_list=True, kid=[name]);
 }
 
-impl PyastBuildPass.proc_match_singleton(
-    nd: py_ast.MatchSingleton
-) -> uni.MatchSingleton {
+impl PyastBuildPass.proc_match_singleton(nd: py_ast.MatchSingleton) -> MatchSingleton {
     type = Tok.NULL if (nd.value is None) else Tok.BOOL;
-    ret_type = uni.Null if (nd.value is None) else uni.Bool;
+    ret_type = Null if (nd.value is None) else Bool;
     value = ret_type(
         orig_src=self.orig_src,
         name=type,
@@ -677,53 +669,53 @@ impl PyastBuildPass.proc_match_singleton(
         pos_start=0,
         pos_end=0
     );
-    if isinstance(value, (uni.Bool, uni.Null)) {
-        return uni.MatchSingleton(value=value, kid=[value]);
+    if isinstance(value, (Bool, Null)) {
+        return MatchSingleton(value=value, kid=[value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_match_sequence(nd: py_ast.MatchSequence) -> uni.MatchSequence {
+impl PyastBuildPass.proc_match_sequence(nd: py_ast.MatchSequence) -> MatchSequence {
     patterns = [self.convert(i) for i in nd.patterns];
     valid = [
         i
         for i in patterns
-        if isinstance(i, uni.MatchPattern)
+        if isinstance(i, MatchPattern)
     ];
     if (len(patterns) == len(valid)) {
-        return uni.MatchSequence(values=valid, kid=valid);
+        return MatchSequence(values=valid, kid=valid);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_match_or(nd: py_ast.MatchOr) -> uni.MatchOr {
+impl PyastBuildPass.proc_match_or(nd: py_ast.MatchOr) -> MatchOr {
     patterns = [self.convert(i) for i in nd.patterns];
     valid = [
         i
         for i in patterns
-        if isinstance(i, uni.MatchPattern)
+        if isinstance(i, MatchPattern)
     ];
-    return uni.MatchOr(patterns=valid, kid=valid);
+    return MatchOr(patterns=valid, kid=valid);
 }
 
-impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapping {
-    values: list[(uni.MatchKVPair | uni.MatchStar)] = [];
+impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> MatchMapping {
+    values: list[(MatchKVPair | MatchStar)] = [];
     keys = [self.convert(i) for i in nd.keys];
     valid_keys = [
         i
         for i in keys
-        if isinstance(i, (uni.MatchPattern, uni.NameAtom, uni.AtomExpr))
+        if isinstance(i, (MatchPattern, NameAtom, AtomExpr))
     ];
     patterns = [self.convert(i) for i in nd.patterns];
     valid_patterns = [
         i
         for i in patterns
-        if isinstance(i, uni.MatchPattern)
+        if isinstance(i, MatchPattern)
     ];
     for i in range(len(valid_keys)) {
-        colon_token = uni.Token(
+        colon_token = Token(
             orig_src=self.orig_src,
             name=Tok.COLON,
             value=":",
@@ -734,7 +726,7 @@ impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapp
             pos_start=0,
             pos_end=0
         );
-        kv_pair = uni.MatchKVPair(
+        kv_pair = MatchKVPair(
             key=valid_keys[i],
             value=valid_patterns[i],
             kid=[valid_keys[i], colon_token, valid_patterns[i]]
@@ -743,12 +735,12 @@ impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapp
     }
     if nd.rest {
         name = self.name_node(nd, nd.rest);
-        values.append(uni.MatchStar(name=name, is_list=False, kid=[name]));
+        values.append(MatchStar(name=name, is_list=False, kid=[name]));
     }
-    return uni.MatchMapping(values=values, kid=values);
+    return MatchMapping(values=values, kid=values);
 }
 
-impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
+impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> MatchArch {
     self.in_match_pattern = True;
     cls = self.convert(nd.cls);
     self.in_match_pattern = False;
@@ -758,27 +750,27 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
         valid_patterns = [
             i
             for i in patterns
-            if isinstance(i, uni.MatchPattern)
+            if isinstance(i, MatchPattern)
         ];
         if (len(patterns) == len(valid_patterns)) {
             kid.extend(valid_patterns);
             patterns_list = valid_patterns;
         } else {
-            raise self.ice();
+            raise RuntimeError(self.ice());
         }
     } else {
         patterns_list = None;
     }
     if len(nd.kwd_patterns) {
-        kv_pairs: list[uni.MatchKVPair] = [];
-        names: list[uni.Name] = [];
-        valid_kwd_patterns: list[uni.MatchPattern] = [];
+        kv_pairs: list[MatchKVPair] = [];
+        names: list[Name] = [];
+        valid_kwd_patterns: list[MatchPattern] = [];
         kwd_patterns = [self.convert(i) for i in nd.kwd_patterns];
         for i in range(len(nd.kwd_attrs)) {
             kwd_attrs = nd.kwd_attrs[i];
-            if isinstance(kwd_patterns[i], uni.MatchPattern) {
+            if isinstance(kwd_patterns[i], MatchPattern) {
                 names.append(
-                    uni.Name(
+                    Name(
                         orig_src=self.orig_src,
                         name=Tok.NAME,
                         value=kwd_attrs,
@@ -794,7 +786,7 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
             }
         }
         for i in range(len(valid_kwd_patterns)) {
-            eq_token = uni.Token(
+            eq_token = Token(
                 orig_src=self.orig_src,
                 name=Tok.EQ,
                 value="=",
@@ -806,7 +798,7 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
                 pos_end=0
             );
             kv_pairs.append(
-                uni.MatchKVPair(
+                MatchKVPair(
                     key=names[i],
                     value=valid_kwd_patterns[i],
                     kid=[names[i], eq_token, valid_kwd_patterns[i]]
@@ -818,84 +810,84 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
     } else {
         kw_patterns_list = None;
     }
-    if isinstance(cls, (uni.NameAtom, uni.AtomTrailer)) {
-        return uni.MatchArch(
+    if isinstance(cls, (NameAtom, AtomTrailer)) {
+        return MatchArch(
             name=cls, arg_patterns=patterns_list, kw_patterns=kw_patterns_list, kid=kid
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_match_as(nd: py_ast.MatchAs) -> (uni.MatchAs | uni.MatchWild) {
+impl PyastBuildPass.proc_match_as(nd: py_ast.MatchAs) -> (MatchAs | MatchWild) {
     pattern = self.convert(nd.pattern) if nd.pattern else None;
     name = self.name_node(nd, nd.name or '_');
     if (
         (name.value == '_')
-        or ((pattern is not None) and not isinstance(pattern, uni.MatchPattern))
+        or ((pattern is not None) and not isinstance(pattern, MatchPattern))
     ) {
-        return uni.MatchWild(kid=[name]);
+        return MatchWild(kid=[name]);
     }
-    return uni.MatchAs(
+    return MatchAs(
         name=name, pattern=pattern, kid=[name] if (pattern is None) else [name, pattern]
     );
 }
 
-impl PyastBuildPass.proc_match(nd: py_ast.Match) -> uni.MatchStmt {
+impl PyastBuildPass.proc_match(nd: py_ast.Match) -> MatchStmt {
     subject = self.convert(nd.subject);
     cases = [self.convert(i) for i in nd.cases];
     valid = [
-        case
-        for case in cases
-        if isinstance(case, uni.MatchCase)
+        `case
+        for `case in cases
+        if isinstance(`case, MatchCase)
     ];
-    if isinstance(subject, uni.Expr) {
-        return uni.MatchStmt(target=subject, cases=valid, kid=[subject, *valid]);
+    if isinstance(subject, Expr) {
+        return MatchStmt(target=subject, cases=valid, kid=[subject, *valid]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_list_comp(nd: py_ast.ListComp) -> uni.ListCompr {
-    return self._proc_compr(nd, uni.ListCompr);
+impl PyastBuildPass.proc_list_comp(nd: py_ast.ListComp) -> ListCompr {
+    return self._proc_compr(nd, ListCompr);
 }
 
-impl PyastBuildPass.proc_list(nd: py_ast.List) -> uni.ListVal {
+impl PyastBuildPass.proc_list(nd: py_ast.List) -> ListVal {
     elts = [self.convert(elt) for elt in nd.elts];
     valid_elts = [
         elt
         for elt in elts
-        if isinstance(elt, uni.Expr)
+        if isinstance(elt, Expr)
     ];
     if (len(valid_elts) != len(elts)) {
-        raise self.ice('Length mismatch in list elements');
+        raise RuntimeError(self.ice('Length mismatch in list elements'));
     }
     l_square = self.operator(Tok.LSQUARE, '[');
     r_square = self.operator(Tok.RSQUARE, ']');
-    return uni.ListVal(
+    return ListVal(
         values=valid_elts, kid=[*valid_elts] if valid_elts else [l_square, r_square]
     );
 }
 
-impl PyastBuildPass.proc_lambda(nd: py_ast.Lambda) -> uni.LambdaExpr {
+impl PyastBuildPass.proc_lambda(nd: py_ast.Lambda) -> LambdaExpr {
     args = self.convert(nd.args);
     body = self.convert(nd.body);
-    if (isinstance(args, uni.FuncSignature) and isinstance(body, uni.Expr)) {
-        body_stmt = uni.ExprStmt(expr=body, in_fstring=False, kid=[body]);
-        return uni.LambdaExpr(signature=args, body=[body_stmt], kid=[args, body_stmt]);
+    if (isinstance(args, FuncSignature) and isinstance(body, Expr)) {
+        body_stmt = ExprStmt(expr=body, in_fstring=False, kid=[body]);
+        return LambdaExpr(signature=args, body=[body_stmt], kid=[args, body_stmt]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
+impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
     ast_seg = self._get_source_segment(nd);
     if (ast_seg is None) {
         ast_seg = 'f""';
     }
-    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+    fstr_match = re.`match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
 
-    valid: list[(uni.String | uni.FormattedValue)] = [];
+    valid: list[(String | FormattedValue)] = [];
     for i in nd.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
             escaped_value = self._get_source_segment(i);
@@ -905,7 +897,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
             }
 
             valid.append(
-                uni.String(
+                String(
                     orig_src=self.orig_src,
                     name='STRING',
                     value=escaped_value,
@@ -919,11 +911,11 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
             );
         } elif isinstance(i, py_ast.FormattedValue) {
             converted = self.convert(i);
-            if isinstance(converted, uni.FormattedValue) {
+            if isinstance(converted, FormattedValue) {
                 valid.append(converted);
             }
         } else {
-            raise self.ice('Invalid node in joined str');
+            raise RuntimeError(self.ice('Invalid node in joined str'));
         }
     }
     if fstr_match {
@@ -937,7 +929,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     all_content = ''.join(
         part.lit_value
         for part in valid
-        if isinstance(part, uni.String)
+        if isinstance(part, String)
     );
     has_single = "'" in all_content;
     has_double = '"' in all_content;
@@ -961,18 +953,18 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
     }
     tok_start = self.operator(Tok.STRING, start);
     tok_end = self.operator(Tok.STRING, end);
-    fstr = uni.FString(
+    fstr = FString(
         start=tok_start,
         parts=valid,
         end=tok_end,
-        kid=[tok_start, *valid, tok_end] if valid else [uni.EmptyToken()]
+        kid=[tok_start, *valid, tok_end] if valid else [EmptyToken()]
     );
-    return uni.MultiString(strings=[fstr], kid=[fstr]);
+    return MultiString(strings=[fstr], kid=[fstr]);
 }
 
-impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> uni.Import {
+impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> Import {
     lang = self.name_node(nd, 'py', col_end=0);
-    modpaths: list[uni.Name] = [];
+    modpaths: list[Name] = [];
     if nd.module {
         for i in nd.module.split('.') {
             modpaths.append(self.name_node(nd, i, col_start=0, col_end=0));
@@ -980,19 +972,17 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> uni.Import {
     }
     moddots = [self.operator(Tok.DOT, '.') for _ in range(nd.level)];
     modparts = moddots + modpaths;
-    path = uni.ModulePath(
-        path=modpaths or None, level=nd.level, alias=None, kid=modparts
-    );
+    path = ModulePath(path=modpaths or None, level=nd.level, alias=None, kid=modparts);
     names = [self.convert(name) for name in nd.names];
     valid_names = [];
     for name in names {
         if (
-            isinstance(name, uni.ExprAsItem)
-            and isinstance(name.expr, uni.Name)
-            and (isinstance(name.alias, uni.Name) or (name.alias is None))
+            isinstance(name, ExprAsItem)
+            and isinstance(name.expr, Name)
+            and (isinstance(name.alias, Name) or (name.alias is None))
         ) {
             valid_names.append(
-                uni.ModuleItem(
+                ModuleItem(
                     name=name.expr,
                     alias=name.alias or None,
                     kid=[
@@ -1003,32 +993,30 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> uni.Import {
                 )
             );
         } else {
-            raise self.ice();
+            raise RuntimeError(self.ice());
         }
     }
     items = valid_names;
     if not items {
-        raise self.ice('No valid names in import from');
+        raise RuntimeError(self.ice('No valid names in import from'));
     }
-    pytag = uni.SubTag[uni.Name](tag=lang, kid=[lang]);
+    pytag = SubTag[Name](tag=lang, kid=[lang]);
     if ((len(nd.names) == 1) and (nd.names[0].name == '*')) {
-        ret = uni.Import(
-            from_loc=None, items=[path], is_absorb=True, kid=[pytag, path]
-        );
+        ret = Import(from_loc=None, items=[path], is_absorb=True, kid=[pytag, path]);
         return ret;
     }
-    ret = uni.Import(
+    ret = Import(
         from_loc=path, items=items, is_absorb=False, kid=[pytag, path, *items]
     );
     return ret;
 }
 
-impl PyastBuildPass.proc_import(nd: py_ast.Import) -> uni.Import {
+impl PyastBuildPass.proc_import(nd: py_ast.Import) -> Import {
     names = [self.convert(name) for name in nd.names];
     valid_names = [
         name
         for name in names
-        if isinstance(name, uni.ExprAsItem)
+        if isinstance(name, ExprAsItem)
     ];
     if (len(valid_names) != len(names)) {
         self.emit(E5041);
@@ -1036,11 +1024,11 @@ impl PyastBuildPass.proc_import(nd: py_ast.Import) -> uni.Import {
     paths = [];
     for name in valid_names {
         if (
-            isinstance(name.expr, uni.Name)
-            and (isinstance(name.alias, uni.Name) or (name.alias is None))
+            isinstance(name.expr, Name)
+            and (isinstance(name.alias, Name) or (name.alias is None))
         ) {
             paths.append(
-                uni.ModulePath(
+                ModulePath(
                     path=[name.expr],
                     level=0,
                     alias=name.alias,
@@ -1052,47 +1040,43 @@ impl PyastBuildPass.proc_import(nd: py_ast.Import) -> uni.Import {
                 )
             );
         } else {
-            raise self.ice();
+            raise RuntimeError(self.ice());
         }
     }
-    ret = uni.Import(from_loc=None, items=paths, is_absorb=False, kid=paths);
+    ret = Import(from_loc=None, items=paths, is_absorb=False, kid=paths);
     return ret;
 }
 
-impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr {
-    test = self.convert(nd.test);
+impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> IfElseExpr {
+    `test = self.convert(nd.`test);
     body = self.convert(nd.body);
     orelse = self.convert(nd.orelse);
     if (
-        isinstance(test, uni.Expr)
-        and isinstance(body, uni.Expr)
-        and isinstance(orelse, uni.Expr)
+        isinstance(`test, Expr) and isinstance(body, Expr) and isinstance(orelse, Expr)
     ) {
-        cond_cfg = uni.CfgExpr(expr=test, kid=[test]);
-        val_cfg = uni.CfgExpr(expr=body, kid=[body]);
-        else_cfg = uni.CfgExpr(expr=orelse, kid=[orelse]);
-        return uni.IfElseExpr(
+        cond_cfg = CfgExpr(expr=`test, kid=[`test]);
+        val_cfg = CfgExpr(expr=body, kid=[body]);
+        else_cfg = CfgExpr(expr=orelse, kid=[orelse]);
+        return IfElseExpr(
             value=val_cfg,
             condition=cond_cfg,
             else_value=else_cfg,
             kid=[val_cfg, cond_cfg, else_cfg]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.Semi {
+impl PyastBuildPass.proc_global(nd: py_ast.Global) -> Semi {
     return self.proc_pass(cast(py_ast.Pass, nd));
 }
 
-impl PyastBuildPass.proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr {
-    return self._proc_compr(nd, uni.GenCompr);
+impl PyastBuildPass.proc_generator_exp(nd: py_ast.GeneratorExp) -> GenCompr {
+    return self._proc_compr(nd, GenCompr);
 }
 
-impl PyastBuildPass.proc_formatted_value(
-    nd: py_ast.FormattedValue
-) -> uni.FormattedValue {
+impl PyastBuildPass.proc_formatted_value(nd: py_ast.FormattedValue) -> FormattedValue {
     prev_in_fstring = self.in_fstring_expr;
     self.in_fstring_expr = True;
     value = self.convert(nd.value);
@@ -1107,7 +1091,7 @@ impl PyastBuildPass.proc_formatted_value(
                     fmt_parts.append(part.value);
                 } elif isinstance(part, py_ast.FormattedValue) {
                     nested_fmt = self.convert(part);
-                    if isinstance(nested_fmt, uni.FormattedValue) {
+                    if isinstance(nested_fmt, FormattedValue) {
                         fmt_spec = nested_fmt;
                         break;
                     }
@@ -1115,7 +1099,7 @@ impl PyastBuildPass.proc_formatted_value(
             }
             if (not fmt_spec and fmt_parts) {
                 fmt_str = ''.join(fmt_parts);
-                fmt_spec = uni.String(
+                fmt_spec = String(
                     orig_src=self.orig_src,
                     name='STRING',
                     value=fmt_str,
@@ -1128,34 +1112,34 @@ impl PyastBuildPass.proc_formatted_value(
                 );
             }
         } else {
-            fmt_spec = cast(uni.Expr, self.convert(nd.format_spec));
+            fmt_spec = cast(Expr, self.convert(nd.format_spec));
         }
     }
-    if isinstance(value, uni.Expr) {
-        ret = uni.FormattedValue(
+    if isinstance(value, Expr) {
+        ret = FormattedValue(
             format_part=value,
             conversion=nd.conversion,
             format_spec=fmt_spec,
             kid=[value, fmt_spec] if fmt_spec else [value]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
     return ret;
 }
 
-impl PyastBuildPass.proc_expr(nd: py_ast.Expr) -> uni.ExprStmt {
+impl PyastBuildPass.proc_expr(nd: py_ast.Expr) -> ExprStmt {
     value = self.convert(nd.value);
-    if isinstance(value, uni.Expr) {
-        return uni.ExprStmt(expr=value, in_fstring=False, kid=[value]);
+    if isinstance(value, Expr) {
+        return ExprStmt(expr=value, in_fstring=False, kid=[value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> uni.Except {
+impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> Except {
     type = self.convert(nd.type) if nd.type else None;
-    name: (uni.Name | None) = None;
+    name: (Name | None) = None;
     if (not type and not nd.name) {
         type = self.name_node(nd, 'Exception');
         name = self.name_node(nd, 'e');
@@ -1166,67 +1150,67 @@ impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> uni.Except 
     valid = [
         i
         for i in body
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(valid) != len(body)) {
-        raise self.ice('Length mismatch in except handler body');
+        raise RuntimeError(self.ice('Length mismatch in except handler body'));
     }
     kid = [
         item
         for item in [type, name, *valid]
         if item
     ];
-    if (isinstance(type, uni.Expr) and (isinstance(name, uni.Name) or not name)) {
-        return uni.Except(ex_type=type, name=name, body=valid, kid=kid);
+    if (isinstance(type, Expr) and (isinstance(name, Name) or not name)) {
+        return Except(ex_type=type, name=name, body=valid, kid=kid);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_dict_comp(nd: py_ast.DictComp) -> uni.DictCompr {
+impl PyastBuildPass.proc_dict_comp(nd: py_ast.DictComp) -> DictCompr {
     key = self.convert(nd.key);
     value = self.convert(nd.value);
-    if (isinstance(key, uni.Expr) and isinstance(value, uni.Expr)) {
-        kv_pair = uni.KVPair(key=key, value=value, kid=[key, value]);
+    if (isinstance(key, Expr) and isinstance(value, Expr)) {
+        kv_pair = KVPair(key=key, value=value, kid=[key, value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
     generators = [self.convert(i) for i in nd.generators];
     valid = [
         i
         for i in generators
-        if isinstance(i, uni.InnerCompr)
+        if isinstance(i, InnerCompr)
     ];
     if (len(valid) != len(generators)) {
-        raise self.ice('Length mismatch in dict compr generators');
+        raise RuntimeError(self.ice('Length mismatch in dict compr generators'));
     }
-    return uni.DictCompr(kv_pair=kv_pair, compr=valid, kid=[kv_pair, *valid]);
+    return DictCompr(kv_pair=kv_pair, compr=valid, kid=[kv_pair, *valid]);
 }
 
-impl PyastBuildPass.proc_dict(nd: py_ast.Dict) -> uni.DictVal {
+impl PyastBuildPass.proc_dict(nd: py_ast.Dict) -> DictVal {
     keys = [self.convert(i) if i else None for i in nd.keys];
     values = [self.convert(i) for i in nd.values];
     valid_keys = [
         i
         for i in keys
-        if (isinstance(i, uni.Expr) or (i is None))
+        if (isinstance(i, Expr) or (i is None))
     ];
     valid_values = [
         i
         for i in values
-        if isinstance(i, uni.Expr)
+        if isinstance(i, Expr)
     ];
-    kvpair: list[uni.KVPair] = [];
+    kvpair: list[KVPair] = [];
     for i in range(len(values)) {
         key_pluck = valid_keys[i];
-        kvp = uni.KVPair(
+        kvp = KVPair(
             key=key_pluck,
             value=valid_values[i],
             kid=[key_pluck, valid_values[i]] if key_pluck else [valid_values[i]]
         );
         kvpair.append(kvp);
     }
-    return uni.DictVal(
+    return DictVal(
         kv_pairs=kvpair,
         kid=[*kvpair]
             if len(kvpair)
@@ -1234,8 +1218,8 @@ impl PyastBuildPass.proc_dict(nd: py_ast.Dict) -> uni.DictVal {
     );
 }
 
-impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> uni.CtrlStmt {
-    continue_tok = uni.Token(
+impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> CtrlStmt {
+    continue_tok = Token(
         orig_src=self.orig_src,
         name=Tok.KW_CONTINUE,
         value='continue',
@@ -1246,17 +1230,17 @@ impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> uni.CtrlStmt {
         pos_start=0,
         pos_end=0
     );
-    return uni.CtrlStmt(ctrl=continue_tok, kid=[continue_tok]);
+    return CtrlStmt(ctrl=continue_tok, kid=[continue_tok]);
 }
 
-impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
+impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> Literal {
     type_mapping = {
-        int: uni.Int,
-        float: uni.Float,
-        str: uni.String,
-        bytes: uni.String,
-        bool: uni.Bool,
-        type(None): uni.Null
+        int: Int,
+        float: Float,
+        str: String,
+        bytes: String,
+        bool: Bool,
+        type(None): Null
     };
     value_type = type(nd.value);
     if (value_type in type_mapping) {
@@ -1291,7 +1275,7 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
             pos_end=0
         );
     } elif (nd.value == Ellipsis) {
-        return uni.Ellipsis(
+        return UniEllipsis(
             orig_src=self.orig_src,
             name=Tok.ELLIPSIS,
             value='...',
@@ -1303,67 +1287,67 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
             pos_end=0
         );
     } else {
-        raise self.ice('Invalid type for constant');
+        raise RuntimeError(self.ice('Invalid type for constant'));
     }
 }
 
-impl PyastBuildPass.proc_compare(nd: py_ast.Compare) -> uni.AtomUnit {
+impl PyastBuildPass.proc_compare(nd: py_ast.Compare) -> AtomUnit {
     left = self.convert(nd.left);
     comparators = [self.convert(comparator) for comparator in nd.comparators];
     valid_comparators = [
         comparator
         for comparator in comparators
-        if isinstance(comparator, uni.Expr)
+        if isinstance(comparator, Expr)
     ];
     ops = [self.convert(op) for op in nd.ops];
     valid_ops = [
         op
         for op in ops
-        if isinstance(op, uni.Token)
+        if isinstance(op, Token)
     ];
     kids = [left, *valid_ops, *valid_comparators];
     if (
-        isinstance(left, uni.Expr)
+        isinstance(left, Expr)
         and (len(ops) == len(valid_ops))
         and (len(comparators) == len(valid_comparators))
     ) {
-        expr = uni.CompareExpr(
+        expr = CompareExpr(
             left=left, rights=valid_comparators, ops=valid_ops, kid=kids
         );
-        return uni.AtomUnit(
+        return AtomUnit(
             value=expr,
             kid=[self.operator(Tok.RPAREN, '('), expr, self.operator(Tok.LPAREN, ')')]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_call(nd: py_ast.Call) -> uni.FuncCall {
+impl PyastBuildPass.proc_call(nd: py_ast.Call) -> FuncCall {
     func = self.convert(nd.func);
-    params_in: list[(uni.Expr | uni.KWPair)] = [];
+    params_in: list[(Expr | KWPair)] = [];
     args = [self.convert(arg) for arg in nd.args];
     keywords = [self.convert(keyword) for keyword in nd.keywords];
     for i in args {
-        if isinstance(i, uni.Expr) {
+        if isinstance(i, Expr) {
             params_in.append(i);
         }
     }
     for i in keywords {
-        if isinstance(i, uni.KWPair) {
+        if isinstance(i, KWPair) {
             params_in.append(i);
         }
     }
     kids = [func, *params_in] if (len(params_in) != 0) else [func];
-    if isinstance(func, uni.Expr) {
-        return uni.FuncCall(target=func, params=params_in, genai_call=None, kid=kids);
+    if isinstance(func, Expr) {
+        return FuncCall(target=func, params=params_in, genai_call=None, kid=kids);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_break(nd: py_ast.Break) -> uni.CtrlStmt {
-    break_tok = uni.Token(
+impl PyastBuildPass.proc_break(nd: py_ast.Break) -> CtrlStmt {
+    break_tok = Token(
         orig_src=self.orig_src,
         name=Tok.KW_BREAK,
         value='break',
@@ -1374,87 +1358,83 @@ impl PyastBuildPass.proc_break(nd: py_ast.Break) -> uni.CtrlStmt {
         pos_start=0,
         pos_end=0
     );
-    return uni.CtrlStmt(ctrl=break_tok, kid=[break_tok]);
+    return CtrlStmt(ctrl=break_tok, kid=[break_tok]);
 }
 
-impl PyastBuildPass.proc_bool_op(nd: py_ast.BoolOp) -> uni.AtomUnit {
+impl PyastBuildPass.proc_bool_op(nd: py_ast.BoolOp) -> AtomUnit {
     op = self.convert(nd.op);
     values = [self.convert(value) for value in nd.values];
     valid = [
         value
         for value in values
-        if isinstance(value, uni.Expr)
+        if isinstance(value, Expr)
     ];
-    if (isinstance(op, uni.Token) and (len(valid) == len(values))) {
-        cfg_vals = [uni.CfgExpr(expr=v, kid=[v]) for v in valid];
-        expr = uni.BoolExpr(op=op, values=cfg_vals, kid=[op, *cfg_vals]);
-        return uni.AtomUnit(
+    if (isinstance(op, Token) and (len(valid) == len(values))) {
+        cfg_vals = [CfgExpr(expr=v, kid=[v]) for v in valid];
+        expr = BoolExpr(op=op, values=cfg_vals, kid=[op, *cfg_vals]);
+        return AtomUnit(
             value=expr,
             kid=[self.operator(Tok.RPAREN, '('), expr, self.operator(Tok.LPAREN, ')')]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_unary_op(nd: py_ast.UnaryOp) -> uni.UnaryExpr {
+impl PyastBuildPass.proc_unary_op(nd: py_ast.UnaryOp) -> UnaryExpr {
     op = self.convert(nd.op);
     operand = self.convert(nd.operand);
-    if (isinstance(op, uni.Token) and isinstance(operand, uni.Expr)) {
-        return uni.UnaryExpr(op=op, operand=operand, kid=[op, operand]);
+    if (isinstance(op, Token) and isinstance(operand, Expr)) {
+        return UnaryExpr(op=op, operand=operand, kid=[op, operand]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (uni.AtomUnit | uni.BinaryExpr) {
+impl PyastBuildPass.proc_bin_op(nd: py_ast.BinOp) -> (AtomUnit | BinaryExpr) {
     left = self.convert(nd.left);
     op = self.convert(nd.op);
     right = self.convert(nd.right);
-    if (
-        isinstance(left, uni.Expr)
-        and isinstance(op, uni.Token)
-        and isinstance(right, uni.Expr)
-    ) {
+    if (isinstance(left, Expr) and isinstance(op, Token) and isinstance(right, Expr)) {
         unwrapped_left = left;
         if (
-            isinstance(left, uni.AtomUnit)
-            and isinstance(left.value, uni.BinaryExpr)
-            and isinstance(left.value.op, uni.Token)
+            isinstance(left, AtomUnit)
+            and isinstance(left.value, BinaryExpr)
+            and isinstance(left.value.op, Token)
             and (left.value.op.value == op.value)
         ) {
             unwrapped_left = left.value;
         }
-        value = uni.BinaryExpr(
+        value = BinaryExpr(
             left=unwrapped_left, op=op, right=right, kid=[unwrapped_left, op, right]
         );
-        return uni.AtomUnit(
+        return AtomUnit(
             value=value,
             kid=[self.operator(Tok.RPAREN, '('), value, self.operator(Tok.LPAREN, ')')]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_await(nd: py_ast.Await) -> uni.AwaitExpr {
+impl PyastBuildPass.proc_await(nd: py_ast.Await) -> AwaitExpr {
     value = self.convert(nd.value);
-    if isinstance(value, uni.Expr) {
-        return uni.AwaitExpr(target=value, kid=[value]);
+    if isinstance(value, Expr) {
+        return AwaitExpr(target=value, kid=[value]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer {
+impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> AtomTrailer {
     value = self.convert(nd.value);
     if (
-        isinstance(value, uni.FuncCall)
-        and isinstance(value.target, uni.Name)
+        isinstance(value, FuncCall)
+        and isinstance(value.target, Name)
         and (value.target.value == 'super')
     ) {
         tok = self.name_node(nd, 'super', name_tok=Tok.KW_SUPER);
-        value = uni.SpecialVarRef(var=tok);
+        value = SpecialVarRef(var=tok);
     }
     attribute = self.name_node(
         nd,
@@ -1463,8 +1443,8 @@ impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer {
         col_end=(nd.col_offset + len(nd.attr)),
         is_kwesc=(nd.attr == 'init')
     );
-    if isinstance(value, uni.Expr) {
-        return uni.AtomTrailer(
+    if isinstance(value, Expr) {
+        return AtomTrailer(
             target=value,
             right=attribute,
             is_attr=True,
@@ -1472,73 +1452,73 @@ impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer {
             kid=[value, attribute]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_assert(nd: py_ast.Assert) -> uni.AssertStmt {
-    test = self.convert(nd.test);
+impl PyastBuildPass.proc_assert(nd: py_ast.Assert) -> AssertStmt {
+    `test = self.convert(nd.`test);
     msg = self.convert(nd.msg) if nd.msg else None;
-    if (isinstance(test, uni.Expr) and (isinstance(msg, uni.Expr) or (msg is None))) {
-        return uni.AssertStmt(
-            condition=test, error_msg=msg, kid=[test, msg] if msg else [test]
+    if (isinstance(`test, Expr) and (isinstance(msg, Expr) or (msg is None))) {
+        return AssertStmt(
+            condition=`test, error_msg=msg, kid=[`test, msg] if msg else [`test]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_raise(nd: py_ast.Raise) -> uni.RaiseStmt {
+impl PyastBuildPass.proc_raise(nd: py_ast.Raise) -> RaiseStmt {
     exc = self.convert(nd.exc) if nd.exc else None;
     cause = self.convert(nd.cause) if nd.cause else None;
-    kid: list[(uni.Expr | uni.Token)] = [];
-    if isinstance(exc, uni.Expr) {
+    kid: list[(Expr | Token)] = [];
+    if isinstance(exc, Expr) {
         kid = [exc];
     }
-    if isinstance(cause, uni.Expr) {
+    if isinstance(cause, Expr) {
         kid.append(cause);
     }
     if not (exc and cause) {
         kid.append(self.operator(Tok.KW_RAISE, 'raise'));
     }
     if (
-        (isinstance(cause, uni.Expr) or (cause is None))
-        and (isinstance(exc, uni.Expr) or (exc is None))
+        (isinstance(cause, Expr) or (cause is None))
+        and (isinstance(exc, Expr) or (exc is None))
     ) {
         if (exc and not nd.cause) {
-            return uni.RaiseStmt(
+            return RaiseStmt(
                 cause=exc,
                 from_target=None,
                 kid=[self.operator(Tok.KW_RAISE, 'raise'), exc]
             );
         } else {
-            return uni.RaiseStmt(cause=cause, from_target=exc, kid=kid);
+            return RaiseStmt(cause=cause, from_target=exc, kid=kid);
         }
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_async_with(nd: py_ast.AsyncWith) -> uni.WithStmt {
+impl PyastBuildPass.proc_async_with(nd: py_ast.AsyncWith) -> WithStmt {
     items = [self.convert(item) for item in nd.items];
     valid_items = [
         item
         for item in items
-        if isinstance(item, uni.ExprAsItem)
+        if isinstance(item, ExprAsItem)
     ];
     if (len(valid_items) != len(items)) {
-        raise self.ice('Length mismatch in with items');
+        raise RuntimeError(self.ice('Length mismatch in with items'));
     }
     body = [self.convert(stmt) for stmt in nd.body];
     valid_body = [
         stmt
         for stmt in body
-        if isinstance(stmt, uni.CodeBlockStmt)
+        if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        raise self.ice('Length mismatch in async for body');
+        raise RuntimeError(self.ice('Length mismatch in async for body'));
     }
-    return uni.WithStmt(
+    return WithStmt(
         is_async=True,
         exprs=valid_items,
         body=valid_body,
@@ -1546,26 +1526,26 @@ impl PyastBuildPass.proc_async_with(nd: py_ast.AsyncWith) -> uni.WithStmt {
     );
 }
 
-impl PyastBuildPass.proc_with(nd: py_ast.With) -> uni.WithStmt {
+impl PyastBuildPass.proc_with(nd: py_ast.With) -> WithStmt {
     items = [self.convert(item) for item in nd.items];
     valid_items = [
         item
         for item in items
-        if isinstance(item, uni.ExprAsItem)
+        if isinstance(item, ExprAsItem)
     ];
     if (len(valid_items) != len(items)) {
-        raise self.ice('Length mismatch in with items');
+        raise RuntimeError(self.ice('Length mismatch in with items'));
     }
     body = [self.convert(stmt) for stmt in nd.body];
     valid_body = [
         stmt
         for stmt in body
-        if isinstance(stmt, uni.CodeBlockStmt)
+        if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        raise self.ice('Length mismatch in async for body');
+        raise RuntimeError(self.ice('Length mismatch in async for body'));
     }
-    return uni.WithStmt(
+    return WithStmt(
         is_async=False,
         exprs=valid_items,
         body=valid_body,
@@ -1573,13 +1553,13 @@ impl PyastBuildPass.proc_with(nd: py_ast.With) -> uni.WithStmt {
     );
 }
 
-impl PyastBuildPass.proc_if(nd: py_ast.If) -> uni.IfStmt {
-    test = self.convert(nd.test);
+impl PyastBuildPass.proc_if(nd: py_ast.If) -> IfStmt {
+    `test = self.convert(nd.`test);
     body = [self.convert(stmt) for stmt in nd.body];
     valid_body = [
         stmt
         for stmt in body
-        if isinstance(stmt, uni.CodeBlockStmt)
+        if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
         self.emit(E5042);
@@ -1589,95 +1569,95 @@ impl PyastBuildPass.proc_if(nd: py_ast.If) -> uni.IfStmt {
     valid_orelse = [
         stmt
         for stmt in orelse
-        if isinstance(stmt, uni.CodeBlockStmt)
+        if isinstance(stmt, CodeBlockStmt)
     ];
     if valid_orelse {
         first_elm = valid_orelse[0];
-        if (isinstance(first_elm, uni.IfStmt) and (len(valid_orelse) == 1)) {
-            else_body: uni.ElseIf | uni.ElseStmt | None = uni.ElseIf(
+        if (isinstance(first_elm, IfStmt) and (len(valid_orelse) == 1)) {
+            else_body: ElseIf | ElseStmt | None = ElseIf(
                 condition=first_elm.condition,
                 body=first_elm.body,
                 else_body=first_elm.else_body,
                 kid=first_elm.kid
             );
         } else {
-            else_body = uni.ElseStmt(body=valid_orelse, kid=valid_orelse);
+            else_body = ElseStmt(body=valid_orelse, kid=valid_orelse);
         }
     } else {
         else_body = None;
     }
-    if isinstance(test, uni.Expr) {
-        ret = uni.IfStmt(
-            condition=test,
+    if isinstance(`test, Expr) {
+        ret = IfStmt(
+            condition=`test,
             body=body2,
             else_body=else_body,
-            kid=[test, *body2, else_body] if else_body else [test, *body2]
+            kid=[`test, *body2, else_body] if else_body else [`test, *body2]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
     return ret;
 }
 
 
-impl PyastBuildPass.proc_while(nd: py_ast.While) -> uni.WhileStmt {
-    test = self.convert(nd.test);
+impl PyastBuildPass.proc_while(nd: py_ast.While) -> WhileStmt {
+    `test = self.convert(nd.`test);
     body = [self.convert(stmt) for stmt in nd.body];
     valid_body = [
         stmt
         for stmt in body
-        if isinstance(stmt, uni.CodeBlockStmt)
+        if isinstance(stmt, CodeBlockStmt)
     ];
     if (len(valid_body) != len(body)) {
-        raise self.ice('Length mismatch in while body');
+        raise RuntimeError(self.ice('Length mismatch in while body'));
     }
     orelse = [self.convert(i) for i in nd.orelse];
     val_orelse = [
         i
         for i in orelse
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_orelse) != len(orelse)) {
-        raise self.ice('Length mismatch in for orelse');
+        raise RuntimeError(self.ice('Length mismatch in for orelse'));
     }
-    fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
-    if isinstance(test, uni.Expr) {
-        return uni.WhileStmt(
-            condition=test,
+    fin_orelse = ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
+    if isinstance(`test, Expr) {
+        return WhileStmt(
+            condition=`test,
             body=valid_body,
             else_body=fin_orelse,
-            kid=[test, *valid_body]
+            kid=[`test, *valid_body]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> uni.InForStmt {
+impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> InForStmt {
     target = self.convert(nd.target);
     iter = self.convert(nd.iter);
     body = [self.convert(i) for i in nd.body];
     val_body = [
         i
         for i in body
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_body) != len(body)) {
-        raise self.ice('Length mismatch in for body');
+        raise RuntimeError(self.ice('Length mismatch in for body'));
     }
     valid_body = val_body;
     orelse = [self.convert(i) for i in nd.orelse];
     val_orelse = [
         i
         for i in orelse
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_orelse) != len(orelse)) {
-        raise self.ice('Length mismatch in for orelse');
+        raise RuntimeError(self.ice('Length mismatch in for orelse'));
     }
-    fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
-    if (isinstance(target, uni.Expr) and isinstance(iter, uni.Expr)) {
-        return uni.InForStmt(
+    fin_orelse = ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
+    if (isinstance(target, Expr) and isinstance(iter, Expr)) {
+        return InForStmt(
             target=target,
             is_async=True,
             collection=iter,
@@ -1688,35 +1668,35 @@ impl PyastBuildPass.proc_async_for(nd: py_ast.AsyncFor) -> uni.InForStmt {
                 else [target, iter, *valid_body]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_for(nd: py_ast.For) -> uni.InForStmt {
+impl PyastBuildPass.proc_for(nd: py_ast.For) -> InForStmt {
     target = self.convert(nd.target);
     iter = self.convert(nd.iter);
     body = [self.convert(i) for i in nd.body];
     val_body = [
         i
         for i in body
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_body) != len(body)) {
-        raise self.ice('Length mismatch in for body');
+        raise RuntimeError(self.ice('Length mismatch in for body'));
     }
     valid_body = val_body;
     orelse = [self.convert(i) for i in nd.orelse];
     val_orelse = [
         i
         for i in orelse
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(val_orelse) != len(orelse)) {
-        raise self.ice('Length mismatch in for orelse');
+        raise RuntimeError(self.ice('Length mismatch in for orelse'));
     }
-    fin_orelse = uni.ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
-    if (isinstance(target, uni.Expr) and isinstance(iter, uni.Expr)) {
-        return uni.InForStmt(
+    fin_orelse = ElseStmt(body=val_orelse, kid=val_orelse) if orelse else None;
+    if (isinstance(target, Expr) and isinstance(iter, Expr)) {
+        return InForStmt(
             target=target,
             is_async=False,
             collection=iter,
@@ -1727,29 +1707,29 @@ impl PyastBuildPass.proc_for(nd: py_ast.For) -> uni.InForStmt {
                 else [target, iter, *valid_body]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> uni.Assignment {
+impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> Assignment {
     target = self.convert(nd.target);
     self.in_type_annotation = True;
     annotation = self.convert(nd.annotation);
     self.in_type_annotation = False;
-    if isinstance(annotation, uni.Expr) {
-        annotation_subtag = uni.SubTag[uni.Expr](tag=annotation, kid=[annotation]);
+    if isinstance(annotation, Expr) {
+        annotation_subtag = SubTag[Expr](tag=annotation, kid=[annotation]);
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
     value = self.convert(nd.value) if nd.value else None;
     if (
-        (isinstance(value, (uni.Expr, uni.YieldExpr)) or not value)
-        and isinstance(annotation, uni.Expr)
-        and isinstance(target, uni.Expr)
+        (isinstance(value, (Expr, YieldExpr)) or not value)
+        and isinstance(annotation, Expr)
+        and isinstance(target, Expr)
     ) {
-        return uni.Assignment(
+        return Assignment(
             target=[target],
-            value=value if isinstance(value, (uni.Expr, uni.YieldExpr)) else None,
+            value=value if isinstance(value, (Expr, YieldExpr)) else None,
             type_tag=annotation_subtag,
             mutable=False,
             kid=[target, annotation_subtag, value]
@@ -1757,24 +1737,22 @@ impl PyastBuildPass.proc_ann_assign(nd: py_ast.AnnAssign) -> uni.Assignment {
                 else [target, annotation_subtag]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_aug_assign(nd: py_ast.AugAssign) -> uni.Assignment {
+impl PyastBuildPass.proc_aug_assign(nd: py_ast.AugAssign) -> Assignment {
     import from jaclang.jac0core.constant { TOKEN_MAP }
     target = self.convert(nd.target);
     op = self.convert(nd.op);
-    if isinstance(op, uni.Token) {
+    if isinstance(op, Token) {
         op.name = self.aug_op_map(TOKEN_MAP, op);
     }
     value = self.convert(nd.value);
     if (
-        isinstance(value, uni.Expr)
-        and isinstance(target, uni.Expr)
-        and isinstance(op, uni.Token)
+        isinstance(value, Expr) and isinstance(target, Expr) and isinstance(op, Token)
     ) {
-        return uni.Assignment(
+        return Assignment(
             target=[target],
             type_tag=None,
             mutable=False,
@@ -1783,60 +1761,60 @@ impl PyastBuildPass.proc_aug_assign(nd: py_ast.AugAssign) -> uni.Assignment {
             kid=[target, op, value]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_assign(nd: py_ast.Assign) -> uni.Assignment {
+impl PyastBuildPass.proc_assign(nd: py_ast.Assign) -> Assignment {
     value = self.convert(nd.value);
     targets = [self.convert(target) for target in nd.targets];
     valid = [
         target
         for target in targets
-        if isinstance(target, uni.Expr)
+        if isinstance(target, Expr)
     ];
     if not (len(valid) == len(targets)) {
-        raise self.ice('Length mismatch in assignment targets');
+        raise RuntimeError(self.ice('Length mismatch in assignment targets'));
     }
-    if isinstance(value, uni.Expr) {
-        return uni.Assignment(
+    if isinstance(value, Expr) {
+        return Assignment(
             target=valid, value=value, type_tag=None, mutable=False, kid=[*valid, value]
         );
     } else {
-        raise self.ice();
+        raise RuntimeError(self.ice());
     }
 }
 
-impl PyastBuildPass.proc_delete(nd: py_ast.Delete) -> uni.DeleteStmt {
+impl PyastBuildPass.proc_delete(nd: py_ast.Delete) -> DeleteStmt {
     exprs = [self.convert(target) for target in nd.targets];
     valid_exprs = [
         expr
         for expr in exprs
-        if isinstance(expr, uni.Expr)
+        if isinstance(expr, Expr)
     ];
     if (not len(valid_exprs) or (len(valid_exprs) != len(exprs))) {
-        raise self.ice('Length mismatch in delete targets');
+        raise RuntimeError(self.ice('Length mismatch in delete targets'));
     }
     target_1 = valid_exprs[0]
         if (len(valid_exprs) > 1)
-        else uni.TupleVal(values=valid_exprs, kid=[*valid_exprs]);
-    return uni.DeleteStmt(target=target_1, kid=[*valid_exprs]);
+        else TupleVal(values=valid_exprs, kid=[*valid_exprs]);
+    return DeleteStmt(target=target_1, kid=[*valid_exprs]);
 }
 
-impl PyastBuildPass.proc_return(nd: py_ast.Return) -> (uni.ReturnStmt | None) {
+impl PyastBuildPass.proc_return(nd: py_ast.Return) -> (ReturnStmt | None) {
     value = self.convert(nd.value) if nd.value else None;
     if not value {
-        return uni.ReturnStmt(expr=None, kid=[self.operator(Tok.KW_RETURN, 'return')]);
-    } elif (value and isinstance(value, uni.Expr)) {
-        return uni.ReturnStmt(expr=value, kid=[value]);
+        return ReturnStmt(expr=None, kid=[self.operator(Tok.KW_RETURN, 'return')]);
+    } elif (value and isinstance(value, Expr)) {
+        return ReturnStmt(expr=value, kid=[value]);
     } else {
-        raise self.ice('Invalid return value');
+        raise RuntimeError(self.ice('Invalid return value'));
     }
 }
 
-impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.Enum) {
+impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (Archetype | Enum) {
     name = self.name_node(nd, nd.name);
-    arch_type = uni.Token(
+    arch_type = Token(
         orig_src=self.orig_src,
         name=Tok.KW_CLASS,
         value='class',
@@ -1850,25 +1828,25 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     body = [self.convert(i) for i in nd.body];
     for body_stmt in body {
         if (
-            isinstance(body_stmt, uni.Ability)
-            and isinstance(body_stmt.name_ref, uni.Name)
+            isinstance(body_stmt, Ability)
+            and isinstance(body_stmt.name_ref, Name)
             and (body_stmt.name_ref.value == '__init__')
         ) {
             tok = self.name_node(nd, 'init', name_tok=Tok.KW_INIT);
-            body_stmt.name_ref = uni.SpecialVarRef(var=tok);
+            body_stmt.name_ref = SpecialVarRef(var=tok);
         }
 
         if (
-            isinstance(body_stmt, uni.Ability)
+            isinstance(body_stmt, Ability)
             and body_stmt.signature
-            and isinstance(body_stmt.signature, uni.FuncSignature)
+            and isinstance(body_stmt.signature, FuncSignature)
             and body_stmt.signature.params
         ) {
             for param in body_stmt.signature.params {
                 if (
                     (param.name.value == 'self')
                     and param.type_tag
-                    and isinstance(param.type_tag.tag, uni.Name)
+                    and isinstance(param.type_tag.tag, Name)
                 ) {
                     param.type_tag.tag.value = name.value;
                 }
@@ -1876,53 +1854,58 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
         }
     }
     doc = body[0].expr
-        if (
-            body
-            and isinstance(body[0], uni.ExprStmt)
-            and isinstance(body[0].expr, uni.String)
-        )
+        if (body and isinstance(body[0], ExprStmt) and isinstance(body[0].expr, String))
         else None;
     self.convert_to_doc(doc) if doc else None;
     body = body[1:] if doc else body;
-    valid: list[uni.ArchBlockStmt] = self.extract_with_entry(body, uni.ArchBlockStmt)
-        if (body and not (isinstance(body[0], uni.Semi) and (len(body) == 1)))
+    valid: list[ArchBlockStmt] = self.extract_with_entry(body, ArchBlockStmt)
+        if (body and not (isinstance(body[0], Semi) and (len(body) == 1)))
         else [];
-    empty_block: Sequence[uni.UniNode] = [
+    empty_block: Sequence[UniNode] = [
         self.operator(Tok.LBRACE, '{'),
         self.operator(Tok.RBRACE, '}')
     ];
     valid_body = valid or empty_block;
     converted_base_classes = [self.convert(base) for base in nd.bases];
-    base_classes: list[uni.Expr] = [
+    base_classes: list[Expr] = [
         base
         for base in converted_base_classes
-        if isinstance(base, uni.Expr)
+        if isinstance(base, Expr)
+    ];
+    converted_keywords = [self.convert(kw) for kw in nd.keywords];
+    keywords: list[KWPair] = [
+        kw
+        for kw in converted_keywords
+        if isinstance(kw, KWPair)
     ];
     converted_decorators_list = [self.convert(i) for i in nd.decorator_list];
     decorators = [
         i
         for i in converted_decorators_list
-        if isinstance(i, uni.Expr)
+        if isinstance(i, Expr)
     ];
     if (len(decorators) != len(converted_decorators_list)) {
-        raise self.ice('Length mismatch in decorators on class');
+        raise RuntimeError(self.ice('Length mismatch in decorators on class'));
     }
     valid_decorators = decorators or None;
     kid: list = [];
     if valid_decorators {
         kid.extend(valid_decorators);
     }
+    kid.append(arch_type);
     kid.append(name);
     kid.extend(base_classes);
+    kid.extend(keywords);
     kid.extend(valid_body);
     if doc {
         kid.append(doc);
     }
-    return uni.Archetype(
+    return Archetype(
         arch_type=arch_type,
         name=name,
         access=None,
         base_classes=base_classes,
+        keywords=keywords,
         body=valid,
         kid=kid,
         doc=doc,
@@ -1930,9 +1913,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     );
 }
 
-impl PyastBuildPass.proc_async_function_def(
-    nd: py_ast.AsyncFunctionDef
-) -> uni.Ability {
+impl PyastBuildPass.proc_async_function_def(nd: py_ast.AsyncFunctionDef) -> Ability {
     ability = self.proc_function_def(nd);
     ability.is_async = True;
     return ability;
@@ -1940,21 +1921,21 @@ impl PyastBuildPass.proc_async_function_def(
 
 impl PyastBuildPass.proc_function_def(
     nd: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
-) -> uni.Ability {
+) -> Ability {
     name = self.name_node(nd, nd.name, is_kwesc=(nd.name in _reserved_keywords));
     body = [self.convert(i) for i in nd.body];
     valid = [
         i
         for i in body
-        if isinstance(i, uni.CodeBlockStmt)
+        if isinstance(i, CodeBlockStmt)
     ];
     if (len(valid) != len(body)) {
-        raise self.ice('Length mismatch in function body');
+        raise RuntimeError(self.ice('Length mismatch in function body'));
     }
     if (
         len(valid)
-        and isinstance(valid[0], uni.ExprStmt)
-        and isinstance(valid[0].expr, uni.String)
+        and isinstance(valid[0], ExprStmt)
+        and isinstance(valid[0].expr, String)
     ) {
         self.convert_to_doc(valid[0].expr);
         doc = valid[0].expr;
@@ -1967,16 +1948,14 @@ impl PyastBuildPass.proc_function_def(
     valid_dec = [
         i
         for i in decorators
-        if isinstance(i, uni.Expr)
+        if isinstance(i, Expr)
     ];
     if (len(valid_dec) != len(decorators)) {
-        raise self.ice('Length mismatch in decorators on function');
+        raise RuntimeError(self.ice('Length mismatch in decorators on function'));
     }
     valid_decorators = valid_dec or None;
     res = self.convert(nd.args);
-    sig: (uni.FuncSignature | None) = res
-        if isinstance(res, uni.FuncSignature)
-        else None;
+    sig: (FuncSignature | None) = res if isinstance(res, FuncSignature) else None;
     self.in_type_annotation = True;
     ret_sig = self.convert(nd.returns) if nd.returns else None;
     if ret_sig is None {
@@ -1985,9 +1964,9 @@ impl PyastBuildPass.proc_function_def(
         );
     }
     self.in_type_annotation = False;
-    if isinstance(ret_sig, uni.Expr) {
+    if isinstance(ret_sig, Expr) {
         if not sig {
-            sig = uni.FuncSignature(
+            sig = FuncSignature(
                 posonly_params=[],
                 params=[],
                 varargs=None,
@@ -2002,7 +1981,7 @@ impl PyastBuildPass.proc_function_def(
         }
     }
     if not sig {
-        raise self.ice('Function signature not found');
+        raise RuntimeError(self.ice('Function signature not found'));
     }
     kid = [];
     if doc {
@@ -2014,7 +1993,7 @@ impl PyastBuildPass.proc_function_def(
     kid.append(name);
     kid.append(sig);
     kid.extend(valid_body);
-    ret = uni.Ability(
+    ret = Ability(
         name_ref=name,
         is_async=False,
         is_static=False,
@@ -2031,40 +2010,39 @@ impl PyastBuildPass.proc_function_def(
     return ret;
 }
 
-impl PyastBuildPass.proc_template_str(nd: py_ast.AST) -> uni.UniNode {
-    raise self.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac");
+impl PyastBuildPass.proc_template_str(nd: py_ast.AST) -> UniNode {
+    raise RuntimeError(
+        self.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac")
+    );
 }
 
-impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> uni.UniNode {
-    raise self.ice("Python 3.14 t-string interpolations are not supported in Jac");
+impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> UniNode {
+    raise RuntimeError(
+        self.ice("Python 3.14 t-string interpolations are not supported in Jac")
+    );
 }
 
-impl PyastBuildPass.proc_module(nd: py_ast.Module) -> uni.Module {
+impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
     if not nd.body {
-        return uni.Module.make_stub(inject_src=self.ir_in.orig_src);
+        return Module.make_stub(inject_src=self.ir_in.orig_src);
     }
-    elements: list[uni.UniNode] = [self.convert(i) for i in nd.body];
+    elements: list[UniNode] = [self.convert(i) for i in nd.body];
     elements[0] = elements[0].expr
-        if (
-            isinstance(elements[0], uni.ExprStmt)
-            and isinstance(elements[0].expr, uni.String)
-        )
+        if (isinstance(elements[0], ExprStmt) and isinstance(elements[0].expr, String))
         else elements[0];
-    doc_str_list = [elements[0]] if isinstance(elements[0], uni.String) else [];
+    doc_str_list = [elements[0]] if isinstance(elements[0], String) else [];
     valid = (
-        doc_str_list + self.extract_with_entry(
-            elements[1:], (uni.ElementStmt, uni.EmptyToken)
-        )
+        doc_str_list + self.extract_with_entry(elements[1:], (ElementStmt, EmptyToken))
     )
         if doc_str_list
-        else self.extract_with_entry(elements[:], (uni.ElementStmt, uni.EmptyToken));
-    doc_str = elements[0] if isinstance(elements[0], uni.String) else None;
+        else self.extract_with_entry(elements[:], (ElementStmt, EmptyToken));
+    doc_str = elements[0] if isinstance(elements[0], String) else None;
     self.convert_to_doc(doc_str) if doc_str else None;
-    ret = uni.Module(
+    ret = Module(
         name=self.mod_path.split(os.path.sep)[-1].split('.')[0],
-        source=uni.Source('', mod_path=self.mod_path),
+        source=Source('', mod_path=self.mod_path),
         doc=doc_str,
-        body=valid[1:] if (valid and isinstance(valid[0], uni.String)) else valid,
+        body=valid[1:] if (valid and isinstance(valid[0], String)) else valid,
         terminals=[],
         kid=valid
     );
@@ -2073,15 +2051,15 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> uni.Module {
 }
 
 impl PyastBuildPass.extract_with_entry(
-    body: list[uni.UniNode], exclude_types: TypeAlias = T
-) -> list[(T | uni.ModuleCode)] {
-    def gen_mod_code(with_entry_body: list[uni.CodeBlockStmt]) -> uni.ModuleCode {
-        return uni.ModuleCode(
+    body: list[UniNode], exclude_types: TypeAlias = T
+) -> list[(T | ModuleCode)] {
+    def gen_mod_code(with_entry_body: list[CodeBlockStmt]) -> ModuleCode {
+        return ModuleCode(
             name=None, body=with_entry_body, kid=with_entry_body, doc=None
         );
     }
-    extracted: list[(T | uni.ModuleCode)] = [];
-    with_entry_body: list[uni.CodeBlockStmt] = [];
+    extracted: list[(T | ModuleCode)] = [];
+    with_entry_body: list[CodeBlockStmt] = [];
     for i in body {
         if isinstance(i, exclude_types) {
             if len(with_entry_body) {
@@ -2089,8 +2067,8 @@ impl PyastBuildPass.extract_with_entry(
                 with_entry_body = [];
             }
             extracted.append(i);
-        } elif isinstance(i, uni.CodeBlockStmt) {
-            if (isinstance(i, uni.ExprStmt) and isinstance(i.expr, uni.String)) {
+        } elif isinstance(i, CodeBlockStmt) {
+            if (isinstance(i, ExprStmt) and isinstance(i.expr, String)) {
                 self.convert_to_doc(i.expr);
             }
             with_entry_body.append(i);
@@ -2104,12 +2082,19 @@ impl PyastBuildPass.extract_with_entry(
     return extracted;
 }
 
-impl PyastBuildPass.transform(ir_in: uni.PythonModuleAst) -> uni.Module {
-    self.ir_out: uni.Module = self.proc_module(ir_in.ast);
+impl PyastBuildPass.transform(ir_in: PythonModuleAst) -> Module {
+    self.ir_out: Module = self.proc_module(ir_in.ast);
     return self.ir_out;
 }
 
-impl PyastBuildPass.convert(nd: py_ast.AST) -> uni.UniNode {
+impl PyastBuildPass.is_canceled -> bool {
+    if self.cancel_requested {
+        return True;
+    }
+    return (self.cancel_token is not None) and self.cancel_token.is_set();
+}
+
+impl PyastBuildPass.convert(nd: py_ast.AST) -> UniNode {
     import from jaclang.jac0core.helpers { pascal_to_snake }
     if self.is_canceled() {
         raise StopIteration;
@@ -2117,7 +2102,7 @@ impl PyastBuildPass.convert(nd: py_ast.AST) -> uni.UniNode {
     if hasattr(self, f"proc_{pascal_to_snake(type(nd).__name__)}") {
         ret = getattr(self, f"proc_{pascal_to_snake(type(nd).__name__)}")(nd);
     } else {
-        raise self.ice(f"Unknown node type {type(nd).__name__}");
+        raise RuntimeError(self.ice(f"Unknown node type {type(nd).__name__}"));
     }
     return ret;
 }
@@ -2135,8 +2120,8 @@ impl PyastBuildPass.name_node(
     col_start: int = -1,
     end_line: int = -1,
     is_kwesc: bool = False
-) -> uni.Name {
-    return uni.Name(
+) -> Name {
+    return Name(
         orig_src=self.orig_src,
         name=name_tok,
         value=value,

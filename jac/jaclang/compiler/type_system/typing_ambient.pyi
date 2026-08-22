@@ -3,7 +3,7 @@
 The TypeEvaluator merges the names listed in __all__ into
 builtins_module.names_in_scope so user code can write
 `def foo(cb: Callable[[], None])` without `import from typing { Callable }`.
-PyastGenPass reads the same __all__ to auto-emit
+JcirGenPass reads the same __all__ to auto-emit
 `from typing import <names>` in the generated Python whenever an ambient
 name is referenced — preserving runtime resolvability for libraries that
 introspect annotations (typing.get_type_hints, pydantic, FastAPI, ...).

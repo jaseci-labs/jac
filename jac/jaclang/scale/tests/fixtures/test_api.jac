@@ -23,9 +23,9 @@ def:pub public_status -> dict {
 # Test Data Models
 # ============================================================================
 node Task {
-    has title: str;
-    has priority: int = 1;
-    has completed: bool = False;
+    has title: str,
+        priority: int = 1,
+        completed: bool = False;
 }
 
 node TaskList {
@@ -36,8 +36,8 @@ node TaskList {
 # Test Walkers
 # ============================================================================
 walker CreateTask {
-    has title: str;
-    has priority: int = 1;
+    has title: str,
+        priority: int = 1;
 
     can create with Root entry {
         new_task = here ++> Task(title=self.title, priority=self.priority);
@@ -76,8 +76,8 @@ walker GetTask {
 }
 
 walker:priv PrivateCreateTask {
-    has title: str;
-    has priority: int = 1;
+    has title: str,
+        priority: int = 1;
 
     can create with Root entry {
         new_task = here ++> Task(title=self.title, priority=self.priority);
@@ -141,8 +141,8 @@ import asyncio;
 
 """Async walker that creates a task with simulated async delay."""
 async walker AsyncCreateTask {
-    has title: str;
-    has delay_ms: int = 100;
+    has title: str,
+        delay_ms: int = 100;
 
     async can create with Root entry {
         report {"status": "started", "title": self.title};
@@ -158,12 +158,12 @@ async walker AsyncCreateTask {
 # ============================================================================
 # File Upload Walkers
 # ============================================================================
-import from fastapi { UploadFile }
+import from jaclang.runtimelib.serving.datatypes { UploadFile }
 
 """Walker that handles single file upload."""
 walker UploadSingleFile {
-    has myfile: UploadFile;
-    has description: str = "";
+    has myfile: UploadFile,
+        description: str = "";
 
     can process with Root entry {
         report {
@@ -177,8 +177,8 @@ walker UploadSingleFile {
 
 """Walker with file upload that requires authentication (private by default)."""
 walker SecureFileUpload {
-    has document: UploadFile;
-    has notes: str = "";
+    has document: UploadFile,
+        notes: str = "";
 
     can process with Root entry {
         report {
@@ -272,8 +272,8 @@ walker MinimalWebhook {
 This walker should be accessible ONLY via ws://host/ws/EchoMessage endpoint."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
 async walker:pub EchoMessage {
-    has message: str;
-    has client_id: str = "anonymous";
+    has message: str,
+        client_id: str = "anonymous";
 
     async can echo with Root entry {
         report {
@@ -318,8 +318,8 @@ async walker PrivateWebSocket {
 All connected clients receive every message."""
 @restspec(protocol=APIProtocol.WEBSOCKET, broadcast=True)
 async walker:pub BroadcastChat {
-    has message: str;
-    has sender: str = "anonymous";
+    has message: str,
+        sender: str = "anonymous";
 
     async can handle with Root entry {
         report {
@@ -335,8 +335,8 @@ async walker:pub BroadcastChat {
 Authenticated chat room where all messages are broadcast to authenticated users."""
 @restspec(protocol=APIProtocol.WEBSOCKET, broadcast=True)
 async walker PrivateBroadcastChat {
-    has message: str;
-    has room: str = "general";
+    has message: str,
+        room: str = "general";
 
     async can handle with Root entry {
         report {
@@ -417,17 +417,17 @@ walker StaticDateWalker {
 }
 
 @schedule(trigger=ScheduleTrigger.STATIC, interval=0.3)
-def static_interval_func -> None {
+def static_interval_func {
     execution_log.append("static-interval-func");
 }
 
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
-def static_cron_func -> None {
+def static_cron_func {
     execution_log.append("static-cron-func");
 }
 
 @schedule(trigger=ScheduleTrigger.STATIC, date=_future_date)
-def static_date_func -> None {
+def static_date_func {
     execution_log.append("static-date-func");
 }
 
@@ -439,7 +439,7 @@ walker DynamicScheduledWalker {
 }
 
 @schedule(trigger=ScheduleTrigger.DYNAMIC)
-def dynamic_scheduled_func -> None {
+def dynamic_scheduled_func {
     execution_log.append("dynamic-func");
 }
 

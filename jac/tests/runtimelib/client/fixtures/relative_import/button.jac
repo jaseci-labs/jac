@@ -1,7 +1,5 @@
-cl import from antd { Button }
+import from antd { Button }
 
-cl def CustomButton()  -> JsxElement {
-    return <Button>
-        Click Me
-    </Button>;
+def CustomButton -> JsxElement {
+    <Button>Click Me</Button>
 }

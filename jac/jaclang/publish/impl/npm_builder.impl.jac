@@ -11,7 +11,7 @@ import from jaclang.publish.package_json { generate_package_json, npm_tarball_fi
 def _resolve_externals(
     config: any, files: list[any]
 ) -> tuple[dict[str, str], dict[str, str]] {
-    externals: set = set();
+    externals: set[str] = set();
     for f in files {
         for ext in f.external_imports {
             externals.add(ext);
@@ -65,21 +65,21 @@ impl NpmBuilder.build -> bytes {
     }
 
     files = collect_npm_sources(self.config, project_root=proj_root);
-    entry = resolve_npm_entry(self.config, files);
+    `entry = resolve_npm_entry(self.config, files);
     (extra_deps, extra_peers) = _resolve_externals(self.config, files);
 
     types = None;
-    if entry {
+    if `entry {
         for f in files {
-            if f.npm_path == entry and f.dts {
-                types = entry[:-3] + ".d.ts";
+            if f.npm_path == `entry and f.dts {
+                types = `entry[:-3] + ".d.ts";
             }
         }
     }
     pj = generate_package_json(
         self.config,
         project_root=proj_root,
-        main=entry,
+        main=`entry,
         types=types,
         extra_dependencies=extra_deps,
         extra_peer_dependencies=extra_peers,

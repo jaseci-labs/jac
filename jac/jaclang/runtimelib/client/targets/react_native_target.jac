@@ -13,7 +13,7 @@ obj _RNHmrHandler(_ClientHmrHandler) {
 
 obj ReactNativeTarget(ClientTarget) {
     has name: str = "react-native",
-        default: bool = False,
+        `default: bool = False,
         requires_setup: bool = True,
         config_section: str = "react_native";
 

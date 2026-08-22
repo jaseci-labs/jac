@@ -5,7 +5,6 @@ should resolve to T's members, not the builtin type class's members.
 
 This tests the bug where cls._jac_entry_funcs_ fails when cls: type[Archetype].
 """
-import from typing { ClassVar }
 import from collections { OrderedDict }
 
 obj DSFunc {

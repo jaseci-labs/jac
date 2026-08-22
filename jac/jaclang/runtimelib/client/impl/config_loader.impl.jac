@@ -132,12 +132,12 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         if migrated {
             _clear_node_modules(self.get_jac_config().get_client_dir());
         }
-
-        npm_deps = _inject_missing(
-            npm_deps, {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}
-        );
-        npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
     }
+
+    npm_deps = _inject_missing(
+        npm_deps, {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}
+    );
+    npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
     merged_npm_deps = {** npm_deps, ** target_scoped_deps};
 
     user_config: dict[str, any] = {

@@ -1,4 +1,4 @@
-import from fastapi.responses { JSONResponse }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
 
 def error_response(
     code: str,

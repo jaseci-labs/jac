@@ -3,15 +3,13 @@
 Note: useEffect import is auto-injected from @jac/runtime when `can with entry/exit` is used.
 """
 
-cl {
-    def:pub timer_component() -> JsxElement {
-        has count: int = 0;
+def:pub timer_component() -> JsxElement {
+    has count: int = 0;
 
-        # Cleanup effect - runs on component unmount
-        can with exit {
-            clearInterval(intervalId);
-        }
-
-        return <div>{count}</div>;
+    # Cleanup effect - runs on component unmount
+    can with exit {
+        clearInterval(intervalId);
     }
+
+    return <div>{count}</div>;
 }

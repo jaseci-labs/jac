@@ -1,7 +1,5 @@
-import from typing { Any }
-
 obj Emailer {
-    has config: dict[str, Any] = {},
+    has config: dict[str, any] = {},
         from_address: str = '',
         enabled: bool = True;
 

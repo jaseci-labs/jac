@@ -1,5 +1,8 @@
-import from fastapi { Request, Response }
-import from fastapi_sso.sso.base { SSOBase }
+import json;
+import from base64 { urlsafe_b64decode }
+import from urllib.parse { urlencode }
+import from jaclang.runtimelib.serving.client { arequest }
+import from jaclang.runtimelib.serving.datatypes { RedirectResponse, Request, Response }
 
 obj SSOUserInfo {
     has email: str,
@@ -26,58 +29,124 @@ obj SSOProvider {
     async def handle_callback(request: Request) -> SSOUserInfo;
 }
 
-obj FastAPISSOBase(SSOProvider) {
+def decode_jwt_payload_unverified(token: str) -> dict[str, any] {
+    parts = token.split('.');
+    if len(parts) != 3 {
+        raise RuntimeError('malformed id_token');
+    }
+    body_part = parts[1];
+    padding = '=' * (-len(body_part) % 4);
+    try {
+        return json.loads(urlsafe_b64decode(body_part + padding));
+    } except Exception {
+        raise RuntimeError('undecodable id_token payload');
+    }
+}
+
+obj OAuth2CodeProvider(SSOProvider) {
     has client_id: str,
         client_secret: str,
         redirect_uri: str,
-        allow_insecure_http: bool = True,
-        _sso: (SSOBase | None) = None;
-
-    def _make_sso -> SSOBase {
-        raise NotImplementedError();
-    }
+        allow_insecure_http: bool = True;
 
     def _label -> str {
         return type(self).__name__;
     }
 
-    def postinit {
-        self._sso = self._make_sso();
+    def authorize_url -> str {
+        raise NotImplementedError();
+    }
+
+    def token_url -> str {
+        raise NotImplementedError();
+    }
+
+    def scope -> str {
+        return '';
+    }
+
+    def extra_authorize_params -> dict[str, str] {
+        return {};
+    }
+
+    async def fetch_user(
+        access_token: str, token_payload: dict[str, any]
+    ) -> SSOUserInfo {
+        raise NotImplementedError();
     }
 
     async def initiate_auth(state: str | None = None) -> Response {
-        if not self._sso {
-            raise RuntimeError(f"{self._label()} not initialized");
+        params: dict[str, str] = {
+            'client_id': self.client_id,
+            'redirect_uri': self.redirect_uri,
+            'response_type': 'code'
+        };
+        scope_value = self.scope();
+        if scope_value {
+            params['scope'] = scope_value;
         }
+        if state {
+            params['state'] = state;
+        }
+        params.update(self.extra_authorize_params());
+        return RedirectResponse(
+            url=f"{self.authorize_url()}?{urlencode(params)}", status_code=303
+        );
+    }
 
-        with self._sso {
-            return await self._sso.get_login_redirect(state=state);
+    async def _exchange_code(code: str) -> dict[str, any] {
+        form = urlencode(
+            {
+                'grant_type': 'authorization_code',
+                'code': code,
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
+                'redirect_uri': self.redirect_uri
+            }
+        );
+        resp = await arequest(
+            'POST',
+            self.token_url(),
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json'
+            },
+            data=form
+        );
+        if not resp.ok() {
+            raise RuntimeError(
+                f"{self._label()} token exchange failed: " f"HTTP {resp.status_code}"
+            );
         }
+        payload = resp.json();
+        if not isinstance(payload, dict) {
+            raise RuntimeError(f"{self._label()} token endpoint returned a non-object");
+        }
+        return payload;
+    }
+
+    def _callback_param(request: Request, name: str) -> (str | None) {
+        value = request.query_params.get(name);
+        if value is not None {
+            return value;
+        }
+        values = request.form_fields.get(name, []);
+        return values[0] if values else None;
     }
 
     async def handle_callback(request: Request) -> SSOUserInfo {
-        if not self._sso {
-            raise RuntimeError(f"{self._label()} not initialized");
+        error = self._callback_param(request, 'error');
+        if error {
+            raise RuntimeError(f"{self._label()} returned error: {error}");
         }
-
-        with self._sso {
-            user_info = await self._sso.verify_and_process(request);
-            if user_info is None {
-                raise RuntimeError(
-                    f"{self._label()} verification returned no user info"
-                );
-            }
-            if user_info.email is None or user_info.id is None {
-                raise RuntimeError(f"{self._label()} user info is missing email or id");
-            }
-            return SSOUserInfo(
-                email=str(user_info.email),
-                external_id=str(user_info.id),
-                display_name=user_info.display_name,
-                first_name=user_info.first_name,
-                last_name=user_info.last_name,
-                picture=user_info.picture
+        code = self._callback_param(request, 'code');
+        if not code {
+            raise RuntimeError(
+                f"{self._label()} callback is missing the authorization code"
             );
         }
+        payload = await self._exchange_code(code);
+        access_token = str(payload.get('access_token') or '');
+        return await self.fetch_user(access_token, payload);
     }
 }

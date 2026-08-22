@@ -1,13 +1,16 @@
-"""Compilation tests – migrated from test_pyast_gen_pass.py and test_language.py.
+"""Compilation tests – migrated from the emitter and language suites.
 
 These tests verify that the Jac compiler can successfully compile various
 fixture files without errors, and test compilation-level behaviour.
 """
 
 import os;
+import from jaclang.jac0core.treeprinter { print_ast_tree }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.compiler.passes.tool.jac_formatter_pass { format_module }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_module }
 import from jaclang.cli.commands { analysis }
 
 glob EXAMPLES = os.path.join(JAC_ROOT, "examples"),
@@ -47,33 +50,46 @@ test "arith precedence" {
     import from builtins { compile as pycompile, exec as pyexec }
     import io;
     import sys;
-    prog = JacProgram().compile(
-        use_str="with entry {print(4-5-4);}", file_path="test.jac"
-    );
-    old = sys.stdout;
-    buf = io.StringIO();
-    sys.stdout = buf;
-    try {
-        pyexec(pycompile(prog.gen.py_ast[0], "test.jac", "exec"));
-    } finally {
-        sys.stdout = old;
+    import from jaclang.project.config {
+        JacConfig,
+        CheckConfig,
+        LintConfig,
+        set_config
     }
-    assert buf.getvalue() == "-5\n";
+    # Isolate from the repo jac.toml (`select = ["all"]`), which enables the
+    # opt-in no-print rule (E3012) that would reject the print used below.
+    set_config(JacConfig(check=CheckConfig(lint=LintConfig(select=["default"]))));
+    try {
+        prog = JacProgram().compile(
+            use_str="with entry {print(4-5-4);}", file_path="test.jac"
+        );
+        old = sys.stdout;
+        buf = io.StringIO();
+        sys.stdout = buf;
+        try {
+            pyexec(pycompile(prog.gen.py_ast[0], "test.jac", "exec"));
+        } finally {
+            sys.stdout = old;
+        }
+        assert buf.getvalue() == "-5\n";
+    } finally {
+        set_config(None);
+    }
 }
 
 test "double format issue" {
     prog = JacProgram().compile("with entry {print(hello);}", "test.jac");
-    prog.unparse();
-    before = prog.format();
-    prog.format();
-    prog.format();
-    after = prog.format();
+    unparse_module(prog);
+    before = format_module(prog);
+    format_module(prog);
+    format_module(prog);
+    after = format_module(prog);
     assert before == after;
 }
 
 test "multiline single tok" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "byllmissue.jac"));
-    assert "2:5 - 4:8" in mypass.pp();
+    assert "2:5 - 4:8" in print_ast_tree(mypass);
 }
 
 test "annotation tuple issue" {

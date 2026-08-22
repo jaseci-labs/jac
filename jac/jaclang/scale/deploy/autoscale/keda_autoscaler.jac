@@ -7,13 +7,26 @@ import from jaclang.scale.deploy.autoscale.autoscaler {
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
+import from jaclang.scale.deploy.autoscale.http_activation {
+    HTTPActivationSpec,
+    HTTPRoutingRule
+}
+import from jaclang.scale.deploy.autoscale.keda_capabilities {
+    KEDACapabilities,
+    SUPPORTED_HTTP_INTERCEPTOR_API_VERSIONS
+}
 import from jaclang.scale.observability.logger { Logger }
 import hashlib;
 
 obj KEDAAutoscaler(Autoscaler) {
     has _custom_api: (any | None) = None,
         _v2_api: (any | None) = None,
-        logger: (Logger | None) = None;
+        _apps_api: (any | None) = None,
+        _core_api: (any | None) = None,
+        http_scaler_address: str = "keda-add-ons-http-external-scaler.keda:9090",
+        interceptor_service_address: str = "keda-add-ons-http-interceptor-proxy.keda:8080",
+        logger: (Logger | None) = None,
+        _capabilities_cache: dict[str, any] = {};
 
     static has _preflight_cache: dict[str, any] = {};
 
@@ -35,4 +48,17 @@ obj KEDAAutoscaler(Autoscaler) {
     def destroy(autoscaler_name: str, namespace: str) -> None;
     def destroy_collection(namespace: str, label_selector: str) -> None;
     def resource_name_for(target: str) -> str;
+    def _validate_http_activation_spec(spec: HTTPActivationSpec) -> None;
+    def _build_routing_rules(rules: list[HTTPRoutingRule]) -> list[dict[str, any]];
+    def _build_interceptor_route(spec: HTTPActivationSpec) -> dict[str, any];
+    def _build_http_scaled_object(spec: HTTPActivationSpec) -> dict[str, any];
+    def interceptor_route_name_for(target: str) -> str;
+    def http_scaled_object_name_for(target: str) -> str;
+    def apply_http_activation(spec: HTTPActivationSpec) -> bool;
+    def destroy_http_activation(target: str, namespace: str) -> None;
+    def discover_capabilities(refresh: bool = False) -> KEDACapabilities;
+    def invalidate_capabilities -> None;
+    def _capabilities_cache_key -> str;
+    def _check_service_address(core_api: any, address: str) -> (str | None);
+    def format_capabilities(caps: KEDACapabilities) -> str;
 }

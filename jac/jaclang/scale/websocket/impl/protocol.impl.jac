@@ -25,7 +25,7 @@ impl _ws_send_then_close(
     }
 }
 
-impl ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any {
+impl ws_pre_accept_auth(websocket: WebSocket, user_manager: any) -> any {
     query_token = websocket.query_params.get('token');
     if not query_token {
         return None;
@@ -43,7 +43,7 @@ impl ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict) {
 }
 
 impl ws_authenticate(
-    websocket: WebSocket, user_manager: Any, handshake_timeout: float, max_bytes: int
+    websocket: WebSocket, user_manager: any, handshake_timeout: float, max_bytes: int
 ) -> (dict, dict | None) {
     try {
         raw = await asyncio.wait_for(
@@ -203,7 +203,7 @@ impl ws_handle_control(
     websocket: WebSocket,
     ctx: ConnectionContext,
     data: dict,
-    user_manager: Any,
+    user_manager: any,
     requires_auth: bool,
     msgs_per_sec: float,
     rate_capacity: float
@@ -273,8 +273,8 @@ impl ws_handle_control(
 }
 
 impl ws_execute_target(
-    websocket: WebSocket, label: str, name: str, awaitable: Any, target_timeout: float
-) -> (bool, Any) {
+    websocket: WebSocket, label: str, name: str, awaitable: any, target_timeout: float
+) -> (bool, any) {
     try {
         result = await asyncio.wait_for(awaitable, timeout=target_timeout);
         return (True, result);

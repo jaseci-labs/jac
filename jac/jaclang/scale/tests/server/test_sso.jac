@@ -6,11 +6,9 @@ import from tempfile { mkdtemp }
 import from dataclasses { dataclass }
 import from types { TracebackType }
 import unittest.mock;
-import from uuid { uuid4 }
 
-import pytest;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse, RedirectResponse }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse, RedirectResponse }
 
 import from jaclang.scale.config.config_loader { reset_scale_config }
 import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
@@ -79,6 +77,47 @@ obj MockUserInfo {
         return fields;
     }
 }
+
+"""Build a Request carrying an OAuth callback code, as the provider sees it."""
+def _callback_request(code: str = "auth-code-123") -> Request {
+    import from jaclang.runtimelib.serving.datatypes { QueryParams, URL }
+    return Request(
+        method="GET",
+        url=URL(path="/sso/callback", query=f"code={code}"),
+        query_params=QueryParams(raw={"code": [code]})
+    );
+}
+
+"""Stand in for a JSON response from a provider's token or userinfo endpoint."""
+obj _OAuthResp {
+    has payload: dict,
+        status_code: int = 200;
+
+    def json -> any {
+        return self.payload;
+    }
+
+    def ok -> bool {
+        return 200 <= self.status_code < 400;
+    }
+
+    def text -> str {
+        return json.dumps(self.payload);
+    }
+}
+
+"""Serve canned JSON per request, in call order."""
+def _oauth_responder(payloads: list) -> any {
+    seen: dict = {"n": 0};
+
+    async def _fake_arequest(method: str, url: str, **kwargs: any) -> _OAuthResp {
+        i = seen["n"];
+        seen["n"] = i + 1;
+        return _OAuthResp(payload=payloads[min(i, len(payloads) - 1)]);
+    }
+    return _fake_arequest;
+}
+
 
 obj MockGoogleSSO {
     has client_id: str,
@@ -223,11 +262,7 @@ obj MockScaleConfig {
     }
 
     def get_database_config -> dict {
-        return {
-            "mongodb_uri": None,
-            "redis_url": None,
-            "shelf_db_path": ".jac/data/anchor_store.db"
-        };
+        return {"redis_url": None, "shelf_db_path": ".jac/data/anchor_store.db"};
     }
 
     def get_kubernetes_config -> dict {
@@ -293,10 +328,19 @@ def _setup_user_manager -> tuple[str, JacScaleUserManager] {
     ) {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
-    user_manager.create_user = unittest.mock.Mock();
-    user_manager.create_user_with_identities = unittest.mock.Mock();
-    user_manager.get_user = unittest.mock.Mock();
     return (test_dir, user_manager);
+}
+
+def _parse_body(result: JSONResponse | TransportResponse) -> dict {
+    return json.loads(_get_response_body(result));
+}
+
+def _create_existing_user(user_manager: JacScaleUserManager, email: str) -> str {
+    result = user_manager.create_user_with_identities(
+        identities=[{'type': 'email', 'value': email, 'verified': True}],
+        credential={'type': 'password', 'password': 'existing_pass'}
+    );
+    return result.get('user_id', '');
 }
 
 def _teardown_user_manager(test_dir: str) {
@@ -447,46 +491,34 @@ test "sso initiate when get sso fails" {
 test "sso callback login existing user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
+        user_id = _create_existing_user(user_manager, "test@example.com");
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        mock_root_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(
-            return_value={
-                "user_id": mock_user_id,
-                "root_id": mock_root_id,
-                "profile": {}
-            }
-        );
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
         mock_sso = MockGoogleSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="test@example.com")
         );
         with unittest.mock.patch.object(
-            user_manager._identity_storage, "update_user_fields", return_value=True
-        ) as mock_update {
-            with unittest.mock.patch.object(
-                user_manager, "get_sso", return_value=mock_sso
-            ) {
-                with unittest.mock.patch.object(
-                    user_manager, "create_jwt_token", return_value="mock_jwt_token"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    body = _get_response_body(result);
-                    assert "Login successful" in body;
-                    assert "mock_jwt_token" in body;
-                    mock_update.assert_called_once();
-                    (call_args, _call_kwargs) = mock_update.call_args;
-                    assert call_args[0] == mock_user_id;
-                    refreshed = call_args[1]['profile'];
-                    assert 'google' in refreshed['sso'];
-                    assert refreshed['sso']['google']['display_name'] == 'Test User';
-                    assert refreshed['sso']['google']['picture'] == 'https://example.com/picture.jpg';
-                }
-            }
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            parsed = _parse_body(result);
+            data = parsed["data"];
+            assert data["message"] == "Login successful";
+            assert data["user_id"] == user_id;
+            token = data["token"];
+            assert token;
+            assert user_manager.validate_jwt_token(token) == user_id;
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "google";
+            assert accounts[0]["external_id"] == "mock_external_id";
+            stored = user_manager.get_user(user_id);
+            google_sso = stored["profile"]["sso"]["google"];
+            assert google_sso["display_name"] == "Test User";
+            assert google_sso["picture"] == "https://example.com/picture.jpg";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -496,18 +528,9 @@ test "sso callback login existing user" {
 test "sso callback existing user with no profile data" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
+        user_id = _create_existing_user(user_manager, "test@example.com");
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(
-            return_value={
-                "user_id": mock_user_id,
-                "root_id": str(uuid4()),
-                "profile": {}
-            }
-        );
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
         mock_sso = MockGoogleSSO("id", "secret", "uri");
-
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(
                 email="test@example.com",
@@ -518,21 +541,20 @@ test "sso callback existing user with no profile data" {
             )
         );
         with unittest.mock.patch.object(
-            user_manager._identity_storage, "update_user_fields", return_value=True
-        ) as mock_update {
-            with unittest.mock.patch.object(
-                user_manager, "get_sso", return_value=mock_sso
-            ) {
-                with unittest.mock.patch.object(
-                    user_manager, "create_jwt_token", return_value="mock_jwt_token"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    mock_update.assert_not_called();
-                }
-            }
+            user_manager, "get_sso", return_value=mock_sso
+        ) {
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            assert data["message"] == "Login successful";
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "google";
+            stored = user_manager.get_user(user_id);
+            assert "sso" not in (stored.get("profile") or {});
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -543,13 +565,7 @@ test "sso callback new user with no profile data" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user_with_identities.return_value = {
-            "user_id": mock_user_id,
-            "message": "User registered successfully"
-        };
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
+        assert user_manager.find_user_by_identity("newuser@example.com") is None;
         mock_sso = MockGoogleSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(
@@ -563,29 +579,21 @@ test "sso callback new user with no profile data" {
         with unittest.mock.patch.object(
             user_manager, "get_sso", return_value=mock_sso
         ) {
-            with unittest.mock.patch.object(
-                user_manager, "create_jwt_token", return_value="mock_jwt_token"
-            ) {
-                with unittest.mock.patch(
-                    "jaclang.scale.identity.user_manager.generate_random_password",
-                    return_value="random_pass"
-                ) {
-                    asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
-                    );
-                    user_manager.create_user_with_identities.assert_called_once_with(
-                        identities=[
-                            {
-                                'type': 'email',
-                                'value': 'newuser@example.com',
-                                'verified': True
-                            }
-                        ],
-                        credential={'type': 'password', 'password': 'random_pass'},
-                        profile=None
-                    );
-                }
-            }
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            user_id = data["user_id"];
+            assert user_id;
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            created = user_manager.find_user_by_identity("newuser@example.com");
+            assert created is not None;
+            assert created["user_id"] == user_id;
+            assert "sso" not in (created.get("profile") or {});
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "google";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -596,13 +604,7 @@ test "sso callback auto register new user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user_with_identities.return_value = {
-            "user_id": mock_user_id,
-            "message": "User registered successfully"
-        };
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
+        assert user_manager.find_user_by_identity("newuser@example.com") is None;
         mock_sso = MockGoogleSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="newuser@example.com")
@@ -610,39 +612,26 @@ test "sso callback auto register new user" {
         with unittest.mock.patch.object(
             user_manager, "get_sso", return_value=mock_sso
         ) {
-            with unittest.mock.patch.object(
-                user_manager, "create_jwt_token", return_value="mock_jwt_token"
-            ) {
-                with unittest.mock.patch(
-                    "jaclang.scale.identity.user_manager.generate_random_password",
-                    return_value="random_pass"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user_with_identities.assert_called_once_with(
-                        identities=[
-                            {
-                                'type': 'email',
-                                'value': 'newuser@example.com',
-                                'verified': True
-                            }
-                        ],
-                        credential={'type': 'password', 'password': 'random_pass'},
-                        profile={
-                            'sso': {
-                                'google': {
-                                    'display_name': 'Test User',
-                                    'first_name': 'Test',
-                                    'last_name': 'User',
-                                    'picture': 'https://example.com/picture.jpg'
-                                }
-                            }
-                        }
-                    );
-                }
-            }
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            user_id = data["user_id"];
+            assert user_id;
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            created = user_manager.find_user_by_identity("newuser@example.com");
+            assert created is not None;
+            assert created["user_id"] == user_id;
+            google_sso = created["profile"]["sso"]["google"];
+            assert google_sso["display_name"] == "Test User";
+            assert google_sso["first_name"] == "Test";
+            assert google_sso["last_name"] == "User";
+            assert google_sso["picture"] == "https://example.com/picture.jpg";
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "google";
+            assert accounts[0]["external_id"] == "mock_external_id";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -758,7 +747,8 @@ test "supported platforms initialization with jac toml credentials" {
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" in user_manager.SUPPORTED_PLATFORMS;
-        assert user_manager.SUPPORTED_PLATFORMS["google"]["client_id"] == "toml_test_id";
+        assert user_manager.SUPPORTED_PLATFORMS["google"]["client_id"]
+            == "toml_test_id";
     }
 }
 
@@ -774,15 +764,7 @@ test "supported platforms initialization without jac toml credentials" {
 }
 
 def _setup_real_user_manager -> tuple[str, JacScaleUserManager] {
-    test_dir = mkdtemp();
-    reset_scale_config();
-    mock_config = MockScaleConfig(mock_sso_config_with_credentials());
-    with unittest.mock.patch(
-        "jaclang.scale.identity.user_manager.get_scale_config", return_value=mock_config
-    ) {
-        user_manager = JacScaleUserManager(base_path=test_dir);
-    }
-    return (test_dir, user_manager);
+    return _setup_user_manager();
 }
 
 test "link sso account success" {
@@ -1019,44 +1001,43 @@ test "is safe loopback redirect truth table" {
 }
 
 test "google sso provider initiate auth" {
-    with unittest.mock.patch("jaclang.scale.sso.google.GoogleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GoogleSSOProvider("id", "secret", "uri");
-        assert provider._sso == mock_inner_sso;
-        expected_response = unittest.mock.Mock();
-        mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
-            return_value=expected_response
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        response = asyncio.run(provider.initiate_auth());
-        mock_inner_sso.get_login_redirect.assert_called_once();
-        assert response == expected_response;
-    }
+    provider = GoogleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    response = asyncio.run(provider.initiate_auth(state="st-1"));
+    assert response.status_code == 303;
+    location = response.headers.get("Location");
+    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth");
+    assert "client_id=id" in location;
+    assert "response_type=code" in location;
+    assert "state=st-1" in location;
+    assert "scope=openid" in location;
 }
 
 test "google sso provider handle callback" {
-    with unittest.mock.patch("jaclang.scale.sso.google.GoogleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GoogleSSOProvider("id", "secret", "uri");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_user = unittest.mock.Mock();
-        mock_user.email = "test@example.com";
-        mock_user.id = "12345";
-        mock_user.display_name = "Test User";
-        mock_inner_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        result = asyncio.run(provider.handle_callback(mock_request));
-        mock_inner_sso.verify_and_process.assert_called_once_with(mock_request);
-        assert result.email == "test@example.com";
-        assert result.external_id == "12345";
-        assert result.display_name == "Test User";
+    provider = GoogleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    responder = _oauth_responder(
+        [
+            {"access_token": "tok-abc"},
+            {
+                "sub": "12345",
+                "email": "test@example.com",
+                "name": "Test User",
+                "given_name": "Test",
+                "family_name": "User"
+            }
+        ]
+    );
+    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder), unittest.mock.patch(
+        "jaclang.scale.sso.google.arequest", responder
+    ) {
+        result = asyncio.run(provider.handle_callback(_callback_request()));
     }
+    assert result.email == "test@example.com";
+    assert result.external_id == "12345";
+    assert result.display_name == "Test User";
 }
 
 test "get sso with apple platform" {
@@ -1110,38 +1091,28 @@ test "apple sso initiate success" {
 test "apple sso callback login existing user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
+        user_id = _create_existing_user(user_manager, "test@privaterelay.appleid.com");
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(
-            return_value={
-                "user_id": mock_user_id,
-                "root_id": str(uuid4()),
-                "profile": {}
-            }
-        );
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
         mock_sso = MockAppleSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="test@privaterelay.appleid.com")
         );
         with unittest.mock.patch.object(
-            user_manager._identity_storage, "update_user_fields", return_value=True
+            user_manager, "get_sso", return_value=mock_sso
         ) {
-            with unittest.mock.patch.object(
-                user_manager, "get_sso", return_value=mock_sso
-            ) {
-                with unittest.mock.patch.object(
-                    user_manager, "create_jwt_token", return_value="mock_apple_jwt"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.APPLE.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    body = _get_response_body(result);
-                    assert "Login successful" in body;
-                    assert "mock_apple_jwt" in body;
-                }
-            }
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.APPLE.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            assert data["message"] == "Login successful";
+            assert data["user_id"] == user_id;
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "apple";
+            stored = user_manager.get_user(user_id);
+            assert stored["profile"]["sso"]["apple"]["display_name"] == "Test User";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -1152,13 +1123,10 @@ test "apple sso callback auto register new user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user_with_identities.return_value = {
-            "user_id": mock_user_id,
-            "message": "User registered successfully"
-        };
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
+        assert (
+            user_manager.find_user_by_identity("newuser@privaterelay.appleid.com")
+            is None
+        );
         mock_sso = MockAppleSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="newuser@privaterelay.appleid.com")
@@ -1166,39 +1134,25 @@ test "apple sso callback auto register new user" {
         with unittest.mock.patch.object(
             user_manager, "get_sso", return_value=mock_sso
         ) {
-            with unittest.mock.patch.object(
-                user_manager, "create_jwt_token", return_value="mock_apple_jwt"
-            ) {
-                with unittest.mock.patch(
-                    "jaclang.scale.identity.user_manager.generate_random_password",
-                    return_value="random_pass"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.APPLE.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user_with_identities.assert_called_once_with(
-                        identities=[
-                            {
-                                'type': 'email',
-                                'value': 'newuser@privaterelay.appleid.com',
-                                'verified': True
-                            }
-                        ],
-                        credential={'type': 'password', 'password': 'random_pass'},
-                        profile={
-                            'sso': {
-                                'apple': {
-                                    'display_name': 'Test User',
-                                    'first_name': 'Test',
-                                    'last_name': 'User',
-                                    'picture': 'https://example.com/picture.jpg'
-                                }
-                            }
-                        }
-                    );
-                }
-            }
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.APPLE.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            user_id = data["user_id"];
+            assert user_id;
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            created = user_manager.find_user_by_identity(
+                "newuser@privaterelay.appleid.com"
+            );
+            assert created is not None;
+            assert created["user_id"] == user_id;
+            apple_sso = created["profile"]["sso"]["apple"];
+            assert apple_sso["display_name"] == "Test User";
+            assert apple_sso["picture"] == "https://example.com/picture.jpg";
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "apple";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -1206,44 +1160,32 @@ test "apple sso callback auto register new user" {
 }
 
 test "apple sso provider initiate auth" {
-    with unittest.mock.patch("jaclang.scale.sso.apple.AppleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = AppleSSOProvider("id", "secret", "uri");
-        assert provider._sso == mock_inner_sso;
-        expected_response = unittest.mock.Mock();
-        mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
-            return_value=expected_response
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        response = asyncio.run(provider.initiate_auth());
-        mock_inner_sso.get_login_redirect.assert_called_once();
-        assert response == expected_response;
-    }
+    provider = AppleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    response = asyncio.run(provider.initiate_auth());
+    assert response.status_code == 303;
+    location = response.headers.get("Location");
+    assert location.startswith("https://appleid.apple.com/auth/authorize");
+    # Apple posts the callback as a form, so the mode is requested up front.
+    assert "response_mode=form_post" in location;
 }
 
 test "apple sso provider handle callback" {
-    with unittest.mock.patch("jaclang.scale.sso.apple.AppleSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = AppleSSOProvider("id", "secret", "uri");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_user = unittest.mock.Mock();
-        mock_user.email = "test@privaterelay.appleid.com";
-        mock_user.id = "apple_12345";
-        mock_user.display_name = "Apple User";
-        mock_inner_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        result = asyncio.run(provider.handle_callback(mock_request));
-        mock_inner_sso.verify_and_process.assert_called_once_with(mock_request);
-        assert result.email == "test@privaterelay.appleid.com";
-        assert result.external_id == "apple_12345";
-        assert result.display_name == "Apple User";
+    import from jaclang.runtimelib.serving.authcrypt { jwt_encode }
+    provider = AppleSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    # Apple carries identity in the id_token rather than a userinfo endpoint.
+    id_token = jwt_encode(
+        {"sub": "apple_12345", "email": "test@privaterelay.appleid.com"}, "unused"
+    );
+    responder = _oauth_responder([{"access_token": "tok", "id_token": id_token}]);
+    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder) {
+        result = asyncio.run(provider.handle_callback(_callback_request()));
     }
+    assert result.email == "test@privaterelay.appleid.com";
+    assert result.external_id == "apple_12345";
 }
 
 test "supported platforms initialization with apple credentials" {
@@ -1336,38 +1278,28 @@ test "github sso initiate success" {
 test "github sso callback login existing user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
+        user_id = _create_existing_user(user_manager, "test@github.com");
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(
-            return_value={
-                "user_id": mock_user_id,
-                "root_id": str(uuid4()),
-                "profile": {}
-            }
-        );
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
         mock_sso = MockGithubSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="test@github.com")
         );
         with unittest.mock.patch.object(
-            user_manager._identity_storage, "update_user_fields", return_value=True
+            user_manager, "get_sso", return_value=mock_sso
         ) {
-            with unittest.mock.patch.object(
-                user_manager, "get_sso", return_value=mock_sso
-            ) {
-                with unittest.mock.patch.object(
-                    user_manager, "create_jwt_token", return_value="mock_github_jwt"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.GITHUB.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    body = _get_response_body(result);
-                    assert "Login successful" in body;
-                    assert "mock_github_jwt" in body;
-                }
-            }
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.GITHUB.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            assert data["message"] == "Login successful";
+            assert data["user_id"] == user_id;
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "github";
+            stored = user_manager.get_user(user_id);
+            assert stored["profile"]["sso"]["github"]["display_name"] == "Test User";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -1378,13 +1310,7 @@ test "github sso callback auto register new user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
         mock_request = unittest.mock.Mock(spec=Request);
-        mock_user_id = str(uuid4());
-        user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user_with_identities.return_value = {
-            "user_id": mock_user_id,
-            "message": "User registered successfully"
-        };
-        user_manager.link_sso_account = unittest.mock.Mock(return_value={});
+        assert user_manager.find_user_by_identity("newuser@github.com") is None;
         mock_sso = MockGithubSSO("id", "secret", "uri");
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(email="newuser@github.com")
@@ -1392,39 +1318,23 @@ test "github sso callback auto register new user" {
         with unittest.mock.patch.object(
             user_manager, "get_sso", return_value=mock_sso
         ) {
-            with unittest.mock.patch.object(
-                user_manager, "create_jwt_token", return_value="mock_github_jwt"
-            ) {
-                with unittest.mock.patch(
-                    "jaclang.scale.identity.user_manager.generate_random_password",
-                    return_value="random_pass"
-                ) {
-                    result = asyncio.run(
-                        user_manager.sso_callback(mock_request, Platforms.GITHUB.value)
-                    );
-                    assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user_with_identities.assert_called_once_with(
-                        identities=[
-                            {
-                                'type': 'email',
-                                'value': 'newuser@github.com',
-                                'verified': True
-                            }
-                        ],
-                        credential={'type': 'password', 'password': 'random_pass'},
-                        profile={
-                            'sso': {
-                                'github': {
-                                    'display_name': 'Test User',
-                                    'first_name': 'Test',
-                                    'last_name': 'User',
-                                    'picture': 'https://example.com/picture.jpg'
-                                }
-                            }
-                        }
-                    );
-                }
-            }
+            result = asyncio.run(
+                user_manager.sso_callback(mock_request, Platforms.GITHUB.value)
+            );
+            assert isinstance(result, (JSONResponse, TransportResponse));
+            data = _parse_body(result)["data"];
+            user_id = data["user_id"];
+            assert user_id;
+            assert user_manager.validate_jwt_token(data["token"]) == user_id;
+            created = user_manager.find_user_by_identity("newuser@github.com");
+            assert created is not None;
+            assert created["user_id"] == user_id;
+            github_sso = created["profile"]["sso"]["github"];
+            assert github_sso["display_name"] == "Test User";
+            assert github_sso["picture"] == "https://example.com/picture.jpg";
+            accounts = user_manager.get_sso_accounts(user_id);
+            assert len(accounts) == 1;
+            assert accounts[0]["platform"] == "github";
         }
     } finally {
         _teardown_user_manager(test_dir);
@@ -1432,44 +1342,39 @@ test "github sso callback auto register new user" {
 }
 
 test "github sso provider initiate auth" {
-    with unittest.mock.patch("jaclang.scale.sso.github.GithubSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GithubSSOProvider("id", "secret", "uri");
-        assert provider._sso == mock_inner_sso;
-        expected_response = unittest.mock.Mock();
-        mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
-            return_value=expected_response
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        response = asyncio.run(provider.initiate_auth());
-        mock_inner_sso.get_login_redirect.assert_called_once();
-        assert response == expected_response;
-    }
+    provider = GithubSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    response = asyncio.run(provider.initiate_auth());
+    assert response.status_code == 303;
+    location = response.headers.get("Location");
+    assert location.startswith("https://github.com/login/oauth/authorize");
+    assert "scope=user" in location;
 }
 
 test "github sso provider handle callback" {
-    with unittest.mock.patch("jaclang.scale.sso.github.GithubSSO") as mock_cls {
-        mock_inner_sso = unittest.mock.Mock();
-        mock_cls.return_value = mock_inner_sso;
-        provider = GithubSSOProvider("id", "secret", "uri");
-        mock_request = unittest.mock.Mock(spec=Request);
-        mock_user = unittest.mock.Mock();
-        mock_user.email = "test@github.com";
-        mock_user.id = "github_12345";
-        mock_user.display_name = "GitHub User";
-        mock_inner_sso.verify_and_process = unittest.mock.AsyncMock(
-            return_value=mock_user
-        );
-        mock_inner_sso.__enter__ = unittest.mock.Mock(return_value=mock_inner_sso);
-        mock_inner_sso.__exit__ = unittest.mock.Mock(return_value=None);
-        result = asyncio.run(provider.handle_callback(mock_request));
-        mock_inner_sso.verify_and_process.assert_called_once_with(mock_request);
-        assert result.email == "test@github.com";
-        assert result.external_id == "github_12345";
-        assert result.display_name == "GitHub User";
+    provider = GithubSSOProvider(
+        client_id="id", client_secret="secret", redirect_uri="https://app/cb"
+    );
+    responder = _oauth_responder(
+        [
+            {"access_token": "tok-abc"},
+            {
+                "id": "github_12345",
+                "email": "test@github.com",
+                "name": "GitHub User",
+                "avatar_url": "https://avatars/1"
+            }
+        ]
+    );
+    with unittest.mock.patch("jaclang.scale.sso.provider.arequest", responder), unittest.mock.patch(
+        "jaclang.scale.sso.github.arequest", responder
+    ) {
+        result = asyncio.run(provider.handle_callback(_callback_request()));
     }
+    assert result.email == "test@github.com";
+    assert result.external_id == "github_12345";
+    assert result.display_name == "GitHub User";
 }
 
 test "supported platforms initialization with github credentials" {

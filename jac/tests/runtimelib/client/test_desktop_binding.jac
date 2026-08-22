@@ -9,6 +9,7 @@ drift, wrong/missing externs, wrong soname, and codegen regressions.
 import os;
 import shutil;
 import subprocess;
+import sys;
 import sysconfig;
 import tempfile;
 import from pathlib { Path }
@@ -18,16 +19,22 @@ def _webview_dir -> Path {
     here = Path(os.path.abspath(__file__)).parent;
     probe = here;
     for _ in range(8) {
-        cand = probe / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / "webview";
-        if (cand / "webview.na.jac").exists() {
+        cand = probe
+            / "jaclang"
+            / "runtimelib"
+            / "client"
+            / "targets"
+            / "desktop"
+            / "native"
+            / "webview";
+        if (cand / "webview.jac").exists() {
             return cand;
         }
         probe = probe.parent;
     }
     raise RuntimeError(
-        "jaclang/runtimelib/client/targets/desktop/native/webview/webview.na.jac not found from " + str(
-            here
-        )
+        "jaclang/runtimelib/client/targets/desktop/native/webview/webview.jac not found from "
+            + str(here)
     );
 }
 
@@ -36,16 +43,21 @@ def _native_dir -> Path {
     here = Path(os.path.abspath(__file__)).parent;
     probe = here;
     for _ in range(8) {
-        cand = probe / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native";
-        if (cand / "plugin_bridge.na.jac").exists() {
+        cand = probe
+            / "jaclang"
+            / "runtimelib"
+            / "client"
+            / "targets"
+            / "desktop"
+            / "native";
+        if (cand / "plugin_bridge.jac").exists() {
             return cand;
         }
         probe = probe.parent;
     }
     raise RuntimeError(
-        "jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.na.jac not found from " + str(
-            here
-        )
+        "jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.jac not found from "
+            + str(here)
     );
 }
 
@@ -58,7 +70,7 @@ def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
     tmp = tempfile.mkdtemp();
     try {
         shutil.copy2(
-            str(_webview_dir() / "webview.na.jac"), os.path.join(tmp, "webview.na.jac")
+            str(_webview_dir() / "webview.jac"), os.path.join(tmp, "webview.jac")
         );
         if extra_files is not None {
             for (name, content) in extra_files.items() {
@@ -69,11 +81,11 @@ def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
                 }
             }
         }
-        with open(os.path.join(tmp, "host.na.jac"), "w") as f {
+        with open(os.path.join(tmp, "host.jac"), "w") as f {
             f.write(host_src);
         }
         result = subprocess.run(
-            [jac, "nacompile", "host.na.jac", "-o", "out"],
+            [jac, "nacompile", "host.jac", "-o", "out"],
             cwd=tmp,
             capture_output=True,
             text=True,
@@ -115,8 +127,9 @@ test "webview binding host compiles and links libwebview.so" {
 
 """The embedded-CPython host (the desktop runtime model) links libpython."""
 test "embedded-python host compiles and links libpython" {
-    soname = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
-    stem = soname.split(".so")[0].encode();  # e.g. b"libpython3.12"
+    soname = sysconfig.get_config_var("INSTSONAME")
+        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
+    stem = soname.split(".so")[0].encode();  # e.g. b"libpython3.14"
     src = (
         f'import from "{soname}" {{\n'
         "    def Py_Initialize() -> None;\n"
@@ -133,7 +146,7 @@ test "embedded-python host compiles and links libpython" {
 
 """Locate the native plugin bridge file for tests."""
 def _bridge_src -> str {
-    bridge = _native_dir() / "plugin_bridge.na.jac";
+    bridge = _native_dir() / "plugin_bridge.jac";
     return bridge.read_text();
 }
 
@@ -161,11 +174,12 @@ test "entry-level webview handle wires run_main_loop" {
 
 This validates the full native stack: the bridge code is inlined directly
 into the host source (nacompile does not support string-literal imports
-between .na.jac files). The bridge handles GIL management,
+between .jac files). The bridge handles GIL management,
 PyObject_CallOneArg, and inttoptr coercion.
 """
 test "plugin bridge host compiles with webview + libpython" {
-    soname = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
+    soname = sysconfig.get_config_var("INSTSONAME")
+        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
     # The host inlines the bridge code (same pattern as _generate_host_source)
     src = (
         f'import from "{soname}" {{\n'

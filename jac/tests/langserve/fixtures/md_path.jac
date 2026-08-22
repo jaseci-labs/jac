@@ -4,7 +4,7 @@ import asyncio;
 import logging;
 import time;
 import from concurrent.futures { ThreadPoolExecutor }  # TODO: go_to_def is not working here bcz threadpoolexecutor is inside some if statement
-import from typing { Callable, Optional }
+import from typing { Optional }
 
 import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface }

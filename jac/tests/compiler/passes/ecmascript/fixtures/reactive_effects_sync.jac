@@ -3,15 +3,13 @@
 Note: useEffect import is auto-injected from @jac/runtime when `can with entry/exit` is used.
 """
 
-cl {
-    def:pub title_component() -> JsxElement {
-        has title: str = "Default";
+def:pub title_component() -> JsxElement {
+    has title: str = "Default";
 
-        # Sync mount effect - no IIFE wrapping needed
-        can with entry {
-            document.title = title;
-        }
-
-        return <div>{title}</div>;
+    # Sync mount effect - no IIFE wrapping needed
+    can with entry {
+        document.title = title;
     }
+
+    return <div>{title}</div>;
 }

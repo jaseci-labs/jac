@@ -21,6 +21,7 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
+import from jaclang.jac0core.compiler { run_pass }
 
 glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "main", "fixtures");
 
@@ -32,7 +33,7 @@ def move_marks(fixture: str) -> dict[str, bool] {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     # Native codegen (which schedules this pass) is gated off for plain `.jac`
     # modules, so run the proof directly over the CFG-built IR to populate marks.
-    RcFactsPass(ir_in=ir, prog=prog);
+    run_pass(RcFactsPass, ir, prog);
     out: dict[str, bool] = {};
     for nd in ir.get_all_sub_nodes(uni.Assignment) {
         if len(nd.target) == 1 {

@@ -1,9 +1,12 @@
 import json;
+import logging;
 import os;
 import shutil;
 import subprocess;
 import sys;
 import from pathlib { Path }
+
+glob logger = logging.getLogger(__name__);
 
 glob VENDOR_DIR_REL: str = "_vendor",
      WHEELS_SUBDIR: str = "wheels",
@@ -29,7 +32,7 @@ def site_dir(img_root: Path) -> Path {
 
 def has_vendored(img_root: Path) -> bool {
     wd = wheels_dir(img_root);
-    return wd.is_dir() and any(wd.glob("*.whl"));
+    return wd.is_dir() and any(wd.`glob("*.whl"));
 }
 
 
@@ -57,7 +60,29 @@ def download_wheels(
     }
     (rc, out) = _pip(args + specs);
     if rc != 0 {
-        return (False, out);
+        if platform_tag or python_version {
+            return (False, out);
+        }
+        return _build_wheels_native(specs, dest, out);
+    }
+    return (True, "");
+}
+
+
+def _build_wheels_native(
+    specs: list[str], dest: Path, download_err: str
+) -> tuple[bool, str] {
+    (rc, out) = _pip(["wheel", "--wheel-dir", str(dest)] + specs);
+    if rc != 0 {
+        return (False, f"{download_err}\n{out}");
+    }
+    import re;
+    built = sorted(set(re.findall(r"Building wheel for ([A-Za-z0-9_.\-]+)", out)));
+    if built {
+        logger.info(
+            f"Built wheel(s) from source: {', '.join(built)}; they target "
+            "the vendoring interpreter and architecture."
+        );
     }
     return (True, "");
 }
@@ -69,7 +94,7 @@ def write_vendor_manifest(
     vd = vendor_dir(img_root);
     vd.mkdir(parents=True, exist_ok=True);
     wd = wheels_dir(img_root);
-    wheels = sorted([p.name for p in wd.glob("*.whl")]) if wd.is_dir() else [];
+    wheels = sorted([p.name for p in wd.`glob("*.whl")]) if wd.is_dir() else [];
     (vd / VENDOR_MANIFEST).write_text(
         json.dumps(
             {
@@ -81,7 +106,8 @@ def write_vendor_manifest(
             },
             sort_keys=True,
             indent=1
-        ) + "\n",
+        )
+            + "\n",
         encoding="utf-8"
     );
 }
@@ -91,7 +117,7 @@ def _install_offline(wheels: Path, site: Path) {
     if site.is_dir() {
         return;
     }
-    whl_files = sorted([str(p) for p in wheels.glob("*.whl")]);
+    whl_files = sorted([str(p) for p in wheels.`glob("*.whl")]);
     if not whl_files {
         return;
     }

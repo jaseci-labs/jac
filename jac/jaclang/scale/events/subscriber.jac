@@ -1,12 +1,11 @@
-import from typing { Callable }
-import from jaclang.scale.events.broker { Event, RetryPolicy }
+import from jaclang.scale.events.broker { Event, RetryPolicy, StreamPosition }
 
 obj _SubscriptionEntry {
     has topic: str,
         handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
-        start_from: str = "latest";
+        start_from: str = StreamPosition.LATEST.value;
 }
 
 glob _registry: list[_SubscriptionEntry] = [];
@@ -15,7 +14,7 @@ def subscribe(
     topic: str,
     group: str | None = None,
     retry: RetryPolicy | None = None,
-    start_from: str = "latest"
+    start_from: str = StreamPosition.LATEST.value
 ) -> Callable[..., any] {
     def _decorator(handler: Callable[[Event], any]) -> Callable[..., any] {
         _registry.append(

@@ -1,569 +1,75 @@
-"""Tests for webhook walkers - runs both without and with MongoDB."""
+"""Tests for webhook walkers (in-process, Postgres-native key storage)."""
 
-import atexit;
-import contextlib;
-import gc;
-import glob;
 import hashlib;
 import hmac;
 import json;
+import logging;
 import os;
-import socket;
-import subprocess;
 import time;
 import uuid;
-import shutil;
-import requests;
+import from logging.handlers { MemoryHandler }
 import from pathlib { Path }
 import from typing { cast }
-
-import from testcontainers.mongodb { MongoDbContainer }
-import from pymongo { MongoClient }
-
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
     make_client,
     extract_data
 }
-import from jaclang.scale.tests.server_support {
-    get_free_port,
-    _cleanup_db_files,
-    _extract_transport_response_data
-}
+import from jaclang.scale.tests.server_support { _extract_transport_response_data }
 
 """Generate HMAC-SHA256 signature for webhook payload."""
 def _generate_webhook_signature(payload: bytes, secret: str) -> str {
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest();
 }
 
-"""Start the jac-scale server in a subprocess."""
-def _start_server(
-    fixtures_dir: Path,
-    test_file: Path,
-    port: int,
-    base_url: str,
-    env: dict | None = None
-) -> subprocess.Popen {
-    import from jaclang.scale.runtime.context.util { jac_executable }
-    cmd = [jac_executable(), "start", test_file.name, "--port", str(port)];
-
-    proc_env = os.environ.copy();
-    if env {
-        proc_env.update(env);
-    }
-
-    server_process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=str(fixtures_dir),
-        env=proc_env
-    );
-
-    max_attempts = 50;
-    server_ready = False;
-
-    for _ in range(max_attempts) {
-        if server_process.poll() is not None {
-            (stdout, stderr) = server_process.communicate();
-            raise RuntimeError(
-                f"Server process terminated unexpectedly.\n"
-                f"STDOUT: {stdout}\nSTDERR: {stderr}"
-            );
-        }
-
-        try {
-            response = requests.get(f"{base_url}/healthz", timeout=2);
-            if response.status_code == 200 {
-                print(f"Server started successfully on port {port}");
-                server_ready = True;
-                break;
-            }
-        } except (requests.ConnectionError, requests.Timeout) {
-            time.sleep(2);
-        }
-    }
-
-    if not (server_ready) {
-        server_process.terminate();
-        try {
-            (stdout, stderr) = server_process.communicate(timeout=2);
-        } except subprocess.TimeoutExpired {
-            server_process.kill();
-            (stdout, stderr) = server_process.communicate();
-        }
-        raise RuntimeError(
-            f"Server failed to start after {max_attempts} attempts.\n"
-            f"STDOUT: {stdout}\nSTDERR: {stderr}"
-        );
-    }
-
-    return server_process;
-}
-
-"""Stop the server process."""
-def _stop_server(server_process: subprocess.Popen | None) {
-    if server_process {
-        server_process.terminate();
-        try {
-            server_process.wait(timeout=5);
-        } except subprocess.TimeoutExpired {
-            server_process.kill();
-            server_process.wait();
-        }
-    }
-    time.sleep(0.5);
-    gc.collect();
-}
-
 # Shared webhook test functions
-"""Register a user and login via HTTP, return the JWT token."""
-def _register_and_login(base_url: str, username: str, password: str) -> str {
-    requests.post(
-        f"{base_url}/user/register",
-        json={
-            "identities": [{"type": "username", "value": username}],
-            "credential": {"type": "password", "password": password}
-        },
-        timeout=10
-    );
-    login_resp = requests.post(
-        f"{base_url}/user/login",
-        json={
-            "identity": {"type": "username", "value": username},
-            "credential": {"type": "password", "password": password}
-        },
-        timeout=10
-    );
-    login_data = cast(
-        dict[str, any], _extract_transport_response_data(login_resp.json())
-    );
-    return login_data["token"];
-}
-
-"""Verify webhook endpoints are registered for walkers with webhook protocol."""
-def run_webhook_endpoint_exists_test(base_url: str) {
-    # Hit endpoints directly — non-404 means the route is registered
-    resp = requests.post(f"{base_url}/webhook/PaymentReceived", json={}, timeout=5);
-    assert resp.status_code != 404 , (
-        "Expected /webhook/PaymentReceived to be registered"
-    );
-    resp = requests.post(f"{base_url}/webhook/MinimalWebhook", json={}, timeout=5);
-    assert resp.status_code != 404 , (
-        "Expected /webhook/MinimalWebhook to be registered"
-    );
-}
-
-"""Verify normal walkers are NOT in /webhook/."""
-def run_normal_walker_not_in_webhook_test(base_url: str) {
-    # NormalPayment should be rejected by webhook endpoint
-    # Static mode: 404, Dynamic mode: 400 or 405 depending on routing
-    resp = requests.post(f"{base_url}/webhook/NormalPayment", json={}, timeout=5);
-    assert resp.status_code != 200 , (
-        "NormalPayment should NOT be a valid webhook endpoint"
-    );
-    # But it should be accessible via /walker/
-    resp = requests.post(f"{base_url}/walker/NormalPayment", json={}, timeout=5);
-    assert resp.status_code != 404 , (
-        "NormalPayment should be accessible via /walker/ endpoint"
-    );
-}
-
-"""Verify NormalPayment works via /walker/ endpoint."""
-def run_normal_walker_accessible_via_walker_test(base_url: str) {
-    username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
-    register_response = requests.post(
-        f"{base_url}/user/register",
-        json={
-            "identities": [{"type": "username", "value": username}],
-            "credential": {"type": "password", "password": "password123"}
-        },
-        timeout=10
-    );
-    assert register_response.status_code == 201;
-    login_response = requests.post(
-        f"{base_url}/user/login",
-        json={
-            "identity": {"type": "username", "value": username},
-            "credential": {"type": "password", "password": "password123"}
-        },
-        timeout=10
-    );
-    login_data = cast(
-        dict[str, any], _extract_transport_response_data(login_response.json())
-    );
-    token = login_data["token"];
-
-    response = requests.post(
-        f"{base_url}/walker/NormalPayment",
-        json={
-            "payment_id": "PAY-NORMAL-001",
-            "order_id": "ORD-NORMAL-001",
-            "amount": 50.00,
-            "currency": "EUR"
-        },
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-
-    assert response.status_code == 200 , (
-        f"Expected 200, got {response.status_code}: {response.text}"
-    );
-    data = cast(dict[str, any], _extract_transport_response_data(response.json()));
-    assert "reports" in data;
-    rpt = data["reports"][0];
-    assert rpt["status"] == "success";
-    assert rpt["payment_id"] == "PAY-NORMAL-001";
-    assert rpt["transport"] == "http";
-}
-
-"""Test that webhook endpoints require API key authentication."""
-def run_webhook_requires_api_key_test(base_url: str) {
-    payload = json.dumps({});
-
-    response = requests.post(
-        f"{base_url}/webhook/MinimalWebhook",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=5
-    );
-
-    assert response.status_code in (401, 422) , (
-        f"Expected 401 or 422, got {response.status_code}: {response.text}"
-    );
-}
-
-"""Test that webhook endpoints reject invalid API keys."""
-def run_webhook_invalid_api_key_test(base_url: str) {
-    payload = json.dumps({});
-
-    response = requests.post(
-        f"{base_url}/webhook/MinimalWebhook",
-        data=payload,
-        headers={"Content-Type": "application/json", "X-API-Key": "invalid_key_12345"},
-        timeout=5
-    );
-
-    assert response.status_code == 401 , (
-        f"Expected 401, got {response.status_code}: {response.text}"
-    );
-}
-
-"""MinimalWebhook works with valid API key."""
-def run_minimal_webhook_with_valid_api_key_test(base_url: str) {
-    username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
-    token = _register_and_login(base_url, username, "password123");
-
-    api_key_response = requests.post(
-        f"{base_url}/api-key/create",
-        json={"name": "minimal_webhook_key", "expiry_days": 30},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-    assert api_key_response.status_code == 201 , (
-        f"Failed to create API key: {api_key_response.text}"
-    );
-    api_key_data = cast(
-        dict[str, any], _extract_transport_response_data(api_key_response.json())
-    );
-    api_key = api_key_data["api_key"];
-
-    payload = json.dumps({});
-    payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time()));
-    signature = _generate_webhook_signature(
-        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
-    );
-    response = requests.post(
-        f"{base_url}/webhook/MinimalWebhook",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "X-Webhook-Signature": signature,
-            "X-Webhook-Timestamp": ts
-        },
-        timeout=10
-    );
-
-    assert response.status_code == 200 , (
-        f"Expected 200, got {response.status_code}: {response.text}"
-    );
-    data = cast(dict[str, any], _extract_transport_response_data(response.json()));
-    assert "reports" in data;
-    assert data["reports"][0]["status"] == "received";
-    assert data["reports"][0]["transport"] == "webhook";
-}
-
-"""PaymentReceived webhook walker with multiple fields."""
-def run_webhook_payment_received_test(base_url: str) {
-    username = f"payment_user_{uuid.uuid4().hex[:8]}";
-    token = _register_and_login(base_url, username, "password123");
-
-    api_key_response = requests.post(
-        f"{base_url}/api-key/create",
-        json={"name": "payment_webhook_key", "expiry_days": 30},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-    assert api_key_response.status_code == 201;
-    api_key_data = cast(
-        dict[str, any], _extract_transport_response_data(api_key_response.json())
-    );
-    api_key = api_key_data["api_key"];
-
-    payload = json.dumps(
-        {
-            "payment_id": "PAY-12345",
-            "order_id": "ORD-67890",
-            "amount": 99.99,
-            "currency": "USD"
-        }
-    );
-    payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time()));
-    signature = _generate_webhook_signature(
-        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
-    );
-
-    response = requests.post(
-        f"{base_url}/webhook/PaymentReceived",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "X-Webhook-Signature": signature,
-            "X-Webhook-Timestamp": ts
-        },
-        timeout=10
-    );
-
-    assert response.status_code == 200 , (
-        f"Expected 200, got {response.status_code}: {response.text}"
-    );
-    data = cast(dict[str, any], _extract_transport_response_data(response.json()));
-    assert "reports" in data;
-    rpt = data["reports"][0];
-    assert rpt["status"] == "success";
-    assert rpt["payment_id"] == "PAY-12345";
-    assert rpt["order_id"] == "ORD-67890";
-    assert rpt["amount"] == 99.99;
-    assert rpt["currency"] == "USD";
-}
-
-"""Webhook walkers are NOT accessible via /walker/."""
-def run_webhook_not_accessible_via_walker_test(base_url: str) {
-    username = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
-    token = _register_and_login(base_url, username, "password123");
-
-    response = requests.post(
-        f"{base_url}/walker/PaymentReceived",
-        json={"payment_id": "PAY-TEST", "order_id": "ORD-TEST", "amount": 10.00},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-
-    assert response.status_code in (400, 404, 405) , (
-        f"Expected 400/404/405, got {response.status_code}: {response.text}"
-    );
-}
-
-"""Test that revoked API keys are rejected."""
-def run_webhook_revoked_api_key_test(base_url: str) {
-    username = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
-    token = _register_and_login(base_url, username, "password123");
-
-    api_key_response = requests.post(
-        f"{base_url}/api-key/create",
-        json={"name": "key_to_revoke", "expiry_days": 30},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-    assert api_key_response.status_code == 201;
-    api_key_data = cast(
-        dict[str, any], _extract_transport_response_data(api_key_response.json())
-    );
-    api_key = api_key_data["api_key"];
-    api_key_id = api_key_data["api_key_id"];
-
-    # Verify API key works with MinimalWebhook
-    payload = json.dumps({});
-    payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time()));
-    signature = _generate_webhook_signature(
-        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
-    );
-    response = requests.post(
-        f"{base_url}/webhook/MinimalWebhook",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "X-Webhook-Signature": signature,
-            "X-Webhook-Timestamp": ts
-        },
-        timeout=10
-    );
-    assert response.status_code == 200;
-
-    # Revoke the API key
-    revoke_response = requests.delete(
-        f"{base_url}/api-key/{api_key_id}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-    assert revoke_response.status_code == 200 , (
-        f"Failed to revoke key: {revoke_response.text}"
-    );
-
-    # Try to use revoked key
-    response = requests.post(
-        f"{base_url}/webhook/MinimalWebhook",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "X-Webhook-Signature": signature,
-            "X-Webhook-Timestamp": ts
-        },
-        timeout=10
-    );
-
-    assert response.status_code == 401 , (
-        f"Expected 401 for revoked key, got {response.status_code}: {response.text}"
-    );
-}
-
-"""A key scoped via allowed_walkers cannot call other webhook walkers."""
-def run_webhook_scoped_api_key_test(base_url: str) {
-    username = f"webhook_scoped_user_{uuid.uuid4().hex[:8]}";
-    token = _register_and_login(base_url, username, "password123");
-
-    api_key_response = requests.post(
-        f"{base_url}/api-key/create",
-        json={
-            "name": "scoped_key",
-            "expiry_days": 30,
-            "allowed_walkers": "PaymentReceived"
-        },
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    );
-    assert api_key_response.status_code == 201;
-    api_key_data = cast(
-        dict[str, Any], _extract_transport_response_data(api_key_response.json())
-    );
-    api_key = api_key_data["api_key"];
-
-    # Allowed walker works
-    payload = json.dumps(
-        {"payment_id": "PAY-1", "order_id": "ORD-1", "amount": 1.0, "currency": "USD"}
-    );
-    payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time()));
-    signature = _generate_webhook_signature(
-        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
-    );
-    allowed_resp = requests.post(
-        f"{base_url}/webhook/PaymentReceived",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "X-Webhook-Signature": signature,
-            "X-Webhook-Timestamp": ts
-        },
-        timeout=10
-    );
-    assert allowed_resp.status_code == 200 , (
-        f"Expected 200 for allowed walker, got {allowed_resp.status_code}: {allowed_resp.text}"
-    );
-
-    # Walker outside the allow-list is rejected with 403
-    other_payload = json.dumps({});
-    other_bytes = other_payload.encode("utf-8");
-    ts2 = str(int(time.time()));
-    other_sig = _generate_webhook_signature(
-        f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]
-    );
-    denied_resp = requests.post(
-        f"{base_url}/webhook/MinimalWebhook",
-        data=other_payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-            "X-Webhook-Signature": other_sig,
-            "X-Webhook-Timestamp": ts2
-        },
-        timeout=10
-    );
-    assert denied_resp.status_code == 403 , (
-        f"Expected 403 for walker outside scope, got {denied_resp.status_code}: {denied_resp.text}"
-    );
-}
-
 # =========================================================================
-# Test class 1: Webhook tests WITHOUT MongoDB (file-based storage)
-# Uses ScaleTestClient (in-process, no subprocess)
+# Webhook tests over the in-process client (Postgres-native key storage)
 # =========================================================================
 glob wh_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
-     wh_test_file: Path = wh_fixtures_dir / "test_api.jac",
-     _wh_mongo_container: MongoDbContainer | None = None;
+     wh_test_file: Path = wh_fixtures_dir / "test_api.jac";
 
-"""Start the shared MongoDB container on first use and return its connection URI."""
-def _shared_mongo_uri -> str {
-    if _wh_mongo_container is None {
-        _wh_mongo_container = MongoDbContainer("mongo:latest");
-        _wh_mongo_container.start();
-        atexit.register(_stop_shared_mongo);
-    }
-    return _wh_mongo_container.get_connection_url();
-}
-
-"""Stop the shared MongoDB container at process exit."""
-def _stop_shared_mongo {
-    if _wh_mongo_container is not None {
-        with contextlib.suppress(Exception) {
-            _wh_mongo_container.stop();
-        }
-        _wh_mongo_container = None;
-    }
-}
-
-"""Drop jac_db so each test starts from clean Mongo state in the shared container."""
-def _reset_shared_mongo(uri: str) {
-    client = MongoClient(uri);
+"""Boot a fixture app while capturing log records, return durability warnings seen."""
+def _boot_and_capture_webhook_warnings(fixture_file: str) -> list[str] {
+    capture = MemoryHandler(10000);
+    root_logger = logging.getLogger();
+    root_logger.addHandler(capture);
+    client = None;
     try {
-        client.drop_database('jac_db');
+        client = make_client(fixture_file);
+        return [
+            r.getMessage()
+            for r in capture.buffer
+            if "Webhook API keys are stored in memory" in r.getMessage()
+        ];
     } finally {
-        client.close();
-    }
-}
-
-"""Run a webhook test against a fresh server backed by the shared MongoDB container."""
-def _run_with_shared_mongo(run_test: Callable[[str], None]) {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    uri = _shared_mongo_uri();
-    os.environ["MONGODB_URI"] = uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = None;
-    try {
-        sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-        run_test(base_url);
-    } finally {
-        if sp is not None {
-            _stop_server(sp);
+        root_logger.removeHandler(capture);
+        if client is not None {
+            client.close();
         }
-        os.environ.pop("MONGODB_URI", None);
-        _reset_shared_mongo(uri);
-        _cleanup_db_files(wh_fixtures_dir);
     }
 }
 
-test "webhook without mongo - endpoint exists" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook warning absent at boot without webhook walkers" {
+    try {
+        warnings = _boot_and_capture_webhook_warnings("todo_app.jac");
+        assert not warnings , (
+            "Webhook durability warning fired at boot for an app with no "
+            f"webhook walkers: {warnings}"
+        );
+    } finally { }
+}
+
+test "webhook durability warning absent when the shared database is available" {
+    # Keys persist in the shared Postgres database by default now, so a
+    # normal boot with webhook walkers must NOT warn about in-memory keys.
+    warnings = _boot_and_capture_webhook_warnings("test_api.jac");
+    assert not warnings , (
+        f"Webhook durability warning fired despite a database: {warnings}"
+    );
+}
+
+test "webhook - endpoint exists" {
     client = make_client();
     try {
         schema = client._server.server.app.openapi();
@@ -577,14 +83,10 @@ test "webhook without mongo - endpoint exists" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - normal walker not in webhook" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - normal walker not in webhook" {
     client = make_client();
     try {
         schema = client._server.server.app.openapi();
@@ -598,14 +100,10 @@ test "webhook without mongo - normal walker not in webhook" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - normal walker accessible via walker endpoint" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - normal walker accessible via walker endpoint" {
     client = make_client();
     try {
         walker_username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
@@ -634,14 +132,10 @@ test "webhook without mongo - normal walker accessible via walker endpoint" {
         assert rpt["transport"] == "http";
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - requires api key" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - requires api key" {
     client = make_client();
     try {
         payload = json.dumps({});
@@ -657,14 +151,10 @@ test "webhook without mongo - requires api key" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - invalid api key" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - invalid api key" {
     client = make_client();
     try {
         payload = json.dumps({});
@@ -683,14 +173,10 @@ test "webhook without mongo - invalid api key" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - minimal webhook with valid api key" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - minimal webhook with valid api key" {
     client = make_client();
     try {
         _wh_user1 = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
@@ -734,14 +220,10 @@ test "webhook without mongo - minimal webhook with valid api key" {
         assert data["reports"][0]["transport"] == "webhook";
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - payment received with fields" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - payment received with fields" {
     client = make_client();
     try {
         _wh_user2 = f"payment_user_{uuid.uuid4().hex[:8]}";
@@ -795,14 +277,10 @@ test "webhook without mongo - payment received with fields" {
         assert rpt["currency"] == "USD";
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - not accessible via walker endpoint" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - not accessible via walker endpoint" {
     client = make_client();
     try {
         _wh_user3 = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
@@ -820,14 +298,10 @@ test "webhook without mongo - not accessible via walker endpoint" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - revoked api key" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - revoked api key" {
     client = make_client();
     try {
         _wh_user4 = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
@@ -888,14 +362,10 @@ test "webhook without mongo - revoked api key" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - scoped api key" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - scoped api key" {
     client = make_client();
     try {
         _wh_user5 = f"webhook_scoped_user_{uuid.uuid4().hex[:8]}";
@@ -963,14 +433,10 @@ test "webhook without mongo - scoped api key" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - stale timestamp rejected" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - stale timestamp rejected" {
     client = make_client();
     try {
         username = f"webhook_replay_user_{uuid.uuid4().hex[:8]}";
@@ -1011,14 +477,10 @@ test "webhook without mongo - stale timestamp rejected" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - unknown body fields dropped" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - unknown body fields dropped" {
     client = make_client();
     try {
         username = f"webhook_massassign_user_{uuid.uuid4().hex[:8]}";
@@ -1076,14 +538,10 @@ test "webhook without mongo - unknown body fields dropped" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
 }
 
-test "webhook without mongo - api key rejected as user session token" {
-    original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
+test "webhook - api key rejected as user session token" {
     client = make_client();
     try {
         username = f"webhook_l2_user_{uuid.uuid4().hex[:8]}";
@@ -1118,51 +576,5 @@ test "webhook without mongo - api key rejected as user session token" {
         );
     } finally {
         client.close();
-        if original_mongodb_uri is not None {
-            os.environ["MONGODB_URI"] = original_mongodb_uri;
-        }
     }
-}
-
-# =========================================================================
-# Test class 2: Webhook tests WITH MongoDB (via testcontainers)
-# =========================================================================
-test "webhook with mongo - endpoint exists" {
-    _run_with_shared_mongo(run_webhook_endpoint_exists_test);
-}
-
-test "webhook with mongo - normal walker not in webhook" {
-    _run_with_shared_mongo(run_normal_walker_not_in_webhook_test);
-}
-
-test "webhook with mongo - normal walker accessible via walker endpoint" {
-    _run_with_shared_mongo(run_normal_walker_accessible_via_walker_test);
-}
-
-test "webhook with mongo - requires api key" {
-    _run_with_shared_mongo(run_webhook_requires_api_key_test);
-}
-
-test "webhook with mongo - invalid api key" {
-    _run_with_shared_mongo(run_webhook_invalid_api_key_test);
-}
-
-test "webhook with mongo - minimal webhook with valid api key" {
-    _run_with_shared_mongo(run_minimal_webhook_with_valid_api_key_test);
-}
-
-test "webhook with mongo - payment received with fields" {
-    _run_with_shared_mongo(run_webhook_payment_received_test);
-}
-
-test "webhook with mongo - not accessible via walker endpoint" {
-    _run_with_shared_mongo(run_webhook_not_accessible_via_walker_test);
-}
-
-test "webhook with mongo - revoked api key" {
-    _run_with_shared_mongo(run_webhook_revoked_api_key_test);
-}
-
-test "webhook with mongo - scoped api key" {
-    _run_with_shared_mongo(run_webhook_scoped_api_key_test);
 }

@@ -28,4 +28,6 @@ jaclang = "0.9.8"
 
 [jacpack.options]
 directories = [".jac", "assets"]
-post_create_hook = "jaclang.runtimelib.client.plugin_config:_post_create_client"
+
+[scale.microservices.routes]
+"endpoints" = "/endpoints"

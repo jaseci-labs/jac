@@ -41,3 +41,114 @@ def parse_ar_archive(data: bytes) -> list[ArMember];
 def parse_ar_symbol_index(data: bytes) -> dict[str, int];
 
 def select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember];
+
+def resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
+    import os;
+    import from jaclang.runtimelib.utils { triple_arch }
+    want = triple_arch(triple);
+
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    fallback: (str | None) = None;
+    if os.path.isdir(pbs) {
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "python", "build", "lib");
+            if os.path.isdir(libdir) {
+                if fallback is None {
+                    fallback = libdir;
+                }
+                if want in d {
+                    return libdir;
+                }
+            }
+        }
+    }
+
+    import from jaclang.runtimelib.fused_binary { bundled_floor_roots }
+    for floor in bundled_floor_roots(pkg_root) {
+        if not os.path.isdir(floor) {
+            continue;
+        }
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d);
+            if os.path.isdir(cand) and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return fallback;
+}
+
+def floor_lib_dir(triple: str) -> (str | None) {
+    import os;
+    import from jaclang.jac0core.compile_options { env_floor_dir }
+    `override = env_floor_dir();
+    if `override and os.path.isdir(`override) {
+        return `override;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return resolve_floor_dir(pkg_root, triple);
+}
+
+def clib_to_archive_name(clib_path: str) -> str {
+    import os;
+    return os.path.basename(clib_path).split(".")[0] + ".a";
+}
+
+def collect_floor_archives(
+    clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
+) -> tuple {
+    import os;
+    import from jaclang.compiler.passes.native.linker_common { select_ar_members }
+    member_bytes: list = [];
+    handled: set = set();
+
+    tl = triple.lower();
+    is_pe = ("windows" in tl) or ("win32" in tl) or ("msvc" in tl) or ("mingw" in tl);
+    if is_pe or not clib_paths {
+        return (member_bytes, handled);
+    }
+    lib_dir = floor_lib_dir(triple);
+    if lib_dir is None {
+        return (member_bytes, handled);
+    }
+
+    syms_by_lib: dict = {};
+    for (sym, raw) in clib_symbol_lib.items() {
+        syms_by_lib.setdefault(raw, []).append(sym);
+    }
+
+    roots_by_archive: dict = {};
+    paths_by_archive: dict = {};
+    for clib_path in clib_paths {
+        arch_file = os.path.join(lib_dir, clib_to_archive_name(clib_path));
+        if not os.path.isfile(arch_file) {
+            continue;
+        }
+        paths_by_archive.setdefault(arch_file, []).append(clib_path);
+        for s in syms_by_lib.get(clib_path, []) {
+            roots_by_archive.setdefault(arch_file, []).append(
+                ("_" + s) if is_macos else s
+            );
+        }
+    }
+    for (arch_file, roots) in roots_by_archive.items() {
+        if not roots {
+            continue;
+        }
+        with open(arch_file, "rb") as _f {
+            data = _f.read();
+        }
+        members = select_ar_members(data, roots);
+        if not members {
+            continue;
+        }
+        for m in members {
+            member_bytes.append(m.data);
+        }
+        for p in paths_by_archive.get(arch_file, []) {
+            handled.add(p);
+        }
+    }
+    return (member_bytes, handled);
+}

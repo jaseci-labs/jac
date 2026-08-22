@@ -10,7 +10,6 @@ import os;
 import sys;
 import tempfile;
 import shutil;
-import pytest;
 import from pathlib { Path }
 import from subprocess { run }
 
@@ -26,7 +25,7 @@ test "lazy finder loads a .jac submodule of a no-__init__ package" {
         # This asserts the clean-room pip/.pth precondition (jaclang not yet
         # imported). Under the single binary jaclang IS the runtime and is always
         # loaded, so the precondition cannot hold -- the scenario is pip-only.
-        pytest.skip("pip/.pth clean-room scenario is N/A under the single binary");
+        testskip("pip/.pth clean-room scenario is N/A under the single binary");
     }
     # The package directory has no __init__.py, so `import pkg.mod` must resolve
     # a .jac submodule without anything having imported jaclang first -- exactly
@@ -40,7 +39,9 @@ test "lazy finder loads a .jac submodule of a no-__init__ package" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, " + repr(tmp_path) + ");"
+            "import sys; sys.path.insert(0, "
+            + repr(tmp_path)
+            + ");"
             "import _jac_finder; _jac_finder.install();"
             "assert 'jaclang' not in sys.modules, 'jaclang imported before first .jac use';"
             "import demopkg.greet;"
@@ -65,7 +66,9 @@ test "lazy finder loads a top-level .jac module" {
         );
 
         snippet = (
-            "import sys; sys.path.insert(0, " + repr(tmp_path) + ");"
+            "import sys; sys.path.insert(0, "
+            + repr(tmp_path)
+            + ");"
             "import _jac_finder; _jac_finder.install();"
             "import solo;"
             "print(solo.ping());"
@@ -103,7 +106,10 @@ def _load_finder -> object {
 """Run apply_dev_source_override with baked/toml sources patched, restoring
 sys.path and env afterwards; returns the resulting sys.path[0]."""
 def _override_result(
-    baked: (str | None), toml_src: (str | None), no_dev_env: bool = False
+    baked: (str | None),
+    toml_src: (str | None),
+    no_dev_env: bool = False,
+    inherited: (str | None) = None
 ) -> str {
     _jac_finder = _load_finder();
     import from unittest.mock { patch }
@@ -114,11 +120,18 @@ def _override_result(
     try {
         # CI's binary jobs export JAC_NO_DEV_SOURCE=1 globally, which would
         # suppress the toml loop under test -- so the flag is controlled
-        # HERE, per call, never inherited from the environment.
+        # HERE, per call, never inherited from the environment. The same goes
+        # for JAC_DEV_SOURCE: a rerouted `jac test` exports it, and the finder
+        # now reads it as a parent's source, so each call sets it explicitly.
         if no_dev_env {
             os.environ["JAC_NO_DEV_SOURCE"] = "1";
         } else {
             os.environ.pop("JAC_NO_DEV_SOURCE", None);
+        }
+        if inherited is not None {
+            os.environ["JAC_DEV_SOURCE"] = inherited;
+        } else {
+            os.environ.pop("JAC_DEV_SOURCE", None);
         }
         with patch.object(_jac_finder, "_baked_source_dir", return_value=baked), patch.object(
             _jac_finder, "_dev_source_from_toml", return_value=toml_src
@@ -155,6 +168,27 @@ test "dev override prefers the repo's own toml stanza over a baked link" {
         assert _override_result(baked, toml_src) == toml_src , "the nearest jac.toml [dev] stanza must beat the binary's baked link";
         assert _override_result(baked, None) == baked , "with no toml stanza in scope, the baked link still applies";
     } finally {
+        shutil.rmtree(baked, ignore_errors=True);
+        shutil.rmtree(toml_src, ignore_errors=True);
+    }
+}
+
+test "a child jac inherits its parent's dev source when no stanza is in scope" {
+    # A rerouted jac exports JAC_DEV_SOURCE; a child it spawns from any cwd (a
+    # nacompile into a temp dir) must stay on that compiler rather than fall
+    # back to the bundled copy. The repo's own stanza still wins, and
+    # JAC_NO_DEV_SOURCE switches the inherited loop off like the toml one.
+    parent_src = _fake_source();
+    baked = _fake_source();
+    toml_src = _fake_source();
+    try {
+        assert _override_result(None, None, inherited=parent_src) == parent_src , "an inherited JAC_DEV_SOURCE must reroute a child with no stanza in scope";
+        assert _override_result(baked, None, inherited=parent_src) == parent_src , "the parent's source must beat the baked link";
+        assert _override_result(baked, toml_src, inherited=parent_src) == toml_src , "the nearest jac.toml [dev] stanza must beat an inherited source";
+        assert _override_result(baked, None, no_dev_env=True, inherited=parent_src)
+            == baked , "JAC_NO_DEV_SOURCE must suppress the inherited loop, not the baked link";
+    } finally {
+        shutil.rmtree(parent_src, ignore_errors=True);
         shutil.rmtree(baked, ignore_errors=True);
         shutil.rmtree(toml_src, ignore_errors=True);
     }

@@ -11,7 +11,8 @@ def resolve_diagnostic_tokens(tokens: list) -> tuple[list[str], list[str]] {
         if not isinstance(raw_item, str) {
             continue;
         }
-        for part in raw_item.split(",") {
+        raw_text: str = raw_item;
+        for part in raw_text.split(",") {
             token = part.strip();
             if not token {
                 continue;

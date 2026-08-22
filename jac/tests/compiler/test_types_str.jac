@@ -96,7 +96,7 @@ test "all type str methods" {
     mock_module.names_in_scope = {};
     mock_module.names_in_scope_overload = {};
 
-    shared = types.ClassType.ClassDetailsShared(
+    shared = types.ClassDetailsShared(
         class_name="TestClass", symbol_table=mock_module, mro=[]
     );
     class_type = types.ClassType(_shared=shared);

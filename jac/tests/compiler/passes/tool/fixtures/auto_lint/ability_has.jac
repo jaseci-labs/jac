@@ -12,16 +12,16 @@ def app() -> any {
     return count;
 }
 
-# has statements in client-side function (typically in .cl.jac files)
-cl {
-    def:pub counter() -> JsxElement {
-        has value: int = 0;
-        has label: str = "Counter";
-        has visible: bool = True;
+# has statements in client-side function (typically in .jac files)
 
-        return <div>{label}: {value}</div>;
-    }
+def:pub counter() -> JsxElement {
+    has value: int = 0;
+    has label: str = "Counter";
+    has visible: bool = True;
+
+    return <div>{label}: {value}</div>;
 }
+
 
 # Method with has statements should also combine
 obj Widget {

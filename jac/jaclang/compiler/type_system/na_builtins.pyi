@@ -33,7 +33,11 @@ def managed(__x: _T) -> _T: ...
 
 # First-class region handle: an ownable, sendable, escape-checked allocation
 # extent opened by `in <handle> { ... }`. Native codegen lowers it to an arena.
-class Region: ...
+class Region:
+    @overload
+    def partition(self) -> Region: ...
+    @overload
+    def partition(self, n: int) -> tuple[Region, ...]: ...
 
 class Iterable(Protocol[_T]):
     def __iter__(self) -> Iterator[_T]: ...
@@ -83,6 +87,13 @@ class BinaryFile:
 # A binary mode literal (containing "b") selects BinaryFile; any other mode is
 # a text File. The codegen reads the same literal to pick the struct, so the
 # static type and emitted object always agree (#6404).
+#
+# `encoding` is declared on the text overload because CPython accepts it there
+# and the emitter has to answer for it. It does not lower: `_emit_open` refuses
+# any keyword argument, which demotes the calling function to a Python-only
+# seam. Leaving the parameter off made the same call a type error instead, and
+# a type error in a native module refuses the whole module rather than the one
+# function that wrote it.
 @overload
 def open(
     path: str,
@@ -106,4 +117,4 @@ def open(
     ],
 ) -> BinaryFile: ...
 @overload
-def open(path: str, mode: str = "r") -> File: ...
+def open(path: str, mode: str = "r", encoding: str | None = None) -> File: ...

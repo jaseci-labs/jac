@@ -1,8 +1,8 @@
 import asyncio;
 import logging;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
-import from jaclang.scale.jserver.jserver { HTTPMethod, JEndPoint }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
+import from jaclang.runtimelib.serving.endpoint { HTTPMethod, JEndPoint }
 import from jaclang.scale.admin.k8s_ops {
     apps_api,
     core_api,
@@ -33,7 +33,7 @@ def _rollout_status(dep: dict) -> dict {
 
     for c in conditions {
         if c.get("type") == "Progressing"
-        and str(c.get("reason", "")) == "ProgressDeadlineExceeded" {
+            and str(c.get("reason", "")) == "ProgressDeadlineExceeded" {
             return {
                 "status": "stuck",
                 "reason": "ProgressDeadlineExceeded",
@@ -60,7 +60,7 @@ def summarize_deployment(dep: dict) -> dict {
     containers = ((spec.get("template", {}) or {}).get("spec", {}) or {}).get(
         "containers", []
     )
-    or [];
+        or [];
     images: list = [];
     for c in containers {
         img = c.get("image");

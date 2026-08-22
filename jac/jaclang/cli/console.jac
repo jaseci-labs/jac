@@ -57,7 +57,7 @@ obj _Spinner {
                 return;
             }
             idx += 1;
-            self._stop.wait(self.interval);
+            self._stop.`wait(self.interval);
         }
     }
 
@@ -144,6 +144,7 @@ obj JacConsole {
 glob _console_instance: JacConsole | None = None;
 
 def _get_console -> JacConsole;
+def use_line_buffered_output(streams: (list[any] | None) = None) -> int;
 
 class _ConsoleProxy {
     def __getattr__(self: _ConsoleProxy, name: str) -> any {

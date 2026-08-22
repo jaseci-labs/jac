@@ -16,7 +16,14 @@ import sys;
 import from pathlib { Path }
 
 glob BENCH = Path(str(__file__)).resolve().parent.parent,
-     KERNELS = ["binarytrees", "vecdot", "histogram", "vm", "rbtree", "deriv"],
+     KERNELS = [
+         "own_binarytrees",
+         "own_vecdot",
+         "own_histogram",
+         "own_vm",
+         "own_rbtree",
+         "own_deriv"
+     ],
      MODES = ["none", "rc", "cycles"];
 
 """nacompile flags for a memory mode."""
@@ -29,7 +36,7 @@ def mode_flags(mode: str) -> list[str] {
 
 """Compile one cell with IR dumping and count the RC machinery."""
 def audit(kernel: str, mode: str) -> dict {
-    src = BENCH / "kernels" / f"{kernel}.na.jac";
+    src = BENCH / "kernels" / f"{kernel}.jac";
     out = BENCH / "bin" / f"audit_{kernel}_{mode}";
     out.parent.mkdir(exist_ok=True);
     ll = BENCH / "results" / f"{kernel}_{mode}.ll";
@@ -38,7 +45,7 @@ def audit(kernel: str, mode: str) -> dict {
     cmd = ["jac", "nacompile", str(src)] + mode_flags(mode) + ["-o", str(out)];
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env);
     if r.returncode != 0 {
-        sys.exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");
+        sys.`exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");
     }
     text = ll.read_text();
     out.unlink(missing_ok=True);
@@ -66,7 +73,7 @@ def parse_opts(argv: list[str]) -> dict {
             opts[flag[2:]] = argv[i + 1];
             i += 2;
         } else {
-            sys.exit(f"unknown option: {flag}\n{__doc__}");
+            sys.`exit(f"unknown option: {flag}\n{__doc__}");
         }
     }
     return opts;
@@ -74,21 +81,21 @@ def parse_opts(argv: list[str]) -> dict {
 
 """Audit every requested cell; fail if an enforced build has RC machinery."""
 def main(opts: dict) {
-    census: dict = {};
+    results: dict = {};
     bad = False;
     for kernel in [
         k
         for k in opts["kernels"].split(",")
         if k
     ] {
-        census[kernel] = {};
+        results[kernel] = {};
         for mode in [
             m
             for m in opts["modes"].split(",")
             if m
         ] {
             a = audit(kernel, mode);
-            census[kernel][mode] = a;
+            results[kernel][mode] = a;
             print(
                 f"{kernel:12s} {mode:6s} rc_refs={a['rc_symbol_refs']:4d} "
                 f"trace_fns={a['trace_fns']:2d} collector={a['collector_refs']}"
@@ -100,10 +107,10 @@ def main(opts: dict) {
         }
     }
     out = Path(opts["out"]);
-    out.write_text(json.dumps(census, indent=2) + "\n");
+    out.write_text(json.dumps(results, indent=2) + "\n");
     print(f"wrote {out}");
     if bad {
-        sys.exit("zero-RC audit FAILED for an enforced build");
+        sys.`exit("zero-RC audit FAILED for an enforced build");
     }
 }
 

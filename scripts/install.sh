@@ -13,11 +13,6 @@
 #   --uninstall   Remove Jac
 #   --help        Print usage
 #
-# Scale and the MCP server ship built into jac (the jaclang.scale /
-# jaclang.cli.mcp plugins); only scale's third-party deps install on demand.
-# Other plugins (byllm) install separately once `jac` is on PATH:
-#   jac install byllm
-#
 # Examples:
 #   curl -fsSL ... | bash                          # Latest jac binary
 #   curl -fsSL ... | bash -s -- --version 2.3.1    # Specific version
@@ -94,12 +89,6 @@ EXAMPLES:
 
     # Specific version
     curl -fsSL ... | bash -s -- --version 2.3.1
-
-PLUGINS:
-    Scale and the MCP server ship built into jac (jaclang.scale /
-    jaclang.cli.mcp). Once 'jac' is on PATH, install the other plugins with the
-    binary's own installer:
-        jac install byllm
 EOF
 }
 
@@ -334,13 +323,9 @@ install_binary() {
         info "Jac installed successfully!"
         info ""
         info "Performing initial setup, this may take a moment..."
-        jac --version 2>/dev/null || true
-        info ""
-        info "Get started:"
-        info "  jac --help"
-        info ""
-        info "Scale (deployment) and the MCP server ship built in; add other plugins when needed:"
-        info "  jac install byllm"
+        # No stderr redirect: the launcher narrates its one-time extract
+        # (payload read, sha256, live percent) on stderr -- show it.
+        jac || true
         info ""
     else
         warn "Binary installed to ${INSTALL_DIR}/jac but 'jac' is not on PATH."

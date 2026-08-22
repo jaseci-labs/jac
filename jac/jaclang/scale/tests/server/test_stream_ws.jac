@@ -1,7 +1,8 @@
 import asyncio;
 import from jaclang.scale.runtime.middleware.ws_forward {
     _to_ws_scheme,
-    _select_handshake_headers
+    _select_handshake_headers,
+    websocket_forward
 }
 import from jaclang.scale.runtime.transport.http_forward {
     ForwardResult,
@@ -11,7 +12,8 @@ import from jaclang.scale.runtime.transport.http_forward {
 
 
 test "ws scheme rewrite: http -> ws" {
-    assert _to_ws_scheme("http://127.0.0.1:8001/ws/chat") == "ws://127.0.0.1:8001/ws/chat";
+    assert _to_ws_scheme("http://127.0.0.1:8001/ws/chat")
+        == "ws://127.0.0.1:8001/ws/chat";
 }
 
 
@@ -68,67 +70,54 @@ test "handshake headers are case-insensitive on the filter" {
 }
 
 
-async def _spawn_upstream -> tuple[object, object, str] {
-    import aiohttp;
-    import from aiohttp { web }
+"""Stand up an upstream on the native serving core.
 
-    async def echo(request: object) -> object {
-        body = await request.read();
-        return web.Response(body=body, status=200);
+The forwarders used to be exercised against an aiohttp server; the runtime no
+longer depends on aiohttp, so the upstream is the same server jac ships."""
+def _spawn_upstream -> tuple[object, object, str] {
+    import from jaclang.runtimelib.serving.app { ServingApp }
+    import from jaclang.runtimelib.serving.datatypes { Request, Response }
+    import from jaclang.runtimelib.serving.endpoint { HTTPMethod, JEndPoint }
+    import from jaclang.runtimelib.serving.server { ServingServer }
+
+    def echo(request: Request) -> Response {
+        return Response(content=request.body, media_type="application/octet-stream");
     }
 
-    async def sse(request: object) -> object {
-        resp = web.StreamResponse(
-            status=200, headers={"Content-Type": "text/event-stream"}
-        );
-        await resp.prepare(request);
-        for i in range(3) {
-            await resp.write(f"data: event{i}\n\n".encode("utf-8"));
+    def sse -> any {
+        def gen -> any {
+            for i in range(3) {
+                yield f"data: event{i}\n\n";
+            }
         }
-        await resp.write_eof();
-        return resp;
+        import from jaclang.runtimelib.serving.datatypes { StreamingResponse }
+        return StreamingResponse(gen(), media_type="text/event-stream");
     }
 
-    async def big(request: object) -> object {
-        resp = web.StreamResponse(status=200);
-        resp.enable_chunked_encoding();
-        await resp.prepare(request);
-        chunk = b"x" * 4096;
-        for _ in range(16) {
-            await resp.write(chunk);
+    def big -> any {
+        def gen -> any {
+            for _ in range(16) {
+                yield b"x" * 4096;
+            }
         }
-        await resp.write_eof();
-        return resp;
+        import from jaclang.runtimelib.serving.datatypes { StreamingResponse }
+        return StreamingResponse(gen());
     }
 
-    async def fourofour(request: object) -> object {
-        return web.Response(status=404, body=b"nope");
+    def fourofour -> Response {
+        return Response(content=b"nope", status_code=404);
     }
-
-    app = web.Application();
-    app.router.add_post("/echo", echo);
-    app.router.add_get("/sse", sse);
-    app.router.add_get("/big", big);
-    app.router.add_get("/fourofour", fourofour);
-
-    runner = web.AppRunner(app);
-    await runner.setup();
-    site = web.TCPSite(runner, "127.0.0.1", 0);
-    await site.start();
-    actual_port: int = 0;
-    for s in runner.sites {
-        for srv in s._server.sockets if s._server else [] {
-            actual_port = srv.getsockname()[1];
-            break;
-        }
-        if actual_port {
-            break;
-        }
-    }
-    base = f"http://127.0.0.1:{actual_port}";
-    return (site, runner, base);
+    app = ServingApp();
+    app.add_endpoint(JEndPoint(method=HTTPMethod.POST, path="/echo", callback=echo));
+    app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/sse", callback=sse));
+    app.add_endpoint(JEndPoint(method=HTTPMethod.GET, path="/big", callback=big));
+    app.add_endpoint(
+        JEndPoint(method=HTTPMethod.GET, path="/fourofour", callback=fourofour)
+    );
+    server = ServingServer(app=app, host="127.0.0.1", port=0);
+    stop = server.serve_background();
+    return (stop, server, f"http://127.0.0.1:{server.bound_port}");
 }
-
 
 def _run(coro: object) -> object {
     loop = asyncio.new_event_loop();
@@ -142,7 +131,7 @@ def _run(coro: object) -> object {
 
 test "stream_forward streams SSE end-to-end with Content-Type preserved" {
     async def body -> dict {
-        (site, runner, base) = await _spawn_upstream();
+        (stop_upstream, server, base) = _spawn_upstream();
         try {
             fr = await stream_forward("GET", f"{base}/sse", {}, b"");
             assert fr is not None;
@@ -154,7 +143,7 @@ test "stream_forward streams SSE end-to-end with Content-Type preserved" {
             }
             return {"ctype": ctype, "status": fr.status, "body": got.decode("utf-8")};
         } finally {
-            await runner.cleanup();
+            stop_upstream();
         }
     }
     result = _run(body());
@@ -168,7 +157,7 @@ test "stream_forward streams SSE end-to-end with Content-Type preserved" {
 
 test "stream_forward streams chunked large body without buffering" {
     async def body -> dict {
-        (site, runner, base) = await _spawn_upstream();
+        (stop_upstream, server, base) = _spawn_upstream();
         try {
             fr = await stream_forward("GET", f"{base}/big", {}, b"");
             assert fr is not None;
@@ -183,7 +172,7 @@ test "stream_forward streams chunked large body without buffering" {
             }
             return {"status": fr.status, "count": chunk_count, "total": total};
         } finally {
-            await runner.cleanup();
+            stop_upstream();
         }
     }
     result = _run(body());
@@ -195,7 +184,7 @@ test "stream_forward streams chunked large body without buffering" {
 
 test "stream_forward.cleanup closes session without streaming" {
     async def body -> dict {
-        (site, runner, base) = await _spawn_upstream();
+        (stop_upstream, server, base) = _spawn_upstream();
         try {
             fr = await stream_forward("GET", f"{base}/fourofour", {}, b"");
             assert fr is not None;
@@ -203,7 +192,7 @@ test "stream_forward.cleanup closes session without streaming" {
             await fr.cleanup();
             return {"ok": True};
         } finally {
-            await runner.cleanup();
+            stop_upstream();
         }
     }
     assert _run(body())["ok"];
@@ -221,12 +210,12 @@ test "stream_forward returns None on connect refused (caller emits 502)" {
 
 test "raw_forward still buffers for the passthrough path" {
     async def body -> object {
-        (site, runner, base) = await _spawn_upstream();
+        (stop_upstream, server, base) = _spawn_upstream();
         try {
             result = await raw_forward("POST", f"{base}/echo", {}, b"hello");
             return result;
         } finally {
-            await runner.cleanup();
+            stop_upstream();
         }
     }
     result = _run(body());
@@ -242,8 +231,8 @@ test "ws route closes with 1008 when no registry prefix matches" {
     import from jaclang.scale.runtime.gateway.microservice_gateway {
         MicroserviceGateway
     }
-    import from fastapi.testclient { TestClient }
-    import from starlette.websockets { WebSocketDisconnect }
+    import from jaclang.runtimelib.serving.testing { ServingTestClient as TestClient }
+    import from jaclang.runtimelib.serving.datatypes { WebSocketDisconnect }
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
@@ -276,7 +265,7 @@ test "ws route rejects with 1012 during drain" {
         MicroserviceGateway
     }
     import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
-    import from fastapi.testclient { TestClient }
+    import from jaclang.runtimelib.serving.testing { ServingTestClient as TestClient }
 
     reset_drain();
     reg = ServiceRegistry();
@@ -308,4 +297,112 @@ test "ws route rejects with 1012 during drain" {
     } finally {
         reset_drain();
     }
+}
+
+
+obj FakeClientWS {
+    has inbound: object,
+        sent: list,
+        closed: bool = False,
+        close_code: int = 0;
+
+    async def receive -> dict {
+        return await self.inbound.get();
+    }
+
+    async def send_text(data: str) {
+        self.sent.append(("text", data));
+    }
+
+    async def send_bytes(data: bytes) {
+        self.sent.append(("bytes", data));
+    }
+
+    async def close(code: int = 1000) {
+        self.closed = True;
+        self.close_code = code;
+    }
+}
+
+
+"""Upstream websocket echo, served by the native ws codec."""
+def _spawn_ws_upstream -> tuple[object, object, str] {
+    import from jaclang.runtimelib.serving.app { ServingApp }
+    import from jaclang.runtimelib.serving.endpoint { WSEndPoint }
+    import from jaclang.runtimelib.serving.server { ServingServer }
+
+    async def ws_echo(ws: any) {
+        await ws.accept();
+        while True {
+            msg = await ws.receive();
+            if msg["type"] == "websocket.disconnect" {
+                break;
+            }
+            if "text" in msg {
+                await ws.send_text(msg["text"]);
+                if msg["text"] == "bye" {
+                    break;
+                }
+            } elif "bytes" in msg {
+                await ws.send_bytes(msg["bytes"]);
+            }
+        }
+        await ws.close();
+    }
+    app = ServingApp();
+    app.add_ws_endpoint(WSEndPoint(path="/ws", handler=ws_echo));
+    server = ServingServer(app=app, host="127.0.0.1", port=0);
+    stop = server.serve_background();
+    return (stop, server, f"http://127.0.0.1:{server.bound_port}/ws");
+}
+
+test "websocket_forward round-trips text and binary through a real upstream ws" {
+    async def body -> dict {
+        (stop_upstream, server, base) = _spawn_ws_upstream();
+        try {
+            client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+            client.inbound.put_nowait({"type": "websocket.receive", "text": "hello"});
+            client.inbound.put_nowait(
+                {"type": "websocket.receive", "bytes": b"\x00\x01\x02"}
+            );
+            client.inbound.put_nowait({"type": "websocket.receive", "text": "bye"});
+            client.inbound.put_nowait({"type": "websocket.disconnect"});
+
+            await websocket_forward(
+                client, base, {"Authorization": "Bearer t", "Cookie": "drop=me"}
+            );
+            return {"sent": client.sent, "closed": client.closed};
+        } finally {
+            stop_upstream();
+        }
+    }
+    result = _run(body());
+    sent = result["sent"];
+    texts = [
+        v
+        for (t, v) in sent
+        if t == "text"
+    ];
+    byte_msgs = [
+        v
+        for (t, v) in sent
+        if t == "bytes"
+    ];
+
+    assert "hello" in texts;
+    assert "bye" in texts;
+    assert b"\x00\x01\x02" in byte_msgs;
+    assert result["closed"] == True;
+}
+
+
+test "websocket_forward closes the client with 1011 when the upstream handshake fails" {
+    async def body -> dict {
+        client = FakeClientWS(inbound=asyncio.Queue(), sent=[]);
+        await websocket_forward(client, "http://127.0.0.1:1/ws", {});
+        return {"closed": client.closed, "code": client.close_code};
+    }
+    result = _run(body());
+    assert result["closed"] == True;
+    assert result["code"] == 1011;
 }

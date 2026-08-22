@@ -1,4 +1,32 @@
-import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree {
+    Ability,
+    Archetype,
+    Assignment,
+    AtomTrailer,
+    BinaryExpr,
+    Bool,
+    BuiltinType,
+    EdgeOpRef,
+    EdgeRefTrailer,
+    Enum,
+    EventSignature,
+    Expr,
+    FilterCompr,
+    Float,
+    FuncCall,
+    FuncSignature,
+    Int,
+    KWPair,
+    Module,
+    MultiString,
+    Name,
+    NameAtom,
+    String,
+    Symbol,
+    UniNode,
+    UniScopeNode,
+    VisitStmt
+}
 import from jaclang.jac0core.mtp {
     ClassInfo,
     EnumInfo,
@@ -12,7 +40,6 @@ import from jaclang.jac0core.mtp {
     type_to_str
 }
 
-import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 
 glob PRIMITIVE_TYPES: list[str] = [
@@ -38,41 +65,38 @@ glob PRIMITIVE_TYPES: list[str] = [
          'f64'
      ];
 
-obj MTIRGenPass(Transform[uni.Module, uni.Module]) {
-    has ir_in: uni.Module,
-        prog: any,
-        cancel_token: any = None;
+obj MTIRGenPass(Transform) {
+    has ir_in: Module,
+        cancel_token: any = None,
+        _class_info_cache: dict[int, ClassInfo] = {};
 
     def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
-    def _is_primitive_type(type_expr: uni.Expr | None) -> bool;
+    def transform(ir_in: Module) -> Module;
+    def _is_primitive_type(type_expr: Expr | None) -> bool;
     def _parse_type_expr(
-        type_expr: uni.Expr | None, scope: uni.UniScopeNode
+        type_expr: Expr | None, scope: UniScopeNode
     ) -> ClassInfo | str | tuple | None;
 
     def _extract_type_symbol(
-        type_expr: uni.Expr | None, scope: uni.UniScopeNode
-    ) -> uni.Symbol | None;
+        type_expr: Expr | None, scope: UniScopeNode
+    ) -> Symbol | None;
 
-    def _extract_enum_info(symbol: uni.Symbol) -> EnumInfo;
-    def _extract_class_info(symbol: uni.Symbol) -> ClassInfo | None;
-    def _extract_function_info(nd: uni.Ability) -> FunctionInfo;
-    def _extract_method_info(nd: uni.Ability, by_call: bool = False) -> MethodInfo;
-    def _get_scope_str(nd: uni.UniScopeNode) -> str;
+    def _extract_enum_info(symbol: Symbol) -> EnumInfo;
+    def _extract_class_info(symbol: Symbol) -> ClassInfo | None;
+    def _extract_function_info(nd: Ability) -> FunctionInfo;
+    def _extract_method_info(nd: Ability, by_call: bool = False) -> MethodInfo;
+    def _get_scope_str(nd: UniScopeNode) -> str;
     def _extract_tools_from_expr(
-        expr: uni.Expr, scope: uni.UniScopeNode
+        expr: Expr, scope: UniScopeNode
     ) -> list[FunctionInfo];
 
-    def _process_ability(nd: uni.Ability) -> None;
-    def _collect_routing_archetypes(ir_in: uni.Module) -> list[uni.Archetype];
-    def _archetype_from_event(ab: uni.Ability | None) -> uni.Archetype | None;
+    def _process_ability(nd: Ability) -> None;
+    def _collect_routing_archetypes(ir_in: Module) -> list[Archetype];
+    def _archetype_from_event(ab: Ability | None) -> Archetype | None;
     def _archetype_of_type_expr(
-        type_expr: uni.Expr, scope: uni.UniScopeNode
-    ) -> uni.Archetype | None;
+        type_expr: Expr, scope: UniScopeNode
+    ) -> Archetype | None;
 
-    def _traversal_candidate_archetypes(
-        expr: uni.Expr, scope: uni.UniScopeNode
-    ) -> tuple;
-
-    def _register_archetype_light(nd: uni.Archetype) -> None;
+    def _traversal_candidate_archetypes(expr: Expr, scope: UniScopeNode) -> tuple;
+    def _register_archetype_light(nd: Archetype) -> None;
 }

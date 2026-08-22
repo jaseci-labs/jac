@@ -167,6 +167,6 @@ test "layout warnings report correct line numbers for fields" {
         layout_warnings
     )}: {layout_warnings}";
     warning_lines = sorted([w.loc.first_line for w in layout_warnings]);
-    # bad_field1 is on line 7, bad_field2 is on line 8
-    assert warning_lines == [7, 8] , f"Expected warnings on lines [7, 8], got {warning_lines}";
+    # bad_field1 is on line 5, bad_field2 is on line 6
+    assert warning_lines == [5, 6] , f"Expected warnings on lines [5, 6], got {warning_lines}";
 }

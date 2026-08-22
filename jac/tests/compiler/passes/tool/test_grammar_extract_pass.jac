@@ -25,6 +25,7 @@ import from jaclang.compiler.passes.tool.grammar_extract_pass {
     SPECIAL_LOOKAHEAD_TOKENS
 }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 glob PARSER_PATH = str(
          Path(jaclang.__file__).parent / "jac0core" / "parser" / "parser.jac"
@@ -345,7 +346,7 @@ def mini_pass -> GrammarExtractPass {
         }
         prog = JacProgram();
         mod = prog.compile(path, no_cgen=True);
-        return GrammarExtractPass(ir_in=mod, prog=prog);
+        return run_pass(GrammarExtractPass, mod, prog);
     }
 }
 
@@ -428,7 +429,7 @@ test "rules extracted" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     assert len(extracted.rules) > 20 , (
         f"Expected >20 rules, got {len(extracted.rules)}"
     );
@@ -438,7 +439,7 @@ test "known rule names" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     rule_names = {r.name for r in extracted.rules};
     expected = {
         "if_stmt",
@@ -460,7 +461,7 @@ test "bitwise or structure" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     rule_map = {r.name: r for r in extracted.rules};
     assert "bitwise_or" in rule_map;
     ebnf = fmt(rule_map["bitwise_or"].body);
@@ -472,7 +473,7 @@ test "if stmt structure" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     rule_map = {r.name: r for r in extracted.rules};
     assert "if_stmt" in rule_map;
     ebnf = fmt(rule_map["if_stmt"].body);
@@ -486,7 +487,7 @@ test "while stmt structure" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     rule_map = {r.name: r for r in extracted.rules};
     assert "while_stmt" in rule_map;
     ebnf = fmt(rule_map["while_stmt"].body);
@@ -498,7 +499,7 @@ test "forever stmt structure" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     rule_map = {r.name: r for r in extracted.rules};
     assert "forever_stmt" in rule_map;
     ebnf = fmt(rule_map["forever_stmt"].body);
@@ -513,7 +514,7 @@ test "ebnf output nonempty" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     ebnf = extracted.emit_ebnf();
     assert len(ebnf) > 100;
     assert "::=" in ebnf;
@@ -530,7 +531,7 @@ test "no duplicate rules" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     names = [r.name for r in extracted.rules];
     assert len(names) == len(set(names)) , (
         f"Duplicate rules: {[
@@ -545,7 +546,7 @@ test "rules reference valid names" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     rule_names = {r.name for r in extracted.rules};
 
     def collect_refs(expr: object) -> set[str] {
@@ -581,7 +582,7 @@ test "strict finding budget" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
     count = len(extracted.diagnostics);
     assert count <= STRICT_FINDING_BUDGET , (
         f"grammar strict findings grew to {count} (budget {STRICT_FINDING_BUDGET}).\n"
@@ -598,7 +599,7 @@ test "spec file exists" {
     spec_path = Path(SPEC_PATH);
     assert spec_path.exists() , (
         f"Grammar spec file missing: {SPEC_PATH}\n"
-        f"Generate it with: jac grammar -o {SPEC_PATH}"
+        f"Generate it with: jac tool grammar -o {SPEC_PATH}"
     );
 }
 
@@ -610,7 +611,7 @@ test "grammar matches spec" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
     assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    extracted = run_pass(GrammarExtractPass, mod, prog);
 
     spec_rules = parse_spec(spec_path.read_text());
     current_rules = parse_spec(extracted.emit_ebnf());
@@ -619,14 +620,14 @@ test "grammar matches spec" {
     missing = set(spec_rules) - set(current_rules);
     assert not missing , (
         f"Rules in jac.spec but no longer extracted: {missing}\n"
-        f"If intentional: jac grammar -o {SPEC_PATH}"
+        f"If intentional: jac tool grammar -o {SPEC_PATH}"
     );
 
     # Check for new rules not in spec
     added = set(current_rules) - set(spec_rules);
     assert not added , (
         f"New rules not in jac.spec: {added}\n"
-        f"If intentional: jac grammar -o {SPEC_PATH}"
+        f"If intentional: jac tool grammar -o {SPEC_PATH}"
     );
 
     # Check each rule body matches
@@ -644,6 +645,8 @@ test "grammar matches spec" {
         }
     }
     assert not changed , (
-        f"{len(changed)} rule(s) changed:\n" + "\n".join(changed) + f"\n\nIf intentional: jac grammar -o {SPEC_PATH}"
+        f"{len(changed)} rule(s) changed:\n"
+        + "\n".join(changed)
+        + f"\n\nIf intentional: jac tool grammar -o {SPEC_PATH}"
     );
 }

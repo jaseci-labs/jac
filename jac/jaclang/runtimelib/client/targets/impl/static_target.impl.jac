@@ -32,7 +32,7 @@ def _guard_closing_tag(text: str, tag: str) -> str {
 def _warn_if_split(dist_dir: Path) {
     chunks = [
         p
-        for p in dist_dir.glob("*.js")
+        for p in dist_dir.`glob("*.js")
         if not p.name.endswith(".map") and p.name != "sw.js"
     ];
     if len(chunks) > 1 {

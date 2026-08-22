@@ -12,12 +12,15 @@ instances live in a program-lifetime graph arena. cl is unwired here, so the
 cross-backend assert is na vs py.
 """
 
-node City { has val: int; }
+node City {
+    has val: int;
+}
 edge Road {}
 edge Rail {}
 
 walker Router {
     has seen: list = [];
+
     can step with City entry {
         self.seen.append(here.val);
         visit [->:Road:->];
@@ -25,35 +28,42 @@ walker Router {
 }
 
 def edge_typed_py() -> dict[str, any] {
-    a = City(val=1); b = City(val=2); c = City(val=3); d = City(val=4);
-    a +>: Road() :+> b;
-    a +>: Rail() :+> c;
-    b +>: Road() :+> d;
+    a = City(val=1);
+    b = City(val=2);
+    c = City(val=3);
+    d = City(val=4);
+    a +>:Road():+> b;
+    a +>:Rail():+> c;
+    b +>:Road():+> d;
     w = Router();
     w spawn a;
     return {"seen": w.seen};
 }
 
-na {
-    def edge_typed_na() -> dict[str, any] {
-        a = City(val=1); b = City(val=2); c = City(val=3); d = City(val=4);
-        a +>: Road() :+> b;
-        a +>: Rail() :+> c;
-        b +>: Road() :+> d;
-        w = Router();
-        w spawn a;
-        return {"seen": w.seen};
-    }
+
+def edge_typed_na() -> dict[str, any] {
+    a = City(val=1);
+    b = City(val=2);
+    c = City(val=3);
+    d = City(val=4);
+    a +>:Road():+> b;
+    a +>:Rail():+> c;
+    b +>:Road():+> d;
+    w = Router();
+    w spawn a;
+    return {"seen": w.seen};
 }
 
-cl {
-    def edge_typed_cl() -> dict[str, any] {
-        a = City(val=1); b = City(val=2); c = City(val=3); d = City(val=4);
-        a +>: Road() :+> b;
-        a +>: Rail() :+> c;
-        b +>: Road() :+> d;
-        w = Router();
-        w spawn a;
-        return {"seen": w.seen};
-    }
+
+def edge_typed_cl() -> dict[str, any] {
+    a = City(val=1);
+    b = City(val=2);
+    c = City(val=3);
+    d = City(val=4);
+    a +>:Road():+> b;
+    a +>:Rail():+> c;
+    b +>:Road():+> d;
+    w = Router();
+    w spawn a;
+    return {"seen": w.seen};
 }

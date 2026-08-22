@@ -10,7 +10,7 @@ import from jaclang.compiler.passes.native.llvm.binding.module { parse_assembly 
     The `show_inst` flag controls whether the instructions of each block
     are printed.
     """
-def get_function_cfg(func: Any, show_inst: Any = True) -> object {
+def get_function_cfg(func: any, show_inst: any = True) -> object {
     assert (func is not None);
     import from jaclang.compiler.passes.native.llvm { ir }
     if isinstance(func, ir.Function) {
@@ -41,7 +41,7 @@ def get_function_cfg(func: Any, show_inst: Any = True) -> object {
     - view [bool]: if True, opens the rendered output file.
 
     """
-def view_dot_graph(graph: Any, filename: Any = None, view: Any = False) -> object {
+def view_dot_graph(graph: any, filename: any = None, view: any = False) -> object {
     import graphviz as gv;
     src = gv.Source(graph);
     if view {
@@ -62,4 +62,3 @@ def view_dot_graph(graph: Any, filename: Any = None, view: Any = False) -> objec
 with entry {
     ffi.lib.LLVMPY_WriteCFG.argtypes = [ffi.LLVMValueRef, POINTER(c_char_p), c_int];
 }
-

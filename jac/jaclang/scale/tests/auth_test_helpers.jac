@@ -1,17 +1,15 @@
 """Shared HTTP-test helpers for auth flows.
 
 Used by tests that spin up a `jac start` server and hit /user/* endpoints.
-Kept in a non-test_ file so pytest does not collect it as a test module.
+Kept in a non-test_ file so the runner does not collect it as a test module.
 """
 import requests;
-import from typing { Any }
-
 """Extract the `data` field from a TransportResponse-shaped JSON body.
 
 Falls back to the raw body when no `data` key exists, so callers can use the
 same helper for both wrapped and unwrapped responses.
 """
-def data(resp: dict[str, Any]) -> Any {
+def data(resp: dict[str, any]) -> any {
     if isinstance(resp, dict) and "data" in resp {
         return resp["data"];
     }

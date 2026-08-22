@@ -11,12 +11,26 @@ import from jaclang.jac0core.program { JacProgram }
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
-     _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_codegen_");
+     _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_codegen_"),
+     _client_tmp_dir: str = os.path.join(_test_tmp_dir, "client");
+
+with entry {
+    os.makedirs(_client_tmp_dir, exist_ok=True);
+    with open(os.path.join(_client_tmp_dir, "jac.toml"), "w") as _pins {
+        _pins.write('[placement.pins]\n"*" = "client"\n');
+    }
+}
+
 
 """Write inline Jac code to a temp file and compile it, return the module."""
-def compile_inline(code: str, prog: JacProgram | None = None) -> object {
+def compile_inline(
+    code: str, prog: JacProgram | None = None, client: bool = False
+) -> object {
     with NamedTemporaryFile(
-        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+        mode="w",
+        suffix=".jac",
+        delete=False,
+        dir=_client_tmp_dir if client else _test_tmp_dir
     ) as f {
         f.write(code);
         f.flush();
@@ -42,19 +56,16 @@ test "compilation skips python stubs" {
     # Client Python definitions are intentionally omitted
     assert "def component" not in mod.gen.py;
     assert "__jac_client__" not in mod.gen.py;
-    assert "class ButtonProps" not in mod.gen.py;
 
     # Manifest data should be in mod.gen.client_manifest
     assert "__jac_client_manifest__" not in mod.gen.py;
     manifest = mod.gen.client_manifest;
     assert manifest , "Client manifest should be available in mod.gen";
     assert "component" in manifest.exports;
-    assert "ButtonProps" in manifest.exports;
     assert "API_URL" in manifest.globals;
-
-    assert "component" in mod.gen.client_manifest.exports;
-    assert "ButtonProps" in mod.gen.client_manifest.exports;
-    assert "API_URL" in mod.gen.client_manifest.globals;
+    assert "class ButtonProps" in mod.gen.js , (
+        "server-owned pub archetype auto-shares into the client bundle"
+    );
     assert mod.gen.client_manifest.params.get("component", []) == [];
 }
 
@@ -63,8 +74,8 @@ test "type to typeof and spawn operator" {
     prog = JacProgram();
 
     # --- type to typeof conversion ---
-    typeof_code = '"""Test type() to typeof conversion."""\n\ncl def check_types() {\n    x = 42;\n    y = "hello";\n    z = True;\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(z);\n    t4 = type("world");\n\n    return t1;\n}\n';
-    mod = compile_inline(typeof_code, prog);
+    typeof_code = '"""Test type() to typeof conversion."""\n\ndef check_types() {\n    x = 42;\n    y = "hello";\n    z = True;\n\n    t1 = type(x);\n    t2 = type(y);\n    t3 = type(z);\n    t4 = type("world");\n\n    return t1;\n}\n';
+    mod = compile_inline(typeof_code, prog, client=True);
     assert mod.gen.js.strip() , "Expected JavaScript output for client code";
     assert "typeof" in mod.gen.js , "type() should be converted to typeof";
     assert mod.gen.js.count("typeof") == 4 , "Should have 4 typeof expressions";
@@ -75,20 +86,22 @@ test "type to typeof and spawn operator" {
     assert 'typeof "world"' in mod.gen.js;
 
     # --- spawn operator supports positional and spread ---
-    spawn_code = "walker MixedWalker {\n    has label: str;\n    has count: int;\n    has meta: dict = {};\n    can execute with Root entry;\n}\n\ncl def spawn_client() {\n    node_id = \"abcd\";\n    extra = {\"meta\": {\"source\": \"client\"}};\n    positional = node_id spawn MixedWalker(\"First\", 3);\n    spread = MixedWalker(\"Second\", 1, **extra) spawn root;\n    return {\"positional\": positional, \"spread\": spread};\n}\n";
-    mod2 = compile_inline(spawn_code, prog);
+    spawn_code = "walker MixedWalker {\n    has label: str;\n    has count: int;\n    has meta: dict = {};\n    can execute with Root entry;\n}\n\ndef spawn_client() {\n    node_id = \"abcd\";\n    extra = {\"meta\": {\"source\": \"client\"}};\n    positional = node_id spawn MixedWalker(\"First\", 3);\n    spread = MixedWalker(\"Second\", 1, **extra) spawn root;\n    return {\"positional\": positional, \"spread\": spread};\n}\n";
+    mod2 = compile_inline(spawn_code, prog, client=True);
     js = mod2.gen.js;
     assert '__jacSpawn("MixedWalker", node_id, {"label": "First", "count": 3})' in js;
-    assert '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})' in js;
+    assert '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})'
+        in js;
 }
 
 test "client import local jac module gets relative path" {
     with TemporaryDirectory() as tmpdir {
+        (Path(tmpdir) / "jac.toml").write_text('[placement.pins]\n"*" = "client"\n');
         local_module = Path(tmpdir) / "mymodule.jac";
-        local_module.write_text("cl def helper() { return 42; }");
+        local_module.write_text("def helper() { return 42; }");
         main_file = Path(tmpdir) / "main.jac";
         main_file.write_text(
-            "\ncl {\n    import from mymodule { helper }\n\n    def:pub app() {\n        return helper();\n    }\n}\n"
+            "import from mymodule { helper }\n\ndef:pub app() {\n    return helper();\n}\n"
         );
         prog = JacProgram();
         mod = prog.compile(str(main_file));
@@ -103,7 +116,7 @@ test "def pub and endpoint effects" {
     prog = JacProgram();
 
     # --- def pub called from client imports jac call function ---
-    defpub_code = '"""\nTest def:pub called from client context.\n"""\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> Any {\n        data = await get_server_data("World");\n        return <div>{data}</div>;\n    }\n}\n';
+    defpub_code = '"""\nTest def:pub called from client context.\n"""\n\nimport os;\n\ndef:pub get_server_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\ndef:pub app() -> Any {\n    data = await get_server_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(defpub_code, prog);
     js = mod.gen.js;
     assert js.strip() , "Expected JavaScript output for client code";
@@ -112,7 +125,7 @@ test "def pub and endpoint effects" {
     assert '__jacCallFunction("get_server_data"' in js , "Should generate __jacCallFunction call with function name";
 
     # --- endpoint effects classifies walkers and functions ---
-    effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\ncl {\n    def:pub app() {\n        todos = root spawn get_todos();\n        root spawn create_todo(title="test");\n        stats = await get_stats();\n        result = await reset_data();\n    }\n}\n';
+    effects_code = '"""Test auto endpoint effects."""\n\nnode Todo {\n    has title: str,\n        done: bool = False;\n}\n\nwalker get_todos {\n    can visit_root with Root entry {\n        report [-->];\n    }\n}\n\nwalker create_todo {\n    has title: str;\n    can do_create with Root entry {\n        here ++> Todo(title=self.title);\n    }\n}\n\ndef:pub get_stats() -> dict {\n    return {"count": 10};\n}\n\ndef:pub reset_data() -> dict {\n    items = [];\n    del items;\n    return {};\n}\n\ndef:pub app() -> Any {\n    todos = root spawn get_todos();\n    root spawn create_todo(title="test");\n    stats = await get_stats();\n    result = await reset_data();\n    return <div>{stats}{result}{todos}</div>;\n}\n';
     mod2 = compile_inline(effects_code, prog);
     effects = mod2.gen.client_manifest.endpoint_effects;
     # Walker reader: no write operations in body
@@ -141,7 +154,7 @@ test "endpoint effects follow helper calls" {
     # inside a plain `def` helper. The classifier must follow the call into
     # the helper -- otherwise the walker is misclassified as a reader and the
     # client cache is never invalidated after the mutation.
-    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\ncl {\n    def:pub app() {\n        root spawn tag_item(label="x");\n        result = await mark_item("y");\n    }\n}\n';
+    code = '"""Interprocedural endpoint effect analysis."""\n\nnode Item {\n    has title: str,\n        tags: list = [];\n}\n\ndef _add_tag(it: Item, label: str) -> None {\n    it.tags = it.tags + [label];\n}\n\nwalker tag_item {\n    has label: str;\n    can do_tag with Root entry {\n        for it in [-->[?:Item]] {\n            _add_tag(it, self.label);\n        }\n    }\n}\n\ndef:pub mark_item(label: str) -> dict {\n    items = [];\n    for it in items {\n        _add_tag(it, label);\n    }\n    return {};\n}\n\ndef:pub app() -> Any {\n    root spawn tag_item(label="x");\n    result = await mark_item("y");\n    return <div>{result}</div>;\n}\n';
     mod = compile_inline(code, prog);
     effects = mod.gen.client_manifest.endpoint_effects;
 
@@ -158,7 +171,10 @@ test "jac call function sends params directly" {
     # The framework-agnostic surface (incl. __jacCallFunction) now lives in the
     # shared core runtime; the per-framework shim re-exports it.
     runtime_path = (
-        Path(jaclang.__file__).resolve().parent / "runtimelib" / "impl" / "client_runtime_core.impl.jac"
+        Path(jaclang.__file__).resolve().parent
+        / "runtimelib"
+        / "impl"
+        / "client_runtime_core.impl.jac"
     );
 
     if not runtime_path.exists() {
@@ -175,17 +191,16 @@ test "jac call function sends params directly" {
 
 test "lowercase client components get PascalCase runtime names with export contract intact" {
     mod = compile_inline(
-        "cl {\n"
-        "    def:pub page() -> JsxElement {\n"
-        "        return <div>home</div>;\n"
-        "    }\n"
-        "    def:pub Counter() -> JsxElement {\n"
-        "        return <p>c</p>;\n"
-        "    }\n"
-        "    def:pub helper() -> str {\n"
-        "        return \"x\";\n"
-        "    }\n"
+        "def:pub page() -> JsxElement {\n"
+        "    return <div>home</div>;\n"
         "}\n"
+        "def:pub Counter() -> JsxElement {\n"
+        "    return <p>c</p>;\n"
+        "}\n"
+        "def:pub helper() -> str {\n"
+        "    return \"x\";\n"
+        "}\n",
+        client=True
     );
     js = mod.gen.js;
     # React Fast Refresh/DevTools detect components by PascalCase function.name;
@@ -205,14 +220,13 @@ test "lowercase client components get PascalCase runtime names with export contr
 
 test "component-only modules are stamped as fast-refresh boundaries" {
     mod = compile_inline(
-        "cl {\n"
-        "    def:pub Card() -> JsxElement {\n"
-        "        return <div>card</div>;\n"
-        "    }\n"
-        "    def:pub CardTitle() -> JsxElement {\n"
-        "        return <h2>t</h2>;\n"
-        "    }\n"
+        "def:pub Card() -> JsxElement {\n"
+        "    return <div>card</div>;\n"
         "}\n"
+        "def:pub CardTitle() -> JsxElement {\n"
+        "    return <h2>t</h2>;\n"
+        "}\n",
+        client=True
     );
     js = mod.gen.js;
     # Several components in one file: all exported, module stamped eligible
@@ -220,25 +234,141 @@ test "component-only modules are stamped as fast-refresh boundaries" {
     assert "function CardTitle()" in js;
     assert "/*jac:refresh-boundary*/" in js;
 
-    glob_mod = compile_inline("cl {\n    glob:pub PRODUCTS = [1, 2];\n}\n");
+    glob_mod = compile_inline("glob:pub PRODUCTS = [1, 2];\n", client=True);
     # Value exports are never swap-safe: no stamp, dev server full-reloads
     assert "/*jac:refresh-boundary*/" not in glob_mod.gen.js;
 }
 
 test "component rename is skipped when the PascalCase name is already taken" {
     mod = compile_inline(
-        "cl {\n"
-        "    def:pub Page() -> JsxElement {\n"
-        "        return <p>explicit</p>;\n"
-        "    }\n"
-        "    def:pub page() -> JsxElement {\n"
-        "        return <div>home</div>;\n"
-        "    }\n"
+        "def:pub Page() -> JsxElement {\n"
+        "    return <p>explicit</p>;\n"
         "}\n"
+        "def:pub page() -> JsxElement {\n"
+        "    return <div>home</div>;\n"
+        "}\n",
+        client=True
     );
     js = mod.gen.js;
     # Renaming would emit two `function Page` declarations -- must fall back
     assert js.count("function Page()") == 1;
     assert "function page()" in js;
     assert "const page" not in js;
+}
+
+test "archetype constructors in jsx-attribute lambdas emit new" {
+    code = """obj Task {
+    has label: str = \"\";
+}
+
+def:pub app -> JsxElement {
+    has items: list = [];
+
+    def add_direct {
+        items = items + [Task(label=\"direct\")];
+    }
+
+    <div>
+        <button onClick={lambda { items = items + [Task(label=\"clicked\")]; }}>
+            add
+        </button>
+    </div>;
+}
+""";
+    mod = compile_inline(code, client=True);
+    js = mod.gen.js;
+    n = js.count("new Task(");
+    assert n >= 2 , f"constructor lost 'new' inside jsx-attribute lambda (found {n}): {js[-1500:]}";
+}
+
+test "constructor as call argument in component-prop lambda emits new" {
+    code = """obj Program {
+    has name: str = \"untitled\";
+}
+
+def:pub Toolbar(onNew: any) -> JsxElement {
+    <button onClick={lambda { onNew(); }}>new</button>;
+}
+
+def load_program(p: any) -> None {
+    print(p);
+}
+
+def:pub app -> JsxElement {
+    <div>
+        <Toolbar onNew={lambda { load_program(Program(name=\"untitled\")); }}/>
+    </div>;
+}
+""";
+    mod = compile_inline(code, client=True);
+    js = mod.gen.js;
+    n = js.count("new Program(");
+    assert n >= 1 , f"constructor lost 'new' in component-prop lambda (found {n}): {js[-1500:]}";
+}
+
+test "absolute imports in nested modules emit importer-relative specifiers" {
+    with TemporaryDirectory() as td {
+        with open(os.path.join(td, "jac.toml"), "w") as f {
+            f.write('[placement.pins]\n"*" = "client"\n');
+        }
+        os.makedirs(os.path.join(td, "vm"));
+        os.makedirs(os.path.join(td, "blocks"));
+        with open(os.path.join(td, "vm", "model.jac"), "w") as f {
+            f.write("def helper() -> int { return 5; }\n");
+        }
+        with open(os.path.join(td, "blocks", "layout.jac"), "w") as f {
+            f.write(
+                "import from vm.model { helper }\n"
+                    + "def use_helper() -> int { return helper(); }\n"
+            );
+        }
+        prog = JacProgram();
+        mod = prog.compile(os.path.join(td, "blocks", "layout.jac"));
+        js = mod.gen.js;
+        assert "../vm/model" in js , f"nested absolute import emitted a root-relative specifier: {js[0:400]}";
+    }
+}
+
+test "client capability check rejects silently-dropped constructs" {
+    code = """def race() -> int {
+    fut = flow slow_op();
+    return wait fut;
+}
+
+def slow_op() -> int {
+    return 1;
+}
+""";
+    prog = JacProgram();
+    try {
+        compile_inline(code, prog=prog, client=True);
+    } except Exception {
+        ;
+    }
+    msgs = " ".join([str(e) for e in prog.errors_had]);
+    assert "Client pathway does not yet support flow/wait concurrency" in msgs , f"client-placed flow/wait must be diagnosed, got: {msgs[0:600]}";
+}
+
+test "client generators lower to JS function* with yield" {
+    code = """def gen_vals(limit: int) {
+    index = 0;
+    while index < limit {
+        yield index * 3;
+        index += 1;
+    }
+}
+
+def sum_gen() -> int {
+    total = 0;
+    for v in gen_vals(3) {
+        total += v;
+    }
+    return total;
+}
+""";
+    mod = compile_inline(code, client=True);
+    js = mod.gen.js;
+    assert "function* gen_vals" in js , f"generator must emit function*: {js[0:600]}";
+    assert "yield (index * 3)" in js or "yield index * 3" in js , f"yield must survive lowering: {js[0:600]}";
+    assert "for (const v of _jac.builtin.iter(gen_vals(3)))" in js , f"generator calls must stay iterable in for-of: {js[0:600]}";
 }

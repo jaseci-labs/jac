@@ -12,6 +12,14 @@ def _jac_client_plugin_dir -> Path {
     return Path(paths[0]);
 }
 
+def _atomic_write_text(path: any, text: str) {
+    import os;
+    tmp = path.with_name(path.name + '.tmp');
+    tmp.write_text(text, encoding='utf-8');
+    os.replace(str(tmp), str(path));
+}
+
+
 impl JacClientCompiler._get_client_dir(self: JacClientCompiler) -> Path {
     try {
         import from jaclang.project.config { get_config }
@@ -34,6 +42,22 @@ impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) ->
     return result.replace('\\', '/');
 }
 
+impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
+    import from jaclang.jac0core.ext_registry { base_stem }
+    name = path.name;
+    if ".native." in name {
+        return path;
+    }
+    stem = base_stem(name);
+    for suffix in (".native.jac", ) {
+        candidate = path.with_name(stem + suffix);
+        if candidate.exists() {
+            return candidate.resolve();
+        }
+    }
+    return path;
+}
+
 impl JacClientCompiler.compile(
     self: JacClientCompiler,
     module: ModuleType,
@@ -41,17 +65,24 @@ impl JacClientCompiler.compile(
     target_name: str = "web"
 ) -> tuple[list[str], list[str]] {
     (module_js, mod, module_manifest) = self.jac_compiler.compile_module(module_path);
+    self._collect_na_modules(mod);
     collected_exports: set[str] = set(
         self.jac_compiler.extract_exports(module_manifest)
     );
     client_globals_map = self.jac_compiler.extract_globals(module_manifest, module);
-    collected_globals: dict[(str, Any)] = dict(client_globals_map);
+    collected_globals: dict[(str, any)] = dict(client_globals_map);
     visited: set[Path] = set();
+    project_root = self.project_dir.resolve();
+    entry_root = module_path.resolve().parent;
+    source_root = (
+        project_root if entry_root.is_relative_to(project_root) else entry_root
+    );
     self.compile_dependencies_recursively(
         module_path,
         visited=visited,
         collected_exports=collected_exports,
         collected_globals=collected_globals,
+        source_root=source_root,
         target_name=target_name
     );
     self._has_pages = self._scan_and_compile_pages(
@@ -123,7 +154,7 @@ impl JacClientCompiler._copy_ts_file(
             output_path = self.compiled_dir / ts_path.name;
         }
         output_path.parent.mkdir(parents=True, exist_ok=True);
-        output_path.write_text(ts_code, encoding='utf-8');
+        _atomic_write_text(output_path, ts_code);
     } except (FileNotFoundError, OSError) as e {
         console.warning(f"Failed to copy TS dependency '{ts_path}': {e}");
     }
@@ -141,7 +172,7 @@ impl JacClientCompiler._copy_js_file(
             output_path = self.compiled_dir / js_path.name;
         }
         output_path.parent.mkdir(parents=True, exist_ok=True);
-        output_path.write_text(js_code, encoding='utf-8');
+        _atomic_write_text(output_path, js_code);
     } except (FileNotFoundError, OSError) as e {
         console.warning(f"Failed to copy JS dependency '{js_path}': {e}");
     }
@@ -163,7 +194,7 @@ impl JacClientCompiler.compile_dependencies_recursively(
     module_path: Path,
     visited: (set[Path] | None) = None,
     collected_exports: (set[str] | None) = None,
-    collected_globals: (dict[(str, Any)] | None) = None,
+    collected_globals: (dict[(str, any)] | None) = None,
     source_root: (Path | None) = None,
     target_name: str = "web",
     skip_existing: bool = False
@@ -178,17 +209,8 @@ impl JacClientCompiler.compile_dependencies_recursively(
         collected_globals = {};
     }
     module_path = module_path.resolve();
-    if (
-        target_name == "react-native"
-        and module_path.name.endswith(".cl.jac")
-        and not module_path.name.endswith(".native.cl.jac")
-    ) {
-        native_candidate = module_path.with_name(
-            module_path.name[:-len(".cl.jac")] + ".native.cl.jac"
-        );
-        if native_candidate.exists() {
-            module_path = native_candidate.resolve();
-        }
+    if target_name == "react-native" {
+        module_path = self._native_variant(module_path);
     }
     if (module_path in visited) {
         return;
@@ -198,9 +220,10 @@ impl JacClientCompiler.compile_dependencies_recursively(
         source_root = module_path.parent.resolve();
     }
     (module_js, mod, manifest) = self.jac_compiler.compile_module(module_path);
+    self._collect_na_modules(mod);
     exports_list = self.jac_compiler.extract_exports(manifest);
     collected_exports.update(exports_list);
-    non_root_globals: dict[(str, Any)] = {};
+    non_root_globals: dict[(str, any)] = {};
     if manifest {
         for name in manifest.globals {
             non_root_globals[name] = manifest.globals_values.get(name);
@@ -218,7 +241,7 @@ impl JacClientCompiler.compile_dependencies_recursively(
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
     source_header = f"/* Source: {module_path} */\n";
-    output_path.write_text(source_header + combined_js, encoding='utf-8');
+    _atomic_write_text(output_path, source_header + combined_js);
     self._write_source_map(
         mod, str(module_path), output_path, source_header + combined_js
     );
@@ -227,24 +250,15 @@ impl JacClientCompiler.compile_dependencies_recursively(
     }
     for (_name, import_path) in manifest.imports.items() {
         path_obj = Path(import_path).resolve();
-        if (
-            target_name == "react-native"
-            and path_obj.name.endswith(".cl.jac")
-            and not path_obj.name.endswith(".native.cl.jac")
-        ) {
-            native_candidate = path_obj.with_name(
-                path_obj.name[:-len(".cl.jac")] + ".native.cl.jac"
-            );
-            if native_candidate.exists() {
-                path_obj = native_candidate.resolve();
-            }
+        if target_name == "react-native" {
+            path_obj = self._native_variant(path_obj);
         }
         if (path_obj in visited) {
             continue;
         }
         if (path_obj.suffix == '.jac') {
             if skip_existing
-            and self._output_path_for(path_obj, source_root).exists() {
+                and self._output_path_for(path_obj, source_root).exists() {
                 continue;
             }
             self.compile_dependencies_recursively(
@@ -386,17 +400,17 @@ impl JacClientCompiler.compile_runtime_utils(
     self: JacClientCompiler, runtime_filename: str
 ) -> tuple[str, list[str]] {
     plugin_dir = _jac_client_plugin_dir();
-    core_path = plugin_dir / 'client_runtime_core.cl.jac';
+    core_path = plugin_dir / 'client_runtime_core.jac';
     runtime_utils_path = plugin_dir / runtime_filename;
     if not core_path.exists() {
         raise ClientBundleError(
-            f'Runtime core not found: {core_path}. Expected client_runtime_core.cl.jac.'
+            f'Runtime core not found: {core_path}. Expected client_runtime_core.jac.'
         );
     }
     if not runtime_utils_path.exists() {
         raise ClientBundleError(
             f'Runtime file not found: {runtime_utils_path}. '
-            'Expected a platform runtime beside client_runtime_core.cl.jac.'
+            'Expected a platform runtime beside client_runtime_core.jac.'
         );
     }
     (core_js, _core_mod, core_manifest) = self.jac_compiler.compile_module(core_path);
@@ -445,7 +459,7 @@ impl JacClientCompiler.compile_runtime_utils(
         }
         dep_out = self.compiled_dir / rel;
         dep_out.parent.mkdir(parents=True, exist_ok=True);
-        dep_out.write_text(dep_js, encoding='utf-8');
+        _atomic_write_text(dep_out, dep_js);
     }
 
     self.compile_mobui_utils();
@@ -457,7 +471,7 @@ impl JacClientCompiler.compile_pwa_runtime(
 ) -> tuple[str, list[str]] {
     import jaclang;
     pwa_runtime_path: Path = (
-        Path(jaclang.__file__).parent / "runtimelib" / "pwa_runtime.cl.jac"
+        Path(jaclang.__file__).parent / "runtimelib" / "pwa_runtime.jac"
     );
     if not pwa_runtime_path.exists() {
         return ('', []);
@@ -475,7 +489,7 @@ impl JacClientCompiler.compile_pwa_runtime(
 
 impl JacClientCompiler._write_source_map(
     self: JacClientCompiler,
-    mod: Any,
+    mod: any,
     source_file: str,
     output_path: Path,
     full_output: str
@@ -519,7 +533,7 @@ impl JacClientCompiler.compile_mobui_utils(
     self: JacClientCompiler
 ) -> tuple[str, list[str]] {
     plugin_dir = _jac_client_plugin_dir();
-    ui_path = plugin_dir / 'client_mobui.cl.jac';
+    ui_path = plugin_dir / 'client_mobui.jac';
     if not ui_path.exists() {
         return ('', []);
     }
@@ -539,15 +553,16 @@ impl JacClientCompiler._scan_and_compile_pages(
     self: JacClientCompiler,
     visited: (set[Path] | None) = None,
     collected_exports: (set[str] | None) = None,
-    collected_globals: (dict[(str, Any)] | None) = None,
+    collected_globals: (dict[(str, any)] | None) = None,
     target_name: str = "web"
 ) -> bool {
-    scanner = RouteScanner(self.project_dir);
+    scanner = RouteScanner(self.project_dir, route_exports_of=resolve_route_exports);
     if not scanner.has_pages_dir() {
         return False;
     }
     routes = scanner.scan();
     if not routes and not scanner.get_layouts() {
+        self._warn_pages_without_routes(scanner);
         return False;
     }
     self._route_scanner = scanner;
@@ -566,13 +581,25 @@ impl JacClientCompiler._scan_and_compile_pages(
     return True;
 }
 
+impl JacClientCompiler._warn_pages_without_routes(
+    self: JacClientCompiler, scanner: RouteScanner
+) -> None {
+    import from jaclang.runtimelib.client.route_scanner {
+        describe_pages_without_routes
+    }
+    for line in describe_pages_without_routes(scanner.pages_dir) {
+        console.error(line);
+    }
+}
+
 impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
-    scanner = RouteScanner(self.project_dir);
+    scanner = RouteScanner(self.project_dir, route_exports_of=resolve_route_exports);
     if not scanner.has_pages_dir() {
         return False;
     }
     routes = scanner.scan();
     if not routes and not scanner.get_layouts() {
+        self._warn_pages_without_routes(scanner);
         return False;
     }
     self._route_scanner = scanner;
@@ -609,7 +636,8 @@ impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> Non
         }
         rel_str = self._jac_path_to_js(str(rel_path));
         lines.append(
-            f'import {{ page as {route.component_import} }} from "./{rel_str}";'
+            f'import {{ {route.source_export} as {route.component_import} }} '
+            f'from "./{rel_str}";'
         );
     }
     for (prefix, layout) in layouts.items() {
@@ -620,7 +648,8 @@ impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> Non
         }
         rel_str = self._jac_path_to_js(str(rel_path));
         lines.append(
-            f'import {{ layout as {layout.component_import} }} from "./{rel_str}";'
+            f'import {{ {layout.source_export} as {layout.component_import} }} '
+            f'from "./{rel_str}";'
         );
     }
     lines.append('');
@@ -648,7 +677,7 @@ impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> Non
 
     try {
         if manifest_path.exists()
-        and manifest_path.read_text(encoding='utf-8') == new_content {
+            and manifest_path.read_text(encoding='utf-8') == new_content {
             return;
         }
     } except OSError { }
@@ -661,7 +690,7 @@ impl JacClientCompiler.init(
     runtime_path: (Path | None),
     compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
     extract_exports_func: Callable[([any], list[str])],
-    extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])],
+    extract_globals_func: Callable[([any, ModuleType], dict[(str, any)])],
     compiled_dir: (Path | None) = None
 ) {
     self.project_dir = project_dir;
@@ -676,4 +705,18 @@ impl JacClientCompiler.init(
     self.asset_processor = AssetProcessor();
     self._has_pages = False;
     self._route_scanner = None;
+    self.na_wasm_modules = set();
+}
+
+impl JacClientCompiler._collect_na_modules(self: JacClientCompiler, mod: any) -> None {
+    import from jaclang.jac0core.codeinfo { InteropManifest }
+    manifest = mod?.gen?.interop_manifest;
+    if not isinstance(manifest, InteropManifest) {
+        return;
+    }
+    for binding in manifest.client_native_imports {
+        if binding.source_module {
+            self.na_wasm_modules.add(str(binding.source_module));
+        }
+    }
 }

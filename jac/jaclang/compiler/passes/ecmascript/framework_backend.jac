@@ -9,6 +9,13 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
 
 import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
 
+def state_setter_name(var_name: str) -> str {
+    if not var_name {
+        return "";
+    }
+    return f"set{var_name[0].upper()}{var_name[1:]}";
+}
+
 obj FrameworkBackend {
     def name -> str;
     def runtime_module -> str;
@@ -20,6 +27,7 @@ obj FrameworkBackend {
     def lower_state_read(name: str) -> es.Expression;
     def lower_view_expr(expr: es.Expression) -> es.Expression;
     def lower_view(view: ViewElement, sync_loc: any) -> es.Expression;
+    def _get_setter_name(var_name: str) -> str;
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];
     def effect_symbols(e: Effect) -> list[str];

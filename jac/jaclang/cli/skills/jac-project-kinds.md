@@ -3,9 +3,9 @@ name: jac-project-kinds
 description: Choosing the right guides for what you're building - maps every Jac project kind (CLI, API service, microservices, full-stack, native binary, shared library, wasm, desktop, mobile, PyPI/npm packages) to its build verbs and the guides to load. Load FIRST when starting any new project or when unsure which guides apply.
 ---
 
-Jac compiles one language to three runtimes - Python bytecode (server `sv`), JavaScript (client `cl`), and native machine code (`na`, which also targets WebAssembly). Every project kind is a combination of those blocks. Find your kind, run its verbs, load its guides (`jac guide <name>`).
+Jac compiles one language to three runtimes - Python bytecode (server), JavaScript (client), and native machine code (which also targets WebAssembly). Every project kind is a combination of those codespaces. Placement is inferred: JSX/npm imports mark code client and references pull helpers along, server is the default, and native is seeded by extern C declarations; overrides live in `jac.toml` under `[placement.pins]` (see `jac-codespaces`). Find your kind, run its verbs, load its guides (`jac guide <name>`).
 
-**`jac create` is kind-aware.** Scaffold any kind with `jac create <name> --kind <kind>` (e.g. `--kind service`, `--kind native-binary`, `--kind web-app`). It stamps `[project] kind` into `jac.toml` and lays the entry-point in the right codespace; every kind -- including the full-stack client and desktop kinds (web-app/wasm/mobile/desktop) -- ships with `jaclang` core, so nothing extra needs installing. `jac create --list` lists the available kinds. See `jac-scaffold`.
+**`jac create` is kind-aware.** Scaffold any kind with `jac create <name> --kind <kind>` (e.g. `--kind service`, `--kind native-binary`, `--kind web-app`). It stamps `[project] kind` into `jac.toml`, lays the entry-point in the right codespace, and (unless `--skip`) runs a full `jac install` so Python and npm deps are ready. `jac create --list` lists the available kinds. See `jac-scaffold`.
 
 **`jac run` is kind-aware.** With `kind` set under `[project]` in `jac.toml` (stamped by `jac create`, or inferred from the entry-point codespace), a bare `jac run` in the project does the right thing for that kind: *execute* runnable kinds (cli, cli-native), *serve* server kinds (service, web-app, ...), or *build* artifact kinds (native-binary, native-lib, py/js packages). `jac run --show` prints the resolved plan (kind, action, and the equivalent primitive command) without running it. The explicit per-kind verbs in the table below remain the underlying primitives.
 
@@ -15,19 +15,20 @@ Jac compiles one language to three runtimes - Python bytecode (server `sv`), Jav
 |---|---|---|---|
 | CLI tool | Script/automation run from the terminal; graph persists in `.jac/data` between runs | `jac run tool.jac` | `jac-node-edge-patterns`, `jac-walker-patterns` |
 | Native binary | Standalone zero-dependency executable via LLVM (restricted native subset, no Python imports) | `jac nacompile app.jac -o app` | `jac-native` |
-| API service | Headless REST server; `walker:pub` / `def:pub` become `POST /walker/<name>` / `/function/<name>` endpoints; Swagger at `/docs` | `jac start api.jac --no_client` | `jac-sv-endpoints`, `jac-sv-persistence`, `jac-sv-auth`, `jac-sv-multi-user` |
-| Microservices | Same code split into services via `sv import` (calls become HTTP RPCs; consumer auto-starts providers) | `jac start consumer.jac --port N`; `JAC_SV_<MOD>_URL` to split hosts | `jac-sv-microservices`, `jac-sv-endpoints`, `jac-sv-deploy` |
+| API service | Headless REST server; `walker:pub` / `def:pub` become `POST /walker/<name>` / `/function/<name>` endpoints; Swagger at `/docs` | `jac start api.jac --no-client` | `jac-sv-endpoints`, `jac-sv-persistence`, `jac-sv-auth`, `jac-sv-multi-user` |
+| Microservices | Same code split into services via `[scale.microservices.routes]` in jac.toml (imports of cut modules become HTTP RPCs; consumer auto-starts providers) | `jac scale split <module>`; `jac start consumer.jac --port N`; `JAC_SV_<MOD>_URL` to split hosts | `jac-sv-microservices`, `jac-sv-endpoints`, `jac-sv-deploy` |
 | Python package (PyPI) | pip-installable library or CLI tool; `def:pub` is the public API | `jac build --as wheel` then `twine upload dist/*` | `jac-packaging`, `jac-impl-files` |
 | npm package | Client component/function library for any JS/TS project (`.d.ts` included) | `jac build --as npm` then `npm publish` | `jac-packaging`, `jac-cl-components` |
 | Shared library (C ABI) | `.so`/`.dylib`/`.dll` callable from C/C++/Rust/Go/ctypes; `:pub` is the export surface | `jac nacompile lib.jac --shared` (`--target macos\|windows` cross-builds) | `jac-native-shared`, `jac-native` |
-| Full-stack app | Server + React UI in one project; `cl` code compiles to the browser bundle, RPC generated across the boundary | `jac create app --kind web-app`; `jac start --dev` | `jac-fullstack-patterns`, `jac-cl-components`, `jac-sv-endpoints`, `jac-cl-routing` |
-| In-browser native (wasm) | `na {}` block compiled to WebAssembly, driven by a `cl` page - native-speed compute client-side | `jac start` (emits `/static/main.wasm`) | `jac-native-wasm`, `jac-cl-components` |
+| Full-stack app | Server + React UI in one project; client code (inferred from JSX/npm imports) compiles to the browser bundle, RPC generated across the boundary | `jac create app --kind web-app`; `jac start --dev` | `jac-fullstack-patterns`, `jac-cl-components`, `jac-sv-endpoints`, `jac-cl-routing` |
+| In-browser native (wasm) | native code compiled to WebAssembly, driven by a client page - native-speed compute client-side | `jac start` (emits `/static/main.wasm`) | `jac-native-wasm`, `jac-cl-components` |
 | Desktop app | The full-stack app wrapped in one nacompiled binary embedding the OS webview | `jac start --client desktop` / `jac build --client desktop` | `jac-desktop-app`, `jac-fullstack-patterns` |
 | Mobile app (webview) | Client bundle wrapped by Capacitor for Android/iOS; frontend-only, talks to a separately deployed server | `jac setup mobile --platform android`; `jac build --client mobile` (needs Android SDK / Xcode) | `jac-mobile-app`, `jac-cl-components` |
 
 ## Cross-cutting guides (any kind)
 
 - **Always load `jac-core-cheatsheet`** (baseline syntax) and `jac-types` before writing Jac.
+- Where code runs - inferred client/server/native placement, `[placement.pins]` overrides: `jac-codespaces`.
 - Bootstrapping a project: `jac-scaffold`. Configuring it (`jac.toml`, deps, scripts, profiles): `jac-config`.
 - Data modeling on the graph: `jac-node-edge-patterns` + `jac-walker-patterns`; typed state: `jac-has-fields`.
 - LLM-powered functions in any kind: `jac-by-llm`. Calling Python libs / being called from Python: `jac-python-interop`. Parallelism: `jac-concurrency`.
@@ -39,3 +40,5 @@ Jac compiles one language to three runtimes - Python bytecode (server `sv`), Jav
 1. Scaffold (`jac-scaffold`), then validate every edit with `jac check .`
 2. Test with `jac test` - load `jac-testing` before writing tests
 3. When anything misbehaves, load `jac-debugging` (diagnostic anatomy, stale-cache triage)
+
+Deep dives bundled with the CLI: `jac guide tutorials/production/local` (serve + auth over HTTP, worked end to end), `jac guide reference/cli` (every command and flag).

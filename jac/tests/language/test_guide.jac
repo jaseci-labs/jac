@@ -20,6 +20,7 @@ import from jaclang.cli.guide_store {
     guide_group,
     grouped_guides
 }
+import from jaclang.project.config { JacConfig, get_explicit_config, set_config }
 import from jaclang.project.template_registry { initialize_template_registry }
 
 """Absolute path to a file in the language test fixtures directory."""
@@ -84,10 +85,11 @@ test "jac guide <topic> --json includes the guide body" {
     assert parsed["body"] , "the single-guide JSON should carry a body";
 }
 
-test "jac guide --search filters the listing" {
+test "jac guide --search greps guides and docs with line hits" {
     (stdout, _, code) = run_guide(search="walker");
     assert code == 0;
-    assert "matching 'walker'" in stdout;
+    assert " matches." in stdout , "search should report a match count";
+    assert re.search(r"[\w\-/.]+:\d+: ", stdout) , "expected name:line: hits";
     (empty_out, _, empty_code) = run_guide(search="zzznosuchtokenzzz");
     assert empty_code == 0;
     assert "jac-types" not in empty_out , "a non-match must not list any guide";
@@ -218,9 +220,10 @@ test "guide store strips frontmatter from the guide body" {
 
 test "guide store maps diagnostic codes to guides" {
     # Type-category diagnostics route to the jac-types guide via the
-    # category fallback; codes with no mapping return None.
+    # category fallback; unmapped codes fall through to the bundled
+    # diagnostics reference now that the full docs ship with the CLI.
     assert guide_for_diagnostic("E1001", "type") == "jac-types";
-    assert guide_for_diagnostic("E0001", "syntax") is None;
+    assert guide_for_diagnostic("E0001", "syntax") == "reference/diagnostics";
 }
 
 test "every mapped diagnostic code resolves to a bundled guide" {
@@ -240,6 +243,10 @@ test "every mapped diagnostic code resolves to a bundled guide" {
         "E1307": "jac-native-memory",
         "E1308": "jac-native-memory",
         "E1309": "jac-native-memory",
+        "E1311": "jac-native-memory",
+        "W1312": "jac-native-memory",
+        "E1313": "jac-native-memory",
+        "E1314": "jac-native-memory",
         "E1401": "jac-native-memory",
         "E1402": "jac-native-memory",
         "E1403": "jac-native-memory",
@@ -331,7 +338,7 @@ without JSX; everything else is plain Jac.
 """
 def guide_block_ext(code: str) -> str {
     if "JsxElement" in code or "/>" in code or "</" in code {
-        return ".cl.jac";
+        return ".jac";
     }
     if "def:pub" in code or "def:priv" in code or "walker:pub" in code {
         return ".sv.jac";
@@ -350,11 +357,27 @@ def check_guide_block(code: str) -> tuple[int, str] {
     old_err = sys.stderr;
     sys.stdout = out;
     sys.stderr = err;
+    # workers can inherit an explicit `select = ["all"]` config from
+    # compiler lint tests; `get_config_for_path` returns that for /tmp guide
+    # snippets and enables no-print. Reset to default lint for this check only.
+    prev_explicit = get_explicit_config();
+    set_config(JacConfig());
     try {
         # nowarn: guide examples may warn (unresolved @jac/runtime imports in
-        # standalone .cl.jac, etc.) -- only hard errors should fail a guide.
-        rc = analysis.check([path], print_errs=True, nowarn=True);
+        # standalone .jac, etc.) -- only hard errors should fail a guide.
+        # no-print: examples intentionally use print() for readable output.
+        rc = analysis.check(
+            [path],
+            print_errs=True,
+            nowarn=True,
+            disable_error_code=["no-print", "E3012"]
+        );
     } finally {
+        if prev_explicit is not None {
+            set_config(prev_explicit);
+        } else {
+            set_config(None);
+        }
         sys.stdout = old_out;
         sys.stderr = old_err;
         os.remove(path);
@@ -375,9 +398,9 @@ test "every ```jac example in a guide checks clean" {
         }
     }
     assert not failures , (
-        "guide ```jac examples must pass `jac check` -- fix the example, or " + "if it is a non-runnable fragment downgrade its fence to plain ```:\n\n" + "\n".join(
-            failures
-        )
+        "guide ```jac examples must pass `jac check` -- fix the example, or "
+        + "if it is a non-runnable fragment downgrade its fence to plain ```:\n\n"
+        + "\n".join(failures)
     );
 }
 

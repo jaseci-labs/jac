@@ -88,6 +88,9 @@ jaclang/vendor/typeshed/stdlib
 # Persistent JIR precompile cache: mkpayload seeds site/_precompiled from it
 # and writes the refreshed tree back (see build.zig --precompiled-cache).
 .precompiled-build/
+# Persistent deps-layer frame cache: mkpayload reuses the payload's compressed
+# dependency layer across builds (see build.zig --layer-cache).
+.payload-layers/
 # Zig-built LLVMPY_* shim, placed in-tree per host platform (see build.zig).
 libjacllvm.so
 libjacllvm.dylib

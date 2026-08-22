@@ -1,4 +1,3 @@
-import from collections.abc { Sequence }
 import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok, is_mut_kind }
@@ -47,6 +46,7 @@ obj DocIRGenPass(UniPass) {
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];
     def _assign_group_concat(nd: uni.UniNode) -> None;
     def _assign_space_group(nd: uni.UniNode) -> None;
+    def _assign_operator_chain(nd: uni.UniNode, operands: list, ops: list) -> None;
     def _assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None;
     def _assign_compr_doc_ir(nd: uni.UniNode) -> None;
     def _assign_else_doc_ir(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
@@ -138,9 +138,6 @@ obj DocIRGenPass(UniPass) {
     def exit_assert_stmt(nd: uni.AssertStmt) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
-    def exit_server_block(nd: uni.ServerBlock) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
     def exit_visit_stmt(nd: uni.VisitStmt) -> None;
     def exit_connect_op(nd: uni.ConnectOp) -> None;

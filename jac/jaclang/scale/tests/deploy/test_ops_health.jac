@@ -5,8 +5,8 @@ feed them mocked probe results. Plus a registration smoke test (an
 unregistered /admin/ops/* would fall to the SPA catchall and serve HTML).
 """
 
-import from jaclang.scale.jserver.jserver { HTTPMethod }
-import from jaclang.scale.jserver.jfast_api { JFastApiServer }
+import from jaclang.runtimelib.serving.endpoint { HTTPMethod }
+import from jaclang.scale.server.native_server { NativeJServer }
 import from jaclang.scale.admin.ops { JacAPIServerOps }
 import from jaclang.scale.admin.ops { short_circuit_chain, _traces_chain }
 
@@ -50,7 +50,7 @@ test "traces chain: all green -> ok; missing tracing extra -> first rung red" {
 
 test "register adds GET /admin/ops/health" {
     host = OpsHost();
-    host.server = JFastApiServer();
+    host.server = NativeJServer();
     host.register_ops_endpoints();
     eps = [
         e

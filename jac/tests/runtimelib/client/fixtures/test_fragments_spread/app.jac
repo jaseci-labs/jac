@@ -1,67 +1,48 @@
 """Test fixture for JSX fragments and spread props functionality."""
 
-cl def FragmentTest() {
+def FragmentTest {
     # Test that fragments work
-    return <>
-        <h1>
-            {"Fragment Title"}
-        </h1>
-        <p>
-            {"Fragment content"}
-        </p>
-    </>;
+    <>
+        <h1>{"Fragment Title"}</h1>
+        <p>{"Fragment content"}</p>
+    </>
 }
 
-cl def SpreadPropsTest() {
+def SpreadPropsTest {
     # Test spread props
     unwrapped = {"id": "my-div", "class": "container", "data-role": "main"};
 
-    return <div
-        {...unwrapped}
-    >
-        <span>
-            {"Spread props work!"}
-        </span>
-    </div>;
+    <div {...unwrapped}>
+        <span>{"Spread props work!"}</span>
+    </div>
 }
 
-cl def MixedTest() {
+def MixedTest {
     # Test mixing spread props with regular props
     baseStyle = {"id": "base-id", "color": "blue"};
 
-    return <>
-        <div
-            {...baseStyle}
-            class="override"
-        >
-            {"Mixed test"}
-        </div>
-        <div class="normal">
-            {"No spread"}
-        </div>
-    </>;
+    <>
+        <div {...baseStyle} class="override">{"Mixed test"}</div>
+        <div class="normal">{"No spread"}</div>
+    </>
 }
 
-cl def NestedFragments() {
-    return <div class="wrapper">
+def NestedFragments {
+    <div class="wrapper">
         <>
-            <h2>
-                {"Nested Fragment 1"}
-            </h2>
+            <h2>{"Nested Fragment 1"}</h2>
         </>
         <>
-            <p>
-                {"Nested Fragment 2"}
-            </p>
+            <p>{"Nested Fragment 2"}</p>
         </>
-    </div>;
+    </div>
 }
 
-cl def app() {
-    return <div>
-        <FragmentTest />
-        <SpreadPropsTest />
-        <MixedTest />
-        <NestedFragments />
-    </div>;
+def app {
+    <div>
+        <FragmentTest/>
+        <SpreadPropsTest/>
+        <MixedTest/>
+        <NestedFragments/>
+    </div>
 }

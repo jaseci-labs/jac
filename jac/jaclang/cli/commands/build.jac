@@ -10,13 +10,13 @@ glob registry = get_registry();
         Arg.create(
             "filename",
             kind=ArgKind.POSITIONAL,
-            default="",
+            `default="",
             help="Entry .jac file (default: [project] entry-point from jac.toml)"
         ),
         Arg.create(
             "as",
             dest="projection",
-            default="jab",
+            `default="jab",
             choices=["jab", "sealed", "binary", "wheel", "npm", "source", "native"],
             help=(
                 "What to emit: 'jab' (single-file sealed app bundle, default), "
@@ -27,32 +27,32 @@ glob registry = get_registry();
         ),
         Arg.create(
             "output",
-            default="dist",
+            `default="dist",
             help="Output directory for the built artifact",
             short="o"
         ),
         Arg.create(
             "no_typecheck",
             typ=bool,
-            default=False,
+            `default=False,
             help="Skip the whole-program type-check gate (escape hatch)"
         ),
         Arg.create(
             "fat",
             typ=bool,
-            default=False,
+            `default=False,
             help=(
                 "Vendor the Python dependency closure as wheels into the bundle "
                 "(jab/binary only) so it materializes offline, with no PyPI"
             )
         ),
         Arg.create(
-            "check_only", typ=bool, default=False, help="Run the gate and emit nothing"
+            "check_only", typ=bool, `default=False, help="Run the gate and emit nothing"
         ),
         Arg.create(
             "client",
             typ=str,
-            default="",
+            `default="",
             help=(
                 "Build a client shell instead of the artifact: web, "
                 "pwa, mobile, desktop (desktop builds a native "
@@ -64,7 +64,7 @@ glob registry = get_registry();
         Arg.create(
             "platform",
             typ=str,
-            default=None,
+            `default=None,
             help="Platform for desktop/mobile shells (windows, macos, linux, all, android, ios)",
             choices=["windows", "macos", "linux", "all", "android", "ios"],
             short="p"

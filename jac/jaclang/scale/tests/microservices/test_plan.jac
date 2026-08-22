@@ -1,7 +1,7 @@
 import io;
 import unittest.mock as mock;
 import from contextlib { redirect_stdout }
-import from typing { Any }
+import from pathlib { Path }
 import from jaclang.scale.runtime.cli.plan { print_plan }
 import from jaclang.scale.runtime.cli.diagnostics {
     Diagnostic,
@@ -10,7 +10,7 @@ import from jaclang.scale.runtime.cli.diagnostics {
     _cpu_to_millicores,
     _mem_to_bytes
 }
-import jaclang.scale.runtime.cli.plan as plan_mod;
+import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
 
 
 def _validate(bundle: dict, ms_cfg: dict, svc_configs: dict) -> list {
@@ -24,20 +24,20 @@ obj _StubConfig {
 
 
 obj _StubTarget {
-    has _bundle: dict[str, Any] = {},
+    has _bundle: dict[str, any] = {},
         k8s_config: _StubConfig postinit;
 
     def postinit {
         self.k8s_config = _StubConfig();
     }
 
-    def generate_manifests(app_config: Any) -> dict[str, Any] {
+    def generate_manifests(app_config: any) -> dict[str, any] {
         return self._bundle;
     }
 }
 
 
-def _make_app_config -> Any {
+def _make_app_config -> any {
     import types;
     return types.SimpleNamespace(code_folder=".", file_name="main.jac");
 }
@@ -64,19 +64,43 @@ def _dep(
 }
 
 
+def _seed_ms_config(ms_toml: str) -> str {
+    # Write a real jac.toml holding the requested [scale.microservices] config
+    # and point get_scale_config() at it, so Plan._load_ms_cfg() runs for real.
+    import tempfile;
+    project_dir = tempfile.mkdtemp(prefix="jac-plan-test-");
+    toml_body = (
+        "[project]\nname = \"plan-test\"\nentry-point = \"main.jac\"\n" + ms_toml
+    );
+    (Path(project_dir) / "jac.toml").write_text(toml_body);
+    reset_scale_config();
+    get_scale_config(project_dir=Path(project_dir));
+    return project_dir;
+}
+
+
+def _teardown_ms_config(project_dir: str) {
+    import shutil;
+    reset_scale_config();
+    shutil.rmtree(project_dir, ignore_errors=True);
+}
+
+
 def _run_plan(
-    bundle: dict[str, Any], show_yaml: bool = False, ms_cfg_pair: tuple | None = None
+    bundle: dict[str, any], show_yaml: bool = False, ms_toml: str = ""
 ) -> tuple {
     target = _StubTarget(_bundle=bundle);
     buf = io.StringIO();
     diagnostics: list = [];
-    cfg_pair = ms_cfg_pair if ms_cfg_pair is not None else ({}, {});
-    with redirect_stdout(buf) {
-        with mock.patch.object(plan_mod.Plan, "_load_ms_cfg", return_value=cfg_pair) {
+    project_dir = _seed_ms_config(ms_toml);
+    try {
+        with redirect_stdout(buf) {
             (_, diagnostics) = print_plan(
                 target, _make_app_config(), show_yaml=show_yaml
             );
         }
+    } finally {
+        _teardown_ms_config(project_dir);
     }
     return (buf.getvalue(), diagnostics);
 }
@@ -109,10 +133,13 @@ test "dry-run contract: print_plan must NOT call deploy / apply_manifests" {
     target.apply_manifests = mock.MagicMock(
         side_effect=AssertionError("apply_manifests must NOT be called")
     );
-    with redirect_stdout(io.StringIO()) {
-        with mock.patch.object(plan_mod.Plan, "_load_ms_cfg", return_value=({}, {})) {
+    project_dir = _seed_ms_config("");
+    try {
+        with redirect_stdout(io.StringIO()) {
             print_plan(target, _make_app_config());
         }
+    } finally {
+        _teardown_ms_config(project_dir);
     }
     target.deploy.assert_not_called();
     target.apply_manifests.assert_not_called();
@@ -120,7 +147,7 @@ test "dry-run contract: print_plan must NOT call deploy / apply_manifests" {
 
 
 test "--show-yaml gate: YAML hidden by default, dumped on opt-in" {
-    bundle: dict[str, Any] = {
+    bundle: dict[str, any] = {
         "deployments": {
             "a": {
                 "apiVersion": "apps/v1",
@@ -139,8 +166,54 @@ test "--show-yaml gate: YAML hidden by default, dumped on opt-in" {
 }
 
 
+test "--show-yaml dumps rendered autoscaler manifests alongside the rest" {
+    bundle: dict[str, any] = {
+        "deployments": {"api": _dep()},
+        "autoscaler_manifests": [
+            {
+                "apiVersion": "autoscaling/v2",
+                "kind": "HorizontalPodAutoscaler",
+                "metadata": {"name": "api-hpa"},
+                "spec": {"minReplicas": 2}
+            }
+        ]
+    };
+    (on, _) = _run_plan(bundle, show_yaml=True);
+    assert "kind: HorizontalPodAutoscaler" in on;
+    assert "api-hpa" in on;
+}
+
+
+test "every manifest-bearing bundle key reaches --show-yaml" {
+    # The summary counts these resources; the reviewed YAML must carry them
+    # all. Excluded by design: pod_specs and injector (not manifests) and
+    # autoscalers (configs, rendered into autoscaler_manifests).
+    bundle: dict[str, any] = {
+        "user_secret": {"metadata": {"name": "sentinel-user-secret"}},
+        "pvcs": {"a": {"metadata": {"name": "sentinel-pvc"}}},
+        "deployments": {"a": {"metadata": {"name": "sentinel-deployment"}}},
+        "services": {"a": {"metadata": {"name": "sentinel-service"}}},
+        "pdbs": {"a": {"metadata": {"name": "sentinel-pdb"}}},
+        "autoscaler_manifests": [{"metadata": {"name": "sentinel-autoscaler"}}],
+        "ingress": {"metadata": {"name": "sentinel-ingress"}}
+    };
+    (on, _) = _run_plan(bundle, show_yaml=True);
+    for sentinel in [
+        "sentinel-user-secret",
+        "sentinel-pvc",
+        "sentinel-deployment",
+        "sentinel-service",
+        "sentinel-pdb",
+        "sentinel-autoscaler",
+        "sentinel-ingress"
+    ] {
+        assert sentinel in on , f"{sentinel} missing from --show-yaml output";
+    }
+}
+
+
 test "render smoke: realistic bundle prints every section" {
-    bundle: dict[str, Any] = {
+    bundle: dict[str, any] = {
         "deployments": {
             "api": _dep(
                 image="api:v1", requests={"cpu": "100m"}, limits={"cpu": "500m"}
@@ -158,23 +231,63 @@ test "render smoke: realistic bundle prints every section" {
             "data": {"k1": "...", "k2": "..."}
         }
     };
-    ms_cfg = (
-        {
-            "routes": {"api": "/api"},
-            "rate_limit": {"enabled": True, "requests_per_minute": 120}
-        },
-        {}
-    );
-    (out, _) = _run_plan(bundle, ms_cfg_pair=ms_cfg);
+    ms_toml = "[scale.microservices.routes]\napi = \"/api\"\n";
+    (out, _) = _run_plan(bundle, ms_toml=ms_toml);
     assert "jac scale plan: dry-run" in out;
     assert "Microservices" in out;
     assert "api" in out;
     assert "HPA: 2 -> 10 @ 70% CPU" in out;
     assert "maxUnavailable=1" in out;
     assert "Ingress" in out and "shop.example.com" in out;
-    assert "Cluster-wide" in out and "120/min" in out;
+    assert "Cluster-wide" in out;
     assert "app-secrets" in out and "2 keys" in out;
     assert "Totals" in out;
+}
+
+
+def _rate_limit_toml(enabled: str, extra: str = "") -> str {
+    return (
+        "[scale.microservices.routes]\napi = \"/api\"\n"
+        "\n[scale.microservices.rate_limit]\n"
+        + f"enabled = {enabled}\nper_ip_rpm = 120\nper_user_rpm = 30\n"
+        + extra
+    );
+}
+
+
+test "an enabled rate limit reaches the plan from jac.toml, both tiers" {
+    (out, _) = _run_plan(
+        {"deployments": {"api": _dep()}, "services": {"api": {}}},
+        ms_toml=_rate_limit_toml("true", extra="burst_multiplier = 3.0\n")
+    );
+    assert "Cluster-wide" in out , f"no cluster-wide block in plan:\n{out}";
+    assert "120/min per IP" in out , f"per-IP limit missing from plan:\n{out}";
+    assert "30/min per user" in out , f"per-user limit missing from plan:\n{out}";
+    assert "burst x3" in out;
+}
+
+
+test "a rate limit with both tiers at 0 renders as configured-but-inert" {
+    (out, _) = _run_plan(
+        {"deployments": {"api": _dep()}, "services": {"api": {}}},
+        ms_toml=(
+            "[scale.microservices.routes]\napi = \"/api\"\n"
+            "\n[scale.microservices.rate_limit]\n"
+            "enabled = true\nper_ip_rpm = 0\nper_user_rpm = 0\n"
+        )
+    );
+    assert "rate_limit:" in out , f"an inert limit rendered nothing:\n{out}";
+    assert "no limit" in out;
+}
+
+
+test "a disabled rate limit renders no rate-limit line" {
+    (out, _) = _run_plan(
+        {"deployments": {"api": _dep()}, "services": {"api": {}}},
+        ms_toml=_rate_limit_toml("false")
+    );
+    assert "rate_limit:" not in out , f"disabled limit rendered a line:\n{out}";
+    assert "120/min" not in out;
 }
 
 
@@ -261,8 +374,8 @@ test "validate: request > limit (cpu and memory) -> error" {
     );
     assert any(
         d.severity == "error"
-        and "cpu_request" in d.message
-        and "cpu_limit" in d.message for d in diags_cpu
+            and "cpu_request" in d.message
+            and "cpu_limit" in d.message for d in diags_cpu
     );
     diags_mem = _validate(
         {
@@ -287,8 +400,8 @@ test "validate: invalid Kubernetes resource quantity ('500MB' not 'Mi') -> error
     );
     assert any(
         d.severity == "error"
-        and "memory_request" in d.message
-        and "not a valid" in d.message for d in diags
+            and "memory_request" in d.message
+            and "not a valid" in d.message for d in diags
     );
 }
 
@@ -362,5 +475,6 @@ test "has_errors: True iff any diagnostic has severity='error'" {
             Diagnostic(severity="warn", message="x"),
             Diagnostic(severity="error", message="y")
         ]
-    ) is True;
+    )
+        is True;
 }

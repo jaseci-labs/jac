@@ -36,7 +36,7 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      WASM_TRIPLE = "wasm32-unknown-unknown",
-     FIXTURE = "wasm_objects.na.jac";
+     FIXTURE = "wasm_objects.jac";
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 """Compile a fixture to a relocatable wasm object the way `nacompile` does."""
@@ -239,8 +239,7 @@ test "nacompile --target wasm32 writes a valid module via the CLI" {
 test "linked module instantiates and runs under node" {
     node_bin = shutil.which("node");
     if not node_bin {
-        import pytest;
-        pytest.skip("node not available");
+        testskip("node not available");
     }
     mod = WasmLinker.link(emit_wasm_object(FIXTURE), [], 256);
     d = tempfile.mkdtemp();

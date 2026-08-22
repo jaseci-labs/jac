@@ -16,7 +16,6 @@ Root Cause 9: Union with Any blocks attribute access
 Root Cause 10: TypeVar in impl blocks — E1065 in impl but not in def
 """
 
-import from typing { Callable, TypeVar }
 import importlib.util;
 import from concurrent.futures { ThreadPoolExecutor, Future }
 
@@ -401,14 +400,14 @@ def fail_stdlib_method_on_assigned(svc: ServiceClass) -> Future {
 # ============================================================================
 
 def fail_any_in_union_blocks_attr(
-    `edge: (Any | EdgeAnchor | GenericEdge)
+    `edge: (any | EdgeAnchor | GenericEdge)
 ) -> str {
     # Any should allow any attribute access, so union with Any should too
     return `edge.__jac__;            # E1099: missing from Any
 }
 
 def fail_any_in_union_method(
-    val: (Any | str)
+    val: (any | str)
 ) -> int {
     # Any | str — should allow .upper() (from str) or any attr (from Any)
     return len(val.upper());

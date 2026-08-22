@@ -172,7 +172,7 @@ test "get metadata" {
 # --- store builtin tests ---
 test "store default" {
     strg = store();
-    # Re-import to avoid dual class loading under xdist (_fresh_jac_state
+    # Re-import to avoid dual class loading across workers (_fresh_jac_state
     # can reload .jac modules, creating a new class object while the
     # module-level import still holds the old one).
     import from jaclang.runtimelib.storage.local_storage { LocalStorage as LS }

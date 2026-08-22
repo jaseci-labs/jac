@@ -1,10 +1,13 @@
-"""Tests for client npm dependency injection gating in JacClientConfig.load().
+"""Tests for client npm dependency injection in JacClientConfig.load().
 
-Reading client config must NEVER mutate a project's jac.toml. For projects
-that opted into the client via [client], the core runtime/dev deps
-are injected into the *effective* dependency set at resolve time (visible to
+Reading client config must NEVER mutate a project's jac.toml. The core
+runtime/dev deps (including the packages the generated client runtime
+unconditionally imports, e.g. @tanstack/react-form and zod) are always
+injected into the *effective* dependency set at resolve time (visible to
 the bundler and the npm provider plan) without being written back; jac.toml
-only records what the user asked for.
+only records what the user asked for. Injection does not depend on a
+[client] table being present, since the client build activates from the
+compiled manifest rather than the toml (#7323).
 """
 
 import os;
@@ -19,10 +22,10 @@ def _write_toml(temp_dir: str, content: str) -> tuple[Path, bytes] {
 }
 
 # =============================================================================
-# Non-client project: reading config must not mutate jac.toml or inject deps
+# Non-client project: deps are injected in-memory, jac.toml is never mutated
 # =============================================================================
-"""A project without [client] is left untouched when config is read."""
-test "non client project config read does not mutate jac toml" {
+"""A project without [client] still sees the core deps, with jac.toml untouched."""
+test "no client table project gets deps injected without jac toml mutation" {
     import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
     with tempfile.TemporaryDirectory() as temp_dir {
@@ -44,16 +47,24 @@ test "non client project config read does not mutate jac toml" {
             assert config_path.read_bytes() == original_bytes , (
                 "Reading client config must not rewrite a non-client jac.toml"
             );
-            # And no npm dependencies should have been injected.
+            # And no npm dependencies should have been written back.
             assert "dependencies.npm" not in config_path.read_text() , (
                 "No [dependencies.npm] section should be injected for a "
                 "non-client project"
             );
-            assert pkg.get("dependencies", {}) == {} , (
-                "Non-client project should report no runtime npm dependencies"
+            # The effective in-memory config carries the full runtime closure,
+            # including the packages client_runtime imports unconditionally.
+            deps = pkg.get("dependencies", {});
+            dev_deps = pkg.get("devDependencies", {});
+            assert "react" in deps , (
+                "react should be present in the effective config without [client]"
             );
-            assert pkg.get("devDependencies", {}) == {} , (
-                "Non-client project should report no dev npm dependencies"
+            assert "@tanstack/react-form" in deps , (
+                "@tanstack/react-form should be present in the effective config"
+            );
+            assert "zod" in deps , ("zod should be present in the effective config");
+            assert "vite" in dev_deps , (
+                "vite should be present in the effective dev deps"
             );
         } finally {
             os.chdir(original_cwd);

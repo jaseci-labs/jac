@@ -9,6 +9,7 @@ import from jaclang.jac0core.archetype {
     ObjectSpatialFunction,
     WalkerArchetype
 }
+import from jaclang.jac0core.osp_graph_sv { cls_of_tag, tag_of_cls }
 import from jaclang.jac0core.osp_kernel {
     Slot,
     WalkerDesc,
@@ -22,7 +23,7 @@ obj _ContextStack {
     has _var: any postinit;
 
     def postinit {
-        self._var = ContextVar('osp_walk_stack', default=None);
+        self._var = ContextVar('osp_walk_stack', `default=None);
     }
 
     def _list -> list {
@@ -68,19 +69,7 @@ def isolate_request_walk_stack {
     }
 }
 
-glob _tag_of_cls: dict[(any, int)] = {},
-     _cls_of_tag: list[any] = [],
-     _desc_of_cls: dict[(any, WalkerDesc)] = {};
-
-def _tag_for(cls: any) -> int {
-    if cls in _tag_of_cls {
-        return _tag_of_cls[cls];
-    }
-    t = len(_cls_of_tag);
-    _tag_of_cls[cls] = t;
-    _cls_of_tag.append(cls);
-    return t;
-}
+glob _desc_of_cls: dict[(any, WalkerDesc)] = {};
 
 def _trigger_members(trig: any) -> list[any] {
     if trig is None {
@@ -118,7 +107,7 @@ def _slots_from(funcs: list[ObjectSpatialFunction]) -> list[Slot] {
             slots.append(Slot(trig_tag=UNTYPED, fn=wrapped));
         } else {
             for m in members {
-                slots.append(Slot(trig_tag=_tag_for(m), fn=wrapped));
+                slots.append(Slot(trig_tag=tag_of_cls(m), fn=wrapped));
             }
         }
     }
@@ -130,25 +119,31 @@ def desc_for(cls: any) -> WalkerDesc {
         return _desc_of_cls[cls];
     }
     desc = WalkerDesc(
-        type_tag=_tag_for(cls),
-        entry=_slots_from(cast(list[ObjectSpatialFunction], cls._jac_entry_funcs_)),
-        exit=_slots_from(cast(list[ObjectSpatialFunction], cls._jac_exit_funcs_))
+        type_tag=tag_of_cls(cls),
+        `entry=_slots_from(cast(list[ObjectSpatialFunction], cls._jac_entry_funcs_)),
+        `exit=_slots_from(cast(list[ObjectSpatialFunction], cls._jac_exit_funcs_))
     );
     _desc_of_cls[cls] = desc;
     return desc;
 }
 
 def _sv_tag_of(handle: any) -> int {
-    return _tag_for(`type(_unwrap(handle)));
+    return tag_of_cls(`type(_unwrap(handle)));
 }
 
 def _sv_is_a(tag: int, base: int) -> bool {
-    return issubclass(cast(type, _cls_of_tag[tag]), cast(type, _cls_of_tag[base]));
+    tc = cls_of_tag(tag);
+    bc = cls_of_tag(base);
+    return tc is not None and bc is not None and issubclass(tc, bc);
 }
 
 def _sv_node_desc(tag: int) -> NodeDesc {
-    d = desc_for(_cls_of_tag[tag]);
-    return NodeDesc(type_tag=d.type_tag, entry=d.entry, exit=d.exit);
+    cls = cls_of_tag(tag);
+    if cls is None {
+        return NodeDesc(type_tag=tag, `entry=[], `exit=[]);
+    }
+    d = desc_for(cls);
+    return NodeDesc(type_tag=d.type_tag, `entry=d.`entry, `exit=d.`exit);
 }
 
 def _sv_on_complete(scope: WalkScope, ok: bool) {
@@ -158,11 +153,7 @@ def _sv_on_complete(scope: WalkScope, ok: bool) {
         anch.next = [];
         anch.ignores = [];
     }
-    if _kernel._walk_stack {
-        outer = _kernel._walk_stack[-1];
-        for r in scope.reports {
-            outer.reports.append(r);
-        }
+    if scope.nested {
         return;
     }
 
@@ -242,15 +233,15 @@ async def _visit_recursive_async(
             scope.path.append(cur);
             loc_tag: int = rt.tag_of(cur);
             ndesc = rt.node_desc(loc_tag);
-            await _run_typed_async(rt, wdesc.entry, scope.wlk, cur);
+            await _run_typed_async(rt, wdesc.`entry, scope.wlk, cur);
             if scope.disengaged {
                 return False;
             }
-            await _run_untyped_async(ndesc.entry, cur, scope.wlk);
+            await _run_untyped_async(ndesc.`entry, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
-            await _run_typed_async(rt, ndesc.entry, cur, scope.wlk);
+            await _run_typed_async(rt, ndesc.`entry, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
@@ -273,15 +264,15 @@ async def _visit_recursive_async(
         } else {
             loc_tag: int = rt.tag_of(cur);
             ndesc = rt.node_desc(loc_tag);
-            await _run_typed_async(rt, ndesc.exit, cur, scope.wlk);
+            await _run_typed_async(rt, ndesc.`exit, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
-            await _run_untyped_async(ndesc.exit, cur, scope.wlk);
+            await _run_untyped_async(ndesc.`exit, cur, scope.wlk);
             if scope.disengaged {
                 return False;
             }
-            await _run_typed_async(rt, wdesc.exit, scope.wlk, cur);
+            await _run_typed_async(rt, wdesc.`exit, scope.wlk, cur);
             if scope.disengaged {
                 return False;
             }
@@ -293,13 +284,20 @@ async def _visit_recursive_async(
 async def osp_spawn_async(
     rt: OspRuntime, wlk: any, wdesc: WalkerDesc, starts: list
 ) -> any {
-    scope = WalkScope(wlk=wlk, path=[], next=`list(starts), ignores=[], reports=[]);
+    scope = WalkScope(
+        wlk=wlk,
+        path=[],
+        next=`list(starts),
+        ignores=[],
+        reports=[],
+        nested=(len(_kernel._walk_stack) > 0)
+    );
     _kernel._walk_stack.append(scope);
     ok = False;
     try {
         if scope.next {
             anchor = scope.next[0];
-            await _run_untyped_async(wdesc.entry, wlk, anchor);
+            await _run_untyped_async(wdesc.`entry, wlk, anchor);
         }
         while scope.next and (not scope.disengaged) {
             nxt = scope.next.pop(0);
@@ -310,11 +308,17 @@ async def osp_spawn_async(
             }
         }
         if scope.path and (not scope.disengaged) {
-            await _run_untyped_async(wdesc.exit, wlk, scope.path[-1]);
+            await _run_untyped_async(wdesc.`exit, wlk, scope.path[-1]);
         }
         ok = True;
     } finally {
         _kernel._walk_stack.pop();
+        if scope.nested and _kernel._walk_stack {
+            outer = _kernel._walk_stack[-1];
+            for r in scope.reports {
+                outer.reports.append(r);
+            }
+        }
         rt.on_complete(scope, ok);
     }
     return wlk;

@@ -18,6 +18,7 @@ import shutil;
 import from pathlib { Path }
 import from subprocess { run }
 import from jaclang.project.config { JacConfig }
+import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.publish.package_json {
     generate_package_json,
@@ -44,17 +45,21 @@ import from jaclang.publish.runtime_npm {
 
 
 # Helpers --------------------------------------------------------------------------
-"""Scaffold a minimal client library (jac.toml + a public .cl.jac module)."""
+"""Scaffold a minimal client library (jac.toml + a public .jac module)."""
 def _scaffold_lib(tmp_path: str, name: str = "mylib") {
     toml = (
-        '[project]\nname = "' + name + '"\nversion = "1.0.0"\n'
+        '[project]\nname = "'
+        + name
+        + '"\nversion = "1.0.0"\n'
         'description = "A handy Jac library"\nlicense = "MIT"\n\n'
-        '[project.include]\npackages = ["' + name + '"]\n'
+        '[project.include]\npackages = ["'
+        + name
+        + '"]\n'
     );
     (Path(tmp_path) / "jac.toml").write_text(toml);
     pkg = Path(tmp_path) / name;
     pkg.mkdir(parents=True, exist_ok=True);
-    (pkg / "index.cl.jac").write_text(
+    (pkg / "index.jac").write_text(
         'def:pub add(a: int, b: int) -> int {\n    return a + b;\n}\n\n'
         'def:pub greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n'
     );
@@ -152,7 +157,7 @@ test "jac_type_to_jsdoc maps scalars containers and unions" {
 test "jsdoc_for_module builds typed blocks and inject places them" {
     tmpdir = tempfile.mkdtemp();
     try {
-        src = Path(tmpdir) / "m.cl.jac";
+        src = Path(tmpdir) / "m.jac";
         src.write_text(
             'def:pub add(a: int, b: int) -> int { return a + b; }\n'
             'def:pub label(s: str, n: float) -> str { return s; }\n'
@@ -253,9 +258,12 @@ test "NpmBuilder rejects modules that cross a server boundary" {
     try {
         pkg = Path(tmpdir) / "svlib";
         pkg.mkdir(parents=True, exist_ok=True);
-        (pkg / "api.sv.jac").write_text('def:pub fetch_count() -> int { return 7; }\n');
-        (pkg / "index.cl.jac").write_text(
-            'sv import from api { fetch_count }\n\n'
+        (pkg / "api.jac").write_text('def:pub fetch_count() -> int { return 7; }\n');
+        (Path(tmpdir) / "jac.toml").write_text(
+            '[placement.pins]\n"svlib.api" = "server"\n'
+        );
+        (pkg / "index.jac").write_text(
+            'import from api { fetch_count }\n\n'
             'def:pub show() -> int { return fetch_count(); }\n'
         );
         cfg = JacConfig.from_toml_str(
@@ -282,7 +290,7 @@ test "JSX module wires the runtime import and adds @jaseci/runtime dependency" {
     try {
         pkg = Path(tmpdir) / "ui";
         pkg.mkdir(parents=True, exist_ok=True);
-        (pkg / "index.cl.jac").write_text(
+        (pkg / "index.jac").write_text(
             'def:pub Button(label: str) -> any {\n'
             '    return <button class="btn">{label}</button>;\n'
             '}\n'
@@ -364,7 +372,7 @@ test "runtime_peer_deps raises for unknown imported packages" {
 }
 
 test "runtime_pkg_name suffixes non-react backends so packages never collide" {
-    # React and Preact share `client_runtime.cl.jac` → the canonical package name.
+    # React and Preact share `client_runtime.jac` → the canonical package name.
     assert runtime_pkg_name("react") == RUNTIME_PKG_NAME;
     assert runtime_pkg_name("preact") == RUNTIME_PKG_NAME;
     # Solid compiles its own shim → a suffixed package.
@@ -434,7 +442,7 @@ test "react import is recorded as a peerDependency" {
     try {
         pkg = Path(tmpdir) / "rx";
         pkg.mkdir(parents=True, exist_ok=True);
-        (pkg / "index.cl.jac").write_text(
+        (pkg / "index.jac").write_text(
             'import from react { useState }\n\n'
             'def:pub useCounter() -> any { return useState(0); }\n'
         );
@@ -466,14 +474,16 @@ test "jac_type_to_ts emits idiomatic TypeScript" {
 test "dts_for_module declares exported functions, classes, and globals" {
     tmpdir = tempfile.mkdtemp();
     try {
-        src = Path(tmpdir) / "lib.cl.jac";
+        src = Path(tmpdir) / "lib.jac";
         src.write_text(
             'glob:pub VERSION: str = "1.0.0";\n\n'
             'obj:pub Point {\n    has x: int = 0,\n        y: int = 0;\n}\n\n'
             'def:pub add(a: int, b: int) -> int { return a + b; }\n'
             'def:pub names(items: list[str]) -> int { return len(items); }\n'
         );
-        mod = JacProgram().compile(str(src));
+        mod = JacProgram().compile(
+            str(src), options=CompileOptions(force_codespace='client', type_check=False)
+        );
         dts = dts_for_module(mod);
         assert "export declare function add(a: number, b: number): number;" in dts;
         assert "export declare function names(items: Array<string>): number;" in dts;
@@ -525,7 +535,7 @@ test "jac bundle --target npm writes a tarball to dist/" {
         assert result.returncode == 0 , (
             f"exit {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         );
-        tgz_files = list((Path(tmp_path) / "dist").glob("*.tgz"));
+        tgz_files = list((Path(tmp_path) / "dist").`glob("*.tgz"));
         assert len(tgz_files) == 1;
         assert tgz_files[0].name == "mylib-1.0.0.tgz";
     } finally {

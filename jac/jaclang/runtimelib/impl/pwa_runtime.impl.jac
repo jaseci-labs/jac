@@ -7,8 +7,8 @@ impl getPlatform -> str {
     ua = navigator.userAgent;
 
     iosPattern = Reflect.construct(RegExp, ["iPad|iPhone|iPod"]);
-    if iosPattern.test(ua)
-    or (navigator.platform == "MacIntel" and navigator.maxTouchPoints > 1) {
+    if iosPattern.`test(ua)
+        or (navigator.platform == "MacIntel" and navigator.maxTouchPoints > 1) {
         return "ios";
     }
 
@@ -31,8 +31,8 @@ impl isSafari -> bool {
     ua = navigator.userAgent;
 
     return ua.includes("Safari")
-    and not ua.includes("Chrome")
-    and not ua.includes("CriOS");
+        and not ua.includes("Chrome")
+        and not ua.includes("CriOS");
 }
 
 impl isMobile -> bool {
@@ -693,15 +693,15 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
             <style>{__getPwaStyles()}</style>
             <div className={bannerClass} style={style}>
                 {showIcon
-                and pwa.appIcon
-                and (
-                    <img
-                        className="jac-pwa-banner__icon"
-                        src={pwa.appIcon}
-                        alt=""
-                        style={{width: iconSize, height: iconSize}}
-                    />
-                )}
+                    and pwa.appIcon
+                    and (
+                        <img
+                            className="jac-pwa-banner__icon"
+                            src={pwa.appIcon}
+                            alt=""
+                            style={{width: iconSize, height: iconSize}}
+                        />
+                    )}
                 <div className="jac-pwa-banner__content">
                     <div className="jac-pwa-banner__title">{title}</div>
                     <div className="jac-pwa-banner__description">{description}</div>
@@ -720,13 +720,13 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
                 </div>
             </div>
             {pwa.iosGuideOpen
-            and (
-                <IosInstallGuide
-                    isOpen={pwa.iosGuideOpen}
-                    onClose={pwa.closeIosGuide}
-                    appName={pwa.appName}
-                />
-            )}
+                and (
+                    <IosInstallGuide
+                        isOpen={pwa.iosGuideOpen}
+                        onClose={pwa.closeIosGuide}
+                        appName={pwa.appName}
+                    />
+                )}
         </>
     );
 }
@@ -762,13 +762,13 @@ impl PwaInstallButton(props: dict) -> JsxElement {
                 {children}
             </button>
             {pwa.iosGuideOpen
-            and (
-                <IosInstallGuide
-                    isOpen={pwa.iosGuideOpen}
-                    onClose={pwa.closeIosGuide}
-                    appName={pwa.appName}
-                />
-            )}
+                and (
+                    <IosInstallGuide
+                        isOpen={pwa.iosGuideOpen}
+                        onClose={pwa.closeIosGuide}
+                        appName={pwa.appName}
+                    />
+                )}
         </>
     );
 }

@@ -1,11 +1,52 @@
-import ast as ast3;
-import from collections.abc { Sequence }
-import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree {
+    Ability,
+    Archetype,
+    Assignment,
+    AtomTrailer,
+    BinaryExpr,
+    Bool,
+    CompareExpr,
+    ConnectOp,
+    CtrlStmt,
+    DisconnectOp,
+    DisengageStmt,
+    EdgeOpRef,
+    ElseIf,
+    ElseStmt,
+    EventSignature,
+    FString,
+    FilterCompr,
+    FinallyStmt,
+    Float,
+    ForeverStmt,
+    FormattedValue,
+    FuncSignature,
+    IfStmt,
+    ImplDef,
+    Import,
+    InForStmt,
+    Int,
+    IterForStmt,
+    KWPair,
+    MatchPattern,
+    Module,
+    ModuleItem,
+    ModulePath,
+    Name,
+    Null,
+    RaiseStmt,
+    ReturnStmt,
+    Semi,
+    SubTag,
+    Token,
+    UniNode,
+    UniScopeNode,
+    WhileStmt
+}
 import from jaclang.jac0core.passes.transform { Transform }
-import from jaclang.jac0core.constant { SymbolType }
+import from jaclang.jac0core.constant { ExprCtx, SymbolType }
 import from jaclang.jac0core.diagnostics {
     W1103,
-    W1104,
     W2001,
     W2002,
     W2003,
@@ -14,27 +55,212 @@ import from jaclang.jac0core.diagnostics {
     W2070,
     W2074,
     W2075,
+    E1122,
+    E1123,
+    E1125,
     E2018,
     E2027,
     E2055,
     E2083
 }
 
-obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
-    has ir_in: uni.Module,
-        prog: any,
-        cancel_token: any = None;
+glob BUILTIN_NAMES: set[str] = {
+         'ArithmeticError',
+         'AssertionError',
+         'AttributeError',
+         'BaseException',
+         'BaseExceptionGroup',
+         'BlockingIOError',
+         'BrokenPipeError',
+         'BufferError',
+         'BytesWarning',
+         'ChildProcessError',
+         'ConnectionAbortedError',
+         'ConnectionError',
+         'ConnectionRefusedError',
+         'ConnectionResetError',
+         'DeprecationWarning',
+         'EOFError',
+         'Ellipsis',
+         'EncodingWarning',
+         'EnvironmentError',
+         'Exception',
+         'ExceptionGroup',
+         'False',
+         'FileExistsError',
+         'FileNotFoundError',
+         'FloatingPointError',
+         'FutureWarning',
+         'GeneratorExit',
+         'IOError',
+         'ImportError',
+         'ImportWarning',
+         'IndentationError',
+         'IndexError',
+         'InterruptedError',
+         'IsADirectoryError',
+         'KeyError',
+         'KeyboardInterrupt',
+         'LookupError',
+         'MemoryError',
+         'ModuleNotFoundError',
+         'NameError',
+         'None',
+         'NotADirectoryError',
+         'NotImplemented',
+         'NotImplementedError',
+         'OSError',
+         'OverflowError',
+         'PendingDeprecationWarning',
+         'PermissionError',
+         'ProcessLookupError',
+         'PythonFinalizationError',
+         'RecursionError',
+         'ReferenceError',
+         'ResourceWarning',
+         'RuntimeError',
+         'RuntimeWarning',
+         'StopAsyncIteration',
+         'StopIteration',
+         'SyntaxError',
+         'SyntaxWarning',
+         'SystemError',
+         'SystemExit',
+         'TabError',
+         'TimeoutError',
+         'True',
+         'TypeError',
+         'UnboundLocalError',
+         'UnicodeDecodeError',
+         'UnicodeEncodeError',
+         'UnicodeError',
+         'UnicodeTranslateError',
+         'UnicodeWarning',
+         'UserWarning',
+         'ValueError',
+         'Warning',
+         'ZeroDivisionError',
+         '_IncompleteInputError',
+         '__build_class__',
+         '__debug__',
+         '__doc__',
+         '__import__',
+         '__loader__',
+         '__name__',
+         '__package__',
+         '__spec__',
+         'abs',
+         'aiter',
+         'all',
+         'anext',
+         'any',
+         'ascii',
+         'bin',
+         'bool',
+         'breakpoint',
+         'bytearray',
+         'bytes',
+         'callable',
+         'chr',
+         'classmethod',
+         'compile',
+         'complex',
+         'copyright',
+         'credits',
+         'delattr',
+         'dict',
+         'dir',
+         'divmod',
+         'enumerate',
+         'eval',
+         'exec',
+         'exit',
+         'filter',
+         'float',
+         'format',
+         'frozenset',
+         'getattr',
+         'globals',
+         'hasattr',
+         'hash',
+         'help',
+         'hex',
+         'id',
+         'input',
+         'int',
+         'isinstance',
+         'issubclass',
+         'iter',
+         'len',
+         'license',
+         'list',
+         'locals',
+         'map',
+         'max',
+         'memoryview',
+         'min',
+         'next',
+         'object',
+         'oct',
+         'open',
+         'ord',
+         'pow',
+         'print',
+         'property',
+         'quit',
+         'range',
+         'repr',
+         'reversed',
+         'round',
+         'set',
+         'setattr',
+         'slice',
+         'sorted',
+         'staticmethod',
+         'str',
+         'sum',
+         'super',
+         'tuple',
+         'type',
+         'vars',
+         'zip'
+     },
+     DEPRECATED_TYPING_ALIASES: dict[str, str] = {
+         'Dict': 'dict',
+         'FrozenSet': 'frozenset',
+         'List': 'list',
+         'Set': 'set',
+         'Tuple': 'tuple',
+         'Type': 'type'
+     };
+
+def is_bootstrap_compiled_module(mod_path: str) -> bool {
+    return "/jaclang/jac0core/" in mod_path.replace("\\", "/");
+}
+
+def is_ambient_provider_module(mod_path: str) -> bool {
+    return (mod_path.endswith("builtin.jac") or mod_path.endswith("builtin.py"))
+        and "runtimelib" in mod_path;
+}
+
+obj StaticAnalysisPass(Transform) {
+    has ir_in: Module,
+        cancel_token: any = None,
+        _checked_scopes: set[int] = set();
 
     static has PROVIDES: tuple = ('static-checks', );
 
     def postinit -> None;
-    def transform(ir_in: uni.Module) -> uni.Module;
-    def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
-    def _check_undefined_names(mod: uni.Module) -> None;
+    def transform(ir_in: Module) -> Module;
+    def _check_unused_symbols(scope: UniScopeNode) -> None;
+    def _check_undefined_names(mod: Module) -> None;
     def _literal_case_suggestion(name: str) -> (str | None);
-    def _osp_shape_position(name_nd: uni.Name) -> (str | None);
-    def _native_type_position(name_nd: uni.Name) -> (str | None);
-    def _check_unreachable_code(mod: uni.Module) -> None;
-    def _check_semantic_patterns(mod: uni.Module) -> None;
-    def _check_redundant_imports(mod: uni.Module) -> None;
+    def _osp_shape_position(name_nd: Name) -> (str | None);
+    def _native_type_position(name_nd: Name) -> (str | None);
+    def _check_unreachable_code(mod: Module) -> None;
+    def _check_semantic_patterns(mod: Module) -> None;
+    def _check_typing_import_refusals(mod: Module) -> None;
+    def _check_redundant_imports(mod: Module) -> None;
+    def _check_client_imports(mod: Module) -> None;
+    def _check_placement_warnings(mod: Module) -> None;
 }

@@ -142,7 +142,7 @@ impl UnparsePass.exit_type_alias(nd: uni.TypeAlias) -> None {
         tp_str = ", ".join([tp.gen.jac for tp in nd.type_params]);
         parts.append("[" + tp_str + "]");
     }
-    parts.append("=");
+    parts.append(":=" if nd.is_distinct else "=");
     parts.append(nd.value.gen.jac);
     nd.gen.jac = " ".join(parts);
 }
@@ -189,21 +189,6 @@ impl UnparsePass.exit_module_code(nd: uni.ModuleCode) -> None {
     body = " ".join([s.gen.jac for s in nd.body]);
     parts.append("{ " + body + " }");
     nd.gen.jac = " ".join(parts);
-}
-
-impl UnparsePass.exit_client_block(nd: uni.ClientBlock) -> None {
-    body = " ".join([s.gen.jac for s in nd.body]);
-    nd.gen.jac = "client { " + body + " }";
-}
-
-impl UnparsePass.exit_server_block(nd: uni.ServerBlock) -> None {
-    body = " ".join([s.gen.jac for s in nd.body]);
-    nd.gen.jac = "server { " + body + " }";
-}
-
-impl UnparsePass.exit_native_block(nd: uni.NativeBlock) -> None {
-    body = " ".join([s.gen.jac for s in nd.body]);
-    nd.gen.jac = "native { " + body + " }";
 }
 
 impl UnparsePass.exit_py_inline_code(nd: uni.PyInlineCode) -> None {
@@ -276,8 +261,10 @@ impl UnparsePass.exit_archetype(nd: uni.Archetype) -> None {
         tp_str = ", ".join([tp.gen.jac for tp in nd.type_params]);
         parts.append("[" + tp_str + "]");
     }
-    if nd.base_classes {
-        parts.append("(" + self._comma_sep(nd.base_classes) + ")");
+    if nd.base_classes or nd.keywords {
+        inherit = [b.gen.jac for b in nd.base_classes]
+            + [k.gen.jac for k in nd.keywords];
+        parts.append("(" + ", ".join(inherit) + ")");
     }
     if nd.src_endpoint and nd.tgt_endpoint {
         parts.append(
@@ -684,6 +671,10 @@ impl UnparsePass.exit_report_stmt(nd: uni.ReportStmt) -> None {
 }
 
 impl UnparsePass.exit_return_stmt(nd: uni.ReturnStmt) -> None {
+    if nd.is_implicit and nd.expr {
+        nd.gen.jac = nd.expr.gen.jac;
+        return;
+    }
     parts: list = ["return"];
     if nd.expr {
         parts.append(nd.expr.gen.jac);
@@ -737,10 +728,10 @@ impl UnparsePass.exit_assignment(nd: uni.Assignment) -> None {
     result = " ".join(parts);
 
     if not nd.is_enum_stmt
-    and not (
-        isinstance(nd.parent, uni.IterForStmt)
-        and (nd == nd.parent.iter or nd == nd.parent.count_by)
-    ) {
+        and not (
+            isinstance(nd.parent, uni.IterForStmt)
+            and (nd == nd.parent.iter or nd == nd.parent.count_by)
+        ) {
         result = result + ";";
     }
     nd.gen.jac = result;
@@ -799,7 +790,11 @@ impl UnparsePass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
 }
 
 impl UnparsePass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
-    nd.gen.jac = nd.value.gen.jac + " if " + nd.condition.gen.jac + " else " + nd.else_value.gen.jac;
+    nd.gen.jac = nd.value.gen.jac
+        + " if "
+        + nd.condition.gen.jac
+        + " else "
+        + nd.else_value.gen.jac;
 }
 
 impl UnparsePass.exit_multi_string(nd: uni.MultiString) -> None {

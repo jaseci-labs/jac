@@ -38,8 +38,12 @@ test "get_py_code_gen schedules the native passes when native=True" {
 
 
 test "plain Python module carries no native-context statements" {
+    import from jaclang.jac0core.compile_options { CompileOptions }
     prog = JacProgram();
-    ir = prog.compile(file_path=os.path.join(FIXTURES, "gate_python_only.jac"));
+    ir = prog.compile(
+        file_path=os.path.join(FIXTURES, "gate_python_only.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
     assert not ModuleCodegenPass.has_native_context_stmts(ir);
 }
 

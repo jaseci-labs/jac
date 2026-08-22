@@ -21,46 +21,58 @@ from World: 2 areas; area_of(e1): 1 area.
 """
 
 node World {}
-node Area { has tag: int = 0; }
-node Entity { has eid: int = 0; }
-edge Portal { has w: int = 0; }
+node Area {
+    has tag: int = 0;
+}
+node Entity {
+    has eid: int = 0;
+}
+edge Portal {
+    has w: int = 0;
+}
 edge In {}
 
 walker VisPass {
-    has ports: int = 0, nbrs: int = 0, ents: int = 0;
+    has ports: int = 0,
+        nbrs: int = 0,
+        ents: int = 0;
+
     can flood with Area entry {
-        self.ports += len([edge here ->:Portal:->]);   # (1)
-        self.nbrs  += len([here ->:Portal:->]);         # (2)
-        self.ents  += len([here <-:In:<-]);             # (4)
+        self.ports += len([edge here->:Portal:->]);  # (1)
+        self.nbrs += len([here->:Portal:->]);  # (2)
+        self.ents += len([here<-:In:<-]);  # (4)
     }
 }
 
 walker ThinkPass {
     has areas: int = 0;
+
     can start with World entry {
-        self.areas += len([here -->[?:Area]]);          # (3) implicit origin
+        self.areas += len([here-->[?:Area]]);  # (3) implicit origin
     }
 }
 
 # --- py reference (sv runtime) ---
 def area_of(ent: Entity) -> int {
-    rooms = [ent ->:In:->[?:Area]];                     # (5) explicit origin in a def
+    rooms = [ent->:In:->[?:Area]];  # (5) explicit origin in a def
     return len(rooms);
 }
 
 def world_areas(w: World) -> int {
-    return len([w -->[?:Area]]);                        # (3) explicit origin
+    return len([w-->[?:Area]]);  # (3) explicit origin
 }
 
 def edge_nav_py() -> dict[str, any] {
     w = World();
-    a1 = Area(tag=1); a2 = Area(tag=2);
-    e1 = Entity(eid=1); e2 = Entity(eid=2);
+    a1 = Area(tag=1);
+    a2 = Area(tag=2);
+    e1 = Entity(eid=1);
+    e2 = Entity(eid=2);
     w ++> a1;
     w ++> a2;
-    a1 +>: Portal(w=5) :+> a2;
-    e1 +>: In() :+> a1;
-    e2 +>: In() :+> a1;
+    a1 +>:Portal(w=5):+> a2;
+    e1 +>:In():+> a1;
+    e2 +>:In():+> a1;
     vp = VisPass();
     vp spawn a1;
     tp = ThinkPass();
@@ -76,36 +88,37 @@ def edge_nav_py() -> dict[str, any] {
 }
 
 # --- na (native LLVM) ---
-na {
-    def area_of_na(ent: Entity) -> int {
-        rooms = [ent ->:In:->[?:Area]];
-        return len(rooms);
-    }
 
-    def world_areas_na(w: World) -> int {
-        return len([w -->[?:Area]]);
-    }
+def area_of_na(ent: Entity) -> int {
+    rooms = [ent->:In:->[?:Area]];
+    return len(rooms);
+}
 
-    def edge_nav_na() -> dict[str, any] {
-        w = World();
-        a1 = Area(tag=1); a2 = Area(tag=2);
-        e1 = Entity(eid=1); e2 = Entity(eid=2);
-        w ++> a1;
-        w ++> a2;
-        a1 +>: Portal(w=5) :+> a2;
-        e1 +>: In() :+> a1;
-        e2 +>: In() :+> a1;
-        vp = VisPass();
-        vp spawn a1;
-        tp = ThinkPass();
-        tp spawn w;
-        return {
-            "ports": vp.ports,
-            "nbrs": vp.nbrs,
-            "ents": vp.ents,
-            "areas": tp.areas,
-            "world_areas": world_areas_na(w),
-            "area_of": area_of_na(e1)
-        };
-    }
+def world_areas_na(w: World) -> int {
+    return len([w-->[?:Area]]);
+}
+
+def edge_nav_na() -> dict[str, any] {
+    w = World();
+    a1 = Area(tag=1);
+    a2 = Area(tag=2);
+    e1 = Entity(eid=1);
+    e2 = Entity(eid=2);
+    w ++> a1;
+    w ++> a2;
+    a1 +>:Portal(w=5):+> a2;
+    e1 +>:In():+> a1;
+    e2 +>:In():+> a1;
+    vp = VisPass();
+    vp spawn a1;
+    tp = ThinkPass();
+    tp spawn w;
+    return {
+        "ports": vp.ports,
+        "nbrs": vp.nbrs,
+        "ents": vp.ents,
+        "areas": tp.areas,
+        "world_areas": world_areas_na(w),
+        "area_of": area_of_na(e1)
+    };
 }

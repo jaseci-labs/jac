@@ -8,10 +8,14 @@ the second spawn re-counted the node — the documented cycle-guard pattern
 silently computing the wrong answer.
 """
 
-node Cell { has tag: int; }
+node Cell {
+    has tag: int;
+}
 
 walker Dedupe {
-    has seen: list[Cell] = [], count: int = 0;
+    has seen: list[Cell] = [],
+        count: int = 0;
+
     can at_cell with Cell entry {
         if here in self.seen {
             skip;
@@ -35,23 +39,22 @@ def skip_guard_py() -> dict[str, any] {
 }
 
 # --- na (native LLVM) ---
-na {
-    def skip_guard_na() -> dict[str, any] {
-        a = Cell(tag=1);
-        d = Dedupe();
-        d spawn a;
-        d spawn a;
-        return {"count": d.count};
-    }
+
+def skip_guard_na() -> dict[str, any] {
+    a = Cell(tag=1);
+    d = Dedupe();
+    d spawn a;
+    d spawn a;
+    return {"count": d.count};
 }
 
+
 # --- cl (ECMAScript, in-process via the kernel) ---
-cl {
-    def skip_guard_cl() -> dict[str, any] {
-        a = Cell(tag=1);
-        d = Dedupe();
-        d spawn a;
-        d spawn a;
-        return {"count": d.count};
-    }
+
+def skip_guard_cl() -> dict[str, any] {
+    a = Cell(tag=1);
+    d = Dedupe();
+    d spawn a;
+    d spawn a;
+    return {"count": d.count};
 }

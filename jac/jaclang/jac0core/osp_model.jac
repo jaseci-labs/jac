@@ -159,7 +159,7 @@ obj OspAnalysis {
         }
         for stmt in arch.body {
             if (not isinstance(stmt, uni.Ability))
-            or (not isinstance(stmt.signature, uni.EventSignature)) {
+                or (not isinstance(stmt.signature, uni.EventSignature)) {
                 continue;
             }
             _ability = stmt.name_ref.sym_name if stmt.name_ref else None;
@@ -252,8 +252,8 @@ obj OspAnalysis {
                     return True;
                 }
                 if isinstance(nd, uni.BinaryExpr)
-                and isinstance(nd.op, uni.Token)
-                and (nd.op.name == Tok.KW_SPAWN) {
+                    and isinstance(nd.op, uni.Token)
+                    and (nd.op.name == Tok.KW_SPAWN) {
                     return True;
                 }
                 for k in nd.kid {

@@ -32,10 +32,10 @@ def make_llm_event(
         "error_str": None,
         "startTime": time.time(),
         "messages": messages
-        or [
-            {"role": "system", "content": "You are helpful."},
-            {"role": "user", "content": "Hello"}
-        ],
+            or [
+                {"role": "system", "content": "You are helpful."},
+                {"role": "user", "content": "Hello"}
+            ],
         "response": response or {"choices": [{"message": {"content": "Hi there"}}]},
         "metadata": {"jac_invocation_id": inv_id, "jac_caller_name": caller_name}
     };
@@ -60,7 +60,10 @@ def make_agent_record(
         "user_prompt": user_prompt,
         "agent_response": agent_response,
         "conversation_history": conversation_history
-        or [{"role": "system", "content": "sys"}, {"role": "user", "content": "Hello"}],
+            or [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "Hello"}
+            ],
         "model": model,
         "latency_ms": latency_ms,
         "status": status,

@@ -1,4 +1,8 @@
+import importlib;
 import logging;
+import sys;
+import threading;
+import from time { monotonic }
 import from dataclasses { fields, is_dataclass, MISSING }
 import from datetime { date, datetime, time }
 import from enum { Enum }
@@ -29,14 +33,30 @@ import from jaclang.jac0core.constructs {
 }
 
 glob logger = logging.getLogger(__name__),
-     FINGERPRINT_LENGTH: int = 16;
+     FINGERPRINT_LENGTH: int = 16,
+     _MAX_WARNED_CLASS_KEYS: int = 1024,
+     _MAX_IMPORT_FAILURES: int = 1024,
+     _IMPORT_RETRY_SECONDS: float = 30.0,
+     _IMPORT_RETRY_CEILING_SECONDS: float = 900.0,
+     _IMPORT_RETRY_MAX_DOUBLINGS: int = 8;
+
+obj ImportFailure {
+    has attempts: int = 0,
+        failed_at: float = 0.0;
+}
 
 obj Serializer {
     static has _registry: dict[str, type] = {},
-        _aliases: dict[str, str] = {};
+        _aliases: dict[str, str] = {},
+        _warn_counts: dict[str, int] = {},
+        _warn_dedup_saturated: bool = False,
+        _import_failures: dict[str, ImportFailure] = {},
+        _import_lock: threading.Lock = threading.Lock(),
+        _warn_lock: any = threading.Lock();
 
     static def register(cls: type) -> None;
     static def register_alias(old_name: str, cls: type) -> None;
+    static def is_auto_registered_module(module_name: str) -> bool;
     static def fingerprint(cls: type) -> str;
     static def repair(data: dict[str, object], cls: type) -> tuple;
     static def coerce(val: object, target_type: object) -> tuple;
@@ -68,6 +88,18 @@ obj Serializer {
     static def _deserialize_value(val: object) -> object;
     static def _deserialize_jac_ref(data: dict[str, object]) -> (object | None);
     static def _get_class(module_name: str, class_name: str) -> (type | None);
+    static def _resolve_class_by_import(
+        module_name: str, class_name: str
+    ) -> (type | None);
+
+    static def _import_allowed(module_name: str) -> bool;
+    static def _record_import_failure(module_name: str) -> float;
+    static def _clear_import_failure(module_name: str) -> None;
+    static def _reset_import_failures -> None;
+    static def _warn_occurrence(scope: str, key: str) -> int;
+    static def _is_report_threshold(n: int) -> bool;
+    static def _occurrence_note(n: int) -> str;
+    static def _reset_warn_cache -> None;
     static def _id_to_stub(anchor_cls: type, id_str: str) -> (object | None);
     static def _deserialize_anchor(data: dict[str, object]) -> (object | None);
     static def _deserialize_permission(data: object) -> object;
@@ -82,12 +114,9 @@ obj Serializer {
     ) -> dict[str, object];
 }
 
-glob _register_hook: object = Archetype._subclass_hooks.append(
+glob _register_hook: object = Archetype.install_subclass_hook(
          lambda (cls: type) { Serializer.register(cls)
-             if (
-                 not cls.__module__.startswith('jaclang.')
-                 or cls.__module__.startswith('jaclang.scale.')
-             )
+             if Serializer.is_auto_registered_module(cls.__module__)
              else None; }
      ),
      _register_root: object = Serializer.register(cast(type, Root)),

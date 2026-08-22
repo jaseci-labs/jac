@@ -82,14 +82,14 @@ impl ModelPool.postinit -> None {
 }
 
 impl ModelPool._get_ctx_window(call_params: dict) -> int {
-    override = int(
+    `override = int(
         call_params.get("ctx_window")
-        or self.ctx_window
-        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
-        or 0
+            or self.ctx_window
+            or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+            or 0
     );
-    if override > 0 {
-        return override;
+    if `override > 0 {
+        return `override;
     }
     windows: list = [];
     for m in self.models {

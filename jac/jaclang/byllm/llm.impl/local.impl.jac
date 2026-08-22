@@ -101,15 +101,15 @@ impl LocalLLM.model_call_with_stream(params: dict) -> Generator[object, None, No
 }
 
 impl LocalLLM._get_ctx_window(call_params: dict) -> int {
-    override = int(
+    `override = int(
         call_params.get("ctx_window")
-        or self.ctx_window
-        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
-        or int(self.config.get("n_ctx", 0))
-        or 0
+            or self.ctx_window
+            or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+            or int(self.config.get("n_ctx", 0))
+            or 0
     );
-    if override > 0 {
-        return override;
+    if `override > 0 {
+        return `override;
     }
     return int(self.spec.get("n_ctx", 4096));
 }

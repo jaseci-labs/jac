@@ -43,3 +43,13 @@ def resolve_experimental_pr(project_dir: str) -> str {
     }
     return str(section.get("pr", "")).strip();
 }
+
+
+def resolve_pinned_spec(project_dir: str) -> str {
+    import from jaclang.project.config { get_config_for_path }
+    config = get_config_for_path(Path(project_dir));
+    if config is None {
+        return "";
+    }
+    return config.project.jac_version;
+}

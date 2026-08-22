@@ -1,5 +1,12 @@
 import os;
-import from jaclang.scale.config.config_loader { JacScaleConfig }
+import shutil;
+import tempfile;
+import from pathlib { Path }
+import from jaclang.scale.config.config_loader {
+    JacScaleConfig,
+    get_scale_config,
+    reset_scale_config
+}
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -141,7 +148,12 @@ test "get_microservices_config reads routes from JAC_SV_ROUTES when config empty
     os.environ["JAC_SV_ROUTES"] = "{\"orders_app\": \"/api/orders\", \"cart_app\": \"/api/cart\"}";
     try {
         out = cfg.get_microservices_config();
-        assert out["routes"] == {"orders_app": "/api/orders", "cart_app": "/api/cart"};
+        assert out["routes"]
+            == {
+                "orders_app": "/api/orders",
+                "cart_app": "/api/cart",
+                "main": "/__main__"
+            };
     } finally {
         del os.environ["JAC_SV_ROUTES"];
     }
@@ -153,7 +165,7 @@ test "get_microservices_config: explicit config routes win over JAC_SV_ROUTES" {
     os.environ["JAC_SV_ROUTES"] = "{\"ghost_app\": \"/api/ghost\"}";
     try {
         out = cfg.get_microservices_config();
-        assert out["routes"] == {"real_app": "/api/real"};
+        assert out["routes"] == {"real_app": "/api/real", "main": "/__main__"};
     } finally {
         del os.environ["JAC_SV_ROUTES"];
     }
@@ -168,5 +180,93 @@ test "get_microservices_config: malformed JAC_SV_ROUTES falls back to empty" {
         assert out["routes"] == {};
     } finally {
         del os.environ["JAC_SV_ROUTES"];
+    }
+}
+
+
+test "every get_websocket_config key has a schema entry (#8000 1.2)" {
+    # The websocket guide documented a backplane value that raised at boot and
+    # none of the seven [scale.websocket] keys were schema-declared, so nothing
+    # validated or surfaced them. Keep the runtime reader and the schema in
+    # lockstep.
+    import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
+    schema = JacScalePluginConfig.get_config_schema();
+    ws_schema = schema["options"].get("websocket");
+    assert ws_schema is not None , "[scale.websocket] missing from plugin_config schema";
+    declared = set(ws_schema["nested"].keys());
+    cfg = JacScaleConfig();
+    cfg._config = {"websocket": {}};
+    read_keys = set(cfg.get_websocket_config().keys());
+    assert read_keys == declared , f"schema/read drift: schema-only={declared
+        - read_keys}, read-only={read_keys - declared}";
+}
+
+
+test "config sections read by config_loader are schema-declared (#8000 1.2)" {
+    import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
+    schema_sections = set(JacScalePluginConfig.get_config_schema()["options"].keys());
+    cfg = JacScaleConfig();
+    cfg._config = {};
+    for section in [
+        "websocket",
+        "database",
+        "kubernetes",
+        "events",
+        "monitoring",
+        "server"
+    ] {
+        assert section in schema_sections , f"[scale.{section}] is read by config_loader but has no schema entry";
+    }
+}
+
+
+test "get_kubernetes_config leaves the cached config dict unmutated" {
+    # load() returns the cached dict by reference; deriving kubernetes keys
+    # must not write them back, or later readers of the raw config see
+    # derived values as if the user had configured them.
+    cfg = JacScaleConfig();
+    cfg._config = {
+        "kubernetes": {"namespace": "demo"},
+        "monitoring": {"namespace": "demo_metrics"}
+    };
+    cfg.get_kubernetes_config();
+    leaked = cfg._config["kubernetes"];
+    assert leaked == {"namespace": "demo"} , f"derived keys leaked into the cached config: {leaked}";
+}
+
+
+test "repeated get_kubernetes_config calls return equal results" {
+    # Pre-copy, every call stacked derived keys onto the cached dict, so the
+    # result depended on how many times it had been called before.
+    cfg = JacScaleConfig();
+    cfg._config = {
+        "kubernetes": {"namespace": "demo"},
+        "monitoring": {"namespace": "demo_metrics"}
+    };
+    first = cfg.get_kubernetes_config();
+    second = cfg.get_kubernetes_config();
+    assert first == second;
+}
+
+
+test "get_scale_config raises on a different project_dir instead of silently reusing" {
+    reset_scale_config();
+    dir_a = tempfile.mkdtemp(prefix="jac-cfg-a-");
+    dir_b = tempfile.mkdtemp(prefix="jac-cfg-b-");
+    try {
+        first = get_scale_config(project_dir=Path(dir_a));
+        assert get_scale_config() is first;
+        assert get_scale_config(project_dir=Path(dir_a)) is first;
+        raised = False;
+        try {
+            get_scale_config(project_dir=Path(dir_b));
+        } except RuntimeError {
+            raised = True;
+        }
+        assert raised , "a second project_dir was silently ignored and the first project's config returned";
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(dir_a, ignore_errors=True);
+        shutil.rmtree(dir_b, ignore_errors=True);
     }
 }

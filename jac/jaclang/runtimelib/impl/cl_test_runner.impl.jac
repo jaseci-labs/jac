@@ -9,10 +9,9 @@ import tempfile;
 import time;
 import from contextlib { suppress }
 import from pathlib { Path }
-import from collections.abc { Callable }
 import from jaclang.cli.console { console }
 
-impl compile_cl_module(filepath: str) -> tuple[str, list, dict] {
+impl compile_cl_module(filepath: str) -> tuple[str, list, dict, list] {
     import from jaclang.jac0core.program { JacProgram }
     prog = JacProgram();
     mod = prog.compile(str(filepath));
@@ -45,7 +44,7 @@ impl _compile_runtime_core_js -> str {
     if (not runtime_src) or (not Path(runtime_src).exists()) {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
-    core_path = Path(runtime_src).parent / "client_runtime_core.cl.jac";
+    core_path = Path(runtime_src).parent / "client_runtime_core.jac";
     if not core_path.exists() {
         raise RuntimeError("could not resolve client_runtime_core sibling source");
     }
@@ -53,10 +52,17 @@ impl _compile_runtime_core_js -> str {
     return js;
 }
 
-impl _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool] {
+impl _point_at_staged_runtime(js: str) -> str {
+    return js.replace('"@jac/runtime"', '"./jac_runtime.js"').replace(
+        "'@jac/runtime'", "'./jac_runtime.js'"
+    );
+}
+
+impl _stub_npm_imports(
+    entry_js: str, staged: dict[str, str]
+) -> tuple[str, dict[str, str], str, bool] {
     named: set = set();
     state = {"needs_default": False, "changed": False};
-    rewritten = [];
 
     def is_npm(spec: str) -> bool {
         return (not spec.startswith(".")) and (spec != "@jac/runtime");
@@ -85,8 +91,10 @@ impl _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool] {
         return 'import ' + clause + ' from "./' + _NPM_STUB_FILE + '";';
     }
 
-    for src in js_sources {
-        rewritten.append(_IMPORT_FROM.sub(repl, src));
+    rewritten_entry = _IMPORT_FROM.sub(repl, entry_js);
+    rewritten_staged: dict[str, str] = {};
+    for (staged_name, staged_js) in staged.items() {
+        rewritten_staged[staged_name] = _IMPORT_FROM.sub(repl, staged_js);
     }
 
     lines = ["const __jacNpmStub = new Proxy(function () {}, {"];
@@ -99,7 +107,7 @@ impl _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool] {
         lines.append(f"export const {name} = __jacNpmStub;");
     }
     stub_js = "\n".join(lines) + "\n";
-    return (rewritten, stub_js, state["changed"]);
+    return (rewritten_entry, rewritten_staged, stub_js, state["changed"]);
 }
 
 impl _build_harness(
@@ -117,9 +125,13 @@ impl _build_harness(
     entries = [];
     for t in tests {
         entries.append(
-            "  [" + json.dumps(t["name"]) + ", " + json.dumps(
-                t.get("description", t["name"])
-            ) + ", " + t["name"] + "]"
+            "  ["
+                + json.dumps(t["name"])
+                + ", "
+                + json.dumps(t.get("description", t["name"]))
+                + ", "
+                + t["name"]
+                + "]"
         );
     }
     fn_entries = ",\n".join(entries);
@@ -130,15 +142,118 @@ impl _build_harness(
     return imports + "\n" + prelude + "\n" + body + "\n" + epilogue;
 }
 
+impl _collect_local_imports(
+    module_js: str, source_dir: str, entry_path: str
+) -> tuple[dict, dict] {
+    staged: dict[str, str] = {};
+    merged_imports: dict[str, str] = {};
+    requested: dict = {};
+    pending: list[str] = [module_js];
+    while pending {
+        js = pending.pop(0);
+        for m in _IMPORT_FROM.finditer(js) {
+            spec = m.group("spec");
+            if (not spec.startswith(".")) or (not spec.endswith(".js")) {
+                continue;
+            }
+            name = spec[2:] if spec.startswith("./") else spec;
+            if name == _NPM_STUB_FILE {
+                continue;
+            }
+            if (not spec.startswith("./")) or ("/" in name) {
+                raise RuntimeError(
+                    f"cl test harness cannot stage local import '{spec}': only "
+                    "same-directory './module.js' imports are supported"
+                );
+            }
+            if name in ("jac_runtime.js", "client_runtime_core.js") {
+                raise RuntimeError(
+                    f"cl test harness cannot stage local import '{spec}': the "
+                    "name is reserved for the staged client runtime"
+                );
+            }
+            wanted = requested.setdefault(name, set());
+            brace = re.search(r"\{([^}]*)\}", m.group("clause"));
+            if brace {
+                for ident in _NAMED_BINDING.findall(brace.group(1)) {
+                    if ident and (ident != "as") {
+                        wanted.add(ident);
+                    }
+                }
+            }
+            if name in staged {
+                continue;
+            }
+            src_jac = os.path.join(source_dir, name[:-3] + ".jac");
+            if os.path.abspath(src_jac) == os.path.abspath(entry_path) {
+                raise RuntimeError(
+                    f"cl test harness cannot stage local import '{spec}': it "
+                    f"resolves back to the test module itself ({entry_path})"
+                );
+            }
+            if not os.path.isfile(src_jac) {
+                raise RuntimeError(
+                    f"cl test harness could not stage local import '{spec}': "
+                    f"expected sibling source {src_jac}"
+                );
+            }
+            (dep_js, _dep_tests, dep_imports, _dep_server) = compile_cl_module(src_jac);
+            staged[name] = dep_js;
+            merged_imports.update(dep_imports);
+            pending.append(dep_js);
+        }
+    }
+    for (dep_name, wanted_names) in requested.items() {
+        if dep_name not in staged {
+            continue;
+        }
+        already = _exported_names(staged[dep_name]);
+        missing = sorted(
+            [
+                n
+                for n in wanted_names
+                if n not in already
+            ]
+        );
+        if missing {
+            staged[dep_name] = (
+                staged[dep_name] + "\nexport { " + ", ".join(missing) + " };\n"
+            );
+        }
+    }
+    return (staged, merged_imports);
+}
+
+impl _exported_names(js: str) -> set {
+    names: set = set();
+    for m in re.finditer(r"export\s*\{([^}]*)\}", js) {
+        for part in m.group(1).split(",") {
+            `entry = part.strip();
+            if not `entry {
+                continue;
+            }
+            names.add(`entry.split(" as ")[-1].strip());
+        }
+    }
+    decl_pat = (
+        r"export\s+(?:async\s+)?(?:const|let|var|function|class)\s+"
+        r"([A-Za-z_$][\w$]*)"
+    );
+    for m in re.finditer(decl_pat, js) {
+        names.add(m.group(1));
+    }
+    return names;
+}
+
 impl find_server_entry(
     test_filepath: str, server_imports: (list[str] | None) = None
 ) -> (str | None) {
     test_dir = Path(test_filepath).resolve().parent;
-    override = os.environ.get("JAC_CL_TEST_SERVER");
-    if override {
-        cand = Path(override);
+    `override = os.environ.get("JAC_CL_TEST_SERVER");
+    if `override {
+        cand = Path(`override);
         if not cand.is_absolute() {
-            cand = test_dir / override;
+            cand = test_dir / `override;
         }
         return str(cand) if cand.exists() else None;
     }
@@ -179,7 +294,6 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
 
     env = dict(os.environ);
     env["JAC_DATA_PATH"] = base_path;
-    env.pop("MONGODB_URI", None);
 
     log_path = Path(base_path) / "cl_test_server.log";
     logf = open(str(log_path), "w+", encoding="utf-8");
@@ -245,7 +359,7 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
         with suppress(Exception) {
             proc.terminate();
             try {
-                proc.wait(timeout=5);
+                proc.`wait(timeout=5);
             } except subprocess.TimeoutExpired {
                 proc.kill();
             }
@@ -289,7 +403,8 @@ impl run_cl_test_file(
                         imports,
                         api_base_url=f"http://127.0.0.1:{port}",
                         storage=storage,
-                        timeout=timeout
+                        timeout=timeout,
+                        source_path=filepath
                     );
                 }
             } finally {
@@ -304,7 +419,8 @@ impl run_cl_test_file(
         imports,
         api_base_url=api_base_url or "",
         storage=storage,
-        timeout=timeout
+        timeout=timeout,
+        source_path=filepath
     );
 }
 
@@ -314,7 +430,8 @@ impl _run_harness(
     imports: dict,
     api_base_url: str,
     storage: (dict | None),
-    timeout: float
+    timeout: float,
+    source_path: (str | None) = None
 ) -> list[ClTestResult] {
     import from jaclang.runtimelib.client.bun_installer { get_bun }
 
@@ -328,45 +445,52 @@ impl _run_harness(
 
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
-        if "@jac/runtime" in imports {
+        dep_files: dict[str, str] = {};
+        dep_imports: dict[str, str] = {};
+        if source_path is not None {
+            `entry = Path(source_path).resolve();
+            (dep_files, dep_imports) = _collect_local_imports(
+                module_js, str(`entry.parent), str(`entry)
+            );
+        }
+
+        staged: dict[str, str] = {};
+
+        if ("@jac/runtime" in imports) or ("@jac/runtime" in dep_imports) {
             import from jaclang.runtimelib.client_surface {
                 prepend_active_runtime_globals
             }
+            module_js = _point_at_staged_runtime(
+                prepend_active_runtime_globals(module_js)
+            );
+            for dep_name in list(dep_files.keys()) {
+                dep_files[dep_name] = _point_at_staged_runtime(dep_files[dep_name]);
+            }
+
             runtime_js = _compile_runtime_js();
-
-            module_js = prepend_active_runtime_globals(module_js);
-
-            module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
-            module_js = module_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
-
-            core_specifier = "./jaclang/runtimelib/client_runtime_core.js";
-            core_js = None;
-            if core_specifier in runtime_js {
-                core_js = _compile_runtime_core_js();
+            core_match = re.search(
+                r'from\s+[\'\"]([^\'\"]*client_runtime_core\.js)[\'\"]', runtime_js
+            );
+            if core_match {
                 runtime_js = runtime_js.replace(
-                    core_specifier, "./client_runtime_core.js"
+                    core_match.group(1), "./client_runtime_core.js"
                 );
+                staged["client_runtime_core.js"] = _compile_runtime_core_js();
             }
+            staged["jac_runtime.js"] = runtime_js;
+        }
 
-            sources = [module_js, runtime_js];
-            if core_js is not None {
-                sources.append(core_js);
-            }
-            (rewritten, stub_js, changed) = _stub_npm_imports(sources);
-            module_js = rewritten[0];
-            runtime_js = rewritten[1];
-            if core_js is not None {
-                core_js = rewritten[2];
-            }
-            if changed {
-                (work_dir / _NPM_STUB_FILE).write_text(stub_js, encoding="utf-8");
-            }
-            (work_dir / "jac_runtime.js").write_text(runtime_js, encoding="utf-8");
-            if core_js is not None {
-                (work_dir / "client_runtime_core.js").write_text(
-                    core_js, encoding="utf-8"
-                );
-            }
+        for (dep_name, dep_js) in dep_files.items() {
+            staged[dep_name] = dep_js;
+        }
+
+        (module_js, staged, stub_js, changed) = _stub_npm_imports(module_js, staged);
+        if changed {
+            staged[_NPM_STUB_FILE] = stub_js;
+        }
+
+        for (staged_name, staged_js) in staged.items() {
+            (work_dir / staged_name).write_text(staged_js, encoding="utf-8");
         }
 
         harness = _build_harness(
@@ -418,19 +542,63 @@ impl _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None) {
     return None;
 }
 
+impl module_is_client(filepath: str) -> bool {
+    path = os.path.abspath(str(filepath));
+    if path in _COLOR_CACHE {
+        return _COLOR_CACHE[path];
+    }
+    import from jaclang.jac0core.compile_options { CompileOptions }
+    import from jaclang.jac0core.constant { CodeContext }
+    import from jaclang.jac0core.program { JacProgram }
+    result = False;
+    try {
+        mod = JacProgram().compile(
+            path, options=CompileOptions(symtab_ir_only=True, type_check=False)
+        );
+        result = mod is not None
+            and mod.declares_codespace(CodeContext.CLIENT, path_hint=path);
+    } except Exception as probe_exc {
+        import from jaclang.jac0core.compiler {
+            CompilerSourceError,
+            compiler_source_failure_origin
+        }
+        origin = compiler_source_failure_origin(probe_exc);
+        if origin is not None {
+            raise CompilerSourceError(
+                f"the client-codespace probe for {path} failed inside the "
+                f"compiler's own source ({origin}), so the module's codespace "
+                f"is unknown; refusing to degrade it to the server codespace: "
+                f"{type(probe_exc).__name__}: {probe_exc}"
+            ) from probe_exc;
+        }
+        try {
+            os.write(
+                2,
+                (
+                    f"jac: client-codespace probe failed for {path}; "
+                    f"treating as server: {type(probe_exc).__name__}: "
+                    f"{probe_exc}\n"
+                ).encode(
+                    "utf-8", "replace"
+                )
+            );
+        } except OSError { }
+        result = False;
+    }
+    _COLOR_CACHE[path] = result;
+    return result;
+}
+
 impl is_cl_test_file(filepath: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module }
-    name = os.path.basename(str(filepath));
-    return is_client_module(name);
+    return module_is_client(filepath);
 }
 
 impl is_cl_test_file_for_discovery(filepath: str) -> bool {
-    import from jaclang.jac0core.ext_registry { is_client_module, is_client_test }
     name = os.path.basename(str(filepath));
-    if not is_client_module(name) {
+    if not name.startswith("test_") {
         return False;
     }
-    return name.startswith("test_") or is_client_test(name);
+    return module_is_client(filepath);
 }
 
 impl register_results_into_jactestcheck(filepath: str, results: list) -> None {

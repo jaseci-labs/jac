@@ -8,7 +8,7 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     AsyncBoundary
 }
 
-import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
+import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement, ViewChild }
 
 obj SolidBackend(ReactBackend) {
     def name -> str;
@@ -20,7 +20,7 @@ obj SolidBackend(ReactBackend) {
     def lower_state_read(name: str) -> es.Expression;
     def lower_view(view: ViewElement, sync_loc: any) -> es.Expression;
     def _jsx_tag_name(
-        expr: es.Expression
+        expr: (es.Expression | None)
     ) -> (es.JsxIdentifier | es.JsxMemberExpression | None);
 
     def _map_attr_name(name: str) -> str;
@@ -29,10 +29,13 @@ obj SolidBackend(ReactBackend) {
         attr: any, sync_loc: any
     ) -> (es.JsxAttribute | es.JsxSpreadAttribute);
 
-    def _jsx_child_nodes(children: list, sync_loc: any) -> list;
+    def _jsx_child_nodes(children: list[ViewChild], sync_loc: any) -> list;
     def _jsx_for(child: any, sync_loc: any) -> es.JsxElement;
     def _jsx_show(child: any, sync_loc: any) -> es.JsxElement;
-    def _view_children_as_expr(children: list, sync_loc: any) -> es.Expression;
+    def _view_children_as_expr(
+        children: list[ViewChild], sync_loc: any
+    ) -> es.Expression;
+
     def view_runtime_symbols(view: ViewElement) -> list[str];
     def _jsx_element(
         name_node: any, attrs: list, children: list, jac_node: any, sync_loc: any

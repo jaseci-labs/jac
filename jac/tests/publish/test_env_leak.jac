@@ -13,14 +13,13 @@ import os;
 import shutil;
 import subprocess;
 import sys;
-import pytest;
 
 
 test "embedded interpreter config is not in the environment" {
     if not os.environ.get("JAC_STANDALONE") {
         # Under pip-installed jaclang the environment is the user's own (a dev
         # may legitimately export PYTHONPATH); only the binary must be clean.
-        pytest.skip("environment hermeticity is a single-binary guarantee");
+        testskip("environment hermeticity is a single-binary guarantee");
     }
     # A user may legitimately have their own PYTHONHOME/PYTHONPATH exported
     # (the fix passes those through untouched), so assert specifically that the
@@ -33,11 +32,11 @@ test "embedded interpreter config is not in the environment" {
 
 test "a foreign python3 child survives being spawned from jac" {
     if not os.environ.get("JAC_STANDALONE") {
-        pytest.skip("guards the single binary's env; pip runs inherit the user's env");
+        testskip("guards the single binary's env; pip runs inherit the user's env");
     }
     py3 = shutil.which("python3");
     if not py3 {
-        pytest.skip("no python3 on PATH to spawn");
+        testskip("no python3 on PATH to spawn");
     }
     # Default-inherited environment on purpose -- that is exactly the leak path.
     r = subprocess.run(

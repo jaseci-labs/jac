@@ -1,6 +1,7 @@
 import re;
 import from contextlib { contextmanager }
-import from typing { Iterator }
+
+glob _COLOR_CACHE: dict[(str, bool)] = {};
 
 glob _RESULT_SENTINEL: str = "__JAC_CL_TEST_RESULTS__",
      _NPM_STUB_FILE: str = "__jac_npm_stub.js",
@@ -72,11 +73,21 @@ def _compile_runtime_js -> str;
 
 def _compile_runtime_core_js -> str;
 
-def _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool];
+def _point_at_staged_runtime(js: str) -> str;
+
+def _stub_npm_imports(
+    entry_js: str, staged: dict[str, str]
+) -> tuple[str, dict[str, str], str, bool];
 
 def _build_harness(
     module_js: str, tests: list, api_base_url: str = "", storage: (dict | None) = None
 ) -> str;
+
+def _collect_local_imports(
+    module_js: str, source_dir: str, entry_path: str
+) -> tuple[dict, dict];
+
+def _exported_names(js: str) -> set;
 
 def find_server_entry(
     test_filepath: str, server_imports: (list[str] | None) = None
@@ -100,11 +111,13 @@ def _run_harness(
     imports: dict,
     api_base_url: str,
     storage: (dict | None),
-    timeout: float
+    timeout: float,
+    source_path: (str | None) = None
 ) -> list[ClTestResult];
 
 def _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None);
 
+def module_is_client(filepath: str) -> bool;
 def is_cl_test_file(filepath: str) -> bool;
 
 def is_cl_test_file_for_discovery(filepath: str) -> bool;

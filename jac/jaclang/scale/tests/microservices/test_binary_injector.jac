@@ -1,3 +1,4 @@
+import json;
 import os;
 import io;
 import functools;
@@ -181,8 +182,16 @@ test "[dependencies.system] in jac.toml installs into the service container" {
         assert "apt-get install -y" in prefix;
         assert "git" in prefix;
         assert "ffmpeg" in prefix;
+        # Packages baked into the pod image skip apt entirely: apt-get update
+        # is a network fetch that can stall the pod behind flaky NAT egress.
+        assert prefix.startswith("if dpkg-query -W");
+        # Removed-but-not-purged packages pass a bare dpkg -s; only the full
+        # installed status may skip apt.
+        assert prefix.count("grep -q 'install ok installed'") == 2;
+        assert prefix.index("ffmpeg") < prefix.index("git");
+        assert "else export DEBIAN_FRONTEND=noninteractive && apt-get update" in prefix;
         # Chains into app-start so a failed apt aborts the boot (no silent start).
-        assert prefix.endswith("&& ");
+        assert prefix.endswith("fi && ");
     }
 }
 
@@ -194,7 +203,8 @@ test "no [dependencies.system] means no apt install in the service container" {
         assert k8s["service_dependencies"] == [];
         assert build_service_apt_prefix(
             KubernetesConfig.from_dict(KubernetesConfig, k8s)
-        ) == "";
+        )
+            == "";
     }
 }
 
@@ -359,7 +369,7 @@ test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundl
 glob _fake_urls: dict = {};
 
 
-def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
+def _fake_admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
     return (_fake_urls["url"], _fake_urls["url"] + ".sha256");
 }
 
@@ -446,7 +456,7 @@ test "local channel never downloads the admin console" {
 }
 
 
-def _dist_url_but_no_checksum(channel: str) -> tuple[str, str] {
+def _dist_url_but_no_checksum(channel: str, version: str = "") -> tuple[str, str] {
     return (_fake_urls["url"], "");
 }
 
@@ -564,4 +574,158 @@ test "pod dep installs are routed to the shared-volume venv" {
     # exported before jac install: the image's cache site is container-local
     assert 'export PIP_PREFIX="/app/.jac/venv"' in script;
     assert script.index("PIP_PREFIX") < script.index("jac install");
+}
+
+
+def _payload_response(payload: bytes, url: str) -> bytes {
+    return payload;
+}
+
+
+test "channel tags are pinned to the registry digest at deploy time" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    payload = json.dumps({"digest": "sha256:" + ("ab" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "");
+        assert image == "jaseci/jaclang@sha256:" + ("ab" * 32);
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "a hub response without a digest keeps the tag form" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(
+        _payload_response, json.dumps({"name": "dev"}).encode()
+    );
+    try {
+        assert binary_mod.resolve_pod_base_image(d, "") == "jaseci/jaclang:dev";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "experimental images stay in tag form (downstream keys on the tag)" {
+    d = _write_toml("[experimental]\npr = 7494\n");
+    payload = json.dumps({"digest": "sha256:" + ("cd" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "");
+        assert image == "jaseci/jaclang:experimental-7494";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "explicit python_image is never rewritten" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    payload = json.dumps({"digest": "sha256:" + ("ef" * 32)}).encode();
+    saved = binary_mod._http_get_bytes;
+    binary_mod._http_get_bytes = functools.partial(_payload_response, payload);
+    try {
+        image = binary_mod.resolve_pod_base_image(d, "my.registry/app:v1");
+        assert image == "my.registry/app:v1";
+    } finally {
+        binary_mod._http_get_bytes = saved;
+    }
+}
+
+
+test "binary cache paths are keyed by platform as well as channel and arch" {
+    assert binary_mod._binary_cache_path("stable", "aarch64").name
+        == "jac-stable-linux-aarch64";
+    assert binary_mod._binary_cache_path("stable", "aarch64", "macos").name
+        == "jac-stable-macos-aarch64";
+}
+
+
+test "host_seal_platform accepts linux/macos hosts and rejects the rest" {
+    assert binary_mod.host_seal_platform() in ("linux", "macos");
+    saved = binary_mod.host_os;
+    def _windows -> str {
+        return "windows";
+    }
+    try {
+        binary_mod.host_os = _windows;
+        caught = "";
+        try {
+            binary_mod.host_seal_platform();
+        } except RuntimeError as e {
+            caught = str(e);
+        }
+        assert "not supported" in caught , caught;
+    } finally {
+        binary_mod.host_os = saved;
+    }
+}
+
+
+glob _dl_seen: dict = {};
+
+
+def _capture_fetch(url: str, checksum_url: str, cache_file: Path, what: str) -> bytes {
+    _dl_seen["url"] = url;
+    _dl_seen["cache"] = str(cache_file);
+    return b"BIN";
+}
+
+
+test "download_release_binary fetches the asset for the requested platform" {
+    with unittest.mock.patch.object(
+        binary_mod, "_fetch_verified_asset", _capture_fetch
+    ) {
+        assert binary_mod.download_release_binary("dev", "aarch64", "", "macos")
+            == b"BIN";
+        assert _dl_seen["url"].endswith("jac-dev-macos-aarch64");
+        assert _dl_seen["cache"].endswith("jac-dev-macos-aarch64");
+        binary_mod.download_release_binary("dev", "x86_64");
+        assert _dl_seen["url"].endswith("jac-dev-linux-x86_64");
+    }
+}
+
+
+test "the seal binary targets the deploy host; the pod bytes are reused only on a matching linux host (#7451)" {
+    import jaclang.scale.injector.binary_injector as bi_mod;
+    inj = BinaryInjector(channel=Channel.STABLE);
+    saved_dl = bi_mod.download_release_binary;
+    saved_plat = bi_mod.host_seal_platform;
+    saved_arch = bi_mod.host_arch;
+    def _dl(channel: str, arch: str, version: str = "", plat: str = "linux") -> bytes {
+        return f"BIN-{plat}-{arch}".encode();
+    }
+    def _macos -> str {
+        return "macos";
+    }
+    def _linux -> str {
+        return "linux";
+    }
+    def _arm -> str {
+        return "aarch64";
+    }
+    try {
+        bi_mod.download_release_binary = _dl;
+        bi_mod.host_seal_platform = _macos;
+        bi_mod.host_arch = _arm;
+        # A macOS host must seal with a macos asset, never the pod's ELF.
+        assert inj._resolve_seal_binary(b"POD", "x86_64", "") == b"BIN-macos-aarch64";
+        bi_mod.host_seal_platform = _linux;
+        # Same-arch linux host: the pod binary doubles as the seal binary.
+        assert inj._resolve_seal_binary(b"POD", "aarch64", "") == b"POD";
+        # Cross-arch linux host (JAC_NODE_ARCH): seal with the host arch.
+        assert inj._resolve_seal_binary(b"POD", "x86_64", "") == b"BIN-linux-aarch64";
+        # LOCAL channel ships a host-provided binary; it seals too.
+        local_inj = BinaryInjector(channel=Channel.LOCAL);
+        assert local_inj._resolve_seal_binary(b"POD", "x86_64", "") == b"POD";
+    } finally {
+        bi_mod.download_release_binary = saved_dl;
+        bi_mod.host_seal_platform = saved_plat;
+        bi_mod.host_arch = saved_arch;
+    }
 }

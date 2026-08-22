@@ -82,7 +82,7 @@ impl JacConfig.discover(
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
-    import from jaclang.jac0core.helpers { read_toml_with_encoding }
+    import from jaclang.jac0core.tomlio { read_toml_with_encoding }
     if not toml_path.exists() {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
@@ -108,12 +108,12 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-def _deep_merge(base: dict, `override: dict) -> dict {
+def _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any] {
     result = base.copy();
     for (key, value) in `override.items() {
         if key in result
-        and isinstance(result[key], dict)
-        and isinstance(value, dict) {
+            and isinstance(result[key], dict)
+            and isinstance(value, dict) {
             result[key] = _deep_merge(result[key], value);
         } else {
             result[key] = value;
@@ -122,11 +122,22 @@ def _deep_merge(base: dict, `override: dict) -> dict {
     return result;
 }
 
-impl JacConfig._section_map -> dict {
+impl JacConfig._section_map -> dict[
+    str,
+    RunConfig
+        | BuildConfig
+        | TestConfig
+        | ServeConfig
+        | FormatConfig
+        | DotConfig
+        | CacheConfig
+        | EnvironmentConfig
+        | ClientConfig
+] {
     return {
         "run": self.run,
         "build": self.build,
-        "test": self.test,
+        "test": self.`test,
         "serve": self.serve,
         "format": self.format,
         "dot": self.dot,
@@ -136,7 +147,9 @@ impl JacConfig._section_map -> dict {
     };
 }
 
-impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
+impl JacConfig.apply_profile(
+    profile_name: str, _visited: set[str] | None = None
+) -> None {
     if profile_name not in self.environments {
         return;
     }
@@ -249,7 +262,7 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
-    import from jaclang.jac0core.helpers { read_toml_with_encoding }
+    import from jaclang.jac0core.tomlio { read_toml_with_encoding }
     if not toml_path.exists() {
         return;
     }
@@ -274,7 +287,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             } elif attr == "maintainers" {
                 self.project.maintainers = _parse_persons(value);
             } elif attr == "include" {
-                self.project.include = _parse_include(value);
+                self.project.`include = _parse_include(value);
             } elif hasattr(self.project, attr) {
                 setattr(self.project, attr, value);
             }
@@ -311,7 +324,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         if "default" in gc_data {
             _gcd = str(gc_data["default"]).strip().lower();
             if _gcd in ("cycles", "rc", "none") {
-                self.gc.default = _gcd;
+                self.gc.`default = _gcd;
             }
         }
         if "enforce" in gc_data and isinstance(gc_data["enforce"], dict) {
@@ -326,6 +339,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
+    _warn_legacy_plugins_table(data);
     for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
         if _feat in data and isinstance(data[_feat], dict) {
             if _feat in self.plugins {
@@ -384,8 +398,8 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
 
     for (key, value) in data.items() {
         if key in self._raw_data
-        and isinstance(self._raw_data[key], dict)
-        and isinstance(value, dict) {
+            and isinstance(self._raw_data[key], dict)
+            and isinstance(value, dict) {
             self._raw_data[key].update(value);
         } else {
             self._raw_data[key] = value;
@@ -405,6 +419,22 @@ impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
 
 impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
     return self.plugins.get(plugin_name, {});
+}
+
+impl _warn_legacy_plugins_table(data: dict[str, any]) -> None {
+    plugins_table = data.get("plugins");
+    if not isinstance(plugins_table, dict) or not plugins_table {
+        return;
+    }
+    legacy: dict[str, any] = dict(plugins_table);
+    sections = ", ".join(sorted(str(k) for k in legacy.keys()));
+    import from jaclang.cli.console { console }
+    console.warning(
+        f"jac.toml has a [plugins] table ({sections}); the [plugins.*] "
+        "namespace was removed and these settings are ignored. Move "
+        "[plugins.X] to top-level [X], e.g. [plugins.scale.database] "
+        "-> [scale.database]."
+    );
 }
 
 impl JacConfig.get_section(name: str) -> dict[str, any] | None {
@@ -448,10 +478,8 @@ impl JacConfig.save -> None {
     old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
         import tomllib;
-        import from jaclang.jac0core.helpers {
-            MalformedJacTomlError,
-            read_file_with_encoding
-        }
+        import from jaclang.jac0core.helpers { read_file_with_encoding }
+        import from jaclang.jac0core.tomlio { MalformedJacTomlError }
         text = read_file_with_encoding(str(self.toml_path));
         try {
             old_doc = tomllib.loads(text);
@@ -541,7 +569,7 @@ impl JacConfig._write_toml_text(text: str) -> None {
 
 def _needs_quoting(key: str) -> bool {
     import re;
-    return not bool(re.match(r'^[A-Za-z0-9_-]+$', key));
+    return not bool(re.`match(r'^[A-Za-z0-9_-]+$', key));
 }
 
 def _quote_key(key: str) -> str {
@@ -553,7 +581,9 @@ def _quote_key(key: str) -> str {
 }
 
 def _toml_flatten_into(
-    view: dict[tuple, dict[str, any]], path: tuple, table: dict[str, any]
+    view: dict[tuple[str, ...], dict[str, any]],
+    path: tuple[str, ...],
+    table: dict[str, any]
 ) {
     flat: dict[str, any] = {};
     for (k, v) in table.items() {
@@ -568,8 +598,8 @@ def _toml_flatten_into(
 
 def _toml_flatten(
     doc: dict[str, any], roots: list[str]
-) -> dict[tuple, dict[str, any]] | None {
-    view: dict[tuple, dict[str, any]] = {};
+) -> dict[tuple[str, ...], dict[str, any]] | None {
+    view: dict[tuple[str, ...], dict[str, any]] = {};
     for root_key in roots {
         if root_key not in doc {
             continue;
@@ -597,14 +627,18 @@ def _toml_token_alt(name: str) -> str {
     return "(?:" + "|".join(alts) + ")";
 }
 
-def _toml_find_span(lines: list[str], parts: tuple) -> tuple[int, int] | None {
+def _toml_find_span(
+    lines: list[str], parts: tuple[str, ...]
+) -> tuple[int, int] | None {
     import re;
     header_re = re.compile(
-        r"^\s*\[\s*" + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts]) + r"\s*\]\s*(?:#.*)?$"
+        r"^\s*\[\s*"
+            + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts])
+            + r"\s*\]\s*(?:#.*)?$"
     );
     header = -1;
     for (i, line) in enumerate(lines) {
-        if header_re.match(line) {
+        if header_re.`match(line) {
             if header >= 0 {
                 return None;
             }
@@ -632,7 +666,7 @@ def _toml_find_key(
     found = -1;
     value_start = -1;
     for i in range(span[0] + 1, span[1]) {
-        m = key_re.match(lines[i]);
+        m = key_re.`match(lines[i]);
         if m {
             if found >= 0 {
                 return None;
@@ -710,7 +744,7 @@ def _toml_value_end(line: str, start: int) -> int | None {
 }
 
 def _toml_replace_key(
-    lines: list[str], parts: tuple, key: str, value_text: str
+    lines: list[str], parts: tuple[str, ...], key: str, value_text: str
 ) -> bool {
     import re;
     span = _toml_find_span(lines, parts);
@@ -724,14 +758,14 @@ def _toml_replace_key(
     (idx, value_start) = hit;
     line = lines[idx];
     value_end = _toml_value_end(line, value_start);
-    if value_end is None or not re.match(r"^\s*(?:#.*)?$", line[value_end:]) {
+    if value_end is None or not re.`match(r"^\s*(?:#.*)?$", line[value_end:]) {
         return False;
     }
     lines[idx] = line[:value_start] + value_text + line[value_end:];
     return True;
 }
 
-def _toml_delete_key(lines: list[str], parts: tuple, key: str) -> bool {
+def _toml_delete_key(lines: list[str], parts: tuple[str, ...], key: str) -> bool {
     span = _toml_find_span(lines, parts);
     if span is None {
         return False;
@@ -745,7 +779,7 @@ def _toml_delete_key(lines: list[str], parts: tuple, key: str) -> bool {
 }
 
 def _toml_insert_key(
-    lines: list[str], parts: tuple, key: str, value_text: str
+    lines: list[str], parts: tuple[str, ...], key: str, value_text: str
 ) -> bool {
     span = _toml_find_span(lines, parts);
     if span is None {
@@ -762,7 +796,9 @@ def _toml_insert_key(
     return True;
 }
 
-def _toml_append_section(lines: list[str], parts: tuple, flat: dict[str, any]) {
+def _toml_append_section(
+    lines: list[str], parts: tuple[str, ...], flat: dict[str, any]
+) {
     while lines and not lines[-1].strip() {
         lines.pop();
     }
@@ -777,7 +813,7 @@ def _toml_append_section(lines: list[str], parts: tuple, flat: dict[str, any]) {
     lines.append("");
 }
 
-def _toml_remove_section(lines: list[str], parts: tuple) -> bool {
+def _toml_remove_section(lines: list[str], parts: tuple[str, ...]) -> bool {
     span = _toml_find_span(lines, parts);
     if span is None {
         return False;
@@ -861,7 +897,7 @@ def _toml_minimal_update(
 
 impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     lines: list[str] = [];
-    tables: list[tuple[str, dict]] = [];
+    tables: list[tuple[str, dict[str, any]]] = [];
 
     for (key, value) in data.items() {
         if isinstance(value, dict) {
@@ -881,7 +917,7 @@ impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
         has_nested = any(isinstance(v, dict) for v in table_data.values());
         if has_nested {
             simple_values: list[tuple[str, any]] = [];
-            nested_tables: list[tuple[str, dict]] = [];
+            nested_tables: list[tuple[str, dict[str, any]]] = [];
             for (k, v) in table_data.items() {
                 if isinstance(v, dict) {
                     nested_tables.append((k, v));
@@ -1055,7 +1091,7 @@ impl _parse_toml_data(
             entry_point=proj.get("entry-point", "main.jac"),
             kind=proj.get("kind", ""),
             urls=proj.get("urls", {}),
-            include=_parse_include(proj.get("include", {}))
+            `include=_parse_include(proj.get("include", {}))
         );
     }
     if "dependencies" in data {
@@ -1093,16 +1129,69 @@ impl _parse_toml_data(
             session=run_data.get("session", ""),
             main=run_data.get("main", True),
             cache=run_data.get("cache", True),
-            autonative=run_data.get("autonative", False),
-            topology_index=run_data.get("topology_index", True),
             diagnostics=run_data.get("diagnostics", "error")
         );
     }
     if "build" in data {
         build_data = data["build"];
+        _codespace_aliases = {"sv": "server", "na": "native"};
+        _builtin_cs = BuildConfig().default_codespace;
+        _default_cs = str(
+            build_data.get("default_codespace", _builtin_cs)
+        ).strip().lower();
+        _default_cs = _codespace_aliases.get(_default_cs, _default_cs);
+        if _default_cs not in ("server", "native") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] default_codespace='{build_data.get('default_codespace')}' "
+                f"is not one of 'server'/'sv', 'native'/'na'; "
+                f"defaulting to '{_builtin_cs}'."
+            );
+            _default_cs = _builtin_cs;
+        }
+        _builtin_cap = BuildConfig().native_closure_cap;
+        try {
+            _cap = int(build_data.get("native_closure_cap", _builtin_cap));
+        } except (TypeError, ValueError) {
+            _cap = 0;
+        }
+        if _cap < 1 {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build] native_closure_cap="
+                f"'{build_data.get('native_closure_cap')}' must be a positive "
+                f"integer; defaulting to {_builtin_cap}."
+            );
+            _cap = _builtin_cap;
+        }
+        _native_data = build_data.get("native", {});
+        if not isinstance(_native_data, dict) {
+            _native_data = {};
+        }
+        _builtin_native = NativeBuildConfig();
+        try {
+            _native_opt = int(_native_data.get("opt_level", _builtin_native.opt_level));
+        } except (TypeError, ValueError) {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[build.native] opt_level="
+                f"'{_native_data.get('opt_level')}' must be an integer; "
+                f"defaulting to {_builtin_native.opt_level}."
+            );
+            _native_opt = _builtin_native.opt_level;
+        }
         config.build = BuildConfig(
             typecheck=build_data.get("typecheck", False),
-            dir=build_data.get("dir", ".jac")
+            dir=build_data.get("dir", ".jac"),
+            default_codespace=_default_cs,
+            native_closure_cap=_cap,
+            native=NativeBuildConfig(
+                opt_level=_native_opt,
+                dump_ir=str(_native_data.get("dump_ir", "")),
+                target=str(_native_data.get("target", "")),
+                debug=bool(_native_data.get("debug", False)),
+                rc_debug_codegen=bool(_native_data.get("rc_debug_codegen", False))
+            )
         );
     }
     if "gc" in data {
@@ -1124,11 +1213,11 @@ impl _parse_toml_data(
                 grandfathered=[str(_m) for _m in enf.get("grandfathered", [])]
             );
         }
-        config.gc = GcConfig(default=_gc_default, enforce=enforce_cfg);
+        config.gc = GcConfig(`default=_gc_default, enforce=enforce_cfg);
     }
     if "test" in data {
         test_data = data["test"];
-        config.test = TestConfig(
+        config.`test = TestConfig(
             directory=test_data.get("directory", ""),
             filter=test_data.get("filter", ""),
             verbose=test_data.get("verbose", False),
@@ -1232,6 +1321,7 @@ impl _parse_toml_data(
             test_jobs=str(dev_data.get("test_jobs", "auto"))
         );
     }
+    _warn_legacy_plugins_table(data);
     for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
         if _feat in data and isinstance(data[_feat], dict) {
             config.plugins[_feat] = data[_feat];
@@ -1306,6 +1396,10 @@ impl set_config(config: JacConfig) -> None {
 
 impl get_explicit_config -> JacConfig | None {
     return _config if _config_explicit else None;
+}
+
+impl get_config_for_dir(start_dir: str) -> JacConfig | None {
+    return get_config_for_path(Path(start_dir));
 }
 
 impl get_config_for_path(start_path: Path) -> JacConfig | None {

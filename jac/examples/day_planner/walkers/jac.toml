@@ -28,3 +28,7 @@ base_route_app = "app"
 
 [byllm.model]
 default_model = "claude-sonnet-4-20250514"
+
+# The entry module is the server app; components call its priv helpers with auth.
+[placement.pins]
+main = "server"

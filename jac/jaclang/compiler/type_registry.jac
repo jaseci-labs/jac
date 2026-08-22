@@ -49,11 +49,11 @@ obj JacTypeRegistry {
     }
 
     def numeric_kind_of(name: str) -> NumericKind {
-        entry = self._entries.get(name, None);
-        if entry is None {
+        `entry = self._entries.get(name, None);
+        if `entry is None {
             return NumericKind.NotNumeric;
         }
-        return entry.numeric_kind;
+        return `entry.numeric_kind;
     }
 
     def is_exception(name: str) -> bool {

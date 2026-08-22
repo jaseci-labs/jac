@@ -28,7 +28,7 @@ obj NodeListMock(MockLLM) {
                 continue;
             }
             if in_candidates {
-                m = re.match(r"\s*([A-Za-z0-9_]+)\)", line);
+                m = re.`match(r"\s*([A-Za-z0-9_]+)\)", line);
                 if m {
                     chosen = m.group(1);
                     break;

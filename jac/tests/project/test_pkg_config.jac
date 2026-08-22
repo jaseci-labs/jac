@@ -58,9 +58,9 @@ packages = ["byllm*"]
 byllm = ["*.jir"]
 """;
     cfg = JacConfig.from_toml_str(toml_str);
-    assert cfg.project.include.packages == ["byllm*"];
-    assert "byllm" in cfg.project.include.data;
-    assert "*.jir" in cfg.project.include.data["byllm"];
+    assert cfg.project.`include.packages == ["byllm*"];
+    assert "byllm" in cfg.project.`include.data;
+    assert "*.jir" in cfg.project.`include.data["byllm"];
 }
 
 test "project without publishing fields still has empty defaults" {

@@ -124,12 +124,12 @@ test "phase_to_status: nothing scheduled is Unknown" {
 # ============================================================================
 test "owner_name_from_pod: deployment pod strips two hash segments" {
     assert owner_name_from_pod("jaseci-7d9b5f8c4d-xk2p9") == "jaseci";
-    assert owner_name_from_pod("jaseci-redis-698f764f94-lpw4c") == "jaseci-redis";
+    assert owner_name_from_pod("jaseci-worker-698f764f94-lpw4c") == "jaseci-worker";
 }
 
 test "owner_name_from_pod: statefulset pod strips numeric ordinal" {
-    assert owner_name_from_pod("jaseci-mongodb-0") == "jaseci-mongodb";
-    assert owner_name_from_pod("jaseci-mongodb-2") == "jaseci-mongodb";
+    assert owner_name_from_pod("jaseci-postgres-0") == "jaseci-postgres";
+    assert owner_name_from_pod("jaseci-postgres-2") == "jaseci-postgres";
 }
 
 test "owner_name_from_pod: short/empty names returned as-is" {
@@ -141,15 +141,16 @@ test "owner_name_from_pod: short/empty names returned as-is" {
 # Pure helper: match_owner (longest known-name prefix wins)
 # ============================================================================
 test "match_owner: longest workload-name prefix wins" {
-    names = ["jaseci", "jaseci-redis", "jaseci-redis-insight"];
-    assert match_owner("jaseci-redis-insight-abc-def", names) == "jaseci-redis-insight";
-    assert match_owner("jaseci-redis-698f-lpw4c", names) == "jaseci-redis";
+    names = ["jaseci", "jaseci-postgres", "jaseci-postgres-backup"];
+    assert match_owner("jaseci-postgres-backup-abc-def", names)
+        == "jaseci-postgres-backup";
+    assert match_owner("jaseci-postgres-698f-lpw4c", names) == "jaseci-postgres";
     assert match_owner("jaseci-7d9b-xk2p9", names) == "jaseci";
 }
 
 test "match_owner: statefulset pod matches its workload" {
-    names = ["jaseci", "jaseci-mongodb"];
-    assert match_owner("jaseci-mongodb-0", names) == "jaseci-mongodb";
+    names = ["jaseci", "jaseci-postgres"];
+    assert match_owner("jaseci-postgres-0", names) == "jaseci-postgres";
 }
 
 test "match_owner: no match falls back to name heuristic" {

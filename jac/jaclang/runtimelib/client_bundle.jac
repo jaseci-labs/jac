@@ -1,9 +1,7 @@
 import hashlib;
 import os;
-import from collections.abc { Iterable }
 import from pathlib { Path }
 import from types { ModuleType }
-import from typing { Any }
 import type from jaclang.jac0core.codeinfo { ClientManifest }
 import type from jaclang.jac0core.unitree { Module }
 
@@ -43,5 +41,8 @@ obj ClientBundleBuilder {
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
     def _compile_to_js(source_path: Path) -> tuple[str, Module];
+    def _emitted_digest -> str;
     static def _signature(paths: Iterable[Path]) -> str;
 }
+
+def emitted_tree_digest(tree_root: Path) -> str;

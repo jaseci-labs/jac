@@ -7,7 +7,7 @@ server) and return the `{status, ok, body}` envelope the client runtime expects.
 
 This is the `sv` half of the `cl` -> `sv` path. The `cl` half (the client
 runtime routing a call through `window.__jac_invoke` instead of `fetch`) is
-covered by `jac/tests/runtimelib/test_native_invoke.cl.jac`. Together they prove
+covered by `jac/tests/runtimelib/test_native_invoke.jac`. Together they prove
 the full round-trip without a live webview, a display, or `nacompile`.
 
 The round-trip needs the built-in scale backend (starlette + jaclang.scale). The
@@ -33,10 +33,9 @@ glob _FIXTURE: str = str(Path(__file__).parent / "fixtures" / "inprocess_app.jac
      _BOOTED: bool = False;
 
 
-"""True when the in-process backend (starlette + jaclang.scale) is importable."""
+"""True when the in-process backend (jaclang.scale) is importable."""
 def _backend_available -> bool {
     try {
-        import starlette.testclient;
         import jaclang.scale.server.serve;
         return True;
     } except ImportError {
@@ -60,7 +59,7 @@ def _dispatch_request(request: dict) -> dict {
     }
     # starlette/fastapi route handling calls the deprecated
     # `asyncio.iscoroutinefunction` on Python 3.14 (removed in 3.16); the repo's
-    # `pytest.ini` escalates warnings to errors, which would turn an `sv` function
+    # The runner escalates warnings to errors, which would turn an `sv` function
     # call into a 500 here. It is a transitional third-party deprecation,
     # unrelated to the in-process transport under test (the real host, which does
     # not escalate warnings, returns the result fine), so suppress just that
@@ -345,7 +344,7 @@ test "handle() copies the call id, dispatches off the UI thread, and replies off
     ipd.handle(call_id, req_ptr, 0);  # must return immediately, never block
 
     # The single worker drained the queue and replied.
-    assert _CAP_DONE.wait(timeout=10.0);
+    assert _CAP_DONE.`wait(timeout=10.0);
     # The id was copied byte-for-byte on the UI thread (the P0-A finding) and
     # round-tripped back to webview_return -- NOT the stale freed pointer.
     assert _CAP["id"] == b"call-42";
@@ -397,7 +396,7 @@ test "handle() times out a slow call and drops the late reply (P1-A)" {
         ipd.handle(call_id, req_ptr, 0);  # returns immediately
 
         # The timer rejected the JS promise with the timeout code.
-        assert _CAP_DONE.wait(timeout=5.0);
+        assert _CAP_DONE.`wait(timeout=5.0);
         assert _error_code_for(b"timeout-call") == "NATIVE_DISPATCH_TIMEOUT";
         # The slow dispatch's late completion (~0.6s) is dropped: after it has
         # surely finished there is STILL exactly one reply for this id.
@@ -442,7 +441,7 @@ test "handle() replies BUSY when the dispatch queue is saturated (P1-A)" {
 
         ipd.handle(call_id, req_ptr, 0);
 
-        assert _CAP_DONE.wait(timeout=5.0);
+        assert _CAP_DONE.`wait(timeout=5.0);
         assert _error_code_for(b"busy-call") == "NATIVE_DISPATCH_BUSY";
         assert _replies_for(b"busy-call") == 1;
     } finally {
@@ -836,7 +835,7 @@ test "dispatch() routes a walker to /walker/{name}/{node_id} when node is set" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 200;
-        mock_resp.is_success = True;
+        mock_resp.ok = True;
         mock_resp.json.return_value = {"ok": True, "data": {}};
         mock_client = MagicMock();
         mock_client.post.return_value = mock_resp;
@@ -877,7 +876,7 @@ test "dispatch() sends Authorization: Bearer header when token is set" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 200;
-        mock_resp.is_success = True;
+        mock_resp.ok = True;
         mock_resp.json.return_value = {"ok": True, "data": {}};
         mock_client = MagicMock();
         mock_client.post.return_value = mock_resp;
@@ -920,7 +919,7 @@ test "dispatch() wraps a non-JSON backend response in an error envelope" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 404;
-        mock_resp.is_success = False;
+        mock_resp.ok = False;
         mock_resp.text = "Not Found";
         mock_resp.json.side_effect = ValueError("not JSON");
         mock_client = MagicMock();
@@ -993,7 +992,7 @@ test "_worker_loop replies NATIVE_DISPATCH_ERROR when dispatch() raises" {
                 state
             )
         );
-        assert _CAP_DONE.wait(timeout=10.0) , "worker must reply on dispatch() exception";
+        assert _CAP_DONE.`wait(timeout=10.0) , "worker must reply on dispatch() exception";
         assert _error_code_for(b"exc-call") == "NATIVE_DISPATCH_ERROR" , (
             "worker must produce NATIVE_DISPATCH_ERROR when dispatch() raises"
         );
@@ -1177,7 +1176,7 @@ test "dispatch_sync() returns the result for a fast call" {
     try {
         mock_resp = MagicMock();
         mock_resp.status_code = 200;
-        mock_resp.is_success = True;
+        mock_resp.ok = True;
         mock_resp.json.return_value = {"ok": True, "data": {"result": 42}};
         mock_client = MagicMock();
         mock_client.post.return_value = mock_resp;

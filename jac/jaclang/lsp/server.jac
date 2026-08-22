@@ -7,7 +7,7 @@ import os;
 import re;
 import sys;
 import threading;
-import from typing { Callable, Dict, List, Optional, Union }
+import from typing { Optional, Union }
 
 import from .types {
     Position,
@@ -24,6 +24,7 @@ import from .types {
     TEXT_DOCUMENT_DID_OPEN,
     TEXT_DOCUMENT_DID_CHANGE,
     TEXT_DOCUMENT_DID_CLOSE,
+    Diagnostic,
     TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
     WINDOW_SHOW_MESSAGE,
     WINDOW_LOG_MESSAGE,
@@ -108,15 +109,15 @@ obj LanguageServer {
 
     def feature(method: str, options: any = None) -> Callable;
     def start_io -> None;
-    def publish_diagnostics(uri: str, diagnostics: list) -> None;
+    def publish_diagnostics(uri: str, diagnostics: list[Diagnostic]) -> None;
     def show_message(message: str, msg_type: any = None) -> None;
     def show_message_log(message: str, msg_type: any = None) -> None;
     def send_request(method: str, params: any = None) -> None;
     def shutdown -> None;
     def _send_notification(method: str, params: any) -> None;
     def _send_response(msg_id: any, result: any) -> None;
-    def _write_message(body: dict) -> None;
-    def _read_message(stream: any) -> Optional[dict];
-    def _handle_initialize(params: dict) -> dict;
-    def _build_capabilities -> dict;
+    def _write_message(body: dict[str, any]) -> None;
+    def _read_message(stream: any) -> Optional[dict[str, any]];
+    def _handle_initialize(params: dict[str, any]) -> dict[str, any];
+    def _build_capabilities -> dict[str, any];
 }

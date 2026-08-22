@@ -14,7 +14,7 @@ binding it links against.
 
 | File | Role |
 |------|------|
-| `webview.na.jac` | The binding: clib externs (create/size/navigate/html/run/bind/return/eval) + an ergonomic `obj:pub Webview` + `respond` helper + `HINT_*` constants. The opaque `webview_t` handle and C `const char*` callback args are carried as 64-bit `int` to keep C-owned strings out of Jac's reference-counted string type. |
+| `webview.jac` | The binding: clib externs (create/size/navigate/html/run/bind/return/eval) + an ergonomic `obj:pub Webview` + `respond` helper + `HINT_*` constants. The opaque `webview_t` handle and C `const char*` callback args are carried as 64-bit `int` to keep C-owned strings out of Jac's reference-counted string type. |
 | `build_libwebview.sh` | Builds `libwebview.so` from the pinned upstream `webview/webview` source against the system WebKitGTK. Invoked on first build by the desktop target. |
 | `install_webkit_deps.sh` | Installs the toolchain + WebKitGTK dev headers (Debian/Ubuntu). |
 

@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# One-command ownbench reproduction:
-#   1. differential identity + erasure gate (small sizes)
-#   2. measured runs, all kernels x all modes -> results/results.json
-#   3. IR audit -> results/ir_audit.json
+# Umbrella: run both experiment families end to end.
+#   ./run_all.sh              # ownership suite, then region suite
+# Arguments are not forwarded; invoke run_own.sh / run_reg.sh directly
+# for per-family options.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "== 1/3 differential identity + erasure gate =="
-./ci_identity.sh
+./run_own.sh
+./run_reg.sh
 
-echo "== 2/3 measurement (10 invocations per cell) =="
-jac run harness/measure.jac --skip-compile "$@"
-
-echo "== 3/3 IR audit =="
-jac run harness/audit.jac
-
-echo "ownbench complete: results/results.json, results/ir_audit.json"
+echo "ownbench complete (ownership + regions)"

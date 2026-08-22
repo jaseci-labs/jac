@@ -27,13 +27,15 @@ import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 # Re-using it here (instead of re-deriving the injection inline) keeps the
 # tests on the production code path -- a prior divergence here let a quoted-
 # symbol glob-init bug in _inject_shared_init slip past this whole file.
-import from jaclang.cli.commands.nacompile { _inject_shared_init }
+import from jaclang.compiler.passes.native.shared_emit {
+    inject_shared_init as _inject_shared_init
+}
 import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
-     FIXTURE = "shared_export.na.jac";
+     FIXTURE = "shared_export.jac";
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -171,7 +173,7 @@ test "ELF shared object loads and runs through the C ABI" {
         assert e_type == 3 , f"expected ET_DYN (3), got {e_type}";
         # Only a Linux x86_64 host can dlopen + execute the produced .so.
         if sys.platform.startswith("linux")
-        and ("x86_64" in llvm.get_default_triple()) {
+            and ("x86_64" in llvm.get_default_triple()) {
             import ctypes;
             lib = ctypes.CDLL(out);
             lib.jadd.restype = ctypes.c_int64;
@@ -231,7 +233,7 @@ test "ELF shared object initializes a global clib struct on dlopen" {
     # Built as a plain executable the same code is fine (the JIT path resolves
     # the init via get_function_address); only --shared's AOT text scan broke.
     (relobj, exports) = emit_shared_object(
-        "shared_glob_struct.na.jac", "x86_64-unknown-linux-gnu"
+        "shared_glob_struct.jac", "x86_64-unknown-linux-gnu"
     );
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libshared_glob_struct.so");
@@ -247,7 +249,7 @@ test "ELF shared object initializes a global clib struct on dlopen" {
         assert ok , "ElfLinker.link(shared=True) returned False";
         # Only a Linux x86_64 host can dlopen + execute the produced .so.
         if sys.platform.startswith("linux")
-        and ("x86_64" in llvm.get_default_triple()) {
+            and ("x86_64" in llvm.get_default_triple()) {
             import ctypes;
             try {
                 lib = ctypes.CDLL(out);  # __jac_shared_init runs here (CTOR)
@@ -307,7 +309,7 @@ test "Mach-O dylib has MH_DYLIB filetype, export trie, and init section" {
 parsed Mach-O info. Kept separate from the object-handle FIXTURE so these
 load-command assertions don't depend on object attribute-access support."""
 def _build_scalar_dylib(triple: str, name: str) -> dict {
-    (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
+    (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, name);
         ok = MachOLinker.link(
@@ -351,6 +353,70 @@ test "Mach-O arm64 dylib is ad-hoc signed with execSegFlags == 0" {
 }
 
 
+test "Mach-O link refuses a relocation it cannot apply" {
+    # A relocation this linker has no arm applied to be silently dropped: the
+    # instruction kept whatever immediate the assembler left in it, so the
+    # artifact linked clean and pointed at whatever else landed nearby. That
+    # is how the macos-aarch64 seal shipped an artifact whose module-init
+    # read its string constants out of a merged floor archive and aborted on
+    # an uncaught exception inside __jac_shared_init (#8313). Retype one real
+    # relocation to ARM64_RELOC_TLVP_LOAD_PAGE21 (8), which this linker does
+    # not implement, and require the link to refuse by name.
+    (relobj, exports) = emit_shared_object(
+        "shared_export_scalar.jac", "arm64-apple-darwin"
+    );
+    raw = bytearray(relobj);
+    ncmds = struct.unpack_from("<I", raw, 16)[0];
+    off = 32;
+    patched = False;
+    for _i in range(ncmds) {
+        (cmd, cmdsize) = struct.unpack_from("<II", raw, off);
+        if cmd == 0x19 and not patched {
+            nsects = struct.unpack_from("<I", raw, off + 64)[0];
+            so = off + 72;
+            for _j in range(nsects) {
+                (reloff, nreloc) = struct.unpack_from("<II", raw, so + 56);
+                if nreloc > 0 {
+                    r_info = struct.unpack_from("<I", raw, reloff + 4)[0];
+                    struct.pack_into(
+                        "<I", raw, reloff + 4, (r_info & 0x0FFFFFFF) | (8 << 28)
+                    );
+                    patched = True;
+                    break;
+                }
+                so += 80;
+            }
+        }
+        off += cmdsize;
+    }
+    assert patched , "the fixture object carries no relocation to retype";
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "librefuse.dylib");
+        raised = "";
+        try {
+            MachOLinker.link(
+                obj_bytes=bytes(raw),
+                output_path=out,
+                needed_libs=["/usr/lib/libSystem.B.dylib"],
+                shared=True,
+                export_symbols=exports,
+                init_funcs=["__jac_shared_init"],
+                soname="librefuse.dylib"
+            );
+        } except Exception as exc {
+            raised = str(exc);
+        }
+        assert raised , (
+            "MachOLinker linked an object carrying a relocation it cannot "
+            "apply; that instruction ships unpatched and the artifact is "
+            "wrong at run time"
+        );
+        assert "relocation type 8" in raised , raised;
+        assert not os.path.exists(out) , "a refused link must leave no artifact";
+    }
+}
+
+
 test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host only)" {
     # The issue (#6821) reported the produced dylib "loads, codesigns" but
     # dlsym fails — a symbol-resolution symptom distinct from the load-command
@@ -363,7 +429,7 @@ test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host onl
     if not (sys.platform == "darwin" and "apple" in triple) {
         return;
     }
-    (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
+    (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libdlopen_roundtrip.dylib");
         ok = MachOLinker.link(
@@ -412,7 +478,7 @@ test "Mach-O dylib export trie uses bare (non-underscored) :pub names (macOS hos
     if not (sys.platform == "darwin" and "apple" in triple) {
         return;
     }
-    (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
+    (relobj, exports) = emit_shared_object("shared_export_scalar.jac", triple);
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
         out = os.path.join(d, "libtrie_probe.dylib");
         ok = MachOLinker.link(
@@ -504,7 +570,7 @@ test "jac nacompile --shared initialises runtime globals via __jac_shared_init" 
     jac = shutil.which("jac") or "jac";
     d = tempfile.mkdtemp();
     try {
-        lib_src = os.path.join(d, "lib.na.jac");
+        lib_src = os.path.join(d, "lib.jac");
         with open(lib_src, "w") as f {
             f.write(_CLI_SHARED_FIXTURE);
         }

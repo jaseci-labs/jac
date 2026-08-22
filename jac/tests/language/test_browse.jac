@@ -334,14 +334,15 @@ test "_walk_ax assigns @e refs to interactive and named nodes only" {
     _walk_ax(nodes["1"], nodes, 0, lines, refs);
 
     assert refs == {"e1": 100, "e2": 200, "e3": 400};
-    assert lines == [
-        'WebArea',
-        '  @e1 button "Send"',
-        '  @e2 heading "Welcome"',
-        '  generic',
-        '  @e3 link "Home"',
-        '  textbox "Search"'
-    ];
+    assert lines
+        == [
+            'WebArea',
+            '  @e1 button "Send"',
+            '  @e2 heading "Welcome"',
+            '  generic',
+            '  @e3 link "Home"',
+            '  textbox "Search"'
+        ];
 }
 
 
@@ -369,28 +370,30 @@ test "_cookie_param projects a CDP cookie to Network.setCookies shape" {
             "session": False
         }
     );
-    assert full == {
-        "name": "sid",
-        "value": "abc",
-        "domain": "example.com",
-        "path": "/app",
-        "httpOnly": True,
-        "secure": True,
-        "expires": 1893456000.0,
-        "sameSite": "Lax"
-    };
+    assert full
+        == {
+            "name": "sid",
+            "value": "abc",
+            "domain": "example.com",
+            "path": "/app",
+            "httpOnly": True,
+            "secure": True,
+            "expires": 1893456000.0,
+            "sameSite": "Lax"
+        };
 
     # Session cookie: negative `expires` and missing `sameSite` are dropped,
     # and the domain/path/flag defaults are filled in.
     minimal = _cookie_param({"name": "t", "value": "1", "expires": -1});
-    assert minimal == {
-        "name": "t",
-        "value": "1",
-        "domain": "",
-        "path": "/",
-        "httpOnly": False,
-        "secure": False
-    };
+    assert minimal
+        == {
+            "name": "t",
+            "value": "1",
+            "domain": "",
+            "path": "/",
+            "httpOnly": False,
+            "secure": False
+        };
 }
 
 

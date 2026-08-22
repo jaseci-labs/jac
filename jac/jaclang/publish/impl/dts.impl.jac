@@ -1,4 +1,5 @@
-import from jaclang.jac0core.unitree { Module, Ability, Archetype, GlobalVars }
+import from jaclang.jac0core.unitree { Module, Ability, Archetype, GlobalVars, UniNode }
+import from jaclang.compiler.passes.tool.unparse_pass { unparse_node }
 import from jaclang.publish.jsdoc { jac_type_to_ts }
 
 def _param_type_str(param: any) -> str {
@@ -7,11 +8,11 @@ def _param_type_str(param: any) -> str {
         return "any";
     }
     inner = tag?.tag;
-    if inner is None or not hasattr(inner, "unparse") {
+    if not isinstance(inner, UniNode) {
         return "any";
     }
     try {
-        return jac_type_to_ts(inner.unparse());
+        return jac_type_to_ts(unparse_node(inner));
     } except Exception {
         return "any";
     }
@@ -38,9 +39,9 @@ def _fn_decl(ability: Ability) -> str {
     }
     ret = "void";
     rt = sig?.return_type if sig else None;
-    if rt is not None and hasattr(rt, "unparse") {
+    if isinstance(rt, UniNode) {
         try {
-            rt_str = rt.unparse();
+            rt_str = unparse_node(rt);
         } except Exception {
             rt_str = "";
         }
@@ -86,9 +87,9 @@ def _global_decl(assign: any, wanted: any) -> str {
     gtype = "any";
     tag = assign?.type_tag;
     inner = tag?.tag if tag is not None else None;
-    if inner is not None and hasattr(inner, "unparse") {
+    if isinstance(inner, UniNode) {
         try {
-            gtype = jac_type_to_ts(inner.unparse());
+            gtype = jac_type_to_ts(unparse_node(inner));
         } except Exception {
             gtype = "any";
         }
@@ -98,8 +99,8 @@ def _global_decl(assign: any, wanted: any) -> str {
 
 impl dts_for_module(mod: Module) -> str {
     manifest = mod.gen.client_manifest if (mod and mod.gen) else None;
-    exports: set = set(manifest.exports) if manifest else set();
-    globals_set: set = set(manifest.globals) if manifest else set();
+    exports: set[str] = set(manifest.exports) if manifest else set();
+    globals_set: set[str] = set(manifest.globals) if manifest else set();
     if not exports and not globals_set {
         return "";
     }

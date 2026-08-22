@@ -37,7 +37,7 @@ def _find_desktop_native_dir -> Path {
         if (
             (native / "oauth_broker.jac").is_file()
             and (native / "inprocess_dispatch.jac").is_file()
-            and (native / "webview" / "webview.na.jac").is_file()
+            and (native / "webview" / "webview.jac").is_file()
         ) {
             return native;
         }
@@ -53,25 +53,32 @@ def _find_desktop_native_dir -> Path {
         if (
             (cand / "oauth_broker.jac").is_file()
             and (cand / "inprocess_dispatch.jac").is_file()
-            and (cand / "webview" / "webview.na.jac").is_file()
+            and (cand / "webview" / "webview.jac").is_file()
         ) {
             return cand;
         }
     }
     raise RuntimeError(
         "jac-desktop: desktop/native assets incomplete -- need "
-        "oauth_broker.jac, inprocess_dispatch.jac, and webview/webview.na.jac. "
+        "oauth_broker.jac, inprocess_dispatch.jac, and webview/webview.jac. "
         "Rebuild the jac binary (zig build) or set JAC_DESKTOP_JAC_SRC."
     );
 }
 
 def _find_native_asset_dir(subdir: str, marker: str) -> Path {
-    if subdir == "webview" and marker == "webview.na.jac" {
+    if subdir == "webview" and marker == "webview.jac" {
         return _find_desktop_native_dir() / "webview";
     }
     for src in _jaclang_src_roots() {
         dev = (
-            src / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / subdir
+            src
+            / "jaclang"
+            / "runtimelib"
+            / "client"
+            / "targets"
+            / "desktop"
+            / "native"
+            / subdir
         );
         if (dev / marker).exists() {
             return dev;
@@ -99,7 +106,7 @@ def _find_webview_dir -> Path {
 }
 
 def _find_cef_dir -> Path {
-    return _find_native_asset_dir("cef", "cef.na.jac");
+    return _find_native_asset_dir("cef", "cef.jac");
 }
 
 def _jac_subprocess_env -> dict[str, str] {
@@ -129,37 +136,32 @@ def _patch_host_rpath(binary: Path) {
 }
 
 
-def _pyembed_shim_name -> str {
-    if sys.platform == "darwin" {
-        return "libjacpyembed.dylib";
-    }
-    if sys.platform.startswith("win") {
-        return "jacpyembed.dll";
-    }
-    return "libjacpyembed.so";
+def _fused_runtime_dir -> Path {
+    import jaclang;
+    return Path(jaclang.__file__).parent / "runtimelib" / "fused";
 }
 
 
-def _stage_pyembed_shim(out_dir: Path) {
-    name = _pyembed_shim_name();
-    src = _find_desktop_native_dir() / name;
-    if not src.exists() {
+def _stage_fused_runtime(out_dir: Path) {
+    src = _fused_runtime_dir();
+    if not (src / "bringup.jac").is_file() {
         raise RuntimeError(
-            f"jac-desktop: {name} not found in the fused runtime ({src}). "
-            "Rebuild the jac binary (zig build) so the payload carries the "
-            "libjacpyembed shim."
+            f"jac-desktop: the fused runtime library is missing from this jaclang ({src})."
         );
     }
-    shutil.copy2(src, out_dir / name);
+    dst = out_dir / "fused";
+    dst.mkdir(parents=True, exist_ok=True);
+    for f in sorted(src.`glob("*.jac")) {
+        shutil.copy2(f, dst / f.name);
+    }
 }
 
 
 def _bundle_runtime(host_binary: Path) {
-    import subprocess;
+    import from jaclang.runtimelib.fused_binary { graft_runtime }
     jac_bin = os.path.realpath(os.sys.executable);
 
-    rc = subprocess.run([jac_bin, "__graftrt", str(host_binary)]).returncode;
-    if rc != 0 {
+    if not graft_runtime(jac_bin, str(host_binary)) {
         raise RuntimeError(
             "jac-desktop: the running jac binary carries no fused-runtime "
             f"({jac_bin}); a desktop app needs a fused `jac` built via `zig build`. "
@@ -181,11 +183,11 @@ def _jac_bin -> str {
 }
 
 def _cef_bootstrap_js -> str {
-    src = (_find_cef_dir() / "cef_dispatch.na.jac").read_text();
+    src = (_find_cef_dir() / "cef_dispatch.jac").read_text();
     anchor = "glob BOOTSTRAP_JS: str = \"";
     i = src.find(anchor);
     if i < 0 {
-        raise RuntimeError("BOOTSTRAP_JS glob not found in cef_dispatch.na.jac");
+        raise RuntimeError("BOOTSTRAP_JS glob not found in cef_dispatch.jac");
     }
     start = i + len(anchor);
     end = src.find("\";", start);
@@ -202,7 +204,7 @@ def _jac_sdk_js -> str {
     if start < 0 or end < 0 or end <= start {
         raise RuntimeError(
             "could not locate the shared JS SDK within BOOTSTRAP_JS "
-            "(cef_dispatch.na.jac bootstrap boundaries changed)"
+            "(cef_dispatch.jac bootstrap boundaries changed)"
         );
     }
     return boot[start:end];
@@ -241,7 +243,7 @@ def _nacompile_cef(
     build_dir.mkdir(parents=True, exist_ok=True);
     build_src = build_dir / build_name;
     host_src = (cef_dir / source_name).read_text();
-    platform_src = (cef_dir / "cef_platform.na.jac").read_text();
+    platform_src = (cef_dir / "cef_platform.jac").read_text();
     build_src.write_text(_inject_platform(host_src, platform_src));
     cmd = [_jac_bin(), "nacompile"];
     if shared {
@@ -261,8 +263,8 @@ def _nacompile_cef(
 def build_cef_dispatch(cef_dir: Path) -> Path {
     return _nacompile_cef(
         cef_dir,
-        "cef_dispatch.na.jac",
-        "cef_dispatch_build.na.jac",
+        "cef_dispatch.jac",
+        "cef_dispatch_build.jac",
         cef_dir / "libcef_dispatch.so",
         True,
     );
@@ -271,8 +273,8 @@ def build_cef_dispatch(cef_dir: Path) -> Path {
 def build_cef_subprocess(cef_dir: Path) -> Path {
     return _nacompile_cef(
         cef_dir,
-        "cef_subprocess.na.jac",
-        "cef_subprocess_build.na.jac",
+        "cef_subprocess.jac",
+        "cef_subprocess_build.jac",
         cef_dir / "cef-subprocess",
         False,
     );
@@ -470,7 +472,9 @@ def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
     index_sha1 = _cef_index_sha1(plat_tag, archive);
     if index_sha1 and (index_sha1 != expected) {
         raise RuntimeError(
-            "live CEF index SHA-1 disagrees with cef_sums.lock for " + archive + f" (pinned {expected}, index {index_sha1}); pin or release host is stale."
+            "live CEF index SHA-1 disagrees with cef_sums.lock for "
+                + archive
+                + f" (pinned {expected}, index {index_sha1}); pin or release host is stale."
         );
     }
 

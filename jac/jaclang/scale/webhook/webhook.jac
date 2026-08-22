@@ -1,14 +1,18 @@
 import hmac;
 import hashlib;
+import json;
 import logging;
 import secrets;
-import jwt;
+import from jaclang.runtimelib.serving.authcrypt {
+    JWTError,
+    JWTExpiredError,
+    jwt_decode,
+    jwt_encode
+}
 import from datetime { UTC, datetime, timedelta }
-import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.persistence.db { Db, get_mongo_client }
-import from jaclang.scale.persistence.mongo_db { MongoDb }
+import from jaclang.scale.persistence.pg { open_docs_store }
 
 glob logger = logging.getLogger(__name__);
 
@@ -24,16 +28,17 @@ obj WebhookUtils {
     static def extract_signature(header_value: str) -> str;
 }
 
-def _create_api_key_db -> Db | None {
-    db_config = get_scale_config().get_database_config();
-    if db_config.get('mongodb_uri') is not None {
-        return MongoDb(client=get_mongo_client(), db_name='jac_db');
+def _create_api_key_db -> any | None {
+    try {
+        return open_docs_store();
+    } except Exception as e {
+        logger.warning(f"webhook api-key store unavailable: {e}");
+        return None;
     }
-    return None;
 }
 
 obj ApiKeyManager {
-    has _db: Db | None = _create_api_key_db(),
+    has _db: any | None = _create_api_key_db(),
         _inmemory_store: dict = {},
         _collection: str = 'webhook_api_keys',
         _rate_window: dict = {};

@@ -15,7 +15,7 @@ impl _normalize_win_path(path: str) -> tuple[str, str] {
     if not path.startswith("/") {
         path = "/" + path;
     }
-    if RE_DRIVE_LETTER_PATH.match(path) {
+    if RE_DRIVE_LETTER_PATH.`match(path) {
         path = path[0] + path[1].lower() + path[2:];
     }
     return (path, netloc);
@@ -37,7 +37,7 @@ impl to_fs_path(uri: str) -> Optional[str] {
         (scheme, netloc, path, _, _, _) = _urlparse(uri);
         if netloc and path and scheme == "file" {
             value = f"//{netloc}{path}";
-        } elif RE_DRIVE_LETTER_PATH.match(path) {
+        } elif RE_DRIVE_LETTER_PATH.`match(path) {
             value = path[1].lower() + path[2:];
         } else {
             value = path;
@@ -65,7 +65,7 @@ impl _urlparse(uri: str) -> tuple[str, str, str, str, str, str] {
 
 impl _urlunparse(parts: tuple[str, str, str, str, str, str]) -> str {
     (scheme, netloc, path, params, query, fragment) = parts;
-    if RE_DRIVE_LETTER_PATH.match(path) {
+    if RE_DRIVE_LETTER_PATH.`match(path) {
         quoted_path = path[:3] + parse.quote(path[3:]);
     } else {
         quoted_path = parse.quote(path);

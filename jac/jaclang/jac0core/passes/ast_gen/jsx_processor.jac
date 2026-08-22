@@ -1,4 +1,3 @@
-import ast as ast3;
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import type from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
@@ -13,7 +12,6 @@ import type from jaclang.compiler.passes.ecmascript.view_ir {
     IfChild,
     EachChild
 }
-import type from jaclang.jac0core.passes.pyast_gen_pass { PyastGenPass }
 
 class EsJsxProcessor {
     def init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None;
@@ -45,20 +43,4 @@ class EsJsxProcessor {
     def _split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple;
 }
 
-class PyJsxProcessor {
-    def init(self: PyJsxProcessor, pass_ref: PyastGenPass) -> None;
-    def element(self: PyJsxProcessor, nd: uni.JsxElement) -> list[ast3.AST];
-    def element_name(self: PyJsxProcessor, nd: uni.JsxElementName) -> list[ast3.AST];
-    def spread_attribute(
-        self: PyJsxProcessor, nd: uni.JsxSpreadAttribute
-    ) -> list[ast3.AST];
-
-    def normal_attribute(
-        self: PyJsxProcessor, nd: uni.JsxNormalAttribute
-    ) -> list[ast3.AST];
-
-    def text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST];
-    def expression(self: PyJsxProcessor, nd: uni.JsxExpression) -> list[ast3.AST];
-}
-
-glob __all__ = ['EsJsxProcessor', 'PyJsxProcessor'];
+glob __all__ = ['EsJsxProcessor'];

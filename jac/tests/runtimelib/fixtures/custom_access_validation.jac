@@ -1,8 +1,6 @@
-import from jaclang.jac0core.archetype { AccessLevel }
-
 node A {
-    has val1: str = "NO_ACCESS";
-    has val2: int = 0;
+    has val1: str = "NO_ACCESS",
+        val2: int = 0;
 
     # suggested to be `with access {}`
     def __jac_access__ -> any {
@@ -10,10 +8,13 @@ node A {
         #              YOUR PROCESS HERE              #
         ###############################################
 
-        # Allowed string return "NO_ACCESS", "READ", "CONNECT", "WRITE"
+        # Preferred: the ambient AccessLevel enum (no import needed)
+        # return AccessLevel.NO_ACCESS;  # or .READ / .CONNECT / .WRITE
+
+        # Strings "NO_ACCESS" / "READ" / "CONNECT" / "WRITE" are accepted -
+        # mainly for policies stored in data, as here. A typo'd literal
+        # raises KeyError at access-check time, so never hand-write them.
         return self.val1;
-        # Allowed enum return AccessLevel.NO_ACCESS, AccessLevel.READ, AccessLevel.CONNECT, AccessLevel.WRITE
-        # return AccessLevel.NO_ACCESS;
 
         # Not recommended as it may change in the future
         # Allowed int return -1 (NO_ACCESS), 0 (READ), 1 (CONNECT), 2 (WRITE)
@@ -37,8 +38,8 @@ walker create {
 }
 
 walker update {
-    has val1: str | None = None;
-    has val2: int | None = None;
+    has val1: str | None = None,
+        val2: int | None = None;
 
     can enter with A entry {
         if self.val1 is not None {

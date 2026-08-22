@@ -1,6 +1,6 @@
 import from contextvars { ContextVar }
 
-glob _auth_token: ContextVar[str] = ContextVar("_sv_auth_token", default="");
+glob _auth_token: ContextVar[str] = ContextVar("_sv_auth_token", `default="");
 
 def set_current_auth(token: str | None) -> any {
     return _auth_token.set(token or "");

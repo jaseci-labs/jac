@@ -12,6 +12,8 @@ Client auth uses four helpers from `@jac/runtime`. **Return types differ - get t
 | `jacLogout()` | no | `None` | - (call it, no assign) |
 | `jacIsLoggedIn()` | no | `bool` | - (use inline) |
 
+These patterns apply in any client code - plain `.jac` components inferred client (the `@jac/runtime` import itself is a string-path npm import, which is client-only syntax - see `jac-codespaces`).
+
 The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`dict`** shaped `{"success": bool, "user_id" | "error": ...}`, and it is *always* a non-empty (truthy) dict - so `if not signup_result` can **never** catch a failed signup. Check the `success` key instead: `if not signup_result["success"] { ... }`. (Typing a `jacSignup` result as `bool` also fails `jac check` with `E1001: Cannot assign dict to bool`.)
 
 ## ⚠ Read first - signup + first `def:priv` call must be 3 awaited steps
@@ -23,7 +25,7 @@ When the same form that signs a user up also calls a `def:priv` endpoint (saving
 3. `await save_profile(...)` - only NOW does the `def:priv` call have an authenticated session
 
 ```
-# `save_profile` here is YOUR server function (def:priv) - imported from a .sv.jac module.
+# `save_profile` here is YOUR server function (def:priv) - imported from a server module.
 async def handle_register(name: str, email: str, password: str) -> str {
     # Pre-declare every var that holds an `await` result. `let` scoping in the
     # generated JS can otherwise leave them undefined at the if-check.
@@ -48,7 +50,7 @@ async def handle_register(name: str, email: str, password: str) -> str {
 
 **Why every `await` matters:** all three are async (return Promises). Skipping any `await` fires that call as a background Promise and lets the next line execute immediately. If `save_profile` fires before `jacLogin` completes, the session cookie isn't set yet → server gets the request without auth → `401 Unauthorized`. **Silent at compile time - only surfaces at runtime on first registration.**
 
-**Why pre-declare:** in `.cl.jac`, `var = await fn()` can compile to a JS `let var = ...` that is scoped tighter than the surrounding function (especially around `try`/`except` and certain async patterns), so `if not var { ... }` on the next line throws `ReferenceError: var is not defined`. Declaring `var: T = default;` at the top forces a function-scope `let` that the if-check can see.
+**Why pre-declare:** in client Jac, `var = await fn()` can compile to a JS `let var = ...` that is scoped tighter than the surrounding function (especially around `try`/`except` and certain async patterns), so `if not var { ... }` on the next line throws `ReferenceError: var is not defined`. Declaring `var: T = default;` at the top forces a function-scope `let` that the if-check can see.
 
 ---
 
@@ -99,26 +101,54 @@ def:pub Dashboard() -> JsxElement {
     if not jacIsLoggedIn() {
         return <Navigate to="/login" replace={True} />;
     }
-    return <div className="p-4">Welcome to the dashboard</div>;
+    <div className="p-4">Welcome to the dashboard</div>
 }
 ```
 
 ## Protecting routes with `AuthGuard` (preferred over inline guards)
 
-`AuthGuard` from `@jac/runtime` wraps children and redirects unauthenticated users - no per-page guard code, no rules-of-hooks ordering trap. With file-based routing, one layout protects a whole route group:
+`AuthGuard` from `@jac/runtime` redirects unauthenticated users and renders the protected subtree for everyone else - no per-page guard code, no rules-of-hooks ordering trap. Its signature is `AuthGuard(redirect: str = "/login", children: any = None)`: given children it renders them, and with none it renders `<Outlet />`, i.e. whichever **child route** matched. Both shapes are supported; which one to reach for depends on how much you are protecting.
+
+**Guarding a group of pages - put the guard ABOVE the routes.** This is the better shape whenever more than one page is protected, and it is what the `(auth)/` codegen generates. With file-based routing, one layout protects a whole route group:
 
 ```jac
 # pages/(auth)/layout.jac - every page in (auth)/ now requires login
-cl import from "@jac/runtime" { AuthGuard, Outlet }
+import from "@jac/runtime" { AuthGuard, Outlet }
 
-cl {
-    def:pub layout() -> JsxElement {
-        return <AuthGuard redirect="/login"><Outlet /></AuthGuard>;
-    }
+def:pub AuthShell() -> JsxLayout {
+    <AuthGuard redirect="/login"><Outlet /></AuthGuard>
 }
 ```
 
-In manual routing, wrap the protected subtree the same way: `<AuthGuard redirect="/login"><Dashboard /></AuthGuard>`. Reserve the inline `jacIsLoggedIn()` guard for one-off cases.
+In manual routing, the same idea is a pathless parent route - the guard runs once and every child route below it is protected:
+
+```jac
+# frontend.jac - manual routing shell
+import from "@jac/runtime" { Router, Routes, Route, AuthGuard }
+
+def:pub AppShell() -> JsxElement {
+    <Router>
+        <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<AuthGuard redirect="/login" />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/settings" element={<Settings />} />
+            </Route>
+        </Routes>
+    </Router>
+}
+```
+
+**Guarding one page - wrap it.** `<Route path="/dashboard" element={<AuthGuard redirect="/login"><Dashboard /></AuthGuard>} />`. Reserve the inline `jacIsLoggedIn()` guard for one-off cases.
+
+> **Version note.** The wrapper form renders its children only on runtimes carrying the `AuthGuard` children fix. On older jaclang the guard ignored children and rendered `<Outlet />` unconditionally, which resolves to nothing in a flat route - a **blank page with no error anywhere**. The parent-route and layout forms above are correct on every version, so prefer them if you need to support both.
+
+The redirect target for the `(auth)/` codegen comes from `jac.toml`; `AuthGuard`'s own `redirect` defaults to `/login`:
+
+```toml
+[client.routing]
+auth_redirect = "/signin"
+```
 
 ## SSO login
 
@@ -143,7 +173,7 @@ The server then exposes `/sso/{platform}/login`, `/sso/{platform}/register`, and
 - Post-login navigation uses `useNavigate()` from `jac-cl-routing` - `nav = useNavigate(); ... nav("/dashboard");` after a successful login.
 - **`jacSignup` does NOT establish a session.** ALWAYS follow with a `jacLogin` call using the same credentials - signup alone leaves the user unauthenticated.
 - **`jacLogin`, `jacSignup`, `jacSsoLogin` are `async` - always `await`. `jacLogout` and `jacIsLoggedIn` are sync - NEVER `await` them.** `await jacLogout()` type-errors; missing `await` on `jacLogin` silently returns a coroutine instead of the result.
-- **Pre-declare any var that holds an `await` result before the assignment.** In `.cl.jac`, `var = await fn()` can compile to a JS `let var = ...` whose scope is tighter than the surrounding function, so a later `if not var { ... }` throws `ReferenceError: var is not defined` at runtime. Compile passes; the page just blanks. Fix: declare the var with a default at the top, then assign.
+- **Pre-declare any var that holds an `await` result before the assignment.** In client Jac, `var = await fn()` can compile to a JS `let var = ...` whose scope is tighter than the surrounding function, so a later `if not var { ... }` throws `ReferenceError: var is not defined` at runtime. Compile passes; the page just blanks. Fix: declare the var with a default at the top, then assign.
 
 ```
 # FRAGILE - runtime ReferenceError on the if-check
@@ -164,4 +194,4 @@ async def handle_login(email: str, password: str) -> str {
 
 - For sharing the current user across components (an auth context with `user`/`setUser`), use the `createContext`/`useContext` pattern in `jac-cl-organization` - a `useAuth()` hook alone does NOT share state between consumers.
 
-For jac-shadcn projects, apply auth handlers inside your `LoginPage.cl.jac` component. The auth card layout pattern (viewport-centered, `max-w-sm`, `min-h-svh`) is in `jac-shadcn-blocks`.
+For jac-shadcn projects, apply auth handlers inside your `LoginPage.jac` component. The auth card layout pattern (viewport-centered, `max-w-sm`, `min-h-svh`) is in `jac-shadcn-blocks`.

@@ -5,6 +5,7 @@ import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT,
@@ -139,7 +140,7 @@ Always = "always_available"
         ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source), prog=prog
     ).ir_out;
 
-    SymTabBuildPass(ir_in=mod, prog=prog);
+    run_pass(SymTabBuildPass, mod, prog);
 
     # Every guarded declaration is in the (complete) symbol table, regardless
     # of whether its guard is statically live — including the >= 3.15 branch.
@@ -177,7 +178,7 @@ if sys.version_info >= (3, 15):
     mod = PyastBuildPass(
         ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source), prog=prog
     ).ir_out;
-    SymTabBuildPass(ir_in=mod, prog=prog);
+    run_pass(SymTabBuildPass, mod, prog);
 
     assert collect_member_syms(mod, "MINYEAR") , "unguarded symbol should resolve";
     if sys.version_info >= (3, 11) {
@@ -215,7 +216,7 @@ class C:
     mod = PyastBuildPass(
         ir_in=uni.PythonModuleAst(py_ast_node, orig_src=source), prog=prog
     ).ir_out;
-    SymTabBuildPass(ir_in=mod, prog=prog);
+    run_pass(SymTabBuildPass, mod, prog);
 
     cls_sym = mod.lookup("C", deep=False);
     assert cls_sym is not None , "class C should resolve";

@@ -132,13 +132,14 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         return False;
     }
 
-    entry = self.registry.entries[name];
-    port = self._assign_port(entry);
+    `entry = self.registry.entries[name];
+    port = self._assign_port(`entry);
 
     import from jaclang.scale.runtime.context.util { jac_executable }
+    import from jaclang.runtimelib.sv_client { headless_start_args, peer_url_env_key }
     jac_bin: str = jac_executable();
 
-    cmd = [jac_bin, "start", entry.file, "--port", str(port), "--no_client"];
+    cmd = [jac_bin] + headless_start_args(`entry.file, port);
     logger.info(f"Starting {name}: {' '.join(cmd)}");
 
     try {
@@ -151,7 +152,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         for (peer_name, peer_entry) in self.registry.entries.items() {
             if peer_name != name and peer_entry.port > 0 {
                 peer_url: str = peer_entry.url or self._url_for(peer_entry);
-                child_env[f"JAC_SV_{peer_name.upper()}_URL"] = peer_url;
+                child_env[peer_url_env_key(peer_name)] = peer_url;
             }
         }
 
@@ -165,23 +166,23 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         );
         os.close(log_fd);
         self.processes[name] = proc;
-        entry.pid = proc.pid;
-        entry.port = port;
-        entry.url = self._url_for(entry);
-        entry.status = ServiceStatus.STARTING;
+        `entry.pid = proc.pid;
+        `entry.port = port;
+        `entry.url = self._url_for(`entry);
+        `entry.status = ServiceStatus.STARTING;
         self._failure_counts[name] = 0;
 
         _write_pidfile(name, proc.pid);
         _write_portfile(name, port);
 
         import from jaclang.runtimelib { sv_client }
-        sv_client.register(name, entry.url);
+        sv_client.register(name, `entry.url);
 
         logger.info(f"Started {name} (pid={proc.pid}, port={port})");
         return True;
     } except OSError as e {
         logger.error(f"Failed to start {name}: {e}");
-        entry.status = ServiceStatus.STOPPED;
+        `entry.status = ServiceStatus.STOPPED;
         return False;
     }
 }
@@ -189,27 +190,27 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
 impl ServiceProcessManager.start_all -> None {
     import from jaclang.scale.runtime.context.util { wait_for_health }
 
-    for (name, entry) in self.registry.entries.items() {
-        if entry.port == 0 {
-            entry.port = self._assign_port(entry);
-            entry.url = self._url_for(entry);
+    for (name, `entry) in self.registry.entries.items() {
+        if `entry.port == 0 {
+            `entry.port = self._assign_port(`entry);
+            `entry.url = self._url_for(`entry);
         }
     }
 
     timeout: float = self._boot_health_timeout;
     for name in self.registry.entries {
         self.start_service(name);
-        entry = self.registry.entries[name];
+        `entry = self.registry.entries[name];
         proc = self.processes.get(name);
-        if proc and entry.url {
+        if proc and `entry.url {
             ok = wait_for_health(
-                entry.url, lambda { proc.poll() is None; }, timeout=timeout
+                `entry.url, lambda { proc.poll() is None; }, timeout=timeout
             );
             if not ok {
                 exit_code = proc.poll();
                 if exit_code is not None {
-                    entry.status = ServiceStatus.STOPPED;
-                    entry.pid = None;
+                    `entry.status = ServiceStatus.STOPPED;
+                    `entry.pid = None;
                     _report_exit(name, exit_code, "during startup");
                 } else {
                     logger.warning(
@@ -227,18 +228,18 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
     import time;
     import signal;
 
-    entry = self.registry.entries.get(name);
+    `entry = self.registry.entries.get(name);
     proc = self.processes.get(name);
 
     if proc {
         logger.info(f"Stopping {name} (pid={proc.pid})...");
         proc.terminate();
         try {
-            proc.wait(timeout=10);
+            proc.`wait(timeout=10);
         } except subprocess.TimeoutExpired {
             logger.warning(f"{name} did not exit gracefully, force killing");
             proc.kill();
-            proc.wait();
+            proc.`wait();
         }
         del self.processes[name];
     } else {
@@ -252,9 +253,9 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
                 f"{name} pid {pid} is not running (stale pidfile); cleaning up"
             );
             _remove_pidfile(name);
-            if entry {
-                entry.status = ServiceStatus.STOPPED;
-                entry.pid = None;
+            if `entry {
+                `entry.status = ServiceStatus.STOPPED;
+                `entry.pid = None;
             }
             return True;
         }
@@ -280,9 +281,9 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
 
     _remove_pidfile(name);
 
-    if entry {
-        entry.status = ServiceStatus.STOPPED;
-        entry.pid = None;
+    if `entry {
+        `entry.status = ServiceStatus.STOPPED;
+        `entry.pid = None;
     }
 
     import from jaclang.runtimelib { sv_client }
@@ -306,13 +307,13 @@ impl ServiceProcessManager.restart_service(name: str) -> bool {
 }
 
 impl ServiceProcessManager.check_health(name: str) -> bool {
-    entry = self.registry.entries.get(name);
-    if not entry or not entry.url {
+    `entry = self.registry.entries.get(name);
+    if not `entry or not `entry.url {
         return False;
     }
 
     try {
-        req = URLRequest(f"{entry.url}/healthz", method="GET");
+        req = URLRequest(f"{`entry.url}/healthz", method="GET");
         resp = urlopen(req, timeout=self._health_check_timeout);
         return getattr(resp, "status", 0) == 200;
     } except URLError {
@@ -325,13 +326,13 @@ impl ServiceProcessManager.check_health(name: str) -> bool {
 impl ServiceProcessManager.check_all_health -> dict[str, bool] {
     results: dict[str, bool] = {};
 
-    for (name, entry) in self.registry.entries.items() {
+    for (name, `entry) in self.registry.entries.items() {
         proc = self.processes.get(name);
         exit_code = proc.poll() if proc else None;
         if exit_code is not None {
-            if entry.status != ServiceStatus.STOPPED {
-                entry.status = ServiceStatus.STOPPED;
-                entry.pid = None;
+            if `entry.status != ServiceStatus.STOPPED {
+                `entry.status = ServiceStatus.STOPPED;
+                `entry.pid = None;
                 _report_exit(name, exit_code, "and will not become healthy");
             }
             results[name] = False;
@@ -342,19 +343,19 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
         results[name] = healthy;
 
         if healthy {
-            entry.status = ServiceStatus.HEALTHY;
+            `entry.status = ServiceStatus.HEALTHY;
             self._failure_counts[name] = 0;
         } else {
             self._failure_counts[name] = self._failure_counts.get(name, 0) + 1;
             if self._failure_counts[name] >= self._max_failures {
-                if entry.status != ServiceStatus.UNHEALTHY {
+                if `entry.status != ServiceStatus.UNHEALTHY {
                     logger.warning(
                         f"{name} is UNHEALTHY ({self._failure_counts[
                             name
                         ]} consecutive failures)"
                     );
                 }
-                entry.status = ServiceStatus.UNHEALTHY;
+                `entry.status = ServiceStatus.UNHEALTHY;
             }
         }
     }
@@ -370,7 +371,7 @@ def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None {
         } except Exception as e {
             logger.warning(f"health monitor iteration failed: {e}");
         }
-        if stop_event.wait(interval) {
+        if stop_event.`wait(interval) {
             return;
         }
     }

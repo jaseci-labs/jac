@@ -1,19 +1,22 @@
 """Contract tests for the event-streaming abstraction.
 
-Covers Event, the publisher facade, and @subscribe registry. LocalEventStream behavior is in test_local_stream.jac; Redis-specific behavior is in test_redis_stream.jac.
+Covers Event, the publisher facade, and @subscribe registry. LocalEventStream behavior is in test_local_stream.jac.
 """
 
 import from jaclang.scale.events.broker {
     EventStreamBroker,
     Event,
     RetryPolicy,
-    HealthStatus
+    HealthStatus,
+    StreamPosition,
+    starts_at_earliest
 }
-import from typing { Callable }
 import from threading { Event as _ThreadStop }
 import from jaclang.scale.events.publisher { publish, set_broker }
 import from jaclang.scale.events.subscriber { subscribe, get_subscriptions }
 import from jaclang.scale.events.streams._stream_common { consumer_loop }
+import from jaclang.scale.events.streams.local { LocalEventStream }
+import from jaclang.scale.events.streams.postgres { PgEventStream }
 
 
 """Broker stub that raises on publish; verifies the facade swallows errors."""
@@ -263,4 +266,189 @@ test "consumer_loop defaults start_from to latest" {
     broker = _StartFromRecorder();
     consumer_loop(broker, "topic", "grp", _noop_handler, RetryPolicy());
     assert broker.seen_start_from == "latest";
+}
+
+
+# --- position tokens ---
+# One predicate decides "replay from the beginning" for every backend, so the
+# two brokers cannot drift apart on what a position token means.
+test "the earliest position is recognized as a string or an enum member" {
+    assert starts_at_earliest("earliest");
+    assert starts_at_earliest(StreamPosition.EARLIEST.value);
+    assert starts_at_earliest(StreamPosition.EARLIEST);
+    assert not starts_at_earliest("latest");
+    assert not starts_at_earliest(StreamPosition.LATEST);
+    assert not starts_at_earliest("some-broker-token");
+}
+
+
+# --- interface signature parity (issue #8047) ---
+# PgEventStream.consume shipped without the interface's start_from and with a
+# 0.0 timeout default, so callers written against EventStreamBroker raised
+# TypeError on Postgres only. These tests compare call contracts directly, and
+# check that the interface rejects a divergent implementation at definition.
+"""Name, kind, and default of every parameter of a method, minus self."""
+def _param_view(fn: any) -> list[tuple] {
+    import inspect;
+    view: list[tuple] = [];
+    for p in inspect.signature(fn).parameters.values() {
+        if p.name == "self" {
+            continue;
+        }
+        view.append((p.name, p.kind.name, p.`default));
+    }
+    return view;
+}
+
+
+"""Public method names the EventStreamBroker interface declares."""
+def _interface_methods -> list[str] {
+    names: list[str] = [];
+    for (name, member) in vars(EventStreamBroker).items() {
+        if (not name.startswith("_")) and callable(member) {
+            names.append(name);
+        }
+    }
+    return sorted(names);
+}
+
+
+"""Every broker implementation that ships in jaclang.scale.events.streams."""
+def _shipped_brokers -> list[type] {
+    found: list[type] = [];
+    pending: list = list(getattr(EventStreamBroker, "__subclasses__")());
+    while pending {
+        candidate = pending.pop();
+        pending.extend(candidate.__subclasses__());
+        if str(getattr(candidate, "__module__", "")).startswith(
+            "jaclang.scale.events.streams"
+        ) {
+            found.append(candidate);
+        }
+    }
+    return found;
+}
+
+
+test "every shipped broker matches the interface signatures" {
+    brokers = _shipped_brokers();
+    found = sorted([b.__name__ for b in brokers]);
+    assert LocalEventStream in brokers , f"discovery found only {found}";
+    assert PgEventStream in brokers , f"discovery found only {found}";
+
+    methods = _interface_methods();
+    assert "consume" in methods , f"interface methods not discovered: {methods}";
+
+    faults: list[str] = [];
+    for method in methods {
+        want = _param_view(getattr(EventStreamBroker, method));
+        for broker in brokers {
+            got = _param_view(getattr(broker, method));
+            if got != want {
+                faults.append(f"{broker.__name__}.{method}: {got} != {want}");
+            }
+        }
+    }
+    assert faults == [] , "divergence from EventStreamBroker: " + "; ".join(faults);
+}
+
+
+"""Method bodies with divergent contracts, spliced onto a broker subclass."""
+obj _DivergentMethods {
+    def consume_without_start_from(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0
+    ) -> list[Event] {
+        return [];
+    }
+
+    def consume_with_shrunk_timeout(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 0.0,
+        start_from: str = "latest"
+    ) -> list[Event] {
+        return [];
+    }
+
+    def consume_with_extra_required(
+        topic: str,
+        shard: int,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
+    ) -> list[Event] {
+        return [];
+    }
+
+    def consume_widened(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest",
+        shard: int = 0
+    ) -> list[Event] {
+        return [];
+    }
+}
+
+
+test "dropping an interface parameter fails at class definition" {
+    err = "";
+    try {
+        type(
+            "_DropsStartFrom",
+            (EventStreamBroker, ),
+            {"consume": _DivergentMethods.consume_without_start_from}
+        );
+    } except TypeError as e {
+        err = str(e);
+    }
+    assert "consume" in err , f"expected a loud parity error, got: {err}";
+    assert "start_from" in err , f"expected start_from to be named, got: {err}";
+}
+
+
+test "changing an interface default fails at class definition" {
+    err = "";
+    try {
+        type(
+            "_ShrinksTimeout",
+            (EventStreamBroker, ),
+            {"consume": _DivergentMethods.consume_with_shrunk_timeout}
+        );
+    } except TypeError as e {
+        err = str(e);
+    }
+    assert "timeout_seconds" in err , f"expected timeout_seconds to be named, got: {err}";
+}
+
+
+test "adding a required parameter fails at class definition" {
+    err = "";
+    try {
+        type(
+            "_NeedsShard",
+            (EventStreamBroker, ),
+            {"consume": _DivergentMethods.consume_with_extra_required}
+        );
+    } except TypeError as e {
+        err = str(e);
+    }
+    assert "shard" in err , f"expected shard to be named, got: {err}";
+}
+
+
+test "an implementation may widen with optional parameters" {
+    widened = type(
+        "_WidenedBroker",
+        (EventStreamBroker, ),
+        {"consume": _DivergentMethods.consume_widened}
+    );
+    assert widened.__name__ == "_WidenedBroker";
 }

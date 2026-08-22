@@ -20,7 +20,8 @@ test "resolve_firebase_project_id prefers subsystem env over shared" {
         },
         clear=True
     ) {
-        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV) == "firestore-project";
+        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV)
+            == "firestore-project";
     }
 }
 
@@ -29,8 +30,10 @@ test "resolve_firebase_project_id falls back to shared env" {
     with patch.dict(
         os.environ, {FIREBASE_PROJECT_ID_ENV: "shared-project"}, clear=True
     ) {
-        assert resolve_firebase_project_id(FIREBASE_AUTH_PROJECT_ID_ENV) == "shared-project";
-        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV) == "shared-project";
+        assert resolve_firebase_project_id(FIREBASE_AUTH_PROJECT_ID_ENV)
+            == "shared-project";
+        assert resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV)
+            == "shared-project";
     }
 }
 
@@ -38,7 +41,8 @@ test "resolve_firebase_project_id falls back to shared env" {
 test "resolve_firebase_project_id falls back to config value" {
     with patch.dict(os.environ, {}, clear=True) {
         assert (
-            resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV, "toml-project") == "toml-project"
+            resolve_firebase_project_id(FIRESTORE_PROJECT_ID_ENV, "toml-project")
+            == "toml-project"
         );
     }
 }
@@ -52,21 +56,6 @@ test "sso config uses FIREBASE_PROJECT_ID fallback" {
         try {
             sso_config = get_scale_config().get_sso_config();
             assert sso_config["firebase"]["project_id"] == "shared-project";
-        } finally {
-            reset_scale_config();
-        }
-    }
-}
-
-
-test "database config uses FIREBASE_PROJECT_ID fallback" {
-    with patch.dict(
-        os.environ, {FIREBASE_PROJECT_ID_ENV: "shared-project"}, clear=True
-    ) {
-        reset_scale_config();
-        try {
-            db_config = get_scale_config().get_database_config();
-            assert db_config["project_id"] == "shared-project";
         } finally {
             reset_scale_config();
         }

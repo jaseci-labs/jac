@@ -1,12 +1,14 @@
 import time;
-import from abc { ABC, abstractmethod }
-import from dataclasses { field }
-import from threading { Event }
-import from jaclang.jac0core.codeinfo { CodeLocInfo }
-import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity, E9001 }
-import from jaclang.jac0core.log { logging }
+import from jaclang.jac0core.srcloc { CodeLocInfo }
+import from jaclang.jac0core.diagnostics {
+    DiagnosticInfo,
+    E9001,
+    LINT_ALIASES,
+    Severity
+}
+import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
+import from jaclang.jac0core.passes.pass_rim { PassRim }
 import from jaclang.jac0core.unitree { UniNode }
-import type from jaclang.jac0core.program { JacProgram }
 
 obj Alert {
     has msg: str,
@@ -23,35 +25,48 @@ obj Alert {
     def pretty_print(*, colors: bool = False) -> str;
 }
 
-obj BaseTransform[T_in, T_out](ABC) {
-    has ir_in: T_in,
-        prog: JacProgram,
-        cancel_token: (Event | None) = None,
+obj DiagnosticPolicy {
+    has suppress_codes: list[str] = [],
+        suppress_categories: list[str] = [],
+        lint_active: bool = False,
+        lint_select: list[str] = [],
+        lint_ignore: list[str] = [],
+        _inline_cache: dict[(tuple[str, int], list[str])] = {};
+
+    def is_suppressed(diag: DiagnosticInfo, loc: (CodeLocInfo | None) = None) -> bool;
+    def _inline_suppressed(diag: DiagnosticInfo, loc: CodeLocInfo) -> bool;
+}
+
+obj BaseTransform(PassRim) {
+    has ir_in: UniNode,
+        cancel_token: any = None,
+        cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
-        logger: any postinit,
-        ir_out: T_out postinit;
+        ir_out: UniNode postinit;
 
     def postinit -> None;
-    def timed_transform(ir_in: T_in) -> T_out;
+    def timed_transform(ir_in: UniNode) -> UniNode {
+        start_time = time.time();
+        ir_out = self.transform(ir_in=ir_in);
+        self.time_taken = time.time() - start_time;
+        return ir_out;
+    }
+
     def pre_transform -> None;
     def post_transform -> None;
-    @abstractmethod
-    def transform(ir_in: T_in) -> T_out;
+    def transform(ir_in: UniNode) -> UniNode {
+        return ir_in;
+    }
 
     def log_info(msg: str) -> None;
     def is_canceled -> bool;
 }
 
-obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
+obj Transform(BaseTransform) {
     has cur_node: UniNode postinit,
-        _project_config: any = None,
-        _cached_check_suppress_tokens: list[str] = field(default_factory=`list),
-        _cached_check_suppress_codes: list[str] = field(default_factory=`list),
-        _cached_inline_suppressions: dict[((str, int), list[str])] = field(
-            default_factory=`dict
-        );
+        policy: (DiagnosticPolicy | None) = None;
 
     static has PROVIDES: tuple = (),
         REQUIRES: tuple = ();
@@ -66,5 +81,5 @@ obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
     ) -> bool;
 
     def _is_suppressed(diag: DiagnosticInfo, loc: CodeLocInfo | None = None) -> bool;
-    def ice(msg: str = 'Something went horribly wrong!') -> RuntimeError;
+    def ice(msg: str = 'Something went horribly wrong!') -> str;
 }

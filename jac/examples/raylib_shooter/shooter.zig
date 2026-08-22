@@ -1,4 +1,4 @@
-// Jac Cube Shooter - the Zig twin of shooter.na.jac.
+// Jac Cube Shooter - the Zig twin of shooter.jac.
 //
 // A faithful Zig port of the Jac-native shooter, kept deliberately close so the
 // two can be compared side by side. Like the Jac version, it binds raylib by

@@ -1,8 +1,11 @@
 import mimetypes;
-import from collections.abc { Callable }
 import from pathlib { Path }
-import from fastapi.responses { HTMLResponse, JSONResponse, Response }
-import from jaclang.scale.jserver.jserver {
+import from jaclang.runtimelib.serving.datatypes {
+    HTMLResponse,
+    JSONResponse,
+    Response
+}
+import from jaclang.runtimelib.serving.endpoint {
     APIParameter,
     HTTPMethod,
     JEndPoint,
@@ -27,7 +30,11 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
         file_name = Path(file_path).name;
 
         client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / file_path;
-        client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
+        client_build_dist_file_simple = base_path
+            / '.jac'
+            / 'client'
+            / 'dist'
+            / file_name;
 
         dist_file = base_path / 'dist' / file_path;
         dist_file_simple = base_path / 'dist' / file_name;
@@ -97,9 +104,9 @@ impl JacAPIServerStatic.register_static_file_endpoint -> None {
                     name='file_path',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Path of the static file to serve',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -156,9 +163,9 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
                     name='page_name',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Name of the page to render',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -211,7 +218,10 @@ impl JacAPIServerStatic.render_base_route_callback(
             render_payload = self.introspector.render_page(
                 app_name, kwargs, Con.GUEST.value
             );
-            return HTMLResponse(content=render_payload['html']);
+            return HTMLResponse(
+                content=render_payload['html'],
+                status_code=self.introspector.spa_fallback_status('/')
+            );
         } except ValueError as exc {
             return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
         } except RuntimeError as exc {
@@ -264,7 +274,10 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
                 render_payload = self.introspector.render_page(
                     base_route_app, {}, Con.GUEST.value
                 );
-                return HTMLResponse(content=render_payload['html']);
+                return HTMLResponse(
+                    content=render_payload['html'],
+                    status_code=self.introspector.spa_fallback_status(file_path)
+                );
             } except ValueError {
                 return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404);
             } except RuntimeError {
@@ -335,9 +348,9 @@ impl JacAPIServerStatic.register_root_asset_endpoint -> None {
                     name='file_path',
                     data_type='string',
                     required=True,
-                    default=None,
+                    default_value=None,
                     description='Path to asset file (e.g., img.png, icons/logo.svg)',
-                    type=ParameterType.PATH
+                    kind=ParameterType.PATH
                 )
             ],
             response_model=None,
@@ -371,9 +384,9 @@ impl JacAPIServerStatic.register_graph_endpoint -> None {
                     name='Authorization',
                     data_type='string',
                     required=False,
-                    default=None,
+                    default_value=None,
                     description='Bearer JWT token (optional - falls back to public/guest graph if not provided)',
-                    type=ParameterType.HEADER
+                    kind=ParameterType.HEADER
                 )
             ],
             response_model=None,

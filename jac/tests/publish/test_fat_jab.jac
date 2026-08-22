@@ -110,7 +110,7 @@ test "jac build --fat vendors the dependency closure into the jab" {
         );
 
         jab = proj / "dist" / "fatapp.jab";
-        assert jab.is_file() , f"no jab produced: {list((proj / 'dist').glob('*'))}";
+        assert jab.is_file() , f"no jab produced: {list((proj / 'dist').`glob('*'))}";
 
         # The vendored wheels ride inside the tarball as `_vendor/wheels/*.whl`,
         # a sibling of `_precompiled/` so the sealed manifest is untouched.
@@ -188,4 +188,54 @@ test "a fat jab runs offline with its vendored dependency" {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);
     }
+}
+
+
+def _pip_scripted(calls: list, args: list[str]) -> tuple[int, str] {
+    calls.append(list(args));
+    if args[0] == "download" {
+        return (1, "ResolutionImpossible: no wheels for http-ece");
+    }
+    return (0, "");
+}
+
+
+test "native vendoring builds sdist-only deps instead of refusing the closure" {
+    import functools;
+    import jaclang.runtimelib.jab_vendor as jab_vendor;
+    calls: list = [];
+    saved = jab_vendor._pip;
+    jab_vendor._pip = functools.partial(_pip_scripted, calls);
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            (ok, err) = jab_vendor.download_wheels(["pywebpush>=2.0.0"], Path(tmp));
+        }
+    } finally {
+        jab_vendor._pip = saved;
+    }
+    assert ok , err;
+    assert len(calls) == 2;
+    assert calls[0][0] == "download";
+    assert calls[1][0] == "wheel";
+    assert "--wheel-dir" in calls[1];
+}
+
+
+test "cross-target vendoring still refuses when wheels are missing" {
+    import functools;
+    import jaclang.runtimelib.jab_vendor as jab_vendor;
+    calls: list = [];
+    saved = jab_vendor._pip;
+    jab_vendor._pip = functools.partial(_pip_scripted, calls);
+    try {
+        with tempfile.TemporaryDirectory() as tmp {
+            (ok, err) = jab_vendor.download_wheels(
+                ["pywebpush>=2.0.0"], Path(tmp), platform_tag="manylinux2014_x86_64"
+            );
+        }
+    } finally {
+        jab_vendor._pip = saved;
+    }
+    assert not ok;
+    assert len(calls) == 1 , "no build attempt for a cross-target closure";
 }

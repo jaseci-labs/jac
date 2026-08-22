@@ -13,7 +13,8 @@ import from jaclang.scale.injector.bundle {
 glob logger = logging.getLogger(__name__);
 
 glob BUNDLE_VOLUME_NAME: str = "jac-bundles",
-     BUNDLE_MOUNT_PATH: str = "/jac-bundles";
+     BUNDLE_MOUNT_PATH: str = "/jac-bundles",
+     PVC_BOOTSTRAP_NAME: str = "jac-pvc-bootstrap";
 
 glob LOADER_UID: int = 1000,
      LOADER_GID: int = 1000;
@@ -29,11 +30,38 @@ def bundle_pvc_path(object_key: str) -> str {
 }
 
 
+def bundle_keys_from_pod_spec(pod_spec: dict[str, any]) -> list[str] {
+    prefix = f"{BUNDLE_MOUNT_PATH}/";
+    keys: list[str] = [];
+    for raw in list(pod_spec.get("initContainers") or []) {
+        container = dict(raw);
+        if container.get("name") != PVC_BOOTSTRAP_NAME {
+            continue;
+        }
+        for arg in list(container.get("args") or []) {
+            for token in str(arg).replace(";", " ").split() {
+                if token.startswith(prefix) {
+                    key = token[len(prefix):];
+                    if key and key not in keys {
+                        keys.append(key);
+                    }
+                }
+            }
+        }
+    }
+    return keys;
+}
+
+
 def build_bundle_pvc(
-    app_name: str, namespace: str, size: str, storage_class: str
+    app_name: str,
+    namespace: str,
+    size: str,
+    storage_class: str,
+    access_mode: str = "ReadWriteMany"
 ) -> dict[str, any] {
-    access_modes = ["ReadWriteMany"];
-    if not storage_class {
+    access_modes = [access_mode];
+    if access_mode == "ReadWriteMany" and not storage_class {
         raise ValueError(
             f"Bundle PVC '{bundle_pvc_name(app_name)}' requests accessModes "
             "[ReadWriteMany] but no bundle_storage_class is set, so it would use "
@@ -144,7 +172,7 @@ def build_pvc_init_container(
     untars = "".join([f"tar xzf {p} -C {APP_MOUNT_PATH}; " for p in bundle_paths]);
     script = "set -eu; " + untars + ensure_jac_toml_cmd();
     return {
-        "name": "jac-pvc-bootstrap",
+        "name": PVC_BOOTSTRAP_NAME,
         "image": base_image,
         "command": ["sh", "-c"],
         "args": [script],
@@ -175,8 +203,8 @@ def _ensure_volume(pod_spec: dict[str, any], volume: dict[str, any]) -> None {
 obj PvcInjector(Injector) {
     has size: str = "1Gi",
         storage_class: str = "",
+        access_mode: str = "ReadWriteMany",
         loader_image: str = "busybox:1.36",
-        provisioned_database: str = "",
         _object_key: str = "",
         _bundle_bytes: bytes = b"";
 
@@ -191,8 +219,8 @@ obj PvcInjector(Injector) {
     def prepare(app_name: str, namespace: str, project_dir: str) {
         raw = pack_jab(
             project_dir,
-            self.provisioned_database,
-            getattr(self, "_pod_binary_bytes", b"")
+            getattr(self, "_seal_binary_bytes", b""),
+            getattr(self, "_pod_arch", "")
         );
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);
@@ -361,6 +389,10 @@ obj PvcInjector(Injector) {
     }
 
     def extra_manifests(app_name: str, namespace: str) -> list[dict[str, any]] {
-        return [build_bundle_pvc(app_name, namespace, self.size, self.storage_class)];
+        return [
+            build_bundle_pvc(
+                app_name, namespace, self.size, self.storage_class, self.access_mode
+            )
+        ];
     }
 }

@@ -28,6 +28,16 @@ def _jac_enter(cwd: str, app_path: str, entrypoint: str) -> tuple {
 }
 
 
+"""Point subprocesses at the branch runtime, not a stale snapshot."""
+def _seed_dev_source(tmpdir: str, name: str) {
+    import jaclang;
+    src = str(Path(str(jaclang.__file__)).parent.parent);
+    (Path(tmpdir) / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\n\n[dev]\njaclang_source = "{src}"\n'
+    );
+}
+
+
 glob V1_SOURCE = "node Person {\n"
      "    has name: str;\n"
      "    has age: int = 0;\n"
@@ -75,6 +85,7 @@ test "added field survives schema drift end-to-end" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
+        _seed_dev_source(tmpdir, "migration");
         # v1: create two persons.
         app.write_text(V1_SOURCE);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
@@ -90,21 +101,32 @@ test "added field survives schema drift end-to-end" {
             f"bob lost across schema drift: {out}"
         );
         # Drift should be logged but cause zero data loss: quarantine empty.
-        # The exact DB filename depends on get_db_path() (jaclang default is
-        # `<stem>.db`; the scale plugin overrides to `anchor_store.db`), so
-        # glob rather than hard-coding.
-        import sqlite3;
-        data_dir = Path(tmpdir) / ".jac" / "data";
-        dbs = sorted(data_dir.glob("*.db"));
-        assert dbs , f"no .db files in {data_dir}";
-        for db in dbs {
-            conn = sqlite3.connect(str(db));
-            q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
-            conn.close();
-            assert q == 0 , (
-                f"expected no quarantined anchors in {db.name} after tolerated drift, got {q}"
-            );
-        }
+        import hashlib;
+        import os;
+        import from jaclang.runtimelib.pgembed { PgRuntime }
+        import from jaclang.runtimelib.session { shared_pg_data_dir }
+        import from jaclang.runtimelib.store { PgStore, TxnIsolation }
+        digest = hashlib.sha1(os.path.abspath(tmpdir).encode('utf-8')).hexdigest()[:8];
+        admin_rt = PgRuntime(data_dir=shared_pg_data_dir(), database='postgres');
+        admin = PgStore(conninfo=admin_rt.ensure());
+        admin.begin(TxnIsolation.READ_COMMITTED);
+        names = [
+            str(r[0])
+            for r in admin.rows(
+                "SELECT datname FROM pg_database WHERE datname LIKE :p",
+                {'p': f"%_{digest}"}
+            )
+        ];
+        admin.commit();
+        admin.close();
+        assert names , f"no project database found for digest {digest}";
+        rt = PgRuntime(data_dir=shared_pg_data_dir(), database=names[0]);
+        st = PgStore(conninfo=rt.ensure());
+        q = st.rows('SELECT count(*) FROM quarantine', {})[0][0];
+        st.close();
+        assert q == 0 , (
+            f"expected no quarantined anchors after tolerated drift, got {q}"
+        );
     }
 }
 
@@ -113,6 +135,7 @@ test "removed field survives schema drift end-to-end" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
+        _seed_dev_source(tmpdir, "migration");
         app.write_text(V1_SOURCE);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
         assert rc == 0 , f"v1 create failed: {err}";
@@ -135,6 +158,7 @@ test "same-schema reruns do not drift or quarantine anything" {
     with TemporaryDirectory() as raw_tmpdir {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
+        _seed_dev_source(tmpdir, "migration");
         app.write_text(V1_SOURCE);
         (rc, _, err) = _jac_enter(tmpdir, str(app), "create");
         assert rc == 0 , f"create failed: {err}";

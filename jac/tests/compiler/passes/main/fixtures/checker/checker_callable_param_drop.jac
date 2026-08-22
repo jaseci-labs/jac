@@ -5,7 +5,6 @@ to a callable type expecting more, since the extras can be dropped at the call
 site. This is the canonical pattern for React/JSX event handlers — a handler
 written `def click() { ... }` should satisfy `Callable[[MouseEvent], None]`.
 """
-import from typing { Callable }
 
 
 class MouseEvent {

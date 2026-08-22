@@ -1,6 +1,42 @@
-import from collections.abc { Sequence }
-import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
+import from jaclang.jac0core.unitree {
+    Ability,
+    ArchHas,
+    Archetype,
+    Assignment,
+    AstSymbolNode,
+    AtomTrailer,
+    BinaryExpr,
+    Bool,
+    BuiltinType,
+    DictVal,
+    Enum,
+    Float,
+    FuncCall,
+    FuncSignature,
+    HasVar,
+    Import,
+    IndexSlice,
+    Int,
+    KVPair,
+    LambdaExpr,
+    ListVal,
+    Module,
+    ModuleItem,
+    ModulePath,
+    MultiString,
+    Name,
+    NameAtom,
+    Null,
+    ParamVar,
+    Slice,
+    String,
+    Token,
+    TupleVal,
+    UnaryExpr,
+    UniNode,
+    ability_of_symbol
+}
+import from jaclang.jac0core.constant { CodeContext, SymbolType, Tokens as Tok }
 import from jaclang.jac0core.codeinfo {
     BoundaryTypeInfo,
     InteropBinding,
@@ -9,70 +45,70 @@ import from jaclang.jac0core.codeinfo {
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 
 class BoundaryAnalysisPass(UniPass) {
+    has _func_defs: dict[(str, tuple[(InteropContext, Ability)])],
+        _imported_native_funcs: dict[(str, tuple[(str, InteropContext)])],
+        _imported_native_modules: dict[(str, tuple[(str, InteropContext)])];
+
     def before_pass(self: BoundaryAnalysisPass) -> None;
     def _resolved_native_decl(
-        self: BoundaryAnalysisPass, name_node: (uni.UniNode | None)
-    ) -> (uni.Ability | None);
+        self: BoundaryAnalysisPass, name_node: (UniNode | None)
+    ) -> (Ability | None);
 
-    def _get_context(self: BoundaryAnalysisPass, nd: uni.UniNode) -> InteropContext;
-    def _extract_type_name(
-        self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
-    ) -> str;
+    def _signature_of_decl(
+        self: BoundaryAnalysisPass, decl: (Ability | None)
+    ) -> tuple[(str, list[str], list[str])];
 
-    def _resolve_native_module(
-        self: BoundaryAnalysisPass, module_name: str
+    def _get_context(self: BoundaryAnalysisPass, nd: UniNode) -> InteropContext;
+    def _extract_type_name(self: BoundaryAnalysisPass, expr: (UniNode | None)) -> str;
+    def _in_native_module(self: BoundaryAnalysisPass) -> bool;
+    def _native_source_module_of(
+        self: BoundaryAnalysisPass, mod: (Module | None)
     ) -> (str | None);
 
-    def _in_native_module(self: BoundaryAnalysisPass) -> bool;
-    def enter_import(self: BoundaryAnalysisPass, nd: uni.Import) -> None;
+    def _register_native_absorb(self: BoundaryAnalysisPass, nd: Import) -> None;
+    def enter_import(self: BoundaryAnalysisPass, nd: Import) -> None;
     def _register_sv_import(
         self: BoundaryAnalysisPass,
-        nd: uni.Import,
+        nd: Import,
         module_name: str,
         caller_ctx: InteropContext
     ) -> None;
 
-    def _collect_abilities(
-        self: BoundaryAnalysisPass, nd: any, out: dict[str, any]
-    ) -> None;
-
-    def _collect_pub_walkers(
-        self: BoundaryAnalysisPass, nd: any, out: dict[str, any]
+    def _register_na_client_import(self: BoundaryAnalysisPass, nd: Import) -> None;
+    def _register_client_bridged_import(
+        self: BoundaryAnalysisPass, nd: Import
     ) -> None;
 
     def _extract_walker_has_fields(
-        self: BoundaryAnalysisPass, walker_nd: any
+        self: BoundaryAnalysisPass, walker_nd: (Archetype | None)
     ) -> tuple[list[str], list[str]];
 
-    def _find_archetype(self: BoundaryAnalysisPass, nd: any, target: str) -> any;
-    def _parse_only_source_module(self: BoundaryAnalysisPass, file_path: str) -> any;
-    def enter_ability(self: BoundaryAnalysisPass, nd: uni.Ability) -> None;
-    def enter_func_call(self: BoundaryAnalysisPass, nd: uni.FuncCall) -> None;
+    def _find_archetype(
+        self: BoundaryAnalysisPass, nd: UniNode, target: str
+    ) -> (Archetype | Enum | None);
+
+    def enter_ability(self: BoundaryAnalysisPass, nd: Ability) -> None;
+    def enter_func_call(self: BoundaryAnalysisPass, nd: FuncCall) -> None;
     def _extract_subscript_inner(
-        self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
+        self: BoundaryAnalysisPass, expr: (UniNode | None)
     ) -> str;
 
     def _extract_all_subscript_types(
-        self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
+        self: BoundaryAnalysisPass, expr: (UniNode | None)
     ) -> list[str];
 
     def _extract_all_type_names(
-        self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
+        self: BoundaryAnalysisPass, expr: (UniNode | None)
     ) -> list[str];
 
     def _collect_boundary_type(
-        self: BoundaryAnalysisPass, type_name: str, source_mod: (uni.Module | None)
+        self: BoundaryAnalysisPass, type_name: str, source_mod: (Module | None)
     ) -> None;
+
+    def _literal_default(
+        self: BoundaryAnalysisPass, expr: (UniNode | None)
+    ) -> tuple[(bool, any)];
 
     def after_pass(self: BoundaryAnalysisPass) -> None;
     def _record_access_levels(self: BoundaryAnalysisPass, manifest: any) -> None;
-    def enter_archetype(self: BoundaryAnalysisPass, nd: uni.Archetype) -> None;
-    def _classify(self: BoundaryAnalysisPass, body_nodes: list) -> dict;
-    def _scan(self: BoundaryAnalysisPass, nd: (uni.UniNode | None)) -> None;
-    def _call_target_symbol(
-        self: BoundaryAnalysisPass, call: uni.FuncCall
-    ) -> (uni.Symbol | None);
-
-    def _callee_body(self: BoundaryAnalysisPass, call: uni.FuncCall) -> list;
-    def _resolved_body(self: BoundaryAnalysisPass, owner: uni.UniNode) -> list;
 }

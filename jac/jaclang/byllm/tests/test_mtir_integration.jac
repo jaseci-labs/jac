@@ -269,8 +269,6 @@ test "mtir roundtrip via jir cache" {
         HEADER_SIZE,
         SEC_MTIR
     }
-    import from jaclang.jac0core.jir_passes { JirWriter }
-    import from jaclang.jac0core.unitree { Module }
 
     tmp_path = Path(tempfile.mkdtemp());
     test_file = tmp_path / "test.jac";

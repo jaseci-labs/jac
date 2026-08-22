@@ -7,7 +7,7 @@ Cross-backend equivalence fixture.
 def tuple_py() -> dict {
     # From containers: tuple concat, in, not in
     t: tuple = (10, 20);
-    tuple_concat: list = list(t + (30,));
+    tuple_concat: list = list(t + (30, ));
     tuple_in: bool = 10 in t;
     tuple_nin: bool = 99 not in t;
 
@@ -38,16 +38,19 @@ def tuple_py() -> dict {
         "count": cnt,
         "index": idx,
         "repeat": repeated,
-        "eq_true": eq_t, "eq_false": eq_f,
-        "lt_true": lt_t, "gt_true": gt_t,
-        "le_true": le_t, "ge_true": ge_t,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "ge_true": ge_t,
         "lt_shorter": lt_len
     };
 }
 
-cl def tuple_cl() -> dict {
+def tuple_cl() -> dict {
     t: tuple = (10, 20);
-    tuple_concat: list = list(t + (30,));
+    tuple_concat: list = list(t + (30, ));
     tuple_in: bool = 10 in t;
     tuple_nin: bool = 99 not in t;
 
@@ -77,42 +80,47 @@ cl def tuple_cl() -> dict {
         "count": cnt,
         "index": idx,
         "repeat": repeated,
-        "eq_true": eq_t, "eq_false": eq_f,
-        "lt_true": lt_t, "gt_true": gt_t,
-        "le_true": le_t, "ge_true": ge_t,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "ge_true": ge_t,
         "lt_shorter": lt_len
     };
 }
 
-na {
-    def tuple_na() -> dict[str, any] {
-        t: tuple[int, int] = (10, 20);
-        tuple_in: int = 10 in t;
-        tuple_nin: int = 99 not in t;
 
-        t2: tuple[int, int, int, int, int] = (1, 2, 3, 2, 1);
-        cnt: int = t2.count(2);
-        idx: int = t2.index(3);
+def tuple_na() -> dict[str, any] {
+    t: tuple[int, int] = (10, 20);
+    tuple_in: int = 10 in t;
+    tuple_nin: int = 99 not in t;
 
-        a: tuple[int, int, int] = (1, 2, 3);
-        b: tuple[int, int, int] = (1, 2, 3);
-        c: tuple[int, int, int] = (1, 2, 4);
-        d: tuple[int, int] = (1, 2);
-        eq_t: int = a == b;
-        eq_f: int = a == c;
-        lt_t: int = a < c;
-        gt_t: int = c > a;
-        le_t: int = a <= b;
-        ge_t: int = c >= a;
+    t2: tuple[int, int, int, int, int] = (1, 2, 3, 2, 1);
+    cnt: int = t2.count(2);
+    idx: int = t2.index(3);
 
-        return {
-            "tuple_in": tuple_in,
-            "tuple_nin": tuple_nin,
-            "count": cnt,
-            "index": idx,
-            "eq_true": eq_t, "eq_false": eq_f,
-            "lt_true": lt_t, "gt_true": gt_t,
-            "le_true": le_t, "ge_true": ge_t
-        };
-    }
+    a: tuple[int, int, int] = (1, 2, 3);
+    b: tuple[int, int, int] = (1, 2, 3);
+    c: tuple[int, int, int] = (1, 2, 4);
+    d: tuple[int, int] = (1, 2);
+    eq_t: int = a == b;
+    eq_f: int = a == c;
+    lt_t: int = a < c;
+    gt_t: int = c > a;
+    le_t: int = a <= b;
+    ge_t: int = c >= a;
+
+    return {
+        "tuple_in": tuple_in,
+        "tuple_nin": tuple_nin,
+        "count": cnt,
+        "index": idx,
+        "eq_true": eq_t,
+        "eq_false": eq_f,
+        "lt_true": lt_t,
+        "gt_true": gt_t,
+        "le_true": le_t,
+        "ge_true": ge_t
+    };
 }

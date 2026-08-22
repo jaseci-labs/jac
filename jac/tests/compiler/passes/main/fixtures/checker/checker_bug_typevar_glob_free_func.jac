@@ -1,5 +1,3 @@
-import from typing { TypeVar }
-
 obj Base {
     has tag: str = "base";
 }

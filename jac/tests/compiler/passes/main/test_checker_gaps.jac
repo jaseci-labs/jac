@@ -22,7 +22,7 @@ Gap index:
   #50 - postinit body not validated against by-postinit field declarations
   #51 - @property on union types returns FunctionType instead of return type
   #52 - Enum iteration variable resolves to Unknown (cascading E1032 / W1051)
-  #53 - discover_base_file misses .na.jac — self is Unknown in .impl.jac files
+  #53 - discover_base_file misses .jac — self is Unknown in .impl.jac files
 """
 
 import os;
@@ -32,6 +32,7 @@ import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.compiler { run_pass }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
@@ -45,9 +46,9 @@ def compile_and_check(fixture_name: str) -> JacProgram {
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, fixture_name),
-        options=CompileOptions(type_check=False)
+        options=CompileOptions(type_check=False, default_codespace='server')
     );
-    TypeCheckPass(ir_in=mod, prog=program);
+    run_pass(TypeCheckPass, mod, program);
     return program;
 }
 
@@ -329,9 +330,11 @@ test "gap 46 impl file standalone scope resolution" {
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_gap_impl_scope.impl.jac"),
-        options=CompileOptions(resolve_annex_parent=True, type_check=False)
+        options=CompileOptions(
+            resolve_annex_parent=True, type_check=False, default_codespace='server'
+        )
     );
-    TypeCheckPass(ir_in=mod, prog=program);
+    run_pass(TypeCheckPass, mod, program);
 
     # Expected: exactly 3 real type errors in the impl file:
     #   1. return 42 in bad_return -> str (int not assignable to str)
@@ -398,9 +401,14 @@ test "gap 47 undeclared attr assignment on archetypes" {
 # cascading into "Type is Unknown" for every downstream access.
 #
 # This is likely caused by a combination of:
-#   - Generic type params on BaseTransform[T_in, T_out] not substituted
 #   - TYPE_CHECKING-guarded JacProgram import not resolved
 #   - Dynamic attrs from cross-module impl files not in MRO
+#
+# The unsubstituted generic type params on BaseTransform[T_in, T_out] were
+# the third suspect and have been eliminated: #8288 M1 rung 1 removed them,
+# and the checker's diagnostics over fourteen pass sources -- this file's
+# thirty included -- came back byte-identical. The parameters were neither
+# helping nor hurting the checker.
 #
 # Impact: The type checker cannot type-check itself or most of the
 #         compiler codebase, which is why ~70% of .jacignore entries
@@ -412,7 +420,7 @@ test "gap 48 type checker self check" {
         JAC_ROOT, "jaclang", "compiler", "passes", "main", "type_checker_pass.jac"
     );
     mod = program.compile(tc_path);
-    TypeCheckPass(ir_in=mod, prog=program);
+    run_pass(TypeCheckPass, mod, program);
 
     # The type checker checking itself. The primary issue was that self.prog,
     # self.ir_in, self.evaluator (set in BaseTransform.__init__ via impl files)
@@ -500,7 +508,7 @@ test "gap 50 postinit assignment tracking" {
         e
         for e in program.errors_had
         if "checker_gap_postinit_tracking.jac" in (e.loc.mod_path or "")
-        and 44 <= e.loc.first_line <= 51
+            and 44 <= e.loc.first_line <= 51
     ];
     assert len(incomplete_errors) >= 1 , "Gap #50: postinit missing assignment not caught. "
     "Incomplete.postinit never assigns to self.z (postinit field), but "
@@ -572,21 +580,21 @@ test "gap 52 class enum iteration yields enum instance" {
 }
 
 # =========================================================================
-# Gap #53: discover_base_file misses .na.jac — self is Unknown in impl files
+# Gap #53: discover_base_file misses .jac — self is Unknown in impl files
 #
-# discover_base_file searched for .jac and .cl.jac but not .na.jac, so impl
-# files backed by a .na.jac declaration were compiled standalone. Without the
+# discover_base_file searched for .jac and .jac but not .jac, so impl
+# files backed by a .jac declaration were compiled standalone. Without the
 # declaration, self resolved as Unknown → E1032 on every self.x access.
 #
-# Fix: added '.na.jac' to the extension list in bccache.jac.
+# Fix: added '.jac' to the extension list in bccache.jac.
 # Impact: 1,073 false E1032 in lexer.impl.jac, 211 in parser.impl.jac.
 # =========================================================================
-test "gap 53 discover_base_file finds .na.jac for impl file" {
+test "gap 53 discover_base_file finds .jac for impl file" {
     import from jaclang.jac0core.bccache { discover_base_file }
     impl_path = os.path.join(FIXTURES, "na_impl", "impl", "counter.impl.jac");
     base = discover_base_file(impl_path);
-    assert base is not None and base.endswith("counter.na.jac") , (
-        f"Gap #53: discover_base_file should find counter.na.jac, got {base}"
+    assert base is not None and base.endswith("counter.jac") , (
+        f"Gap #53: discover_base_file should find counter.jac, got {base}"
     );
 }
 
@@ -631,6 +639,18 @@ test "gap 55 literal annotations resolve and discriminate" {
 # now keeps the parameter for error recovery, so only the real keyword error
 # (E0013) is reported. (jaseci-labs/jaseci#6353 gap #3)
 # =========================================================================
+test "clib import calls do not raise spurious E1051 (#7626 C2)" {
+    # Inline clib decls are real FuncSignatures, so their calls run the
+    # normal arg matcher; fixed-arity, empty-variadic, and multi-variadic
+    # shapes must all pass without "Too many positional arguments".
+    program = compile_and_check("checker_clib_no_e1051.jac");
+    msgs = [str(e) for e in program.errors_had];
+    joined = " ".join(msgs);
+    assert "Too many positional arguments" not in joined , (
+        f"clib call shapes cascaded into E1051: {msgs}"
+    );
+}
+
 test "gap 56 keyword param does not cascade into E1051" {
     program = compile_and_check("checker_keyword_param_no_cascade.jac");
     msgs = [str(e) for e in program.errors_had];

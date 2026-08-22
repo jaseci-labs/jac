@@ -10,7 +10,7 @@ set -euo pipefail
 # byLLM and scale are folded into jac/jaclang/ (jaclang.byllm / jaclang.scale),
 # so their changes are covered by the jac/jaclang/ -> jaclang mapping below.
 declare -A FOLDER_TO_FRAGMENTS=(
-    ["jac/jaclang/"]="docs/docs/community/release_notes/unreleased/jaclang/"
+    ["jac/jaclang/"]="release_notes/unreleased/jaclang/"
 )
 
 # Determine changed files based on context
@@ -42,11 +42,7 @@ fi
 
 # Check if any release notes .md files were directly modified
 PROTECTED_FILES=(
-    "docs/docs/community/release_notes/jaclang.md"
-    "docs/docs/community/release_notes/byllm.md"
-    "docs/docs/community/release_notes/jac-client.md"
-    "docs/docs/community/release_notes/jac-scale.md"
-    "docs/docs/community/release_notes/jac-mcp.md"
+    "jac/jaclang/cli/docs/community/release_notes/jaclang.md"
 )
 
 DIRECTLY_MODIFIED=()
@@ -72,17 +68,19 @@ if [ ${#DIRECTLY_MODIFIED[@]} -gt 0 ]; then
     done
     echo ""
     echo "Release notes are managed via fragment files."
-    echo "Add a fragment at: docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md"
+    echo "Add a fragment at: release_notes/unreleased/<package>/<PR#>.<category>.md"
     echo ""
     exit 1
 fi
 
 # Fragment path with the PR number captured in group 1.
-FRAGMENT_REGEX='docs/docs/community/release_notes/unreleased/[^/]+/([0-9]+)\.(feature|bugfix|breaking|refactor|docs)\.md$'
+FRAGMENT_REGEX='release_notes/unreleased/[^/]+/([0-9]+)\.(feature|bugfix|breaking|refactor|docs)\.md$'
 
 CHANGED_FRAGMENTS=()
 while IFS= read -r file; do
     [ -z "$file" ] && continue
+    # Deleted fragments (cleanup of stale entries) are not "this PR's fragment"
+    [ -f "$file" ] || continue
     [[ "$file" =~ $FRAGMENT_REGEX ]] && CHANGED_FRAGMENTS+=("$file")
 done <<< "$CHANGED_FILES"
 
@@ -111,7 +109,7 @@ if [ -n "$PR_NUMBER" ]; then
         done
         echo ""
         echo "You may only add or edit a fragment named after your own PR number:"
-        echo "  docs/docs/community/release_notes/unreleased/<package>/${PR_NUMBER}.<category>.md"
+        echo "  release_notes/unreleased/<package>/${PR_NUMBER}.<category>.md"
         echo ""
         echo "Do not reuse a different number and do not modify other contributors' fragments."
         echo ""
@@ -158,8 +156,8 @@ if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
     done
     echo ""
     echo "Please add a release note fragment file."
-    echo "Example: docs/docs/community/release_notes/unreleased/<package>/1234.bugfix.md"
-    echo "         docs/docs/community/release_notes/unreleased/<package>/1234.breaking.md"
+    echo "Example: release_notes/unreleased/<package>/1234.bugfix.md"
+    echo "         release_notes/unreleased/<package>/1234.breaking.md"
     echo ""
     echo "Fragment content should be a single bullet point, e.g.:"
     echo '  - **Fix: Brief title**: Description of the change.'

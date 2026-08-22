@@ -1,7 +1,7 @@
 """Streaming `visit [-->] by model`.
 
 The routing decision streams token-by-token to a `stream_handler` (exactly how
-the jac ai --ui firehose consumes it) while the structured edge selection still
+a live token feed consumes it) while the structured edge selection still
 drives the walker to the chosen successor. The routing call returns a
 `list[RouteChoice]` of candidate handles wrapped under `schema_object_wrapper`;
 the descriptive handle "GreenNode" here selects that successor.

@@ -22,17 +22,17 @@ with entry {
     c = (
         a()
             if 1
-            and isinstance(a, int)
-            and isinstance(a, int)
-            and isinstance(a, int)
-            and isinstance(a, int)
-            and isinstance(a, int)
+                and isinstance(a, int)
+                and isinstance(a, int)
+                and isinstance(a, int)
+                and isinstance(a, int)
+                and isinstance(a, int)
             else (
                 999
                     if isinstance(a, int)
-                    and isinstance(a, int)
-                    and isinstance(a, int)
-                    and isinstance(4, bool)
+                        and isinstance(a, int)
+                        and isinstance(a, int)
+                        and isinstance(4, bool)
                     else 7
             )
     );
@@ -139,7 +139,7 @@ with entry {
     a = 4 if True else 4;
 }
 
-import from typing { Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
+import from typing { Optional, ParamSpec }
 
 import from jaclang.jac0core.constant {
     JacSemTokenModifier as SemTokMod,
@@ -345,7 +345,7 @@ async def type_check(self: JacLangServer, file_path: str) -> None {
     await asyncio.to_thread(self.debounce_timers[file_path].join);
 }
 
-cl import from "@jac/runtime" {
+import from "@jac/runtime" {
     jacLogin,
     jacLogout,
     jacSignup,
@@ -356,91 +356,91 @@ cl import from "@jac/runtime" {
     createState,
 }
 
-cl {
-    # Reactive state management
-    glob _state = createState({"tweets": [], "loading": False});
-    glob appState = _state[0];
-    glob setAppState = _state[1];
 
-    # Shared data model for client/server
-    obj ClientTweet {
-        has username: str = "";
-        has id: str = "";
-        has content: str = "";
-        has likes: list = [];
-        has comments: list = [];
-    }
+# Reactive state management
+glob _state = createState({"tweets": [], "loading": False});
+glob appState = _state[0];
+glob setAppState = _state[1];
 
-    # UI Components - Render a single tweet card
-    def TweetCard(tweet: ClientTweet) -> JsxElement {
-        return
+# Shared data model for client/server
+obj ClientTweet {
+    has username: str = "";
+    has id: str = "";
+    has content: str = "";
+    has likes: list = [];
+    has comments: list = [];
+}
+
+# UI Components - Render a single tweet card
+def TweetCard(tweet: ClientTweet) -> JsxElement {
+    return
+        <div
+            class="tweet-card"
+            style={{
+                "border": "1px solid #e1e8ed",
+                "padding": "15px",
+                "margin": "10px 0",
+                "borderRadius": "8px"
+            }}
+        >
             <div
-                class="tweet-card"
-                style={{
-                    "border": "1px solid #e1e8ed",
-                    "padding": "15px",
-                    "margin": "10px 0",
-                    "borderRadius": "8px"
-                }}
+                class="tweet-header"
+                style={{"fontWeight": "bold", "marginBottom": "8px"}}
             >
-                <div
-                    class="tweet-header"
-                    style={{"fontWeight": "bold", "marginBottom": "8px"}}
+                @{tweet.username}
+            </div>
+            # Random comment
+            <div class="tweet-content" style={{"marginBottom": "12px"}}>
+                {tweet.content}  # Another andom comment
+            </div>
+            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+                <button
+                    onclick={like_tweet_action(tweet.id)}
+                    style={{"padding": "5px 10px", "cursor": "pointer"}}
                 >
-                    @{tweet.username}
-                </div>
-                # Random comment
-                <div class="tweet-content" style={{"marginBottom": "12px"}}>
-                    {tweet.content}  # Another andom comment
-                </div>
-                <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
-                    <button
-                        onclick={like_tweet_action(tweet.id)}
-                        style={{"padding": "5px 10px", "cursor": "pointer"}}
-                    >
-                        Like ({tweet.likes.length})
-                    </button>
-                    <button style={{"padding": "5px 10px"}}>
-                        Comment ({tweet.comments.length})
-                    </button>
-                </div>
-            </div>;
-    }
-
-    # UI Components - Render a single tweet card
-    def TweetCard2(tweet: ClientTweet) -> JsxElement {
-        return
-            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
-                <button style={{"padding": "5px 10px"}}>
-                    Comment ({tweet.comments.length})
+                    Like ({tweet.likes.length})
                 </button>
-            </div>;
-    }
-
-    # UI Components - Render a single tweet card
-    def TweetCard3(tweet: ClientTweet) -> JsxElement {
-        return (
-            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                 <button style={{"padding": "5px 10px"}}>
                     Comment ({tweet.comments.length})
                 </button>
             </div>
-        );
-    }
+        </div>;
+}
 
-    # Handle liking a tweet - calls server walker directly
-    # The compiler automatically transforms this to __jacCallFunction at compile time!
-    async def like_tweet_action(tweet_id: str) -> any {
-        try {
-            result = await like_tweet(tweet_id);
-            print("Tweet liked:", result);
-            # Re-render feed after like
-            window.location.reload();
-        } except Exception as e {
-            print("Error liking tweet:", e);
-        }
+# UI Components - Render a single tweet card
+def TweetCard2(tweet: ClientTweet) -> JsxElement {
+    return
+        <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+            <button style={{"padding": "5px 10px"}}>
+                Comment ({tweet.comments.length})
+            </button>
+        </div>;
+}
+
+# UI Components - Render a single tweet card
+def TweetCard3(tweet: ClientTweet) -> JsxElement {
+    return (
+        <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+            <button style={{"padding": "5px 10px"}}>
+                Comment ({tweet.comments.length})
+            </button>
+        </div>
+    );
+}
+
+# Handle liking a tweet - calls server walker directly
+# The compiler automatically transforms this to __jacCallFunction at compile time!
+async def like_tweet_action(tweet_id: str) -> any {
+    try {
+        result = await like_tweet(tweet_id);
+        print("Tweet liked:", result);
+        # Re-render feed after like
+        window.location.reload();
+    } except Exception as e {
+        print("Error liking tweet:", e);
     }
 }
+
 
 def x(
     # comment

@@ -17,7 +17,6 @@ are aliased.
 
 import os;
 import tempfile;
-import pytest;
 import from subprocess { run }
 
 import from .test_helpers { copy_fixture, get_env_with_bun, get_jac_command }
@@ -42,7 +41,7 @@ test "fullstack client importing @jac/wasm_host builds" {
             env=env,
         );
         if add_result.returncode != 0 {
-            pytest.fail(
+            testfail(
                 f"jac install --npm failed (bun/npm unavailable?)\n"
                 f"STDOUT:\n{add_result.stdout[:2000]}\n"
                 f"STDERR:\n{add_result.stderr[:2000]}\n"

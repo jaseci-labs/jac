@@ -71,8 +71,8 @@ test "bootstrap and compiler cache remains in global cache" {
     # Should be in a well-known platform location
     cache_str = str(global_cache);
     assert ".cache" in cache_str
-    or "Library/Caches" in cache_str
-    or "AppData" in cache_str , (
+        or "Library/Caches" in cache_str
+        or "AppData" in cache_str , (
         f"Global cache should be in platform cache directory, got: {global_cache}"
     );
 }

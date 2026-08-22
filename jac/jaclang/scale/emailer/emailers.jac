@@ -2,7 +2,6 @@ import logging;
 import smtplib;
 import from email.mime.multipart { MIMEMultipart }
 import from email.mime.text { MIMEText }
-import from typing { Any }
 import from jaclang.scale.emailer.emailer { Emailer }
 
 glob logger = logging.getLogger(__name__);

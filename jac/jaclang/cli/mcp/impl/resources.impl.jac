@@ -13,7 +13,7 @@ impl find_repo_root -> str | None {
         chain = [start] + list(start.parents);
         for parent in chain {
             if (parent / "docs" / "docs").is_dir()
-            and (parent / "jac" / "jaclang").is_dir() {
+                and (parent / "jac" / "jaclang").is_dir() {
                 return str(parent);
             }
         }
@@ -78,7 +78,7 @@ impl ResourceProvider._index_grammar -> None {
             "path": str(spec_path)
         };
     }
-    tokens_path = jaclang_dir / "jac0core" / "parser" / "tokens.na.jac";
+    tokens_path = jaclang_dir / "jac0core" / "parser" / "tokens.jac";
     if tokens_path.exists() {
         self._resources["jac://grammar/tokens"] = {
             "uri": "jac://grammar/tokens",
@@ -127,12 +127,22 @@ impl ResourceProvider._index_bundled -> None {
 
 impl ResourceProvider._index_shared_guides -> None {
     try {
-        import from jaclang.cli.guide_store { list_guides }
+        import from jaclang.cli.guide_store { list_docs, list_guides }
     } except ImportError {
         return;
     }
     for g in list_guides() {
         uri = f"jac://guide/{g.name}";
+        self._resources[uri] = {
+            "uri": uri,
+            "name": g.name,
+            "description": g.description,
+            "mimeType": "text/markdown",
+            "path": g.path
+        };
+    }
+    for g in list_docs() {
+        uri = f"jac://docs/{g.name}";
         self._resources[uri] = {
             "uri": uri,
             "name": g.name,
@@ -253,20 +263,20 @@ impl ResourceProvider._index_examples_local(examples_dir: Path) -> None {
         "littleX": "Full-stack social app (Twitter-like), OSP graph with user profiles and NLP-based search (sklearn/TF-IDF). Real-world object-spatial design."
     };
     categories: list[str] = [];
-    for entry in sorted(examples_dir.iterdir()) {
-        if entry.is_dir()
-        and not entry.name.startswith(".")
-        and not entry.name.startswith("_") {
-            categories.append(entry.name);
+    for `entry in sorted(examples_dir.iterdir()) {
+        if `entry.is_dir()
+            and not `entry.name.startswith(".")
+            and not `entry.name.startswith("_") {
+            categories.append(`entry.name);
             desc = EXAMPLE_DESCRIPTIONS.get(
-                entry.name, f"Example Jac code for {entry.name}"
+                `entry.name, f"Example Jac code for {`entry.name}"
             );
-            self._resources[f"jac://examples/{entry.name}"] = {
-                "uri": f"jac://examples/{entry.name}",
-                "name": f"Example: {entry.name}",
+            self._resources[f"jac://examples/{`entry.name}"] = {
+                "uri": f"jac://examples/{`entry.name}",
+                "name": f"Example: {`entry.name}",
                 "description": desc,
                 "mimeType": "text/plain",
-                "path": str(entry),
+                "path": str(`entry),
                 "_is_dir": True
             };
         }
@@ -289,8 +299,8 @@ impl ResourceProvider._fetch_github_categories -> list[str] {
         item["name"]
         for item in data
         if item.get("type") == "dir"
-        and not item["name"].startswith(".")
-        and not item["name"].startswith("_")
+            and not item["name"].startswith(".")
+            and not item["name"].startswith("_")
     ];
 
     self._resources["jac://examples/index"]["_categories"] = categories;
@@ -331,8 +341,8 @@ def _list_jac_files_recursive(github_path: str, base_path: str = "") -> list[tup
         if item.get("type") == "file" and name.endswith(".jac") {
             results.append((rel, item.get("download_url", "")));
         } elif item.get("type") == "dir"
-        and not name.startswith(".")
-        and not name.startswith("_") {
+            and not name.startswith(".")
+            and not name.startswith("_") {
             results.extend(_list_jac_files_recursive(item["path"], rel));
         }
     }

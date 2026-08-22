@@ -1,12 +1,6 @@
-import base64;
 import os;
-import tarfile;
 import time;
-import from collections.abc { Callable }
 import from pathlib { Path }
-import requests;
-import urllib3;
-import from dotenv { dotenv_values }
 import from jaclang.scale._optdeps.kubernetes {
     client,
     config,
@@ -14,16 +8,20 @@ import from jaclang.scale._optdeps.kubernetes {
     ConfigException
 }
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
-import from requests.exceptions { RequestException }
+
+glob PSS_ENFORCE_LABEL: str = "pod-security.kubernetes.io/enforce",
+     PSS_WARN_LABEL: str = "pod-security.kubernetes.io/warn",
+     PSS_SOURCE_LABEL: str = "jac-scale.jaseci.org/pss-enforce-source";
+
+def default_pss_labels -> dict[str, str];
+
+def privileged_pss_labels(existing: dict[str, str]) -> dict[str, str] | None;
 
 glob COMPANION_DEFS: list = [
          ("", "Jaseci App", False),
-         ("-redis", "Redis", False),
-         ("-mongodb", "MongoDB", True),
+         ("-postgres", "PostgreSQL", True),
          ("-prometheus", "Prometheus", False),
          ("-grafana", "Grafana", False),
-         ("-redis-insight", "RedisInsight", False),
-         ("-mongo-express", "Mongo Express", False),
          ("-ingress-nginx", "NGINX Ingress", False),
 
      ];
@@ -34,38 +32,16 @@ def _refresh_rs_hashes(
     namespace: str, selector: str, current: (set | None)
 ) -> (set | None);
 
-def check_pods_restarted(
-    namespace: str,
-    app_name: str,
-    _rs_hashes: (set | None) = None,
-    _skip_config_load: bool = False
-) -> bool;
-
-def parse_cpu_quantity(quantity: str) -> float;
-
-def parse_memory_quantity(quantity: str) -> float;
-
-def validate_resource_limits(
-    cpu_request: (str | None),
-    cpu_limit: (str | None),
-    memory_request: (str | None),
-    memory_limit: (str | None)
-) -> None;
-
-def load_env_variables(code_folder: str) -> list;
-
 def create_k8s_secret(
     core_v1: client.CoreV1Api,
     namespace: str,
     secret_name: str,
     secret_data: dict[str, str]
-) -> bool;
+) -> str;
 
 def delete_k8s_secret(
     core_v1: client.CoreV1Api, namespace: str, secret_name: str
 ) -> None;
-
-def check_K8s_status -> None;
 
 def delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
@@ -75,28 +51,9 @@ def ensure_namespace_exists(namespace: str) -> None;
 
 def delete_namespace(namespace: str) -> None;
 
-def check_deployment_status(
-    node_port: int,
-    path: str = '/docs',
-    interval: int = 15,
-    max_retries: int = 48,
-    nlb_url: (str | None) = None,
-    namespace: str = "default",
-    app_name: str = "jaseci",
-) -> tuple[bool, str];
-
 def cluster_type -> str;
 
 def get_cluster_provider -> ClusterProvider;
-
-def ensure_pvc_exists(
-    core_v1: client.CoreV1Api,
-    namespace: str,
-    pvc_name: str,
-    storage_size: str,
-    storage_class: (str | None) = None,
-    access_mode: str = 'ReadWriteOnce'
-) -> None;
 
 def parse_storage_quantity(quantity: str) -> int;
 

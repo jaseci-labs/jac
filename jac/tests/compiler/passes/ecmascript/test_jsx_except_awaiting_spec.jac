@@ -13,13 +13,13 @@ This file locks in the fixed shape so that gap cannot reopen.
 """
 
 import os;
-import pytest;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 glob SLOT_EXT = os.path.join(
          JAC_ROOT,
@@ -39,7 +39,7 @@ def compile_to_esast(filename: str) -> es.Program {
     assert not prog.errors_had , (
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    es_pass = run_pass(EsastGenPass, ir, prog);
     return es_pass.ir_out.gen.es_ast;
 }
 
@@ -50,16 +50,18 @@ test "rec 2: try/awaiting with except synthesises a JacClientErrorBoundary wrapp
     # `<JacAwaiting fallback={...}>{...}</JacAwaiting>` wrapper. The
     # except-arm bodies feed the error-boundary's fallback the same way
     # the awaiting body feeds the suspense fallback.
-    es_ast = compile_to_esast("try_awaiting_except.cl.jac");
+    es_ast = compile_to_esast("try_awaiting_except.jac");
     js_code = es_to_js(es_ast);
 
     assert "JacClientErrorBoundary" in js_code , (
         "an except-arm alongside awaiting should synthesize a "
-        "<JacClientErrorBoundary> wrapper:\n" + js_code
+        "<JacClientErrorBoundary> wrapper:\n"
+        + js_code
     );
     import re;
     assert re.search(
-        r'import\s*\{[^}]*\bJacClientErrorBoundary\b[^}]*\}\s*' + r'from\s*[\'"]@jac/runtime[\'"]',
+        r'import\s*\{[^}]*\bJacClientErrorBoundary\b[^}]*\}\s*'
+            + r'from\s*[\'"]@jac/runtime[\'"]',
         js_code
     ) , ("JacClientErrorBoundary should be auto-imported from @jac/runtime");
     # Both the awaiting body and the except body content survive.
@@ -74,7 +76,8 @@ test "rec 2: try/awaiting with except synthesises a JacClientErrorBoundary wrapp
     aw_at = js_code.index("__jacJsx(JacAwaiting,");
     assert eb_at < aw_at , (
         "<JacClientErrorBoundary> must wrap <JacAwaiting>, not the other "
-        "way around:\n" + js_code
+        "way around:\n"
+        + js_code
     );
 
     # The except UI belongs to the boundary's fallback, not the awaiting
@@ -82,7 +85,8 @@ test "rec 2: try/awaiting with except synthesises a JacClientErrorBoundary wrapp
     # awaiting node opens.
     assert js_code.index("Something went wrong") < aw_at , (
         "the except body must lower into the error boundary's fallback, "
-        "ahead of the awaiting wrapper:\n" + js_code
+        "ahead of the awaiting wrapper:\n"
+        + js_code
     );
 }
 
@@ -92,7 +96,7 @@ test "rec 2: a body diagnostic in the except arm is emitted exactly once" {
     # checker -- `exit_jsx_slot` already validated the whole raw template
     # (with the correct loop context). A keyless `for` in the except arm
     # must therefore warn W2021 once, not once per validation pass.
-    path = os.path.join(SLOT_EXT, "try_awaiting_except_loop.cl.jac");
+    path = os.path.join(SLOT_EXT, "try_awaiting_except_loop.jac");
     prog = JacProgram();
     prog.compile(file_path=path);
     w2021 = [
@@ -102,6 +106,7 @@ test "rec 2: a body diagnostic in the except arm is emitted exactly once" {
     ];
     assert len(w2021) == 1 , (
         "a keyless for-loop in the except arm should warn W2021 exactly "
-        f"once, got {len(w2021)}: " + str([str(w) for w in w2021])
+        f"once, got {len(w2021)}: "
+        + str([str(w) for w in w2021])
     );
 }

@@ -36,9 +36,10 @@ resolves no matter where the binary is launched from.
 ## Run it
 
 ```bash
-./demo.sh         # default: benchmark BOTH builds (8s each), print avg/max FPS
-./demo.sh --jac   # build & play only the Jac-native shooter, interactively
-./demo.sh --zig   # build & play only the Zig shooter, interactively
+./demo.sh            # default: benchmark BOTH builds (8s each), print avg/max FPS
+./demo.sh --jac      # build & play only the Jac-native shooter, interactively
+./demo.sh --zig      # build & play only the Zig shooter, interactively
+./demo.sh --headless # benchmark the borrow-checked headless sim (no window/GPU)
 ```
 
 > **Run it in the browser too:** [`web/`](web/) compiles the _same_ rlgl source to
@@ -53,7 +54,7 @@ resolves no matter where the binary is launched from.
 3. stage its shared library beside the script (`libraylib.so` on Linux,
    `libraylib.dylib` on macOS),
 4. build the shooter(s) it needs:
-   - `shooter.na.jac` with `jac nacompile` (no C compiler, no `cc`/`ld`),
+   - `shooter.jac` with `jac nacompile` (no C compiler, no `cc`/`ld`),
      producing `./shooter`;
    - `shooter.zig` with the Zig toolchain against the staged library, producing
      `./shooter_zig`. If `zig` is not already on your `PATH`, the script
@@ -93,9 +94,54 @@ before. (The result travels through a file rather than stdout because the demos
 go through raylib's own I/O - no `print`, no libc - so the Jac and Zig twins stay
 byte-for-byte parallel.)
 
+### The borrow-checked headless twin
+
+`shooter_headless.jac` is the shooter's game loop with the ownership dial
+turned all the way up and the window removed. Every heap-holding binding is
+annotated (`w: own World`, `&World` / `&mut World` borrows, `f(&mut w)` call
+sites), so the whole program passes Jac's **enforced borrow checker** and
+compiles headerless with **no collector and machine-checked zero reference
+counting**:
+
+```bash
+jac nacompile shooter_headless.jac --enforce-nogc --gc none --assert-no-rc
+```
+
+It runs the exact per-frame pipeline of `shooter.jac` -- input, fire
+cooldown, bullet integration + hit tests, target respawn and bob -- at a fixed
+240 Hz tick, with two substitutions so it needs no window: the human is
+replaced by a deterministic scripted pilot built from the same turn/move
+constants as `handle_input`, and the rlgl render pass is replaced by a
+virtual renderer that folds the very vertex stream `draw_floor`/`draw_box`
+would emit (grid lines, six shaded quads per cube, camera pose) into an
+integer digest instead of calling `rlVertex3f`. The target/bullet pools live
+as parallel arrays inside one owned `World` -- the index-arena idiom from
+[ownbench](../ownbench/)'s rbtree kernel, the design-intended shape for pool
+mutation under whole-binding affine moves.
+
+`./demo.sh --headless` builds the _same unchanged source_ under all three of
+Jac's memory modes -- `none` (enforced ownership, headerless, zero RC), `rc`
+(reference counting), `cycles` (rc + cycle collector) -- runs each for
+`HEADLESS_FRAMES` frames (default 100000), and prints a table:
+
+```
+==== headless shooter benchmark (100000 frames, 240 Hz sim tick) ====
+  gc mode       sim FPS    ns/frame    score       digest
+  none           187442        5335       34    502241830
+  rc             191893        5211       34    502241830
+  cycles         188651        5301       34    502241830
+  digests identical across gc modes: OK
+```
+
+Byte-identical digests across the three builds are the executable witness
+that the fully-annotated, collector-free build is a semantics-preserving
+drop-in (the ownbench erasure/identity discipline applied to a real game
+loop). Because it needs no GPU, no display, and no raylib download, this
+mode runs anywhere -- including CI.
+
 ### The Zig twin
 
-`shooter.zig` is a faithful Zig port of `shooter.na.jac`. Like the Jac version,
+`shooter.zig` is a faithful Zig port of `shooter.jac`. Like the Jac version,
 it **binds raylib by declaring its entry points directly** - here as `extern
 fn`, the moral equivalent of Jac's `import from raylib { def ... }` block - so it
 needs **no C headers**; the symbols resolve straight out of the precompiled
@@ -139,7 +185,7 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 
 | File             | Purpose                                                                |
 | ---------------- | ---------------------------------------------------------------------- |
-| `shooter.na.jac` | the whole demo: raylib FFI bindings, wrappers, and the game + render loop |
+| `shooter.jac` | the whole demo: raylib FFI bindings, wrappers, and the game + render loop |
 | `shooter.zig`    | faithful Zig twin of the demo, built with `./demo.sh --zig`            |
 | `demo.sh`        | platform detection, download, build, benchmark (default) or run one    |
 

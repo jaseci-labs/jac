@@ -5,7 +5,7 @@ impl make_client_bundle_builder(
 ) -> ViteClientBundleBuilder {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     if base_path is None {
-        import from jaclang.runtimelib.runtime { JacRuntime as Jac }
+        import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.project.config { find_project_root }
         base_path_dir = Path(Jac.get_base_path_dir());
         project_root_result = find_project_root(base_path_dir);
@@ -34,6 +34,14 @@ impl make_client_bundle_builder(
         vite_output_dir=client_dir / 'dist',
         vite_minify=False
     );
+}
+
+impl ViteClientBundleBuilder._emitted_digest(self: ViteClientBundleBuilder) -> str {
+    import from jaclang.runtimelib.client_bundle { emitted_tree_digest }
+    if not self.vite_package_json {
+        return '';
+    }
+    return emitted_tree_digest(self.vite_package_json.parent / 'compiled');
 }
 
 impl ViteClientBundleBuilder._compile_bundle(

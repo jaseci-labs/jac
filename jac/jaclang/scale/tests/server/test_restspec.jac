@@ -283,14 +283,14 @@ test "restspec path parameters" {
         paths = spec["paths"];
         assert "/items/{item_id}" in paths and "get" in paths["/items/{item_id}"];
         assert "/users/{user_id}/orders" in paths
-        and "get" in paths["/users/{user_id}/orders"];
+            and "get" in paths["/users/{user_id}/orders"];
         assert "/orgs/{org_id}/repos/{repo_id}" in paths
-        and "get" in paths["/orgs/{org_id}/repos/{repo_id}"];
+            and "get" in paths["/orgs/{org_id}/repos/{repo_id}"];
         assert "/resources/{resource_id}/update" in paths
-        and "post" in paths["/resources/{resource_id}/update"];
+            and "post" in paths["/resources/{resource_id}/update"];
         assert "/nodes/{node_id}" in paths and "get" in paths["/nodes/{node_id}"];
         assert "/projects/{project_id}/tasks/{task_id}" in paths
-        and "get" in paths["/projects/{project_id}/tasks/{task_id}"];
+            and "get" in paths["/projects/{project_id}/tasks/{task_id}"];
 
         # OpenAPI marks the path param as in=path, required=true
         item_params = paths["/items/{item_id}"]["get"]["parameters"];
@@ -334,8 +334,8 @@ test "restspec path parameters" {
         assert r.status_code == 200;
         d = extract_data(r.json())["result"];
         assert d["resource_id"] == "res-001"
-        and d["name"] == "widget"
-        and d["value"] == 42;
+            and d["name"] == "widget"
+            and d["value"] == 42;
 
         # --- Walker: single path param (walkers are public, no auth needed) ---
         r = client.get("/nodes/node-xyz");
@@ -437,8 +437,8 @@ test "custom obj body - walker flows" {
         assert "UserBody" in schemas;
         user_schema = schemas["UserBody"];
         assert user_schema["properties"]["name"]["type"] == "string"
-        and user_schema["properties"]["age"]["type"] == "integer"
-        and set(user_schema["required"]) == {"name", "age"};
+            and user_schema["properties"]["age"]["type"] == "integer"
+            and set(user_schema["required"]) == {"name", "age"};
         body_ref = spec["paths"]["/walker/CreateUser"]["post"]["requestBody"]["content"][
             "application/json"
         ]["schema"]["$ref"];
@@ -466,9 +466,9 @@ test "custom obj body - walker flows" {
         assert r.status_code == 200 , r.text;
         d = extract_data(r.json())["reports"][0];
         assert d["name"] == "Bob"
-        and d["street"] == "1 Main"
-        and d["city"] == "Springfield"
-        and d["address_type"] == "Address";
+            and d["street"] == "1 Main"
+            and d["city"] == "Springfield"
+            and d["address_type"] == "Address";
 
         # List of objs
         r = client.post(
@@ -478,8 +478,8 @@ test "custom obj body - walker flows" {
         assert r.status_code == 200 , r.text;
         d = extract_data(r.json())["reports"][0];
         assert d["count"] == 2
-        and d["names"] == ["Alice", "Bob"]
-        and d["first_type"] == "UserBody";
+            and d["names"] == ["Alice", "Bob"]
+            and d["first_type"] == "UserBody";
 
         # Validation rejects wrong field type
         r = client.post(
@@ -521,9 +521,9 @@ test "custom obj body - function flows" {
         assert r.status_code == 200 , r.text;
         d = extract_data(r.json())["result"];
         assert d["name"] == "Bob"
-        and d["street"] == "1 Main"
-        and d["city"] == "Springfield"
-        and d["address_type"] == "Address";
+            and d["street"] == "1 Main"
+            and d["city"] == "Springfield"
+            and d["address_type"] == "Address";
 
         # List of objs
         r = client.post(
@@ -534,8 +534,8 @@ test "custom obj body - function flows" {
         assert r.status_code == 200 , r.text;
         d = extract_data(r.json())["result"];
         assert d["count"] == 2
-        and d["names"] == ["Alice", "Bob"]
-        and d["first_type"] == "UserBody";
+            and d["names"] == ["Alice", "Bob"]
+            and d["first_type"] == "UserBody";
 
         # Validation rejects wrong field type
         r = client.post(
@@ -571,10 +571,10 @@ test "recursive obj body flows" {
         assert r.status_code == 200 , r.text;
         d = extract_data(r.json())["reports"][0];
         assert d["root_name"] == "root"
-        and d["root_type"] == "TreeNode"
-        and d["child_type"] == "TreeNode"
-        and d["depth"] == 3
-        and d["node_count"] == 4;
+            and d["root_type"] == "TreeNode"
+            and d["child_type"] == "TreeNode"
+            and d["depth"] == 3
+            and d["node_count"] == 4;
 
         # Function tree (auth): 5 nodes, depth 3
         client.register_user("u_rec", "p_rec");
@@ -596,11 +596,134 @@ test "recursive obj body flows" {
         assert r.status_code == 200 , r.text;
         d = extract_data(r.json())["result"];
         assert d["root_name"] == "root"
-        and d["root_type"] == "TreeNode"
-        and d["child_type"] == "TreeNode"
-        and d["depth"] == 3
-        and d["node_count"] == 5;
+            and d["root_type"] == "TreeNode"
+            and d["child_type"] == "TreeNode"
+            and d["depth"] == 3
+            and d["node_count"] == 5;
     } finally {
         client.close();
     }
+}
+
+# ============================================================================
+# Raw response body -- @restspec(envelope=False, produces=...)
+# The endpoint that motivated this: a `curl | bash` installer cannot be handed
+# a JSON envelope, so the return value has to reach the wire verbatim.
+# ============================================================================
+test "raw body skips the transport envelope" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/script.sh");
+        assert r.status_code == 200 , r.text;
+        # Body is the return value verbatim -- no {"ok":..,"data":..} wrapper.
+        assert r.text == "#!/usr/bin/env bash\necho jac\n" , r.text;
+        assert r.headers["content-type"].startswith("text/x-shellscript");
+        assert "\"ok\"" not in r.text;
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body defaults to text/plain without produces" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/plain");
+        assert r.status_code == 200 , r.text;
+        assert r.text == "plain body";
+        assert r.headers["content-type"].startswith("text/plain");
+    } finally {
+        client.close();
+    }
+}
+
+test "raw body json-encodes non-str returns without the envelope" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/json");
+        assert r.status_code == 200 , r.text;
+        assert r.json() == {"a": 1} , r.text;
+        assert r.headers["content-type"].startswith("application/json");
+    } finally {
+        client.close();
+    }
+}
+
+test "envelope remains the default" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        r = client.get("/raw/enveloped");
+        assert r.status_code == 200 , r.text;
+        assert r.headers["content-type"].startswith("application/json");
+        assert extract_data(r.json())["result"] == "wrapped";
+    } finally {
+        client.close();
+    }
+}
+
+
+test "restspec without method registers a live POST route (#8000 f3)" {
+    # A restspec instance is truthy, so `restspec.method if restspec else POST`
+    # yielded method="" for any @restspec(path=...) def without method= - the
+    # router bucketed it under "" and every request 404ed. It must default to
+    # POST and serve.
+    client = make_client("restspec_fixtures.jac");
+    try {
+        client.register_user("u1", "p1");
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
+        token = extract_data(login.json())["token"];
+
+        response = client.post(
+            "/custom/no-method-func", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code == 200 , (
+            f"expected a live default-POST route, got {response.status_code}: {response.text}"
+        );
+        data = extract_data(response.json());
+        assert data["result"]["message"] == "no_method_func executed";
+
+        schema = client._server.server.app.openapi();
+        methods = list(schema["paths"]["/custom/no-method-func"].keys());
+        assert methods == ["post"] , f"openapi must carry a real verb, got {methods}";
+    } finally {
+        client.close();
+    }
+}
+
+
+test "restspec decoration-time validation rejects bad specs (#8000 f3)" {
+    import from jaclang.runtimelib.builtin { APIProtocol }
+    import jaclang.runtimelib.builtin as blt;
+
+    with testraises(ValueError) as exc {
+        blt.restspec(method="HEAD")(lambda { 1; });
+    }
+    assert "not routable" in str(exc.value);
+
+    with testraises(ValueError) as exc2 {
+        blt.restspec(protocol="carrier-pigeon")(lambda { 1; });
+    }
+    assert "not recognized" in str(exc2.value);
+
+    def some_fn -> int {
+        return 1;
+    }
+    with testraises(ValueError) as exc3 {
+        blt.restspec(protocol=APIProtocol.WEBHOOK)(some_fn);
+    }
+    assert "walker-only" in str(exc3.value);
+
+    with testraises(ValueError) as exc4 {
+        blt.restspec(broadcast=True)(some_fn);
+    }
+    assert "WEBSOCKET" in str(exc4.value);
+
+    # String coercion: 'ws' and 'get' normalize instead of degrading to HTTP.
+    decorated = blt.restspec(method="get")(some_fn);
+    assert decorated.restspec.method.value == "GET";
 }

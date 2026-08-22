@@ -71,11 +71,12 @@ class JacLexer(RegexLexer) {
 }
 
 with entry {
-    for tok in list(JacLexer().get_tokens("walker greeter")) {
-        print(tok);
-    }
+    lexer = JacLexer();
+    print(lexer.name, lexer.aliases);   # real class attributes, read by the metaclass
 }
 ```
+
+Pygments then drives `JacLexer` exactly as it would a Python subclass -- `lexer.get_tokens("walker greeter")` yields the token stream from the `tokens` table above.
 
 Default to `obj` for your own types; reach for `class` only when a Python base's metaclass (or class-attribute protocol) demands real class attributes.
 
@@ -105,7 +106,7 @@ Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abi
 - **`import:py` does not exist** - plain `import numpy as np;` is the Python-import syntax. See `jac-core-cheatsheet`.
 - Brace imports take no trailing `;` (`import from x { y }`); module imports do (`import x;`).
 - Don't reach into `jaclang.jac0core.jaclib` (what generated code uses internally) - the public, stable surface is `jaclang.lib`.
-- In native (`.na.jac`) code the rules differ - only a Python-congruent stdlib subset is available and unsupported imports fail at compile time; see `jac-native`.
+- In native code the rules differ - only a Python-congruent stdlib subset is available and unsupported imports fail at compile time; see `jac-native`.
 
 ## See also
 

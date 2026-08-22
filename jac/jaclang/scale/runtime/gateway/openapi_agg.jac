@@ -1,6 +1,7 @@
 import logging;
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
+    ServiceEntry,
     ServiceStatus
 }
 
@@ -20,49 +21,83 @@ def _prefixed_paths(paths: dict, prefix: str) -> dict {
     return result;
 }
 
-async def aggregate_openapi(registry: ServiceRegistry) -> dict {
+async def fetch_service_spec(
+    service_entry: ServiceEntry, timeout: float = 5.0
+) -> dict | None {
     import json;
-    import urllib.request;
-    import from urllib.error { URLError }
+    import from jaclang.scale.runtime.transport.http_forward { raw_forward }
+
+    result = await raw_forward(
+        "GET", f"{service_entry.url}/openapi.json", {}, b"", timeout=int(timeout)
+    );
+    if result is None {
+        return None;
+    }
+    (status, _headers, body) = result;
+    if status != 200 {
+        return None;
+    }
+    try {
+        doc = json.loads(body.decode("utf-8"));
+    } except Exception as e {
+        _agg_logger.warning(f"openapi: unreadable spec from {service_entry.name}: {e}");
+        return None;
+    }
+    return doc if isinstance(doc, dict) else None;
+}
+
+
+async def aggregate_openapi(registry: ServiceRegistry) -> dict {
+    import asyncio;
+
+    candidates: list = [
+        (name, `entry)
+        for (name, `entry) in registry.entries.items()
+        if `entry.status in (ServiceStatus.HEALTHY, ServiceStatus.STARTING)
+            and `entry.url
+    ];
+    docs = await asyncio.gather(
+        *[fetch_service_spec(`entry) for (_, `entry) in candidates],
+        return_exceptions=True
+    );
 
     merged_paths: dict = {};
     merged_schemas: dict = {};
-
-    for (name, entry) in registry.entries.items() {
-        if entry.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
+    for ((name, `entry), doc) in zip(candidates, docs) {
+        if isinstance(doc, BaseException) {
+            _agg_logger.warning(f"openapi aggregate: {name} failed: {doc}");
             continue;
         }
-        if not entry.url {
-            continue;
-        }
-        try {
-            with urllib.request.urlopen(
-                f"{entry.url}/openapi.json", timeout=5.0
-            ) as resp {
-                status_code: int = getattr(resp, "status", 0);
-                if status_code != 200 {
-                    continue;
-                }
-                body: bytes = resp.read();
-                doc: dict = json.loads(body.decode("utf-8"));
-            }
-        } except URLError as e {
-            _agg_logger.warning(f"openapi aggregate: skipping {name}: {e}");
-            continue;
-        } except Exception as e {
-            _agg_logger.warning(f"openapi aggregate: skipping {name}: {e}");
+        if doc is None {
+            _agg_logger.warning(f"openapi aggregate: skipping {name}");
             continue;
         }
 
         paths: dict = doc.get("paths") or {};
-        merged_paths.update(_prefixed_paths(paths, entry.prefix));
+        for (path, op) in _prefixed_paths(paths, `entry.prefix).items() {
+            if path in merged_paths {
+                _agg_logger.warning(
+                    f"openapi aggregate: path collision on {path}; keeping the "
+                    f"first operation seen, dropping {name}'s"
+                );
+                continue;
+            }
+            merged_paths[path] = op;
+        }
 
         comps: dict = doc.get("components") or {};
         schemas: dict = comps.get("schemas") or {};
         for (schema_name, schema_def) in schemas.items() {
-            if schema_name not in merged_schemas {
-                merged_schemas[schema_name] = schema_def;
+            if schema_name in merged_schemas {
+                if merged_schemas[schema_name] != schema_def {
+                    _agg_logger.warning(
+                        f"openapi aggregate: schema collision on {schema_name}; "
+                        f"keeping the first definition, dropping {name}'s"
+                    );
+                }
+                continue;
             }
+            merged_schemas[schema_name] = schema_def;
         }
     }
 

@@ -9,13 +9,21 @@ Example valid filenames:
     1234.feature.md
     5678.bugfix.md
 """
-import from __future__ { annotations }
+
 import re;
 import sys;
 import from pathlib { Path }
 
-glob VALID_CATEGORIES: set[str] = {"feature", "bugfix", "breaking", "refactor", "docs"},
-     PATTERN: re.Pattern[str] = re.compile(r"^\d+\.(feature|bugfix|breaking|refactor|docs)\.md$");
+glob VALID_CATEGORIES: set[str] = {
+         "feature",
+         "bugfix",
+         "breaking",
+         "refactor",
+         "docs"
+     },
+     PATTERN: re.Pattern[str] = re.compile(
+         r"^\d+\.(feature|bugfix|breaking|refactor|docs)\.md$"
+     );
 
 def validate(files: list[str]) -> int {
     failed = False;
@@ -24,11 +32,11 @@ def validate(files: list[str]) -> int {
         if ("unreleased" not in path.parts) {
             continue;
         }
-        if (path.name in ("README.md",) or path.suffix == ".gitkeep") {
+        if (path.name in ("README.md", ) or path.suffix == ".gitkeep") {
             continue;
         }
-        if not PATTERN.match(path.name) {
-            print(
+        if not PATTERN.`match(path.name) {
+            print(  # jac:ignore[no-print]
                 f"ERROR: Invalid fragment filename: {filepath}\n"
                 "       Expected format: <PR_number>.<category>.md\n"
                 f"       Valid categories: {', '.join(sorted(VALID_CATEGORIES))}\n"
@@ -41,5 +49,5 @@ def validate(files: list[str]) -> int {
 }
 
 with entry:__main__ {
-    sys.exit(validate(sys.argv[1:]));
+    sys.`exit(validate(sys.argv[1:]));
 }

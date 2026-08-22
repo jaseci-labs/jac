@@ -6,7 +6,7 @@ import time;
 import threading;
 import from collections { deque }
 import from concurrent.futures { Future }
-import from typing { Callable, Optional }
+import from typing { Optional }
 
 import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
@@ -46,7 +46,7 @@ obj Task {
 }
 
 obj JacLangServer(JacProgram, LanguageServer) {
-    has sem_managers: dict = {},
+    has sem_managers: dict[str, SemTokManager] = {},
         module_manager: ModuleManager | None postinit,
         pipe: deque = deque(maxlen=1),
         dirty_files: dict[str, bool] = {},
@@ -121,6 +121,15 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def get_outline(file_path: str) -> list[lspt.DocumentSymbol];
     def get_definition(
         file_path: str, position: lspt.Position
+    ) -> Optional[lspt.Location];
+
+    def _string_import_definition(
+        file_path: str, position: lspt.Position
+    ) -> Optional[lspt.Location];
+
+    def _module_spec_target(mp: uni.ModulePath) -> Optional[str];
+    def _npm_item_location(
+        from_loc: uni.ModulePath, item_name: str
     ) -> Optional[lspt.Location];
 
     def get_references(file_path: str, position: lspt.Position) -> list[lspt.Location];

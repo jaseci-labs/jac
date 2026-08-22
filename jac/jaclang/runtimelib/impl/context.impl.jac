@@ -1,20 +1,17 @@
 import os;
 import from dataclasses { MISSING }
-import from typing { Callable, cast }
+import from typing { cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { NodeAnchor, Root }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.exceptions { MissingAnchorError }
-import from jaclang.runtimelib.memory { TieredMemory }
+import from jaclang.runtimelib.session { Session }
 
 impl ExecutionContext.postinit -> None {
     import from jaclang.jac0core.runtime { JacRuntime }
     if self._parent is not None {
         self.mem = self._parent.mem;
-        self.system_root = self._parent.system_root;
-        self.user_root = self._parent.user_root;
-        self.entry_node = self._parent.entry_node;
         self.base_path_dir = self._parent.base_path_dir;
         self.full_target_path = self._parent.full_target_path;
         return;
@@ -27,21 +24,53 @@ impl ExecutionContext.postinit -> None {
         self.full_target_path = JacRuntime.get_full_target_path();
     }
 
-    self.mem = TieredMemory(
-        base_path=self.base_path_dir, target_path=self.full_target_path
-    );
+    self.mem = Session(base_path=self.base_path_dir, target_path=self.full_target_path);
+}
 
-    system_root = cast((NodeAnchor | None), self.mem.get(UUID(Con.SUPER_ROOT_UUID)));
 
-    if not isinstance(system_root, NodeAnchor) {
-        system_root = cast(NodeAnchor, Root().__jac__);
-        system_root.id = UUID(Con.SUPER_ROOT_UUID);
-        self.mem.put(system_root);
+impl ExecutionContext.system_root.getter -> NodeAnchor {
+    self._resolve_roots();
+    return cast(NodeAnchor, self._system_root);
+}
+
+impl ExecutionContext.user_root.getter -> NodeAnchor {
+    self._resolve_roots();
+    return cast(NodeAnchor, self._user_root);
+}
+
+impl ExecutionContext.entry_node.getter -> NodeAnchor {
+    self._resolve_roots();
+    return cast(NodeAnchor, self._entry_node);
+}
+
+impl ExecutionContext._resolve_roots -> None {
+    if self._system_root is not None {
+        return;
     }
-    self.system_root = system_root;
-
-    self.user_root = self.system_root;
-    self.entry_node = self.system_root;
+    outer = self._parent;
+    if outer is not None {
+        self._system_root = outer.system_root;
+        self._user_root = outer.user_root;
+        self._entry_node = outer.entry_node;
+        return;
+    }
+    seed = cast(NodeAnchor, Root().__jac__);
+    seed.id = UUID(Con.SUPER_ROOT_UUID);
+    self._system_root = seed;
+    self._user_root = seed;
+    self._entry_node = seed;
+    stored = cast((NodeAnchor | None), self.mem.get(UUID(Con.SUPER_ROOT_UUID)));
+    if not isinstance(stored, NodeAnchor) {
+        self.mem.put(seed);
+        return;
+    }
+    self._system_root = stored;
+    if self._user_root is seed {
+        self._user_root = stored;
+    }
+    if self._entry_node is seed {
+        self._entry_node = stored;
+    }
 }
 
 impl ExecutionContext._get_anchor(anchor_id: str) -> NodeAnchor {
@@ -55,13 +84,15 @@ impl ExecutionContext._get_anchor(anchor_id: str) -> NodeAnchor {
 }
 
 impl ExecutionContext.set_user_root(root_id: str) -> None {
-    self.user_root = self._get_anchor(root_id);
+    self._resolve_roots();
+    self._user_root = self._get_anchor(root_id);
 
-    self.entry_node = self.user_root;
+    self._entry_node = self._user_root;
 }
 
 impl ExecutionContext.set_entry_node(entry_node: (str | None)) -> None {
-    self.entry_node = self._get_anchor(entry_node) if entry_node else self.user_root;
+    self._resolve_roots();
+    self._entry_node = self._get_anchor(entry_node) if entry_node else self.user_root;
 }
 
 impl ExecutionContext.close -> None {
@@ -115,6 +146,7 @@ impl ExecutionContext._aget_anchor(anchor_id: str) -> NodeAnchor {
 }
 
 impl ExecutionContext.aset_user_root(root_id: str) -> None {
-    self.user_root = await self._aget_anchor(root_id);
-    self.entry_node = self.user_root;
+    self._resolve_roots();
+    self._user_root = await self._aget_anchor(root_id);
+    self._entry_node = self._user_root;
 }

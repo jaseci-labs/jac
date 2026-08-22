@@ -1,407 +1,407 @@
 impl ESIntEmitter.emit_bit_length(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("int", "bit_length", [target]);
 }
 
 impl ESIntEmitter.emit_bit_count(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("int", "bit_count", [target]);
 }
 
 impl ESIntEmitter.emit_to_bytes(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("int", "to_bytes", [target] + args);
 }
 
 impl ESIntEmitter.emit_as_integer_ratio(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "[" + target + ", 1]";
 }
 
 impl ESIntEmitter.emit_conjugate(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return target;
 }
 
 impl ESIntEmitter.emit_from_bytes(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("int", "from_bytes", args);
 }
 
 impl ESIntEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "+", args[0]);
 }
 
 impl ESIntEmitter.emit_op_sub(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "-", args[0]);
 }
 
 impl ESIntEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "*", args[0]);
 }
 
 impl ESIntEmitter.emit_op_truediv(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "/", args[0]);
 }
 
 impl ESIntEmitter.emit_op_floordiv(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Math.floor(" + target + " / " + args[0] + ")";
 }
 
 impl ESIntEmitter.emit_op_mod(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("int", "mod", [target, args[0]]);
 }
 
 impl ESIntEmitter.emit_op_pow(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "**", args[0]);
 }
 
 impl ESIntEmitter.emit_op_and(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "&", args[0]);
 }
 
 impl ESIntEmitter.emit_op_or(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "|", args[0]);
 }
 
 impl ESIntEmitter.emit_op_xor(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "^", args[0]);
 }
 
 impl ESIntEmitter.emit_op_lshift(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<<", args[0]);
 }
 
 impl ESIntEmitter.emit_op_rshift(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">>", args[0]);
 }
 
 impl ESIntEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "===", args[0]);
 }
 
 impl ESIntEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "!==", args[0]);
 }
 
 impl ESIntEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<", args[0]);
 }
 
 impl ESIntEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">", args[0]);
 }
 
 impl ESIntEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<=", args[0]);
 }
 
 impl ESIntEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">=", args[0]);
 }
 
 impl ESIntEmitter.emit_op_neg(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "(-" + target + ")";
 }
 
 impl ESIntEmitter.emit_op_pos(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "(+" + target + ")";
 }
 
 impl ESIntEmitter.emit_op_invert(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESIntEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "(~" + target + ")";
 }
 
 impl ESFloatEmitter.emit_is_integer(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Number.isInteger(" + target + ")";
 }
 
 impl ESFloatEmitter.emit_as_integer_ratio(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("float", "as_integer_ratio", [target]);
 }
 
 impl ESFloatEmitter.emit_conjugate(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return target;
 }
 
 impl ESFloatEmitter.emit_hex(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("float", "hex", [target]);
 }
 
 impl ESFloatEmitter.emit_fromhex(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("float", "fromhex", args);
 }
 
 impl ESFloatEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "+", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_sub(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "-", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "*", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_truediv(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "/", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_floordiv(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Math.floor(" + target + " / " + args[0] + ")";
 }
 
 impl ESFloatEmitter.emit_op_mod(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("float", "mod", [target, args[0]]);
 }
 
 impl ESFloatEmitter.emit_op_pow(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "**", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "===", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "!==", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<=", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">=", args[0]);
 }
 
 impl ESFloatEmitter.emit_op_neg(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "(-" + target + ")";
 }
 
 impl ESFloatEmitter.emit_op_pos(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFloatEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "(+" + target + ")";
 }
 
 impl ESComplexEmitter.emit_conjugate(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "conjugate", [target]);
 }
 
 impl ESComplexEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "add", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_sub(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "sub", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "mul", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_truediv(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "truediv", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_pow(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "pow", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "eq", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("complex", "eq", [target, args[0]]);
 }
 
 impl ESComplexEmitter.emit_op_neg(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "neg", [target]);
 }
 
 impl ESComplexEmitter.emit_op_pos(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESComplexEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "pos", [target]);
 }
 
 impl ESBoolEmitter.emit_op_and(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBoolEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Boolean(" + _binop(target, "&", args[0]) + ")";
 }
 
 impl ESBoolEmitter.emit_op_or(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBoolEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Boolean(" + _binop(target, "|", args[0]) + ")";
 }
 
 impl ESBoolEmitter.emit_op_xor(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBoolEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Boolean(" + _binop(target, "^", args[0]) + ")";
 }
 
 impl ESStrEmitter.emit_capitalize(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "capitalize", [target]);
 }
 
 impl ESStrEmitter.emit_casefold(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "toLowerCase", []);
 }
 
 impl ESStrEmitter.emit_lower(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "toLowerCase", []);
 }
 
 impl ESStrEmitter.emit_upper(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "toUpperCase", []);
 }
 
 impl ESStrEmitter.emit_title(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "title", [target]);
 }
 
 impl ESStrEmitter.emit_swapcase(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "swapcase", [target]);
 }
 
 impl ESStrEmitter.emit_count(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "count", [target] + args);
 }
 
 impl ESStrEmitter.emit_find(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) > 1 {
         return _rt("str", "find", [target] + args);
@@ -410,7 +410,7 @@ impl ESStrEmitter.emit_find(
 }
 
 impl ESStrEmitter.emit_rfind(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) > 1 {
         return _rt("str", "rfind", [target] + args);
@@ -419,19 +419,19 @@ impl ESStrEmitter.emit_rfind(
 }
 
 impl ESStrEmitter.emit_index(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "index", [target] + args);
 }
 
 impl ESStrEmitter.emit_rindex(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "rindex", [target] + args);
 }
 
 impl ESStrEmitter.emit_startswith(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
         return _mcall(target, "startsWith", args);
@@ -440,7 +440,7 @@ impl ESStrEmitter.emit_startswith(
 }
 
 impl ESStrEmitter.emit_endswith(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
         return _mcall(target, "endsWith", args);
@@ -449,7 +449,7 @@ impl ESStrEmitter.emit_endswith(
 }
 
 impl ESStrEmitter.emit_replace(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 2 {
         return _mcall(target, "replaceAll", args);
@@ -458,7 +458,7 @@ impl ESStrEmitter.emit_replace(
 }
 
 impl ESStrEmitter.emit_strip(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _mcall(target, "trim", []);
@@ -467,7 +467,7 @@ impl ESStrEmitter.emit_strip(
 }
 
 impl ESStrEmitter.emit_lstrip(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _mcall(target, "trimStart", []);
@@ -476,7 +476,7 @@ impl ESStrEmitter.emit_lstrip(
 }
 
 impl ESStrEmitter.emit_rstrip(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _mcall(target, "trimEnd", []);
@@ -485,19 +485,19 @@ impl ESStrEmitter.emit_rstrip(
 }
 
 impl ESStrEmitter.emit_removeprefix(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "removeprefix", [target] + args);
 }
 
 impl ESStrEmitter.emit_removesuffix(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "removesuffix", [target] + args);
 }
 
 impl ESStrEmitter.emit_split(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _rt("str", "split", [target]);
@@ -509,13 +509,13 @@ impl ESStrEmitter.emit_split(
 }
 
 impl ESStrEmitter.emit_rsplit(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "rsplit", [target] + args);
 }
 
 impl ESStrEmitter.emit_splitlines(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _mcall(target, "split", ["/\\r?\\n/"]);
@@ -524,43 +524,43 @@ impl ESStrEmitter.emit_splitlines(
 }
 
 impl ESStrEmitter.emit_join(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(args[0], "join", [target]);
 }
 
 impl ESStrEmitter.emit_partition(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "partition", [target] + args);
 }
 
 impl ESStrEmitter.emit_rpartition(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "rpartition", [target] + args);
 }
 
 impl ESStrEmitter.emit_format(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "format", [target] + args);
 }
 
 impl ESStrEmitter.emit_format_map(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "format_map", [target] + args);
 }
 
 impl ESStrEmitter.emit_center(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "center", [target] + args);
 }
 
 impl ESStrEmitter.emit_ljust(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
         return _mcall(target, "padEnd", args);
@@ -569,7 +569,7 @@ impl ESStrEmitter.emit_ljust(
 }
 
 impl ESStrEmitter.emit_rjust(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
         return _mcall(target, "padStart", args);
@@ -578,505 +578,525 @@ impl ESStrEmitter.emit_rjust(
 }
 
 impl ESStrEmitter.emit_zfill(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "zfill", [target] + args);
 }
 
 impl ESStrEmitter.emit_expandtabs(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "expandtabs", [target] + args);
 }
 
 impl ESStrEmitter.emit_isalnum(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[a-zA-Z0-9]+$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_isalpha(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[a-zA-Z]+$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_isascii(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[\\x00-\\x7F]*$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_isdecimal(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[0-9]+$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_isdigit(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[0-9]+$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_isidentifier(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_islower(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    return "(" + target + " === " + target + ".toLowerCase() && " + target + " !== " + target + ".toUpperCase())";
+    return "("
+        + target
+        + " === "
+        + target
+        + ".toLowerCase() && "
+        + target
+        + " !== "
+        + target
+        + ".toUpperCase())";
 }
 
 impl ESStrEmitter.emit_isnumeric(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "isnumeric", [target]);
 }
 
 impl ESStrEmitter.emit_isprintable(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^[\\x20-\\x7E]*$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_isspace(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "/^\\s+$/.test(" + target + ")";
 }
 
 impl ESStrEmitter.emit_istitle(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "istitle", [target]);
 }
 
 impl ESStrEmitter.emit_isupper(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    return "(" + target + " === " + target + ".toUpperCase() && " + target + " !== " + target + ".toLowerCase())";
+    return "("
+        + target
+        + " === "
+        + target
+        + ".toUpperCase() && "
+        + target
+        + " !== "
+        + target
+        + ".toLowerCase())";
 }
 
 impl ESStrEmitter.emit_encode(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "new TextEncoder().encode(" + target + ")";
 }
 
 impl ESStrEmitter.emit_translate(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "translate", [target] + args);
 }
 
 impl ESStrEmitter.emit_maketrans(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("str", "maketrans", args);
 }
 
 impl ESStrEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "+", args[0]);
 }
 
 impl ESStrEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "repeat", [args[0]]);
 }
 
 impl ESStrEmitter.emit_op_mod(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("str", "mod", [target, args[0]]);
 }
 
 impl ESStrEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "===", args[0]);
 }
 
 impl ESStrEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "!==", args[0]);
 }
 
 impl ESStrEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<", args[0]);
 }
 
 impl ESStrEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">", args[0]);
 }
 
 impl ESStrEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, "<=", args[0]);
 }
 
 impl ESStrEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(target, ">=", args[0]);
 }
 
 impl ESStrEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESStrEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "includes", [args[0]]);
 }
 
 impl ESBytesEmitter.emit_decode(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    return "new TextDecoder(" + (args[0] if len(args) > 0 else "") + ").decode(" + target + ")";
+    return "new TextDecoder("
+        + (args[0] if len(args) > 0 else "")
+        + ").decode("
+        + target
+        + ")";
 }
 
 impl ESBytesEmitter.emit_hex(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "hex", [target] + args);
 }
 
 impl ESBytesEmitter.emit_fromhex(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "fromhex", args);
 }
 
 impl ESBytesEmitter.emit_count(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "count", [target] + args);
 }
 
 impl ESBytesEmitter.emit_find(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "find", [target] + args);
 }
 
 impl ESBytesEmitter.emit_rfind(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "rfind", [target] + args);
 }
 
 impl ESBytesEmitter.emit_index(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "index", [target] + args);
 }
 
 impl ESBytesEmitter.emit_rindex(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "rindex", [target] + args);
 }
 
 impl ESBytesEmitter.emit_startswith(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "startswith", [target] + args);
 }
 
 impl ESBytesEmitter.emit_endswith(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "endswith", [target] + args);
 }
 
 impl ESBytesEmitter.emit_replace(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "replace", [target] + args);
 }
 
 impl ESBytesEmitter.emit_strip(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "strip", [target] + args);
 }
 
 impl ESBytesEmitter.emit_lstrip(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "lstrip", [target] + args);
 }
 
 impl ESBytesEmitter.emit_rstrip(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "rstrip", [target] + args);
 }
 
 impl ESBytesEmitter.emit_removeprefix(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "removeprefix", [target] + args);
 }
 
 impl ESBytesEmitter.emit_removesuffix(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "removesuffix", [target] + args);
 }
 
 impl ESBytesEmitter.emit_split(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "split", [target] + args);
 }
 
 impl ESBytesEmitter.emit_rsplit(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "rsplit", [target] + args);
 }
 
 impl ESBytesEmitter.emit_splitlines(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "splitlines", [target] + args);
 }
 
 impl ESBytesEmitter.emit_join(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "join", [target] + args);
 }
 
 impl ESBytesEmitter.emit_partition(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "partition", [target] + args);
 }
 
 impl ESBytesEmitter.emit_rpartition(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "rpartition", [target] + args);
 }
 
 impl ESBytesEmitter.emit_capitalize(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "capitalize", [target]);
 }
 
 impl ESBytesEmitter.emit_lower(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "lower", [target]);
 }
 
 impl ESBytesEmitter.emit_upper(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "upper", [target]);
 }
 
 impl ESBytesEmitter.emit_title(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "title", [target]);
 }
 
 impl ESBytesEmitter.emit_swapcase(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "swapcase", [target]);
 }
 
 impl ESBytesEmitter.emit_isalnum(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "isalnum", [target]);
 }
 
 impl ESBytesEmitter.emit_isalpha(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "isalpha", [target]);
 }
 
 impl ESBytesEmitter.emit_isascii(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "isascii", [target]);
 }
 
 impl ESBytesEmitter.emit_isdigit(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "isdigit", [target]);
 }
 
 impl ESBytesEmitter.emit_islower(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "islower", [target]);
 }
 
 impl ESBytesEmitter.emit_isspace(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "isspace", [target]);
 }
 
 impl ESBytesEmitter.emit_istitle(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "istitle", [target]);
 }
 
 impl ESBytesEmitter.emit_isupper(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "isupper", [target]);
 }
 
 impl ESBytesEmitter.emit_center(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "center", [target] + args);
 }
 
 impl ESBytesEmitter.emit_ljust(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "ljust", [target] + args);
 }
 
 impl ESBytesEmitter.emit_rjust(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "rjust", [target] + args);
 }
 
 impl ESBytesEmitter.emit_zfill(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "zfill", [target] + args);
 }
 
 impl ESBytesEmitter.emit_expandtabs(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "expandtabs", [target] + args);
 }
 
 impl ESBytesEmitter.emit_translate(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "translate", [target] + args);
 }
 
 impl ESBytesEmitter.emit_maketrans(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "maketrans", args);
 }
 
 impl ESBytesEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "add", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "mul", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_mod(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "mod", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "eq", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("bytes", "eq", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "lt", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "gt", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "le", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "ge", [target, args[0]]);
 }
 
 impl ESBytesEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESBytesEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "contains", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_append(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "push", args);
 }
 
 impl ESListEmitter.emit_extend(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return target + ".push(..." + args[0] + ")";
 }
 
 impl ESListEmitter.emit_insert(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "splice", [args[0], "0", args[1]]);
 }
 
 impl ESListEmitter.emit_remove(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "remove", [target] + args);
 }
 
 impl ESListEmitter.emit_pop(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _mcall(target, "pop", []);
@@ -1085,25 +1105,25 @@ impl ESListEmitter.emit_pop(
 }
 
 impl ESListEmitter.emit_clear(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return target + ".length = 0";
 }
 
 impl ESListEmitter.emit_index(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "index", [target] + args);
 }
 
 impl ESListEmitter.emit_count(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "count", [target] + args);
 }
 
 impl ESListEmitter.emit_sort(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return _mcall(target, "sort", []);
@@ -1112,606 +1132,621 @@ impl ESListEmitter.emit_sort(
 }
 
 impl ESListEmitter.emit_reverse(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "reverse", []);
 }
 
 impl ESListEmitter.emit_copy(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "[..." + target + "]";
 }
 
 impl ESListEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "[..." + target + ", ..." + args[0] + "]";
 }
 
 impl ESListEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "repeat", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "eq", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("list", "eq", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "lt", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "gt", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "le", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "ge", [target, args[0]]);
 }
 
 impl ESListEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "includes", [args[0]]);
 }
 
 impl ESListEmitter.emit_op_iadd(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return target + ".push(..." + args[0] + ")";
 }
 
 impl ESListEmitter.emit_op_imul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("list", "imul", [target, args[0]]);
 }
 
 impl ESDictEmitter.emit_get(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    if len(args) == 1 {
-        return "(" + target + "[" + args[0] + "] ?? undefined)";
-    }
-    return "(" + target + "[" + args[0] + "] ?? " + args[1] + ")";
+    return _rt("dict", "get", [target] + args);
 }
 
 impl ESDictEmitter.emit_keys(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Object.keys(" + target + ")";
 }
 
 impl ESDictEmitter.emit_values(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Object.values(" + target + ")";
 }
 
 impl ESDictEmitter.emit_items(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Object.entries(" + target + ")";
 }
 
 impl ESDictEmitter.emit_pop(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("dict", "pop", [target] + args);
 }
 
 impl ESDictEmitter.emit_popitem(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("dict", "popitem", [target]);
 }
 
 impl ESDictEmitter.emit_setdefault(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("dict", "setdefault", [target] + args);
 }
 
 impl ESDictEmitter.emit_update(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Object.assign(" + target + ", " + args[0] + ")";
 }
 
 impl ESDictEmitter.emit_clear(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("dict", "clear", [target]);
 }
 
 impl ESDictEmitter.emit_copy(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "{..." + target + "}";
 }
 
 impl ESDictEmitter.emit_fromkeys(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("dict", "fromkeys", args);
 }
 
 impl ESDictEmitter.emit_op_or(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "{..." + target + ", ..." + args[0] + "}";
 }
 
 impl ESDictEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("dict", "eq", [target, args[0]]);
 }
 
 impl ESDictEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("dict", "eq", [target, args[0]]);
 }
 
 impl ESDictEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(args[0], "in", target);
 }
 
 impl ESDictEmitter.emit_op_ior(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESDictEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Object.assign(" + target + ", " + args[0] + ")";
 }
 
 impl ESSetEmitter.emit_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "add", args);
 }
 
 impl ESSetEmitter.emit_remove(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "remove", [target] + args);
 }
 
 impl ESSetEmitter.emit_discard(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "delete", args);
 }
 
 impl ESSetEmitter.emit_pop(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "pop", [target]);
 }
 
 impl ESSetEmitter.emit_clear(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "clear", []);
 }
 
 impl ESSetEmitter.emit_union(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "union", [target] + args);
 }
 
 impl ESSetEmitter.emit_intersection(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "intersection", [target] + args);
 }
 
 impl ESSetEmitter.emit_difference(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "difference", [target] + args);
 }
 
 impl ESSetEmitter.emit_symmetric_difference(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "symmetricDifference", [target] + args);
 }
 
 impl ESSetEmitter.emit_update(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "update", [target] + args);
 }
 
 impl ESSetEmitter.emit_intersection_update(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "intersection_update", [target] + args);
 }
 
 impl ESSetEmitter.emit_difference_update(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "difference_update", [target] + args);
 }
 
 impl ESSetEmitter.emit_symmetric_difference_update(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "symmetric_difference_update", [target] + args);
 }
 
 impl ESSetEmitter.emit_issubset(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSubsetOf", [target] + args);
 }
 
 impl ESSetEmitter.emit_issuperset(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSupersetOf", [target] + args);
 }
 
 impl ESSetEmitter.emit_isdisjoint(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isDisjointFrom", [target] + args);
 }
 
 impl ESSetEmitter.emit_copy(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "new Set(" + target + ")";
 }
 
 impl ESSetEmitter.emit_op_or(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "union", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_and(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "intersection", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_sub(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "difference", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_xor(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "symmetricDifference", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "eq", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("set", "eq", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSubsetOf", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "is_proper_subset", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSupersetOf", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "is_proper_superset", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "has", [args[0]]);
 }
 
 impl ESSetEmitter.emit_op_ior(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "update", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_iand(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "intersection_update", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_isub(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "difference_update", [target, args[0]]);
 }
 
 impl ESSetEmitter.emit_op_ixor(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESSetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "symmetric_difference_update", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_union(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "union", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_intersection(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "intersection", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_difference(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "difference", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_symmetric_difference(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "symmetricDifference", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_issubset(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSubsetOf", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_issuperset(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSupersetOf", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_isdisjoint(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isDisjointFrom", [target] + args);
 }
 
 impl ESFrozensetEmitter.emit_copy(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "new Set(" + target + ")";
 }
 
 impl ESFrozensetEmitter.emit_op_or(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "union", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_and(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "intersection", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_sub(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "difference", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_xor(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "symmetricDifference", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "eq", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("set", "eq", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSubsetOf", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "is_proper_subset", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "isSupersetOf", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("set", "is_proper_superset", [target, args[0]]);
 }
 
 impl ESFrozensetEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESFrozensetEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "has", [args[0]]);
 }
 
 impl ESTupleEmitter.emit_count(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "count", [target] + args);
 }
 
 impl ESTupleEmitter.emit_index(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "index", [target] + args);
 }
 
 impl ESTupleEmitter.emit_op_add(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "[..." + target + ", ..." + args[0] + "]";
 }
 
 impl ESTupleEmitter.emit_op_mul(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "repeat", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "eq", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("tuple", "eq", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_lt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "lt", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_gt(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "gt", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_le(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "le", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_ge(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("tuple", "ge", [target, args[0]]);
 }
 
 impl ESTupleEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESTupleEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "includes", [args[0]]);
 }
 
 impl ESRangeEmitter.emit_count(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("range", "count", [target] + args);
 }
 
 impl ESRangeEmitter.emit_index(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("range", "index", [target] + args);
 }
 
 impl ESRangeEmitter.emit_op_eq(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("range", "eq", [target, args[0]]);
 }
 
 impl ESRangeEmitter.emit_op_ne(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "!" + _rt("range", "eq", [target, args[0]]);
 }
 
 impl ESRangeEmitter.emit_op_contains(
-    self, ctx: ESEmitCtx, target: str, args: list[str]
+    self: ESRangeEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("range", "contains", [target, args[0]]);
 }
 
 impl ESBuiltinEmitter.emit_print(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _fcall("console.log", args);
 }
 
 impl ESBuiltinEmitter.emit_input(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _fcall("prompt", args);
 }
 
-impl ESBuiltinEmitter.emit_len(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
-    return args[0] + ".length";
+impl ESBuiltinEmitter.emit_len(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
+    if not args {
+        return None;
+    }
+
+    arg_type = (ctx.arg_type_names or [""])[0] if ctx.arg_type_names else "";
+    if arg_type == "dict" {
+        return "Object.keys(" + args[0] + ").length";
+    }
+    if arg_type in ("set", "frozenset") {
+        return args[0] + ".size";
+    }
+    if arg_type in ("str", "list", "tuple", "bytes", "bytearray", "range") {
+        return args[0] + ".length";
+    }
+    return _rt("builtin", "len", args);
 }
 
-impl ESBuiltinEmitter.emit_abs(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_abs(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return "Math.abs(" + args[0] + ")";
 }
 
 impl ESBuiltinEmitter.emit_round(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 1 {
         return "Math.round(" + args[0] + ")";
@@ -1719,41 +1754,51 @@ impl ESBuiltinEmitter.emit_round(
     return _rt("builtin", "round", args);
 }
 
-impl ESBuiltinEmitter.emit_min(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_min(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _fcall("Math.min", args);
 }
 
-impl ESBuiltinEmitter.emit_max(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_max(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _fcall("Math.max", args);
 }
 
-impl ESBuiltinEmitter.emit_sum(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_sum(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "sum", args);
 }
 
 impl ESBuiltinEmitter.emit_sorted(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "sorted", args);
 }
 
 impl ESBuiltinEmitter.emit_reversed(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return "[..." + args[0] + "].reverse()";
 }
 
 impl ESBuiltinEmitter.emit_enumerate(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "enumerate", args);
 }
 
-impl ESBuiltinEmitter.emit_zip(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_zip(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "zip", args);
 }
 
-impl ESBuiltinEmitter.emit_map(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_map(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 2 {
         return _one_arg_cb(args[0], args[1], "map", "_f(_v)");
     }
@@ -1761,7 +1806,7 @@ impl ESBuiltinEmitter.emit_map(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 }
 
 impl ESBuiltinEmitter.emit_filter(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 2 {
         return _one_arg_cb(args[0], args[1], "filter", "_f ? _f(_v) : _v");
@@ -1769,16 +1814,20 @@ impl ESBuiltinEmitter.emit_filter(
     return _rt("builtin", "filter", args);
 }
 
-impl ESBuiltinEmitter.emit_any(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_any(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _mcall(args[0], "some", ["Boolean"]);
 }
 
-impl ESBuiltinEmitter.emit_all(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_all(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _mcall(args[0], "every", ["Boolean"]);
 }
 
 impl ESBuiltinEmitter.emit_isinstance(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) != 2 {
         return None;
@@ -1787,7 +1836,7 @@ impl ESBuiltinEmitter.emit_isinstance(
 }
 
 impl ESBuiltinEmitter.emit_issubclass(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) != 2 {
         return None;
@@ -1795,19 +1844,27 @@ impl ESBuiltinEmitter.emit_issubclass(
     return _rt("builtin", "issubclass", args);
 }
 
-impl ESBuiltinEmitter.emit_type(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_type(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return "typeof " + args[0];
 }
 
-impl ESBuiltinEmitter.emit_id(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_id(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "id", args);
 }
 
-impl ESBuiltinEmitter.emit_jid(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_jid(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "jid", args);
 }
 
-impl ESBuiltinEmitter.emit_new(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_new(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "Reflect.construct(undefined, [])";
     }
@@ -1817,40 +1874,56 @@ impl ESBuiltinEmitter.emit_new(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 }
 
 impl ESBuiltinEmitter.emit_unsafe_html(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "unsafe_html", args);
 }
 
-impl ESBuiltinEmitter.emit_hash(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_hash(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "hash", args);
 }
 
-impl ESBuiltinEmitter.emit_repr(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_repr(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "repr", args);
 }
 
-impl ESBuiltinEmitter.emit_chr(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_chr(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return "String.fromCodePoint(" + args[0] + ")";
 }
 
-impl ESBuiltinEmitter.emit_ord(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_ord(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return args[0] + ".codePointAt(0)";
 }
 
-impl ESBuiltinEmitter.emit_hex(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_hex(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return "'0x' + (" + args[0] + ").toString(16)";
 }
 
-impl ESBuiltinEmitter.emit_oct(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_oct(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return "'0o' + (" + args[0] + ").toString(8)";
 }
 
-impl ESBuiltinEmitter.emit_bin(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_bin(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return "'0b' + (" + args[0] + ").toString(2)";
 }
 
-impl ESBuiltinEmitter.emit_pow(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_pow(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 2 {
         return args[0] + " ** " + args[1];
     }
@@ -1858,29 +1931,39 @@ impl ESBuiltinEmitter.emit_pow(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 }
 
 impl ESBuiltinEmitter.emit_divmod(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    return "[Math.floor(" + args[0] + " / " + args[1] + "), " + args[0] + " % " + args[
-        1
-    ] + "]";
+    return "[Math.floor("
+        + args[0]
+        + " / "
+        + args[1]
+        + "), "
+        + args[0]
+        + " % "
+        + args[1]
+        + "]";
 }
 
-impl ESBuiltinEmitter.emit_iter(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_iter(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return args[0] + "[Symbol.iterator]()";
 }
 
-impl ESBuiltinEmitter.emit_next(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_next(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "next", args);
 }
 
 impl ESBuiltinEmitter.emit_callable(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return "typeof " + args[0] + " === 'function'";
 }
 
 impl ESBuiltinEmitter.emit_getattr(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 2 {
         return args[0] + "[" + args[1] + "]";
@@ -1889,77 +1972,88 @@ impl ESBuiltinEmitter.emit_getattr(
 }
 
 impl ESBuiltinEmitter.emit_setattr(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return args[0] + "[" + args[1] + "] = " + args[2];
 }
 
 impl ESBuiltinEmitter.emit_hasattr(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return args[1] + " in " + args[0];
 }
 
 impl ESBuiltinEmitter.emit_delattr(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return "delete " + args[0] + "[" + args[1] + "]";
 }
 
-impl ESBuiltinEmitter.emit_vars(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_vars(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "vars", args);
 }
 
-impl ESBuiltinEmitter.emit_dir(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_dir(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return _rt("builtin", "dir", []);
     }
     return "Object.getOwnPropertyNames(" + args[0] + ")";
 }
 
-impl ESBuiltinEmitter.emit_open(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_open(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "open", args);
 }
 
 impl ESBuiltinEmitter.emit_format(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "format", args);
 }
 
 impl ESBuiltinEmitter.emit_ascii(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "ascii", args);
 }
 
-impl ESBuiltinEmitter.emit_str(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_str(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return '""';
     }
     return "String(" + args[0] + ")";
 }
 
-impl ESBuiltinEmitter.emit_int(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_int(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "0";
     }
-    if len(args) == 1 {
-        return "Math.trunc(Number(" + args[0] + "))";
-    }
-    return "parseInt(" + args[0] + ", " + args[1] + ")";
+
+    return _rt("builtin", "int", args);
 }
 
 impl ESBuiltinEmitter.emit_float(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return "0.0";
     }
-    return "parseFloat(" + args[0] + ")";
+
+    return _rt("builtin", "float", args);
 }
 
-impl ESBuiltinEmitter.emit_bool(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_bool(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "false";
     }
@@ -1967,29 +2061,37 @@ impl ESBuiltinEmitter.emit_bool(self, ctx: ESEmitCtx, args: list[str]) -> (str |
     return _rt("builtin", "bool", args);
 }
 
-impl ESBuiltinEmitter.emit_list(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_list(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "[]";
     }
-    return "Array.from(" + args[0] + ")";
+
+    return "Array.from(" + _rt("builtin", "iter", args) + ")";
 }
 
-impl ESBuiltinEmitter.emit_dict(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_dict(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "{}";
     }
-    return "Object.fromEntries(" + args[0] + ")";
+
+    return _rt("builtin", "dict", args);
 }
 
-impl ESBuiltinEmitter.emit_set(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_set(
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "new Set()";
     }
-    return "new Set(" + args[0] + ")";
+    return "new Set(" + _rt("builtin", "iter", args) + ")";
 }
 
 impl ESBuiltinEmitter.emit_tuple(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return "Object.freeze([])";
@@ -1998,7 +2100,7 @@ impl ESBuiltinEmitter.emit_tuple(
 }
 
 impl ESBuiltinEmitter.emit_frozenset(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return "Object.freeze(new Set())";
@@ -2007,7 +2109,7 @@ impl ESBuiltinEmitter.emit_frozenset(
 }
 
 impl ESBuiltinEmitter.emit_bytes(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return "new Uint8Array()";
@@ -2016,25 +2118,25 @@ impl ESBuiltinEmitter.emit_bytes(
 }
 
 impl ESBuiltinEmitter.emit_complex(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "complex", args);
 }
 
 impl ESBuiltinEmitter.emit_range(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "range", args);
 }
 
 impl ESBuiltinEmitter.emit_slice(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     return _rt("builtin", "slice", args);
 }
 
 impl ESBuiltinEmitter.emit_bytearray(
-    self, ctx: ESEmitCtx, args: list[str]
+    self: ESBuiltinEmitter, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
     if len(args) == 0 {
         return "new Uint8Array()";

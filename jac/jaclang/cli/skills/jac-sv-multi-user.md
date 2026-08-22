@@ -1,6 +1,6 @@
 ---
 name: jac-sv-multi-user
-description: Multi-user data sharing - cross-user permission grants (ReadPerm/ConnectPerm/WritePerm, everyone or one specific user), the shared root / public feed pattern (root.shared), per-user grants with allow_root, roles, scanning every user's root (allroots). Load when logged-in users need to see or act on each other's data, or when tempted to fake "shared" data with a def:pub global graph. Pair with `jac-sv-auth`, `jac-node-edge-patterns`.
+description: Multi-user data sharing - cross-user permission grants (the ambient AccessLevel enum, everyone or one specific user), the shared root / public feed pattern (root.shared), archetype-wide access policy (__jac_access__), per-user grants with allow_root, roles, scanning every user's root (allroots). Load when logged-in users need to see or act on each other's data, or when tempted to fake "shared" data with a def:pub global graph. Pair with `jac-sv-auth`, `jac-node-edge-patterns`.
 ---
 
 Authenticated endpoints give every user an isolated subgraph hung off *their* `root` (see `jac-sv-auth`). Cross-user features punch through that isolation three ways:
@@ -8,6 +8,7 @@ Authenticated endpoints give every user an isolated subgraph hung off *their* `r
 1. **`grant(node, level)`** - open ONE node to **every** logged-in user. `revoke(node)` undoes it. Ambient builtins, no import.
 2. **`Jac.allow_root(node, root_id, level)`** - open one node to **one specific user**. `Jac.disallow_root(node, root_id)` undoes it. Needs an import (below).
 3. **`root.shared`** - the deployment's public commons graph; write public data there directly.
+4. **`def __jac_access__`** on a node/edge - open **every instance of the archetype** at a fixed level; for app-owned public structure (below).
 
 Plus **`allroots()`** (ambient) - enumerate every user's `root` (`list[Root]`) for admin/fan-out scans.
 
@@ -21,7 +22,7 @@ edge Posted {}
 def post_tweet(content: str) -> str {
     prof = [root --> [?:Profile]][0];
     t = prof +>:Posted:+> Tweet(content=content);
-    grant(t, level=WritePerm);   # likes/comments MUTATE tweet fields -> WritePerm
+    grant(t, level=AccessLevel.WRITE);   # likes/comments MUTATE tweet fields -> WRITE
     return t.content;
 }
 
@@ -44,11 +45,11 @@ def global_feed() -> list[dict] {
 
 ## Access levels
 
-`grant`/`allow_root` take an ambient level constant (or its int). Higher includes lower: `NoPerm` (explicit deny) < `ReadPerm` (read fields, traverse in) < `ConnectPerm` (+ attach edges) < `WritePerm` (+ mutate fields). Omitted level defaults to `ReadPerm`; pass it explicitly and pick the least that works.
+`grant`/`allow_root` take a member of the ambient `AccessLevel` enum (no import). Higher includes lower: `AccessLevel.NO_ACCESS` (explicit deny) < `AccessLevel.READ` (read fields, traverse in) < `AccessLevel.CONNECT` (+ attach edges) < `AccessLevel.WRITE` (+ mutate fields). Omitted level defaults to `AccessLevel.READ`; pass it explicitly and pick the least that works.
 
-**Pick the level by what the interaction does to the target.** Edge-attach interactions (follow a Profile, join a Channel) need only `ConnectPerm`. Interactions that MUTATE FIELDS on the target need `WritePerm`: littleX stores likes/comments as fields ON the tweet (`here.likes`, `here.comments`), so Tweets get `WritePerm` while Profiles and Channels get `ConnectPerm`.
+**Pick the level by what the interaction does to the target.** Edge-attach interactions (follow a Profile, join a Channel) need only `AccessLevel.CONNECT`. Interactions that MUTATE FIELDS on the target need `AccessLevel.WRITE`: littleX stores likes/comments as fields ON the tweet (`here.likes`, `here.comments`), so Tweets get `AccessLevel.WRITE` while Profiles and Channels get `AccessLevel.CONNECT`.
 
-**Vocabulary mapping:** the Scale reference spells these `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` with levels `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` - same machinery as the ambient `grant` / `revoke` + `NoPerm`..`WritePerm` names used here.
+The Scale reference's `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` take the same `AccessLevel` members. (The former ambient constants `NoPerm`/`ReadPerm`/`ConnectPerm`/`WritePerm` were removed - if you see them in older snippets, they map 1:1 onto the enum members.)
 
 ## Per-user grants: allow_root
 
@@ -61,7 +62,7 @@ import from uuid { UUID }
 def share_with(tweet_id: str, target_root: str) {
     for t in [root -->][?:Tweet] {
         if jid(t) == tweet_id {
-            Jac.allow_root(t, UUID(target_root), ReadPerm);  # jac:ignore[E1053]
+            Jac.allow_root(t, UUID(target_root), AccessLevel.READ);  # jac:ignore[E1053]
             # Jac.disallow_root(t, UUID(target_root));       # revoke that one user
         }
     }
@@ -77,7 +78,7 @@ Every served deployment has one public graph besides the per-user roots: the gue
 ```jac
 def publish(text: str) {                     # authenticated author, public post
     fresh = root.shared ++> Tweet(content=text);
-    grant(fresh, level=ReadPerm);            # author still owns it; open it to readers
+    grant(fresh, level=AccessLevel.READ);    # author still owns it; open it to readers
 }
 
 def:pub read_feed() -> list[str] {           # works anonymous or logged-in
@@ -86,10 +87,35 @@ def:pub read_feed() -> list[str] {           # works anonymous or logged-in
 ```
 
 - One traversal regardless of user count - the better public-feed pattern vs the O(N-users) `allroots()` scan above.
-- **Floor: `ConnectPerm`.** Every user (authenticated or anonymous) can read it and attach nodes without an arming grant. Nodes you hang there stay *owned by you* and closed until you `grant` them.
-- **Container/leaf pairing** (the guestbook's shape, `root.shared → Day(date) → Visitor`): grant the *container* `ConnectPerm` so strangers can attach under it, and each *leaf* `ReadPerm` so everyone reads it but only the author's walkers mutate it.
-- **Lockdown:** `grant(root.shared, level=ReadPerm)` (from an anonymous/system context) makes the commons read-only; any explicit level except `NoPerm` is respected.
+- **Floor: `AccessLevel.CONNECT`.** Every user (authenticated or anonymous) can read it and attach nodes without an arming grant. Nodes you hang there stay *owned by you* and closed until you `grant` them.
+- **Container/leaf pairing** (the guestbook's shape, `root.shared → Day(date) → Visitor`): grant the *container* `AccessLevel.CONNECT` so strangers can attach under it, and each *leaf* `AccessLevel.READ` so everyone reads it but only the author's walkers mutate it.
+- **Lockdown:** `grant(root.shared, level=AccessLevel.READ)` (from an anonymous/system context) makes the commons read-only; any explicit level except `AccessLevel.NO_ACCESS` is respected.
 - Outside a server (`jac run`, scripts, tests) there are no separate users: `jid(root.shared) == jid(root)`.
+
+## Archetype-wide policy: `__jac_access__`
+
+When openness is an invariant of the TYPE - a machine-generated cache on `root.shared`, commons state any request may rebuild - a per-creation-site `grant()` is fragile (one missed call, and it only surfaces when a SECOND user hits that path). Declare the policy once on the archetype:
+
+```jac
+node PublicNode {
+    def __jac_access__ -> AccessLevel {
+        return AccessLevel.WRITE;    # every instance opens WRITE to every user
+    }
+}
+edge PublicEdge {
+    def __jac_access__ -> AccessLevel {
+        return AccessLevel.WRITE;
+    }
+}
+
+node DocPage(PublicNode) {}    # subtypes inherit the policy
+edge Contains(PublicEdge) {}
+```
+
+- Consulted for every non-owner access, BEFORE stored grants: a returned level is final; return `None` (with return type `-> AccessLevel | None`) to fall through to grant checking, enabling conditional policies like `return AccessLevel.READ if self.published else None;`.
+- Return `AccessLevel` members (ambient, no import). Strings (`"WRITE"`) and ints are accepted but a typo'd string is a runtime `KeyError` on the first cross-user request - never hand-write them.
+- Owner and system root always have `WRITE`; the hook cannot lock the author out.
+- Decision rule: user-owned contributions -> `grant` at creation (owner decides per instance); app-owned public structure -> `__jac_access__` (author decides per archetype).
 
 ## Roles
 

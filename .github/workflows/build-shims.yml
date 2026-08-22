@@ -1,0 +1,178 @@
+name: Build LLVMPY shim assets
+
+# Prebuilds the target-pinned LLVMPY_* shim (jac/native statically linked
+# against the pinned LLVM slice) for every release platform and attaches it to
+# the rolling `deps` prerelease, named by the hash of its complete input set:
+#
+#   libjacllvm-<platform>-<hashFiles(jac/native/**, jac/build.zig,
+#                                    jac/bootstrap/pins.json)>.<so|dylib>
+#
+# build-binaries.yml's release channel fetches the matching asset instead of
+# range-fetching the ~0.5 GB LLVM slice and re-linking the shim cold on every
+# release (the single most expensive step of a release build). Content
+# addressing keeps the trust story intact: a key hit means "built from exactly
+# these inputs", assets are only ever written by main-push runs of this
+# workflow (or a release build self-seeding after its own cold build), each
+# asset ships a sha256 sidecar for transport integrity, and the release build
+# still floor-verifies whatever shim it ends up bundling.
+#
+# The dev channel is untouched: it builds host-native shims and reuses the
+# native-ABI Actions cache (`jac-shim-*`), which the release channel cannot
+# share because these assets are cross-targeted at the glibc 2.17 / macOS 12.0
+# floors.
+
+on:
+  push:
+    branches: [main]
+    # The shim's complete input set: a push touching none of these cannot
+    # change the asset key, so skip the run entirely.
+    paths:
+      - jac/native/**
+      - jac/build.zig
+      - jac/bootstrap/pins.json
+      - .github/workflows/build-shims.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Mirrors build-binaries.yml's release-channel matrix: same runners,
+        # same zig_target floors (macOS-ARM is host-native there too).
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            zig_target: x86_64-linux-gnu.2.17
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            zig_target: aarch64-linux-gnu.2.17
+          - os: macos-14
+            platform: macos-aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
+            zig_target: x86_64-macos.12.0
+    runs-on: ${{ matrix.os }}
+    env:
+      DTARGET: ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
+    steps:
+      # SHA-pinned: this job holds contents:write and publishes artifacts that
+      # release builds bundle into user-downloaded binaries.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # The asset key is the shim input hash; a re-run (or a dispatch on an
+      # unchanged tree) whose asset already exists has nothing to do.
+      - name: Compute asset name; skip if already published
+        id: asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+        run: |
+          set -euo pipefail
+          EXT=so
+          [ "$RUNNER_OS" = "macOS" ] && EXT=dylib
+          ASSET="libjacllvm-${{ matrix.platform }}-${SHIM_KEY}.${EXT}"
+          echo "name=$ASSET" >> "$GITHUB_OUTPUT"
+          if gh release view deps --repo "$GITHUB_REPOSITORY" --json assets \
+               --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; then
+            echo "Asset $ASSET already published; nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same key as setup-jac / build-binaries so all workflows share one LLVM
+      # tree per os/arch (the pinned slice is target-derived from (os, arch),
+      # so the host-keyed entry serves the cross-floor build too).
+      - name: Restore cached LLVM
+        if: steps.asset.outputs.exists != 'true'
+        id: llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+
+      # Same key as setup-jac / build-binaries: one shared entry per os/arch.
+      - name: Cache the Zig package store
+        if: steps.asset.outputs.exists != 'true'
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache/p
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          restore-keys: |
+            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Set up Zig 0.16.0
+        if: steps.asset.outputs.exists != 'true'
+        # SHA-pinned: same shipping-artifacts rationale as the checkout.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Fetch LLVM
+        if: steps.asset.outputs.exists != 'true' && steps.llvm-cache.outputs.cache-hit != 'true'
+        working-directory: jac
+        run: zig build fetch-llvm $DTARGET --summary all
+
+      - name: Build the shim
+        if: steps.asset.outputs.exists != 'true'
+        working-directory: jac
+        run: zig build jacllvm $DTARGET --summary all
+
+      # Hold the artifact to the same floors build-binaries enforces on release
+      # binaries, BEFORE it is published -- a floor regression must fail here,
+      # not at the next release. macOS-ARM is host-native (no pinned floor).
+      - name: Verify glibc floor
+        if: steps.asset.outputs.exists != 'true' && runner.os == 'Linux'
+        working-directory: jac
+        env:
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euxo pipefail
+          FLOOR="${ZIG_TARGET##*gnu.}"
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.so"
+          hi="$(objdump -T "$SHIM" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1 || true)"
+          : "${hi:=0}"
+          echo "$SHIM -> max GLIBC_$hi (floor $FLOOR)"
+          if [ "$(printf '%s\n%s\n' "$FLOOR" "$hi" | sort -V | tail -1)" != "$FLOOR" ]; then
+            echo "::error::$SHIM requires GLIBC_$hi (> $FLOOR)"; exit 1
+          fi
+
+      - name: Verify macOS floor
+        if: steps.asset.outputs.exists != 'true' && runner.os == 'macOS' && matrix.zig_target
+        working-directory: jac
+        env:
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euxo pipefail
+          FLOOR="${ZIG_TARGET##*macos.}"
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.dylib"
+          minos="$(otool -l "$SHIM" | awk '/minos/ {print $2; exit}')"
+          echo "$SHIM -> minos $minos (floor $FLOOR)"
+          if [ "$(printf '%s\n%s\n' "$FLOOR" "$minos" | sort -V | tail -1)" != "$FLOOR" ]; then
+            echo "::error::$SHIM requires macOS $minos (> $FLOOR)"; exit 1
+          fi
+          if otool -L "$SHIM" | grep -E "/opt/homebrew|/usr/local"; then
+            echo "::error::$SHIM links Homebrew dylibs; the from-source slice must not."; exit 1
+          fi
+
+      - name: Publish to the deps prerelease
+        if: steps.asset.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSET="${{ steps.asset.outputs.name }}"
+          mkdir -p dist
+          cp jac/jaclang/compiler/passes/native/llvm/libjacllvm.* "dist/$ASSET"
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          gh release create deps --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "Prebuilt build dependencies (rolling)" \
+            --notes "Content-addressed prebuilt build artifacts (LLVMPY shims). Consumed by build-binaries.yml; not for direct download." \
+            2>/dev/null || true
+          gh release upload deps --repo "$GITHUB_REPOSITORY" \
+            "dist/$ASSET" "dist/$ASSET.sha256" --clobber

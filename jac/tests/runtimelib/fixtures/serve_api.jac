@@ -1,29 +1,29 @@
 """Example Jac program for REST API server."""
 
-cl import from "@jac/runtime" { renderJsxTree, }
+import from "@jac/runtime" { renderJsxTree, }
 
 # Define some nodes
 node Task {
-    has title: str;
-    has completed: bool = False;
-    has priority: int = 0;
+    has title: str,
+        completed: bool = False,
+        priority: int = 0;
 }
 
 node User {
-    has name: str;
-    has email: str;
+    has name: str,
+        email: str;
 }
 
 # Define a walker to create tasks
 walker CreateTask {
-    has title: str;
-    has priority: int = 1;
+    has title: str,
+        priority: int = 1;
 
     can create with Root entry {
         task = here ++> Task(title=self.title, priority=self.priority);
         if task {
             print("Created task: " + task.title);
-            report task ;
+            report task;
         }
         root spawn CompleteTask(title=self.title);
     }
@@ -51,6 +51,7 @@ walker ListCompletedTasks {
     can collect with Root entry {
         visit [-->];
     }
+
     can gather with Task entry {
         if here.completed {
             self.completed_tasks += [here];
@@ -86,20 +87,21 @@ def add_numbers(a: int, b: int) -> int {
     return a + b;
 }
 
-"""Function to generate a greeting message."""
-def greet(name: str = "World") -> str {
+"""Function to generate a greeting message.
+
+`def:pub` because `client_page` below calls it: only an endpoint bridges over
+RPC, and a plain `def` would leave the client bundle naming a function it
+never binds.
+"""
+def:pub greet(name: str = "World") -> str {
     return "Hello, " + name + "!";
 }
 
-cl glob WELCOME_TITLE: str = "Runtime Test";
+glob WELCOME_TITLE: str = "Runtime Test";
 
-cl def:pub client_page() -> JsxElement {
-    return <section class="welcome">
-        <h1>
-            {WELCOME_TITLE}
-        </h1>
-        <p>
-            {greet()}
-        </p>
-    </section>;
+def:pub client_page -> JsxElement {
+    <section class="welcome">
+        <h1>{WELCOME_TITLE}</h1>
+        <p>{greet()}</p>
+    </section>
 }

@@ -11,13 +11,13 @@ remains a visible tracker.
 """
 
 import os;
-import pytest;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compiler { run_pass }
 
 glob SLOT_EXT = os.path.join(
          JAC_ROOT,
@@ -37,7 +37,7 @@ def compile_to_esast(filename: str) -> es.Program {
     assert not prog.errors_had , (
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
-    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    es_pass = run_pass(EsastGenPass, ir, prog);
     return es_pass.ir_out.gen.es_ast;
 }
 
@@ -45,7 +45,7 @@ test "rec 7: Ref[T] field declared with has lowers to useRef(null) in client con
     # Ambient `Ref[T]` type -- `has buttonRef: Ref[HTMLButtonElement];`
     # in client context lowers to `useRef(null)`, mirroring how `has x:
     # int = 0;` lowers to `useState(0)`.
-    es_ast = compile_to_esast("has_ref.cl.jac");
+    es_ast = compile_to_esast("has_ref.jac");
     js_code = es_to_js(es_ast);
 
     assert "useRef(null)" in js_code , (
@@ -57,14 +57,15 @@ test "rec 7: Ref[T] field declared with has lowers to useRef(null) in client con
         r'import\s*\{[^}]*\buseRef\b[^}]*\}\s*from\s*[\'"]react[\'"]', js_code
     ) , (
         "useRef should be auto-imported from react when a Ref-typed "
-        "has-field is present:\n" + js_code
+        "has-field is present:\n"
+        + js_code
     );
 }
 
 test "value ref: Ref(initial) lowers to useRef(initial)" {
     # The second useRef shape -- `has n: Ref[int] = Ref(0);` seeds
     # `.current` and lowers to `useRef(0)`, not `useState`.
-    js_code = es_to_js(compile_to_esast("has_ref_value.cl.jac"));
+    js_code = es_to_js(compile_to_esast("has_ref_value.jac"));
     assert "useRef(0)" in js_code , (
         "`= Ref(0)` should lower to useRef(0):\n" + js_code
     );
@@ -76,10 +77,10 @@ test "value ref: Ref(initial) lowers to useRef(initial)" {
 test "bare Ref field without a Ref() construction is rejected (E2025)" {
     # `has r: Ref[T];` with no `= Ref()` has no ref object to hold. The
     # es-codegen pass detects the bare annotation and emits E2025.
-    path = os.path.join(SLOT_EXT, "has_ref_bare.cl.jac");
+    path = os.path.join(SLOT_EXT, "has_ref_bare.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=path, no_cgen=True);
-    EsastGenPass(ir_in=ir, prog=prog);
+    run_pass(EsastGenPass, ir, prog);
     codes = [
         e.code.code
         for e in prog.errors_had

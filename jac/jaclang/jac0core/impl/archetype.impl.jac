@@ -2,7 +2,7 @@ impl Access.check(anchor: str) -> (AccessLevel | None) {
     return self.anchors.get(anchor);
 }
 
-impl PermissionDenied.to_dict -> dict[(str, Any)] {
+impl PermissionDenied.to_dict -> dict[(str, any)] {
     return {
         "operation": self.operation,
         "target_id": self.target_id,
@@ -23,92 +23,6 @@ impl PermissionDenied.message -> str {
         f"Hint: at the owner-side call `grant(node, level={self.required.name})`, "
         f"or expose an ability on the target node and route writes through it."
     );
-}
-
-impl ObjectSpatialDestination.edge_filter(arch: Archetype) -> bool {
-    return (not self.edge or self.edge(arch));
-}
-
-impl ObjectSpatialDestination.node_filter(arch: Archetype) -> bool {
-    return (not self.nd or self.nd(arch));
-}
-
-impl ObjectSpatialPath.init(
-    origin: (NodeArchetype | list[NodeArchetype]),
-    destinations: (list[ObjectSpatialDestination] | None) = None
-) -> None {
-    if not isinstance(origin, `list) {
-        origin = [origin];
-    }
-    self.origin = origin;
-    self.destinations = [] if (destinations is None) else destinations;
-    self.edge_only = False;
-    self.from_visit = False;
-}
-
-impl ObjectSpatialPath.convert(
-    filter: ObjectSpatialFilter
-) -> (Callable[([Archetype], bool)] | None) {
-    if not filter {
-        return None;
-    }
-    if callable(filter) {
-        return filter;
-    } elif isinstance(filter, `list) {
-        return lambda (i: any) { i in filter; };
-    }
-    return lambda (i: any) { i == filter; };
-}
-
-impl ObjectSpatialPath.append(
-    direction: EdgeDir, `edge: ObjectSpatialFilter, nd: ObjectSpatialFilter
-) -> ObjectSpatialPath {
-    self.destinations.append(
-        ObjectSpatialDestination(direction, self.convert(`edge), self.convert(nd))
-    );
-    return self;
-}
-
-impl ObjectSpatialPath.edge_out(
-    `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-) -> ObjectSpatialPath {
-    return self.append(EdgeDir.OUT, `edge, nd);
-}
-
-impl ObjectSpatialPath.edge_in(
-    `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-) -> ObjectSpatialPath {
-    return self.append(EdgeDir.IN, `edge, nd);
-}
-
-impl ObjectSpatialPath.edge_any(
-    `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-) -> ObjectSpatialPath {
-    return self.append(EdgeDir.ANY, `edge, nd);
-}
-
-impl ObjectSpatialPath.repr_builder(
-    repr_str: str, dest: ObjectSpatialDestination, mark: str
-) -> str {
-    repr_str += mark;
-    repr_str += f" (edge{' filter' if dest.edge else ''}) ";
-    repr_str += mark;
-    repr_str += f" (node{' filter' if dest.nd else ''}) ";
-    return repr_str;
-}
-
-impl ObjectSpatialPath.__repr__ -> str {
-    repr_str = 'nodes ';
-    for dest in self.destinations {
-        if (dest.direction == EdgeDir.IN) {
-            repr_str = self.repr_builder(repr_str, dest, '<<');
-        } elif (dest.direction == EdgeDir.OUT) {
-            repr_str = self.repr_builder(repr_str, dest, '>>');
-        } else {
-            repr_str = self.repr_builder(repr_str, dest, '--');
-        }
-    }
-    return repr_str.strip();
 }
 
 impl Anchor.is_populated -> bool {
@@ -148,7 +62,7 @@ impl Anchor.__getattr__(name: str) -> object {
     );
 }
 
-impl Anchor.__getstate__ -> dict[(str, Any)] {
+impl Anchor.__getstate__ -> dict[(str, any)] {
     if self.is_populated() {
         unlinked = object.__new__(self.archetype.__class__);
         unlinked.__dict__.update(self.archetype.__dict__);
@@ -165,7 +79,7 @@ impl Anchor.__getstate__ -> dict[(str, Any)] {
     }
 }
 
-impl Anchor.__setstate__(state: dict[(str, Any)]) -> None {
+impl Anchor.__setstate__(state: dict[(str, any)]) -> None {
     self.__dict__.update(state);
     if (self.is_populated() and self.archetype) {
         self.archetype.__jac__ = self;
@@ -228,9 +142,6 @@ impl NodeAnchor.__getstate__ -> dict[(str, object)] {
     state = super.__getstate__();
     if self.is_populated() {
         state['edges'] = [`edge.make_stub() for `edge in self.edges];
-        if self.topology_index_data is not None {
-            state['topology_index_data'] = self.topology_index_data;
-        }
     }
     return state;
 }
@@ -243,18 +154,6 @@ impl NodeAnchor.edge_delta -> (tuple[(set[UUID], set[UUID])] | None) {
     initial: set[UUID] = set(initial_fs);
     current: set[UUID] = set(e.id for e in self.edges);
     return (current - initial, initial - current);
-}
-
-impl NodeAnchor.get_topology_index -> any {
-    import from jaclang.runtimelib.topology_index { TopologyIndex }
-    if self.topology_index_data {
-        return TopologyIndex.decode(self.topology_index_data);
-    }
-    return TopologyIndex();
-}
-
-impl NodeAnchor.set_topology_index(index: any) -> None {
-    self.topology_index_data = index.encode();
 }
 
 impl EdgeAnchor.__getstate__ -> dict[(str, object)] {
@@ -283,6 +182,14 @@ impl NodeAnchor.remove_edge(`edge: EdgeAnchor) -> None {
 impl EdgeAnchor.detach -> None {
     self.source.remove_edge(self);
     self.target.remove_edge(self);
+    import from jaclang.jac0core.osp_graph_sv { sv_forget_edge }
+    sv_forget_edge(self);
+
+    import from jaclang.jac0core.runtime { JacRuntime }
+    ctx = JacRuntime.exec_ctx;
+    if ctx is not None {
+        ctx.mem.delete(self.id);
+    }
 }
 
 @cached_property
@@ -305,7 +212,70 @@ impl Archetype.__init_subclass__(cls: any, **kwargs: object) -> None {
     }
 }
 
+impl Archetype._subclass_tree -> list[type] {
+    found: list[type] = [];
+    seen: set[type] = set();
+    pending: list[type] = list(Archetype.__subclasses__());
+    while pending {
+        cls = pending.pop();
+        if cls in seen {
+            continue;
+        }
+        seen.add(cls);
+        pending.extend(cls.__subclasses__());
+        if not cls.__dict__.get('__jac_base__', False) {
+            found.append(cls);
+        }
+    }
+    return found;
+}
+
+impl Archetype.install_subclass_hook(hook: Callable[[type], None]) -> None {
+    with _subclass_hook_lock {
+        if `any(installed is hook for installed in Archetype._subclass_hooks) {
+            return;
+        }
+        Archetype._subclass_hooks = Archetype._subclass_hooks + (hook, );
+    }
+    for cls in Archetype._subclass_tree() {
+        try {
+            hook(cls);
+        } except Exception as e {
+            logger.warning(
+                f"archetype subclass hook back-fill failed for "
+                f"{cls.__module__}.{cls.__name__}: {e}"
+            );
+        }
+    }
+}
+
+impl Archetype.uninstall_subclass_hook(hook: Callable[[type], None]) -> None {
+    with _subclass_hook_lock {
+        Archetype._subclass_hooks = tuple(
+            installed
+            for installed in Archetype._subclass_hooks
+            if installed is not hook
+        );
+    }
+}
+
 impl Archetype.postinit -> None { }
+
+impl Archetype.__setattr__(name: str, value: any) -> None {
+    object.__setattr__(self, name, value);
+    an = self.__dict__.get('__jac__');
+    if an is None or not an.persistent {
+        return;
+    }
+    import from jaclang.jac0core.runtime { JacRuntime }
+    ctx = JacRuntime.exec_ctx;
+    if ctx is not None {
+        md = ctx.mem?.mark_dirty;
+        if md is not None {
+            md(an);
+        }
+    }
+}
 
 impl Archetype.__repr__ -> str {
     return f"{self.__class__.__name__}";

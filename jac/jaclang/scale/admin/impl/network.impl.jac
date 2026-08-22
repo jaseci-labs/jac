@@ -1,8 +1,8 @@
 import asyncio;
 import logging;
-import from fastapi { Request }
-import from fastapi.responses { JSONResponse }
-import from jaclang.scale.jserver.jserver { HTTPMethod, JEndPoint }
+import from jaclang.runtimelib.serving.datatypes { Request }
+import from jaclang.runtimelib.serving.datatypes { JSONResponse }
+import from jaclang.runtimelib.serving.endpoint { HTTPMethod, JEndPoint }
 import from jaclang.scale.admin.k8s_ops {
     core_api,
     networking_api,
@@ -84,8 +84,8 @@ def summarize_ingress(ing: dict) -> dict {
     }
     lb: list = [];
     ingress_status = (status.get("load_balancer", {}) or {}).get("ingress", []) or [];
-    for entry in ingress_status {
-        addr = entry.get("hostname") or entry.get("ip");
+    for `entry in ingress_status {
+        addr = `entry.get("hostname") or `entry.get("ip");
         if addr {
             lb.append(str(addr));
         }

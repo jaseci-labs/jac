@@ -3,8 +3,6 @@ import from jaclang.scale._optdeps.optional_deps {
     require_optional,
     is_optional_available
 }
-import from jaclang.scale._optdeps.pymongo { HAS_PYMONGO, MongoClient }
-import from jaclang.scale._optdeps.redis { HAS_REDIS, Redis }
 import from jaclang.scale._optdeps.prometheus { HAS_PROMETHEUS, Counter }
 import from jaclang.scale._optdeps.apscheduler { HAS_APSCHEDULER, BackgroundScheduler }
 import from jaclang.scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client }
@@ -14,20 +12,16 @@ test "require_optional does not raise for installed stdlib package" {
     require_optional("json", "serve");
 }
 
-test "require_optional does not raise for installed package" {
-    require_optional("fastapi", "serve");
-}
-
 test "require_optional raises ImportError for missing package" {
     raised = False;
     try {
-        require_optional("nonexistent_package_xyz", "data.mongo");
+        require_optional("nonexistent_package_xyz", "storage.s3");
     } except ImportError as e {
         raised = True;
         assert "nonexistent_package_xyz" in str(e);
         # capability-oriented message sourced from the core registry; the old
         # jac-scale[...] extras taxonomy is gone.
-        assert "data.mongo" in str(e);
+        assert "storage.s3" in str(e);
         assert "jac install" in str(e);
         assert "jac-scale[" not in str(e);
     }
@@ -48,7 +42,6 @@ test "require_optional error names the capability, not a pip extra" {
 
 test "is_optional_available returns True for installed package" {
     assert is_optional_available("json") is True;
-    assert is_optional_available("fastapi") is True;
 }
 
 test "is_optional_available returns False for missing package" {
@@ -56,8 +49,6 @@ test "is_optional_available returns False for missing package" {
 }
 
 test "HAS flags are booleans" {
-    assert isinstance(HAS_PYMONGO, bool);
-    assert isinstance(HAS_REDIS, bool);
     assert isinstance(HAS_PROMETHEUS, bool);
     assert isinstance(HAS_APSCHEDULER, bool);
     assert isinstance(HAS_KUBERNETES, bool);
@@ -65,28 +56,66 @@ test "HAS flags are booleans" {
 }
 
 test "HAS flags match is_optional_available" {
-    assert HAS_PYMONGO == is_optional_available("pymongo");
-    assert HAS_REDIS == is_optional_available("redis");
     assert HAS_PROMETHEUS == is_optional_available("prometheus_client");
     assert HAS_APSCHEDULER == is_optional_available("apscheduler");
     assert HAS_KUBERNETES == is_optional_available("kubernetes");
     assert HAS_GCS == is_optional_available("google.cloud.storage");
 }
 
-test "pymongo exports are real when installed" {
-    if HAS_PYMONGO {
-        assert MongoClient is not None;
-        assert callable(MongoClient);
-    } else {
-        assert MongoClient is None;
-    }
+def _import_probe(module: str) -> str {
+    import subprocess;
+    import sys;
+    probe = (
+        "import sys\n"
+        f"import {module}\n"
+        "print('dotenv-loaded=' + str('dotenv' in sys.modules))\n"
+    );
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=300
+    );
+    assert result.returncode == 0 , f"probe failed for {module}: {result.stderr[-2000:]}";
+    return result.stdout;
 }
 
-test "redis exports are real when installed" {
-    if HAS_REDIS {
-        assert Redis is not None;
-    } else {
-        assert Redis is None;
+test "the deploy entry point imports without the env capability" {
+    out = _import_probe("jaclang.scale.runtime.realizer.kubernetes_realizer");
+    assert "dotenv-loaded=False" in out , f"the deploy realizer pulls dotenv at module scope, so a closure without the 'env' capability cannot reach the deploy path at all: {out}";
+}
+
+test "the kubernetes utils import without the env capability" {
+    if not HAS_KUBERNETES {
+        return;
+    }
+    out = _import_probe(
+        "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils"
+    );
+    assert "dotenv-loaded=False" in out , f"kubernetes_utils pulls dotenv at module scope: {out}";
+}
+
+test "a missing dotenv names the env capability" {
+    import os;
+    import from jaclang.scale.config.project_env {
+        PROJECT_ENV_CAPABILITY,
+        project_env_path
+    }
+
+    assert project_env_path("app") == os.path.join("app", ".env");
+    raised = False;
+    try {
+        require_optional("nonexistent_package_xyz", PROJECT_ENV_CAPABILITY);
+    } except ImportError as e {
+        raised = True;
+        assert "'env'" in str(e);
+        assert "jac install" in str(e);
+    }
+    assert raised , "Expected the env capability to be named for a missing dotenv";
+}
+
+test "retired database shims are gone (#8000)" {
+    import importlib.util;
+    for shim in ["pymongo", "redis", "firestore"] {
+        spec = importlib.util.find_spec(f"jaclang.scale._optdeps.{shim}");
+        assert spec is None , f"_optdeps.{shim} should have been deleted";
     }
 }
 
@@ -153,87 +182,6 @@ test "utility factory returns prometheus when available" {
     assert isinstance(collector, PrometheusMetricsCollector);
 }
 
-test "database factory requires pymongo for mongodb" {
-    import from jaclang.scale.deploy.database.factory {
-        DatabaseProviderFactory,
-        DatabaseType
-    }
-
-    with unittest.mock.patch(
-        "jaclang.scale.deploy.database.factory.require_optional",
-        side_effect=ImportError(
-            "'pymongo' is required for this feature. "
-            "Capability 'data.mongo' is required but not installed."
-        )
-    ) {
-        raised = False;
-        try {
-            DatabaseProviderFactory.create_client(
-                DatabaseType.MONGODB, uri="mongodb://localhost"
-            );
-        } except ImportError as e {
-            raised = True;
-            assert "data.mongo" in str(e);
-            assert "jac-scale[" not in str(e);
-        }
-        assert raised , "Expected ImportError when pymongo is missing";
-    }
-}
-
-test "database factory requires redis for redis" {
-    import from jaclang.scale.deploy.database.factory {
-        DatabaseProviderFactory,
-        DatabaseType
-    }
-
-    with unittest.mock.patch(
-        "jaclang.scale.deploy.database.factory.require_optional",
-        side_effect=ImportError(
-            "'redis' is required for this feature. "
-            "Capability 'data.redis' is required but not installed."
-        )
-    ) {
-        raised = False;
-        try {
-            DatabaseProviderFactory.create_client(
-                DatabaseType.REDIS, uri="redis://localhost"
-            );
-        } except ImportError as e {
-            raised = True;
-            assert "data.redis" in str(e);
-            assert "jac-scale[" not in str(e);
-        }
-        assert raised , "Expected ImportError when redis is missing";
-    }
-}
-
-test "database factory requires firestore for firestore" {
-    import from jaclang.scale.deploy.database.factory {
-        DatabaseProviderFactory,
-        DatabaseType
-    }
-
-    with unittest.mock.patch(
-        "jaclang.scale.deploy.database.factory.require_optional",
-        side_effect=ImportError(
-            "'google.cloud.firestore' is required for this feature. "
-            "Capability 'storage.firebase' is required but not installed."
-        )
-    ) {
-        raised = False;
-        try {
-            DatabaseProviderFactory.create_client(
-                DatabaseType.FIRESTORE, uri="firebase-project"
-            );
-        } except ImportError as e {
-            raised = True;
-            assert "storage.firebase" in str(e);
-            assert "jac-scale[" not in str(e);
-        }
-        assert raised , "Expected ImportError when google-cloud-firestore is missing";
-    }
-}
-
 test "deployment factory requires kubernetes for k8s target" {
     import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 
@@ -259,7 +207,7 @@ test "deployment factory requires kubernetes for k8s target" {
 test "require_optional with empty package name raises" {
     raised = False;
     try {
-        require_optional("", "data.mongo");
+        require_optional("", "storage.s3");
     } except ImportError {
         raised = True;
     }
@@ -271,13 +219,9 @@ test "is_optional_available with empty string returns False" {
 }
 
 test "compat modules are always importable" {
-    import jaclang.scale._optdeps.pymongo;
-    import jaclang.scale._optdeps.redis;
     import jaclang.scale._optdeps.prometheus;
     import jaclang.scale._optdeps.apscheduler;
     import jaclang.scale._optdeps.kubernetes;
-    assert hasattr(jaclang.scale._optdeps.pymongo, "HAS_PYMONGO");
-    assert hasattr(jaclang.scale._optdeps.redis, "HAS_REDIS");
     assert hasattr(jaclang.scale._optdeps.prometheus, "HAS_PROMETHEUS");
     assert hasattr(jaclang.scale._optdeps.apscheduler, "HAS_APSCHEDULER");
     assert hasattr(jaclang.scale._optdeps.kubernetes, "HAS_KUBERNETES");

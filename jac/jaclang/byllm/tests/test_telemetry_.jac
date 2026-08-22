@@ -28,10 +28,10 @@ def make_fake_mt_run(
 
     # mt_run.get_msg_list() — used for conversation_history
     history = msg_list
-    or [
-        {"role": "system", "content": "You are a math expert."},
-        {"role": "user", "content": user_prompt}
-    ];
+        or [
+            {"role": "system", "content": "You are a math expert."},
+            {"role": "user", "content": user_prompt}
+        ];
 
     mt = types.SimpleNamespace(
         _invocation_id=invocation_id,

@@ -41,35 +41,27 @@ walker create_event {
         category: str = "";
 
     can create with Root entry {
-        evt = here ++> Event(
-            title=self.title,
-            date=self.date,
-            category=self.category
-        );
+        evt = here ++> Event(title=self.title, date=self.date, category=self.category);
         report evt;
     }
 }
 
-cl {
-    def:pub app -> JsxElement {
-        has events: list = [];
 
-        async def loadEvents -> None {
-            opts = QueryOptions(
-                date_range=DateRange(start="2025-01-01", end="2025-12-31"),
-                limit=100
-            );
-            result = root spawn search_events(options=opts);
-            events = result.reports;
-        }
+def:pub app -> JsxElement {
+    has events: list = [];
 
-        async def addEvent(title: str, date: str) -> None {
-            result = root spawn create_event(title=title, date=date);
-            events = events + [result.reports[0][0]];
-        }
-
-        return <div>
-            {[<div key={e.title}>{e.date}: {e.title}</div> for e in events]}
-        </div>;
+    async def loadEvents -> None {
+        opts = QueryOptions(
+            date_range=DateRange(start="2025-01-01", end="2025-12-31"), limit=100
+        );
+        result = root spawn search_events(options=opts);
+        events = result.reports;
     }
+
+    async def addEvent(title: str, date: str) -> None {
+        result = root spawn create_event(title=title, date=date);
+        events = events + [result.reports[0][0]];
+    }
+
+    return <div>{[<div key={e.title}>{e.date}: {e.title}</div> for e in events]}</div>;
 }

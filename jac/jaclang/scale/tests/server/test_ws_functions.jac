@@ -1,7 +1,7 @@
 """In-process WebSocket tests for function endpoints and canonical walker paths.
 
-Uses the Starlette TestClient transport (no subprocess / uvicorn / dev server),
-so it exercises the FastAPI WebSocket routes directly.
+Uses the in-process ServingTestClient transport (no subprocess / dev server),
+so it exercises the jac-native serving WebSocket routes directly.
 """
 import from jaclang.scale.tests.scale_test_client { make_client }
 

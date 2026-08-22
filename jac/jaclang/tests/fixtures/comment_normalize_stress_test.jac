@@ -91,14 +91,14 @@ enum Color {
 # Test hasattr conversion with comments
 obj NullSafeTest {
     has data: dict | None;
-    has obj: any | None;
+    has `obj: any | None;
 
     def check_attr -> any {
         # Comment before hasattr usage
-        if hasattr(self.obj, "value") {  # Inline on if hasattr
+        if hasattr(self.`obj, "value") {  # Inline on if hasattr
 
             # Comment inside if block
-            return self.obj.value;  # Return comment
+            return self.`obj.value;  # Return comment
 
         }
         # Comment after if
@@ -108,7 +108,7 @@ obj NullSafeTest {
 
     def check_with_default -> any {
         # Comment before ternary with hasattr
-        result = self.obj.attr if hasattr(self.obj, "attr") else "default";  # Inline on ternary
+        result = self.`obj.attr if hasattr(self.`obj, "attr") else "default";  # Inline on ternary
         # Comment after assignment
         return result;  # Return result comment
 
@@ -165,14 +165,14 @@ with entry {
 # Test backtick escaped names with comments
 obj KeywordEscapeTest {
     # Comment before escaped name
-    has `type_name: str;  # Inline on escaped name
+    has type_name: str;  # Inline on escaped name
     # Comment between
-    has `value_name: str;  # Second escaped inline
+    has value_name: str;  # Second escaped inline
 
     # Method with escaped param
-    def process(`input: str) -> str {  # Inline on method with escaped param
+    def process(input: str) -> str {  # Inline on method with escaped param
         # Comment inside
-        return `input;  # Return escaped
+        return input;  # Return escaped
 
     }
 }

@@ -1,11 +1,10 @@
-import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.unitree { Module, SemDef, Symbol, UniScopeNode }
 import from jaclang.jac0core.passes.transform { Transform }
-import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
 
-obj SemDefMatchPass(Transform[uni.Module, uni.Module]) {
-    def transform(ir_in: uni.Module) -> uni.Module;
+obj SemDefMatchPass(Transform) {
+    def transform(ir_in: Module) -> Module;
     def resolve_sem_target(
-        semdef: uni.SemDef, target_sym_tab: UniScopeNode
+        semdef: SemDef, target_sym_tab: UniScopeNode
     ) -> (Symbol | None);
 
     def connect_sems(

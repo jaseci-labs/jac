@@ -4,7 +4,7 @@ Simplest possible cross-service scenario: one module calling
 functions in another module over the microservice boundary.
 """
 
-sv import from math_service { add, multiply, divide, DivResult }
+import from math_service { add, multiply, divide, DivResult }
 
 """Sum a list of numbers using the remote add function."""
 def:pub sum_list(numbers: list[int]) -> int {

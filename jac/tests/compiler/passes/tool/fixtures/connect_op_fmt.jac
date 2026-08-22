@@ -8,7 +8,7 @@ edge E {
 }
 
 walker build {
-    can run with `root entry {
+    can run with Root entry {
         a = root +>:E:+> N(v=1);
         b = a[0] +>:E:w=5:+> N(v=2);
         c = a[0] +>:E:w=1, v=2:+> N(v=3);

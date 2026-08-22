@@ -12,7 +12,7 @@
    `dict[<Unknown>, dict[str, bool]]` in the SourceViewer).
 """
 
-def rounds(x: float, i: int) -> None {
+def rounds(x: float, i: int) {
     a: int = round(x);
     b: float = round(x, 1);
     c: int = round(i);
@@ -20,11 +20,19 @@ def rounds(x: float, i: int) -> None {
 }
 
 def clone_toggle(c: dict[str, bool], k: str) -> dict[str, bool] {
-    nc = {**c};
+    nc = {** c};
     nc[k] = not c.get(k, False);
     return nc;
 }
 
 def combine(a: dict[str, int], b: dict[str, int]) -> dict[str, int] {
-    return {**a, **b, "extra": 1};
+    return {** a, ** b, "extra": 1};
+}
+
+def divmod_quot(a: int, b: int) -> int {
+    return divmod(a, b)[0];
+}
+
+def divmod_rem(a: int, b: int) -> int {
+    return divmod(a, b)[1];
 }

@@ -1,7 +1,12 @@
-import jwt;
+import from jaclang.runtimelib.serving.authcrypt {
+    JWTError,
+    JWTExpiredError,
+    jwt_decode,
+    jwt_encode
+}
 import logging;
 import from datetime { UTC, datetime, timedelta }
-import from fastapi { Request, Response }
+import from jaclang.runtimelib.serving.datatypes { Request, Response }
 import from contextvars { ContextVar }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
@@ -15,8 +20,7 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
 import from jaclang.scale.identity.identity_storage {
     IdentityStorage,
-    MongoIdentityStorage,
-    SqliteIdentityStorage
+    PgIdentityStorage
 }
 import from jaclang.jac0core.constant { Constants as Con }
 
@@ -28,7 +32,7 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      SSO_HOST = _sso_config['host'],
      logger = logging.getLogger(__name__),
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
-         '_jaclang_scale_root_id_cache', default=None
+         '_jaclang_scale_root_id_cache', `default=None
      );
 
 enum UserRole { ADMIN = 'admin', SYSTEM = 'system', USER = 'user', }
@@ -36,10 +40,12 @@ enum UserRole { ADMIN = 'admin', SYSTEM = 'system', USER = 'user', }
 obj JacScaleUserManager(UserManager) {
     has SUPPORTED_PLATFORMS: dict = {},
         ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000',
-        _identity_storage: IdentityStorage postinit;
+        _identity_storage: IdentityStorage postinit,
+        _gateway_owned_identity: bool postinit;
 
     def postinit -> None;
     def create_user(username: str, password: str) -> dict[str, any];
+    def reset_root(identifier: str) -> str | None;
     def create_user_with_identities(
         identities: list[dict[str, any]],
         credential: dict[str, any],
@@ -104,6 +110,7 @@ obj JacScaleUserManager(UserManager) {
         user_id: str, requires_reset: bool
     ) -> dict[str, str];
 
+    def expire_legacy_credentials(username: (str | None) = None) -> dict[str, any];
     def is_password_required(user_id: str) -> bool;
     def bootstrap_admin_user -> dict[str, str];
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];

@@ -1,6 +1,4 @@
 import unittest;
-import from collections.abc { Callable, Iterable }
-import from typing { ClassVar }
 
 obj JacTestResult(unittest.TextTestResult) {
     has stream: any,
@@ -57,4 +55,8 @@ def parametrize(
     params: Iterable,
     test_func: Callable,
     id_fn: (Callable | None) = None
+) -> None;
+
+def invoke_native_test(
+    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
 ) -> None;

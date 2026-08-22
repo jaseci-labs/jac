@@ -5,7 +5,6 @@ alias to the awaited __aenter__ result (int).
 """
 
 import from contextlib { asynccontextmanager }
-import from typing { AsyncIterator }
 
 obj Lock {
     @asynccontextmanager

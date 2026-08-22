@@ -45,7 +45,7 @@ def t_node_desc(tag: int) -> NodeDesc {
     if tag in _ndescs {
         return _ndescs[tag];
     }
-    return NodeDesc(type_tag=tag, entry=[], exit=[]);
+    return NodeDesc(type_tag=tag, `entry=[], `exit=[]);
 }
 
 def t_on_complete(scope: WalkScope, ok: bool) {
@@ -113,8 +113,8 @@ def ab_node_for_walker(here: any, visitor: any) {
 test "osp kernel: subtyping dispatch and report collection" {
     wd = WalkerDesc(
         type_tag=10,
-        entry=[Slot(trig_tag=1, fn=ab_place), Slot(trig_tag=2, fn=ab_cafe)],
-        exit=[]
+        `entry=[Slot(trig_tag=1, fn=ab_place), Slot(trig_tag=2, fn=ab_cafe)],
+        `exit=[]
     );
     w = TWalker();
     # Spawn on a Cafe (tag 2): the Place-triggered ability fires via subtyping,
@@ -131,7 +131,7 @@ test "osp kernel: visit enqueues, DFS recursion through a chain" {
     a.neighbors = [b];
     b.neighbors = [c];
     c.neighbors = [];
-    wd = WalkerDesc(type_tag=10, entry=[Slot(trig_tag=1, fn=ab_step)], exit=[]);
+    wd = WalkerDesc(type_tag=10, `entry=[Slot(trig_tag=1, fn=ab_step)], `exit=[]);
     w = TWalker();
     osp_spawn(_runtime(), w, wd, [a]);
     assert w.log == ["step:A", "step:B", "step:C"];
@@ -148,8 +148,8 @@ test "osp kernel: branching tree - queue-FIFO entries, post-order exits" {
     d.neighbors = [];
     wd = WalkerDesc(
         type_tag=10,
-        entry=[Slot(trig_tag=1, fn=ab_log_entry)],
-        exit=[Slot(trig_tag=1, fn=ab_log_exit)]
+        `entry=[Slot(trig_tag=1, fn=ab_log_entry)],
+        `exit=[Slot(trig_tag=1, fn=ab_log_exit)]
     );
     w = TWalker();
     osp_spawn(_runtime(), w, wd, [a]);
@@ -167,8 +167,8 @@ test "osp kernel: exit abilities fire in post-order" {
     b.neighbors = [];
     wd = WalkerDesc(
         type_tag=10,
-        entry=[Slot(trig_tag=1, fn=ab_step_with_exit)],
-        exit=[Slot(trig_tag=1, fn=ab_exit)]
+        `entry=[Slot(trig_tag=1, fn=ab_step_with_exit)],
+        `exit=[Slot(trig_tag=1, fn=ab_exit)]
     );
     w = TWalker();
     osp_spawn(_runtime(), w, wd, [a]);
@@ -183,7 +183,7 @@ test "osp kernel: disengage stops the walk" {
     a.neighbors = [b];
     b.neighbors = [c];
     c.neighbors = [];
-    wd = WalkerDesc(type_tag=10, entry=[Slot(trig_tag=1, fn=ab_stop)], exit=[]);
+    wd = WalkerDesc(type_tag=10, `entry=[Slot(trig_tag=1, fn=ab_stop)], `exit=[]);
     w = TWalker();
     osp_spawn(_runtime(), w, wd, [a]);
     # Disengage at B drops the already-queued C.
@@ -193,13 +193,13 @@ test "osp kernel: disengage stops the walk" {
 test "osp kernel: node-side untyped and walker-typed entry abilities" {
     _ndescs[3] = NodeDesc(
         type_tag=3,
-        entry=[
+        `entry=[
             Slot(trig_tag=UNTYPED, fn=ab_node_any),
             Slot(trig_tag=10, fn=ab_node_for_walker)
         ],
-        exit=[]
+        `exit=[]
     );
-    wd = WalkerDesc(type_tag=10, entry=[], exit=[]);
+    wd = WalkerDesc(type_tag=10, `entry=[], `exit=[]);
     w = TWalker();
     osp_spawn(_runtime(), w, wd, [TNode(tag=3, name="P")]);
     # Untyped node ability (phase 2) then walker-typed node ability (phase 3).

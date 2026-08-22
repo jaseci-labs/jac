@@ -28,13 +28,27 @@ case "$(echo "$BODY" | sed -e 's/^[[:space:]]*//' | head -c 3)" in
 esac
 
 # --- jac guide --json: a parseable guide list ---
-"$JAC" guide --json | python3 -c '
+# `$JAC -c` runs jac's own bundled CPython. A host `python3` would be some
+# other interpreter entirely -- the whole point of the binary is that there
+# is not one -- and depending on it is what forced a `setup-python` step
+# into the smoke job that runs this script.
+"$JAC" guide --json | "$JAC" -c '
 import json, sys
 guides = json.load(sys.stdin)
 assert isinstance(guides, list), "guide --json must emit a list"
 assert len(guides) >= 19, f"expected >= 19 guides, got {len(guides)}"
 assert all("name" in g and "description" in g for g in guides), "a guide entry is missing name/description"
 ' || fail "'jac guide --json' did not emit a valid guide list"
+
+# --- jac guide reference/…: the bundled docs corpus ships too ---
+DOC="$("$JAC" guide reference/diagnostics)"
+[ "${#DOC}" -gt 500 ] || fail "'jac guide reference/diagnostics' body is too short (${#DOC} chars)"
+
+# --- jac guide <corpus>: doc-set listing ---
+"$JAC" guide community | grep -q "community/breaking-changes" || fail "'jac guide community' listing missing breaking-changes"
+
+# --- jac guide --search: grep-style name:line: hits across guides and docs ---
+"$JAC" guide --search walker | grep -Eq '^[A-Za-z0-9_/.-]+:[0-9]+: ' || fail "'jac guide --search' produced no grep-style hits"
 
 # --- jac guide <unknown>: must exit non-zero ---
 if "$JAC" guide does-not-exist >/dev/null 2>&1; then

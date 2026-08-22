@@ -172,9 +172,23 @@ impl JSCodeGenerator.gen_spread_element(nd: es.SpreadElement) -> str {
     return f"...{self.generate(nd.argument)}";
 }
 
+impl template_element_raw(text: str) -> str {
+    return text.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${').replace(
+        '\r', '\\r'
+    ).replace(
+        '\n', '\\n'
+    ).replace(
+        '\t', '\\t'
+    );
+}
+
 impl JSCodeGenerator.gen_template_element(nd: es.TemplateElement) -> str {
-    value = nd.value.get('raw') if nd.value else '';
-    return (value or '');
+    value = nd.value or {};
+    raw = value.get('raw');
+    if raw is not None {
+        return raw;
+    }
+    return template_element_raw(value.get('cooked') or '');
 }
 
 impl JSCodeGenerator.gen_template_literal(nd: es.TemplateLiteral) -> str {
@@ -190,6 +204,14 @@ impl JSCodeGenerator.gen_template_literal(nd: es.TemplateLiteral) -> str {
 
 impl JSCodeGenerator.gen_await_expression(nd: es.AwaitExpression) -> str {
     return f"await {self.generate(nd.argument)}";
+}
+
+impl JSCodeGenerator.gen_yield_expression(nd: es.YieldExpression) -> str {
+    star = '*' if nd.delegate else '';
+    if nd.argument {
+        return f"yield{star} {self.generate(nd.argument)}";
+    }
+    return f"yield{star}";
 }
 
 impl JSCodeGenerator.gen_new_expression(nd: es.NewExpression) -> str {
@@ -218,10 +240,10 @@ impl JSCodeGenerator.gen_call_expression(nd: es.CallExpression) -> str {
 }
 
 impl JSCodeGenerator.gen_conditional_expression(nd: es.ConditionalExpression) -> str {
-    `test = self.generate(nd.test);
+    `test = self.generate(nd.`test);
     consequent = self.generate(nd.consequent);
     alternate = self.generate(nd.alternate);
-    return f"({test} ? {consequent} : {alternate})";
+    return f"({`test} ? {consequent} : {alternate})";
 }
 
 impl JSCodeGenerator.gen_member_expression(nd: es.MemberExpression) -> str {
@@ -296,21 +318,16 @@ impl JSCodeGenerator.gen_arrow_function_expression(
     async_str = 'async ' if nd.async_ else '';
     params = ', '.join(self.generate(p) for p in nd.params);
     if len(nd.params) == 1
-    and not isinstance(nd.params[0], (es.ArrayPattern, es.ObjectPattern)) {
+        and not isinstance(nd.params[0], (es.ArrayPattern, es.ObjectPattern)) {
         params = self.generate(nd.params[0]);
     } else {
         params = f"({params})";
     }
-    if nd.expression {
-        body = self.generate(nd.body);
-        if isinstance(nd.body, es.ObjectExpression) {
-            body = f"({body})";
-        }
-        return f"{async_str}{params} => {body}";
-    } else {
-        body = self.generate(nd.body);
-        return f"{async_str}{params} => {body}";
+    body = self.generate(nd.body);
+    if not isinstance(nd.body, es.BlockStatement) and body.startswith('{') {
+        body = f"({body})";
     }
+    return f"{async_str}{params} => {body}";
 }
 
 impl JSCodeGenerator.gen_function_expression(nd: es.FunctionExpression) -> str {
@@ -386,7 +403,7 @@ impl JSCodeGenerator.gen_identifier(nd: es.Identifier) -> str {
 }
 
 impl JSCodeGenerator.gen_property_definition(nd: es.PropertyDefinition) -> str {
-    static_str = 'static ' if nd.static else '';
+    static_str = 'static ' if nd.`static else '';
     key = self.generate(nd.key) if nd.key else '';
     if nd.computed {
         key = f"[{key}]";
@@ -396,7 +413,7 @@ impl JSCodeGenerator.gen_property_definition(nd: es.PropertyDefinition) -> str {
 }
 
 impl JSCodeGenerator.gen_method_definition(nd: es.MethodDefinition) -> str {
-    static_str = 'static ' if nd.static else '';
+    static_str = 'static ' if nd.`static else '';
     key = self.generate(nd.key);
     value = self.generate(nd.value);
     if isinstance(nd.value, es.FunctionExpression) {
@@ -456,8 +473,8 @@ impl JSCodeGenerator.gen_function_declaration(nd: es.FunctionDeclaration) -> str
 }
 
 impl JSCodeGenerator.gen_switch_case(nd: es.SwitchCase) -> str {
-    result = f"{self.indent()}case {self.generate(nd.test)}:\\n"
-        if nd.test
+    result = f"{self.indent()}case {self.generate(nd.`test)}:\\n"
+        if nd.`test
         else f"{self.indent()}default:\\n";
     self.indent_level += 1;
     for stmt in nd.consequent {
@@ -533,22 +550,22 @@ impl JSCodeGenerator.gen_for_statement(nd: es.ForStatement) -> str {
     } else {
         init_str = '';
     }
-    test_str = self.generate(nd.test) if nd.test else '';
+    test_str = self.generate(nd.`test) if nd.`test else '';
     update = self.generate(nd.update).lstrip() if nd.update else '';
     body = self.generate(nd.body);
     return f"{self.indent()}for ({init_str}; {test_str}; {update}) {body}";
 }
 
 impl JSCodeGenerator.gen_while_statement(nd: es.WhileStatement) -> str {
-    `test = self.generate(nd.test);
+    `test = self.generate(nd.`test);
     body = self.generate(nd.body);
-    return f"{self.indent()}while ({test}) {body}";
+    return f"{self.indent()}while ({`test}) {body}";
 }
 
 impl JSCodeGenerator.gen_if_statement(nd: es.IfStatement) -> str {
-    `test = self.generate(nd.test);
+    `test = self.generate(nd.`test);
     consequent = self.generate(nd.consequent);
-    result = f"{self.indent()}if ({test}) {consequent}";
+    result = f"{self.indent()}if ({`test}) {consequent}";
     if nd.alternate {
         if isinstance(nd.alternate, es.IfStatement) {
             result += f" else {self.generate(nd.alternate).lstrip()}";

@@ -1,6 +1,5 @@
 import json;
-import from collections.abc { Callable, Sequence }
-import from typing { Any, TypeVar, cast }
+import from typing { cast }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
@@ -15,8 +14,14 @@ import from jaclang.compiler.passes.ecmascript.scoped_styles {
     load_style_annex
 }
 import from jaclang.compiler.passes.ecmascript.framework_backend { FrameworkBackend }
+import from jaclang.compiler.passes.ecmascript.free_ident_audit {
+    RUNTIME_PRELUDE_GLOBALS,
+    client_ambient_globals,
+    free_identifiers
+}
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
+    relative_js_specifier,
     resolve_relative_path
 }
 import from jaclang.jac0core.diagnostics {
@@ -25,11 +30,17 @@ import from jaclang.jac0core.diagnostics {
     E5011,
     E5012,
     E5016,
+    E5017,
+    E5018,
     W5013,
     W5014,
     W5015,
     E5080,
-    E5081
+    E5081,
+    E5085,
+    E5086,
+    E5099,
+    E5101
 }
 
 glob _T = TypeVar('_T', bound=es.Node),
@@ -124,6 +135,15 @@ glob _T = TypeVar('_T', bound=es.Node),
 
 glob VIEW_ACC: str = "__jac_view_kids";
 
+glob ES_STMT_DISPLAY: dict[str, str] = {
+         'DeleteStmt': "'del' statement",
+         'MatchStmt': "'match' statement",
+         'WithStmt': "'with' statement",
+         'OpenStmt': "'open' block",
+         'TypedCtxBlock': 'typed context block',
+         'PyInlineCode': 'inline Python block'
+     };
+
 obj ScopeInfo {
     has nd: uni.UniScopeNode,
         declared: set[str] = set(),
@@ -173,14 +193,23 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         component_export_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
+        match_seq: int = 0,
         _view_stack: list[(str | None)] = [],
         _view_used_base: bool = False,
         _view_acc_counter: int = 0,
         _view_awaiting_tries: set[int] = set(),
+        _view_dynamic_accs: set[str] = set(),
+        _view_acc_next: dict[(str, int)] = {},
+        _view_acc_high: dict[(str, int)] = {},
+        _view_branch_base: dict[(int, int)] = {},
+        _view_slot_loops: set[int] = set(),
         sv_import_stubs: list[es.Statement] = [],
+        na_import_stubs: list[es.Statement] = [],
         needs_jac_runtime: bool = False,
         needs_osp_kernel: bool = False,
         needs_osp_graph: bool = False,
+        _unlowered_reported: set = set(),
+        _unbound_reported: set[str] = set(),
         _osp_var_arch_cache: (dict | None) = None,
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
@@ -191,12 +220,20 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
     def sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -> _T;
+    def _template_element(
+        text: str, tail: bool, jac_node: uni.UniNode
+    ) -> es.TemplateElement;
+
     def _push_scope(nd: uni.UniScopeNode) -> None;
     def _pop_scope(nd: uni.UniScopeNode) -> None;
     def _alt_branch_scope_to_finalize(nd: uni.UniNode) -> (uni.UniScopeNode | None);
     def _current_scope -> (ScopeInfo | None);
     def _is_declared_in_any_scope(name: str) -> bool;
     def _register_declaration(name: str) -> None;
+    def _declaring_scope_for(name_node: uni.UniNode) -> (ScopeInfo | None);
+    def _operand_str(unparser: object, es_node: es.Expression) -> str;
+    def _is_null_literal(nd: (uni.UniNode | None)) -> bool;
+    def _hoist_into(scope: ScopeInfo, name: str, jac_node: uni.UniNode) -> None;
     def _ensure_identifier_declared(name: str, jac_node: uni.UniNode) -> None;
     def _prepend_hoisted(
         nd: uni.UniScopeNode, statements: list[es.Statement]
@@ -240,18 +277,37 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.VariableDeclaration;
 
     def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
+    def _build_osp_tags_js -> str;
     def _build_osp_setup_js -> str;
     def _osp_slots_js(slots: list, tags: dict) -> str;
     def _osp_arch_kinds -> dict[str, str];
     def _osp_arch_set -> set[str];
     def _osp_var_arch -> dict[str, str];
+    def _osp_expr_arch_name(expr: (uni.UniNode | None)) -> (str | None);
+    def _arch_kind_by_name(name: str) -> (str | None);
+    def _arch_kind_of_type(ty: object) -> (str | None);
+    def _expr_class_type(expr: (uni.UniNode | None)) -> (object | None);
+    def _osp_expr_arch_kind(expr: (uni.UniNode | None)) -> (str | None);
     def _spawn_walker_arch(expr: uni.Expr) -> (str | None);
     def _spawn_target_is_local_node(expr: uni.Expr) -> bool;
     def _build_osp_graph_call(
         nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
 
-    def _build_edge_ref(nd: uni.EdgeRefTrailer) -> (es.Expression | None);
+    def _build_osp_disconnect_call(
+        nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
+    ) -> es.Expression;
+
+    def _build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression;
+    def _build_osp_filter_pred(
+        nd: uni.UniNode, filt: uni.FilterCompr
+    ) -> (es.Expression | None);
+
+    def _edge_tag_literal(
+        nd: uni.UniNode, type_expr: (uni.UniNode | None), hard: bool
+    ) -> int;
+
+    def _is_client_destined(nd: uni.UniNode) -> bool;
     def _build_local_osp_spawn(
         nd: uni.BinaryExpr, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
@@ -271,13 +327,21 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.MemberExpression;
 
     def exit_module(nd: uni.Module) -> None;
+    def _audit_free_identifiers(nd: uni.Module, program: es.Program) -> None;
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
-    def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _partition_client_import_items(nd: uni.Import) -> (tuple[list, list] | None);
+    def _generate_sv_import_stubs(
+        nd: uni.Import, items: (Sequence[uni.ModuleItem] | None) = None
+    ) -> None;
+
     def _sv_import_item_is_type(nd: uni.Import, item: uni.ModuleItem) -> bool;
     def _record_sv_backend(nd: uni.Import) -> None;
+    def _generate_na_import_binding(nd: uni.Import) -> None;
+    def _is_client_native_import(nd: uni.Import) -> bool;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
+    def _es_json_literal(value: any) -> any;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
@@ -291,11 +355,13 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
+    def _setter_name_taken(has_var: uni.HasVar, setter_name: str) -> bool;
     def exit_has_var(nd: uni.HasVar) -> None;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
+    def _register_jac_virtual_import(module_id: str) -> None;
     def _register_jac_runtime_import -> None;
     def _ensure_backend -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
@@ -319,15 +385,40 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.ExpressionStatement;
 
     def _jsx_fragment(
-        children: list[es.Expression], anchor: uni.UniNode
+        children: es.Expression, anchor: uni.UniNode
     ) -> es.CallExpression;
 
+    def _view_alloc_index(acc_name: str) -> int;
+    def _view_assign_stmt(
+        acc_name: str, index: int, value: es.Expression, anchor: uni.UniNode
+    ) -> es.ExpressionStatement;
+
+    def _view_emit_child(
+        acc_name: str, value: es.Expression, anchor: uni.UniNode
+    ) -> es.ExpressionStatement;
+
+    def _view_open_loop_acc(nd: uni.UniNode) -> None;
+    def _view_loop_stmt(nd: uni.UniNode, loop_stmt: es.Statement) -> es.Statement;
+    def _view_chain_open(nd: uni.UniNode) -> None;
+    def _view_chain_arm(nd: uni.UniNode) -> None;
+    def _view_chain_close(nd: uni.UniNode) -> None;
+    def enter_if_stmt(nd: uni.IfStmt) -> None;
+    def enter_else_if(nd: uni.ElseIf) -> None;
+    def enter_else_stmt(nd: uni.ElseStmt) -> None;
+    def enter_in_for_stmt(nd: uni.InForStmt) -> None;
+    def enter_iter_for_stmt(nd: uni.IterForStmt) -> None;
+    def enter_while_stmt(nd: uni.WhileStmt) -> None;
+    def enter_forever_stmt(nd: uni.ForeverStmt) -> None;
     def _view_fragment_return(
         acc_name: str, anchor: uni.UniNode
     ) -> es.ReturnStatement;
 
     def _build_view_iife(
         body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
+    ) -> es.CallExpression;
+
+    def _view_iife_from_stmts(
+        stmts: list[es.Statement], acc_name: str, anchor: uni.UniNode
     ) -> es.CallExpression;
 
     def exit_if_stmt(nd: uni.IfStmt) -> None;
@@ -348,6 +439,15 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
     def exit_switch_case(nd: uni.SwitchCase) -> None;
+    def exit_delete_stmt(nd: uni.DeleteStmt) -> None;
+    def exit_match_stmt(nd: uni.MatchStmt) -> None;
+    def _lower_match_pattern(
+        pat: uni.MatchPattern, subj: es.Expression
+    ) -> tuple[(es.Expression | None), list[es.Statement], bool];
+
+    def _match_bind_name(name_node: uni.UniNode, value: es.Expression) -> es.Statement;
+    def _match_arch_field_order(pat: uni.MatchArch) -> (list[str] | None);
+    def _match_subj_member(subj: es.Expression, field: str) -> es.Expression;
     def _ensure_emitters -> None;
     def _resolve_primitive_type_name(_obj_type: object) -> str;
     def _try_primitive_op(
@@ -360,6 +460,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _expr_type_name(expr_node: uni.UniNode) -> str;
     def _is_collection_expr(expr_node: uni.UniNode) -> bool;
+    def _is_native_iterable_builtin_call(expr_node: uni.UniNode) -> bool;
     def _build_jac_ref(
         path: list[str], jac_node: (uni.UniNode | None)
     ) -> es.Expression;
@@ -398,6 +499,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
+    def _return_type_route_role(rt: uni.Expr) -> (str | None);
     def _component_pascal_name(nd: uni.Ability) -> (str | None);
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(
@@ -414,7 +516,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _wrap_to_wire_if_boundary(
         expr: es.Expression,
         type_name: str,
-        boundary_types: dict[(str, Any)],
+        boundary_types: dict[(str, any)],
         jac_node: uni.UniNode
     ) -> es.Expression;
 
@@ -425,7 +527,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _wrap_return_with_boundary(
         call_expr: es.Expression,
         ret_type: str,
-        boundary_types: dict[(str, Any)],
+        boundary_types: dict[(str, any)],
         jac_node: uni.UniNode,
         pre_awaited: bool
     ) -> es.Expression;
@@ -465,6 +567,16 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         props: list[(es.Property | es.SpreadElement)]
     ) -> (es.Expression | None);
 
+    def _warn_rpc_callable_params(
+        ability_node: uni.Ability, func_name: str, at: uni.UniNode
+    ) -> None;
+
+    def _forwarder_ret_label(ability_node: uni.Ability) -> str;
+    def _build_server_forwarder(
+        ability_node: uni.Ability, func_name: str, jac_node: uni.UniNode
+    ) -> es.FunctionDeclaration;
+
+    def _bind_client_value_refs(nd: uni.Module) -> list[es.Statement];
     def exit_func_call(nd: uni.FuncCall) -> None;
     def exit_index_slice(nd: uni.IndexSlice) -> None;
     def exit_special_var_ref(nd: uni.SpecialVarRef) -> None;
@@ -498,16 +610,17 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_f_string(nd: uni.FString) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
+    def exit_yield_expr(nd: uni.YieldExpr) -> None;
+    def _ability_is_generator(nd: uni.Ability) -> bool;
     def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_null(nd: uni.Null) -> None;
     def exit_name(nd: uni.Name) -> None;
     def exit_builtin_type(nd: uni.BuiltinType) -> None;
+    def _in_identifier_slot(nd: uni.UniNode) -> bool;
     def _in_type_slot(nd: uni.UniNode) -> bool;
     def _is_call_target(nd: uni.UniNode) -> bool;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_module_code(nd: uni.ModuleCode) -> None;
-    def exit_client_block(nd: uni.ClientBlock) -> None;
-    def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_test(nd: uni.Test) -> None;
     def exit_token(nd: uni.Token) -> None;
     def exit_semi(nd: uni.Semi) -> None;

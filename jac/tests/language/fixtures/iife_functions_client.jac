@@ -1,9 +1,10 @@
 """Test Immediately Invoked Function Expressions (IIFE) for client-side (JavaScript) execution."""
 
-cl with entry {
+
+with entry {
     # Test 1: Basic IIFE with no parameters
     result1 = (
-        def get_value()  -> int {
+        def get_value() -> int {
             return 42;
         }
     )();
@@ -25,7 +26,7 @@ cl with entry {
 
     # Test 3: IIFE with local variables
     result3 = (
-        def compute()  -> int {
+        def compute() -> int {
             a = 10;
             b = 20;
             c = 30;
@@ -75,7 +76,7 @@ cl with entry {
     # Test 6: IIFE returning a function
     adder = (
         def make_adder(x: int) {
-            return lambda  (y: int) { x + y; };
+            return lambda (y: int) { x + y; };
         }
     )(
         10
@@ -86,9 +87,9 @@ cl with entry {
 
     # Test 7: Nested IIFE
     result7 = (
-        def outer()  -> int {
+        def outer() -> int {
             x = (
-                def inner()  -> int {
+                def inner() -> int {
                     return 100;
                 }
             )();
@@ -136,7 +137,7 @@ cl with entry {
 
     # Test 10: IIFE with object creation
     result10 = (
-        def create_object()  -> dict {
+        def create_object() -> dict {
             my_obj = {"name": "Test", "value": 123, "active": True};
             return my_obj;
         }
@@ -163,7 +164,10 @@ cl with entry {
     counter = (
         def create_counter() {
             count = 0;
-            return lambda -> int { count = count + 1; return count; } ;
+            return lambda -> int {
+                count = count + 1;
+                return count;
+            };
         }
     )();
 

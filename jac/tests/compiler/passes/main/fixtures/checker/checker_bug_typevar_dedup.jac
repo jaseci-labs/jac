@@ -9,7 +9,6 @@ type_params = [K, K, V] (3 entries) but type_args only has 2 entries,
 so V at index 2 never gets matched.
 """
 
-import from typing { TypeVar, Generic }
 
 glob K = TypeVar('K');
 glob V = TypeVar('V');

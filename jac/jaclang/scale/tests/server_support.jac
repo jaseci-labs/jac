@@ -42,7 +42,7 @@ def _cleanup_db_files(fixtures_dir: Path) {
         "anchor_store.db.bak",
         "anchor_store.db.dir"
     ] {
-        for db_file in glob.glob(pattern) {
+        for db_file in `glob.`glob(pattern) {
             with contextlib.suppress(Exception) {
                 Path(db_file).unlink();
             }
@@ -50,7 +50,7 @@ def _cleanup_db_files(fixtures_dir: Path) {
     }
 
     for pattern in ["*.db", "*.db-wal", "*.db-shm"] {
-        for db_file in glob.glob(str(fixtures_dir / pattern)) {
+        for db_file in `glob.`glob(str(fixtures_dir / pattern)) {
             with contextlib.suppress(Exception) {
                 Path(db_file).unlink();
             }

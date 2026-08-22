@@ -1,0 +1,6 @@
+[project]
+name = "native-demoted-pin-fixture"
+entry-point = "app.jac"
+
+[placement.pins]
+models = "native"

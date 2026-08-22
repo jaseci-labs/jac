@@ -23,7 +23,6 @@ import os;
 import shutil;
 import subprocess;
 import importlib;
-import pytest;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
@@ -32,7 +31,7 @@ def _jac_client_plugin_dir -> str {
     plugin = importlib.import_module("jaclang.runtimelib.client");
     paths = `list(getattr(plugin, "__path__", []) or []);
     if not paths {
-        pytest.fail("jaclang.runtimelib.client has no __path__");
+        testfail("jaclang.runtimelib.client has no __path__");
     }
     return paths[0];
 }
@@ -77,33 +76,31 @@ def _compile_runtime_to_js -> str {
         return _compiled_runtime_js;
     }
     plugin_dir = _jac_client_plugin_dir();
-    core_src = os.path.join(plugin_dir, "client_runtime_core.cl.jac");
-    native_src = os.path.join(plugin_dir, "client_runtime_native.cl.jac");
+    core_src = os.path.join(plugin_dir, "client_runtime_core.jac");
+    native_src = os.path.join(plugin_dir, "client_runtime_native.jac");
     if not os.path.isfile(core_src) or not os.path.isfile(native_src) {
-        pytest.skip(
-            "client_runtime_core.cl.jac or client_runtime_native.cl.jac not found"
-        );
+        testskip("client_runtime_core.jac or client_runtime_native.jac not found");
     }
     jac_bin = shutil.which("jac");
     if not jac_bin {
-        pytest.skip("`jac` CLI not on PATH");
+        testskip("`jac` CLI not on PATH");
     }
     core_result = subprocess.run(
         [jac_bin, "jac2js", core_src], capture_output=True, text=True, check=False
     );
     if core_result.returncode != 0 {
-        pytest.skip(f"jac2js core failed: {core_result.stderr}");
+        testskip(f"jac2js core failed: {core_result.stderr}");
     }
     native_result = subprocess.run(
         [jac_bin, "jac2js", native_src], capture_output=True, text=True, check=False
     );
     if native_result.returncode != 0 {
-        pytest.skip(f"jac2js native failed: {native_result.stderr}");
+        testskip(f"jac2js native failed: {native_result.stderr}");
     }
     _compiled_runtime_js = (
-        _strip_esm_export_line(core_result.stdout) + "\n" + _strip_runtime_core_import(
-            _strip_esm_export_line(native_result.stdout)
-        )
+        _strip_esm_export_line(core_result.stdout)
+        + "\n"
+        + _strip_runtime_core_import(_strip_esm_export_line(native_result.stdout))
     );
     return _compiled_runtime_js;
 }
@@ -262,7 +259,7 @@ def _slice_renderer_fns(js: str) -> str {
 def _run_node(snippet: str) -> tuple[int, str, str] {
     node_bin = shutil.which("node");
     if not node_bin {
-        pytest.skip("node not on PATH");
+        testskip("node not on PATH");
     }
     with TemporaryDirectory() as tmp_name {
         tmp = str(tmp_name);
@@ -356,7 +353,27 @@ test "registered renderer receives (tag, props, children) verbatim" {
     js = _compile_runtime_to_js();
     snippet = _slice_renderer_fns(js);
     harness = (
-        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n" + snippet + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n" + "const calls = [];\n" + "__jacRegisterRenderer({ create: (tag, props, children) => {\n" + "  calls.push({tag, props, children}); return 'stub-element';\n" + "}});\n" + "const out = __jacJsx('button', {id: 'x'}, ['hi']);\n" + "if (out !== 'stub-element') {\n" + "  console.error('expected stub return, got', out); process.exit(1);\n" + "}\n" + "if (calls.length !== 1) {\n" + "  console.error('expected 1 call, got', calls.length); process.exit(1);\n" + "}\n" + "const c = calls[0];\n" + "if (c.tag !== 'button') { console.error('tag', c); process.exit(1); }\n" + "if (c.props.id !== 'x') { console.error('props', c); process.exit(1); }\n" + "if (!Array.isArray(c.children) || c.children[0] !== 'hi') {\n" + "  console.error('children mismatch', c); process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n"
+        + snippet
+        + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n"
+        + "const calls = [];\n"
+        + "__jacRegisterRenderer({ create: (tag, props, children) => {\n"
+        + "  calls.push({tag, props, children}); return 'stub-element';\n"
+        + "}});\n"
+        + "const out = __jacJsx('button', {id: 'x'}, ['hi']);\n"
+        + "if (out !== 'stub-element') {\n"
+        + "  console.error('expected stub return, got', out); process.exit(1);\n"
+        + "}\n"
+        + "if (calls.length !== 1) {\n"
+        + "  console.error('expected 1 call, got', calls.length); process.exit(1);\n"
+        + "}\n"
+        + "const c = calls[0];\n"
+        + "if (c.tag !== 'button') { console.error('tag', c); process.exit(1); }\n"
+        + "if (c.props.id !== 'x') { console.error('props', c); process.exit(1); }\n"
+        + "if (!Array.isArray(c.children) || c.children[0] !== 'hi') {\n"
+        + "  console.error('children mismatch', c); process.exit(1);\n"
+        + "}\n"
+        + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"dispatch harness failed: stdout={out} stderr={err}";
@@ -370,7 +387,18 @@ test "native renderer auto-installs when nothing is registered" {
     js = _compile_runtime_to_js();
     snippet = _slice_renderer_fns(js);
     harness = (
-        "const __jacNativeCreate = (tag, props, children) => ['native', tag];\n" + snippet + "globalThis.__jacGetRenderer__ = __jacGetRenderer;\n" + "const out = __jacJsx('div', {className: 'x'}, []);\n" + "if (!globalThis.__jacRenderer__) {\n" + "  console.error('native renderer did not auto-install'); process.exit(1);\n" + "}\n" + "if (!Array.isArray(out) || out[1] !== 'div') {\n" + "  console.error('tag not forwarded to installed create', out);\n" + "  process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "const __jacNativeCreate = (tag, props, children) => ['native', tag];\n"
+        + snippet
+        + "globalThis.__jacGetRenderer__ = __jacGetRenderer;\n"
+        + "const out = __jacJsx('div', {className: 'x'}, []);\n"
+        + "if (!globalThis.__jacRenderer__) {\n"
+        + "  console.error('native renderer did not auto-install'); process.exit(1);\n"
+        + "}\n"
+        + "if (!Array.isArray(out) || out[1] !== 'div') {\n"
+        + "  console.error('tag not forwarded to installed create', out);\n"
+        + "  process.exit(1);\n"
+        + "}\n"
+        + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"auto-install harness failed: stdout={out} stderr={err}";
@@ -382,7 +410,21 @@ test "registration survives runtime re-evaluation (HMR sim)" {
     snippet = _slice_renderer_fns(js);
     module_iife = "(() => {\n" + snippet + "return __jacJsx;\n})()";
     harness = (
-        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n" + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n" + "const firstJsx = " + module_iife + ";\n" + "firstJsx;\n" + "globalThis.__jacRenderer__ = { create: (t,p,c) => 'native:' + t };\n" + "const reloadedJsx = " + module_iife + ";\n" + "const out = reloadedJsx('div', {}, []);\n" + "if (out !== 'native:div') {\n" + "  console.error('HMR clobbered renderer, got', out); process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "globalThis.React = { createElement: () => ({}), Fragment: 'F' };\n"
+        + "globalThis.__jacGetRenderer__ = () => globalThis.__jacRenderer__;\n"
+        + "const firstJsx = "
+        + module_iife
+        + ";\n"
+        + "firstJsx;\n"
+        + "globalThis.__jacRenderer__ = { create: (t,p,c) => 'native:' + t };\n"
+        + "const reloadedJsx = "
+        + module_iife
+        + ";\n"
+        + "const out = reloadedJsx('div', {}, []);\n"
+        + "if (out !== 'native:div') {\n"
+        + "  console.error('HMR clobbered renderer, got', out); process.exit(1);\n"
+        + "}\n"
+        + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"HMR harness failed: stdout={out} stderr={err}";

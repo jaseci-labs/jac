@@ -82,9 +82,15 @@ def _inject_macho(ir_txt: str) -> str {
     globals_ir = ""
         if "__jac_argc" in ir_txt
         else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    return ir_txt + (
-        "\n; --- injected entry point ---\n" + globals_ir + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n"
-    );
+    return ir_txt
+        + (
+            "\n; --- injected entry point ---\n"
+            + globals_ir
+            + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n"
+            + "    store i32 %argc, ptr @__jac_argc\n"
+            + "    store ptr %argv, ptr @__jac_argv\n"
+            + "    call void @jac_entry()\n    ret i32 0\n}\n"
+        );
 }
 
 
@@ -100,7 +106,7 @@ def _inject_elf(ir_txt: str) -> str {
 """Locate a bundled archive by name from any pbs build, or None."""
 def _find_bundled(libname: str) -> (str | None) {
     jac_dir = Path(__file__).resolve().parents[4];
-    hits = list(jac_dir.glob(f".pbs-build/*/python/build/lib/{libname}"));
+    hits = list(jac_dir.`glob(f".pbs-build/*/python/build/lib/{libname}"));
     return str(hits[0]) if hits else None;
 }
 
@@ -123,7 +129,7 @@ test "Mach-O: static-link lzma_crc32 from liblzma.a, run, verify (#6978 0.1a)" {
     member_bytes = [m.data for m in members];
 
     relobj = _emit_object(
-        _inject_macho(_compile_ir("static_archive_crc32.na.jac", triple)), triple
+        _inject_macho(_compile_ir("static_archive_crc32.jac", triple)), triple
     );
     d = tempfile.mkdtemp();
     out = os.path.join(d, "crc32_static");
@@ -162,7 +168,7 @@ test "Mach-O: static-link XML_ExpatVersion from libexpat.a (multi-member) (#6978
     member_bytes = [m.data for m in members];
 
     relobj = _emit_object(
-        _inject_macho(_compile_ir("static_archive_expat.na.jac", triple)), triple
+        _inject_macho(_compile_ir("static_archive_expat.jac", triple)), triple
     );
     d = tempfile.mkdtemp();
     out = os.path.join(d, "expat_static");
@@ -192,7 +198,7 @@ test "nacompile CLI: `import from lzma` static-links the floor, no dylib dep (#6
     if _find_bundled("liblzma.a") is None {
         return;
     }
-    fixture = os.path.join(FIXTURES, "static_archive_crc32.na.jac");
+    fixture = os.path.join(FIXTURES, "static_archive_crc32.jac");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "crc32_cli");
     comp = subprocess.run(
@@ -218,20 +224,198 @@ test "nacompile CLI: `import from lzma` static-links the floor, no dylib dep (#6
 }
 
 
+"""Emit a PIC relocatable object for `triple` (shared-object flavor, matching
+emit_shared_library's target-machine settings)."""
+def _emit_pic_object(ir_txt: str, triple: str) -> bytes {
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    mod = llvm.parse_assembly(ir_txt);
+    mod.verify();
+    tm = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, reloc="pic", codemodel="small"
+    );
+    return tm.emit_object(mod);
+}
+
+
+"""Link a shared ELF .so from a main object plus archive members and return
+(image bytes, {symbol: vaddr}) for byte-level inspection on any host. In the
+ElfLinker shared layout BASE_VADDR is 0, so every vaddr is also a file offset."""
+def _link_elf_shared(main_ir: str, member_irs: list[str], triple: str) -> tuple {
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "libt.so");
+    prev = os.environ.get("JAC_SYMMAP", None);
+    os.environ["JAC_SYMMAP"] = "1";
+    try {
+        ok = ElfLinker.link(
+            obj_bytes=_emit_pic_object(main_ir, triple),
+            output_path=out,
+            needed_libs=["libc.so.6"],
+            crt_objects=[],
+            shared=True,
+            export_symbols=[],
+            init_funcs=[],
+            soname="libt.so",
+            archive_members=[_emit_pic_object(m, triple) for m in member_irs],
+            static_link=False
+        );
+    } finally {
+        if prev is None {
+            os.environ.pop("JAC_SYMMAP", None);
+        } else {
+            os.environ["JAC_SYMMAP"] = prev;
+        }
+    }
+    assert ok , "ElfLinker.link(shared) returned False";
+    raw = Path(out).read_bytes();
+    symmap: dict = {};
+    for line in Path(out + ".symmap").read_text().splitlines() {
+        (n, v) = line.rsplit(" ", 1);
+        symmap[n] = int(v, 16);
+    }
+    return (raw, symmap);
+}
+
+
+"""Parse an ELF image's section headers into {name: (file_off, size)}."""
+def _elf_section_map(raw: bytes) -> dict {
+    e_shoff = struct.unpack_from("<Q", raw, 40)[0];
+    (e_shentsize, e_shnum, e_shstrndx) = struct.unpack_from("<HHH", raw, 58);
+    hdrs: list = [];
+    for i in range(e_shnum) {
+        hdrs.append(struct.unpack_from("<IIQQQQIIQQ", raw, e_shoff + i * e_shentsize));
+    }
+    shstr = hdrs[e_shstrndx];
+    sdata = raw[shstr[4]:shstr[4] + shstr[5]];
+    smap: dict = {};
+    for h in hdrs {
+        end = sdata.index(b"\x00", h[0]);
+        smap[sdata[h[0]:end].decode()] = (h[4], h[5]);
+    }
+    return smap;
+}
+
+
+glob ELF_SO_TRIPLE = "x86_64-unknown-linux-gnu",
+     ELF_SO_HDR = f'target triple = "{ELF_SO_TRIPLE}"\n\n';
+
+
+test "ELF: merged zerofill (.bss) members get distinct non-overlapping slots" {
+    # Regression for the archive-merge offset accounting (Mach-O f032a12eb6
+    # ported to ELF): zerofill sections carry mem_size with no file data, so
+    # advancing member offsets from len(data) would hand every merged member
+    # the same slot and alias all their globals.
+    main_ir = ELF_SO_HDR + "@anchor = global i64 7, align 8\n";
+    member_a = ELF_SO_HDR + "@bss_a = global [40 x i8] zeroinitializer, align 16\n";
+    member_b = ELF_SO_HDR + "@bss_b = global [40 x i8] zeroinitializer, align 16\n";
+    (raw, symmap) = _link_elf_shared(main_ir, [member_a, member_b], ELF_SO_TRIPLE);
+    assert raw[:4] == b"\x7fELF" , "not an ELF image";
+    a = symmap.get("bss_a");
+    b = symmap.get("bss_b");
+    assert a is not None and b is not None , f"missing .bss symbols: {symmap.keys()}";
+    assert a != b , f"merged .bss members alias one slot: {hex(a)}";
+    assert a % 16 == 0 and b % 16 == 0 , f"alignment lost: {hex(a)}, {hex(b)}";
+    lo = a if a < b else b;
+    hi = b if a < b else a;
+    assert hi >= lo + 40 , f"merged .bss members overlap: {hex(lo)}..{hex(hi)}";
+}
+
+
+test "ELF: commons merge by max size/alignment and a real def beats tentative" {
+    # Regression for SHN_COMMON handling in the archive merge: tentative
+    # definitions (st_value = alignment, st_size = size) must merge by
+    # largest size and strictest alignment, and a later REAL definition must
+    # replace the tentative one instead of being dropped. The pre-fix merge
+    # kept the first-seen common verbatim: com_a stayed 24 bytes (its true
+    # 64-byte span overlapping the commons placed after it in .bss) and
+    # gdef's initialized quad was silently lost to zerofill.
+    member_a = ELF_SO_HDR
+        + "@com_a = common global [24 x i8] zeroinitializer, align 8\n";
+    member_b = ELF_SO_HDR
+        + "@com_a = common global [64 x i8] zeroinitializer, align 16\n"
+        + "@com_z = common global [16 x i8] zeroinitializer, align 8\n"
+        + "@gdef = common global i64 0, align 8\n";
+    member_c = ELF_SO_HDR
+        + "@gdef = dso_local global i64 1234605616436508552, align 8\n";
+    main_ir = ELF_SO_HDR + "@anchor = global i64 7, align 8\n";
+    (raw, symmap) = _link_elf_shared(
+        main_ir, [member_a, member_b, member_c], ELF_SO_TRIPLE
+    );
+    com_a = symmap.get("com_a");
+    com_z = symmap.get("com_z");
+    gdef = symmap.get("gdef");
+    assert com_a is not None and com_z is not None and gdef is not None , (
+        f"commons not allocated: {symmap.keys()}"
+    );
+    assert com_a % 16 == 0 , f"com_a lost its strictest alignment: {hex(com_a)}";
+    for (nm, other, sz) in [("com_z", com_z, 16), ("gdef", gdef, 8)] {
+        disjoint = (other + sz <= com_a) or (other >= com_a + 64);
+        assert disjoint , (
+            f"{nm} at {hex(other)} overlaps com_a's true span "
+            f"[{hex(com_a)}, {hex(com_a + 64)})"
+        );
+    }
+    # vaddr == file offset in this layout, so the kept definition is readable.
+    quad = struct.unpack_from("<Q", raw, gdef)[0];
+    assert quad == 1234605616436508552 , (
+        f"real definition lost to a tentative one: gdef bytes = {hex(quad)}"
+    );
+}
+
+
+test "ELF: RELA addends survive into RELATIVE dynamic relocs" {
+    # Regression mirroring the Mach-O inline-addend fix (61aad1c9ea): data
+    # pointers into the middle of a blob (the static-string-struct +16
+    # header skip in sealed artifacts) must keep their addend. A dropped
+    # addend re-points every slot at the blob base.
+    main_ir = ELF_SO_HDR
+        + '@lstr = private unnamed_addr constant [12 x i8] c"ADDENDPROBE\\00", align 1\n'
+        + "@tbl = global [2 x ptr] ["
+        + "ptr getelementptr inbounds (i8, ptr @lstr, i64 5), "
+        + "ptr getelementptr inbounds (i8, ptr @lstr, i64 9)], align 8\n";
+    (raw, symmap) = _link_elf_shared(main_ir, [], ELF_SO_TRIPLE);
+    smap = _elf_section_map(raw);
+    assert ".rela.dyn" in smap , f"no .rela.dyn emitted: {smap.keys()}";
+    (rd_off, rd_size) = smap[".rela.dyn"];
+    rels: list = [];
+    for i in range(rd_size // 24) {
+        rels.append(struct.unpack_from("<QQq", raw, rd_off + i * 24));
+    }
+    probe = raw.find(b"ADDENDPROBE");
+    assert probe > 0 , "probe string missing from image";
+    tbl = symmap.get("tbl");
+    assert tbl is not None , f"tbl not placed: {symmap.keys()}";
+    # R_X86_64_RELATIVE == 8; slot vaddr == r_offset, pointer == r_addend.
+    for (slot, want) in [(tbl, probe + 5), (tbl + 8, probe + 9)] {
+        hit = [
+            r
+            for r in rels
+            if (r[1] & 0xFFFFFFFF) == 8 and r[0] == slot
+        ];
+        assert hit , f"no RELATIVE reloc covers slot {hex(slot)}";
+        assert hit[0][2] == want , (
+            f"addend dropped: slot {hex(slot)} -> {hex(hit[0][2])}, "
+            f"expected {hex(want)} (base would be {hex(probe)})"
+        );
+    }
+}
+
+
 test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 0.1a)" {
     # Pin an explicit ELF triple so the object is ELF on any host (this file also
     # runs on the macOS native job, whose default triple is darwin/Mach-O).
     # Execution stays gated to a Linux x86_64 host that can run the result.
     triple = "x86_64-unknown-linux-gnu";
     main_obj = _emit_object(
-        _inject_elf(_compile_ir("static_archive_elf_leaf.na.jac", triple)), triple
+        _inject_elf(_compile_ir("static_archive_elf_leaf.jac", triple)), triple
     );
     # The archive member as a raw relocatable object -- the same shape
     # select_ar_members hands back as `.data`: a leaf defining the extern the
     # main object calls. Emitted from IR so the test needs no checked-in binary
     # and no host C toolchain, and stays cross-host (Mach-O `ar` cannot build an
     # ELF member's symbol index, so a real archive can't be assembled on macOS).
-    member_ir = f'target triple = "{triple}"\n\n' + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
+    member_ir = f'target triple = "{triple}"\n\n'
+        + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
     member_obj = _emit_object(member_ir, triple);
 
     d = tempfile.mkdtemp();

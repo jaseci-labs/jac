@@ -4,7 +4,7 @@ import jaclang;
 import from pathlib { Path }
 import from jaclang.publish.npm_tarball { pack_tarball }
 
-glob _api_names_cache: dict[str, set] = {},
+glob _api_names_cache: dict[str, set[str]] = {},
      _runtime_js_cache: dict[str, str] = {};
 
 def _runtime_source_path(framework: str = "") -> Path {
@@ -16,15 +16,15 @@ impl runtime_pkg_name(framework: str = "") -> str {
     import from jaclang.runtimelib.runtime_source { client_runtime_cl_basename }
     base = client_runtime_cl_basename(framework);
 
-    if base == "client_runtime.cl.jac" {
+    if base == "client_runtime.jac" {
         return RUNTIME_PKG_NAME;
     }
 
-    suffix = base.split("_runtime.cl.jac")[0] or base;
+    suffix = base.split("_runtime.jac")[0] or base;
     return f"{RUNTIME_PKG_NAME}-{suffix}";
 }
 
-impl runtime_api_names(framework: str = "") -> set {
+impl runtime_api_names(framework: str = "") -> set[str] {
     src = _runtime_source_path(framework);
     key = str(src);
     cached = _api_names_cache.get(key);
@@ -181,29 +181,40 @@ def _relative_dep_specs(js: str) -> list[str] {
     return specs;
 }
 
-def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
+def _collect_dep_modules(
+    entry_js: str, entry_dir: str = ""
+) -> tuple[str, list[tuple[str, str]]] {
     import jaclang;
     import posixpath;
     base = Path(jaclang.__file__).parent.parent;
     seen: set[str] = set();
     out: list[tuple[str, str]] = [];
 
-    worklist: list[tuple[str, str]] = [("", entry_js)];
+    worklist: list[tuple[str, str]] = [(entry_dir, entry_js)];
+    is_entry = True;
     while worklist {
         (cur_dir, js) = worklist.pop();
         for spec in _relative_dep_specs(js) {
             rel = posixpath.normpath(posixpath.join(cur_dir, spec));
+            if is_entry and rel != spec.lstrip("./") {
+                for quote in ['"', "'"] {
+                    entry_js = entry_js.replace(
+                        quote + spec + quote, quote + "./" + rel + quote
+                    );
+                }
+            }
             if rel in seen {
                 continue;
             }
             seen.add(rel);
-            src = base / (rel[:-3] + ".cl.jac");
+            src = base / (rel[:-3] + ".jac");
             dep_js = _compile_cl_to_js(src);
             out.append((rel, dep_js));
             worklist.append((posixpath.dirname(rel), dep_js));
         }
+        is_entry = False;
     }
-    return out;
+    return (entry_js, out);
 }
 
 def _runtime_package_json(
@@ -233,7 +244,14 @@ impl build_runtime_tarball(
     name = pkg_name or runtime_pkg_name(framework);
     entry_js = compile_runtime_js(framework);
 
-    deps = _collect_dep_modules(entry_js);
+    import posixpath;
+    import jaclang;
+    import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+    base = Path(jaclang.__file__).parent.parent;
+    entry_dir = posixpath.dirname(
+        Path(resolve_client_runtime_cl_path()).relative_to(base).as_posix()
+    );
+    (entry_js, deps) = _collect_dep_modules(entry_js, entry_dir);
 
     exports = runtime_export_names(entry_js, framework);
     if exports {

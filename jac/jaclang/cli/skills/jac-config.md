@@ -26,10 +26,10 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[byllm]` / `[byllm.model]` / `[byllm.call_params]` | AI settings: model identity, API keys, call params (see `jac-by-llm`) |
 | `[scale.*]` | serving/deployment settings: `[scale.server]`, `[scale.database]`, `[scale.kubernetes]`, ... (see `jac-sv-deploy`) |
-| `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the `cl` target emits; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects |
+| `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the client target emits; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects |
 | `[client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
 | `[desktop]` / `[desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
-| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac install --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
+| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac install --shadcn` / `jac retheme` - don't hand-edit. Two paths you MAY set by hand: `components_dir` and `utils_path`, which tell the installer where your primitives and `cn()` live if not `components/ui/` and `lib/utils.jac` (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
 
@@ -88,7 +88,7 @@ byLLM, scale, the client/desktop framework, and the MCP server all ship inside t
 
 ## .jacignore
 
-`.jacignore` at the project root excludes files from compilation/analysis - one pattern per line, `.gitignore`-style (`*.generated.jac`, `test_fixtures/`).
+`.jacignore` at the project root excludes files from compilation/analysis - one pattern per line, `.gitignore`-style (`*.generated.jac`, `test_fixtures/`). A `--scale` deploy honors it too: a parked tree is not staged into the app bundle, so it never reaches the pods or their boot compile.
 
 ## Pitfalls
 

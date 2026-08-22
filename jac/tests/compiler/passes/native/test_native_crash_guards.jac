@@ -9,7 +9,7 @@ harness.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_force_opts }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
@@ -19,10 +19,12 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
+"""Compile a .jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -40,7 +42,7 @@ def get_func(eng: object, name: str, restype: type | None, *argtypes: type) -> o
 
 # --- Slice semantics: negative bounds, clamping, steps ---
 test "str slices: negative bounds, clamping, and steps match CPython" {
-    (eng, _) = compile_native("py_slices.na.jac");
+    (eng, _) = compile_native("py_slices.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "str_slices", ctypes.c_int64);
     result = fn();
@@ -48,7 +50,7 @@ test "str slices: negative bounds, clamping, and steps match CPython" {
 }
 
 test "list slices: negative bounds, clamping, and steps match CPython" {
-    (eng, _) = compile_native("py_slices.na.jac");
+    (eng, _) = compile_native("py_slices.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "list_slices", ctypes.c_int64);
     result = fn();
@@ -56,7 +58,7 @@ test "list slices: negative bounds, clamping, and steps match CPython" {
 }
 
 test "slice with zero step raises instead of looping" {
-    (eng, _) = compile_native("py_slices.na.jac");
+    (eng, _) = compile_native("py_slices.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "slice_zero_step_raises", ctypes.c_int64);
     result = fn();
@@ -65,7 +67,7 @@ test "slice with zero step raises instead of looping" {
 
 # --- String edge cases: negative repeat, empty-needle count ---
 test "str repeat with a negative count yields empty, not heap corruption" {
-    (eng, _) = compile_native("py_str_edge.na.jac");
+    (eng, _) = compile_native("py_str_edge.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "repeat_negative", ctypes.c_int64);
     result = fn();
@@ -73,7 +75,7 @@ test "str repeat with a negative count yields empty, not heap corruption" {
 }
 
 test "str count with an empty needle returns len+1, not a hang" {
-    (eng, _) = compile_native("py_str_edge.na.jac");
+    (eng, _) = compile_native("py_str_edge.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "count_empty_needle", ctypes.c_int64);
     result = fn();
@@ -83,7 +85,7 @@ test "str count with an empty needle returns len+1, not a hang" {
 
 # --- Custom exception subclasses carry their fields ---
 test "exception subclass fields survive raise and catch" {
-    (eng, _) = compile_native("py_exc_subclass.na.jac");
+    (eng, _) = compile_native("py_exc_subclass.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "subclass_field_roundtrip", ctypes.c_int64);
     result = fn();
@@ -91,17 +93,8 @@ test "exception subclass fields survive raise and catch" {
     assert result == 421 , f"Expected 421, got {result}";
 }
 
-# --- Variadic defs are a loud compile error, not a SIGTRAP ---
-test "star-args def is rejected loudly instead of miscompiling" {
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, "py_varargs_err.na.jac")));
-    errs = " ".join([str(e) for e in (prog.errors_had or [])]);
-    assert prog.errors_had , "Expected an E5090 for *args, got a clean compile";
-    assert "E5090" in errs or "variadic" in errs , f"Unexpected errors: {errs}";
-}
-
 test "base except handler still sees a readable message for struct raises" {
-    (eng, _) = compile_native("py_exc_subclass.na.jac");
+    (eng, _) = compile_native("py_exc_subclass.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "base_handler_message", ctypes.c_int64);
     result = fn();
