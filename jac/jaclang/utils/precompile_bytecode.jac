@@ -2929,18 +2929,30 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
+def _native_lib_suffix -> str {
+    import sys;
+    if sys.platform.startswith("win") {
+        return ".dll";
+    }
+    if sys.platform == "darwin" {
+        return ".dylib";
+    }
+    return ".so";
+}
+
+
+def _interop_record_path(lib_output: str) -> Path {
+    return Path(str(lib_output) + ".interop.json");
+}
+
+
 def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
     if not (pkg_path / "jac.toml").is_file() {
         return {};
     }
     import from jaclang.project.config { get_config_for_path }
     import from jaclang.project.kinds { resolve_project_kind, resolve_entry }
-    import from jaclang.runtimelib.sealed_serve {
-        CLIENT_DIST_REL,
-        NATIVE_DIR_REL,
-        interop_record_path,
-        native_lib_name
-    }
+    import from jaclang.runtimelib.sealed_serve { CLIENT_DIST_REL, NATIVE_DIR_REL }
 
     config = get_config_for_path(pkg_path);
     if config is None {
@@ -2998,7 +3010,9 @@ def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
             if not _stem {
                 continue;
             }
-            _rec = interop_record_path(str(native_dir / _t / native_lib_name(_stem)));
+            _rec = _interop_record_path(
+                str(native_dir / _t / (_stem + _native_lib_suffix()))
+            );
             if not _rec.is_file() {
                 continue;
             }
