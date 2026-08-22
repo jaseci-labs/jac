@@ -10,6 +10,123 @@ import sys;
 import from jaclang.cli.console { console }
 
 
+enum NativeLinkTarget { STANDALONE_EXE = 'standalone_exe', SHARED_LIB = 'shared_lib' }
+
+
+obj NativeTargetPlan {
+    has raw: str = "",
+        is_wasm: bool = False,
+        is_windows: bool = False,
+        is_macos_target: bool = False,
+        is_linux_target: bool = False,
+        env_triple: str = "";
+
+    def link_is_macos -> bool {
+        """Mach-O linkage applies for an explicit macOS target or a darwin host.""";
+        import sys;
+        return self.is_macos_target
+            or ((sys.platform == "darwin") and not self.is_windows);
+    }
+}
+
+
+def _parse_native_target(target: str) -> NativeTargetPlan {
+    """Single resolution point for target/platform flags.
+
+    Both the ``nacompile`` prologue and ``_link_native_artifact`` consume
+    this so platform predicates cannot drift apart.
+    """;
+    is_wasm = target in ["wasm", "wasm32", "wasm32-unknown-unknown"];
+    is_windows = (sys.platform == "win32")
+        or ("windows" in target)
+        or (target in ["win", "win64", "mingw"]);
+    is_macos_target = (target in ["macos", "darwin", "osx", "macosx"])
+        or ("apple" in target)
+        or ("darwin" in target);
+    is_linux_target = (target in ["linux", "elf"])
+        or ("linux-gnu" in target)
+        or ("linux-musl" in target);
+
+    env_triple = "";
+    if is_wasm {
+        env_triple = "wasm32-unknown-unknown";
+    } elif is_windows {
+        env_triple = target if "-" in target else "x86_64-pc-windows-msvc";
+    } elif is_macos_target {
+        env_triple = target if "-" in target else "arm64-apple-darwin";
+    } elif is_linux_target {
+        env_triple = target if "-" in target else "x86_64-unknown-linux-gnu";
+    }
+    return NativeTargetPlan(
+        raw=target,
+        is_wasm=is_wasm,
+        is_windows=is_windows,
+        is_macos_target=is_macos_target,
+        is_linux_target=is_linux_target,
+        env_triple=env_triple
+    );
+}
+
+
+obj NativeLinkCtx {
+    has ir_module: any,
+        options: any,
+        base_llvm_ir: str,
+        auto_promote: bool,
+        plan: NativeTargetPlan;
+}
+
+
+obj NativeCompilePrep {
+    has gc: str,
+        gc_cfg: any,
+        prog: any;
+}
+
+
+def _prepare_native_compile(filename: str, gc: str = "") -> (NativeCompilePrep | None) {
+    """Validate input, resolve GC config, print the banner, build a program.
+
+    Common prologue for ``nacompile`` and ``nacompile_sealed_pair``.
+    """;
+    import from jaclang.jac0core.ext_registry { is_jac }
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.project { get_config }
+
+    if not is_jac(filename) {
+        console.error("Input must be a .jac file.");
+        return None;
+    }
+    if not os.path.exists(filename) {
+        console.error(f"File not found: {filename}");
+        return None;
+    }
+    _gc_cfg = None;
+    _cfg = get_config();
+    if _cfg {
+        _gc_cfg = _cfg.gc;
+    }
+    if not gc {
+        gc = _gc_cfg.`default if _gc_cfg else "cycles";
+    }
+    if gc not in ("cycles", "rc", "none") {
+        console.error(f"Invalid --gc mode '{gc}' (expected: cycles, rc, none)");
+        return None;
+    }
+    console.print(f"Compiling {filename} to native binary");
+    return NativeCompilePrep(gc=gc, gc_cfg=_gc_cfg, prog=JacProgram());
+}
+
+
+def _native_import_names(ir_module: object) -> list {
+    mf = ir_module.gen.interop_manifest;
+    if mf {
+        return list(mf.native_imports);
+    }
+    return [];
+}
+
+
 def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
     import re;
     syms: set = set();
@@ -204,124 +321,23 @@ def _inject_entry_pe(llvm_ir_str: str) -> str {
 }
 
 
-impl nacompile(
+def _compile_native_link_ctx(
     filename: str,
-    output: str = "",
+    prep: NativeCompilePrep,
+    enforce_nogc: bool,
+    auto_promote: bool,
     scrub: bool = False,
-    target: str = "",
-    shared: bool = False,
-    debug: bool = False,
-    gc: str = "",
-    assert_no_rc: bool = False,
-    enforce_nogc: bool = False,
-    strict: bool = False
-) -> int {
-    import from jaclang.jac0core.ext_registry {
-        is_jac,
-        is_retired_native_marker,
-        base_stem
-    }
-    import from jaclang.project { get_config }
-
-    _gc_cfg = None;
-    _cfg = get_config();
-    if _cfg {
-        _gc_cfg = _cfg.gc;
-    }
-    if not gc {
-        gc = _gc_cfg.`default if _gc_cfg else "cycles";
-    }
-    if gc not in ("cycles", "rc", "none") {
-        console.error(f"Invalid --gc mode '{gc}' (expected: cycles, rc, none)");
-        return 1;
-    }
-    if not is_jac(filename) {
-        console.error("Input must be a .jac file.");
-        return 1;
-    }
-
-    _prev_native_debug = os.environ.get("JAC_NATIVE_DEBUG") if debug else None;
-    if debug {
-        os.environ["JAC_NATIVE_DEBUG"] = "1";
-        scrub = True;
-    }
-    if not os.path.exists(filename) {
-        console.error(f"File not found: {filename}");
-        return 1;
-    }
-
-    is_wasm = target in ["wasm", "wasm32", "wasm32-unknown-unknown"];
-    if is_wasm {
-        os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
-    }
-
-    is_windows = (sys.platform == "win32")
-        or ("windows" in target)
-        or (target in ["win", "win64", "mingw"]);
-    if is_windows {
-        os.environ["JAC_NATIVE_TARGET"] = (
-            target if "-" in target else "x86_64-pc-windows-msvc"
-        );
-    }
-
-    is_macos_target = (target in ["macos", "darwin", "osx", "macosx"])
-        or ("apple" in target)
-        or ("darwin" in target);
-    if is_macos_target {
-        os.environ["JAC_NATIVE_TARGET"] = (
-            target if "-" in target else "arm64-apple-darwin"
-        );
-    }
-
-    is_linux_target = (target in ["linux", "elf"])
-        or ("linux-gnu" in target)
-        or ("linux-musl" in target);
-    if is_linux_target {
-        os.environ["JAC_NATIVE_TARGET"] = (
-            target if "-" in target else "x86_64-unknown-linux-gnu"
-        );
-    }
-
-    if scrub {
-        import from jaclang.jac0core.jir { scrub_cache_dirs }
-        src_root = os.path.dirname(os.path.abspath(filename)) or ".";
-        _scrubbed = scrub_cache_dirs(src_root);
-        if _scrubbed {
-            console.print(f"  Scrubbed {_scrubbed} cache dir(s).");
-        }
-    }
-
-    if is_retired_native_marker(filename) {
-        console.error(
-            f"{filename}: the .na.jac marker was retired in 0.35 -- rename the "
-            "file to .jac; 'jac nacompile' compiles plain .jac natively."
-        );
-        return 1;
-    }
-    auto_promote = is_jac(filename);
-
-    is_macos = ((sys.platform == "darwin") and not is_windows and not is_linux_target)
-        or is_macos_target;
-
-    if not output {
-        output = base_stem(filename);
-        if shared {
-            _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");
-            output = "lib" + output + _so_ext;
-        } elif is_wasm {
-            output = output + ".wasm";
-        } elif is_windows {
-            output = output + ".exe";
-        }
-    }
-
-    console.print(f"Compiling {filename} to native binary");
-
-    import from jaclang.jac0core.program { JacProgram }
+    target: NativeLinkTarget = NativeLinkTarget.STANDALONE_EXE,
+    plan: NativeTargetPlan | None = None
+) -> (NativeLinkCtx | None) {
+    import from jaclang.jac0core.ext_registry { base_stem }
     import from jaclang.jac0core.compile_options { CompileOptions }
 
+    gc = prep.gc;
+    _gc_cfg = prep.gc_cfg;
+    prog = prep.prog;
+
     try {
-        prog = JacProgram();
         options = CompileOptions(
             aot_mode=True,
             type_check=False,
@@ -338,22 +354,14 @@ impl nacompile(
         console.error(f"Jac compilation failed: {e}");
         import traceback;
         traceback.print_exc();
-        return 1;
-    } finally {
-        if debug {
-            if _prev_native_debug is None {
-                os.environ.pop("JAC_NATIVE_DEBUG", None);
-            } else {
-                os.environ["JAC_NATIVE_DEBUG"] = _prev_native_debug;
-            }
-        }
+        return None;
     }
 
     if prog.errors_had {
         for _err in prog.errors_had {
             console.print(_err.pretty_print());
         }
-        return 1;
+        return None;
     }
 
     if ir_module is None or ir_module.gen.llvm_ir is None {
@@ -374,52 +382,44 @@ impl nacompile(
         for _warn in prog.warnings_had {
             console.print(_warn.pretty_print());
         }
-        return 1;
+        return None;
     }
 
-    if auto_promote {
-        console.print("  Auto-promoted to native compilation.");
-    }
-
-    if is_wasm {
-        import from jaclang.compiler.passes.native.wasm_build {
-            emit_wasm_from_ir,
-            app_declared_imports
-        }
-        try {
-            wasm_bytes = emit_wasm_from_ir(
-                str(ir_module.gen.llvm_ir), app_imports=app_declared_imports(ir_module),
-            );
-        } except Exception as e {
-            console.error(f"Wasm emit/link failed: {e}");
-            import traceback;
-            traceback.print_exc();
-            return 1;
-        }
-        with open(output, "wb") as _wf {
-            _wf.write(wasm_bytes);
-        }
-        console.print(f"  Wasm module written to {output} ({len(wasm_bytes)} bytes).");
-        console.print(
-            "  Instantiate with the `jac_host1` host object (see @jac/wasm_host)"
-            " plus an `env` object for any FFI the app declares."
-        );
-        return 0;
-    }
-
-    manifest = ir_module.gen.interop_manifest;
-    if manifest and manifest.native_imports {
+    if _native_import_names(ir_module) and target == NativeLinkTarget.STANDALONE_EXE {
         console.error(
             "Cannot compile to standalone binary: "
             "file has Python/server dependencies (native_imports)."
         );
-        for binding in manifest.native_imports {
+        for binding in ir_module.gen.interop_manifest.native_imports {
             console.error(f"  - {binding.name}");
         }
-        return 1;
+        return None;
     }
 
-    llvm_ir_str = str(ir_module.gen.llvm_ir);
+    return NativeLinkCtx(
+        ir_module=ir_module,
+        options=options,
+        base_llvm_ir=str(ir_module.gen.llvm_ir),
+        auto_promote=auto_promote,
+        plan=plan if plan is not None else _parse_native_target("")
+    );
+}
+
+
+def _link_native_artifact(
+    ctx: NativeLinkCtx,
+    output: str,
+    shared: bool,
+    entry_lib: bool,
+    assert_no_rc: bool = False,
+    strict: bool = False
+) -> int {
+    ir_module = ctx.ir_module;
+    options = ctx.options;
+    llvm_ir_str = ctx.base_llvm_ir;
+    auto_promote = ctx.auto_promote;
+    plan = ctx.plan;
+
     if strict {
         import from jaclang.compiler.passes.native.na_compile_pass {
             native_demoted_ir_symbols as _demoted_syms
@@ -435,6 +435,10 @@ impl nacompile(
             );
             return 1;
         }
+    }
+
+    if auto_promote {
+        console.print("  Auto-promoted to native compilation.");
     }
 
     if assert_no_rc {
@@ -461,7 +465,10 @@ impl nacompile(
         );
     }
 
-    if not shared and "jac_entry" not in llvm_ir_str {
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
+    import jaclang.compiler.passes.native.shared_emit as _shared_emit;
+
+    if not shared and not _shared_emit.jac_entry_defined(llvm_ir_str) {
         console.error(
             "No entry point found. " "The file must have a 'with entry { }' block."
         );
@@ -470,7 +477,6 @@ impl nacompile(
 
     console.print("  LLVM IR generated successfully.");
 
-    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
@@ -479,6 +485,9 @@ impl nacompile(
 
     export_symbols: list[str] = [];
     init_funcs: list[str] = [];
+
+    is_windows = plan.is_windows;
+    is_macos = plan.link_is_macos();
 
     clib_paths = ir_module.gen._clib_paths;
     (archive_members, _floor_handled) = collect_floor_archives(
@@ -528,11 +537,26 @@ impl nacompile(
 
     if shared {
         _mf = ir_module.gen.interop_manifest;
-        import from jaclang.compiler.passes.native.shared_emit {
-            inject_shared_init as _inject_shared_init
+        _sh_imports = [b.name for b in _mf.native_imports] if _mf else [];
+        if _sh_imports {
+            console.warning(
+                f"Shared library keeps {len(_sh_imports)} Python "
+                "interop symbol(s) unresolved ("
+                    + ", ".join(_sh_imports)
+                    + "); the loading host must resolve them."
+            );
         }
-        (llvm_ir_str, _extra_exports) = _inject_shared_init(llvm_ir_str, _mf);
-        init_funcs = ["__jac_shared_init"];
+        _had_entry = _shared_emit.jac_entry_defined(llvm_ir_str);
+        (llvm_ir_str, _extra_exports) = _shared_emit.inject_shared_init(
+            llvm_ir_str, _mf, emit_entry_stub=entry_lib
+        );
+        if entry_lib and not _had_entry {
+            console.print(
+                "  No 'with entry { }' block; synthesized an empty jac_entry"
+                " for the entry-lib host protocol."
+            );
+        }
+        init_funcs = [] if entry_lib else ["__jac_shared_init"];
         for _s in ir_module.gen._exported_symbols {
             if _s not in export_symbols {
                 export_symbols.append(_s);
@@ -541,6 +565,18 @@ impl nacompile(
         for _s in _extra_exports {
             if _s not in export_symbols {
                 export_symbols.append(_s);
+            }
+        }
+        if entry_lib {
+            if "@__jac_argc = global" not in llvm_ir_str {
+                llvm_ir_str += (
+                    "\n@__jac_argc = global i32 0\n" + "@__jac_argv = global ptr null\n"
+                );
+            }
+            for _s in ["jac_entry", "__jac_argc", "__jac_argv", "__jac_shared_init"] {
+                if _s not in export_symbols {
+                    export_symbols.append(_s);
+                }
             }
         }
         if not export_symbols {
@@ -734,6 +770,209 @@ impl nacompile(
         console.print(f"  Run with: ./{output}");
     }
     return 0;
+}
+
+
+impl nacompile_sealed_pair(filename: str, exe_output: str, lib_output: str) -> int {
+    import json;
+    import from jaclang.runtimelib.sealed_serve { interop_record_path }
+
+    prep = _prepare_native_compile(filename);
+    if prep is None {
+        return 1;
+    }
+
+    ctx = _compile_native_link_ctx(
+        filename=filename,
+        prep=prep,
+        enforce_nogc=False,
+        auto_promote=True,
+        target=NativeLinkTarget.SHARED_LIB
+    );
+    if ctx is None {
+        return 1;
+    }
+
+    _pair_imports = _native_import_names(ctx.ir_module);
+    _interop_record = interop_record_path(lib_output);
+    if _pair_imports {
+        console.warning(
+            "App calls from native code into Python (native_imports): "
+            "dropping the standalone executable (it cannot be "
+            "self-contained) and sealing the host-driven native library only."
+        );
+        _interop_record.parent.mkdir(parents=True, exist_ok=True);
+        _interop_record.write_text(
+            json.dumps(
+                {"interop": True, "unresolved": [b.name for b in _pair_imports]},
+                sort_keys=True
+            )
+                + "\n",
+            encoding="utf-8"
+        );
+    } else {
+        if _interop_record.exists() {
+            _interop_record.unlink();
+        }
+        rc = _link_native_artifact(ctx, exe_output, shared=False, entry_lib=False);
+        if rc != 0 {
+            console.error("Native compilation failed; seal aborted.");
+            return rc;
+        }
+    }
+
+    console.print("  Compiling in-process native library", style="muted");
+    lib_rc = _link_native_artifact(ctx, lib_output, shared=True, entry_lib=True);
+    if lib_rc != 0 {
+        console.warning(
+            "In-process native library compilation failed; the sealed bundle "
+            "will run via the standalone binary only."
+        );
+    }
+    return 0;
+}
+
+
+impl nacompile(  # jac:ignore[W3030]
+    filename: str,
+    output: str = "",
+    scrub: bool = False,
+    target: str = "",
+    shared: bool = False,
+    entry_lib: bool = False,
+    debug: bool = False,
+    gc: str = "",
+    assert_no_rc: bool = False,
+    enforce_nogc: bool = False,
+    strict: bool = False
+) -> int {
+    import from jaclang.jac0core.ext_registry {
+        is_jac,
+        is_retired_native_marker,
+        base_stem
+    }
+
+    if entry_lib {
+        shared = True;
+    }
+
+    _prev_native_debug = os.environ.get("JAC_NATIVE_DEBUG") if debug else None;
+    if debug {
+        os.environ["JAC_NATIVE_DEBUG"] = "1";
+        scrub = True;
+    }
+
+    prep = _prepare_native_compile(filename, gc);
+    if prep is None {
+        return 1;
+    }
+
+    plan = _parse_native_target(target);
+    import from jaclang.jac0core.compile_options {
+        push_native_target_env,
+        pop_native_target_env
+    }
+    _prev_target_env = (
+        push_native_target_env(plan.env_triple) if plan.env_triple else None
+    );
+    is_wasm = plan.is_wasm;
+    is_windows = plan.is_windows;
+
+    if scrub {
+        import from jaclang.jac0core.jir { scrub_cache_dirs }
+        src_root = os.path.dirname(os.path.abspath(filename)) or ".";
+        _scrubbed = scrub_cache_dirs(src_root);
+        if _scrubbed {
+            console.print(f"  Scrubbed {_scrubbed} cache dir(s).");
+        }
+    }
+
+    if is_retired_native_marker(filename) {
+        console.error(
+            f"{filename}: the .na.jac marker was retired in 0.35 -- rename the "
+            "file to .jac; 'jac nacompile' compiles plain .jac natively."
+        );
+        return 1;
+    }
+    auto_promote = is_jac(filename);
+
+    if not output {
+        output = base_stem(filename);
+        if shared {
+            import from jaclang.runtimelib.sealed_serve { native_lib_suffix }
+            output = "lib" + output + native_lib_suffix();
+        } elif is_wasm {
+            output = output + ".wasm";
+        } elif is_windows {
+            output = output + ".exe";
+        }
+    }
+
+    try {
+        ctx = _compile_native_link_ctx(
+            filename=filename,
+            prep=prep,
+            enforce_nogc=enforce_nogc,
+            auto_promote=auto_promote,
+            scrub=scrub,
+            target=(
+                NativeLinkTarget.SHARED_LIB
+                    if shared
+                    else NativeLinkTarget.STANDALONE_EXE
+            ),
+            plan=plan
+        );
+    } finally {
+        if plan.env_triple {
+            pop_native_target_env(_prev_target_env);
+        }
+        if debug {
+            if _prev_native_debug is None {
+                os.environ.pop("JAC_NATIVE_DEBUG", None);
+            } else {
+                os.environ["JAC_NATIVE_DEBUG"] = _prev_native_debug;
+            }
+        }
+    }
+    if ctx is None {
+        return 1;
+    }
+
+    ir_module = ctx.ir_module;
+    if is_wasm {
+        import from jaclang.compiler.passes.native.wasm_build {
+            emit_wasm_from_ir,
+            app_declared_imports
+        }
+        try {
+            wasm_bytes = emit_wasm_from_ir(
+                str(ir_module.gen.llvm_ir), app_imports=app_declared_imports(ir_module),
+            );
+        } except Exception as e {
+            console.error(f"Wasm emit/link failed: {e}");
+            import traceback;
+            traceback.print_exc();
+            return 1;
+        }
+        with open(output, "wb") as _wf {
+            _wf.write(wasm_bytes);
+        }
+        console.print(f"  Wasm module written to {output} ({len(wasm_bytes)} bytes).");
+        console.print(
+            "  Instantiate with the `jac_host1` host object (see @jac/wasm_host)"
+            " plus an `env` object for any FFI the app declares."
+        );
+        return 0;
+    }
+
+    return _link_native_artifact(
+        ctx,
+        output,
+        shared=shared,
+        entry_lib=entry_lib,
+        assert_no_rc=assert_no_rc,
+        strict=strict
+    );
 }
 
 

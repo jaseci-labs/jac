@@ -338,6 +338,17 @@ Module globals are initialized automatically when the library is loaded -- there
 !!! note "What can be exported"
     A `:pub` export's parameters and return value must be C-ABI representable: scalars and pointers (Jac objects/strings/containers as opaque `void*` handles), plus the C struct types from `import from "lib"` interop. Methods are not exported (their symbol is class-qualified, not a valid C name) -- wrap them in a `:pub` free function.
 
+### Entry libraries
+
+`jac nacompile --entry-lib` builds the same ELF/Mach-O/PE shared library, but packaged for the jab host protocol instead of a generic C-ABI consumer. It implies `--shared` and additionally exports the four protocol symbols `jac_entry`, `__jac_argc`, `__jac_argv`, and `__jac_shared_init` alongside whatever `:pub` surface the module declares.
+
+Two things differ from a plain `--shared` build:
+
+- **Entry stub synthesis.** A module with no `with entry { }` block still gets a `jac_entry`: the compiler emits an empty stub so the host protocol always resolves the symbol (the stub simply returns). With a plain `--shared` build the same module exports only its `:pub` surface and no entry is expected.
+- **No load-time init registration.** A plain shared library registers `__jac_shared_init` in the platform's automatic init mechanism so globals initialize on `dlopen`. An entry library skips that registration -- the host sets `__jac_argv`/`__jac_argc` first and then calls `__jac_shared_init` explicitly before invoking `jac_entry`. If a module has neither an entry nor anything to export beyond the protocol set, the `__jac_shared_init`-only export configuration is skipped entirely.
+
+The sealed-jab boot path that consumes these libraries is described in [CLI tools & native binaries](../../build/cli-and-native.md).
+
 ---
 
 ## Type System

@@ -212,6 +212,26 @@ def is_annex_path_of(candidate_path: str, base_path: str) -> bool:
     )
 
 
+def is_module_scoped_path(candidate_path: str, base_path: str) -> bool:
+    """True when a compile alert belongs to the module at ``base_path``.
+
+    Matches the module file itself and any dotted sibling/annex sharing its
+    stem (``foo.impl.jac``, ``foo.impl/bar.jac``). Both paths must be
+    normalized alike; single source of truth for the module-scoped alert
+    predicate.
+    """
+    if candidate_path == base_path:
+        return True
+    stem = (
+        base_path[: -len(JAC_SUFFIX)]
+        if base_path.endswith(JAC_SUFFIX)
+        else base_path
+    )
+    if candidate_path.startswith(stem + "."):
+        return True
+    return is_annex_path_of(candidate_path, base_path)
+
+
 def is_impl(path: str) -> bool:
     """True for an ``.impl.jac`` annex file."""
     return path.endswith(IMPL_SUFFIX)

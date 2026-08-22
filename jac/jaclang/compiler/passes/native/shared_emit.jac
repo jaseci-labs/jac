@@ -1,4 +1,6 @@
-def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]] {
+def inject_shared_init(
+    llvm_ir_str: str, manifest: any, emit_entry_stub: bool = False
+) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     transitive_sources: list[str] = [];
     if isinstance(manifest, list) {
@@ -73,7 +75,27 @@ def inject_shared_init(llvm_ir_str: str, manifest: any) -> tuple[str, list[str]]
         );
         extra_exports.append("jac_str_new");
     }
-    return (llvm_ir_str + "\n".join(parts) + "\n", extra_exports);
+    out = llvm_ir_str + "\n".join(parts) + "\n";
+    if emit_entry_stub and not jac_entry_defined(out) {
+        out += (
+            "\n; --- entry-lib stub: module has no 'with entry { }' block, but\n"
+            "; --- the jab host protocol resolves jac_entry after"
+            " __jac_shared_init,\n; --- so emit an empty one ---\n"
+            "define void @jac_entry() {\nentry:\n  ret void\n}\n"
+        );
+    }
+    return (out, extra_exports);
+}
+
+
+def jac_entry_defined(llvm_ir_str: str) -> bool {
+    """True when the IR carries a *definition* of ``@jac_entry``.
+
+    A define-site regex, not a substring probe: mentions of the symbol in
+    comments or declarations must not count.
+    """;
+    import re;
+    return bool(re.search(r'define[^@\n]*@"?jac_entry"?\s*\(', llvm_ir_str));
 }
 
 def aarch64_outline_atomics_ir -> str {

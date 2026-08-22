@@ -434,10 +434,9 @@ def _resolve_template(use: str, registry: any) -> any {
                     tmpl = load_template_from_json(use_path);
                     console.print(f"Using template '{tmpl.name}' from {use_path}");
                     return tmpl;
-                } else {
-                    console.error(f"Error: File must be a .jacpack file: {use}");
-                    return None;
                 }
+                console.error(f"Error: File must be a .jacpack file: {use}");
+                return None;
             } elif use_path.is_dir() {
                 tmpl = load_template_from_directory(use_path);
                 console.print(f"Using template '{tmpl.name}' from {use_path}");
@@ -548,10 +547,10 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 impl install(
-    packages: list = [],
-    editable: list = [],
+    packages: list | None = None,
+    editable: list | None = None,
     dev: bool = False,
-    extras: list = [],
+    extras: list | None = None,
     no_save: bool = False,
     git: str = "",
     npm: bool | None = None,
@@ -569,6 +568,15 @@ impl install(
     plan: bool = False,
     as_json: bool = False
 ) -> int {
+    if packages is None {
+        packages = [];
+    }
+    if editable is None {
+        editable = [];
+    }
+    if extras is None {
+        extras = [];
+    }
     if plan {
         return deps(scale=scale, as_json=as_json);
     }
@@ -923,10 +931,9 @@ impl install(
     if install_success and not plugin_failed {
         console.success("All dependencies installed");
         return 0;
-    } else {
-        console.error("Some dependencies failed to install");
-        return 1;
     }
+    console.error("Some dependencies failed to install");
+    return 1;
 }
 
 def _bootstrap_project_deps(project_path: Path) -> bool {
@@ -951,8 +958,14 @@ def _bootstrap_project_deps(project_path: Path) -> bool {
 }
 
 impl remove(
-    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+    packages: list | None = None,
+    dev: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
 ) -> int {
+    if packages is None {
+        packages = [];
+    }
     if shadcn {
         import from jaclang.cli.shadcn.cli { run_shadcn_remove }
         return run_shadcn_remove(packages);
@@ -1001,10 +1014,15 @@ def _major_minor(version: str) -> str {
     return version;
 }
 
-impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> int {
+impl update(
+    packages: list | None = None, dev: bool = False, verbose: bool = False
+) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
     import from jaclang.project.providers { InstallContext, get_python_provider }
+    if packages is None {
+        packages = [];
+    }
     config = get_config();
     if config is None {
         console.error(
@@ -1714,7 +1732,7 @@ def _bake_native_payloads(config: any, pkg_copy: Path) -> bool {
     import os;
     import from jaclang.jac0core.ext_registry { base_stem }
     import from jaclang.jac0core.placement_solver { native_default_path_ok }
-    import from jaclang.runtimelib.sealed_serve { NATIVE_DIR_REL }
+    import from jaclang.runtimelib.sealed_serve { NATIVE_DIR_REL, native_lib_name }
 
     entry_file = _resolve_entry_file(config);
     if entry_file is None or not native_default_path_ok(str(entry_file)) {
@@ -1731,10 +1749,13 @@ def _bake_native_payloads(config: any, pkg_copy: Path) -> bool {
     out_dir = pkg_copy / NATIVE_DIR_REL / triple;
     out_dir.mkdir(parents=True, exist_ok=True);
     console.print(f"  Compiling native binary for {triple}", style="muted");
-    import from jaclang.cli.commands.nacompile { nacompile }
-    rc = nacompile(filename=str(entry_file), output=str(out_dir / stem));
-    if rc != 0 {
-        console.error("Native compilation failed; seal aborted.");
+    import from jaclang.cli.commands.nacompile { nacompile_sealed_pair }
+    if nacompile_sealed_pair(
+        filename=str(entry_file),
+        exe_output=str(out_dir / stem),
+        lib_output=str(out_dir / native_lib_name(stem))
+    )
+        != 0 {
         return False;
     }
     return True;

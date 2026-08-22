@@ -294,9 +294,8 @@ def compiler_source_failure_details(path: str) -> str {
 }
 
 def module_scoped_failure_details(path: str, program: JacProgram) -> str {
+    import from jaclang.jac0core.ext_registry { is_module_scoped_path }
     norm = os.path.normpath(path);
-    stem = norm[:-4] if norm.endswith('.jac') else norm;
-    prefix = stem + '.';
     lines: list[str] = [];
     for alert in program.errors_had {
         try {
@@ -304,7 +303,7 @@ def module_scoped_failure_details(path: str, program: JacProgram) -> str {
         } except Exception {
             continue;
         }
-        if alert_path == norm or alert_path.startswith(prefix) {
+        if is_module_scoped_path(alert_path, norm) {
             lines.append(alert.pretty_print());
         }
     }

@@ -180,6 +180,19 @@ impl BoundaryAnalysisPass._register_native_absorb(
     }
 }
 
+impl BoundaryAnalysisPass._caller_context(
+    self: BoundaryAnalysisPass, nd: Import, import_context: InteropContext
+) -> InteropContext {
+    """Interop context of the caller site: client wins, then native.""";
+    if (nd.in_client_context()) {
+        return InteropContext.CLIENT;
+    }
+    if (import_context == InteropContext.NATIVE or self._in_native_module()) {
+        return InteropContext.NATIVE;
+    }
+    return InteropContext.SERVER;
+}
+
 impl BoundaryAnalysisPass.enter_import(self: BoundaryAnalysisPass, nd: Import) -> None {
     import_context = self._get_context(nd);
     facts = nd.boundary_facts;
@@ -201,8 +214,9 @@ impl BoundaryAnalysisPass.enter_import(self: BoundaryAnalysisPass, nd: Import) -
             }
             if nd.items and not is_sv {
                 if (facts and facts.pinned_server) {
+                    _pin_caller = self._caller_context(nd, import_context);
                     self._register_sv_import(
-                        nd, from_loc.base_module_name, InteropContext.CLIENT
+                        nd, from_loc.base_module_name, _pin_caller
                     );
                 } elif (facts and facts.client_native_edge) {
                     self._register_na_client_import(nd);

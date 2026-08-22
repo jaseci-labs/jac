@@ -106,6 +106,45 @@ test "primitive na->sv signatures stay clean of E5093" {
     );
 }
 
+test "native module's pinned-server import records an na->sv binding" {
+    # The na -> sv edge (interop matrix row 8): a native-pinned module
+    # importing from a server-pinned provider. The binding is the one the
+    # sealed-pair gate reads -- `native_imports` non-empty is what drops the
+    # standalone exe at build time and keeps the run host-driven.
+    tmp = write_mods(
+        {
+            "jac.toml": ('[placement.pins]\nmain = "native"\nhelper = "server"\n'),
+            "helper.jac": (
+                "def:pub py_double(x: int) -> int {\n" "    return x * 2;\n" "}\n"
+            ),
+            "main.jac": (
+                "import from .helper { py_double }\n\n"
+                "def crunch(x: int) -> int {\n"
+                "    return py_double(x);\n"
+                "}\n"
+            )
+        }
+    );
+    prog = JacProgram();
+    mod = prog.compile(
+        os.path.join(tmp, "main.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    imports = mod.gen.interop_manifest.native_imports;
+    names = [b.name for b in imports];
+    assert "py_double" in names , (
+        f"native caller of a pinned-server fn must land in native_imports; "
+        f"got: {names} (bindings: "
+        f"{list(mod.gen.interop_manifest.bindings.keys())})"
+    );
+    binding = mod.gen.interop_manifest.bindings["py_double"];
+    assert binding.source_context.value == "server";
+    assert "native" in {c.value for c in binding.callers};
+    assert binding.param_types == ["int"] , (
+        f"expected int param on the ctypes wire, got {binding.param_types}"
+    );
+}
+
 test "endpoint effects are recorded by the dedicated effect pass" {
     tmp = write_mods(
         {

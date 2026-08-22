@@ -2929,6 +2929,26 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
+def _native_lib_suffix -> str {
+    """Local twin of sealed_serve.native_lib_suffix: this script also runs under
+    older runtime caches whose sealed_serve predates that symbol and
+    interop_record_path -- importing them there fails the whole seal.""";
+    import sys;
+    if sys.platform.startswith("win") {
+        return ".dll";
+    }
+    if sys.platform == "darwin" {
+        return ".dylib";
+    }
+    return ".so";
+}
+
+
+def _interop_record_path(lib_output: str) -> Path {
+    return Path(str(lib_output) + ".interop.json");
+}
+
+
 def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
     if not (pkg_path / "jac.toml").is_file() {
         return {};
@@ -2982,6 +3002,36 @@ def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
         if triples {
             caps.append("platform-locked");
             meta["triples"] = triples;
+        }
+
+        _interop = False;
+        _unresolved: list = [];
+        _stem = (
+            ext_registry.base_stem(os.path.basename(entry_path)) if entry_path else ""
+        );
+        for _t in triples {
+            if not _stem {
+                continue;
+            }
+            _rec = _interop_record_path(
+                str(native_dir / _t / (_stem + _native_lib_suffix()))
+            );
+            if not _rec.is_file() {
+                continue;
+            }
+            _interop = True;
+            try {
+                _unresolved = json.loads(_rec.read_text(encoding="utf-8")).get(
+                    "unresolved", []
+                );
+            } except Exception {
+                _unresolved = [];
+            }
+            break;
+        }
+        meta["native"] = {"interop": _interop};
+        if _unresolved {
+            meta["native"]["unresolved"] = _unresolved;
         }
     }
     return meta;
