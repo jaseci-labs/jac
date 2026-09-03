@@ -290,7 +290,7 @@ This scaffolds a themed starter: a generated `global.css` (theme colors + font +
 
 | Flag | Values | Default |
 |------|--------|---------|
-| `--style` | `nova`, `vega`, `maia`, `lyra`, `mira` | `nova` |
+| `--style` | `nova`, `vega`, `maia`, `lyra`, `mira`, `luma`, `rhea`, `sera` | `nova` |
 | `--baseColor` | `neutral`, `stone`, `zinc`, `gray` | `neutral` |
 | `--theme` | `rose`, `emerald`, `blue`, `amber`, … | `neutral` |
 | `--font` | `inter`, `outfit`, `geist`, … | `figtree` |

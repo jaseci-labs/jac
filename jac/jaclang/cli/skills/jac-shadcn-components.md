@@ -122,6 +122,11 @@ Most file names are the underscored registry name (`jac install --shadcn alert-d
 | Keyboard key display | `Kbd` |
 | One-time password input | `InputOTP` + `InputOTPGroup` + `InputOTPSlot` + `InputOTPSeparator` (add `input-otp`, file `otp_input`) |
 | Generic list item | `Item` |
+| Chat / message thread | `MessageGroup` + `Message` + `MessageAvatar` + `MessageContent` (+ `MessageHeader`, `MessageFooter`); `align="start"`/`"end"` on `Message` |
+| Chat bubble | `BubbleGroup` + `Bubble` + `BubbleContent` (+ `BubbleReactions`); `variant` (default/secondary/muted/tinted/outline/ghost/destructive), `align="start"`/`"end"` |
+| Timeline / step marker | `Marker` + `MarkerIcon` + `MarkerContent`; `variant` (default/separator/border) |
+| File / upload attachment | `Attachment` + `AttachmentMedia` + `AttachmentContent` + `AttachmentTitle` (+ `AttachmentDescription`, `AttachmentActions`, `AttachmentAction`, `AttachmentTrigger`, `AttachmentGroup`); `state` (idle/uploading/processing/error/done), `size`, `orientation` |
+| RTL / LTR direction scope | `DirectionProvider` (+ `useDirection` hook), from file `direction` |
 
 ## Composition rules
 
@@ -231,7 +236,7 @@ The `[jac-shadcn]` block in `jac.toml` is the source of truth (no longer just sc
 
 ```toml
 [jac-shadcn]
-style = "nova"        # nova | vega | maia | lyra | mira  (--style also restyles installed components)
+style = "nova"        # nova | vega | maia | lyra | mira | luma | rhea | sera  (--style also restyles installed components)
 baseColor = "neutral" # neutral | stone | zinc | gray
 theme = "rose"        # accent: any base color or amber/blue/cyan/emerald/fuchsia/green/indigo/lime/orange/pink/purple/red/rose/sky/teal/violet/yellow
 font = "inter"        # figtree (default), inter, geist, geist-mono, roboto, raleway, dm-sans, public-sans, outfit, noto-sans, nunito-sans, jetbrains-mono
@@ -304,7 +309,7 @@ menuAccent = "subtle" # subtle | bold
 jac retheme --style nova --baseColor neutral --theme indigo --font inter --radius default --menuAccent subtle
 
 # All supported flags (any combination, all optional):
-# --style       nova | vega | maia | lyra | mira
+# --style       nova | vega | maia | lyra | mira | luma | rhea | sera
 # --baseColor   neutral | stone | zinc | gray        (NOT --base-color)
 # --theme       <any theme name from table above>
 # --font        <any font name from table above>
@@ -441,6 +446,7 @@ def:pub EventListPage() -> JsxElement {
 | field | label, separator |
 | item | separator |
 | button-group | separator |
+| attachment | button |
 
 ## Extended component exports
 
@@ -459,6 +465,9 @@ These exports exist in the registry but are not listed in the component selectio
 | `ButtonGroup` | `ButtonGroupText` (text separator slot) |
 | `Kbd` | `KbdGroup` (grouped key sequence) |
 | `NativeSelect` | `NativeSelectOptGroup` (option group) |
+| `Bubble` | `BubbleGroup` (column wrapper), `BubbleContent` (`asChild` supported), `BubbleReactions` (`side` top/bottom, `align` start/end) |
+| `Attachment` | `AttachmentTrigger` (`asChild` supported, full-cover click target), `AttachmentGroup` (horizontal snap scroller), `AttachmentAction` (wraps `Button`) |
+| `Marker` | `markerVariants` (cva export); `Marker` supports `asChild` |
 
 ## Jac-shadcn gotchas
 

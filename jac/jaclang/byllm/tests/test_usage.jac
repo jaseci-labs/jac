@@ -216,7 +216,7 @@ def _usage_from(path: str, response: dict | None = None) -> any {
     with unittest.mock.patch.object(llm, "model_call_with_stream_async", _astream) {
         agen: any = llm.adispatch_streaming(mt);
         async def _drain {
-            async for _item in agen {}
+            async for _item in agen { }
         }
         asyncio.run(_drain());
     }
@@ -1059,7 +1059,7 @@ test "on_iteration's IterationContext exposes real cumulative total_cost" {
         tools=[step_a], stream=True, logging=True, on_iteration=hook
     );
 
-    for event in task("go") {}
+    for event in task("go") { }
 
     assert len(seen_contexts) >= 1 , "on_iteration should have fired before iteration 2";
     ctx = seen_contexts[0];

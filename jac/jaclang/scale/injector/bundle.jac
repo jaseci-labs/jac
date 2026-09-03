@@ -332,9 +332,6 @@ def _resolved_python_specs(stage: Path) -> list[str] {
 
 
 def _strip_external_record_lines(site: Path) {
-    # Entry-point scripts under bin/ embed the staging path in their shebang,
-    # so their RECORD hash lines differ on every seal; bin/ never ships, and
-    # dropping its lines keeps RECORD (and the bundle digest) deterministic.
     for record in sorted(site.`glob("*.dist-info/RECORD")) {
         lines = record.read_text(encoding="utf-8").splitlines(keepends=True);
         kept = [
@@ -374,9 +371,6 @@ def staged_venv_files(stage: Path) -> list[Path] {
 
 
 def _prune_seed_pip(site: Path, specs: list[str]) {
-    # ensurepip seeds pip into every fresh venv, but a sealed venv never
-    # runs pip again (the marker short-circuits jac install), so shipping
-    # it only bloats the bundle. Kept when the app itself depends on pip.
     import re;
     for spec in specs {
         if re.split(r"[<>=!~\[ ;@]", spec.strip())[0].lower() == "pip" {
@@ -397,14 +391,11 @@ def _venv_stage(stage: Path, pod_binary: bytes, timeout_s: int = 900) {
     jac_path.write_bytes(pod_binary);
     jac_path.chmod(0o755);
     env = release_binary_env();
-    # The same offline install the pod bootstrap runs. Offline also keeps the
-    # staged venv a pure function of the vendored wheels, so the bundle
-    # digest stays deterministic across seals.
+
     env["PIP_NO_INDEX"] = "1";
     env["PIP_FIND_LINKS"] = str(stage / "_vendor" / "wheels");
     env["PIP_PREFIX"] = str(stage / ".jac" / "venv");
-    # The seal host's own runtime site may already satisfy some specs, which
-    # would make pip skip them and leave the staged prefix silently empty.
+
     env["PIP_IGNORE_INSTALLED"] = "1";
     env["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
     try {

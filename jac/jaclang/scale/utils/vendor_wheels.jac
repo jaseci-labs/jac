@@ -64,10 +64,7 @@ def main {
         sys.exit(2);
     }
     app_dir = Path(args[0]).resolve();
-    # Loaded from the staged jac.toml directly, never via config discovery:
-    # `jac run` roots the explicit project config at THIS script's own tree,
-    # so discovery would resolve the jac checkout's closure instead of the
-    # app's whenever the script runs from a source tree.
+
     toml_path = app_dir / "jac.toml";
     config = JacConfig.load(toml_path) if toml_path.is_file() else None;
     if config is None {

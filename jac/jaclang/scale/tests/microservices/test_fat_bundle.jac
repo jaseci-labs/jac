@@ -50,8 +50,6 @@ def _member(raw: bytes, name: str) -> bytes {
 }
 
 
-
-
 test "fat bundles default ON; [scale] fat_bundle=false opts out" {
     assert fat_bundle_setting(_app("[project]\nname = \"a\"\n")) == (True, False);
     assert fat_bundle_setting(
