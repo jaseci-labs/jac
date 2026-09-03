@@ -193,8 +193,7 @@ obj WebhookExtension(ServerExtension) {
         );
         if isinstance(result, dict) and 'error' in result {
             logger.error(
-                f"Webhook walker '{walker_name}' failed: "
-                f"{result.get('error')} {result.get('traceback') or ''}"
+                f"Webhook walker '{walker_name}' failed: {result.get('error')}"
             );
             return _fail('EXECUTION_ERROR', 'Webhook processing failed', 500);
         }
