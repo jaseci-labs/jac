@@ -26,7 +26,8 @@ obj AutoscalerSpec {
         cooldown_period: int = 300,
         initial_cooldown_period: int = 0,
         scale_up_stabilization: int = 60,
-        scale_up_max_pods: int = 2;
+        scale_up_max_pods: int = 2,
+        behavior_overlay: dict[str, any] = {};
 }
 
 
@@ -36,7 +37,7 @@ class Autoscaler {
     }
 
     static def _build_behavior(spec: AutoscalerSpec) -> dict[str, any] {
-        return {
+        default: dict[str, any] = {
             "scaleUp": {
                 "stabilizationWindowSeconds": min(
                     3600, max(0, spec.scale_up_stabilization)
@@ -54,6 +55,21 @@ class Autoscaler {
                 "policies": [{"type": "Percent", "value": 50, "periodSeconds": 60}]
             }
         };
+        if not spec.behavior_overlay {
+            return default;
+        }
+        import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
+            merge_manifest_overlay
+        }
+        return merge_manifest_overlay(default, spec.behavior_overlay);
+    }
+
+    def _build_manifests(
+        self: Autoscaler, spec: AutoscalerSpec
+    ) -> list[dict[str, any]] {
+        raise NotImplementedError(
+            "_build_manifests() must be implemented by a concrete Autoscaler subclass"
+        );
     }
 
     def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool {
@@ -62,7 +78,7 @@ class Autoscaler {
         );
     }
 
-    def destroy(self: Autoscaler, autoscaler_name: str, namespace: str) {
+    def destroy(self: Autoscaler, app_name: str, namespace: str) {
         raise NotImplementedError(
             "destroy() must be implemented by a concrete Autoscaler subclass"
         );

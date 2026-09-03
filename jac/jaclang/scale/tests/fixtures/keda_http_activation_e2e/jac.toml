@@ -1,0 +1,24 @@
+[project]
+name = "echo"
+version = "0.1.0"
+description = "Real-cluster e2e for jac-scale KEDA HTTP Add-on activation (#7403/#7421), deployed via jac.toml wiring (#7475)"
+entry-point = "app.jac"
+
+[serve]
+base_route_app = "app"
+
+[dev]
+
+[scale.kubernetes]
+bundle_storage_class = "jac-http-e2e-rwx"
+namespace = "jac-http-e2e"
+
+[scale.kubernetes.http_activation]
+enabled = true
+target_port = 8000
+concurrency_target = 1
+polling_interval = 10
+cooldown_period = 60
+
+[[scale.kubernetes.http_activation.rules]]
+hosts = ["echo.jac-http-e2e.local"]

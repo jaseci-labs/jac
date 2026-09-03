@@ -1,3 +1,135 @@
+def _http_activation_nested_schema -> dict[str, any] {
+    """The `nested` fields shared verbatim by [scale.kubernetes.http_activation]
+    and [scale.microservices.services.NAME.http_activation] -- factored out so
+    the two call sites (top-level default, per-service override) can't drift
+    out of sync on a field's type/default the way two independent copies
+    would.
+    """;
+    return {
+        "enabled": {
+            "type": "bool",
+            "default": False,
+            "description": "Master switch. Off by default."
+        },
+        "min_replicas": {
+            "type": "int",
+            "default": 0,
+            "description": "Replica floor while inactive. 0 enables true scale-to-zero."
+        },
+        "max_replicas": {
+            "type": "int",
+            "default": 1,
+            "description": "Replica ceiling once activated."
+        },
+        "polling_interval": {
+            "type": "int",
+            "default": 30,
+            "description": "How often KEDA evaluates the HTTP scaling metric, in seconds."
+        },
+        "cooldown_period": {
+            "type": "int",
+            "default": 300,
+            "description": "Seconds of inactivity before scaling back to min_replicas."
+        },
+        "target_port": {
+            "type": "int",
+            "default": None,
+            "description": "Container port on the target's own generated Service. Exactly one of target_port/target_port_name must be set when enabled."
+        },
+        "target_port_name": {
+            "type": "string",
+            "default": None,
+            "description": "Named container port on the target's own generated Service, as an alternative to target_port."
+        },
+        "concurrency_target": {
+            "type": "int",
+            "default": None,
+            "description": "In-flight-request concurrency target. Exactly one of concurrency_target/request_rate_target must be set when enabled."
+        },
+        "request_rate_target": {
+            "type": "int",
+            "default": None,
+            "description": "Requests-per-window target, as an alternative to concurrency_target."
+        },
+        "request_rate_window": {
+            "type": "string",
+            "default": "1m",
+            "description": "Window duration for request_rate_target."
+        },
+        "request_rate_granularity": {
+            "type": "string",
+            "default": "1s",
+            "description": "Sampling granularity for request_rate_target."
+        },
+        "cold_start_status_code": {
+            "type": "int",
+            "default": 503,
+            "description": "HTTP status the interceptor returns while the target cold-starts, if a placeholder response is configured."
+        },
+        "cold_start_body": {
+            "type": "string",
+            "default": None,
+            "description": "Static placeholder response body served while the target cold-starts."
+        },
+        "cold_start_body_config_map": {
+            "type": "dict",
+            "default": None,
+            "description": "ConfigMap reference to source the placeholder response body from, as an alternative to cold_start_body."
+        },
+        "cold_start_headers": {
+            "type": "dict",
+            "default": {},
+            "description": "Extra headers on the placeholder response."
+        },
+        "cold_start_fallback_service": {
+            "type": "string",
+            "default": None,
+            "description": "Service name to forward requests to while the target cold-starts, as an alternative to a static placeholder response."
+        },
+        "cold_start_fallback_port": {
+            "type": "int",
+            "default": None,
+            "description": "Port on cold_start_fallback_service."
+        },
+        "timeout_readiness": {
+            "type": "string",
+            "default": None,
+            "description": "Duration (e.g. \"30s\") the interceptor waits for the target to become ready after scaling up."
+        },
+        "timeout_request": {
+            "type": "string",
+            "default": None,
+            "description": "Duration the interceptor waits for the forwarded request to complete."
+        },
+        "timeout_response_header": {
+            "type": "string",
+            "default": None,
+            "description": "Duration the interceptor waits for response headers from the target."
+        },
+        "scale_target_kind": {
+            "type": "string",
+            "default": "Deployment",
+            "description": "Kind of the scale target. Deployment/StatefulSet work directly; other kinds require scale_target_plural."
+        },
+        "scale_target_api_version": {
+            "type": "string",
+            "default": "apps/v1",
+            "description": "apiVersion of the scale target, used when scale_target_plural is set for a custom-resource target."
+        },
+        "scale_target_plural": {
+            "type": "string",
+            "default": None,
+            "description": "Plural resource name for a custom-resource scale target (e.g. \"rollouts\"), enabling existence validation before writing anything."
+        },
+        "rules": {
+            "type": "list",
+            "default": [],
+            "description": "[[...rules]] array-of-tables. Each entry: hosts (list[str]), paths (list[str]), headers (list of {name, value?}). Fields within one rule are AND'd; separate rules are OR'd. At least one rule is required -- leaving this empty raises an error at build time, since no traffic would ever match and the target would never wake. Use hosts = [\"*\"] for an explicit catch-all."
+        }
+    };
+}
+
+
 class JacScalePluginConfig {
     static def get_plugin_metadata -> dict[str, any] {
         return {
@@ -226,7 +358,12 @@ class JacScalePluginConfig {
                             "default": [],
                             "description": "(KEDA only) Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). For per-service triggers use [[scale.microservices.services.NAME.triggers]] instead."
                         },
-
+                        "http_activation": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "KEDA HTTP Add-on scale-to-zero activation for the monolith app (or shared defaults inherited by microservices unless overridden per-service). Requires the KEDA HTTP Add-on installed separately from core KEDA. For per-service activation use [scale.microservices.services.NAME.http_activation] instead.",
+                            "nested": _http_activation_nested_schema()
+                        }
                     }
                 },
                 "secrets": {
@@ -299,7 +436,7 @@ class JacScalePluginConfig {
                         "services": {
                             "type": "dict",
                             "default": {},
-                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `rpc_timeout` (float, default 10s, inter-service sv-import calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), `image_tag` (str, override global image tag for canary), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 70), `memory_target` (int percent of memory request, default 80). `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1). `deployment_overlay` (table): a raw Deployment-manifest fragment merged into the generated manifest at build time - maps merge recursively, lists whose members all carry `name` (containers, volumes, env, initContainers, volumeMounts) merge by that name, anything else replaces; identity fields (metadata.name/namespace, selector, the app/managed template labels) are reasserted after the merge. The main container's `name` is the k8s-safe service name (e.g. `builder-sv`; gateway is `gateway`). Use it for nodeSelector, probe tuning, extra volumes/env/init containers - anything the schema has no first-class key for - so pods are right on the FIRST rollout instead of being kubectl-patched into a second one. Overlays add and override only: there is no delete directive (setting a key to null stores null rather than removing the generated field). Gateway uses the `__gateway__` key. `[[services.NAME.triggers]]` array (KEDA only): per-service event-driven triggers; each entry has `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = \"keda\"` in [scale.kubernetes]. Example: [scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60"
+                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `rpc_timeout` (float, default 10s, inter-service sv-import calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), `image_tag` (str, override global image tag for canary), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 70), `memory_target` (int percent of memory request, default 80), `behavior` (table, default `{}`): a raw HPA `behavior` fragment (`scaleUp`/`scaleDown`, each with `stabilizationWindowSeconds`/`policies`/`selectPolicy`) deep-merged over the generated scale-rate defaults - same merge semantics as `deployment_overlay` (maps merge recursively, the `policies` list has no `name` key so it replaces wholesale rather than merging by entry); applies to both \"hpa\" and \"keda\" engines since both route through the same `Autoscaler._build_behavior` (for keda it only governs scaling above zero replicas - the drop to zero remains controlled by `autoscaler_cooldown`, the ScaledObject's cooldownPeriod). Use it to slow scale-down for connection-heavy services (e.g. `[services.NAME.hpa.behavior.scaleDown] stabilizationWindowSeconds = 600, selectPolicy = 'Min', policies = [{ type = 'Pods', value = 2, periodSeconds = 300 }]`) without imposing the same rate limit on every service via the app-global `autoscaler_cooldown`. `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1). `deployment_overlay` (table): a raw Deployment-manifest fragment merged into the generated manifest at build time - maps merge recursively, lists whose members all carry `name` (containers, volumes, env, initContainers, volumeMounts) merge by that name, anything else replaces; identity fields (metadata.name/namespace, selector, the app/managed template labels) are reasserted after the merge. The main container's `name` is the k8s-safe service name (e.g. `builder-sv`; gateway is `gateway`). Use it for nodeSelector, probe tuning, extra volumes/env/init containers - anything the schema has no first-class key for - so pods are right on the FIRST rollout instead of being kubectl-patched into a second one. Overlays add and override only: there is no delete directive (setting a key to null stores null rather than removing the generated field). Gateway uses the `__gateway__` key. `[[services.NAME.triggers]]` array (KEDA only): per-service event-driven triggers; each entry has `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = \"keda\"` in [scale.kubernetes]. `http_activation` sub-table (KEDA HTTP Add-on only): per-service HTTP scale-to-zero activation, same keys as [scale.kubernetes.http_activation] (`enabled`, `min_replicas`, `max_replicas`, `target_port`/`target_port_name`, `concurrency_target`/`request_rate_target`, `[[rules]]`, cold-start and timeout keys, `scale_target_kind`/`scale_target_api_version`/`scale_target_plural`); the target Service is always the service's own generated Service, never user-set. Falls back to [scale.kubernetes.http_activation]'s values for any key left unset. Example: [scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60"
                         },
                         "rate_limit": {
                             "type": "dict",
