@@ -14,7 +14,6 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     delete_if_exists,
     delete_namespace,
     check_K8s_status,
-    ensure_namespace_exists,
     get_cluster_provider,
     resize_pvc_if_needed
 }

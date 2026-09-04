@@ -16,7 +16,8 @@ import from jaclang.scale._optdeps.kubernetes {
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 import from requests.exceptions { RequestException, SSLError }
 
-glob COMPANION_DEFS: list = [
+glob NAMESPACE_OWNER_LABEL: str = "jac-scale.jaseci.org/owned-by",
+     COMPANION_DEFS: list = [
          ("", "Jaseci App", False),
          ("-redis", "Redis", False),
          ("-mongodb", "MongoDB", True),
@@ -71,7 +72,9 @@ def delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
 ) -> None;
 
-def ensure_namespace_exists(namespace: str) -> None;
+def ensure_namespace_exists(namespace: str, owner: str) -> None;
+
+def namespace_is_owned(core_v1: client.CoreV1Api, namespace: str, owner: str) -> bool;
 
 def delete_namespace(namespace: str) -> None;
 

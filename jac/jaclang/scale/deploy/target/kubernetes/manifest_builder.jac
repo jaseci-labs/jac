@@ -636,7 +636,8 @@ obj ManifestBuilder {
                     "labels": {
                         "app": "jac-scale-shared",
                         "managed": "jac-scale",
-                        "jac-scale.role": "shared-volume"
+                        "jac-scale.role": "shared-volume",
+                        "jac-scale.owner": k8s_safe_name(self.k8s_config.app_name)
                     }
                 },
                 "spec": spec

@@ -927,6 +927,16 @@ jobs:
         run: |
           jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
 
+      # Destroy deletes namespaces and volumes, so what it reclaims and what it
+      # spares is only decidable by an API server. Runs with the failure-path
+      # group, after its early-exit deploy has exercised the cluster.
+      - name: Run destroy reclamation e2e
+        if: matrix.group == 'failure-path'
+        env:
+          CLUSTER_TYPE: microk8s
+          JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
+        run: bash jac/jaclang/scale/tests/deploy/destroy_reclaim_real_e2e.sh
+
   test-pypi-build:
     needs: [changes, build-jac]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
