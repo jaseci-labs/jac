@@ -153,11 +153,27 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.NO_ACCESS;
     }
     jroot: NodeAnchor = _jroot;
-    if ((jroot == jctx.system_root) or (jroot.id == to.root) or (jroot == to)) {
+    if ((jroot == jctx.system_root) or (jroot == to)) {
+        return AccessLevel.WRITE;
+    }
+    caller_aware = (not no_custom)
+        and (
+            type(to.archetype)?.__jac_access_for__ is not Archetype.__jac_access_for__
+        );
+    if caller_aware
+        and (
+            (custom_level := to.archetype.__jac_access_for__(jroot.ensure_id()))
+            is not None
+        ) {
+        return access_level_cast(custom_level);
+    }
+    if (jroot.id == to.root) {
         return AccessLevel.WRITE;
     }
     if (
-        not no_custom and ((custom_level := to.archetype.__jac_access__()) is not None)
+        not no_custom
+        and not caller_aware
+        and ((custom_level := to.archetype.__jac_access__()) is not None)
     ) {
         return access_level_cast(custom_level);
     }

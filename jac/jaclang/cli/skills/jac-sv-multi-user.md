@@ -152,6 +152,34 @@ edge Contains(PublicEdge) {}
 - Owner and system root always have `WRITE`; the hook cannot lock the author out.
 - Decision rule: user-owned contributions -> `grant` at creation (owner decides per instance); app-owned public structure -> `__jac_access__` (author decides per archetype).
 
+## Per-caller policy: `__jac_access_for__`
+
+`__jac_access__` answers "what does every non-owner get" - it cannot see who is
+asking, and the owner fast-path pre-empts it, so a role like "viewer of this
+team's doc" is not expressible with it. Declare `__jac_access_for__(caller)`
+instead; it receives the calling root's UUID and runs BEFORE the owner
+fast-path, so ownership admits but the role decides:
+
+```jac
+node TeamDoc {
+    has editors: list[str] = [];   # root ids, maintained by the app
+
+    def __jac_access_for__(caller: UUID) -> (AccessLevel | None) {
+        if str(caller) in self.editors { return AccessLevel.WRITE; }
+        return AccessLevel.READ;    # everyone else, the owner included
+    }
+}
+```
+
+- A returned level is final for that caller - even the owning root can be held
+  to `READ`, which is what makes org-style roles expressible. Return `None` to
+  fall through to the normal resolution (ownership, then stored grants).
+- The system root always has `WRITE`; the hook cannot lock the platform out.
+- When an archetype defines `__jac_access_for__`, its zero-arg
+  `__jac_access__` is not consulted - one policy per archetype, and the
+  caller-aware one wins. Archetypes that define neither, or only the zero-arg
+  form, behave exactly as before.
+
 ## Roles
 
 Platform roles (`admin`/`system`/`user`) are built in - JWT claims, `/user/me`, `PUT /admin/users/{username}` - see `jac-sv-auth`. App-domain roles are per-user metadata on the user's own graph:

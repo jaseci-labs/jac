@@ -315,6 +315,10 @@ impl Archetype.__jac_access__ -> (AccessLevel | str | int | None) {
     return None;
 }
 
+impl Archetype.__jac_access_for__(caller: UUID) -> (AccessLevel | str | int | None) {
+    return None;
+}
+
 impl GenericEdge.__repr__ -> str {
     return f"{self.__class__.__name__}()";
 }
