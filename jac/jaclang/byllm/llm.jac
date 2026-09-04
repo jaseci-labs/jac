@@ -128,10 +128,7 @@ obj BaseLLM {
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict) -> Generator[object, None, None];
     async def model_call_no_stream_async(params: dict) -> dict;
-    async def model_call_with_stream_async(
-        params: dict
-    ) -> AsyncGenerator[object, None];
-
+    async def model_call_with_stream_async(params: dict) -> AsyncIterator[object];
     def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
     def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
@@ -163,6 +160,7 @@ obj MockLLM(BaseLLM) {
     override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     override async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
+    override async def adispatch_streaming(mt_run: MTRuntime);
 }
 
 obj LocalLLM(BaseLLM) {

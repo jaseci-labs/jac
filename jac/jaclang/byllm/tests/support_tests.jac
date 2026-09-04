@@ -308,10 +308,6 @@ obj FakeLLM(BaseLLM) {
         return self.script.with_stream(params);
     }
 
-    override async def model_call_with_stream_async(params: dict) -> any {
-        return await self.script.with_stream_async(params);
-    }
-
     def sent(key: str) -> list {
         return self.script.sent(key);
     }

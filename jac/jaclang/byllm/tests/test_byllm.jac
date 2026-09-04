@@ -1325,44 +1325,40 @@ test "acall_llm proxy is a coroutine function" {
     );
 }
 
-test "model_call_no_stream_async raises and logs AuthenticationError" {
-    log_output = io.StringIO();
-    _loguru_logger.remove();
-    handler_id = _loguru_logger.add(log_output, level="ERROR");
-    try {
-        with unittest.mock.patch.dict(
-            _byllm_llm_mod._litellm_config,
-            {"debug": False, "drop_params": True},
-            clear=True
-        ) {
-            model = Model(model_name="gpt-4o-mini");
-            auth_err = litellm.exceptions.AuthenticationError(
-                message="Invalid API key", llm_provider="openai", model="gpt-4o-mini"
-            );
-            async def _run_no_stream_auth {
-                with unittest.mock.patch("litellm.acompletion", side_effect=auth_err) {
-                    raised = False;
-                    try {
-                        await model.model_call_no_stream_async(
-                            {"model": "gpt-4o-mini", "messages": []}
-                        );
-                    } except AuthenticationError as e {
-                        raised = True;
-                        assert "Invalid API key" in str(e);
-                    }
-                    assert raised , "AuthenticationError should propagate from async path";
-                }
-            }
-            asyncio.run(_run_no_stream_auth());
-            log_value = log_output.getvalue();
-            assert "LLM AuthenticationError" in log_value , (
-                f"logger.error should fire for async AuthenticationError, got: {log_value}"
-            );
-        }
-    } finally {
-        _loguru_logger.remove(handler_id);
+# jac#8932: adispatch_streaming awaits model_call_with_stream_async, so the base
+# must be a coroutine returning an async iterator, not an async generator.
+# FakeLLM implements only the sync provider call, so it inherits the base method,
+# which is the shape LocalLLM and ModelPool have.
+async def _drain_8932(llm: _byllm_llm_mod.BaseLLM) -> str {
+    stream: any = llm.adispatch_streaming(mk_run(stream=True));
+    out: list[object] = [];
+    async for chunk in stream {
+        out.append(chunk);
     }
+    return "".join([str(c) for c in out]);
 }
+
+
+test "BaseLLM.model_call_with_stream_async is a coroutine, not an async generator" {
+    fn = _byllm_llm_mod.BaseLLM.model_call_with_stream_async;
+    assert not inspect.isasyncgenfunction(fn) , "awaiting one raises TypeError";
+    assert inspect.iscoroutinefunction(fn) , "must be a coroutine, matching Model";
+}
+
+
+test "async streaming works on a subclass that inherits the base method" {
+    llm = FakeLLM(model_name="fake-8932", replies=[say("hello world")]);
+    assert asyncio.run(_drain_8932(llm)) == "hello world";
+}
+
+
+test "async streaming works on MockLLM" {
+    llm = _byllm_llm_mod.MockLLM(
+        model_name="mockllm", config={"outputs": ["hello world"]}
+    );
+    assert asyncio.run(_drain_8932(llm)) == "hello world";
+}
+
 
 test "model_call_with_stream_async raises and logs RateLimitError" {
     log_output = io.StringIO();

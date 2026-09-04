@@ -17,7 +17,7 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     if isinstance(output, MockError) {
         raise output.error;
     }
-    message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
+    message: any = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
     mt_run.add_message(message);
 
     _usage_keys = ["prompt_tokens", "completion_tokens", "total_tokens"];
@@ -78,6 +78,22 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
 
 impl MockLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     return self.dispatch_no_streaming(mt_run);
+}
+
+impl MockLLM.adispatch_streaming(mt_run: MTRuntime) {
+    import asyncio;
+
+    output = self.config["outputs"].pop(0);
+    if mt_run.stream {
+        while output {
+            chunk_len = random.randint(3, 10);
+            yield output[:chunk_len];
+            await asyncio.sleep(random.uniform(0.01, 0.05));
+            output = output[chunk_len:];
+        }
+    }
+
+    self._usage_history.append({});
 }
 
 impl MockLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None] {

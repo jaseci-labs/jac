@@ -1711,10 +1711,9 @@ impl BaseLLM.model_call_no_stream_async(params: dict) -> dict {
     return await asyncio.to_thread(self.model_call_no_stream, params);
 }
 
-impl BaseLLM.model_call_with_stream_async(
-    params: dict
-) -> AsyncGenerator[object, None] {
+impl BaseLLM.model_call_with_stream_async(params: dict) -> AsyncIterator[object] {
     import asyncio;
+
     def _next_chunk(gen: Generator[object, None, None]) -> tuple[bool, object] {
         try {
             return (True, next(gen));
@@ -1722,14 +1721,17 @@ impl BaseLLM.model_call_with_stream_async(
             return (False, None);
         }
     }
-    gen = self.model_call_with_stream(params);
-    while True {
-        (has_value, chunk) = await asyncio.to_thread(_next_chunk, gen);
-        if not has_value {
-            break;
+    async def _iter -> AsyncGenerator[object, None] {
+        gen = self.model_call_with_stream(params);
+        while True {
+            (has_value, chunk) = await asyncio.to_thread(_next_chunk, gen);
+            if not has_value {
+                break;
+            }
+            yield chunk;
         }
-        yield chunk;
     }
+    return _iter();
 }
 
 impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
