@@ -113,7 +113,8 @@ obj IterationContext {
         messages: list,
         last_tool: str,
         last_result: str,
-        total_tokens: int;
+        total_tokens: int,
+        total_cost: float = 0.0;
 }
 
 obj Media {

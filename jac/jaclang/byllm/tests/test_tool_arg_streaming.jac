@@ -177,7 +177,7 @@ def _run(
         );
     }
 
-    def _rebuild(seen: list) -> dict {
+    def _rebuild(seen: list, logging_obj: object = None) -> dict {
         i = at[0] - 1;
         if i < len(rebuilts) and rebuilts[i] is not None {
             return rebuilts[i];

@@ -1,7 +1,9 @@
 """Tests for the byllm agent-level telemetry callback registry and emit logic.
 """
 
+import asyncio;
 import types;
+import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.telemetry {
     register_agent_callback,
     _emit_agent_telemetry,
@@ -493,4 +495,40 @@ test "ContextVar resets correctly even when inner invocation raises" {
         _agent_callbacks.extend(original);
         _current_invocation_id.set(None);  # type: ignore
     }
+}
+
+test "_astream_with_telemetry does not leak the invocation id into the consumer" {
+    import from jaclang.byllm.telemetry { _current_invocation_id }
+    import from typing { AsyncGenerator }
+
+    async def _inner_agen -> AsyncGenerator[object, None] {
+        yield "a";
+        yield "b";
+    }
+
+    mt = make_fake_mt_run(invocation_id="stream-leak-001");
+
+    def _drive -> list {
+        seen: list = [];
+        async def _consume {
+            agen: AsyncGenerator[object, None] = _byllm_llm_mod._astream_with_telemetry(
+                _inner_agen(), mt, "gpt-4o", 0.0
+            );
+            async for _item in agen {
+                seen.append(_current_invocation_id.get(None));
+            }
+        }
+        coro: any = _consume();
+        asyncio.run(coro);
+        return seen;
+    }
+
+    seen_during_iteration = _drive();
+    assert seen_during_iteration == [None, None] , (
+        "the consumer's own context must never observe the wrapped call's "
+        f"invocation id between yields, saw {seen_during_iteration}"
+    );
+    assert _current_invocation_id.get(None) is None , (
+        "the invocation id must not leak past the generator's own driver either"
+    );
 }

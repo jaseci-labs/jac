@@ -53,7 +53,7 @@ export PATH="$PWD/jac/zig-out/bin:$PATH"
 # Pins mirror jac/jaclang/project/capabilities.jac. Optional: drop this line if
 # you don't need to run `by llm()` flows in this env.
 jac install \
-  "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+  "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
   "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
   --global
 

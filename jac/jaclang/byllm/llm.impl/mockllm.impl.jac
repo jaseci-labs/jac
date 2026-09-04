@@ -40,6 +40,7 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             usage = second;
         }
     }
+    _record_usage(mt_run, usage, self.model_name);
 
     if isinstance(output, MockRawResponse) {
         return CompletionResult(
@@ -82,6 +83,15 @@ impl MockLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
 
 impl MockLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None] {
     output = self.config["outputs"].pop(0);
+    usage: dict[str, object] = {};
+    if isinstance(output, tuple) and len(output) == 2 {
+        first = output[0];
+        second = output[1];
+        if isinstance(first, str) and isinstance(second, dict) {
+            output = first;
+            usage = second;
+        }
+    }
     if mt_run.stream {
         while output {
             chunk_len = random.randint(3, 10);
@@ -91,5 +101,5 @@ impl MockLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
         }
     }
 
-    self._usage_history.append({});
+    _record_usage(mt_run, usage, self.model_name);
 }
