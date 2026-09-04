@@ -3,20 +3,20 @@ name: jac-sv-streaming
 description: Produce and consume incremental endpoint responses. Use for SSE, streamed reports, token output, or cross-app stream forwarding.
 ---
 
-A function endpoint can stream by reporting a `Generator`: build a nested generator and `report` it. The reporting function returns `None`; each `yield` from the reported generator leaves the server as one SSE frame:
+A function endpoint streams by returning a `Generator`: build a nested generator and `return` it. Only walkers `report`; a `def` that reports is a compile error (E1135). Each `yield` from the returned generator leaves the server as one SSE frame the moment it happens:
 
 ```jac
 import time;
 import from typing { Generator }
 
-def:pub narrate(n: int) -> None {
+def:pub narrate(n: int) -> Generator[str, None, None] {
     def stream -> Generator[str, None, None] {
         for i in range(n) {
             time.sleep(0.2);            # stand-in for real incremental work
             yield f"chunk {i}";
         }
     }
-    report stream();                    # a def that reports - streaming's one exception
+    return stream();                    # the generator is the response
 }
 ```
 
@@ -84,8 +84,8 @@ import from guestbook { story }     # in main.jac, top level (server context)
 
 ## Pitfalls
 
-- **Match the return annotation to the function's return value** - an endpoint that only `report`s a generator returns `None`. An endpoint that returns a generator declares `Generator`; streaming is detected from the returned or reported value.
+- **`return stream();` with the endpoint typed `-> Generator`** - otherwise the result is serialized as one ordinary response. A `def` that reports is a compile error (E1135); a streaming walker still does `report stream();`.
 - **`data:` payloads are JSON-encoded** - `data: "chunk 0"` with quotes; `JSON.parse(line[6:])`, not the raw slice.
 - Chunks may coalesce or split at arbitrary byte boundaries - always buffer and split on the blank-line separator, keeping the last partial frame for the next read.
 - 404/405 on the stream URL = nothing registers it: no client-side stub reference AND no entry-module import (the registration rule above).
-- Iterating without re-yielding (e.g. `list(frames)`) collapses the stream into one buffered response - the gateway must return or report a generator.
+- Iterating without re-yielding (e.g. `list(frames)`) collapses the stream into one buffered response - the gateway must itself return a generator.

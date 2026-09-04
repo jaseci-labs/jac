@@ -1041,6 +1041,11 @@ test "report outside a walker is rejected at compile time" {
     assert "E1135" in err_text , "the rejection must be E1135";
 }
 
+test "report inside a node ability reaches the visiting walker" {
+    output = run_jac(os.path.join(FIXTURES, "report_in_node_ability.jac"));
+    assert "['hi']" in output;
+}
+
 test "native property getter/setter/deleter with impl separation" {
     # `has <name>: <type> { getter; setter; deleter; }` declares a property
     # over explicitly-declared backing storage; no `field` keyword is used.

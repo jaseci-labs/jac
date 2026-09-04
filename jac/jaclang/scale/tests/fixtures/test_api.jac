@@ -133,7 +133,7 @@ def:pub FunctionStream(count: int = 3) -> None {
             yield f"Func {i}";
         }
     }
-    report stream();
+    return stream();
 }
 
 # Async Walker Test
@@ -372,7 +372,7 @@ def:pub ws_stream(count: int = 3) -> None {
             yield {"index": i, "label": f"chunk-{i}"};
         }
     }
-    report stream();
+    return stream();
 }
 
 """Private WebSocket function (requires JWT auth); no `: pub` modifier."""

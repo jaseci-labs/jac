@@ -907,10 +907,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1135 = _err(
          "E1135",
          Category.SEMANTIC,
-         "`report` is only valid inside a walker",
-         help="`report` appends to the reports a walker hands back when its walk"
-         " ends, so it needs an enclosing walker to attach to. A function answers"
-         " with `return`; spawn a walker from it if you want reported values to"
+         "`report` is only valid inside a walker or a node/edge ability",
+         help="`report` appends to the reports of the walker whose walk is running,"
+         " so it needs a walker body or a node/edge ability the walker triggers."
+         " A function answers with `return`; a streaming function returns its"
+         " generator; spawn a walker from a function if reported values should"
          " reach the caller."
      ),
      E1301 = _err(
