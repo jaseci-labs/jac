@@ -9,7 +9,6 @@ import from "lucide-react" {
     Recycle,
     FileText,
     Clock,
-    CheckCircle2,
     AlertTriangle
 }
 
@@ -26,7 +25,9 @@ def:pub MetricsPage -> JsxElement {
         summary: dict = {},
         metrics: list = [],
         history: list = [],
-        autoRefresh: bool = True;
+        autoRefresh: bool = True,
+        windowSecs: int = 60,
+        scope: str = "app";
 
     auth = useAuth();
     # Accumulate the chart history in a ref, not via reading `history` state
@@ -35,6 +36,10 @@ def:pub MetricsPage -> JsxElement {
     # stable across renders, so .current always reads the latest buffer.
     histRef = useRef([]);
 
+    def scopeFailed(s: dict) -> int {
+        return (s["server_errors"] or 0) + (s["client_errors"] or 0);
+    }
+
     async def loadMetrics {
         result = await getMetrics(auth["authToken"]);
         if result["ok"] and result["data"] {
@@ -42,30 +47,25 @@ def:pub MetricsPage -> JsxElement {
             summary = result["data"]["summary"] or {};
             metrics = result["data"]["metrics"] or [];
             prevBuf = histRef.current or [];
-            newReqsTotal = summary["total_requests"] or 0;
-            # Bars plot per-interval traffic (delta of the cumulative counter),
-            # so an idle window reads ~0 instead of a flat full-height block.
-            prevReqsTotal = prevBuf[len(prevBuf) - 1]["requests"]
-                if len(prevBuf) > 0
-                else newReqsTotal;
-            reqDelta = newReqsTotal - prevReqsTotal;
-            if reqDelta < 0 {
-                reqDelta = 0;
-            }
+            scopes = summary["scopes"] or {};
+            appScope = scopes["app"] or {};
+            otherScope = scopes["other"] or {};
+            allScope = scopes["all"] or {};
             newPoint = {
                 "time": Date.now(),
-                "requests": newReqsTotal,
-                "delta": reqDelta,
-                "active": summary["active_requests"] or 0,
-                "errors": summary["error_count"] or 0,
-                "latency": summary["avg_latency_ms"] or 0
+                "app": appScope["requests"] or 0,
+                "other": otherScope["requests"] or 0,
+                "all": allScope["requests"] or 0,
+                "appErr": scopeFailed(appScope),
+                "otherErr": scopeFailed(otherScope),
+                "allErr": scopeFailed(allScope)
             };
-            # Keep the last 20 points. Read/write through histRef (stable across
-            # renders) so the polling interval accumulates instead of freezing
-            # on a stale `history` closure. Avoid a negative slice ([-20:]) too --
-            # the client transpiler mishandles it (returns []).
+            # Read/write through histRef (stable across renders) so the polling
+            # interval accumulates instead of freezing on a stale `history`
+            # closure. Avoid a negative slice ([-400:]) too -- the client
+            # transpiler mishandles it (returns []).
             combined = prevBuf + [newPoint];
-            startIdx = max(0, len(combined) - 20);
+            startIdx = max(0, len(combined) - 400);
             trimmed = [];
             idx = 0;
             for p in combined {
@@ -121,15 +121,6 @@ def:pub MetricsPage -> JsxElement {
         return {};
     }
 
-    def getMetricBySuffix(suffix: str) -> dict {
-        for m in metrics {
-            if str(m["name"]).endswith(suffix) {
-                return m;
-            }
-        }
-        return {};
-    }
-
     def getMetricValue(name: str, labelKey: str = "", labelVal: str = "") -> float {
         m = getMetricByName(name);
         if not m or not m["values"] {
@@ -147,79 +138,143 @@ def:pub MetricsPage -> JsxElement {
         return 0.0;
     }
 
+    def formatSpan(secs: float) -> str {
+        if secs < 60 {
+            return str(int(secs)) + "s";
+        }
+        if secs < 3600 {
+            return str(int(secs / 60)) + "m " + str(int(secs % 60)) + "s";
+        }
+        hours = int(secs / 3600);
+        mins = int((secs % 3600) / 60);
+        return str(hours) + "h " + str(mins) + "m";
+    }
+
     def formatUptime(startTimeVal: float) -> str {
         if startTimeVal == 0 {
             return "N/A";
         }
-        nowSecs = Date.now() / 1000;
-        uptimeSecs = nowSecs - startTimeVal;
-        if uptimeSecs < 60 {
-            return str(int(uptimeSecs)) + "s";
-        }
-        if uptimeSecs < 3600 {
-            return str(int(uptimeSecs / 60)) + "m " + str(int(uptimeSecs % 60)) + "s";
-        }
-        hours = int(uptimeSecs / 3600);
-        mins = int((uptimeSecs % 3600) / 60);
-        return str(hours) + "h " + str(mins) + "m";
+        return formatSpan(Date.now() / 1000 - startTimeVal);
     }
 
-    def getHttpRequestsData -> list {
-        m = getMetricBySuffix("_http_requests_total");
-        if not m or not m["values"] {
-            return [];
+    def formatLatency(secs: float) -> str {
+        if secs <= 0 {
+            return "0ms";
         }
-        result = [];
-        for v in m["values"] {
-            labels = v["labels"] or {};
-            result.append(
-                {
-                    "method": labels["method"] or "?",
-                    "path": labels["path"] or "?",
-                    "status": labels["status_code"] or "?",
-                    "count": int(v["value"] or 0)
-                }
-            );
+        if secs < 0.001 {
+            return str(Math.round(secs * 1000000)) + "us";
         }
-        return sorted(result, key=lambda (x: any) { return -x["count"]; });
+        if secs < 1 {
+            ms = secs * 1000;
+            if ms < 10 {
+                return str(Math.round(ms * 10) / 10) + "ms";
+            }
+            return str(Math.round(ms)) + "ms";
+        }
+        return str(Math.round(secs * 100) / 100) + "s";
     }
 
-    def getLatencyForPath(path: str) -> float {
-        m = getMetricBySuffix("_http_request_duration_seconds");
-        if not m or not m["values"] {
-            return 0.0;
+    def formatPercentile(p: dict) -> str {
+        if not p["known"] {
+            return "--";
         }
-        sumVal = 0.0;
-        countVal = 0.0;
-        for v in m["values"] {
-            labels = v["labels"] or {};
-            if labels["path"] == path {
-                if v["suffix"] == "_sum" {
-                    sumVal = v["value"] or 0.0;
+        if p["over"] {
+            return "> " + formatLatency(p["value"]);
+        }
+        return formatLatency(p["value"]);
+    }
+
+    def niceCeil(v: float) -> float {
+        if v <= 1 {
+            return 1.0;
+        }
+        if v <= 2 {
+            return 2.0;
+        }
+        if v <= 5 {
+            return 5.0;
+        }
+        return Math.ceil(v / 10) * 10.0;
+    }
+
+    def chartLine(points: list, maxV: float) -> str {
+        n = len(points);
+        if n == 0 {
+            return "";
+        }
+        mv = maxV;
+        if mv <= 0 {
+            mv = 1.0;
+        }
+        out = "";
+        i = 0;
+        for p in points {
+            x = 44.0 + 294.0;
+            if n > 1 {
+                x = 44.0 + (i / (n - 1) * 588.0);
+            }
+            y = 96.0 - ((p["rate"] or 0.0) / mv * 86.0);
+            if out {
+                out = out + " ";
+            }
+            out = out + str(round(x, 1)) + "," + str(round(y, 1));
+            i = i + 1;
+        }
+        return out;
+    }
+
+    def errorMarks(points: list, maxE: float) -> list {
+        n = len(points);
+        out = [];
+        if n == 0 or maxE <= 0 {
+            return out;
+        }
+        i = 0;
+        for p in points {
+            errs = p["errs"] or 0;
+            if errs > 0 {
+                x = 44.0 + 294.0;
+                if n > 1 {
+                    x = 44.0 + (i / (n - 1) * 588.0);
                 }
-                if v["suffix"] == "_count" {
-                    countVal = v["value"] or 0.0;
-                }
+                out.append(
+                    {"x": round(x, 1), "h": round(4.0 + (errs / maxE) * 7.0, 1)}
+                );
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+
+    def chartArea(points: list, maxV: float) -> str {
+        line = chartLine(points, maxV);
+        if not line {
+            return "";
+        }
+        return "44.0,96.0 " + line + " 632.0,96.0";
+    }
+
+    def windowLabel -> str {
+        if windowSecs >= 900 {
+            return "15m";
+        }
+        if windowSecs >= 300 {
+            return "5m";
+        }
+        return "60s";
+    }
+
+    def getEndpointRows -> list {
+        rows = [];
+        for r in (summary["endpoints"] or []) {
+            isApp = r["kind"] == "app";
+            if scope == "all"
+                or (scope == "app" and isApp)
+                or (scope == "other" and not isApp) {
+                rows.append(r);
             }
         }
-        if countVal > 0 {
-            return sumVal / countVal * 1000;
-        }
-        return 0.0;
-    }
-
-    # Semantic status color: 2xx ok, 4xx warn, 5xx error.
-    def getStatusColor(status: str) -> str {
-        if status.startswith("2") {
-            return "text-success";
-        }
-        if status.startswith("4") {
-            return "text-warning";
-        }
-        if status.startswith("5") {
-            return "text-danger";
-        }
-        return "text-muted";
+        return rows;
     }
 
     # Method chip: subtle weak-tinted token backgrounds, one per verb.
@@ -262,21 +317,88 @@ def:pub MetricsPage -> JsxElement {
             </div>;
     }
 
-    totalReqs = summary["total_requests"] or 0;
     activeReqs = summary["active_requests"] or 0;
-    errorCount = summary["error_count"] or 0;
-    avgLatency = summary["avg_latency_ms"] or 0;
-    avgLatencyDisplay = int(avgLatency * 100) / 100;
 
-    maxReqs = 1;
-    maxLatency = 1;
+    scopeKey = "app";
+    scopeErrKey = "appErr";
+    if scope == "all" {
+        scopeKey = "all";
+        scopeErrKey = "allErr";
+    } elif scope == "other" {
+        scopeKey = "other";
+        scopeErrKey = "otherErr";
+    }
+
+    windowStartMs = Date.now() - (windowSecs * 1000);
+    windowPoints = [];
     for h in history {
-        if (h["delta"] or 0) > maxReqs {
-            maxReqs = h["delta"];
+        if h["time"] >= windowStartMs {
+            windowPoints.append(h);
         }
-        if h["latency"] > maxLatency {
-            maxLatency = h["latency"];
+    }
+
+    ratePoints = [];
+    maxRate = 0.0;
+    ptIdx = 0;
+    for h in windowPoints {
+        if ptIdx > 0 {
+            prevPt = windowPoints[ptIdx - 1];
+            dt = (h["time"] - prevPt["time"]) / 1000.0;
+            if dt > 0 {
+                dReq = h[scopeKey] - prevPt[scopeKey];
+                dErr = h[scopeErrKey] - prevPt[scopeErrKey];
+                if dReq < 0 {
+                    dReq = 0;
+                }
+                if dErr < 0 {
+                    dErr = 0;
+                }
+                rate = dReq / dt;
+                ratePoints.append({"rate": rate, "errs": dErr});
+                if rate > maxRate {
+                    maxRate = rate;
+                }
+            }
         }
+        ptIdx += 1;
+    }
+
+    windowReqs = 0;
+    elapsedSecs = 0.0;
+    nWin = len(windowPoints);
+    if nWin > 1 {
+        firstPt = windowPoints[0];
+        lastPt = windowPoints[nWin - 1];
+        windowReqs = lastPt[scopeKey] - firstPt[scopeKey];
+        if windowReqs < 0 {
+            windowReqs = 0;
+        }
+        elapsedSecs = (lastPt["time"] - firstPt["time"]) / 1000.0;
+    }
+    throughput = 0.0;
+    if elapsedSecs > 0 {
+        throughput = windowReqs / elapsedSecs;
+    }
+    throughputDisplay = Math.round(throughput * 10) / 10;
+    maxIntervalErrs = 0;
+    for rp in ratePoints {
+        if rp["errs"] > maxIntervalErrs {
+            maxIntervalErrs = rp["errs"];
+        }
+    }
+    chartMax = niceCeil(maxRate);
+    errMarks = errorMarks(ratePoints, maxIntervalErrs);
+    chartLinePts = chartLine(ratePoints, chartMax);
+    chartAreaPts = chartArea(ratePoints, chartMax);
+    chartIsEmpty = len(ratePoints) == 0 or maxRate <= 0;
+    collecting = nWin < 2;
+    bufferAgeSecs = 0.0;
+    if len(history) > 0 {
+        bufferAgeSecs = (Date.now() - history[0]["time"]) / 1000.0;
+    }
+    spanLabel = windowLabel();
+    if bufferAgeSecs < windowSecs {
+        spanLabel = formatSpan(elapsedSecs);
     }
 
     virtualMem = getMetricValue("process_virtual_memory_bytes");
@@ -307,26 +429,71 @@ def:pub MetricsPage -> JsxElement {
         maxGc = 1;
     }
 
-    httpRequests = getHttpRequestsData();
-    maxReqCount = 1;
-    if len(httpRequests) > 0 {
-        maxReqCount = httpRequests[0]["count"];
+    gcTotal = gcGen0 + gcGen1 + gcGen2;
+    gcNote = "No GC collections recorded yet.";
+    if gcTotal > 0 {
+        gcBusiest = "gen 0 (young)";
+        if gcGen2 >= gcGen1 and gcGen2 >= gcGen0 {
+            gcBusiest = "gen 2 (old)";
+        } elif gcGen1 >= gcGen0 {
+            gcBusiest = "gen 1 (mid)";
+        }
+        gcNote = str(gcTotal)
+            + " objects collected since start; "
+            + gcBusiest
+            + " accounts for the most.";
     }
 
-    slowestPath = "";
-    slowestLatency = 0.0;
-    for req in httpRequests {
-        lat = getLatencyForPath(req["path"]);
-        if lat > slowestLatency {
-            slowestLatency = lat;
-            slowestPath = req["path"];
+    endpointRows = getEndpointRows();
+    allScopes = summary["scopes"] or {};
+    scopeStats = allScopes[scopeKey] or {};
+    unknownP = {"value": 0.0, "over": False, "known": False};
+    scopeP50 = scopeStats["p50"] or unknownP;
+    scopeP95 = scopeStats["p95"] or unknownP;
+    scopeP99 = scopeStats["p99"] or unknownP;
+    histGroups = scopeStats["distribution"] or [];
+    maxGroupCount = 1.0;
+    for g in histGroups {
+        if g["count"] > maxGroupCount {
+            maxGroupCount = g["count"];
         }
     }
+
+    scopeReqs = scopeStats["requests"] or 0;
+    scopeServerErrs = scopeStats["server_errors"] or 0;
+    scopeClientErrs = scopeStats["client_errors"] or 0;
+    scopeFailedCount = scopeServerErrs + scopeClientErrs;
+    maxRowCount = 1;
+    for r in endpointRows {
+        if r["count"] > maxRowCount {
+            maxRowCount = r["count"];
+        }
+    }
+    scopeErrRate = 0.0;
+    if scopeReqs > 0 {
+        scopeErrRate = (scopeFailedCount / scopeReqs) * 100;
+    }
+    scopeErrDisplay = Math.round(scopeErrRate * 10) / 10;
 
     memUsagePercent = 0;
     if virtualMem > 0 {
         memUsagePercent = int((residentMem / virtualMem) * 100);
     }
+
+    scopeOptions = [
+        {"key": "app", "label": "App", "title": "Your app's routes"},
+        {
+            "key": "other",
+            "label": "Platform",
+            "title": "Admin portal, health probes, /metrics, /docs and /openapi.json"
+        },
+        {"key": "all", "label": "All", "title": "Everything this process served"}
+    ];
+    windowOptions = [
+        {"secs": 60, "label": "60s"},
+        {"secs": 300, "label": "5m"},
+        {"secs": 900, "label": "15m"}
+    ];
 
     headerRight = <div className="flex items-center gap-3">
         <label className="flex items-center gap-2 text-xs text-muted">
@@ -349,30 +516,57 @@ def:pub MetricsPage -> JsxElement {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                    <span className="text-xs text-faint">Total requests</span>
+                    <span className="text-xs text-faint">Throughput</span>
                     <Globe className="w-4 h-4 text-faint"/>
                 </div>
                 <div className="text-2xl font-semibold text-fg mt-2 tabular-nums">
-                    {totalReqs}
+                    {throughputDisplay}
+                    <span className="text-base text-faint"> req/s</span>
+                </div>
+                <div className="text-xs text-faint mt-1">
+                    {"collecting first sample"
+                        if collecting
+                        else (str(windowReqs) + " in last " + spanLabel)}
                 </div>
             </div>
             <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                    <span className="text-xs text-faint">Active now</span>
-                    <Activity className="w-4 h-4 text-faint"/>
-                </div>
-                <div className="text-2xl font-semibold text-fg mt-2 tabular-nums">
-                    {activeReqs}
-                </div>
-            </div>
-            <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <span className="text-xs text-faint">Avg latency</span>
+                    <span className="text-xs text-faint">p95 latency</span>
                     <Clock className="w-4 h-4 text-faint"/>
                 </div>
-                <div className="text-2xl font-semibold text-fg mt-2 tabular-nums">
-                    {avgLatencyDisplay}
-                    <span className="text-base text-faint">ms</span>
+                <div
+                    className={"text-2xl font-semibold mt-2 tabular-nums "
+                        + ("text-warning" if scopeP95["value"] > 1 else "text-fg")}
+                >
+                    {formatPercentile(scopeP95)}
+                </div>
+                <div className="text-xs text-faint mt-1">
+                    {"p50 "
+                        + formatPercentile(scopeP50)
+                        + " · p99 "
+                        + formatPercentile(scopeP99)}
+                </div>
+            </div>
+            <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs text-faint">Error rate</span>
+                    <AlertTriangle className="w-4 h-4 text-faint"/>
+                </div>
+                <div
+                    className={"text-2xl font-semibold mt-2 tabular-nums "
+                        + ("text-danger" if scopeFailedCount > 0 else "text-fg")}
+                >
+                    {scopeErrDisplay}
+                    <span className="text-base text-faint">%</span>
+                </div>
+                <div className="text-xs text-faint mt-1">
+                    {"5xx "
+                        + str(scopeServerErrs)
+                        + " · 4xx "
+                        + str(scopeClientErrs)
+                        + " of "
+                        + str(scopeReqs)
+                        + " since restart"}
                 </div>
             </div>
             <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
@@ -388,87 +582,307 @@ def:pub MetricsPage -> JsxElement {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
                 <div className="bg-surface border border-line rounded-lg p-5 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between gap-3 mb-4">
                         <div className="flex items-center gap-2">
                             <Globe className="w-4 h-4 text-muted"/>
                             <span className="text-sm font-medium text-fg">
                                 HTTP traffic
                             </span>
                         </div>
-                        <span className="text-xs text-faint">Last 60s</span>
-                    </div>
-                    <div className="h-24 flex items-end gap-1 mb-4">
-                        {[
-                            <div
-                                key={str(h["time"])}
-                                className="flex-1 bg-accent rounded-t opacity-80 hover:opacity-100 transition-opacity"
-                                style={{
-                                    "minHeight": "2px",
-                                    "height": getBarHeight(h["delta"] or 0, maxReqs, 14)
-                                }}
-                                title={str(h["delta"] or 0) + " req / interval"}
-                            ></div> for h in history
-                        ]}
-                    </div>
-                    <div className="border-t border-line pt-4">
-                        <div className="text-xs text-muted mb-3">
-                            All endpoints ({len(httpRequests)})
+                        <div className="flex items-center gap-3">
+                            <div className="flex gap-1">
+                                {[
+                                    <button
+                                        key={opt["key"]}
+                                        title={opt["title"]}
+                                        onClick={lambda { scope = opt["key"]; }}
+                                        className={"px-2 py-0.5 rounded text-[11px] border transition-colors "
+                                            + (
+                                                "bg-accent-weak border-accent-line text-accent"
+                                                    if scope == opt["key"]
+                                                    else "border-line text-muted hover:text-fg"
+                                            )}
+                                    >
+                                        {opt["label"]}
+                                    </button> for opt in scopeOptions
+                                ]}
+                            </div>
+                            <div className="flex gap-1">
+                                {[
+                                    <button
+                                        key={str(opt["secs"])}
+                                        onClick={lambda { windowSecs = int(
+                                            opt["secs"]
+                                        ); }}
+                                        className={"px-2 py-0.5 rounded text-[11px] border transition-colors "
+                                            + (
+                                                "bg-accent-weak border-accent-line text-accent"
+                                                    if windowSecs == opt["secs"]
+                                                    else "border-line text-muted hover:text-fg"
+                                            )}
+                                    >
+                                        {opt["label"]}
+                                    </button> for opt in windowOptions
+                                ]}
+                            </div>
                         </div>
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                    </div>
+                    <div className="flex items-baseline justify-between mb-1">
+                        <span
+                            className="text-[10px] uppercase tracking-wider text-faint"
+                        >
+                            Throughput · req/s · last {spanLabel}
+                        </span>
+                        <span className="text-[11px] text-faint">
+                            {str(activeReqs) + " in flight"}
+                        </span>
+                    </div>
+                    {chartIsEmpty
+                        and <div
+                            className="border border-dashed border-line rounded-lg px-4 py-6 text-center"
+                        >
+                            <div className="text-xs font-medium text-fg">
+                                {"Collecting, first sample in a few seconds"
+                                    if collecting
+                                    else ("No traffic in the last " + spanLabel)}
+                            </div>
+                            <div className="text-[11px] text-faint mt-1">
+                                {"A rate needs two samples."
+                                    if collecting
+                                    else "Counters are alive; this window is empty."}
+                            </div>
+                        </div>}
+                    {not chartIsEmpty
+                        and <svg
+                            viewBox="0 0 640 140"
+                            className="w-full h-32 overflow-visible"
+                            preserveAspectRatio="none"
+                        >
+                            <line
+                                x1="44"
+                                y1="10"
+                                x2="632"
+                                y2="10"
+                                stroke="var(--line)"
+                                strokeWidth="1"
+                            ></line>
+                            <line
+                                x1="44"
+                                y1="53"
+                                x2="632"
+                                y2="53"
+                                stroke="var(--line)"
+                                strokeWidth="1"
+                            ></line>
+                            <line
+                                x1="44"
+                                y1="96"
+                                x2="632"
+                                y2="96"
+                                stroke="var(--line-strong)"
+                                strokeWidth="1"
+                            ></line>
+                            <text
+                                x="38"
+                                y="14"
+                                textAnchor="end"
+                                fill="var(--faint)"
+                                fontSize="9"
+                            >
+                                {chartMax}
+                            </text>
+                            <text
+                                x="38"
+                                y="99"
+                                textAnchor="end"
+                                fill="var(--faint)"
+                                fontSize="9"
+                            >
+                                0
+                            </text>
+                            <text x="44" y="112" fill="var(--faint)" fontSize="9">
+                                {"-" + spanLabel}
+                            </text>
+                            <text
+                                x="632"
+                                y="110"
+                                textAnchor="end"
+                                fill="var(--faint)"
+                                fontSize="9"
+                            >
+                                now
+                            </text>
+                            <polygon
+                                points={chartAreaPts}
+                                fill="var(--accent)"
+                                opacity="0.13"
+                            ></polygon>
+                            <polyline
+                                points={chartLinePts}
+                                fill="none"
+                                stroke="var(--accent)"
+                                strokeWidth="2"
+                                strokeLinejoin="round"
+                                strokeLinecap="round"
+                            ></polyline>
+                            <text
+                                x="38"
+                                y="134"
+                                textAnchor="end"
+                                fill="var(--faint)"
+                                fontSize="9"
+                            >
+                                err
+                            </text>
+                            <line
+                                x1="44"
+                                y1="136"
+                                x2="632"
+                                y2="136"
+                                stroke="var(--line)"
+                                strokeWidth="1"
+                            ></line>
+                            {[
+                                <rect
+                                    key={str(mk["x"])}
+                                    x={mk["x"] - 1.5}
+                                    y={136 - mk["h"]}
+                                    width="3"
+                                    height={mk["h"]}
+                                    rx="1.5"
+                                    fill="var(--danger)"
+                                ></rect> for mk in errMarks
+                            ]}
+                        </svg>}
+                    <div className="border-t border-line pt-4 mt-4">
+                        <div className="flex items-baseline justify-between mb-3">
+                            <span
+                                className="text-[10px] uppercase tracking-wider text-faint"
+                            >
+                                Latency distribution · since restart
+                            </span>
+                            <span className="text-[11px] text-faint">
+                                {str(scopeReqs) + " requests"}
+                            </span>
+                        </div>
+                        <div className="space-y-1.5">
                             {[
                                 <div
-                                    key={req["path"] + req["status"]}
-                                    className="flex items-center gap-3 text-xs"
+                                    key={g["label"]}
+                                    className="flex items-center gap-3 text-[11px]"
                                 >
-                                    <span className={getMethodBadge(req["method"])}>
-                                        {req["method"]}
-                                    </span>
                                     <span
-                                        className="font-mono text-muted flex-1 truncate"
+                                        className="w-24 text-right font-mono text-muted shrink-0"
                                     >
-                                        {req["path"]}
+                                        {g["label"]}
                                     </span>
-                                    <span className={getStatusColor(req["status"])}>
-                                        {req["status"]}
-                                    </span>
-                                    <span
-                                        className="text-fg font-semibold w-12 text-right tabular-nums"
+                                    <div
+                                        className="flex-1 bg-surface-2 rounded h-3.5 overflow-hidden"
                                     >
-                                        {req["count"]}
-                                    </span>
-                                    <div className="w-20 bg-surface-2 rounded-full h-1">
                                         <div
-                                            className="bg-accent h-1 rounded-full"
+                                            className="bg-accent h-3.5 rounded"
                                             style={{
                                                 "width": getBarHeight(
-                                                    req["count"], maxReqCount
+                                                    g["count"], maxGroupCount
                                                 )
                                             }}
                                         ></div>
                                     </div>
-                                </div> for req in httpRequests
+                                    <span
+                                        className="w-10 text-right font-mono text-fg tabular-nums"
+                                    >
+                                        {int(g["count"])}
+                                    </span>
+                                </div> for g in histGroups
                             ]}
                         </div>
                     </div>
-                    {slowestLatency > 1000
-                        and <div
-                            className="mt-4 p-3 bg-warning-weak border border-line rounded-lg"
+                    <div className="border-t border-line pt-4 mt-4">
+                        <div className="flex items-baseline justify-between mb-3">
+                            <span
+                                className="text-[10px] uppercase tracking-wider text-faint"
+                            >
+                                {str(len(endpointRows)) + " endpoints · since restart"}
+                            </span>
+                            <span className="text-[11px] text-faint">
+                                sorted by p95
+                            </span>
+                        </div>
+                        <div
+                            className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-faint pb-2 border-b border-line"
                         >
-                            <div className="flex items-center gap-2 text-xs">
-                                <AlertTriangle
-                                    className="w-3.5 h-3.5 text-warning shrink-0"
-                                />
-                                <span className="text-warning font-medium">
-                                    Slowest path
-                                </span>
-                                <span className="text-muted font-mono flex-1 truncate">
-                                    {slowestPath}
-                                </span>
-                                <span className="text-fg font-semibold">
-                                    {int(slowestLatency / 100) / 10}s
-                                </span>
-                            </div>
-                        </div>}
+                            <span className="flex-1">Endpoint</span>
+                            <span className="w-12 text-right">Reqs</span>
+                            <span className="w-12 text-right">Err %</span>
+                            <span className="w-14 text-right">p50</span>
+                            <span className="w-14 text-right">p95</span>
+                            <span className="w-16"></span>
+                        </div>
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-2 pt-2">
+                            {[
+                                <div
+                                    key={req["method"] + " " + req["path"]}
+                                    className="flex items-center gap-3 text-xs"
+                                >
+                                    <span
+                                        className="flex-1 flex items-center gap-2 min-w-0"
+                                    >
+                                        <span className={getMethodBadge(req["method"])}>
+                                            {req["method"]}
+                                        </span>
+                                        <span className="font-mono text-muted truncate">
+                                            {req["path"]}
+                                        </span>
+                                    </span>
+                                    <span
+                                        className="w-12 text-right font-mono text-fg tabular-nums"
+                                    >
+                                        {req["count"]}
+                                    </span>
+                                    <span
+                                        className={"w-12 text-right font-mono tabular-nums "
+                                            + (
+                                                "text-danger"
+                                                    if req["failed"] > 0
+                                                    else "text-faint"
+                                            )}
+                                    >
+                                        {Math.round(
+                                            (req["failed"] / req["count"]) * 1000
+                                        )
+                                            / 10
+                                            if req["count"] > 0
+                                            else 0}
+                                    </span>
+                                    <span
+                                        className="w-14 text-right font-mono text-muted tabular-nums"
+                                    >
+                                        {formatPercentile(req["p50"])}
+                                    </span>
+                                    <span
+                                        className={"w-14 text-right font-mono tabular-nums "
+                                            + (
+                                                "text-warning"
+                                                    if req["p95"]["value"] > 1
+                                                    else "text-fg"
+                                            )}
+                                    >
+                                        {formatPercentile(req["p95"])}
+                                    </span>
+                                    <div className="w-16 bg-surface-2 rounded-full h-1">
+                                        <div
+                                            className="bg-accent h-1 rounded-full"
+                                            style={{
+                                                "width": getBarHeight(
+                                                    req["count"], maxRowCount
+                                                )
+                                            }}
+                                        ></div>
+                                    </div>
+                                </div> for req in endpointRows
+                            ]}
+                        </div>
+                    </div>
                 </div>
                 <div className="bg-surface border border-line rounded-lg p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
@@ -525,12 +939,7 @@ def:pub MetricsPage -> JsxElement {
                         className="mt-4 p-3 bg-surface-2 border border-line rounded-lg"
                     >
                         <div className="flex items-center gap-2 text-xs">
-                            <CheckCircle2
-                                className="w-3.5 h-3.5 text-success shrink-0"
-                            />
-                            <span className="text-muted">
-                                Gen 2 is doing the heavy lifting - no memory leaks detected.
-                            </span>
+                            <span className="text-muted">{gcNote}</span>
                         </div>
                     </div>
                 </div>

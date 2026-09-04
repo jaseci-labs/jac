@@ -938,10 +938,37 @@ Response format (standard transport envelope):
   "data": {
     "enabled": true,
     "summary": {
-      "total_requests": 156,
       "active_requests": 2,
-      "error_count": 1,
-      "avg_latency_ms": 45.2
+      "scopes": {
+        "app": {
+          "requests": 156,
+          "server_errors": 1,
+          "client_errors": 3,
+          "p50": {"value": 0.021, "over": false, "known": true},
+          "p95": {"value": 0.31, "over": false, "known": true},
+          "p99": {"value": 2.5, "over": true, "known": true},
+          "distribution": [
+            {"label": "under 25ms", "count": 90},
+            {"label": "25 - 100ms", "count": 40},
+            {"label": "100 - 500ms", "count": 20},
+            {"label": "500ms - 2.5s", "count": 4},
+            {"label": "over 2.5s", "count": 2}
+          ]
+        },
+        "other": {"...": "same shape, for admin, health and system paths"},
+        "all": {"...": "same shape, for every path"}
+      },
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "kind": "app",
+          "count": 42,
+          "failed": 0,
+          "p50": {"value": 0.004, "over": false, "known": true},
+          "p95": {"value": 0.02, "over": false, "known": true}
+        }
+      ]
     },
     "metrics": [
       {
@@ -960,11 +987,13 @@ Response format (standard transport envelope):
 }
 ```
 
+`summary` is computed from the exposition since the process started. Paths are classified by their first segment: `admin` and the well-known `health`, `healthz`, `metrics`, `docs` and `openapi.json` segments are `admin`, `health` and `system`; everything else is `app`. The `app` scope covers app paths, `other` covers the rest, and `all` covers both. Percentiles are interpolated inside the request-duration histogram bucket that holds them; `over` is true when the percentile falls in the `+Inf` bucket (the value is then the last finite edge), and `known` is false when nothing has been observed. `endpoints` has one row per method and path, sorted by p95 descending; `failed` counts 4xx and 5xx together.
+
 The admin dashboard monitoring page displays:
 
-- HTTP traffic breakdown by method and status code
-- Request latency statistics
-- Active requests gauge
+- Throughput over a selectable 60s, 5m or 15m window, with errors on their own lane, scoped to app or platform traffic
+- p50, p95 and p99 latency, the latency distribution, and the 4xx/5xx error rate for the selected scope
+- One row per endpoint with request count, error rate, p50 and p95, sorted by p95
 - System metrics (GC collections, memory usage, CPU time, file descriptors)
 
 Requests to the metrics endpoint itself are excluded from tracking.

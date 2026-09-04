@@ -1214,48 +1214,207 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict[str, any]] {
     return metrics_data;
 }
 
+glob _LATENCY_GROUPS: dict[str, float] = {
+         'under 25ms': 0.025,
+         '25 - 100ms': 0.1,
+         '100 - 500ms': 0.5,
+         '500ms - 2.5s': 2.5
+     };
+
+
+def _classify_path(path: str) -> str {
+    import from jaclang.scale.runtime.routing { GATEWAY_WELLKNOWN_SEGMENTS }
+    head: str = path.strip('/').split('/')[0];
+    if head == 'health' or head == 'healthz' {
+        return 'health';
+    }
+    if head == 'admin' {
+        return 'admin';
+    }
+    if head in GATEWAY_WELLKNOWN_SEGMENTS {
+        return 'system';
+    }
+    return 'app';
+}
+
+
+def _sorted_buckets(acc: dict[float, float]) -> list[dict[str, float]] {
+    return [{'le': le, 'count': acc[le]} for le in sorted(acc.keys())];
+}
+
+
+def _percentile_from_buckets(buckets: list[dict[str, float]], q: float) -> dict {
+    total: float = buckets[-1]['count'] if buckets else 0.0;
+    if total <= 0 {
+        return {'value': 0.0, 'over': False, 'known': False};
+    }
+    rank: float = q * total;
+    lo: float = 0.0;
+    lo_edge: float = 0.0;
+    for b in buckets {
+        upper: float = b['le'];
+        count: float = b['count'];
+        if count >= rank {
+            if upper == float('inf') {
+                return {'value': lo_edge, 'over': True, 'known': True};
+            }
+            span: float = count - lo;
+            frac: float = (rank - lo) / span if span > 0 else 0.0;
+            return {
+                'value': round(lo_edge + frac * (upper - lo_edge), 6),
+                'over': False,
+                'known': True
+            };
+        }
+        lo = count;
+        lo_edge = upper;
+    }
+    return {'value': lo_edge, 'over': True, 'known': True};
+}
+
+
+def _cumulative_at(buckets: list[dict[str, float]], bound: float) -> float {
+    seen: float = 0.0;
+    for b in buckets {
+        if b['le'] <= bound {
+            seen = b['count'];
+        }
+    }
+    return seen;
+}
+
+
+def _latency_groups(buckets: list[dict[str, float]]) -> list[dict] {
+    total: float = buckets[-1]['count'] if buckets else 0.0;
+    out: list[dict] = [];
+    prev: float = 0.0;
+    for (label, bound) in _LATENCY_GROUPS.items() {
+        seen: float = _cumulative_at(buckets, bound);
+        out.append({'label': label, 'count': int(seen - prev)});
+        prev = seen;
+    }
+    out.append({'label': 'over 2.5s', 'count': int(total - prev)});
+    return out;
+}
+
+
+def _endpoint_sort_key(row: dict) -> tuple {
+    return (-row['p95']['value'], -row['count']);
+}
+
+
 def _calculate_metrics_summary(metrics_data: list[dict[str, any]]) -> dict {
-    summary: dict = {
-        'total_requests': 0,
-        'active_requests': 0,
-        'error_count': 0,
-        'avg_latency_ms': 0.0
-    };
+    active: int = 0;
+    rows: dict[str, dict] = {};
+    hist: dict[str, dict[float, float]] = {};
 
     for metric in metrics_data {
-        name = metric['name'];
+        name: str = metric['name'];
         if 'http_requests_total' in name {
             for v in metric['values'] {
-                if isinstance(v['value'], (int, float)) {
-                    summary['total_requests'] += int(v['value']);
-                    if v['labels'].get('status_code', '').startswith('5') {
-                        summary['error_count'] += int(v['value']);
-                    }
+                if not isinstance(v['value'], (int, float)) {
+                    continue;
+                }
+                labels: dict[str, str] = v['labels'];
+                method: str = labels.get('method', '?');
+                path: str = labels.get('path', '?');
+                key: str = method + ' ' + path;
+                if key not in rows {
+                    rows[key] = {
+                        'method': method,
+                        'path': path,
+                        'kind': _classify_path(path),
+                        'count': 0,
+                        'server_errors': 0,
+                        'client_errors': 0
+                    };
+                }
+                row: dict = rows[key];
+                n: int = int(v['value']);
+                row['count'] += n;
+                status: str = labels.get('status_code', '');
+                if status.startswith('5') {
+                    row['server_errors'] += n;
+                } elif status.startswith('4') {
+                    row['client_errors'] += n;
                 }
             }
         } elif 'requests_in_progress' in name {
             for v in metric['values'] {
                 if isinstance(v['value'], (int, float)) {
-                    summary['active_requests'] = int(v['value']);
+                    active = int(v['value']);
                 }
             }
         } elif 'request_duration_seconds' in name {
-            total_sum = 0.0;
-            total_count = 0;
             for v in metric['values'] {
-                if v['suffix'] == '_sum' and isinstance(v['value'], (int, float)) {
-                    total_sum += v['value'];
-                } elif v['suffix'] == '_count'
-                    and isinstance(v['value'], (int, float)) {
-                    total_count += int(v['value']);
+                if v['suffix'] != '_bucket'
+                    or not isinstance(v['value'], (int, float)) {
+                    continue;
                 }
-            }
-            if total_count > 0 {
-                summary['avg_latency_ms'] = round((total_sum / total_count) * 1000, 2);
+                labels: dict[str, str] = v['labels'];
+                le_raw: str = labels.get('le', '');
+                if not le_raw {
+                    continue;
+                }
+                le: float = float('inf') if le_raw == '+Inf' else float(le_raw);
+                key: str = labels.get('method', '?') + ' ' + labels.get('path', '?');
+                acc: dict[float, float] = hist.setdefault(key, {});
+                acc[le] = acc.get(le, 0.0) + float(v['value']);
             }
         }
     }
-    return summary;
+
+    endpoints: list[dict] = [];
+    for (key, row) in rows.items() {
+        buckets = _sorted_buckets(hist.get(key, {}));
+        endpoints.append(
+            {
+                'method': row['method'],
+                'path': row['path'],
+                'kind': row['kind'],
+                'count': row['count'],
+                'failed': row['server_errors'] + row['client_errors'],
+                'p50': _percentile_from_buckets(buckets, 0.5),
+                'p95': _percentile_from_buckets(buckets, 0.95)
+            }
+        );
+    }
+    endpoints.sort(key=_endpoint_sort_key);
+
+    scopes: dict[str, dict] = {};
+    for scope_name in ('app', 'other', 'all') {
+        requests: int = 0;
+        server_errors: int = 0;
+        client_errors: int = 0;
+        merged: dict[float, float] = {};
+        for (key, row) in rows.items() {
+            is_app: bool = row['kind'] == 'app';
+            if scope_name == 'app' and not is_app {
+                continue;
+            }
+            if scope_name == 'other' and is_app {
+                continue;
+            }
+            requests += row['count'];
+            server_errors += row['server_errors'];
+            client_errors += row['client_errors'];
+            for (le, count) in hist.get(key, {}).items() {
+                merged[le] = merged.get(le, 0.0) + count;
+            }
+        }
+        buckets = _sorted_buckets(merged);
+        scopes[scope_name] = {
+            'requests': requests,
+            'server_errors': server_errors,
+            'client_errors': client_errors,
+            'p50': _percentile_from_buckets(buckets, 0.5),
+            'p95': _percentile_from_buckets(buckets, 0.95),
+            'p99': _percentile_from_buckets(buckets, 0.99),
+            'distribution': _latency_groups(buckets)
+        };
+    }
+
+    return {'active_requests': active, 'scopes': scopes, 'endpoints': endpoints};
 }
 
 impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
