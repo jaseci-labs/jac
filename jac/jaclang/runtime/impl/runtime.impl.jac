@@ -1387,13 +1387,38 @@ impl JacGraph.heavy_edge(
     return `edge;
 }
 
-impl JacPersistence.save(`obj: (Archetype | Anchor)) -> None {
+impl JacPersistence.save(
+    `obj: (Archetype | Anchor), owner: (UUID | None) = None
+) -> None {
     anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
     jctx = JacRuntimeInterface.get_context();
     anchor.ensure_id();
+    if (owner is not None and anchor.persistent and anchor.`root != owner) {
+        current_owner = anchor.`root;
+        raise ValueError(
+            f"anchor {anchor.id} is already owned by root {current_owner} and "
+            'cannot be re-owned'
+        );
+    }
     if (not anchor.persistent and not anchor.root) {
         anchor.persistent = True;
-        anchor.`root = jctx.user_root.id;
+        if (owner is not None and owner != jctx.user_root.id) {
+            target = jctx.mem.get(owner);
+            if not isinstance(target, NodeAnchor) or not target.is_populated() {
+                raise ValueError(f"owner root {owner} does not exist");
+            }
+            if not isinstance(target.archetype, Root) {
+                raise ValueError(f"owner {owner} is not a root");
+            }
+            if JacRuntimeInterface.check_access_level(target).value
+                < AccessLevel.WRITE.value {
+                raise PermissionError(
+                    f"caller root may not create content owned by root {owner}: "
+                    'requires WRITE on that root'
+                );
+            }
+        }
+        anchor.`root = owner if owner is not None else jctx.user_root.id;
     }
     jctx.mem.put(anchor);
     match anchor {
@@ -1416,6 +1441,11 @@ impl JacPersistence.save(`obj: (Archetype | Anchor)) -> None {
             ;
 
     }
+}
+
+impl JacPersistence.owner_of(`obj: (Archetype | Anchor)) -> (UUID | None) {
+    anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
+    return anchor.root;
 }
 
 impl JacPersistence._destroy_anchors(objs: any, strict: bool) -> list[Anchor] {
