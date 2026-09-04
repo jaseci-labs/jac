@@ -226,10 +226,10 @@ test "sv-to-sv: sv-imported walker round-trips report and fields" {
         ];
         assert rpt2 == "hello, ada";
 
-        echoed = xd(cons.post("/function/greet_echo_name", json={"who": "ada"}))[
+        fields = xd(cons.post("/function/remote_walker_fields", json={"who": "ada"}))[
             "result"
         ];
-        assert echoed == "ada";
+        assert fields == {"name": "ada", "greeting": "hello, ada", "body": ""};
     } finally {
         done(tmp);
     }

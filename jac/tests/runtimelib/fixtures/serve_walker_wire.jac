@@ -1,17 +1,3 @@
-node Thing {
-    has name: str = "";
-}
-
-walker Seed {
-    has count: int = 3;
-
-    can go with Root entry {
-        for i in range(self.count) {
-            here ++> Thing(name=f"t{i}");
-        }
-    }
-}
-
 walker Inner {
     can go with Root entry {
         report {"inner": True};
@@ -28,17 +14,10 @@ walker Outer {
 }
 
 walker CountThings {
-    has prefix: str = "t";
     has total: int = 0;
 
-    can start with Root entry {
-        visit [-->];
-    }
-
-    can count with Thing entry {
-        if here.name.startswith(self.prefix) {
-            self.total += 1;
-        }
+    can go with Root entry {
+        self.total += 1;
     }
 }
 

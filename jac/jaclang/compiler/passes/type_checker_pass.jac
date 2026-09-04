@@ -211,8 +211,7 @@ walker TypeCheckPass(UniPass) {
     def _check_bare_generic(ann_node: UniNode, ty: object) -> None;
     def _check_explicit_any(ann_node: UniNode) -> None;
     def _check_walker_reports_shape(nd: HasVar, declared_type: object) -> None;
-    def _enclosing_archetype(nd: UniNode) -> (Archetype | None);
-    def _report_runs_in_a_walk(nd: UniNode, arch: Archetype) -> bool;
+    def _enclosing_walk_archetype(nd: UniNode) -> (Archetype | None);
     def _walker_report_elem_type(arch: Archetype) -> (TypeBase | None);
     def _jsx_component_params(nd: Ability) -> (list[ParamVar] | None);
     def _is_ref_forward_tail_param(p: ParamVar) -> bool;

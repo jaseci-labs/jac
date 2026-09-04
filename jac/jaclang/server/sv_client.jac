@@ -1,3 +1,4 @@
+import copy;
 import os;
 import from jaclang.server.bridge {
     BridgeError,
@@ -311,6 +312,10 @@ def _http_call(app: str, fn: str, kwargs: dict, headers: dict[str, str]) -> any 
         }
         data = payload;
     }
+    return function_result(data, app, fn);
+}
+
+def function_result(data: any, app: str, fn: str) -> any {
     envelope = _unwrap_envelope(data, app, fn);
     if isinstance(envelope, dict) and ("result" in envelope) {
         return envelope["result"];
@@ -326,8 +331,12 @@ def hydrate_walker_envelope(
         return envelope;
     }
     reports = envelope.get("reports") if isinstance(envelope, dict) else None;
-    fields = dict.fromkeys(stub_cls.__jac_fields__) | dict(kwargs);
-    fields["reports"] = list(reports) if isinstance(reports, list) else [];
+    fields = (
+        dict.fromkeys(stub_cls.__jac_fields__)
+        | stub_cls.__jac_field_defaults__
+        | copy.deepcopy(kwargs)
+    );
+    fields["reports"] = reports if isinstance(reports, list) else [];
     return stub_cls._from_wire(fields);
 }
 

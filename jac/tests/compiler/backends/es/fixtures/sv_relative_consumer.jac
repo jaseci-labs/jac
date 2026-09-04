@@ -10,7 +10,7 @@ the binding key while the Python stub generator looked it up bare
 every endpoint of this module down with it.
 """
 
-import from .sv_relative_provider { analyze, Analyze, AnalyticsReport }
+import from .sv_relative_provider { analyze, launch, Analyze, AnalyticsReport, Tally }
 
 glob _signatures: list[str] = [];
 

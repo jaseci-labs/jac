@@ -907,9 +907,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1135 = _err(
          "E1135",
          Category.SEMANTIC,
-         "`report` is only valid inside a walker or a node/edge ability",
+         "`report` is only valid inside a walker, node, or edge",
          help="`report` appends to the reports of the walker whose walk is running,"
-         " so it needs a walker body or a node/edge ability the walker triggers."
+         " so it belongs to the archetypes that take part in a walk: a walker, or"
+         " a node or edge the walker visits, including their methods and impls."
          " A function answers with `return`; a streaming function returns its"
          " generator; spawn a walker from a function if reported values should"
          " reach the caller."
@@ -2136,6 +2137,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Client binding for server endpoint '{name}' is async: it hands back a Promise where the server function hands back '{ret}'",
          help="A server endpoint reachable from client code is bound to a client-side forwarder that calls it over HTTP, so the forwarder is necessarily async. That is transparent where the result is awaited or ignored (a command handler, an event listener) and wrong where a plain value is required (a sort comparator, a reducer). Await the call, or drop ':pub' so the function is placed client-side and stays synchronous."
+     ),
+     W6010 = _warn(
+         "W6010",
+         Category.CODEGEN,
+         "Endpoint '{name}' returns walker '{ret}', which is empty on the wire",
+         help="A walker serialises to {{}} in a response: its `has` fields are the"
+         " request and `report` is its only output. A function that returns one"
+         " hands its consumers an empty object, and the reports the walker made"
+         " are only visible to raw callers in `data.reports`. Return the walker's"
+         " `reports` (or a plain obj built from them), or let the caller spawn the"
+         " walker itself."
      ),
      W6008 = _warn(
          "W6008",

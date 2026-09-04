@@ -22,7 +22,9 @@ def _make_gateway(dist: str = "/nonexistent-dist") -> EmbeddedGateway {
         lambda (payload: dict) { {"order_id": payload.get("n", 0) * 10}; }
     );
     transport.register_walker(
-        "products", "List", lambda (payload: dict) { {"items": ["a", "b"]}; }
+        "products",
+        "List",
+        lambda (payload: dict) { {"result": {}, "reports": [{"items": ["a", "b"]}]}; }
     );
 
     gw = EmbeddedGateway(registry=reg, transport=transport, client_dist_dir=dist);
@@ -47,7 +49,7 @@ test "a walker member subpath is served by an in-process transport call" {
     client = TestClient(getattr(gw, "app"));
     resp = client.post("/products/walker/List", json={});
     assert resp.status_code == 200;
-    assert resp.json()["data"]["result"] == {"items": ["a", "b"]};
+    assert resp.json()["data"] == {"result": {}, "reports": [{"items": ["a", "b"]}]};
 }
 
 

@@ -82,7 +82,7 @@ Every response is wrapped in a standard envelope:
 
 ```json
 {"ok": true, "type": "response",
- "data": {"result": <return value or executed walker>, "reports": [<report values>]},
+ "data": {"result": <return value, or {} for a walker spawn>, "reports": [<report values>]},
  "error": null, "meta": {"extra": {"http_status": 200}}}
 ```
 

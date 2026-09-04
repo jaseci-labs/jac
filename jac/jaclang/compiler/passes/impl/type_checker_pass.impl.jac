@@ -1451,36 +1451,15 @@ impl TypeCheckPass._check_walker_reports_shape(
     self.emit(E1112, node_override=nd, type=str(declared_type));
 }
 
-impl TypeCheckPass._enclosing_archetype(nd: UniNode) -> (Archetype | None) {
-    arch = nd.find_parent_of_type(Archetype);
-    if arch is not None {
-        return arch;
-    }
-    impl_def = nd.find_parent_of_type(ImplDef);
-    decl = impl_def.decl_link if impl_def is not None else None;
-    if isinstance(decl, Archetype) {
-        return decl;
-    }
-    if decl is not None {
-        return decl.find_parent_of_type(Archetype);
+impl TypeCheckPass._enclosing_walk_archetype(nd: UniNode) -> (Archetype | None) {
+    cur: (UniNode | None) = nd.parent;
+    while cur is not None {
+        if isinstance(cur, Archetype) and cur.arch_kind in ("walker", "node", "edge") {
+            return cur;
+        }
+        cur = cur.decl_link if isinstance(cur, ImplDef) else cur.parent;
     }
     return None;
-}
-
-impl TypeCheckPass._report_runs_in_a_walk(nd: UniNode, arch: Archetype) -> bool {
-    if arch.arch_kind == "walker" {
-        return True;
-    }
-    if arch.arch_kind not in ("node", "edge") {
-        return False;
-    }
-    ability = nd.find_parent_of_type(Ability);
-    if ability is None {
-        impl_def = nd.find_parent_of_type(ImplDef);
-        decl = impl_def.decl_link if impl_def is not None else None;
-        ability = decl if isinstance(decl, Ability) else None;
-    }
-    return ability is not None and isinstance(ability.signature, EventSignature);
 }
 
 impl TypeCheckPass._walker_report_elem_type(arch: Archetype) -> (TypeBase | None) {
@@ -1935,15 +1914,8 @@ impl TypeCheckPass.exit_visit_stmt with VisitStmt exit {
 
 impl TypeCheckPass.exit_report_stmt with ReportStmt exit {
     expr_type = self.evaluator.get_type_of_expression(here.expr);
-    arch = self._enclosing_archetype(here);
+    arch = self._enclosing_walk_archetype(here);
     if arch is None {
-        impl_def = here.find_parent_of_type(ImplDef);
-        if impl_def is None or impl_def.decl_link is not None {
-            self.emit(E1135, node_override=here);
-        }
-        return;
-    }
-    if not self._report_runs_in_a_walk(here, arch) {
         self.emit(E1135, node_override=here);
         return;
     }

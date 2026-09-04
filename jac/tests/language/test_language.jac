@@ -1041,9 +1041,23 @@ test "report outside a walker is rejected at compile time" {
     assert "E1135" in err_text , "the rejection must be E1135";
 }
 
-test "report inside a node ability reaches the visiting walker" {
+test "report reaches the walk from node methods, nested defs, nested objs and impls" {
     output = run_jac(os.path.join(FIXTURES, "report_in_node_ability.jac"));
-    assert "['hi']" in output;
+    assert "['helper', 'hi', 'inner', 'nested']" in output;
+    assert "['impl']" in output;
+}
+
+test "report inside a plain obj is rejected at compile time" {
+    err_text = "";
+    try {
+        run_jac(os.path.join(FIXTURES, "report_in_obj_err.jac"));
+        assert False , "`report` in an obj method must be rejected at compile time";
+    } except AssertionError {
+        raise;
+    } except Exception as e {
+        err_text = str(e);
+    }
+    assert "E1135" in err_text , "the rejection must be E1135";
 }
 
 test "native property getter/setter/deleter with impl separation" {

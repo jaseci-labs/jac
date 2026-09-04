@@ -230,7 +230,7 @@ Both error and success cases survive the boundary intact. The `_jac_type` metada
 
 ### Walker Imports
 
-`def:pub` is one of two shapes that can cross the boundary; the other is a walker. A walker imported from another app becomes a remote spawn: the consumer-side stub class accepts the walker's `has` fields as keyword arguments, spawns it on the provider (`POST /walker/<name>` when apart), and -- awaited -- returns a walker instance that carries the fields you passed plus the `reports` the provider produced. Field state the provider's walk mutates stays on the provider; `report` is the only channel that crosses the wire.
+`def:pub` is one of two shapes that can cross the boundary; the other is a walker. A walker imported from another app becomes a remote spawn: the consumer-side stub class accepts the walker's `has` fields as keyword arguments, spawns it on the provider (`POST /walker/<name>` when apart), and -- awaited -- returns a walker instance that carries the fields you passed, the provider's literal defaults for any you left out, and the `reports` the provider produced. Field state the provider's walk mutates stays on the provider; `report` is the only channel that crosses the wire.
 
 Add a walker to `math_service.jac`:
 
