@@ -318,13 +318,17 @@ def _http_call(app: str, fn: str, kwargs: dict, headers: dict[str, str]) -> any 
     return envelope;
 }
 
-def _rehydrate_walker(envelope: any, stub_cls: any) -> any {
-    if not isinstance(envelope, dict) or stub_cls is None {
-        raise BridgeError(detail="Walker response has no declared boundary contract");
+def hydrate_walker_envelope(
+    data: any, app: str, walker_name: str, kwargs: dict, stub_cls: any
+) -> any {
+    envelope = _unwrap_envelope(data, app, walker_name) or {};
+    if stub_cls is None {
+        return envelope;
     }
-    payload = dict(envelope.get("result") or {});
-    payload["reports"] = envelope.get("reports", []);
-    return stub_cls._from_wire(payload);
+    reports = envelope.get("reports") if isinstance(envelope, dict) else None;
+    fields = dict.fromkeys(stub_cls.__jac_fields__) | dict(kwargs);
+    fields["reports"] = list(reports) if isinstance(reports, list) else [];
+    return stub_cls._from_wire(fields);
 }
 
 def _http_spawn(
@@ -350,7 +354,10 @@ def _http_spawn(
         }
         data = resp.json();
     }
-    return _rehydrate_walker(_unwrap_envelope(data, app, walker_name) or {}, stub_cls);
+    if stub_cls is None {
+        raise BridgeError(detail="Walker response has no declared boundary contract");
+    }
+    return hydrate_walker_envelope(data, app, walker_name, kwargs, stub_cls);
 }
 
 async def _await_if_needed(value: any) -> any {

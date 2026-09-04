@@ -1028,6 +1028,19 @@ test "root keyword trigger is rejected at compile time" {
     assert "root" in err_text , "the diagnostic must name the offending trigger";
 }
 
+test "report outside a walker is rejected at compile time" {
+    err_text = "";
+    try {
+        run_jac(os.path.join(FIXTURES, "report_outside_walker_err.jac"));
+        assert False , "`report` in a plain function must be rejected at compile time";
+    } except AssertionError {
+        raise;
+    } except Exception as e {
+        err_text = str(e);
+    }
+    assert "E1135" in err_text , "the rejection must be E1135";
+}
+
 test "native property getter/setter/deleter with impl separation" {
     # `has <name>: <type> { getter; setter; deleter; }` declares a property
     # over explicitly-declared backing storage; no `field` keyword is used.

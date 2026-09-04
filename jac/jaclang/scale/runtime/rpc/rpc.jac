@@ -164,7 +164,9 @@ def walker_call(
             f"/walker/{walker_name}", json=args, headers=_rpc_headers(headers)
         );
         data = resp.json();
-        return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+        return sv_client.hydrate_walker_envelope(
+            data, module_name, walker_name, args, stub_cls
+        );
     }
 
     if breaker_should_skip(module_name) {
@@ -193,7 +195,9 @@ def walker_call(
     }
 
     data = _rpc_with_retries(module_name, f"walker spawn '{label}'", send);
-    return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+    return sv_client.hydrate_walker_envelope(
+        data, module_name, walker_name, args, stub_cls
+    );
 }
 
 
@@ -232,15 +236,4 @@ def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
     raise RuntimeError(
         f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
     );
-}
-
-def _hydrate_walker_envelope(
-    data: any, module_name: str, walker_name: str, stub_cls: any
-) -> any {
-    import from jaclang.server.sv_client { _rehydrate_walker, _unwrap_envelope }
-    envelope = _unwrap_envelope(data, module_name, walker_name);
-    if stub_cls is None {
-        return envelope.get("result") if isinstance(envelope, dict) else None;
-    }
-    return _rehydrate_walker(envelope, stub_cls);
 }

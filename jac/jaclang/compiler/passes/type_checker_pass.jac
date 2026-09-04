@@ -128,6 +128,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1132,
     E5095,
     E1133,
+    E1135,
     W1036,
     W1037,
     W1052,
@@ -210,7 +211,8 @@ walker TypeCheckPass(UniPass) {
     def _check_bare_generic(ann_node: UniNode, ty: object) -> None;
     def _check_explicit_any(ann_node: UniNode) -> None;
     def _check_walker_reports_shape(nd: HasVar, declared_type: object) -> None;
-    def _enclosing_walker_report_elem_type(nd: UniNode) -> (TypeBase | None);
+    def _enclosing_archetype(nd: UniNode) -> (Archetype | None);
+    def _walker_report_elem_type(arch: Archetype) -> (TypeBase | None);
     def _jsx_component_params(nd: Ability) -> (list[ParamVar] | None);
     def _is_ref_forward_tail_param(p: ParamVar) -> bool;
     def _check_props_bundle_is_exclusive(

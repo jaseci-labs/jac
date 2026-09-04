@@ -904,6 +904,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " not checked here, since another toolchain resolves it.",
          blocks_codegen=True
      ),
+     E1135 = _err(
+         "E1135",
+         Category.SEMANTIC,
+         "`report` is only valid inside a walker",
+         help="`report` appends to the reports a walker hands back when its walk"
+         " ends, so it needs an enclosing walker to attach to. A function answers"
+         " with `return`; spawn a walker from it if you want reported values to"
+         " reach the caller."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

@@ -33,3 +33,8 @@ async def:pub greet_via_walker(who: str) -> str {
     rg = await Greet(name=who);
     return rg.reports[0];
 }
+
+def:pub greet_echo_name(who: str) -> str {
+    rg = Greet(name=who);
+    return rg.name;
+}

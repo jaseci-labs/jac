@@ -22,11 +22,11 @@ test "signup, save a note, and read it back" {
     await jacLogin("alice", "secret123");
 
     saved = await __doWalkerFetch("save_note", "", {"text": "hello"});
-    saved_reports = saved["result"]["reports"];
+    saved_reports = saved["reports"];
     assert saved_reports[0]["text"] == "hello";
 
     listed = await __doWalkerFetch("list_notes", "", {});
-    listed_reports = listed["result"]["reports"];
+    listed_reports = listed["reports"];
     assert len(listed_reports) == 1;
     assert listed_reports[0]["text"] == "hello";
 }

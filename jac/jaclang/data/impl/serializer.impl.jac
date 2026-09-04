@@ -170,6 +170,9 @@ impl Serializer._serialize_value(
     }
 
     if isinstance(val, Archetype) {
+        if api_mode and isinstance(val, WalkerArchetype) {
+            return {};
+        }
         if _seen is not None {
             jac_anchor = val?.__jac__;
             if jac_anchor {
@@ -206,7 +209,7 @@ impl Serializer._serialize_value(
                 '_jac_id': val.__jac__.ensure_id().hex if val?.__jac__ else None,
                 '_jac_archetype': 'node'
                     if isinstance(val, NodeArchetype)
-                    else 'walker' if isinstance(val, WalkerArchetype) else 'archetype'
+                    else 'archetype'
             };
             type_id = val?.__jac_type_id__;
             if isinstance(type_id, str) {
