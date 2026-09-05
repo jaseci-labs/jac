@@ -124,6 +124,15 @@ impl NaIRGenTuples._codegen_tuple_unpack(
     if struct_type is None {
         return False;
     }
+    if len(targets) != len(struct_type.elements) {
+        return False;
+    }
+
+    for target in targets {
+        if self._get_name(target) is None {
+            return False;
+        }
+    }
 
     rc_ok = (not is_value) or not self._nogc_headerless();
     pending_old: list = [];
@@ -133,7 +142,7 @@ impl NaIRGenTuples._codegen_tuple_unpack(
         }
         var_name = self._get_name(target);
         if var_name is None {
-            continue;
+            return False;
         }
         if is_value {
             elem_val = self.builder.extract_value(tuple_val, i, name=f"unpack.{i}");
@@ -154,7 +163,7 @@ impl NaIRGenTuples._codegen_tuple_unpack(
             alloca = self.local_vars[var_name];
             _slot_ty = alloca.type;
             if not isinstance(_slot_ty, ir.PointerType) {
-                continue;
+                return False;
             }
             stored = self._coerce_type(elem_val, _slot_ty.pointee);
             new_ref = self._rc_slot_ref(stored) if rc_ok else None;

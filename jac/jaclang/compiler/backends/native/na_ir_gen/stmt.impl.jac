@@ -1716,6 +1716,8 @@ impl NaIRGenStmt._codegen_assignment(nd: uni.Assignment) -> None {
                 self._mark_local_unlowered(_t.value);
             } elif isinstance(_t, uni.TupleVal) {
                 _unbound.extend(_t.values or []);
+            } elif isinstance(_t, uni.UnaryExpr) {
+                _unbound.append(_t.operand);
             }
         }
         return;
@@ -1723,7 +1725,28 @@ impl NaIRGenStmt._codegen_assignment(nd: uni.Assignment) -> None {
     targets = nd.target if isinstance(nd.target, (list, tuple)) else [(nd.target)];
     for target_expr in targets {
         if isinstance(target_expr, uni.TupleVal) {
-            self._codegen_tuple_unpack(target_expr.values, value, nd.value);
+            _unpack_errs = len(self.errors_had);
+            if not self._codegen_tuple_unpack(target_expr.values, value, nd.value) {
+                if len(self.errors_had) == _unpack_errs {
+                    self.emit(
+                        E5092,
+                        node_override=target_expr,
+                        kind="tuple unpacking",
+                        name=type(target_expr).__name__
+                    );
+                }
+                _unbound: list = [target_expr];
+                while _unbound {
+                    _t = _unbound.pop();
+                    if isinstance(_t, uni.Name) {
+                        self._mark_local_unlowered(_t.value);
+                    } elif isinstance(_t, (uni.TupleVal, uni.ListVal)) {
+                        _unbound.extend(_t.values or []);
+                    } elif isinstance(_t, uni.UnaryExpr) {
+                        _unbound.append(_t.operand);
+                    }
+                }
+            }
             continue;
         }
 

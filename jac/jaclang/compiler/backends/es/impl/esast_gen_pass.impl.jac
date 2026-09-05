@@ -2579,6 +2579,12 @@ impl EsastGenPass._collect_pattern_names(
     names: list[tuple[(str, uni.Name)]] = [];
     if isinstance(target, uni.Name) {
         names.append((target.sym_name, target));
+    } elif (
+        isinstance(target, uni.UnaryExpr)
+        and isinstance(target.op, uni.Token)
+        and target.op.name == Tok.STAR_MUL.value
+    ) {
+        names.extend(self._collect_pattern_names(target.operand));
     } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
         for value in target.values {
             names.extend(self._collect_pattern_names(value));
@@ -2603,6 +2609,18 @@ impl EsastGenPass._convert_assignment_target(
             es.Identifier(name=target.sym_name), jac_node=target
         );
         return (identifier, identifier, target.sym_name);
+    }
+    if (
+        isinstance(target, uni.UnaryExpr)
+        and isinstance(target.op, uni.Token)
+        and target.op.name == Tok.STAR_MUL.value
+    ) {
+        (argument, _, _) = self._convert_assignment_target(target.operand);
+        pattern = self.sync_loc(
+            es.RestElement(argument=cast(es.Pattern, argument)),
+            jac_node=target
+        );
+        return (pattern, None, None);
     }
     if isinstance(target, (uni.TupleVal, uni.ListVal)) {
         elements: list[(es.Pattern | None)] = [];

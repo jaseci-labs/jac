@@ -244,6 +244,21 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
 # this file's convention of migrating a feature to a behavioral test once it
 # gains real support.)
 
+test "guardrail: starred tuple assignment is rejected" {
+    src = (
+        "with entry {\n" "    (first, *rest) = (1, 2, 3);\n" "    print(first);\n" "}\n"
+    );
+    prog = compile_na_inline("starred_tuple_assign", src);
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for starred tuple assignment, got: {fmt_errors(
+        prog
+    )}";
+    checked = check_na_inline("starred_tuple_assign_check", src);
+    assert has_error_code(checked, "E5090") , (
+        "the front-end native capability gate must reject starred tuple "
+        f"assignment, got: {fmt_errors(checked)}"
+    );
+}
+
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)
 # ─────────────────────────────────────────────────────────────────────

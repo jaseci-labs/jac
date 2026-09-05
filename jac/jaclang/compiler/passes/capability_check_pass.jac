@@ -3,6 +3,7 @@ import from jaclang.compiler.frontend.unitree {
     ArchSpec,
     Archetype,
     AtomTrailer,
+    Assignment,
     CtrlStmt,
     EdgeOpRef,
     EdgeRefTrailer,
@@ -30,6 +31,8 @@ import from jaclang.compiler.frontend.unitree {
     SubTag,
     Token,
     UnaryExpr,
+    TupleVal,
+    ListVal,
     UniNode,
     YieldExpr
 }

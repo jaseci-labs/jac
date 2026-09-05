@@ -375,6 +375,39 @@ impl native_capability_violations(
                 out.append((nd, kind, type(nd).__name__, None));
                 continue;
             }
+            if isinstance(nd, Assignment) {
+                _targets = (
+                    nd.target
+                    if isinstance(nd.target, (list, tuple))
+                    else [nd.target]
+                );
+                for _target in _targets {
+                    if isinstance(_target, (TupleVal, ListVal)) {
+                        for _star in _target.get_all_sub_nodes(typ=UnaryExpr) {
+                            if (
+                                isinstance(_star, UnaryExpr)
+                                and isinstance(_star.op, Token)
+                                and _star.op.name == Tok.STAR_MUL.value
+                            ) {
+                                out.append(
+                                    (
+                                        _target,
+                                        "starred unpack target",
+                                        "*",
+                                        (
+                                            "Starred tuple/list assignment targets are "
+                                            "not lowered natively yet; move the "
+                                            "statement to a non-native context."
+                                        )
+                                    )
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
 
             if isinstance(nd, CtrlStmt)
                 and isinstance(nd.ctrl, Token)

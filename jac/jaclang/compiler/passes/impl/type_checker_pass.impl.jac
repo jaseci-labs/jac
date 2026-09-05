@@ -1919,6 +1919,11 @@ impl TypeCheckPass._eval_unpacking_names(container: Expr) -> None {
         for val in container.values {
             if isinstance(val, Name) {
                 self.evaluator.get_type_of_expression(val);
+            } elif isinstance(val, UnaryExpr)
+                and isinstance(val.op, Token)
+                and val.op.name == Tok.STAR_MUL.value
+                and isinstance(val.operand, Expr) {
+                self.evaluator.get_type_of_expression(val.operand);
             } elif isinstance(val, (TupleVal, ListVal)) {
                 self._eval_unpacking_names(val);
             }

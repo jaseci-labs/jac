@@ -1361,6 +1361,25 @@ test "for-of tuple targets destructure into binding patterns" {
     }
 }
 
+test "tuple assignment targets destructure with a rest pattern" {
+    jac_code = (
+        "def f(rows: list) {\n"
+        "    (first, *rest) = rows;\n"
+        "    return rest;\n"
+        "}\n"
+    );
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "[first, ...rest]" in js_code , (
+            "starred tuple assignment should emit an ESTree rest element"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 # ============================================================================
 # Comprehension → JavaScript Tests
 # ============================================================================
