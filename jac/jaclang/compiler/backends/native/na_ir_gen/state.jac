@@ -364,6 +364,7 @@ obj NaIRGenState(ModuleCodegenPass) {
     def _scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None abst;
     def _closure_sig_struct(fnty: ir.FunctionType) -> tuple abst;
     def _closure_struct_of(val_type: ir.Type) -> (str | None) abst;
+    def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value abst;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value abst;
     def _emit_closure_pair(
         target_fn: ir.Function, declared_fnty: ir.FunctionType, cap_info: list

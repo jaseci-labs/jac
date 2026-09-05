@@ -89,6 +89,21 @@ impl NaIRGenClosures._closure_sig_struct(fnty: ir.FunctionType) -> tuple {
     return (name, st, fnty_env);
 }
 
+impl NaIRGenClosures._wrap_fn_as_closure_value(val: ir.Value) -> ir.Value {
+    _wfty: any = None;
+    if isinstance(val.type, ir.FunctionType) {
+        _wfty = val.type;
+    } elif isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.FunctionType) {
+        _wfty = val.type.pointee;
+    }
+    if _wfty is None {
+        return val;
+    }
+    (_wsn, _wsig_st, _wfe) = self._closure_sig_struct(_wfty);
+    return self._coerce_type(val, _wsig_st.as_pointer());
+}
+
 impl NaIRGenClosures._closure_struct_of(val_type: ir.Type) -> (str | None) {
     if not isinstance(val_type, ir.PointerType) {
         return None;

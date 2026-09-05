@@ -7,6 +7,7 @@ obj NaIRGenClosures(NaIRGenState) {
     def _scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None;
     def _closure_sig_struct(fnty: ir.FunctionType) -> tuple;
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
+    def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _closure_cell_struct(slot_type: ir.Type) -> str;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _emit_closure_thunk(

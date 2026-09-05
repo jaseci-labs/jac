@@ -367,6 +367,7 @@ impl NaIRGenLists._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if first_val is None {
             return None;
         }
+        first_val = self._wrap_fn_as_closure_value(first_val);
         first_val = self._box_value_tuple(
             first_val,
             loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
@@ -519,6 +520,7 @@ impl NaIRGenLists._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                 val, self._pending_list_elem_struct.pointee
             );
         }
+        val = self._wrap_fn_as_closure_value(val);
         _orig_val = val;
         val = self._box_value_tuple(val, loc=_linit_loc);
         if _clos_elem is not None
@@ -640,6 +642,7 @@ impl NaIRGenLists._codegen_index_set(
         return;
     }
     value = _normed;
+    value = self._wrap_fn_as_closure_value(value);
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
         return;
