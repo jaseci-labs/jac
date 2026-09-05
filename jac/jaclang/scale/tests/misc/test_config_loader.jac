@@ -318,3 +318,29 @@ test "a value from another section reaches the kubernetes config" {
         assert resolved["admin_username"] == "metrics-admin";
     }
 }
+
+
+test "get_monitoring_config derives the namespace when monitoring.namespace is empty" {
+    reset_scale_config();
+    dir_mon = tempfile.mkdtemp(prefix="jac-cfg-mon-");
+    try {
+        (Path(dir_mon) / "jac.toml").write_text(
+            '[project]\nname = "repro"\n\n[scale.kubernetes]\nnamespace = "jac-shop-prod"\n\n[scale.monitoring]\nnamespace = ""\n'
+        );
+        cfg = get_scale_config(project_dir=Path(dir_mon));
+        assert cfg.get_monitoring_config()["namespace"] == "jac_shop_prod";
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(dir_mon, ignore_errors=True);
+    }
+}
+
+
+test "sanitize_prometheus_namespace produces a valid Prometheus namespace" {
+    # Local import: a dropped declaration must fail this test, not collection.
+    import from jaclang.scale.config.config_loader { sanitize_prometheus_namespace }
+    assert sanitize_prometheus_namespace("jac--shop") == "jac_shop";
+    assert sanitize_prometheus_namespace("-prod-") == "prod";
+    assert sanitize_prometheus_namespace("1prod") == "_1prod";
+    assert sanitize_prometheus_namespace("---") == "jaclang_scale";
+}
