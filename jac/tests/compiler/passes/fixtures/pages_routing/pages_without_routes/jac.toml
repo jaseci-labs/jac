@@ -1,0 +1,4 @@
+[project]
+name = "pages_without_routes"
+version = "0.1.0"
+entry-point = "main.jac"

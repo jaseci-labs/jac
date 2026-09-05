@@ -693,6 +693,8 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       return d;
     },
     eq(a, b) {
+      if (a === null || a === undefined || typeof a !== "object") return a === b;
+      if (b === null || b === undefined || typeof b !== "object") return false;
       const ka = Object.keys(a), kb = Object.keys(b);
       if (ka.length !== kb.length) return false;
       for (const k of ka) {

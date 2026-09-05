@@ -62,8 +62,8 @@ def:pub app() -> JsxElement {
 }
 ```
 
-!!! warning "`children` must have a default value"
-    The prop validator counts only JSX **attributes** toward matched parameters -- nested content does *not* count. A `children` parameter with no default is therefore treated as a *required* prop, and any call site that passes another attribute fails with `error[E1102]: Component 'Card' requires prop 'children'`. Always declare it as `children: any = None`.
+!!! tip "Give `children` a default value"
+    Nested content counts toward a `children` parameter, so `<Card title="Hi">…</Card>` satisfies it even with no default. A `children` parameter without one is still a *required* prop, though, so a call site that nests nothing -- `<Card title="Hi"/>` -- fails with `error[E1102]: Component 'Card' requires prop 'children'`. Declaring it as `children: any = None` makes the empty case legal too.
 
 There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the accurate type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
 
