@@ -76,6 +76,8 @@ Reading `h.ref` back yields an ordinary managed value, not an `own` binding -- t
 
 Under headerless codegen (`--enforce-nogc --gc none`) the backend goes further and **flattens** own-typed fields of concrete, acyclic, non-OSP archetypes inline into the parent's allocation: the parent's LLVM struct embeds the field by value (no pointer slot, no separate `malloc`), a store copies the payload in and frees the source shell, reads yield the interior address, and the parent's drop tears the field down in place. Managed modes keep pointer fields; program output is identical either way.
 
+The same rule decides the element layout of an owned list, and it is a decision about the **element type**, never about the annotation. A `list[T]` in a nogc-enforced module stores its elements inline when `T` is a closed-world leaf archetype (no archetype anywhere in the program derives from it), is not an OSP archetype, and has no heap-typed slots of its own; otherwise the list stores pointers. Because the type system erases `own`, `list[own T]` and `list[T]` are one type and lower to one layout, so a `&list[T]` parameter, a generic body instantiated at `T`, and a borrow return all agree with their caller. Subclass instances therefore never lose fields in a base-typed list, and `pop()`, `pop(i)`, `insert`, `del xs[i]`, and `extend` move payloads by value: `pop` reboxes the element into a fresh allocation the receiver owns, the tail shifts with one `memmove`, and `extend` from another owned list moves its elements in and retires the consumed source. `remove(x)` is not lowered for by-value elements, since identity equality has no meaning there.
+
 ## Borrowing
 
 `&` takes a shared (read-only) borrow of an owner; `&mut` takes a mutable borrow. Both are declared with the `borrow` type tag, most commonly written inline as `& expr` / `&mut expr`:
@@ -161,6 +163,63 @@ with entry {
     take_final(a);
 }
 ```
+
+## Moving out of places: `take` and `swap`
+
+An owned slot inside another value -- an own field, an optional own field, an element of an owned list -- is owned by that value. Reading it into an *owning* destination (an `own` binding, an own field, an `own` parameter, or an owned return) would leave two owners of one payload, so the checker rejects it: [`E1316`](../diagnostics.md#ownership-borrow-errors) for a field, [`E1317`](../diagnostics.md#ownership-borrow-errors) for a list element. Reading the same place into a borrow is always fine.
+
+Two builtins are the sanctioned exits. `take(place)` moves the value out of an optional owned place and leaves `None` behind, which is what every linked structure is made of; `swap(&mut a, &mut b)` exchanges two places of one type in place, without a temporary that would have to own one of them. Both are ordinary calls, per the rule that the exit from a state is a call, and both lower on every backend (a read-then-clear on Python, a load-then-store on native):
+
+```jac
+obj Node { has v: int = 0, next: own Node | None = None; }
+obj List { has head: own Node | None = None; }
+
+def push_front(l: &mut List, v: int) {
+    l.head = Node(v=v, next=take(l.head));   # take moves the old head out
+}
+
+def reverse(l: &mut List) {
+    prev: own Node | None = None;
+    cur: own Node | None = take(l.head);
+    while cur is not None {
+        nxt = take(cur.next);
+        cur.next = prev;
+        prev = cur;
+        cur = nxt;
+    }
+    l.head = prev;
+}
+
+def exchange(a: &mut List, b: &mut List) { swap(&mut a.head, &mut b.head); }
+```
+
+List elements are moved out with `pop()` or `pop(i)`, which hand the element to the receiver; `take` and `swap` address locals and attributes.
+
+## Receiver modes
+
+A method reads, writes, or consumes its receiver, and the checker knows which. The mode is **inferred from the body**: a method that assigns a field of `self`, grows or mutates a container field of `self` (`append`, `insert`, `pop`, `remove`, `clear`, `extend`, `update`, `sort`, ...), takes `&mut self`, or calls another method that mutates `self` is `&mut self`; every other method is `&self`. Methods that call each other resolve to the least mode consistent with their bodies, so a cycle of read-only methods stays `&self`. The inferred mode is stamped on the method as a fact editors can show.
+
+The **explicit form** reuses the typed `self` parameter the grammar already accepts. Writing `self` in an `obj`, `node`, `edge`, or `walker` method is admitted only to declare a mode: `self: own T` consumes the receiver, `self: &mut T` and `self: &T` pin the inferred modes. A consuming receiver cannot be inferred from intent, which is why it is the one worth writing:
+
+```jac
+obj Counter {
+    has n: int = 0;
+
+    def inc { self.n += 1; }                                    # inferred &mut self
+    def get -> int { return self.n; }                           # inferred &self
+    def into_total(self: own Counter) -> int { return self.n; } # consumes
+}
+
+def run -> int {
+    c: own Counter = Counter();
+    v = &c;
+    c.inc();              # error[E1303]: cannot mutate 'c' while a shared borrow of it is live
+    total = c.into_total();
+    return c.get();       # error[E1301]: use of 'c' after it was moved
+}
+```
+
+A mutating call is a write: [`E1303`](../diagnostics.md#ownership-borrow-errors) while a shared borrow of the receiver is live, [`E1309`](../diagnostics.md#ownership-borrow-errors) on an `imm` binding, and [`E1318`](../diagnostics.md#ownership-borrow-errors) when the call goes through a shared `&` borrow (take the borrow with `&mut`, or call on the owner). A `self: own` call moves the receiver exactly like passing it to an `own` parameter: the binding is dead afterwards, and under headerless codegen the method owns and drops it.
 
 ## Views and zero-copy: current state and direction
 

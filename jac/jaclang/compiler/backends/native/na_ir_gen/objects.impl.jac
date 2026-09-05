@@ -1,3 +1,4 @@
+import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenObjects._devirt_closed_world(arch_name: str) -> bool {
     arch = self.arch_ast_map.get(arch_name);
     if arch is None {
@@ -492,6 +493,12 @@ impl NaIRGenObjects._codegen_archetype(nd: uni.Archetype) -> None {
         fname = finfo.name;
         var = finfo.decl_node;
         ftype: ir.Type = ir.IntType(64);
+        if isinstance(var, uni.HasVar) and type_tag_borrows(var.type_tag) {
+            if arch_name not in self.struct_field_borrow {
+                self.struct_field_borrow[arch_name] = set();
+            }
+            self.struct_field_borrow[arch_name].add(fname);
+        }
         if isinstance(var, uni.TypeParam) {
             ftype = self._resolve_jac_type(var.bound);
         } elif var is not None and var.type_tag is not None {
@@ -1009,23 +1016,27 @@ impl NaIRGenObjects._codegen_method(
 
     _is_static = method.is_static or method.is_classmethod;
     _base = 0;
-    if not _is_static {
-        self_alloca = self.builder.alloca(func.args[0].type, name="self");
-        self.builder.store(func.args[0], self_alloca);
-        self.local_vars["self"] = self_alloca;
-        self.param_vars.add("self");
-        _base = 1;
-    }
-
     sig = method.signature;
     _body_params = sig.get_parameters() if sig is not None else [];
+    _self_param: (uni.ParamVar | None) = None;
     if (
         not _is_static
         and _body_params
         and _body_params[0].name
         and _body_params[0].name.value == "self"
     ) {
+        _self_param = _body_params[0];
         _body_params = _body_params[1:];
+    }
+    self._self_owned = _self_param is not None and self._nogc_owned_param(_self_param);
+    if not _is_static {
+        self_alloca = self.builder.alloca(func.args[0].type, name="self");
+        self.builder.store(func.args[0], self_alloca);
+        self.local_vars["self"] = self_alloca;
+        if not self._self_owned {
+            self.param_vars.add("self");
+        }
+        _base = 1;
     }
     if (
         method.is_classmethod
@@ -2079,6 +2090,7 @@ impl NaIRGenObjects._codegen_instantiation(
                 name=f"field.{key_name}"
             );
             self._store_inline_field(type_name, key_name, _inl_fp, val, False);
+            self._nogc_consume_local(init_expr);
             set_fields.add(key_name);
             continue;
         }
@@ -2109,6 +2121,7 @@ impl NaIRGenObjects._codegen_instantiation(
             name=f"field.{key_name}"
         );
         self.builder.store(val, field_ptr);
+        self._nogc_consume_local(init_expr);
         set_fields.add(key_name);
     }
 
@@ -2414,6 +2427,18 @@ impl NaIRGenObjects._unregistered_class_target(target: uni.UniNode) -> (str | No
 }
 
 impl NaIRGenObjects._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
+    result = self._codegen_method_call_inner(nd);
+    if result is not None
+        and nd.callee_decl is not None
+        and nd.callee_decl.receiver_mode == OwnershipKind.OWN
+        and isinstance(nd.target, uni.AtomTrailer)
+        and not self.builder.block.is_terminated {
+        self._nogc_consume_local(nd.target.target);
+    }
+    return result;
+}
+
+impl NaIRGenObjects._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | None) {
     trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
@@ -2810,7 +2835,7 @@ impl NaIRGenObjects._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) 
 
             self._clear_rc_ctx();
             if result is not None {
-                if method_name == "insert" {
+                if method_name == "insert" and not self._nogc_headerless() {
                     self._release_owned_args(_orig_args, op="list_method_arg");
                 }
                 return result;
@@ -3641,16 +3666,26 @@ impl NaIRGenObjects._codegen_field_access(
     if _getter is not None {
         return self._codegen_accessor_call(obj_val, type_name, _getter, []);
     }
-    idx = field_indices[field_name];
+    field_ptr = self._field_slot_ptr(obj_val, field_name, type_name);
+    if field_name in self.struct_field_inline.get(type_name, set()) {
+        return field_ptr;
+    }
+    return self.builder.load(field_ptr, name=f"field.{field_name}");
+}
+
+impl NaIRGenObjects._field_slot_ptr(
+    obj_val: ir.Value, field_name: str, type_name: str
+) -> ir.Value {
+    idx = self.struct_field_indices[type_name][field_name];
     field_ptr: (ir.Value | None) = None;
-    _fa_struct_t = self.struct_types.get(type_name);
+    _struct_t = self.struct_types.get(type_name);
     if (
-        _fa_struct_t is not None
-        and idx < len(_fa_struct_t.elements)
+        _struct_t is not None
+        and idx < len(_struct_t.elements)
         and field_name not in self.struct_field_inline.get(type_name, set())
     ) {
         field_ptr = self._emit_dispatched_field_ptr(
-            obj_val, type_name, field_name, _fa_struct_t.elements[idx]
+            obj_val, type_name, field_name, _struct_t.elements[idx]
         );
     }
     if field_ptr is None {
@@ -3660,10 +3695,47 @@ impl NaIRGenObjects._codegen_field_access(
             name=f"field.{field_name}.ptr"
         );
     }
-    if field_name in self.struct_field_inline.get(type_name, set()) {
-        return field_ptr;
+    return field_ptr;
+}
+
+impl NaIRGenObjects._codegen_place_ptr(expr: uni.Expr) -> (ir.Value | None) {
+    if isinstance(expr, uni.Name) {
+        return self.local_vars.get(expr.sym_name);
     }
-    return self.builder.load(field_ptr, name=f"field.{field_name}");
+    if not (isinstance(expr, uni.AtomTrailer) and expr.is_attr) {
+        return None;
+    }
+    field_name = self._get_name(expr.right);
+    if field_name is None {
+        return None;
+    }
+    obj_val = self._codegen_expr(expr.target);
+    if obj_val is None {
+        return None;
+    }
+    obj_val = self._opt_unwrap_attr(obj_val);
+    type_name = self._struct_name_of(expr.target);
+    if type_name is None {
+        type_name = self._infer_type_name(obj_val);
+    }
+    if type_name is None {
+        return None;
+    }
+    field_indices = self.struct_field_indices.get(type_name);
+    if field_indices is None or field_name not in field_indices {
+        return None;
+    }
+    if field_name in self.struct_field_inline.get(type_name, set()) {
+        return None;
+    }
+    if self._accessor_slot_of(type_name, field_name, "property") is not None {
+        return None;
+    }
+    _recv = self._narrow_receiver_ptr(obj_val, type_name);
+    if _recv is None {
+        return None;
+    }
+    return self._field_slot_ptr(_recv, field_name, type_name);
 }
 
 impl NaIRGenObjects._hasvar_is_own(var: uni.UniNode) -> bool {
@@ -3761,7 +3833,10 @@ impl NaIRGenObjects._codegen_field_aug_assign(
 }
 
 impl NaIRGenObjects._codegen_field_assign(
-    target: uni.AtomTrailer, value: ir.Value, skip_narrow_coerce: bool = False
+    target: uni.AtomTrailer,
+    value: ir.Value,
+    skip_narrow_coerce: bool = False,
+    value_node: (uni.Expr | None) = None
 ) -> None {
     _fa_errs = len(self.errors_had);
     field_name = self._get_name(target.right);
@@ -3898,6 +3973,7 @@ impl NaIRGenObjects._codegen_field_assign(
             name=f"field.{field_name}.ptr"
         );
         self._store_inline_field(type_name, field_name, _inl_fp, value, True);
+        self._nogc_consume_local(value_node);
         return;
     }
 
@@ -3926,7 +4002,8 @@ impl NaIRGenObjects._codegen_field_assign(
         );
     }
 
-    if isinstance(ftype, ir.PointerType) and not _vt_struct {
+    _borrow_field = field_name in self.struct_field_borrow.get(type_name, set());
+    if isinstance(ftype, ir.PointerType) and not _vt_struct and not _borrow_field {
         self._emit_take_ref(
             value,
             op="field_set",
@@ -3944,7 +4021,10 @@ impl NaIRGenObjects._codegen_field_assign(
         );
     }
     _fs_opt = self._opt_payload_of(ftype);
-    if _fs_opt is not None and isinstance(_fs_opt, ir.PointerType) and not _vt_struct {
+    if _fs_opt is not None
+        and isinstance(_fs_opt, ir.PointerType)
+        and not _vt_struct
+        and not _borrow_field {
         _fs_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
             if target.loc
             else 0}";
@@ -3959,6 +4039,7 @@ impl NaIRGenObjects._codegen_field_assign(
         self._emit_rc_release_simple(_fs_old_pv, op="field_set", loc=_fs_loc);
     }
     self.builder.store(value, field_ptr);
+    self._nogc_consume_local(value_node);
 }
 
 impl NaIRGenObjects._receiver_routed_method_fn(

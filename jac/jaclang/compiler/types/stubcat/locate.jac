@@ -142,6 +142,17 @@ def _build_dev_catalog(path: str, pkg_dir: str) {
     }
 }
 
+def _current_for_source(cat: any, pkg: str) -> bool {
+    if not os.environ.get("JAC_DEV_SOURCE") {
+        return True;
+    }
+    try {
+        return cat.key() == catalog_key(pkg);
+    } except Exception {
+        return True;
+    }
+}
+
 def _find_catalog -> any {
     pkg = jaclang_pkg_dir();
     explicit = os.environ.get(ENV_FILE, "");
@@ -153,14 +164,14 @@ def _find_catalog -> any {
     if off and length {
         exe = os.environ.get("JAC_EXECUTABLE", "") or sys.executable;
         cat = _open_region(exe, int(off), int(length), pkg);
-        if cat is not None {
+        if cat is not None and _current_for_source(cat, pkg) {
             return cat;
         }
     }
     bundled = bundled_catalog_path(pkg);
     if os.path.isfile(bundled) {
         cat = _open_file(bundled, pkg);
-        if cat is not None {
+        if cat is not None and _current_for_source(cat, pkg) {
             return cat;
         }
     }

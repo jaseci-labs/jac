@@ -24,6 +24,8 @@ __all__ = [
     "iter",
     "next",
     "managed",
+    "take",
+    "swap",
     "Region",
     "region_of",
 ]
@@ -31,6 +33,10 @@ __all__ = [
 _T = TypeVar("_T")
 
 def managed(__x: _T) -> _T: ...
+
+def take(__place: _T) -> _T: ...
+
+def swap(__a: _T, __b: _T) -> None: ...
 
 # First-class region handle: an ownable, sendable, escape-checked allocation
 # extent opened by `in <handle> { ... }`. Native codegen lowers it to an arena.

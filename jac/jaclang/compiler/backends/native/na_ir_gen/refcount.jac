@@ -77,6 +77,9 @@ obj NaIRGenRefcount(NaIRGenState) {
     def _arch_is_acyclic(arch_name: str) -> bool;
     def _nogc_osp_skip(val: ir.Value) -> bool;
     def _nogc_headerless -> bool;
+    def _nogc_owned_world -> bool;
+    def _nogc_opt_slots_owned -> bool;
+    def _nogc_drop_op_active(op: str) -> bool;
     def _arch_is_osp_name(arch_name: str) -> bool;
     def _arch_is_walker_name(arch_name: str) -> bool;
     def _emit_struct_drop_fn(type_name: str) -> (ir.Function | None);
@@ -87,11 +90,19 @@ obj NaIRGenRefcount(NaIRGenState) {
     def _emit_container_drop_fn(cont_name: str) -> (ir.Function | None);
     def _nogc_elem_drop_slot_ty -> ir.Type;
     def _nogc_stamp_elem_drops(cont: ir.Value | None, elem_mangles: list) -> None;
+    def _rc_unwrap_optional(val: ir.Value) -> ir.Value;
+    def _is_move_site(expr: uni.UniNode | None) -> bool;
+    def _nogc_consume_local(expr: uni.UniNode | None, owned_only: bool = True) -> bool;
     def _nogc_elem_prep(
         expr: uni.UniNode | None, val: ir.Value | None
     ) -> (ir.Value | None);
 
     def _nogc_type_arg_mangles(expr: uni.UniNode | None) -> list;
+    def _drop_hook_for(type_name: str) -> (ir.Function | None);
+    def _nogc_drop_fn_for(
+        ptr_ty: ir.PointerType, self_type: str = ""
+    ) -> (ir.Function | None);
+
     def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
     def _nogc_str_free_owned(val: ir.Value) -> None;
     def _nogc_free_scratch(val: ir.Value, op: str) -> None;

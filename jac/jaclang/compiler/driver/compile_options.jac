@@ -181,6 +181,9 @@ obj CompileOptions {
         if self.nogc_enforce_all {
             return True;
         }
+        if self.nogc_cli_target and self.nogc_cli_target == mod_name {
+            return True;
+        }
         if not self.nogc_enforce_modules {
             return False;
         }

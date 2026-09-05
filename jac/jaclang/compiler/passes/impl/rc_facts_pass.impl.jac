@@ -245,10 +245,9 @@ impl RcFactsPass._collect_last_use(
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
             if sym is None
-                or sym.storage != SymbolStorage.LOCAL
                 or sym.na_escapes
-                or self._is_param_sym(sym)
-                or nm.sym_name == "self" {
+                or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
+                or not self._last_use_tracked(sym) {
                 continue;
             }
             if self._enclosing_fn_scope(nm) is not owner {
@@ -268,6 +267,13 @@ impl RcFactsPass._collect_last_use(
             out[key].append(_name);
         }
     }
+}
+
+impl RcFactsPass._last_use_tracked(sym: Symbol) -> bool {
+    if sym.storage == SymbolStorage.LOCAL {
+        return not self._is_param_sym(sym);
+    }
+    return sym.storage == SymbolStorage.PARAM and sym.ownership == OwnershipKind.OWN;
 }
 
 impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {

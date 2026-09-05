@@ -125,6 +125,7 @@ walker RcFactsPass(Transform) {
     def _use_ok_for_stack(nm: NameAtom) -> bool;
     def _enclosing_fn_scope(nd: UniNode) -> (UniNode | None);
     def _is_param_sym(sym: Symbol) -> bool;
+    def _last_use_tracked(sym: Symbol) -> bool;
     def _stamp_last_use(ir_in: Module) -> None;
     def _stamp_move_in(ir_in: Module) -> None;
     def _collect_last_use(

@@ -1,3 +1,4 @@
+import from jaclang.compiler.expr_keys { type_tag_borrows }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 import from jaclang.compiler.frontend.diagnostics {
     E1315,
@@ -323,6 +324,19 @@ impl OwnershipCheckPass._nogc_is_container_expr(expr: Expr | None) -> bool {
     return False;
 }
 
+impl OwnershipCheckPass._nogc_is_list_expr(expr: Expr | None) -> bool {
+    if not isinstance(expr, Expr) or expr.type is None {
+        return False;
+    }
+    _tk = "";
+    try {
+        _tk = expr.type.mangle();
+    } except Exception {
+        return False;
+    }
+    return _tk == "list" or _tk.startswith("list[");
+}
+
 impl OwnershipCheckPass._nogc_container_grow_method(call: FuncCall) -> (str | None) {
     _tgt = call.target;
     if not isinstance(_tgt, AtomTrailer) or not _tgt.is_attr {
@@ -340,10 +354,7 @@ impl OwnershipCheckPass._nogc_container_grow_method(call: FuncCall) -> (str | No
 
 impl OwnershipCheckPass._nogc_module_enforced(mod_name: str) -> bool {
     opts = self.prog?.options;
-    if opts is not None and getattr(opts, "nogc_enforce_all", False) {
-        return True;
-    }
-    if opts is not None and getattr(opts, "nogc_cli_target", "") == mod_name {
+    if opts is not None and opts.nogc_enforced_for(mod_name) {
         return True;
     }
     _pats = list(getattr(opts, "nogc_enforce_modules", []) or []) if opts else [];
@@ -613,6 +624,16 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
             if _grow is None {
                 continue;
             }
+            _grow_recv = (
+                self._place_of(_mc.target.target)
+                    if isinstance(_mc.target, AtomTrailer)
+                    else None
+            );
+            if _grow_recv is not None
+                and _grow_recv.sym is not None
+                and self._name_sym_id(_grow_recv) in self.arch_view_syms {
+                continue;
+            }
             for _garg in self._call_params(_mc) {
                 _gav = _garg.value if isinstance(_garg, KWPair) else _garg;
                 if isinstance(_gav, FuncCall)
@@ -765,6 +786,10 @@ impl OwnershipCheckPass._emit_enforcement_diagnostics -> None {
                 and self._nogc_is_container_expr(_tgt.target)
                 and nd.value is not None
                 and not self._nogc_str_elem_ok(nd.value)
+                and not (
+                    self._nogc_is_list_expr(_tgt.target)
+                    and self._nogc_fresh_arch_elem(nd.value)
+                )
                 and self._nogc_local_shape_expr_heap(nd.value) {
                 self.emit(
                     E1406,
@@ -880,9 +905,210 @@ impl OwnershipCheckPass._view_of_expr(expr: Expr | None) -> (SymId | None) {
         return self._name_sym_id(_base);
     }
     if isinstance(expr, FuncCall) {
+        _ctor_owners = self._view_ctor_owners(expr);
+        if _ctor_owners {
+            return _ctor_owners[0];
+        }
         return self._view_call_owner(expr);
     }
     return None;
+}
+
+impl OwnershipCheckPass._is_view_expr(expr: Expr | None) -> bool {
+    if self._view_of_expr(expr) is not None {
+        return True;
+    }
+    if isinstance(expr, Name) {
+        _sid = self._sym_id(expr);
+        return _sid is not None and _sid in self.view_syms;
+    }
+    return self._view_ctor_owners(expr) is not None;
+}
+
+impl OwnershipCheckPass._compute_view_archs -> None {
+    self.view_archs = set();
+    self.view_arch_memo = {};
+}
+
+impl OwnershipCheckPass._is_view_arch(arch: Archetype | None) -> bool {
+    if arch is None or arch.name is None {
+        return False;
+    }
+    key = id(arch);
+    if key in self.view_arch_memo {
+        return self.view_arch_memo[key];
+    }
+    self.view_arch_memo[key] = False;
+    local_archs: dict[str, Archetype] = {};
+    for other in self.ir_in.get_all_sub_nodes(Archetype) {
+        if other.name is not None {
+            local_archs[other.name.value] = other;
+        }
+    }
+    result = False;
+    for hv in arch.get_all_sub_nodes(HasVar) {
+        if hv.find_parent_of_type(Archetype) is not arch or hv.type_tag is None {
+            continue;
+        }
+        if type_tag_borrows(hv.type_tag) {
+            result = True;
+            break;
+        }
+        for nm in hv.type_tag.get_all_sub_nodes(Name) {
+            if not isinstance(nm, Name) {
+                continue;
+            }
+            inner = local_archs.get(nm.value);
+            if inner is not None and inner is not arch and self._is_view_arch(inner) {
+                result = True;
+                break;
+            }
+        }
+        if result {
+            break;
+        }
+    }
+    self.view_arch_memo[key] = result;
+    if result {
+        self.view_archs.add(arch.name.value);
+    }
+    return result;
+}
+
+impl OwnershipCheckPass._view_arch_of_call(call: FuncCall) -> (Archetype | None) {
+    tgt = call.target;
+    if not isinstance(tgt, Name) or tgt.sym is None or tgt.sym.decl is None {
+        return None;
+    }
+    decl = tgt.sym.decl;
+    arch = decl if isinstance(decl, Archetype) else decl.find_parent_of_type(Archetype);
+    if arch is None or arch.name is None or arch.name.value != tgt.sym_name {
+        return None;
+    }
+    return arch if self._is_view_arch(arch) else None;
+}
+
+impl OwnershipCheckPass._view_ctor_owners(expr: Expr | None) -> (list[SymId] | None) {
+    if not isinstance(expr, FuncCall) or self._view_arch_of_call(expr) is None {
+        return None;
+    }
+    owners: list[SymId] = [];
+    for param in self._call_params(expr) {
+        arg = param.value if isinstance(param, KWPair) else param;
+        base_expr = arg.operand if isinstance(arg, UnaryExpr) else arg;
+        base = self._place_of(base_expr);
+        if base is None or base.sym is None {
+            continue;
+        }
+        owner_root = self._derivation_root(base);
+        if owner_root is None {
+            if not (isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership)) {
+                continue;
+            }
+            owner_root = self._name_sym_id(base);
+        }
+        if owner_root not in owners {
+            owners.append(owner_root);
+        }
+    }
+    return owners;
+}
+
+impl OwnershipCheckPass._derivation_root(base: Name) -> (SymId | None) {
+    if base.sym is None {
+        return None;
+    }
+    sid = self._name_sym_id(base);
+    if sid in self.borrow_meta {
+        return self._view_root_owner(sid);
+    }
+    if base.sym.storage == SymbolStorage.PARAM
+        and (
+            is_borrow_kind(base.sym.ownership)
+            or base.sym.ownership == OwnershipKind.IMM
+        ) {
+        return sid;
+    }
+    if sid in self.owned_decl {
+        return sid;
+    }
+    decl = base.sym.decl;
+    loop = decl.find_parent_of_type(InForStmt) if decl is not None else None;
+    if loop is not None and loop.target is decl {
+        coll = loop.collection;
+        if isinstance(coll, UnaryExpr) and is_borrow_kind(coll.ownership) {
+            src = self._place_of(coll.operand);
+            if src is not None and src.sym is not None and src is not base {
+                return self._derivation_root(src);
+            }
+        }
+    }
+    return None;
+}
+
+impl OwnershipCheckPass._stamp_arch_view_bindings -> None {
+    for nd in self.idx_assignments {
+        if len(nd.target) != 1 or nd.aug_op is not None {
+            continue;
+        }
+        _tgt = nd.target[0];
+        if not (isinstance(_tgt, Name) and _tgt.sym) {
+            continue;
+        }
+        if _tgt.find_parent_of_type(GlobalVars) is not None {
+            continue;
+        }
+        _sid = self._name_sym_id(_tgt);
+        owners = self._view_ctor_owners(nd.value);
+        declared_view = nd.type_tag is not None
+            and type_tag_borrows(nd.type_tag)
+            and (nd.type_tag.ownership == OwnershipKind.NONE);
+        if owners is None and not declared_view {
+            continue;
+        }
+        self.owned_decl.pop(_sid, None);
+        _tgt.sym.ownership = OwnershipKind.BORROW;
+        primary = owners[0] if owners else None;
+        extras = owners[1:] if owners else [];
+        meta = BorrowMeta(name=_tgt.sym_name, owner=primary);
+        meta.extra_owners = list(extras);
+        self.borrow_meta[_sid] = meta;
+        self.borrow_created_at[_sid] = nd;
+        self.view_syms.add(_sid);
+        self.arch_view_syms.add(_sid);
+    }
+    for _mc in self.ir_in.get_all_sub_nodes(FuncCall) {
+        _grow = self._nogc_container_grow_method(_mc);
+        if _grow is None or not isinstance(_mc.target, AtomTrailer) {
+            continue;
+        }
+        recv = self._place_of(_mc.target.target);
+        if recv is None or recv.sym is None {
+            continue;
+        }
+        rsid = self._name_sym_id(recv);
+        if rsid not in self.arch_view_syms {
+            continue;
+        }
+        meta = self.borrow_meta[rsid];
+        for param in self._call_params(_mc) {
+            arg = param.value if isinstance(param, KWPair) else param;
+            base_expr = arg.operand if isinstance(arg, UnaryExpr) else arg;
+            base = self._place_of(base_expr);
+            if base is None or base.sym is None {
+                continue;
+            }
+            owner_root = self._derivation_root(base);
+            if owner_root is None or owner_root == rsid {
+                continue;
+            }
+            if meta.owner is None {
+                meta.owner = owner_root;
+            } elif owner_root != meta.owner and owner_root not in meta.extra_owners {
+                meta.extra_owners.append(owner_root);
+            }
+        }
+    }
 }
 
 impl OwnershipCheckPass._view_call_owner(call: FuncCall) -> (SymId | None) {
@@ -1045,16 +1271,8 @@ impl OwnershipCheckPass._stamp_view_borrows -> None {
                     break;
                 }
             }
-            if _cand_hit >= 0 and len(_cands) == 1 {
-                self.view_elision_fns[id(_ab)] = _cand_hit;
-                continue;
-            }
             if _cand_hit >= 0 {
-                self.emit(
-                    E1315,
-                    node_override=ret,
-                    name=f"a view return with {len(_cands)} candidate parameters"
-                );
+                self.view_elision_fns[id(_ab)] = _cand_hit;
                 continue;
             }
             if isinstance(ret.expr, Name) {
@@ -1114,13 +1332,13 @@ impl OwnershipCheckPass._stamp_view_call_results(
 }
 
 impl OwnershipCheckPass._emit_view_diagnostics -> None {
-    if self.nogc_prov is None {
+    if self.nogc_prov is None and not self.arch_view_syms {
         return;
     }
     for nd in self.idx_assignments {
         if nd.type_tag is not None
             and nd.type_tag.ownership == OwnershipKind.OWN
-            and self._view_of_expr(nd.value) is not None {
+            and self._is_view_expr(nd.value) {
             self.emit(E1315, node_override=nd, name="an `own` binding of a view");
         }
         if len(nd.target) == 1 and nd.aug_op is None {
@@ -1128,7 +1346,9 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
             if isinstance(_gt, Name)
                 and _gt.sym is not None
                 and _gt.sym.storage == SymbolStorage.MODULE_GLOBAL
-                and self._view_of_expr(nd.value) is not None {
+                and _gt.sym.decl is not None
+                and _gt.sym.decl.find_parent_of_type(GlobalVars) is not None
+                and self._is_view_expr(nd.value) {
                 self.emit(
                     E1315,
                     node_override=nd,
@@ -1139,7 +1359,7 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
         for _t2 in nd.target {
             if isinstance(_t2, AtomTrailer)
                 and not isinstance(nd.value, Name)
-                and self._view_of_expr(nd.value) is not None {
+                and self._is_view_expr(nd.value) {
                 self.emit(
                     E1315,
                     node_override=nd.value,
@@ -1152,6 +1372,14 @@ impl OwnershipCheckPass._emit_view_diagnostics -> None {
     for _mc in self.ir_in.get_all_sub_nodes(FuncCall) {
         _grow = self._nogc_container_grow_method(_mc);
         if _grow is None {
+            continue;
+        }
+        _recv = self._place_of(_mc.target.target)
+            if isinstance(_mc.target, AtomTrailer)
+            else None;
+        if _recv is not None
+            and _recv.sym is not None
+            and self._name_sym_id(_recv) in self.arch_view_syms {
             continue;
         }
         for _garg in self._call_params(_mc) {

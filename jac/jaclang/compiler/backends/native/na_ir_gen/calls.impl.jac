@@ -1425,6 +1425,14 @@ impl NaIRGenCalls._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_new(nd);
         }
 
+        if func_name == "take" {
+            return self._emit_take(nd);
+        }
+
+        if func_name == "swap" {
+            return self._emit_swap(nd);
+        }
+
         if func_name == "Region" {
             import from jaclang.compiler.expr_keys { is_builtin_region_type }
             if is_builtin_region_type(nd.type) or "Region" not in self.struct_types {
@@ -3504,4 +3512,67 @@ impl NaIRGenCalls._codegen_sized_builtin_call(
         return self._codegen_wrapping(nd, func_name);
     }
     return None;
+}
+
+
+impl NaIRGenCalls._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
+    params_l = list(nd.params or []);
+    if len(params_l) != 1 or isinstance(params_l[0], uni.KWPair) {
+        self.emit(E5092, node_override=nd, kind="take() call", name="take");
+        return None;
+    }
+    _place = params_l[0];
+    _slot = self._codegen_place_ptr(_place);
+    if _slot is None {
+        self.emit(
+            E5092,
+            node_override=_place,
+            kind="take() place",
+            name=type(_place).__name__,
+            help_text="take() moves out of a local or an attribute of an archetype instance."
+        );
+        return None;
+    }
+    _val = self.builder.load(_slot, name="take.val");
+    self.builder.store(ir.Constant(_slot.type.pointee, None), _slot);
+    return _val;
+}
+
+impl NaIRGenCalls._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
+    params_l = list(nd.params or []);
+    if len(params_l) != 2 or any([isinstance(_p, uni.KWPair) for _p in params_l]) {
+        self.emit(E5092, node_override=nd, kind="swap() call", name="swap");
+        return None;
+    }
+    _slots: list = [];
+    for _p in params_l {
+        _place = _p.operand if isinstance(_p, uni.UnaryExpr) else _p;
+        _slot = self._codegen_place_ptr(_place);
+        if _slot is None {
+            self.emit(
+                E5092,
+                node_override=_place,
+                kind="swap() place",
+                name=type(_place).__name__,
+                help_text="swap() exchanges two locals or two attributes of archetype instances."
+            );
+            return None;
+        }
+        _slots.append(_slot);
+    }
+    if _slots[0].type != _slots[1].type {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="swap() operands",
+            name="swap",
+            help_text="swap() needs two places of the same type."
+        );
+        return None;
+    }
+    _a = self.builder.load(_slots[0], name="swap.a");
+    _b = self.builder.load(_slots[1], name="swap.b");
+    self.builder.store(_b, _slots[0]);
+    self.builder.store(_a, _slots[1]);
+    return ir.Constant(ir.IntType(64), 0);
 }

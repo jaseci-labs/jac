@@ -286,6 +286,8 @@ def _builtin_name_set -> frozenset[str] {
         "new",
         "unsafe_html",
         "managed",
+        "take",
+        "swap",
         "Region",
         "region_of",
         "repr",

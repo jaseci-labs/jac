@@ -394,6 +394,47 @@ impl JacListView.__iter__ -> any {
     return iter([self.backing[k] for k in range(self.start, self.stop)]);
 }
 
+impl _jac_take_attr(owner: any, name: str) -> any {
+    value = getattr(owner, name);
+    setattr(owner, name, None);
+    return value;
+}
+
+impl _jac_take_item(seq: any, key: any) -> any {
+    value = seq[key];
+    seq[key] = None;
+    return value;
+}
+
+impl _jac_replace_attr(owner: any, name: str, value: any) -> any {
+    old = getattr(owner, name);
+    setattr(owner, name, value);
+    return old;
+}
+
+impl _jac_replace_item(seq: any, key: any, value: any) -> any {
+    old = seq[key];
+    seq[key] = value;
+    return old;
+}
+
+impl _jac_swap_places(
+    owner_a: any, key_a: any, attr_a: bool, owner_b: any, key_b: any, attr_b: bool
+) -> None {
+    value_a = getattr(owner_a, key_a) if attr_a else owner_a[key_a];
+    value_b = getattr(owner_b, key_b) if attr_b else owner_b[key_b];
+    if attr_a {
+        setattr(owner_a, key_a, value_b);
+    } else {
+        owner_a[key_a] = value_b;
+    }
+    if attr_b {
+        setattr(owner_b, key_b, value_a);
+    } else {
+        owner_b[key_b] = value_a;
+    }
+}
+
 impl _jac_chunks(xs: any, n: int) -> list {
     if n < 1 {
         n = 1;

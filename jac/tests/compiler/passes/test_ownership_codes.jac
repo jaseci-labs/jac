@@ -19,6 +19,105 @@ import from tests.ownership_helpers { compile_fixture, expect_ownership_codes }
 
 # (group, case name, fixture, expected E13xx codes, [enforce nogc])
 glob OWNERSHIP_CASES: list[tuple] = [
+         # -- views -----------------------------------------------------------
+         (
+             "views",
+             "E1306 + E1315: a view built over a local escapes through a return, and is bound own",
+             "view_ctor_escape.jac",
+             ["E1306", "E1315"]
+         ),
+         (
+             "views",
+             "a view over a borrowed parameter used locally is clean",
+             "arch_view_local_ok.jac",
+             []
+         ),
+         (
+             "views",
+             "E1306 + E1315: a view stored into a field, and the holder bound own",
+             "view_stored_in_field.jac",
+             ["E1306", "E1315"]
+         ),
+         (
+             "views",
+             "E1303: mutating the owner while a view of it is live",
+             "view_mutate_owner_while_live.jac",
+             ["E1303"]
+         ),
+         (
+             "views",
+             "E1308: a view cannot cross a flow boundary",
+             "view_flow_send.jac",
+             ["E1308"]
+         ),
+         (
+             "views",
+             "a list of borrows built from a borrowed parameter is clean",
+             "view_list_of_borrows_ok.jac",
+             []
+         ),
+         (
+             "views",
+             "E1315: a list of borrows over a local escapes through a return",
+             "view_list_of_borrows_escape.jac",
+             ["E1315"],
+             True
+         ),
+         (
+             "views",
+             "a view returned over the function's borrowed parameter is clean",
+             "view_return_from_borrow_param_ok.jac",
+             []
+         ),
+         # -- receiver_modes ---------------------------------------------------
+         (
+             "receiver_modes",
+             "E1303: a mutating method call while a shared borrow is live",
+             "method_mut_while_borrowed.jac",
+             ["E1303"]
+         ),
+         (
+             "receiver_modes",
+             "reading methods through a live shared borrow are clean",
+             "method_read_while_borrowed_ok.jac",
+             []
+         ),
+         (
+             "receiver_modes",
+             "E1303: mutation reached through a self-method chain is still a write",
+             "method_mut_via_helper_chain.jac",
+             ["E1303"]
+         ),
+         (
+             "receiver_modes",
+             "E1318: a mutating method through a shared borrow parameter",
+             "method_mut_through_shared_borrow.jac",
+             ["E1318"]
+         ),
+         (
+             "receiver_modes",
+             "a mutating method through a &mut parameter is clean",
+             "method_mut_through_mut_borrow_ok.jac",
+             []
+         ),
+         (
+             "receiver_modes",
+             "E1309: a mutating method on an imm binding",
+             "method_mut_on_imm.jac",
+             ["E1309"]
+         ),
+         (
+             "receiver_modes",
+             "E1301: reading a binding after a `self: own` method consumed it",
+             "method_consumes_self.jac",
+             ["E1301"]
+         ),
+         (
+             "receiver_modes",
+             "a `self: own` method as the last use is clean",
+             "method_consumes_self_ok.jac",
+             []
+         ),
          # -- affine_walkers --------------------------------------------------
          (
              "affine_walkers",
@@ -706,9 +805,9 @@ glob OWNERSHIP_CASES: list[tuple] = [
          ),
          (
              "view_derivation",
-             "stored views, ambiguous returns, and outliving views are rejected",
+             "stored views and outliving views are rejected; a two-candidate return ties to both",
              "view_escape_bad.jac",
-             ["E1301", "E1315", "E1315"],
+             ["E1301", "E1315"],
              True
          )
      ];

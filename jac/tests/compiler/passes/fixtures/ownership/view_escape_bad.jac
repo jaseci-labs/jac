@@ -1,7 +1,7 @@
 """views are derivation-bounded in enforced modules: storing one into
-a container is E1315; returning one with two borrow candidates is
-E1315; a view outliving its consumed owner is E1301 via the borrow
-machinery views ride on."""
+a container is E1315; returning one with two borrow candidates ties the
+result to both (no diagnostic); a view outliving its consumed owner is
+E1301 via the borrow machinery views ride on."""
 
 def stash(s: &str, out: &mut list[str]) {
     piece = s[0:2];

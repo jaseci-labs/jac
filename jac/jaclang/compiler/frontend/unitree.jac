@@ -648,7 +648,8 @@ node Module(AstDocNode, UniScopeNode) {
         native_viols_reported: bool = False,
         client_viols_reported: bool = False,
         rc_last_use: dict[int, list[str]] postinit,
-        rc_move_in: set[int] postinit;
+        rc_move_in: set[int] postinit,
+        own_move_sites: set[int] postinit;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
 
@@ -1070,6 +1071,7 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
 
     def postinit -> None;
 
+    has receiver_mode: OwnershipKind = OwnershipKind.NONE;
     has is_method: bool { getter; }
     has is_cls_method: bool { getter; }
     has is_def: bool { getter; }

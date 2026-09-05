@@ -80,7 +80,12 @@ obj BorrowMeta {
     has name: str,
         owner: (SymId | None) = None,
         is_mut: bool = False,
+        extra_owners: list[SymId] postinit,
         field: str = "";
+
+    def postinit {
+        self.extra_owners = [];
+    }
 }
 
 walker OwnershipCheckPass(Transform) {
@@ -96,7 +101,6 @@ walker OwnershipCheckPass(Transform) {
         in_reaching_borrows: dict[int, set[SymId]] = {},
         consumed_at: dict[SymId, UniNode] = {},
         borrow_created_at: dict[SymId, UniNode] = {},
-        loop_depth_flagged_names: set[int] = set(),
         idx_assignments: list[Assignment] = [],
         idx_names: list[Name] = [],
         idx_params: list[ParamVar] = [],
@@ -106,7 +110,12 @@ walker OwnershipCheckPass(Transform) {
         imm_decl: dict[SymId, Name] = {},
         view_syms: set[SymId] = set(),
         view_elision_fns: dict[int, int] = {},
-        nogc_prov: (str | None) = None;
+        nogc_prov: (str | None) = None,
+        receiver_modes: dict[int, OwnershipKind] = {},
+        receiver_probe: set[int] = set(),
+        view_archs: set[str] = set(),
+        view_arch_memo: dict[int, bool] = {},
+        arch_view_syms: set[SymId] = set();
 
     static has PROVIDES: tuple = ('ownership', ),
         REQUIRES: tuple = ('CfgSucc', 'TypeOf'),
@@ -125,6 +134,14 @@ walker OwnershipCheckPass(Transform) {
     def _sym_is_param(sym_id: SymId) -> bool;
     def _view_of_expr(expr: Expr | None) -> (SymId | None);
     def _stamp_view_borrows -> None;
+    def _compute_view_archs -> None;
+    def _is_view_arch(arch: Archetype | None) -> bool;
+    def _view_arch_of_call(call: FuncCall) -> (Archetype | None);
+    def _is_view_expr(expr: Expr | None) -> bool;
+    def _view_ctor_owners(expr: Expr | None) -> (list[SymId] | None);
+    def _derivation_root(base: Name) -> (SymId | None);
+    def _stamp_arch_view_bindings -> None;
+    def _borrow_owners_of(borrow_id: SymId) -> list[SymId];
     def _stamp_view_call_results(scope: UniNode, seen_ids: set[int]) -> None;
     def _view_call_owner(call: FuncCall) -> (SymId | None);
     def _emit_view_diagnostics -> None;
@@ -135,6 +152,7 @@ walker OwnershipCheckPass(Transform) {
     def _nogc_expr_type_is_heap(expr: Expr | None) -> bool;
     def _expr_scalar_typed(expr: Expr | None) -> bool;
     def _nogc_is_container_expr(expr: Expr | None) -> bool;
+    def _nogc_is_list_expr(expr: Expr | None) -> bool;
     def _nogc_container_grow_method(call: FuncCall) -> (str | None);
     def _nogc_module_enforced(mod_name: str) -> bool;
     def _nogc_check_call(call: FuncCall, prov: str) -> None;
@@ -151,6 +169,23 @@ walker OwnershipCheckPass(Transform) {
     def _build_index(tree: UniNode) -> None;
     def _stamp_ownership -> None;
     def _stamp_overwrite_consumed -> None;
+    def _stamp_move_sites -> None;
+    def _receiver_mode(ability: Ability | None) -> OwnershipKind;
+    def _explicit_receiver_mode(ability: Ability) -> (OwnershipKind | None);
+    def _method_writes_self(ability: Ability) -> bool;
+    def _self_method_callees(ability: Ability) -> list[Ability];
+    def _stamp_receiver_modes -> None;
+    def _is_consuming_receiver(nd: Name) -> bool;
+    def _method_call_receiver(call: FuncCall) -> (Name | None);
+    def _method_call_mode(call: FuncCall) -> OwnershipKind;
+    def _emit_receiver_diagnostics -> None;
+    def _owned_field_of(expr: Expr | None) -> (Name | None);
+    def _owned_index_of(expr: Expr | None) -> (Name | None);
+    def _place_text(expr: Expr) -> str;
+    def _emit_place_move(expr: Expr) -> None;
+    def _callee_own_param_names(call: FuncCall) -> (set[str] | None);
+    def _emit_place_move_diagnostics -> None;
+    def _call_consumes_args(call: FuncCall) -> bool;
     def _has_region_blocks -> bool;
     def _emit_region_escape_diagnostics -> None;
     def _emit_sendability_diagnostics -> None;
@@ -219,8 +254,6 @@ walker OwnershipCheckPass(Transform) {
     def _run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> None;
     def _active_borrows_at(cfg: UniCFGNode) -> set[SymId];
     def _is_ancestor(ancestor: UniNode, nd: UniNode) -> bool;
-    def _loop_depth(nd: UniNode) -> int;
-    def _emit_loop_move_diagnostics -> None;
     def _emit_diagnostics -> None;
     def _earlier_move_in_node(nd: Name, sid: SymId) -> (Name | None);
     def _emit_borrow_diagnostics -> None;

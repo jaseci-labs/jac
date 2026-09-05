@@ -2185,6 +2185,8 @@ impl Module.postinit -> None {
     self.rc_last_use = {};
     _rc_move_in: set[int] = set();
     self.rc_move_in = _rc_move_in;
+    _own_move_sites: set[int] = set();
+    self.own_move_sites = _own_move_sites;
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }

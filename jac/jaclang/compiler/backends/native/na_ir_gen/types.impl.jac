@@ -1,3 +1,4 @@
+import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenTypes._lower_type(t: any) -> (ir.Type | None) {
     if t is None {
         return None;
@@ -681,6 +682,29 @@ impl NaIRGenTypes._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     return "i64";
 }
 
+impl NaIRGenTypes._lower_view_container(t: any) -> (ir.Type | None) {
+    try {
+        import from jaclang.compiler.types.types { ClassType as _VcClassType }
+    } except ImportError {
+        return None;
+    }
+    if not isinstance(t, _VcClassType) or t._shared is None {
+        return None;
+    }
+    if t.shared.class_name not in ("list", "Sequence") {
+        return None;
+    }
+    _args = t.private.type_args or [];
+    if not _args {
+        return None;
+    }
+    _elem = self._elem_storage_llvm(_args[0]);
+    if _elem is None {
+        return None;
+    }
+    return self._lower_list_for_elem(_elem);
+}
+
 impl NaIRGenTypes._lower_class_type(t: any) -> (ir.Type | None) {
     cname = t.shared.class_name;
     if cname in self.type_map {
@@ -727,6 +751,10 @@ impl NaIRGenTypes._lower_class_type(t: any) -> (ir.Type | None) {
     if cname in ("list", "Sequence") {
         elem_llvm: ir.Type = ir.IntType(64);
         if type_args {
+            _aos_t = self._aos_elem_name(type_args[0]);
+            if _aos_t is not None {
+                return self._emit_aos_list_helpers(_aos_t).as_pointer();
+            }
             _e = self._elem_storage_llvm(type_args[0]);
             if _e is None {
                 return None;
@@ -847,48 +875,108 @@ impl NaIRGenTypes._lower_function_type_raw(t: any) -> ir.Type {
 }
 
 impl NaIRGenTypes._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
-    if not self._nogc_headerless() {
-        return None;
-    }
     nd = type_expr;
+    if isinstance(nd, uni.ParamVar) {
+        nd = nd.type_tag;
+    }
     if isinstance(nd, uni.SubTag) {
         nd = nd.tag;
-    }
-    if isinstance(nd, uni.ParamVar) {
-        return self._aos_elem_of(nd.type_tag);
     }
     if isinstance(nd, uni.UnaryExpr) {
         nd = nd.operand;
     }
-    if not (
-        isinstance(nd, uni.AtomTrailer)
-        and isinstance(nd.target, uni.Name)
-        and nd.target.sym_name == "list"
-        and isinstance(nd.right, uni.IndexSlice)
-        and len(nd.right.slices) == 1
-    ) {
+    _t = nd?.type if isinstance(nd, uni.Expr) else None;
+    if _t is None {
         return None;
     }
-    _arg = nd.right.slices[0].start;
-    if not (
-        isinstance(_arg, uni.UnaryExpr)
-        and _arg.ownership == OwnershipKind.OWN
-        and isinstance(_arg.operand, uni.Name)
-    ) {
+    _sole = self._opt_sole_member(_t);
+    if _sole is not None {
+        _t = _sole;
+    }
+    _priv = _t?.private;
+    _args = (_priv?.type_args or []) if _priv is not None else [];
+    _shared = _t?.shared;
+    if _shared is None or _shared.class_name != "list" or not _args {
         return None;
     }
-    _tn = _arg.operand.sym_name;
+    return self._aos_elem_name(_args[0]);
+}
+
+impl NaIRGenTypes._aos_elem_name(t: any) -> (str | None) {
+    if t is None or not self._nogc_owned_world() {
+        return None;
+    }
+    try {
+        import from jaclang.compiler.types.types {
+            ClassType as _AeClassType,
+            TypeVarType as _AeTypeVarType
+        }
+    } except ImportError {
+        return None;
+    }
+    if isinstance(t, _AeTypeVarType) {
+        _sol = self._mono_solution;
+        if _sol is None or t.name not in _sol {
+            return None;
+        }
+        return self._aos_elem_name(_sol[t.name]);
+    }
+    if not isinstance(t, _AeClassType) or t._shared is None {
+        return None;
+    }
+    _tn = t.shared.class_name;
     if _tn not in self.struct_types {
         return None;
     }
-
+    _lay = self._arch_layout(_tn);
+    if _lay is None or _lay.is_osp or _lay.arch_type == "walker" {
+        return None;
+    }
+    if self._program_has_subclasses(_tn) {
+        return None;
+    }
     _fields = self.struct_field_types.get(_tn) or {};
     for (_fname, _fty) in _fields.items() {
-        if isinstance(_fty, ir.PointerType) {
+        if isinstance(_fty, ir.PointerType) or self._opt_payload_of(_fty) is not None {
             return None;
         }
     }
     return _tn;
+}
+
+impl NaIRGenTypes._program_has_subclasses(arch_name: str) -> bool {
+    if self._subclassed_arch_names is None {
+        _cached = getattr(self.prog, "_na_subclassed_arch_names", None);
+        if isinstance(_cached, set) {
+            self._subclassed_arch_names = _cached;
+            return arch_name in _cached;
+        }
+        _names: set[str] = set();
+        _mods: list = [];
+        try {
+            _mods = list(self.prog.mod.hub.values());
+        } except Exception {
+            _mods = [];
+        }
+        if self.ir_in not in _mods {
+            _mods.append(self.ir_in);
+        }
+        for _mod in _mods {
+            for _arch in _mod.get_all_sub_nodes(uni.Archetype) {
+                for _base in (_arch.base_classes or []) {
+                    _bn = self._get_name(_base);
+                    if _bn is not None {
+                        _names.add(_bn);
+                    }
+                }
+            }
+        }
+        self._subclassed_arch_names = _names;
+        try {
+            self.prog._na_subclassed_arch_names = _names;
+        } except Exception {}
+    }
+    return arch_name in self._subclassed_arch_names;
 }
 
 impl NaIRGenTypes._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
@@ -937,10 +1025,6 @@ impl NaIRGenTypes._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type 
     if type_expr is None {
         return ir.IntType(64);
     }
-    _aos_t = self._aos_elem_of(type_expr);
-    if _aos_t is not None {
-        return self._emit_aos_list_helpers(_aos_t).as_pointer();
-    }
 
     if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
         return self._resolve_jac_type(type_expr.tag);
@@ -961,6 +1045,12 @@ impl NaIRGenTypes._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type 
                 return _structural;
             }
             return self._emit_unlowerable_type(type_expr, None);
+        }
+        if type_tag_borrows(type_expr) {
+            _view = self._lower_view_container(type_expr.type);
+            if _view is not None {
+                return _view;
+            }
         }
         lowered = self._lower_type(type_expr.type);
         if lowered is not None {

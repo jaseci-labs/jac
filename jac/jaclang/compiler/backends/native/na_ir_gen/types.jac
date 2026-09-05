@@ -134,6 +134,9 @@ obj NaIRGenTypes(NaIRGenState) {
     def _spec_union_agreement(t: any, names: tuple) -> (any | None);
     def _elem_storage_llvm(t: any) -> (ir.Type | None);
     def _aos_elem_of(type_expr: uni.UniNode | None) -> (str | None);
+    def _aos_elem_name(t: any) -> (str | None);
+    def _lower_view_container(t: any) -> (ir.Type | None);
+    def _program_has_subclasses(arch_name: str) -> bool;
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
     def _infer_compr_elem_struct(compr: object) -> (str | None);

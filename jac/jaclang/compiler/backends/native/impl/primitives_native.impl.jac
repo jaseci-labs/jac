@@ -2665,11 +2665,18 @@ impl NativeListEmitter.emit_extend(
     if elem.type != helpers["elem_type"] {
         elem = p._coerce_type(elem, helpers["elem_type"]);
     }
-    b.call(helpers["append"], [target, elem]);
+    _aos_struct = p._aos_elem_struct(ctx.type_key);
+    b.call(
+        helpers["push"] if _aos_struct is not None else helpers["append"],
+        [target, elem]
+    );
     next_idx = b.add(idx, ir.Constant(i64, 1), name="ext.next");
     idx.add_incoming(next_idx, body_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
+    if _aos_struct is not None and src_helpers is helpers {
+        b.store(ir.Constant(i64, 0), src_len_ptr);
+    }
     return ir.Constant(i64, 0);
 }
 
@@ -2694,6 +2701,12 @@ impl NativeListEmitter.emit_insert(
         return ir.Constant(i64, 0);
     }
     insert_val = p._coerce_type(args[1], helpers["elem_type"]);
+    _aos_struct = p._aos_elem_struct(ctx.type_key);
+    if _aos_struct is not None {
+        return self._emit_aos_insert(
+            ctx, target, p._coerce_type(insert_idx, i64), insert_val, _aos_struct
+        );
+    }
 
     b.call(helpers["append"], [target, insert_val]);
 
@@ -2735,6 +2748,9 @@ impl NativeListEmitter.emit_remove(
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
     if helpers is None or p._elem_kind(helpers["elem_type"]) == "jacval" {
+        return None;
+    }
+    if p._aos_elem_struct(ctx.type_key) is not None {
         return None;
     }
     b = get_builder(p);
@@ -2841,6 +2857,10 @@ impl NativeListEmitter.emit_pop(
         is_neg = b.icmp_signed("<", raw_idx, ir.Constant(i64, 0), name="pop.idx.neg");
         adj_idx = b.add(raw_idx, cur_len, name="pop.idx.adj");
         pop_idx = b.select(is_neg, adj_idx, raw_idx, name="pop.idx");
+    }
+    _aos_struct = p._aos_elem_struct(ctx.type_key);
+    if _aos_struct is not None {
+        return self._emit_aos_pop(ctx, target, args, _aos_struct);
     }
     popped = b.call(helpers["get"], [target, pop_idx], name="pop.val");
 
@@ -5594,4 +5614,192 @@ impl NativeBuiltinEmitter.emit_complex(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
     return None;
+}
+
+
+def _aos_size_of(b: ir.IRBuilder, elem_struct: ir.Type, tag: str) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    return b.ptrtoint(
+        b.gep(
+            ir.Constant(elem_struct.as_pointer(), None),
+            [ir.Constant(i32, 1)],
+            name=f"{tag}.szT.p"
+        ),
+        i64,
+        name=f"{tag}.szT"
+    );
+}
+
+def _aos_data_ptr(b: ir.IRBuilder, target: ir.Value, tag: str) -> ir.Value {
+    i32 = ir.IntType(32);
+    return b.load(
+        b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{tag}.data.p"),
+        name=f"{tag}.data"
+    );
+}
+
+def _aos_memmove(
+    p: NaIRGenPass,
+    b: ir.IRBuilder,
+    data: ir.Value,
+    dst_idx: ir.Value,
+    src_idx: ir.Value,
+    count: ir.Value,
+    sz: ir.Value,
+    tag: str
+) {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    _memmove = p._get_or_declare_extern("memmove", i8p, [i8p, i8p, i64]);
+    b.call(
+        _memmove,
+        [
+            b.bitcast(
+                b.gep(data, [dst_idx], name=f"{tag}.dst"), i8p, name=f"{tag}.dst8"
+            ),
+            b.bitcast(
+                b.gep(data, [src_idx], name=f"{tag}.src"), i8p, name=f"{tag}.src8"
+            ),
+            b.mul(count, sz, name=f"{tag}.bytes")
+        ]
+    );
+}
+
+impl NativeListEmitter._emit_aos_pop(
+    self: NativeListEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    args: list[ir.Value],
+    elem_struct: ir.Type
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    helpers = p.list_helpers[ctx.type_key];
+    len_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="pop.len.ptr"
+    );
+    cur_len = b.load(len_ptr, name="pop.len");
+    new_len = b.sub(cur_len, ir.Constant(i64, 1), name="pop.newlen");
+    pop_idx = new_len;
+    if args {
+        raw_idx = p._coerce_type(args[0], i64);
+        is_neg = b.icmp_signed("<", raw_idx, ir.Constant(i64, 0), name="pop.idx.neg");
+        pop_idx = b.select(
+            is_neg, b.add(raw_idx, cur_len, name="pop.idx.adj"), raw_idx, name="pop.idx"
+        );
+    }
+    sz = _aos_size_of(b, elem_struct, "pop");
+    _malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
+    _memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    shell8 = b.call(_malloc, [sz], name="pop.shell8");
+    elem_ptr = b.call(helpers["get"], [target, pop_idx], name="pop.elem");
+    b.call(_memcpy, [shell8, b.bitcast(elem_ptr, i8p, name="pop.elem8"), sz]);
+    data = _aos_data_ptr(b, target, "pop");
+    tail = b.sub(new_len, pop_idx, name="pop.tail");
+    _aos_memmove(
+        p,
+        b,
+        data,
+        pop_idx,
+        b.add(pop_idx, ir.Constant(i64, 1), name="pop.from"),
+        tail,
+        sz,
+        "pop.sh"
+    );
+    b.store(new_len, len_ptr);
+    popped = b.bitcast(shell8, elem_struct.as_pointer(), name="pop.val");
+    p._mark_owned(popped);
+    return popped;
+}
+
+impl NativeListEmitter._emit_aos_del_at(
+    self: NativeListEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    del_idx: ir.Value,
+    elem_struct: ir.Type
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    helpers = p.list_helpers[ctx.type_key];
+    len_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="delat.len.ptr"
+    );
+    cur_len = b.load(len_ptr, name="delat.len");
+    new_len = b.sub(cur_len, ir.Constant(i64, 1), name="delat.newlen");
+    _fields_fn = helpers.get("drop_fields");
+    if _fields_fn is not None {
+        elem_ptr = b.call(helpers["get"], [target, del_idx], name="delat.elem");
+        b.call(_fields_fn, [b.bitcast(elem_ptr, i8p, name="delat.elem8")]);
+    }
+    sz = _aos_size_of(b, elem_struct, "delat");
+    data = _aos_data_ptr(b, target, "delat");
+    tail = b.sub(new_len, del_idx, name="delat.tail");
+    _aos_memmove(
+        p,
+        b,
+        data,
+        del_idx,
+        b.add(del_idx, ir.Constant(i64, 1), name="delat.from"),
+        tail,
+        sz,
+        "delat.sh"
+    );
+    b.store(new_len, len_ptr);
+    return ir.Constant(i64, 0);
+}
+
+impl NativeListEmitter._emit_aos_insert(
+    self: NativeListEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    insert_idx: ir.Value,
+    insert_val: ir.Value,
+    elem_struct: ir.Type
+) -> ir.Value {
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    helpers = p.list_helpers[ctx.type_key];
+    b.call(helpers["push"], [target, insert_val]);
+    len_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ins.len.ptr"
+    );
+    new_len = b.load(len_ptr, name="ins.newlen");
+    last_idx = b.sub(new_len, ir.Constant(i64, 1), name="ins.last");
+    sz = _aos_size_of(b, elem_struct, "ins");
+    data = _aos_data_ptr(b, target, "ins");
+    tail = b.sub(last_idx, insert_idx, name="ins.tail");
+    _aos_memmove(
+        p,
+        b,
+        data,
+        b.add(insert_idx, ir.Constant(i64, 1), name="ins.to"),
+        insert_idx,
+        tail,
+        sz,
+        "ins.sh"
+    );
+    _memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    slot = b.gep(data, [insert_idx], name="ins.slot");
+    b.call(
+        _memcpy,
+        [
+            b.bitcast(slot, i8p, name="ins.slot8"),
+            b.bitcast(insert_val, i8p, name="ins.src8"),
+            sz
+        ]
+    );
+    _free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    b.call(_free, [b.bitcast(insert_val, i8p, name="ins.shell8")]);
+    return ir.Constant(i64, 0);
 }

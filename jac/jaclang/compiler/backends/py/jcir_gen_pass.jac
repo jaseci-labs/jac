@@ -576,6 +576,10 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     can exit_atom_trailer with AtomTrailer exit;
     can exit_atom_unit with AtomUnit exit;
     can exit_func_call with FuncCall exit;
+    def _place_parts(arg: UniNode) -> (tuple | None);
+    def _name_swap_expr(store_id: str, value: CgNode) -> CgNode;
+    def _lower_take(nd: FuncCall) -> (CgNode | None);
+    def _lower_swap(nd: FuncCall) -> (CgNode | None);
     def _exit_func_call_impl(nd: FuncCall) -> None;
     def _fold_sorted_traversal(nd: FuncCall) -> bool;
     def _order_term(

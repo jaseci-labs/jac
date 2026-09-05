@@ -889,6 +889,31 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_aos_pop(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        elem_struct: ir.Type
+    ) -> ir.Value;
+
+    def _emit_aos_del_at(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        del_idx: ir.Value,
+        elem_struct: ir.Type
+    ) -> ir.Value;
+
+    def _emit_aos_insert(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        insert_idx: ir.Value,
+        insert_val: ir.Value,
+        elem_struct: ir.Type
+    ) -> ir.Value;
+
     def emit_del_at(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,
@@ -907,6 +932,12 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         del_idx = args[0];
+        _aos_struct = p._aos_elem_struct(ctx.type_key);
+        if _aos_struct is not None {
+            return self._emit_aos_del_at(
+                ctx, target, p._coerce_type(del_idx, i64), _aos_struct
+            );
+        }
 
         if isinstance(helpers["elem_type"], ir.PointerType) {
             if p.rc_release_simple_fn is None {

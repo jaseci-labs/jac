@@ -10,6 +10,7 @@ import sys;
 
 obj NaIRGenFunc(NaIRGenState) {
     def _forward_declare_functions(module: uni.Module) -> None;
+    def _nogc_owned_param(p: uni.ParamVar) -> bool;
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
     def _apply_ownership_param_attrs(
         func: ir.Function, params: list[uni.ParamVar], base: int

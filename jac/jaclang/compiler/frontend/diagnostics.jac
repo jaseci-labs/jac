@@ -984,16 +984,46 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1315 = _err(
          "E1315",
          Category.SEMANTIC,
-         "A string view does not allow {name}",
-         help="in a nogc-enforced module a step-free string slice is a zero-copy"
-         " view into its base: it is usable locally and returnable only when it"
-         " derives from the function's single `&`/`imm` parameter (or a method's"
-         " `self`), so every caller knows which argument the result borrows."
-         " Views may not be stored into containers, fields, or module globals,"
-         " may not be bound `own`, and a function with two or more borrowable"
-         " parameters may not return one. Materialize an owned copy with a"
-         " stepped slice (`s[a:b:1]`) where the value must escape.",
+         "A view does not allow {name}",
+         help="a view is a value that carries a borrow: an archetype with a"
+         " `&`-typed field, a container declared over `&T`, or (in a"
+         " nogc-enforced module) a step-free string slice. It lives on the stack"
+         " and is usable locally; it may not be stored into a field, a container,"
+         " or a module global, may not be bound `own`, and may be returned only"
+         " when it derives from the function's borrowed parameters (or a method's"
+         " `self`), so every caller knows what the result borrows. Materialize an"
+         " owned value where it must escape (a stepped slice `s[a:b:1]` for a"
+         " string, a fresh archetype otherwise).",
          blocks_codegen=True
+     ),
+     E1316 = _err(
+         "E1316",
+         Category.SEMANTIC,
+         "Cannot move '{name}' out of '{place}' without take()",
+         help="'{place}' is an owned slot inside another value, so reading it into"
+         " an owning destination (an `own` binding, an owned field, an `own`"
+         " parameter, or an owned return) would leave two owners of one value."
+         " Move it out explicitly with `take({place})`, which leaves None behind,"
+         " or borrow it with `&{place}` if the destination only needs to read it."
+     ),
+     E1317 = _err(
+         "E1317",
+         Category.SEMANTIC,
+         "Cannot move '{name}' out of the element '{place}'",
+         help="the elements of an owned list are owned by the list, so reading"
+         " one into an owning destination (an `own` binding, an owned field, an"
+         " `own` parameter, or an owned return) would leave two owners of one"
+         " value. Move it out with `pop()` or `pop(i)`, or borrow it in place"
+         " with `&{place}`."
+     ),
+     E1318 = _err(
+         "E1318",
+         Category.SEMANTIC,
+         "Cannot call mutating method '{method}' through a shared borrow of '{name}'",
+         help="'{method}' writes to its receiver (it assigns a field, grows a"
+         " container field, or calls another mutating method), so it needs an"
+         " exclusive receiver. Take the borrow with `&mut`, or call it on the"
+         " owner directly."
      ),
      W1310 = _warn(
          "W1310",
@@ -1209,7 +1239,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2015",
          Category.SEMANTIC,
          "Explicit 'self' parameter is not allowed in {arch_type} method '{name}' — "
-         "'self' is implicit in obj, node, edge, and walker methods."
+         "'self' is implicit in obj, node, edge, and walker methods.",
+         help="write `self` explicitly only to declare the receiver mode:"
+         " `self: own T` consumes the receiver, `self: &mut T` mutates it,"
+         " `self: &T` reads it. Without a mode the receiver is inferred from the"
+         " body."
      ),
      E2016 = _err(
          "E2016",

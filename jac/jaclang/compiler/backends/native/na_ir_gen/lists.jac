@@ -18,6 +18,8 @@ obj NaIRGenLists(NaIRGenState) {
     def _empty_list_dest_spec(nd: uni.ListVal) -> (str | None);
     def _emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
     def _emit_aos_list_helpers(tname: str) -> ir.Type;
+    def _aos_elem_struct(type_key: str) -> (ir.Type | None);
+    def _container_is_view(nd: uni.UniNode) -> bool;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);
     def _codegen_index(
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str

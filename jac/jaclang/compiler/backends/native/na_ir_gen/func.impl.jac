@@ -33,6 +33,13 @@ impl NaIRGenFunc._apply_ownership_param_attrs(
     }
 }
 
+impl NaIRGenFunc._nogc_owned_param(p: uni.ParamVar) -> bool {
+    if not self._nogc_owned_world() or p.type_tag is None {
+        return False;
+    }
+    return p.type_tag.ownership == OwnershipKind.OWN;
+}
+
 impl NaIRGenFunc._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     if not isinstance(nd, uni.Ability) {
         return;
@@ -434,6 +441,7 @@ impl NaIRGenFunc._codegen_ability(nd: uni.Ability) -> None {
         self.region_open_stack = [];
         self.closure_cell_vars = set();
         self.closure_cell_handles = {};
+        self._self_owned = False;
 
         self._attach_di_subprogram(
             func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -465,8 +473,10 @@ impl NaIRGenFunc._codegen_ability(nd: uni.Ability) -> None {
             if isinstance(arg_val.type, ir.PointerType)
                 and bool(p.name?.sym?.param_rebound) {
                 self._emit_rc_retain(arg_val, op="param_promote", loc=name);
-            } else {
+            } elif not self._nogc_owned_param(p) {
                 self.param_vars.add(param_name);
+            } elif param_name == "self" {
+                self._self_owned = True;
             }
         }
 

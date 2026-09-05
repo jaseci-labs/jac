@@ -817,6 +817,7 @@ impl TypeCheckPass.enter_ability with Ability entry {
 }
 
 impl TypeCheckPass.exit_ability with Ability exit {
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
     self.evaluator.validate_typevar_variance(here);
 
     self._check_intrinsic_collision(here);
@@ -836,6 +837,10 @@ impl TypeCheckPass.exit_ability with Ability exit {
                 len(all_params) > 0
                 and isinstance(all_params[0].name, Name)
                 and all_params[0].name.value == "self"
+                and (
+                    all_params[0].type_tag is None
+                    or all_params[0].type_tag.ownership == OwnershipKind.NONE
+                )
             ) {
                 self.emit(
                     E2015,

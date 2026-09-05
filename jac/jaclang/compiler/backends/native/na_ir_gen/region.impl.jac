@@ -360,8 +360,7 @@ impl NaIRGenRegion._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function |
     if struct_type is None {
         return None;
     }
-    _hook = self.struct_drop_hooks.get(type_name)
-        or self.func_symtab.get(f"{type_name}.drop");
+    _hook = self._drop_hook_for(type_name);
     field_types = self.struct_field_types.get(type_name, {});
     field_indices = self.struct_field_indices.get(type_name, {});
     foreign_fields = self.struct_field_foreign.get(type_name, set());

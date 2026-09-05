@@ -60,7 +60,7 @@ impl NaIRGenStmt._emit_last_use_releases(stmt: uni.UniNode) -> None {
         return;
     }
     for name in names {
-        if name == "self" or name in self.param_vars {
+        if (name == "self" and not self._self_owned) or name in self.param_vars {
             continue;
         }
         if name in self.nogc_no_free_vars {
@@ -71,7 +71,12 @@ impl NaIRGenStmt._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         slot_ty = alloca.type?.pointee;
-        if not (isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee) {
+        _lu_ptr = isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee;
+        if not _lu_ptr
+            and (
+                self._opt_ptr_payload_of(slot_ty) is None
+                or not self._nogc_owned_world()
+            ) {
             continue;
         }
         if name in self.region_handle_vars {
@@ -80,7 +85,7 @@ impl NaIRGenStmt._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if name in self.closure_cell_handles {
             continue;
         }
-        val = self.builder.load(alloca, name=f"lu.{name}");
+        val = self._rc_unwrap_optional(self.builder.load(alloca, name=f"lu.{name}"));
         self._emit_rc_release_typed(val, op="last_use", loc="");
         self.builder.store(ir.Constant(slot_ty, None), alloca);
     }
@@ -1748,7 +1753,7 @@ impl NaIRGenStmt._codegen_assignment(nd: uni.Assignment) -> None {
                     );
                 }
             } else {
-                self._codegen_field_assign(target_expr, value);
+                self._codegen_field_assign(target_expr, value, value_node=nd.value);
             }
             continue;
         }
