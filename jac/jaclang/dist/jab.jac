@@ -66,6 +66,7 @@ def jab_app_meta(img_root: Path) -> dict[str, any] {
     meta = raw if isinstance(raw, dict) else {};
     return {
         "kind": meta.get("kind", ""),
+        "app": meta.get("app", ""),
         "capabilities": meta.get("capabilities") or [],
         "entry": meta.get("entry") or {},
         "package": meta.get("package", "")

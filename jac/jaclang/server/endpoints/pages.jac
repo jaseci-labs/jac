@@ -19,6 +19,7 @@ import from jaclang.server.serving.files { file_response }
 import from jaclang.server.server { JacAPIServer, JsonValue }
 import from jaclang.server.static_files {
     find_root_asset,
+    client_dist_index,
     find_static_candidate,
     sibling_app_dist,
     sibling_app_file
@@ -145,6 +146,10 @@ def register_page_endpoints(server: JacAPIServer) {
     }
 
     def root_index(request: Request, **kwargs: JsonValue) -> Response {
+        index = client_dist_index(settings.client_dist);
+        if index is not None {
+            return file_response(request, str(index), cache_control='no-cache');
+        }
         if root_app {
             return _render(
                 server, root_app, kwargs, server.introspector.spa_fallback_status('/')
@@ -213,7 +218,9 @@ def register_page_endpoints(server: JacAPIServer) {
     );
 
     def static_file(request: Request, file_path: str) -> Response {
-        candidate = find_static_candidate(_static_base(server), file_path);
+        candidate = find_static_candidate(
+            _static_base(server), file_path, settings.client_dist
+        );
         if candidate is None {
             return JSONResponse(
                 content={'error': 'Static file not found'}, status_code=404
@@ -246,11 +253,17 @@ def register_page_endpoints(server: JacAPIServer) {
         if file_path.startswith(API_PREFIXES) or file_path.startswith(CL_PREFIX) {
             return JSONResponse(content={'error': 'Not found'}, status_code=404);
         }
-        candidate = find_root_asset(_static_base(server), file_path);
+        candidate = find_root_asset(
+            _static_base(server), file_path, settings.client_dist
+        );
         if candidate is not None {
             return file_response(
                 request, str(candidate), cache_control=ASSET_CACHE_CONTROL
             );
+        }
+        index = client_dist_index(settings.client_dist);
+        if index is not None and not Path(file_path).suffix {
+            return file_response(request, str(index), cache_control='no-cache');
         }
         if not Path(file_path).suffix and root_app {
             if server.introspector.dev_mode {

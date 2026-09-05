@@ -13,16 +13,18 @@ def _fused_runtime_import_block -> str {
 def _host_boot_py(
     app_name: str,
     mode: str,
-    entry_rel: str = "",
+    program: (dict | None) = None,
+    backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: dict = None
+    plugin_configs: (dict | None) = None
 ) -> str {
     config = {
         "app_name": app_name,
         "mode": mode,
-        "entry_rel": entry_rel,
+        "program": dict(program or {}),
+        "backend": backend or "embedded",
         "dispatch": {
             "timeout_s": dispatch_timeout_s,
             "max_queue": dispatch_max_queue,
@@ -45,16 +47,18 @@ def _generate_host_source(
     width: int,
     height: int,
     app_name: str,
-    entry_rel: str = "",
+    program: (dict | None) = None,
+    backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
-    plugin_configs: dict = None
+    plugin_configs: (dict | None) = None
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
         "webview",
-        entry_rel,
+        program,
+        backend,
         dispatch_timeout_s,
         dispatch_max_queue,
         dispatch_debug,
@@ -88,7 +92,6 @@ def _generate_host_source(
         "};"
         "window.__JAC_DESKTOP__=true;"
         "window.__JAC_BROKER__='/__jac';"
-        "window.__JAC_NATIVE__=true;"
         "}catch(e){}})();"
     );
 
@@ -112,7 +115,7 @@ def _generate_host_source(
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
-        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
+        "import from webview { Webview, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
         + _fused_runtime_import_block()
         + "glob PY_EVAL: i32 = 258;\n"
         f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
@@ -120,27 +123,7 @@ def _generate_host_source(
         f"glob BOOT_ERROR_HTML: str = {json.dumps(
             boot_error_html, ensure_ascii=False
         )};\n"
-        "glob _PH_DISPATCH: int = 0;\n"
         "glob _ENGINE: Embed = Embed();\n"
-        "def _jac_invoke_handler(id: int, req: int, wv_handle: int) {\n"
-        "    api = _ENGINE.api;\n"
-        "    gstate = api.PyGILState_Ensure();\n"
-        "    py_req = api.PyUnicode_FromString(c_string(req));\n"
-        "    py_result = api.PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
-        "    if py_result == 0 {\n"
-        "        api.Py_DecRef(py_req);\n"
-        "        api.PyGILState_Release(gstate);\n"
-        "        respond(\n"
-        "            wv_handle, id, \"{\\\"ok\\\":false,\\\"error\\\":{\\\"code\\\":\\\"DISPATCH_CRASHED\\\"}}\"\n"
-        "        );\n"
-        "        return;\n"
-        "    }\n"
-        "    result_str = c_string(api.PyUnicode_AsUTF8(py_result));\n"
-        "    api.Py_DecRef(py_req);\n"
-        "    respond(wv_handle, id, result_str);\n"
-        "    api.Py_DecRef(py_result);\n"
-        "    api.PyGILState_Release(gstate);\n"
-        "}\n"
         "def _stash_wv_in_python(h: int) {\n"
         "    _ENGINE.api.PyRun_SimpleString(f\"_ctx.setup_webview({h})\");\n"
         "}\n"
@@ -154,7 +137,6 @@ def _generate_host_source(
         "    if boot_rc == 0 {\n"
         "        main_mod = api.PyImport_AddModule(\"__main__\");\n"
         "        d = api.PyModule_GetDict(main_mod);\n"
-        "        _PH_DISPATCH = api.PyRun_String(\"_ctx.dispatch\", PY_EVAL, d, d);\n"
         "        port = api.PyLong_AsLong(api.PyRun_String(\"_ctx.port\", PY_EVAL, d, d));\n"
         "        dev_port = api.PyLong_AsLong(api.PyRun_String(\"_ctx.dev_port\", PY_EVAL, d, d));\n"
         "        target_port = dev_port if dev_port > 0 else port;\n"
@@ -166,7 +148,6 @@ def _generate_host_source(
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
         f"    wv.size({width}, {height}, HINT_NONE);\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
-        "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
         "    healthy: bool = boot_rc == 0;\n"
         "    if healthy {\n"
         "        _stash_wv_in_python(_wv_raw);\n"
@@ -177,7 +158,9 @@ def _generate_host_source(
         "    ts = api.PyEval_SaveThread();\n"
         "    run_main_loop();\n"
         "    api.PyEval_RestoreThread(ts);\n"
-        "    api.PyRun_SimpleString(\"from jaclang.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
+        "    if healthy {\n"
+        "        api.PyRun_SimpleString(\"_ctx.shutdown()\");\n"
+        "    }\n"
         "    api.Py_Finalize();\n"
         "}\n"
     );

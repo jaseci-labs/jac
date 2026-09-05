@@ -41,6 +41,17 @@ myapp/
 TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
 a `.css` file anywhere in the project and import it from your Jac code.
 
+Files under `assets/` are served at `/static/assets/<path>` and compiled into
+the client bundle. In a workspace the directory is the app's own `assets/` by
+default; when several apps share one UI, point them at the shared directory
+(relative to the project root) and list any extra file types to carry along:
+
+```toml
+[client.assets]
+dir = "core/site/assets"
+custom_extensions = [".pdf"]
+```
+
 ### Client Code Is Inferred
 
 A component file needs no marker at all -- JSX and npm imports are client-only syntax, so the compiler places these declarations (and any helpers they use) in the client bundle automatically:

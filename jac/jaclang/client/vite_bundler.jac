@@ -18,6 +18,7 @@ glob logger = logging.getLogger(__name__),
      CONFIG_META_KEYS = frozenset({'extension'}),
      CLIENT_EVENT_PREFIX = '@@jac-client-event ',
      DEV_PROXY_PREFIXES: list[str] = [
+         '/api',
          '/walker',
          '/function',
          '/user',

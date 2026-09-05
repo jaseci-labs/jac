@@ -217,11 +217,19 @@ obj JacAPIServer(EndpointHost) {
     def _ensure_internal_users -> None;
     def _register_scheduled_tasks -> None;
     def _validate_or_raise -> None;
+    def _prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings;
     def start(
         dev: bool = False,
         no_client: bool = False,
         on_ready: Callable[..., None] | None = None
     ) -> int;
+
+    def serve_background(
+        dev: bool = False,
+        no_client: bool = False,
+        on_ready: Callable[..., None] | None = None,
+        port_retries: int = 0
+    ) -> Callable[[], None];
 
     def _worker_main(
         handle: (WorkerHandle | None),

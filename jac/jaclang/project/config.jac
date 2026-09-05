@@ -334,6 +334,7 @@ obj JacConfig {
     def resolved_kind(app: AppConfig) -> str;
     def effective_for_app(name: str) -> JacConfig;
     def app_for_path(abs_path: str) -> AppConfig | None;
+    def app_for_target(entry_path: str = "") -> AppConfig | None;
     def serving_apps -> list[AppConfig];
     def owner_app_for_path(abs_path: str) -> tuple[AppConfig | None, bool];
 }

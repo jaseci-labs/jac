@@ -36,7 +36,7 @@ def render_line(line: FeedLine) -> str {
 
 async def run_feed(limit: int, query: str) -> int {
     try {
-        res = await (root spawn load_feed(search_query=query));
+        res = await load_feed(search_query=query);
         rows = res.reports[0] if res.reports else [];
         if not rows {
             scope = " for \"" + query + "\"" if query else "";
@@ -66,7 +66,7 @@ async def run_post(text: str) -> int {
         return EXIT_USAGE;
     }
     try {
-        made = await (root spawn create_tweet(content=body));
+        made = await create_tweet(content=body);
         posted = list_field(made, "reports");
         if posted {
             line = feed_line(posted[0]);

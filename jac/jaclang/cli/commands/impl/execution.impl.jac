@@ -5,6 +5,12 @@ import types;
 import from pathlib { Path }
 import from jaclang.cli.console { console, use_line_buffered_output }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
+import from jaclang.server.assembly {
+    assemble_served_program,
+    colocate_services as _colocate_services,
+    gateway_colocates as _gateway_colocates,
+    service_apps as _service_apps
+}
 import from jaclang.project.kinds { RunPlan }
 import type from importlib.metadata { EntryPoint }
 import type from jaclang.compiler.backends.native.llvm.binding.executionengine {
@@ -1048,19 +1054,6 @@ def _serve_app(cfg: any, app: str, filename: str) -> any {
     return cfg.app_for_path(os.path.abspath(filename));
 }
 
-def _service_apps(cfg: any, served: any) -> list {
-    return [
-        a
-        for a in cfg.serving_apps()
-        if a.kind in ("service", "service-mesh") and a.name != served.name
-    ];
-}
-
-def _gateway_colocates(cfg: any) -> bool {
-    scale_cfg = cfg.get_plugin_config("scale") or {};
-    gateway = scale_cfg.get("gateway", {}) if isinstance(scale_cfg, dict) else {};
-    return not (isinstance(gateway, dict) and gateway.get("colocate") is False);
-}
 
 def _serve_fleet(
     cfg: any,
@@ -1119,47 +1112,6 @@ def _serve_fleet(
     );
 }
 
-def _colocate_services(cfg: any, served: any, base: str) -> None {
-    if cfg is None or served is None or os.environ.get("JAC_SV_SIBLING") == "1" {
-        return;
-    }
-    services = _service_apps(cfg, served);
-    if not services {
-        return;
-    }
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.jac0core.ext_registry { base_stem }
-    import from jaclang.server.sv_client { register_local }
-
-    project_root = str(cfg.project_root) if cfg.project_root else base;
-    for svc in services {
-        entry_file = svc.entry_path(project_root);
-        if not entry_file or not os.path.isfile(entry_file) {
-            console.warning(
-                f"Service app '{svc.name}' has no entry_file file; not colocated."
-            );
-            continue;
-        }
-        (svc_base, svc_file) = os.path.split(entry_file);
-        loaded = Jac.jac_import(
-            target=base_stem(svc_file),
-            base_path=svc_base or "./",
-            lng=entry_file.split(".")[-1]
-        );
-        module = loaded[0] if loaded else None;
-        if module is None {
-            raise RuntimeError(
-                f"Service app '{svc.name}' failed to load from {entry_file}"
-            );
-        }
-        register_local(svc.name, module);
-        console.print(
-            f"  ✔ colocated service '{svc.name}' "
-            f"({os.path.relpath(entry_file, project_root)})",
-            style="muted"
-        );
-    }
-}
 
 def _client_display_path(path: Path, base: str) -> str {
     import jaclang;
@@ -1258,11 +1210,7 @@ impl serve(
             mach.close();
             return 1;
         }
-        _colocate_services(cfg, served, base);
-        if served is not None {
-            import from jaclang.server.sv_client { set_consumer_app }
-            set_consumer_app(served.name);
-        }
+        assemble_served_program(cfg, served, base);
     } except Exception as e {
         if Jac.get_program().errors_had {
             for error in Jac.get_program().errors_had {

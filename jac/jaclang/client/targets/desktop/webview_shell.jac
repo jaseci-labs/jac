@@ -11,6 +11,7 @@ import from jaclang.client.targets.desktop.desktop_build {
     _jac_subprocess_env,
     _stage_fused_runtime,
     _bundle_runtime,
+    stage_program
 }
 import from jaclang.client.targets.desktop._host_bootstrap { _generate_host_source }
 import from jaclang.client.targets.desktop._dev_launch {
@@ -68,28 +69,8 @@ def _assemble_native_host(
     shutil.copy2(lib, output_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.jac", output_dir / "webview.jac");
 
-    sv_root = entry_file.parent;
-    sv_stage = output_dir / "sv";
-    sv_ignore = shutil.ignore_patterns(
-        ".jac",
-        ".git",
-        "node_modules",
-        ".venv*",
-        "__pycache__",
-        "*.pyc",
-        ".env",
-        ".env.*",
-        "*.env",
-        "*.sqlite",
-        "*.sqlite3",
-        "*.db",
-        "*.key",
-        "*.pem",
-        "*.p12",
-        "*.pfx"
-    );
-    shutil.copytree(sv_root, sv_stage, ignore=sv_ignore);
-    sv_entry_rel = str(entry_file.name);
+    backend = cfg.get_backend();
+    program = stage_program(entry_file, project_dir, output_dir, backend, dist_dir);
 
     _stage_fused_runtime(output_dir);
     host_src = _generate_host_source(
@@ -97,7 +78,8 @@ def _assemble_native_host(
         win.width,
         win.height,
         str(app_name),
-        sv_entry_rel,
+        program,
+        backend,
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,

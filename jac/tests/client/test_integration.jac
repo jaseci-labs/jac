@@ -158,28 +158,6 @@ def _transpile_all_plugins -> tuple {
     return (tmp, results);
 }
 
-"""Try importing a module, return True if successful, False otherwise."""
-def _try_import(mod_name: str) -> bool {
-    try {
-        __import__(mod_name);
-        return True;
-    } except Exception {
-        return False;
-    }
-}
-
-"""Get the ShellPlugin class directly (avoids built_in attribute issues in Jac)."""
-def _get_shell_plugin_class -> object {
-    mod = _import_plugin("built_in.shell_plugin");
-    return getattr(mod, "ShellPlugin");
-}
-
-"""Get the FsPlugin class directly (avoids built_in attribute issues in Jac)."""
-def _get_fs_plugin_class -> object {
-    mod = _import_plugin("built_in.fs_plugin");
-    return getattr(mod, "FsPlugin");
-}
-
 """Common module names to clean up after plugin tests."""
 def _plugin_mod_names -> list {
     return [
@@ -208,44 +186,6 @@ def _with_plugins(fn: any) {
     }
 }
 
-
-"""Import a plugin module from its .jac source.
-
-The Jac meta-importer may fail on some .jac files. This function handles
-both paths: try normal import first (works for compiled .jac modules),
-then fall back to loading the transpiled .py directly.
-"""
-def _import_plugin(mod_name: str) -> object {
-    import importlib;
-    try {
-        return importlib.import_module(mod_name);
-    } except Exception {
-        # Fall back to loading transpiled .py directly
-        import importlib.util;
-        parts = mod_name.split(".");
-        # e.g. "built_in.shell_plugin" -> "built_in/shell_plugin.py"
-        py_path = str(_plugin_src_dir().joinpath(*parts)) + ".py";
-        spec = importlib.util.spec_from_file_location(mod_name, py_path);
-        if spec is None {
-            raise ImportError(f"Cannot find {mod_name} as .jac or .py");
-        }
-        mod = importlib.util.module_from_spec(spec);
-        assert spec.loader is not None;
-        spec.loader.exec_module(mod);
-        import sys;
-        sys.modules[mod_name] = mod;
-        # Ensure parent package is in sys.modules for attribute access
-        # e.g. for "built_in.shell_plugin", set built_in.shell_plugin attr
-        if "." in mod_name {
-            parent_name = ".".join(parts[:-1]);
-            child_name = parts[-1];
-            if parent_name in sys.modules {
-                setattr(sys.modules[parent_name], child_name, mod);
-            }
-        }
-        return mod;
-    }
-}
 
 """Import _generate_host_source using the installed precompiled module.
 
@@ -301,20 +241,28 @@ test "transpiled plugin files are importable Python" {
             # Import the base types first (other plugins depend on them)
             import desktop_plugin;
             import plugin_host;
-            # Import all built-in plugins
-            import built_in.path_plugin;
-            import built_in.notification_plugin;
-            import built_in.clipboard_plugin;
-            _import_plugin("built_in.shell_plugin");
-            # fs_plugin, dialog_plugin, shell_plugin transpile via jac0 fallback
-            _FsPlugin = _get_fs_plugin_class();
-            _try_import("built_in.dialog_plugin");
-            _try_import("built_in.window_plugin");
-            # Verify core classes exist on the base modules
+            # Every built-in plugin imports as a regular Jac module.
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.notification_plugin { NotificationPlugin }
+            import from built_in.clipboard_plugin { ClipboardPlugin }
+            import from built_in.shell_plugin { ShellPlugin }
+            import from built_in.fs_plugin { FsPlugin }
+            import from built_in.dialog_plugin { DialogPlugin }
+            import from built_in.window_plugin { WindowPlugin }
             assert hasattr(desktop_plugin, "PluginError");
             assert hasattr(desktop_plugin, "DesktopPlugin");
             assert hasattr(plugin_host, "PluginHost");
-            assert hasattr(built_in.path_plugin, "PathPlugin");
+            for cls in [
+                PathPlugin,
+                NotificationPlugin,
+                ClipboardPlugin,
+                ShellPlugin,
+                FsPlugin,
+                DialogPlugin,
+                WindowPlugin
+            ] {
+                assert callable(cls);
+            }
         } finally {
             sys.path[:] = saved_path;
         }
@@ -333,9 +281,9 @@ test "path plugin dispatch roundtrip" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
+            import from built_in.path_plugin { PathPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            host.register("jac.path", PathPlugin());
             resp = json.loads(
                 host.dispatch(
                     json.dumps({"plugin": "jac.path", "command": "home", "args": {}})
@@ -355,9 +303,9 @@ test "dispatch accepts webview bind arg arrays" {
     _with_plugins(
         lambda {
             import plugin_host;
-            import built_in.path_plugin;
+            import from built_in.path_plugin { PathPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            host.register("jac.path", PathPlugin());
             resp = json.loads(host.dispatch(json.dumps(["jac.path", "home", {}])));
             assert resp["ok"] == True;
             assert "path" in resp["data"];
@@ -371,9 +319,9 @@ test "path plugin separator command" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
+            import from built_in.path_plugin { PathPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            host.register("jac.path", PathPlugin());
             resp = json.loads(
                 host.dispatch(
                     json.dumps(
@@ -393,9 +341,9 @@ test "path plugin resolve command" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
+            import from built_in.path_plugin { PathPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            host.register("jac.path", PathPlugin());
             resp = json.loads(
                 host.dispatch(
                     json.dumps(
@@ -419,9 +367,9 @@ test "path plugin temp command" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
+            import from built_in.path_plugin { PathPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            host.register("jac.path", PathPlugin());
             resp = json.loads(
                 host.dispatch(
                     json.dumps({"plugin": "jac.path", "command": "temp", "args": {}})
@@ -439,9 +387,9 @@ test "path plugin data command" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
+            import from built_in.path_plugin { PathPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.path", built_in.path_plugin.PathPlugin());
+            host.register("jac.path", PathPlugin());
             resp = json.loads(
                 host.dispatch(
                     json.dumps({"plugin": "jac.path", "command": "data", "args": {}})
@@ -459,9 +407,9 @@ test "shell plugin denies all commands by default" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            _ShellPlugin = _get_shell_plugin_class();
+            import from built_in.shell_plugin { ShellPlugin }
             host = plugin_host.PluginHost();
-            host.register("jac.shell", _ShellPlugin({}));
+            host.register("jac.shell", ShellPlugin({}));
             resp = json.loads(
                 host.dispatch(
                     json.dumps(
@@ -485,10 +433,10 @@ test "shell plugin allow-list matching" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            _ShellPlugin = _get_shell_plugin_class();
+            import from built_in.shell_plugin { ShellPlugin }
             config = {"allow": ["echo *", "ls *"]};
             host = plugin_host.PluginHost();
-            host.register("jac.shell", _ShellPlugin(config));
+            host.register("jac.shell", ShellPlugin(config));
             # Matching command should succeed
             resp = json.loads(
                 host.dispatch(
@@ -528,10 +476,10 @@ test "shell plugin rejects shell injection in allowed commands" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            _ShellPlugin = _get_shell_plugin_class();
+            import from built_in.shell_plugin { ShellPlugin }
             config = {"allow": ["echo *"]};
             host = plugin_host.PluginHost();
-            host.register("jac.shell", _ShellPlugin(config));
+            host.register("jac.shell", ShellPlugin(config));
             marker = "/tmp/jac_shell_injection_test";
             with open(marker, "w") as f {
                 f.write("probe");
@@ -568,10 +516,10 @@ test "shell allow-list does not silently widen subcommands" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            _ShellPlugin = _get_shell_plugin_class();
+            import from built_in.shell_plugin { ShellPlugin }
             # "git log" must NOT permit "git push"
             host = plugin_host.PluginHost();
-            host.register("jac.shell", _ShellPlugin({"allow": ["git log"]}));
+            host.register("jac.shell", ShellPlugin({"allow": ["git log"]}));
             resp_ok = json.loads(
                 host.dispatch(
                     json.dumps(
@@ -599,7 +547,7 @@ test "shell allow-list does not silently widen subcommands" {
             assert resp_bad["error"]["code"] == "FORBIDDEN";
             # Trailing wildcard still works
             host2 = plugin_host.PluginHost();
-            host2.register("jac.shell", _ShellPlugin({"allow": ["git *"]}));
+            host2.register("jac.shell", ShellPlugin({"allow": ["git *"]}));
             resp_wild = json.loads(
                 host2.dispatch(
                     json.dumps(
@@ -614,7 +562,7 @@ test "shell allow-list does not silently widen subcommands" {
             assert resp_wild["ok"] == True;
             # Exact match, extra args rejected unless wildcarded
             host3 = plugin_host.PluginHost();
-            host3.register("jac.shell", _ShellPlugin({"allow": ["ls"]}));
+            host3.register("jac.shell", ShellPlugin({"allow": ["ls"]}));
             resp_exact = json.loads(
                 host3.dispatch(
                     json.dumps(
@@ -629,7 +577,7 @@ test "shell allow-list does not silently widen subcommands" {
             assert resp_exact["ok"] == False;
             assert resp_exact["error"]["code"] == "FORBIDDEN";
             host4 = plugin_host.PluginHost();
-            host4.register("jac.shell", _ShellPlugin({"allow": ["ls *"]}));
+            host4.register("jac.shell", ShellPlugin({"allow": ["ls *"]}));
             resp_wc = json.loads(
                 host4.dispatch(
                     json.dumps(
@@ -656,13 +604,13 @@ test "fs plugin blocks reads with empty allow list" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
-            _FsPlugin = _get_fs_plugin_class();
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
             host = plugin_host.PluginHost();
-            path_p = built_in.path_plugin.PathPlugin();
+            path_p = PathPlugin();
             host.register("jac.path", path_p);
             # No allow_read entries
-            fs_p = _FsPlugin({}, path_p);
+            fs_p = FsPlugin({}, path_p);
             host.register("jac.fs", fs_p);
             resp = json.loads(
                 host.dispatch(
@@ -687,16 +635,16 @@ test "fs plugin allows reads within allowed paths" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
-            _FsPlugin = _get_fs_plugin_class();
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
             with tempfile.TemporaryDirectory() as td {
                 # Create a test file inside the allowed dir
                 test_file = Path(td) / "test.txt";
                 test_file.write_text("hello from integration test");
                 host = plugin_host.PluginHost();
-                path_p = built_in.path_plugin.PathPlugin();
+                path_p = PathPlugin();
                 host.register("jac.path", path_p);
-                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                fs_p = FsPlugin({"allow_read": [str(td)]}, path_p);
                 host.register("jac.fs", fs_p);
                 resp = json.loads(
                     host.dispatch(
@@ -722,13 +670,13 @@ test "fs plugin blocks reads outside allowed paths" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
-            _FsPlugin = _get_fs_plugin_class();
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
             with tempfile.TemporaryDirectory() as td {
                 host = plugin_host.PluginHost();
-                path_p = built_in.path_plugin.PathPlugin();
+                path_p = PathPlugin();
                 host.register("jac.path", path_p);
-                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                fs_p = FsPlugin({"allow_read": [str(td)]}, path_p);
                 host.register("jac.fs", fs_p);
                 resp = json.loads(
                     host.dispatch(
@@ -754,13 +702,13 @@ test "fs plugin write and read roundtrip" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
-            _FsPlugin = _get_fs_plugin_class();
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
             with tempfile.TemporaryDirectory() as td {
                 host = plugin_host.PluginHost();
-                path_p = built_in.path_plugin.PathPlugin();
+                path_p = PathPlugin();
                 host.register("jac.path", path_p);
-                fs_p = _FsPlugin(
+                fs_p = FsPlugin(
                     {"allow_read": [str(td)], "allow_write": [str(td)]}, path_p
                 );
                 host.register("jac.fs", fs_p);
@@ -805,15 +753,15 @@ test "fs plugin exists command" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
-            _FsPlugin = _get_fs_plugin_class();
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
             with tempfile.TemporaryDirectory() as td {
                 test_file = Path(td) / "exists_test.txt";
                 test_file.write_text("data");
                 host = plugin_host.PluginHost();
-                path_p = built_in.path_plugin.PathPlugin();
+                path_p = PathPlugin();
                 host.register("jac.path", path_p);
-                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                fs_p = FsPlugin({"allow_read": [str(td)]}, path_p);
                 host.register("jac.fs", fs_p);
                 # Existing file
                 resp1 = json.loads(
@@ -854,16 +802,16 @@ test "fs plugin list_dir command" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.path_plugin;
-            _FsPlugin = _get_fs_plugin_class();
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
             with tempfile.TemporaryDirectory() as td {
                 # Create some files
                 (Path(td) / "a.txt").write_text("aaa");
                 (Path(td) / "b.txt").write_text("bbb");
                 host = plugin_host.PluginHost();
-                path_p = built_in.path_plugin.PathPlugin();
+                path_p = PathPlugin();
                 host.register("jac.path", path_p);
-                fs_p = _FsPlugin({"allow_read": [str(td)]}, path_p);
+                fs_p = FsPlugin({"allow_read": [str(td)]}, path_p);
                 host.register("jac.fs", fs_p);
                 resp = json.loads(
                     host.dispatch(
@@ -896,12 +844,13 @@ test "notification plugin accepts true config" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.notification_plugin;
+            import from built_in.notification_plugin { NotificationPlugin }
+            import from manifest { PluginContext }
             host = plugin_host.PluginHost();
-            # Config is True (from `notification = true` in TOML)
+            # Config is True (from `notification = true` in TOML); build
+            # normalizes it the way the registry does.
             host.register(
-                "jac.notification",
-                built_in.notification_plugin.NotificationPlugin(True)
+                "jac.notification", NotificationPlugin.build(PluginContext(), True)
             );
             # send should attempt (and likely fail in CI, but the plugin should
             # not reject the config)
@@ -931,11 +880,12 @@ test "clipboard plugin accepts true config with defaults" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.clipboard_plugin;
+            import from built_in.clipboard_plugin { ClipboardPlugin }
+            import from manifest { PluginContext }
             host = plugin_host.PluginHost();
             # Config is True -> normalized to {} -> defaults to allow both
             host.register(
-                "jac.clipboard", built_in.clipboard_plugin.ClipboardPlugin(True)
+                "jac.clipboard", ClipboardPlugin.build(PluginContext(), True)
             );
             # Write should attempt (may fail with UNAVAILABLE in CI, but not
             # FORBIDDEN)
@@ -963,13 +913,11 @@ test "clipboard plugin blocks read when allow_read is false" {
         lambda {
             import desktop_plugin;
             import plugin_host;
-            import built_in.clipboard_plugin;
+            import from built_in.clipboard_plugin { ClipboardPlugin }
             host = plugin_host.PluginHost();
             host.register(
                 "jac.clipboard",
-                built_in.clipboard_plugin.ClipboardPlugin(
-                    {"allow_read": False, "allow_write": True}
-                )
+                ClipboardPlugin({"allow_read": False, "allow_write": True})
             );
             resp = json.loads(
                 host.dispatch(
@@ -1015,12 +963,8 @@ test "generated host source contains required elements" {
     assert "import from fused.bringup" in src;
     assert "engine_boot" in src;
     assert "Py_Finalize" in src;
-    assert "_jac_invoke_handler" in src;
-    assert "_PH_DISPATCH" in src;
-    assert "wv.bind" in src;
     assert "BOOTSTRAP_JS" in src;
     assert "BOOT_PY" in src;
-    assert "__jac_invoke" in src;
     assert "TestApp" in src;
     assert "800" in src;
     assert "600" in src;
@@ -1029,10 +973,12 @@ test "generated host source contains required elements" {
     assert "host_boot.boot(" in src;
     assert "path" in src;
     assert "true" in src;
-    # Bridge must be inlined (not imported from separate file)
-    assert "PyGILState_Ensure" in src;
-    assert "respond" in src;
+    # The window talks to the loopback server over HTTP; the host binds no
+    # native call bridge, it only hands the webview handle to the plugin host.
+    assert "wv.bind" not in src;
+    assert "_jac_invoke_handler" not in src;
     assert "_stash_wv_in_python" in src;
+    assert "_ctx.shutdown()" in src;
     assert "run_main_loop()" in src;
     assert "webview_create(0, 0)" in src;
     assert "LAST_WEBVIEW_HANDLE = _wv_raw" in src;
@@ -1056,10 +1002,8 @@ test "generated host source with no plugins" {
         plugin_configs={}
     );
     assert "import from webview" in src;
-    assert "wv.bind" in src;
+    assert "host_boot.boot(" in src;
     assert "NoPlugins" in src;
-    # Bridge must be inlined
-    assert "_jac_invoke_handler" in src;
     # Plugin registration happens inside host_boot.boot(), not in generated code
     assert "host_boot.boot(" in src;
     assert "_pc.get" not in src;  # old hand-written registration removed
@@ -1147,7 +1091,8 @@ test "js sdk snippet matches generated host source" {
     # critical pieces rather than requiring a single contiguous literal.
     assert "window.__jac={" in host_boot;
     assert "invoke:function(p,c,a){" in host_boot;
-    assert "window.__JAC_NATIVE__=true;" in host_boot;
+    assert "window.__JAC_DESKTOP__=true;" in host_boot;
+    assert "__JAC_NATIVE__" not in host_boot , "walker calls are plain HTTP; no native transport flag";
     assert "__emit__:function(ev,p){" in host_boot;
 }
 
@@ -1414,10 +1359,9 @@ test "build pipeline wires the runtime-imported bootstrap" {
     # Plugin bootstrap / broker / dispatch wiring live in host_boot, not here.
     assert "bootstrap_plugins" not in host_src;
     assert "make_handler" not in host_src;
+    assert "prepare_inprocess_runtime" not in host_src;
     # Bridge + JS SDK still present.
-    assert "_jac_invoke_handler" in host_src;
-    assert "_PH_DISPATCH" in host_src;
-    assert "PyGILState_Ensure" in host_src;
+    assert "_jac_invoke_handler" not in host_src;
     assert "__JAC_DESKTOP__" in host_src;
 }
 
@@ -1429,22 +1373,22 @@ test "build pipeline wires the runtime-imported bootstrap" {
 test "all built-in plugins expose manifest and build" {
     _with_plugins(
         lambda {
-            import built_in.path_plugin;
-            import built_in.fs_plugin;
-            import built_in.clipboard_plugin;
-            import built_in.notification_plugin;
-            import built_in.dialog_plugin;
-            import built_in.shell_plugin;
-            import built_in.window_plugin;
+            import from built_in.path_plugin { PathPlugin }
+            import from built_in.fs_plugin { FsPlugin }
+            import from built_in.clipboard_plugin { ClipboardPlugin }
+            import from built_in.notification_plugin { NotificationPlugin }
+            import from built_in.dialog_plugin { DialogPlugin }
+            import from built_in.shell_plugin { ShellPlugin }
+            import from built_in.window_plugin { WindowPlugin }
             import from manifest { PluginManifest }
             for cls in [
-                built_in.path_plugin.PathPlugin,
-                built_in.fs_plugin.FsPlugin,
-                built_in.clipboard_plugin.ClipboardPlugin,
-                built_in.notification_plugin.NotificationPlugin,
-                built_in.dialog_plugin.DialogPlugin,
-                built_in.shell_plugin.ShellPlugin,
-                built_in.window_plugin.WindowPlugin
+                PathPlugin,
+                FsPlugin,
+                ClipboardPlugin,
+                NotificationPlugin,
+                DialogPlugin,
+                ShellPlugin,
+                WindowPlugin
             ] {
                 m = cls.manifest();
                 assert isinstance(m, PluginManifest);

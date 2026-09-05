@@ -1,4 +1,4 @@
-import from web.docs.DocsShell { DocsShell }
+import from core.site.docs.DocsShell { DocsShell }
 
 def:pub page -> JsxPage {
     return <DocsShell/>;

@@ -94,6 +94,8 @@ obj ServeSettings {
         strict_port: bool = False,
         dev: bool = False,
         no_client: bool = False,
+        client_dist: str = '',
+        static_only: bool = False,
         docs_enabled: bool = True,
         graph_enabled: bool = True,
         cors_origins: list[str] = ['*'],

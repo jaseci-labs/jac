@@ -1,4 +1,3 @@
-import os;
 import from typing { Optional }
 import from pathlib { Path }
 import type from jaclang.project.apps { AppConfig }
@@ -12,18 +11,7 @@ glob KIND_TARGET: dict[str, str] = {
      };
 
 def client_workspace_app(config: any, entry_path: str = "") -> AppConfig | None {
-    if config is None or not config.is_workspace or not config.apps {
-        return None;
-    }
-    if not entry_path {
-        import from jaclang.runtime.runtime { JacRuntime as Jac }
-        entry_path = Jac.get_full_target_path() or "";
-    }
-    if not entry_path {
-        return None;
-    }
-    app = config.app_for_path(os.path.abspath(entry_path));
-    return None if app is None or app.implicit else app;
+    return config.app_for_target(entry_path) if config is not None else None;
 }
 
 def client_app_dir_for(config: any, entry_path: str = "") -> Path {

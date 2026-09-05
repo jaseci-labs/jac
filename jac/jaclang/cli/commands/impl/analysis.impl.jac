@@ -560,13 +560,17 @@ impl check(
         (candidates, _sweep_errs) = _iter_jac_files(
             sweep_roots, ignore_list, include_annex=False
         );
-        seen = set(reached) | {os.path.realpath(u['path']) for u in units};
+        rooted = {os.path.realpath(u['path']) for u in units};
         orphans: list[dict[(str, any)]] = [];
         for f in candidates {
-            if os.path.realpath(f) in seen {
+            real = os.path.realpath(f);
+            if real in rooted {
                 continue;
             }
             owner = ws.app_for_path(f);
+            if owner is None and real in reached {
+                continue;
+            }
             if app and (owner is None or owner.name != app) {
                 continue;
             }
@@ -575,7 +579,7 @@ impl check(
                     f,
                     owner.name if owner is not None else '',
                     owner.kind if owner is not None else '',
-                    '',
+                    owner.name if owner is not None else '',
                     ws.project_root
                 )
             );

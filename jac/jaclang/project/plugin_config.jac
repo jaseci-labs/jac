@@ -7,6 +7,7 @@ obj PluginConfigBase {
     has project_dir: Path | None = None,
         config_file: Path postinit,
         _config: dict[str, any] | None postinit,
+        _config_app: str postinit,
         _jac_config: JacConfig | None postinit;
 
     def postinit -> None;
@@ -17,6 +18,7 @@ obj PluginConfigBase {
     def _validate_declared_keys(raw: dict[str, any]) -> None;
     def load -> dict[str, any];
     def get_jac_config -> JacConfig;
+    def effective_jac_config -> JacConfig;
     def get_section(
         section: str, defaults: dict[(str, any)] | None = None
     ) -> dict[str, any];

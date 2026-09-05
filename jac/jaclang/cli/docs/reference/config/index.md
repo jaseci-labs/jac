@@ -772,6 +772,16 @@ Switching frameworks automatically adjusts the installed npm packages and the ge
 
 Defines custom import aliases applied to Vite `resolve.alias`, TypeScript `compilerOptions.paths`, and the Jac module resolver. See [jac-client Import Path Aliases](../plugins/jac-client.md#import-path-aliases) for details.
 
+**Asset Directory (jac-client):**
+
+```toml
+[client.assets]
+dir = "core/site/assets"        # default: the app's own assets/
+custom_extensions = [".pdf"]    # extra file types to copy into the bundle
+```
+
+Files in the assets directory are served at `/static/assets/<path>` and compiled into the client bundle. In a workspace each app defaults to its own `assets/`; apps that share one UI point `dir` at the shared directory, relative to the project root. Like every client section it overlays per app under `[apps.<name>.client.assets]`.
+
 **NPM Registry Configuration (jac-client):**
 
 ```toml

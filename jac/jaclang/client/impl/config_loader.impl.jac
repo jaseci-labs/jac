@@ -77,19 +77,6 @@ def _clear_node_modules(client_dir: Path | None) {
     }
 }
 
-impl _app_effective_config(jac_config: JacConfig) -> JacConfig {
-    import from jaclang.client.targets.registry { client_workspace_app }
-    app = client_workspace_app(jac_config);
-    if app is None {
-        return jac_config;
-    }
-    try {
-        return jac_config.effective_for_app(app.name);
-    } except ValueError {
-        return jac_config;
-    }
-}
-
 
 impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
     return "client";
@@ -111,6 +98,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
         'configs': {},
         'paths': {},
         'routing': {'auth_redirect': '/login'},
+        'assets': {'dir': '', 'custom_extensions': []},
         'npm': {},
         'package': {
             'name': '',
@@ -123,14 +111,17 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
 }
 
 impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
+    target_app = self.get_jac_config().app_for_target();
+    app_name = target_app.name if target_app is not None else '';
     cached = self._config;
-    if cached is not None {
+    if cached is not None and self._config_app == app_name {
         return cached;
     }
+    self._config_app = app_name;
     default_config = self.get_default_config();
     jac_config = self.get_jac_config();
 
-    client_config = _app_effective_config(jac_config).get_plugin_config('client');
+    client_config = self.effective_jac_config().get_plugin_config('client');
 
     npm_deps = jac_config.get_plugin_deps('npm');
     target_scoped_deps: dict[str, str] = {};
@@ -173,6 +164,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         'routing': client_config.get('routing', {}),
         'npm': client_config.get('npm', {}),
         'pwa': client_config.get('pwa', {}),
+        'assets': client_config.get('assets', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -255,6 +247,32 @@ impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, any] {
     return config.get('pwa', {});
 }
 
+impl JacClientConfig.get_assets_config(self: JacClientConfig) -> dict[str, any] {
+    return self.load().get('assets', {});
+}
+
+impl JacClientConfig.get_asset_extensions(self: JacClientConfig) -> set[str] {
+    return set(self.get_assets_config().get('custom_extensions', []));
+}
+
+impl JacClientConfig.get_assets_dir(
+    self: JacClientConfig, entry_path: str = ""
+) -> Path {
+    import from jaclang.client.targets.registry { client_app_root }
+    project_dir = self.project_dir if self.project_dir is not None else Path.cwd();
+    configured = str(self.get_assets_config().get('dir') or '');
+    jac_config = self.effective_jac_config();
+    if configured {
+        anchor = (
+            jac_config.project_root
+                if jac_config.project_root is not None
+                else project_dir
+        );
+        return Path(anchor) / configured;
+    }
+    return client_app_root(jac_config, project_dir, entry_path) / 'assets';
+}
+
 impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
     pwa_config = self.get_pwa_config();
 
@@ -262,7 +280,7 @@ impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
 }
 
 impl JacClientConfig.get_react_native_config(self: JacClientConfig) -> dict[str, any] {
-    client_config = self.get_jac_config().get_plugin_config("client");
+    client_config = self.effective_jac_config().get_plugin_config("client");
     section = client_config.get("react_native", {});
     return section if isinstance(section, dict) else {};
 }

@@ -146,6 +146,9 @@ http_activation = true
 
 [apps.web.placement.pins]          # per-app pins merged over the base [placement.pins]
 "core.docs.*" = "server"
+
+[apps.kiosk.desktop]               # a desktop app's identity, window and backend
+backend = "https://example.org"
 ```
 
 `jac run web` reads `serve.port` from the `web` effective config; `jac test

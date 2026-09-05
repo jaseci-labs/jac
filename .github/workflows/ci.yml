@@ -968,8 +968,10 @@ jobs:
       # should name the quickstart step, not a missing module at bundle time.
       - name: Verify the scaffold came from the bundled template
         run: |
-          test -f site/web/main.jac && test -f site/web/game/arena.jac \
+          test -f site/web/main.jac && test -f site/core/site/game/arena.jac \
             || { echo "::error::scaffold is missing the site's entry or the wasm game"; exit 1; }
+          test -f site/desktop/main.jac \
+            || { echo "::error::scaffold is missing the desktop app"; exit 1; }
           # Client npm deps live under the project's build dir (.jac/client),
           # not a top-level node_modules; that is where the vite bundler looks.
           test -d site/.jac/client/node_modules/vite \
@@ -979,13 +981,72 @@ jobs:
           fi
           grep -q '^name = "site"' site/jac.toml \
             || { echo "::error::the scaffold was not renamed to the project name"; exit 1; }
-          cmp jac/examples/jaclang_org/web/assets/og-card.png site/web/assets/og-card.png \
+          cmp jac/examples/jaclang_org/core/site/assets/og-card.png site/core/site/assets/og-card.png \
             || { echo "::error::a binary asset did not survive the template round trip"; exit 1; }
           echo "scaffold matches the README quickstart"
 
       - name: Type check the site
         working-directory: site
         run: jac check
+
+      # The site ships as a desktop app too (apps.desktop, backend jaclang.org):
+      # the native engine needs WebKitGTK + a C toolchain to build libwebview,
+      # patchelf for the $ORIGIN runpath, and a display to launch under.
+      - name: Install desktop build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
+            patchelf xvfb
+
+      - name: Build the desktop app
+        working-directory: site
+        run: jac build desktop
+
+      - name: Desktop artifact audit
+        working-directory: site
+        run: |
+          OUT=.jac/client/desktop/desktop
+          test -x $OUT/jaclang || { echo "::error::no desktop binary"; exit 1; }
+          test -f $OUT/app.jab || { echo "::error::no sealed app image beside the binary"; exit 1; }
+          test -f $OUT/dist/index.html || { echo "::error::no client bundle beside the binary"; exit 1; }
+          test ! -d $OUT/sv || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
+          grep -q "https://jaclang.org" $OUT/dist/client.*.js \
+            || { echo "::error::the bundle does not carry its remote backend"; exit 1; }
+
+      # Launch under Xvfb: the host announces its loopback origin on stdout,
+      # serves the bundle and the broker there, and answers no walker locally
+      # because its backend is remote.
+      - name: Desktop smoke (Xvfb)
+        working-directory: site/.jac/client/desktop/desktop
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 &
+          XVFB_PID=$!
+          DISPLAY=:99 GDK_BACKEND=x11 timeout 600s ./jaclang-launch.sh > /tmp/site-desktop.log 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 110); do
+            grep -q "JAC_DESKTOP_SERVING" /tmp/site-desktop.log && break
+            if ! kill -0 $APP_PID 2>/dev/null; then echo "::error::desktop app exited early"; cat /tmp/site-desktop.log; exit 1; fi
+            sleep 5
+          done
+          ORIGIN=$(grep -o "JAC_DESKTOP_SERVING http://[^ ]*" /tmp/site-desktop.log | head -1 | cut -d' ' -f2)
+          test -n "$ORIGIN" || { echo "::error::the desktop host never announced its origin"; cat /tmp/site-desktop.log; exit 1; }
+          curl -fsS "${ORIGIN}__jac/health" | grep -q '"ok": true' || { echo "::error::broker health failed"; exit 1; }
+          curl -fsS "$ORIGIN" | grep -q "The Jac Programming Language" || { echo "::error::the site index did not load"; exit 1; }
+          curl -fsS "${ORIGIN}docs/getting-started" | grep -q "The Jac Programming Language" || { echo "::error::SPA fallback failed"; exit 1; }
+          curl -fsS "${ORIGIN}static/assets/jac-logo.svg" | grep -q "<svg" || { echo "::error::the shared site assets are not served by the desktop host"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${ORIGIN}walker/doc_page" -H 'Content-Type: application/json' -d '{}')
+          [ "$code" = "404" ] || [ "$code" = "405" ] || { echo "::error::a remote-backend desktop app served a walker locally ($code)"; exit 1; }
+          kill $APP_PID $XVFB_PID 2>/dev/null || true
+          echo "desktop app serves the site on $ORIGIN"
+
+      - name: Upload desktop logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-desktop-logs
+          path: /tmp/site-desktop.log
+          if-no-files-found: ignore
 
       # The docs section reads the corpus bundled with the jac binary under
       # test in-process (jaclang.cli.guide_store), so the docs journey stop is

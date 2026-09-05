@@ -275,3 +275,24 @@ test "the app-isolation law fires on a warm interface cache too" {
     );
     _cleanup();
 }
+
+
+test "the gate body-checks every module an app owns, not only its entry" {
+    d = _workspace();
+    bad = os.path.join(d, "cli", "cmd.jac");
+    with open(bad, "w") as f {
+        f.write("def total(n: int) -> int {\n    return \"not an int\";\n}\n");
+    }
+    with open(os.path.join(d, CLI_ENTRY), "a") as f {
+        f.write(
+            "\nimport from .cmd { total }\n\ndef use_total -> int {\n    return total(2);\n}\n"
+        );
+    }
+    (rc, out) = _check_in(d);
+    assert rc != 0 , f"a body type error in a module the cli app reaches must fail the gate:\n{out}";
+    assert _checked(out, os.path.join("cli", "cmd.jac")) , f"cmd.jac was never checked as a root:\n{out}";
+    assert "cmd.jac" in out and "[cli] " in out , out;
+    (rc_app, out_app) = _check_in(d, app="cli");
+    assert rc_app != 0 , f"--app cli must fail the same way:\n{out_app}";
+    _cleanup();
+}

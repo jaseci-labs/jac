@@ -12,8 +12,8 @@ import from core.docs.sync { docs_sync_tick }
 import from core.install { ensure_install, install_sh }
 import from core.leaderboard.board { submit_repo, leaderboard, board_status }
 
-import ".styles.global.css";
-import ".styles.site.css";
+import "../core/site/styles/global.css";
+import "../core/site/styles/site.css";
 
 def:pub app(children: any) -> JsxElement {
     return <>{children}</>;

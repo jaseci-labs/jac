@@ -27,6 +27,13 @@ path = "mobile"
 kind = "cli"
 path = "cli"
 
+# The site as a desktop app: the same core/site UI in an OS webview. Its
+# backend is jaclang.org itself (see [apps.desktop.desktop] backend), so it is
+# a native window onto the live site, not a private copy of it.
+[apps.desktop]
+kind = "desktop"
+path = "desktop"
+
 [apps.social_graph]
 kind = "service"
 entry-point = "core/social_graph.jac"
@@ -57,10 +64,10 @@ directories = ["core/socialize_mobile"]
 select = ["all", "strip-comments", "strip-docstrings"]
 exclude = [
     ".jac/*",
-    "web/examples/*",
-    "web/source/FloatingSource.jac",
-    "web/landing/Reveal.jac",
-    "web/game/webgl_host.jac",
+    "core/site/examples/*",
+    "core/site/source/FloatingSource.jac",
+    "core/site/landing/Reveal.jac",
+    "core/site/game/webgl_host.jac",
     "core/async_utils.jac",
     "core/leaderboard/format.jac",
 ]
@@ -79,7 +86,7 @@ font = "geist"
 radius = "default"
 menuAccent = "subtle"
 menuColor = "default"
-components_dir = "web/ui"
+components_dir = "core/site/ui"
 utils_path = "core/utils.jac"
 
 [dependencies]
@@ -103,6 +110,18 @@ lucide-react = "^0.469.0"
 [apps.cli.check.lint]
 ignore = ["no-print"]
 
+[apps.desktop.desktop]
+name = "jaclang"
+identifier = "org.jaclang.desktop"
+backend = "https://jaclang.org"
+
+[apps.desktop.desktop.window]
+title = "jaclang.org"
+width = 1280
+height = 860
+min_width = 900
+min_height = 600
+
 [apps.mobile.dependencies.npm]
 react-native-web = "^0.19.13"
 
@@ -111,22 +130,25 @@ lucide-react-native = "^0.469.0"
 react-native-svg = "^15.13.0"
 
 # identity.jac is pure client helpers over the social graph's wire shapes;
-# without JSX of its own the solver cannot see that, so pin it.
-[apps.web.placement.pins]
-"web.socialize.identity" = "client"
+# without JSX of its own the solver cannot see that, so pin it. The [client.*]
+# tables below are workspace-wide: the web app and the desktop app share one
+# UI (core/site) and so one client configuration.
+[placement.pins]
+"core.site.socialize.identity" = "client"
 
-[apps.web.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
-[apps.web.client.assets]
+[client.assets]
+dir = "core/site/assets"
 custom_extensions = [
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
     ".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp4", ".webm", ".mp3",
     ".wav", ".css", ".js", ".json",
 ]
 
-[apps.web.client.app_meta_data]
+[client.app_meta_data]
 title = "The Jac Programming Language"
 description = "One language, one compiler, the whole stack. No glue. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features."
 keywords = "jac, jaclang, programming language, jaseci, object-spatial programming, by llm, full-stack"

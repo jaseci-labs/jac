@@ -147,24 +147,6 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
     }
 }
 
-async def __nativeInvoke(kind: str, name: str, `node: str, fields: dict) -> any {
-    token = __getLocalStorage("jac_token") or "";
-    payload = {
-        "kind": kind,
-        "name": name,
-        "node": `node,
-        "fields": fields,
-        "token": token
-    };
-    return await globalThis.__jac_invoke(JSON.stringify(payload));
-}
-
-def __nativeErrorMsg(response: any) -> str {
-    try {
-        return response["body"]["error"]["message"];
-    } except Exception {}
-    return "Unknown error";
-}
 
 impl __bridgeErrorFor(
     status: int, message: str, app: str = "", name: str = ""
@@ -173,6 +155,14 @@ impl __bridgeErrorFor(
         return BridgeRejected(app=app, name=name, detail=message, status=status);
     }
     return BridgeError(app=app, name=name, detail=message, status=status);
+}
+
+impl __fetchOrRaise(url: str, init: dict, app: str, name: str) -> Response {
+    try {
+        return await fetch(url, init);
+    } except Exception as fetch_err {
+        raise __bridgeErrorFromFetch(fetch_err, app, name);
+    }
 }
 
 impl __bridgeErrorFromFetch(err: any, app: str = "", name: str = "") -> BridgeError {
@@ -199,23 +189,6 @@ impl __doWalkerFetch(
     `walker: str, nodeId: str, fields: dict, opts: (dict | None) = None
 ) -> any {
     app = opts["app"] if opts and opts["app"] else "";
-    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
-        response = await __nativeInvoke("walker", `walker, nodeId, fields);
-        if not response["ok"] {
-            if response["status"] == 401 {
-                __removeLocalStorage("jac_token");
-                window.location.reload();
-                return {};
-            }
-            raise __bridgeErrorFor(
-                response["status"],
-                f"Walker {`walker} failed: {__nativeErrorMsg(response)}",
-                app,
-                `walker
-            );
-        }
-        return response["body"]["data"] if response["body"]["data"] else {};
-    }
     token = __getLocalStorage("jac_token");
     base_url = __bridgeApiBase(opts);
     url = f"{base_url}/walker/{`walker}";
@@ -226,14 +199,12 @@ impl __doWalkerFetch(
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }
-    response = None;
-    try {
-        response = await fetch(
-            url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
-        );
-    } except Exception as fetch_err {
-        raise __bridgeErrorFromFetch(fetch_err, app, `walker);
-    }
+    response = await __fetchOrRaise(
+        url,
+        {"method": "POST", "headers": headers, "body": JSON.stringify(fields)},
+        app,
+        `walker
+    );
     if not response.ok {
         if response.status == 401 and not app {
             __removeLocalStorage("jac_token");
@@ -243,7 +214,10 @@ impl __doWalkerFetch(
         error_text = await response.text();
         walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
         raise __bridgeErrorFor(
-            response.status, f"Walker {walker_name} failed: {error_text}", app, `walker
+            int(response.status),
+            f"Walker {walker_name} failed: {error_text}",
+            app,
+            `walker
         );
     }
     payload = await response.json();
@@ -252,47 +226,18 @@ impl __doWalkerFetch(
 
 impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -> any {
     app = opts["app"] if opts and opts["app"] else "";
-    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
-        response = await __nativeInvoke("function", function_name, "", args);
-        if not response["ok"] {
-            if response["status"] == 401 {
-                __removeLocalStorage("jac_token");
-                window.location.reload();
-                return {};
-            }
-            raise __bridgeErrorFor(
-                response["status"],
-                f"Function {function_name} failed: {__nativeErrorMsg(response)}",
-                app,
-                function_name
-            );
-        }
-        result = None;
-        try {
-            data = response["body"]["data"];
-            if data and "result" in data {
-                result = data["result"];
-            }
-        } except Exception as e {
-            console.warn(f"Failed to extract result for {function_name} (native):", e);
-        }
-        return result;
-    }
     token = __getLocalStorage("jac_token");
     base_url = __bridgeApiBase(opts);
     headers = {"Content-Type": "application/json"};
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }
-    response = None;
-    try {
-        response = await fetch(
-            f"{base_url}/function/{function_name}",
-            {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
-        );
-    } except Exception as fetch_err {
-        raise __bridgeErrorFromFetch(fetch_err, app, function_name);
-    }
+    response = await __fetchOrRaise(
+        f"{base_url}/function/{function_name}",
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)},
+        app,
+        function_name
+    );
     if not response.ok {
         if response.status == 401 and not app {
             __removeLocalStorage("jac_token");
@@ -301,7 +246,7 @@ impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -
         }
         error_text = await response.text();
         raise __bridgeErrorFor(
-            response.status,
+            int(response.status),
             f"Function {function_name} failed: {error_text}",
             app,
             function_name
@@ -314,7 +259,7 @@ impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -
             app=app,
             name=function_name,
             detail=f"Function {function_name} failed: {error_msg}",
-            status=response.status
+            status=int(response.status)
         );
     }
     result = None;

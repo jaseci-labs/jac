@@ -1,6 +1,6 @@
 glob EXCLUDE_DIRS: set = {".git", ".jac", "node_modules", "__pycache__", "assets"},
      ALLOW_EXT: set = {".jac", ".toml", ".css", ".md"},
-     EXAMPLES_DIR: str = "web/examples";
+     EXAMPLES_DIR: str = "core/site/examples";
 
 obj SourceFile {
     has path: str,

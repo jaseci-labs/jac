@@ -6,6 +6,7 @@ import stat;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.client.targets.desktop.desktop_build {
+    stage_program,
     _find_cef_dir,
     _jac_bin,
     _jac_subprocess_env,
@@ -90,8 +91,9 @@ def _generate_host_source(
     height: int,
     app_name: str,
     cache_path: str,
-    plugin_configs: dict = {},
-    entry_rel: str = "",
+    plugin_configs: (dict | None) = None,
+    program: (dict | None) = None,
+    backend: str = "embedded",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
@@ -99,7 +101,8 @@ def _generate_host_source(
     boot_py = _host_boot_py(
         app_name,
         "cef",
-        entry_rel,
+        program,
+        backend,
         dispatch_timeout_s,
         dispatch_max_queue,
         dispatch_debug,
@@ -238,13 +241,8 @@ def cef_build(
     shutil.copy2(cef_dir / "cef.jac", out_dir / "cef.jac");
     _stage_cef_runtime(cef_dist, out_dir);
 
-    sv_root = entry_file.parent;
-    sv_ignore = shutil.ignore_patterns(
-        ".jac", ".git", "node_modules", ".venv*", "__pycache__", "*.pyc"
-    );
-    shutil.copytree(sv_root, out_dir / "sv", ignore=sv_ignore);
-    sv_entry_rel = str(entry_file.name);
-
+    backend = cfg.get_backend();
+    program = stage_program(entry_file, project_dir, out_dir, backend, dist_dir);
     _stage_fused_runtime(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
@@ -254,7 +252,8 @@ def cef_build(
         str(app_name),
         cache_path,
         plugin_configs,
-        sv_entry_rel,
+        program,
+        backend,
         dispatch.timeout_s,
         dispatch.max_queue,
         dispatch.debug,

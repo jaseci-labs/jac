@@ -22,4 +22,5 @@ obj DesktopTarget(WebTarget) {
     ) -> None;
 
     def engine(project_dir: Path) -> str;
+    def out_dir_for(entry_file: Path, project_dir: Path) -> Path;
 }

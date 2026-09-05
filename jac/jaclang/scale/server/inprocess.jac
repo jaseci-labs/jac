@@ -52,18 +52,18 @@ def prepare_inprocess_runtime(
     base_path: str,
     endpoint_profile: str = "full",
     setup_background_services: bool = True,
-    transport_kind: str = "testclient"
+    transport_kind: str = "testclient",
+    extensions: (list[ServerExtension] | None) = None,
+    overrides: (dict[str, any] | None) = None
 ) -> PreparedInProcessRuntime {
     import from jaclang.testing.testkit { ServingTestClient }
 
-    if transport_kind != "testclient" {
+    if transport_kind not in ("testclient", "listener") {
         raise NotImplementedError(
             "transport_kind='"
                 + str(transport_kind)
-                + "' is not implemented; "
-                + "only 'testclient' (in-process, single serialized worker) is "
-                + "supported today. 'asgi' / 'isolated_worker' are reserved for the "
-                + "execution-isolation choice recorded in #6596 P0-0."
+                + "' is not implemented; 'testclient' drives the app in-memory and "
+                + "'listener' prepares a server for serve_background()."
         );
     }
 
@@ -86,14 +86,25 @@ def prepare_inprocess_runtime(
             del sys.modules[mod];
         }
         Jac.jac_import(target=mod, base_path=base, lng="jac");
+        import from jaclang.project.config { get_config_for_dir }
+        import from jaclang.server.assembly { assemble_served_program }
+        cfg = get_config_for_dir(base);
+        served = cfg.app_for_path(os.path.abspath(jac_file))
+            if cfg is not None
+            else None;
+        if cfg is not None and served is not None and not served.implicit {
+            assemble_served_program(cfg, served, base);
+        }
 
+        serve_overrides: dict[str, any] = {'no_client': True};
+        serve_overrides.update(overrides or {});
         server = JacAPIServer(
             module_name=mod,
-            port=0,
+            port=int(serve_overrides.get('port') or 0),
             base_path=base_path,
             module_file=jac_file,
-            settings=ServeSettings.load(base_path, {'no_client': True}),
-            extensions=_extensions_for(endpoint_profile)
+            settings=ServeSettings.load(base_path, serve_overrides),
+            extensions=_extensions_for(endpoint_profile) + list(extensions or [])
         );
         server.load_module();
         server._ensure_internal_users();
@@ -105,7 +116,11 @@ def prepare_inprocess_runtime(
                 ext.on_worker_start(server);
             }
         }
-        client = ServingTestClient(app=app, raise_server_exceptions=False);
+        client = (
+            ServingTestClient(app=app, raise_server_exceptions=False)
+                if transport_kind == "testclient"
+                else None
+        );
         return PreparedInProcessRuntime(
             server=server,
             transport_kind=transport_kind,

@@ -231,12 +231,35 @@ def _mount_provider(
 }
 
 
+def served_app_route(server: JacAPIServer) -> tuple[str, str, any] {
+    import from jaclang.project.config { get_config_for_dir }
+    import from jaclang.server.sv_client { consumer_app }
+    served = consumer_app();
+    if not served {
+        return ('', '', None);
+    }
+    config = get_config_for_dir(server.base_path) if server.base_path else None;
+    if config is None {
+        config = get_config();
+    }
+    if config is None or served not in (config.apps or {}) {
+        return ('', '', config);
+    }
+    return (served, provider_route(config, served), config);
+}
+
 def register_colocated_endpoints(server: JacAPIServer) {
+    (served, served_route, config) = served_app_route(server);
+    if served and served_route {
+        _mount_provider(server, served, served_route, server.introspector);
+    }
     providers = colocated_providers();
     if not providers {
         return;
     }
-    config = get_config();
+    if config is None {
+        config = get_config();
+    }
     for (provider_app, provider_module) in providers.items() {
         mod_file = provider_module?.__file__;
         intro = ModuleIntrospector(

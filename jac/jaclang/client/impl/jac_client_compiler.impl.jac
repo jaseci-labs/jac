@@ -135,7 +135,8 @@ impl JacClientCompiler.compile(
 }
 
 impl JacClientCompiler.copy_root_assets(self: JacClientCompiler) -> None {
-    root_assets_dir = self._app_root() / 'assets';
+    import from jaclang.client.config_loader { JacClientConfig }
+    root_assets_dir = JacClientConfig(self.project_dir).get_assets_dir();
     compiled_assets_dir = self.compiled_dir / 'assets';
     if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_assets(root_assets_dir, compiled_assets_dir);

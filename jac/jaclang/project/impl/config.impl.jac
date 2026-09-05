@@ -1550,6 +1550,21 @@ impl JacConfig.effective_for_app(name: str) -> JacConfig {
     return cfg;
 }
 
+impl JacConfig.app_for_target(entry_path: str = "") -> AppConfig | None {
+    if not self.is_workspace or not self.apps {
+        return None;
+    }
+    if not entry_path {
+        import from jaclang.runtime.runtime { JacRuntime }
+        entry_path = JacRuntime.get_full_target_path() or "";
+    }
+    if not entry_path {
+        return None;
+    }
+    app = self.app_for_path(os.path.abspath(entry_path));
+    return None if app is None or app.implicit else app;
+}
+
 impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
     if self.project_root is None {
         return None;

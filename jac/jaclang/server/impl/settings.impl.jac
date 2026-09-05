@@ -147,8 +147,11 @@ impl ServeSettings.load(
         if threads_raw.strip().lower() == WORKERS_AUTO
         else resolve_count(threads_raw, quota, '[serve.workers] threads');
 
-    port_override = given.get('port');
-    port = int(port_override) if port_override else env_int('PORT', cfg.port);
+    port = (
+        int(given['port'])
+            if 'port' in given and given['port'] is not None
+            else env_int('PORT', cfg.port)
+    );
     host_override = given.get('host');
     host = str(host_override) if host_override else (env_value('HOST') or cfg.host);
 
@@ -159,6 +162,8 @@ impl ServeSettings.load(
         strict_port=bool(given.get('strict_port', False)),
         dev=bool(given.get('dev', False)),
         no_client=bool(given.get('no_client', False)),
+        client_dist=str(given.get('client_dist') or ''),
+        static_only=bool(given.get('static_only', False)),
         docs_enabled=env_bool('DOCS', cfg.docs_enabled),
         graph_enabled=env_bool('GRAPH', cfg.graph_enabled),
         cors_origins=env_list('CORS_ORIGINS', list(cfg.cors_origins)),

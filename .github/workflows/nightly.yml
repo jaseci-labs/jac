@@ -30,7 +30,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
           libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-          libasound2t64
+          libasound2t64 patchelf
 
     - name: Build notes-app example
       run: |
@@ -46,6 +46,7 @@ jobs:
         test -f $BUNDLE/minimal-fonts.conf
         test -f $BUNDLE/icudtl.dat
         test -d $BUNDLE/locales
+        test -f $BUNDLE/app.jab
         ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
     - name: Headless smoke with timeout (X11)

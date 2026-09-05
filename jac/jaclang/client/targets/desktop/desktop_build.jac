@@ -33,7 +33,7 @@ def _find_desktop_native_dir -> Path {
         native = src / "jaclang" / "client" / "targets" / "desktop" / "native";
         if (
             (native / "oauth_broker.jac").is_file()
-            and (native / "inprocess_dispatch.jac").is_file()
+            and (native / "host_boot.jac").is_file()
             and (native / "webview" / "webview.jac").is_file()
         ) {
             return native;
@@ -49,7 +49,7 @@ def _find_desktop_native_dir -> Path {
     for cand in candidates {
         if (
             (cand / "oauth_broker.jac").is_file()
-            and (cand / "inprocess_dispatch.jac").is_file()
+            and (cand / "host_boot.jac").is_file()
             and (cand / "webview" / "webview.jac").is_file()
         ) {
             return cand;
@@ -57,7 +57,7 @@ def _find_desktop_native_dir -> Path {
     }
     raise RuntimeError(
         "jac-desktop: desktop/native assets incomplete -- need "
-        "oauth_broker.jac, inprocess_dispatch.jac, and webview/webview.jac. "
+        "oauth_broker.jac, host_boot.jac, and webview/webview.jac. "
         "Rebuild the jac binary (zig build) or set JAC_DESKTOP_JAC_SRC."
     );
 }
@@ -514,4 +514,61 @@ def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
     }
     console.print(f"  Staged CEF {version} in {dist_dir}", style="muted");
     return dist_dir;
+}
+
+
+def serving_app_for(config: any, entry_file: Path, backend: str) -> str {
+    if config is None or not config.is_workspace or not config.apps {
+        return "";
+    }
+    owner = config.app_for_path(str(entry_file.resolve()));
+    if backend != "embedded" {
+        return owner.name if owner is not None else "";
+    }
+    try {
+        chosen = config.resolve_app("");
+    } except ValueError {
+        chosen = None;
+    }
+    if chosen is not None and chosen.has_server {
+        return chosen.name;
+    }
+    for app in config.serving_apps() {
+        if app.kind == "web-app" {
+            return app.name;
+        }
+    }
+    return owner.name if owner is not None else "";
+}
+
+
+def stage_program(
+    entry_file: Path,
+    project_dir: Path,
+    output_dir: Path,
+    backend: str,
+    dist_dir: (Path | None)
+) -> dict[str, str] {
+    if dist_dir is None {
+        return {"entry": str(entry_file.resolve())};
+    }
+    import from jaclang.dist.seal { build_jab }
+    import from jaclang.project.config { get_config_for_dir }
+    config = get_config_for_dir(str(project_dir));
+    if config is None {
+        raise RuntimeError(f"jac-desktop: no jac.toml under {project_dir}");
+    }
+    app = serving_app_for(config, entry_file, backend);
+    console.print(
+        "  Sealing the app image"
+            + (f" for '{app}'" if app else "")
+            + (
+                " (remote backend: the bundle calls it)"
+                    if backend != "embedded"
+                    else ""
+            ),
+        style="muted"
+    );
+    build_jab(config, output_dir / "app.jab", app=app, bake_client=False);
+    return {"jab": "app.jab"};
 }

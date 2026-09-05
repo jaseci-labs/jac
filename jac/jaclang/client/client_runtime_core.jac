@@ -20,6 +20,7 @@ def:pub __bridgeErrorFor(
     status: int, message: str, app: str = "", name: str = ""
 ) -> BridgeError;
 
+async def __fetchOrRaise(url: str, init: dict, app: str, name: str) -> Response;
 def:pub __bridgeErrorFromFetch(err: any, app: str = "", name: str = "") -> BridgeError;
 def:pub __bridgeApiBase(opts: (dict | None) = None) -> str;
 

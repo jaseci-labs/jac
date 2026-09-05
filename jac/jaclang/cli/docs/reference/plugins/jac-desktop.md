@@ -76,14 +76,17 @@ has no HMR, so `jac run --dev` needs `engine = "native"`.
 
 ## Configuration
 
-App identity and window geometry come from `[desktop]` in `jac.toml`:
+App identity, window geometry, the engine and the backend come from `[desktop]`
+in `jac.toml`. In a workspace, `[apps.<name>.desktop]` overlays it for that
+app, the way `[apps.<name>.client]` overlays `[client]`:
 
 ```toml
 [desktop]
 name = "my-app"
 identifier = "com.example.myapp"
 version = "1.0.0"
-engine = "native"  # "native" or "cef"
+engine = "native"        # "native" (OS webview) or "cef" (Chromium)
+backend = "embedded"     # or the URL of the server the app talks to
 
 [desktop.window]
 title = "My App"
@@ -94,15 +97,20 @@ min_height = 600
 resizable = true
 ```
 
+`backend` says where the app's server runs:
+
+- `"embedded"` (the default): the desktop process serves the program itself.
+  The build seals the project into an image shipped beside the binary (the
+  workspace's default serving app plus its colocated service apps, or the
+  desktop app's own server side in a single-app project) and the host boots
+  it on a loopback port.
+- a URL such as `"https://jaclang.org"`: the app is a native window onto that
+  server. The bundle is built with that as its API base, so every walker and
+  function call goes there, and the host serves only the bundle and the
+  desktop broker. The desktop app needs no server-side code of its own.
+
 `engine` defaults to `"native"`. Set it to `"cef"` when the project should use
-Chromium Embedded Framework:
-
-```toml
-[desktop]
-engine = "cef"
-```
-
-Then build or launch the app as usual:
+Chromium Embedded Framework. Then build or launch the app as usual:
 
 ```bash
 jac build studio
@@ -111,7 +119,8 @@ jac run studio
 
 The example app at `jac/examples/notes-app/` is a small notes editor that uses
 `engine = "cef"` and includes a diagnostics drawer for the desktop bridge,
-loopback broker, and `localStorage` persistence checks.
+loopback broker, and `localStorage` persistence checks. `jac/examples/jaclang_org`
+ships jaclang.org itself as a desktop app with `backend = "https://jaclang.org"`.
 
 ---
 
@@ -209,15 +218,24 @@ notification = true
 ## How it works
 
 1. `WebTarget` builds the `cl` codespace with the standard Vite pipeline into
-   `.jac/client/dist/`.
-2. jac-desktop generates a native host that:
-   - `Py_Initialize()`s an embedded CPython and starts `http.server` on a
-     loopback port in a daemon thread, serving `dist/` (resolved next to the
-     binary);
+   the app's client dir (`.jac/client/<app>/dist/` in a workspace). With a
+   remote `backend`, that URL is baked in as the bundle's API base.
+2. jac-desktop seals the program into an app image (`app.jab`, through the same
+   `build_jab` that `jac build` uses) and generates a native host that:
+   - boots the fused Jac runtime with an embedded CPython, materializes the
+     image and runs the one Jac server (`JacAPIServer`) on a loopback port,
+     serving the built bundle as its client and, for an embedded backend, the
+     program with its colocated service apps behind their `/api/<app>` routes;
+   - registers the desktop broker as a server extension under `/__jac/`:
+     health, the SSO session, the OAuth start/callback pair, the plugin event
+     stream and plugin invocation;
    - opens either an OS-native webview or a CEF browser window and navigates to
-     that loopback URL.
+     that loopback origin. Walker and function calls are ordinary HTTP, exactly
+     as in the browser; there is no second transport for the native window.
 3. `jac nacompile` lowers the host to a native binary via Jac's pure-Jac linker
    (no `cc`/`ld`), recording the renderer libraries with an `$ORIGIN` runpath.
+
+Each desktop app of a workspace builds under its own `.jac/client/<app>/desktop/`.
 
 The native webview binding, build tooling, and a dependency-free test suite live
 inside `jaclang` core under `jaclang/client/targets/desktop/native/webview/`.
@@ -229,7 +247,7 @@ The CEF binding, pinned CEF fetch tooling, and QA checklist live under
 ## Status
 
 Beta 🧪. `jac build <app>` on a `desktop` app produces a working, self-contained
-native desktop binary that renders your `cl` UI and runs `sv` walkers/functions
-in-process on the embedded interpreter, with HMR dev mode via
-`jac run --dev <app>`. Per-OS packaging/signing remains open. See
+native desktop binary that renders your `cl` UI and serves your program from
+the sealed image on a loopback port (or points at a remote server), with HMR
+dev mode via `jac run --dev <app>`. Per-OS packaging/signing remains open. See
 [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436).

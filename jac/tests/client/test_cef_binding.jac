@@ -208,24 +208,33 @@ test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
 }
 
 # String-only (no nacompile / CEF / display): the generated CEF host boots
-# through the same host_boot runtime module as the webview host, in cef mode.
-# The Phase J4 (#6596) in-process sv backend + sv_bridge wiring live in
-# host_boot._start_loopback's cef branch, not in generated strings.
-test "cef host source boots inprocess and wires the sv bridge (#6596)" {
+# through the same host_boot runtime module as the webview host, in cef mode,
+# and serves the sealed app image on the loopback server like the webview host.
+test "cef host source boots the runtime host in cef mode with its app image" {
     import from jaclang.client.targets.desktop.cef_shell { _generate_host_source }
     src = _generate_host_source(
-        "Title", 800, 600, "myapp", "/tmp/cache", {}, "main.jac", 30.0, 128, False
+        "Title",
+        800,
+        600,
+        "myapp",
+        "/tmp/cache",
+        plugin_configs={},
+        program={"jab": "app.jab"},
+        backend="embedded",
+        dispatch_timeout_s=30.0,
+        dispatch_max_queue=128,
+        dispatch_debug=False
     );
-    # One boot statement into host_boot, in cef mode, with the staged entry baked.
+    # One boot statement into host_boot, in cef mode, with the app image baked.
     assert "host_boot.boot(" in src;
     assert "cef" in src;
-    assert "main.jac" in src;
+    assert "app.jab" in src;
     # The host reads the loopback port off the returned context.
     assert "_ctx.port" in src;
-    # The cef branch of host_boot owns the sv bridge + in-process boot wiring.
+    # host_boot owns the cef wiring: it binds the plugin host to CEF and serves
+    # the app image on the same loopback server the webview host uses.
     host_boot_src = (_cef_dir().parent / "host_boot.jac").read_text();
-    assert "sv_bridge=inprocess_forward" in host_boot_src;
-    assert "inprocess_boot(" in host_boot_src;
-    assert "forward as inprocess_forward" in host_boot_src;
-    assert "boot as inprocess_boot" in host_boot_src;
+    assert "host.setup_cef()" in host_boot_src;
+    assert "prepare_inprocess_runtime(" in host_boot_src;
+    assert "transport_kind=\"listener\"" in host_boot_src;
 }

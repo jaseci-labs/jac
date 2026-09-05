@@ -303,41 +303,17 @@ test "desktop launch wires JAC_DESKTOP_DEPS from the project venv" {
     }
 }
 
-"""host_boot.runtime_payload is the single routing decision between the
-in-process Jac runtime and the plugin host. Pin the wire forms it must accept:
-raw payload dicts, and the webview bind form (a one-element argument array
-holding the payload as a JSON string). Plugin-style requests fall through."""
-test "host_boot routes runtime payloads and passes plugin requests through" {
-    import json;
-    import from jaclang.client.targets.desktop.native { host_boot }
-
-    walker_req = json.dumps({"kind": "walker", "name": "w", "fields": {}});
-    func_req = json.dumps({"kind": "function", "name": "f", "fields": {}});
-    # Raw dict payloads route to the runtime as-is.
-    assert host_boot.runtime_payload(walker_req) == walker_req;
-    assert host_boot.runtime_payload(func_req) == func_req;
-    # Webview bind form: one-element args array holding the payload string.
-    wrapped = json.dumps([walker_req]);
-    assert host_boot.runtime_payload(wrapped) == walker_req;
-    # Plugin wire forms fall through to the plugin host (None = not runtime).
-    assert host_boot.runtime_payload(json.dumps(["jac.fs", "read_file", {}])) is None;
-    assert host_boot.runtime_payload(json.dumps({"plugin": "jac.fs"})) is None;
-    # Garbage falls through too (the plugin host owns the error envelope).
-    assert host_boot.runtime_payload("not json") is None;
-    assert host_boot.runtime_payload(json.dumps(["not json either"])) is None;
-}
-
-"""Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
-and before Py_Finalize() so the dispatch worker and transport tear down cleanly."""
+"""Generated host source must stop the loopback server (_ctx.shutdown()) after
+run_main_loop() and before Py_Finalize() so the transport tears down cleanly."""
 test "generated host calls shutdown after run_main_loop()" {
     import from jaclang.client.targets.desktop._host_bootstrap { _generate_host_source }
 
     src = _generate_host_source("T", 800, 600, "test-app");
-    assert "inprocess_dispatch.shutdown()" in src , "host must tear down dispatch on exit";
-    assert src.index("run_main_loop()") < src.index("inprocess_dispatch.shutdown()") , "shutdown must run after the webview event loop exits";
+    assert "_ctx.shutdown()" in src , "host must stop the loopback server on exit";
+    assert src.index("run_main_loop()") < src.index("_ctx.shutdown()") , "shutdown must run after the webview event loop exits";
     # Match the entry-block call ("Py_Finalize();"), not the FFI decl
     # ("Py_Finalize() -> None;") above it.
-    assert src.index("inprocess_dispatch.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
+    assert src.index("_ctx.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
 }
 
 """na (LLVM) is first-class in the fused runtime a desktop app bundles.
@@ -367,14 +343,14 @@ test "na/LLVM backend is first-class in the desktop fused runtime" {
 
 """The desktop host imports its bootstrap modules from the fused runtime -- no
 transpiled .py staged beside the binary. Prove it by running host_boot's plugin
-bootstrap + the broker/dispatch imports in THIS runtime (the same fused runtime a
+bootstrap + the broker imports in THIS runtime (the same fused runtime a
 desktop app boots): the closest dependency-free proxy for the embedded host,
 catching an import-from-runtime regression without a display."""
 test "host bootstrap modules import + run from the fused runtime" {
     import from jaclang.client.targets.desktop.native {
+        broker_extension,
         host_boot,
-        oauth_broker,
-        inprocess_dispatch
+        oauth_broker
     }
 
     # The bootstrap inserts the runtime plugin dir on sys.path and imports the
@@ -389,10 +365,9 @@ test "host bootstrap modules import + run from the fused runtime" {
         # dispatch host (registry.bootstrap_plugins) in the fused runtime.
         _host = host_boot._bootstrap_plugin_host({"path": True});
         assert callable(_host.dispatch) , "plugin bootstrap must yield a dispatch callable from the runtime";
-        # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
-        assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
-        assert hasattr(inprocess_dispatch, "boot")
-            and hasattr(inprocess_dispatch, "forward") , "inprocess_dispatch must import from the runtime";
+        # The broker pieces resolve from the runtime too (no staging).
+        assert hasattr(oauth_broker, "build_sso_login_url") , "oauth_broker must import from the runtime";
+        assert hasattr(broker_extension, "DesktopBrokerExtension") , "the broker extension must import from the runtime";
     } finally {
         sys.path[:] = _saved_path;
         for _k in list(sys.modules.keys()) {
