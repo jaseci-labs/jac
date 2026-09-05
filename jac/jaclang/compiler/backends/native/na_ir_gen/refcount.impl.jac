@@ -172,9 +172,8 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     total = b.and_(total, ir.Constant(i64, -16), name="total.align");
     raw = b.call(self.malloc_fn, [total], name="raw");
 
-    _aid_old = b.atomic_rmw(
-        "add", alloc_id_gv, ir.Constant(i64, 1), ordering="monotonic"
-    );
+    _aid_old = b.load(alloc_id_gv, name="aid.old");
+    b.store(b.add(_aid_old, ir.Constant(i64, 1), name="aid.new"), alloc_id_gv);
     _aid_ptr = b.bitcast(raw, i64_ptr, name="aid.ptr");
     _magic_base = ir.Constant(i64, HDR_MAGIC_SHIFT_BASE);
     _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
@@ -338,10 +337,9 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     b.cbranch(_mc_ok_r, do_bb, done_bb);
     b = ir.IRBuilder(do_bb);
 
-    _rmw_old_r = b.atomic_rmw(
-        "add", rc_ptr, ir.Constant(i64, 1), ordering="monotonic", name="rmw.old"
-    );
+    _rmw_old_r = b.load(rc_ptr, name="rmw.old");
     new_rc = b.add(_rmw_old_r, ir.Constant(i64, 1), name="new.rc");
+    b.store(new_rc, rc_ptr);
     if self._rc_debug_codegen {
         log_retain_bb = self._emit_retain_log_bb(
             retain_fn, done_bb, retain_fn.args[0], old_rc, new_rc
@@ -414,10 +412,9 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     b.cbranch(is_dbl, log_dbl_free_bb, do_bb);
     b = ir.IRBuilder(do_bb);
 
-    _rmw_old = b.atomic_rmw(
-        "sub", rc_ptr, ir.Constant(i64, 1), ordering="acq_rel", name="rmw.old"
-    );
+    _rmw_old = b.load(rc_ptr, name="rmw.old");
     new_rc = b.sub(_rmw_old, ir.Constant(i64, 1), name="new.rc");
+    b.store(new_rc, rc_ptr);
     is_zero = b.icmp_unsigned("==", _rmw_old, ir.Constant(i64, 1), name="is.zero");
     dbg_rel_bb = self._emit_release_log_bb(
         release_fn, done_bb, release_fn.args[0], old_rc, new_rc
