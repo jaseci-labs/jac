@@ -21,6 +21,8 @@ glob PSS_ENFORCE_LABEL: str = "pod-security.kubernetes.io/enforce",
      PSS_SOURCE_LABEL: str = "jac-scale.jaseci.org/pss-enforce-source",
      NAMESPACE_OWNER_LABEL: str = "jac-scale.jaseci.org/owned-by";
 
+def default_cluster_key -> str;
+
 def default_pss_labels -> dict[str, str];
 
 def privileged_pss_labels(existing: dict[str, str]) -> dict[str, str] | None;

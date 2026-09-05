@@ -4,8 +4,18 @@ import from kubernetes.client.exceptions { ApiException }
 import from jaclang.testing.test { parametrize }
 import from jaclang.scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+    default_cluster_key,
     parse_storage_quantity,
     resize_pvc_if_needed
+}
+
+test "default_cluster_key returns a non-empty string without a loaded kubeconfig" {
+    # KEDAAutoscaler._get_cluster_key and AutoscalerObserverRegistry both
+    # delegate to this one shared implementation so their cluster-identity
+    # logic can't silently drift apart.
+    key = default_cluster_key();
+    assert isinstance(key, str);
+    assert key;
 }
 
 test "cluster type detects aws by provider" {

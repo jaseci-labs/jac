@@ -8,6 +8,15 @@ import from jaclang.scale.deploy.target.kubernetes.cluster_provider {
     LocalProvider
 }
 
+impl default_cluster_key -> str {
+    try {
+        import from kubernetes.client { Configuration }
+        return Configuration.get_default_copy().host or "default";
+    } except (ImportError, AttributeError) {
+        return "default";
+    }
+}
+
 impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None {
     import shutil;
     import subprocess;
