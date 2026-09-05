@@ -5823,12 +5823,22 @@ impl JcirGenPass.exit_semi with Semi exit {}
 
 impl JcirGenPass.exit_comment_token with CommentToken exit {}
 
+"""The Python stubs that call this module's native exports. Each stub asks
+the engine for the export's link symbol: the module-qualified name of the
+one mangling rule, or the bare name of a `:pub` export."""
 impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     manifest = self.ir_in.gen.interop_manifest;
     parts: list[str] = [];
     names: list[str] = [];
     if (manifest and manifest.bindings) {
         import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
+        import from jaclang.compiler.frontend.codeinfo {
+            native_symbol_name,
+            native_unit_prefix
+        }
+        import from jaclang.compiler.frontend.constant { Tokens as _NsTok }
+        mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+        prefix = native_unit_prefix(mod_path) if mod_path else "";
         for binding in manifest.native_exports {
             params = ', '.join(binding.param_names);
             ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, 'ctypes.c_int64');
@@ -5836,11 +5846,18 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
                 JAC_TO_CTYPES_STR.get(pt, 'ctypes.c_int64')
                 for pt in binding.param_types
             );
+            decl = binding.ast_node;
+            is_pub = bool(
+                decl is not None
+                and getattr(decl, "access", None) is not None
+                and decl.access.tag.name == _NsTok.KW_PUB
+            );
+            symbol = binding.name if (is_pub or not prefix) else native_symbol_name(prefix, binding.name);
             parts.append(
                 f"def {binding.name}({params}):\n"
                     + f"    import ctypes\n"
                     + f"    _addr = __jac_native_engine__"
-                    + f".get_function_address('{binding.name}')\n"
+                    + f".get_function_address('{symbol}')\n"
                     + f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n"
                     + f"    return _fn({params})"
             );
@@ -5922,36 +5939,27 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list {
     return names;
 }
 
+"""The Python side of a native test: ask the engine for the test's symbol.
+The engine runs the plan's initializers itself on the first address it
+hands out, so no initializer list travels with the call."""
 impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list {
     import from jaclang.compiler.frontend.codeinfo {
         native_test_symbol,
-        native_glob_init_name
+        native_unit_prefix
     }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
-    symbol = native_test_symbol(test_name, line);
-    manifest = self.ir_in.gen.interop_manifest if self.ir_in?.gen else None;
-    dep_sources = manifest.native_transitive_sources if manifest else [];
-    init_syms: list[str] = [];
-    for dep_src in (dep_sources or []) {
-        if dep_src {
-            dep_init = native_glob_init_name(dep_src, manifest);
-            if dep_init not in init_syms {
-                init_syms.append(dep_init);
-            }
-        }
-    }
-    init_syms.append("__jac_glob_init");
-    init_list = "[" + ", ".join(f"'{sy}'" for sy in init_syms) + "]";
+    mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+    symbol = native_test_symbol(
+        test_name, line, native_unit_prefix(mod_path) if mod_path else ""
+    );
     src_lines = [
         "from jaclang.testing.test import invoke_native_test as _jac_invoke",
         "_jac_invoke(globals().get('__jac_native_engine__'), '"
             + symbol
             + "', '"
             + test_name
-            + "', "
-            + init_list
-            + ")"
+            + "')"
     ];
     return [CgSplice(src='\n'.join(src_lines), offset=0)];
 }

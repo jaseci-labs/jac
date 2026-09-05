@@ -45,7 +45,7 @@ obj MachOLinker {
         _commons: dict[str, tuple[(int, int)]] = {};
 
     static def link(
-        obj_bytes: bytes,
+        objects: list[bytes],
         output_path: str,
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"],
         symbol_lib_map: dict[str, str] = {},

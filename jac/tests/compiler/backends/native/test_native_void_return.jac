@@ -15,7 +15,7 @@ explicit `return` with an expression breaks.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, names_global, native_address, native_force_opts }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -61,7 +61,7 @@ test "every `-> None` callable terminates with ret void" {
         }
     }
     for name in ("Box.touch", "Box.touch_call", "free_fn") {
-        assert f'@"{name}"' in text or f"@{name}" in text , (
+        assert names_global(text, name) , (
             f"'{name}' is missing from the emitted IR"
         );
     }
@@ -71,7 +71,7 @@ test "every `-> None` callable terminates with ret void" {
 test "the returned expression is still evaluated for its effects" {
     ir = void_fixture();
     _eng: any = ir.gen.native_engine;
-    addr = _eng.get_function_address("run");
+    addr = native_address(_eng, "run");
     assert addr != 0 , "'run' not found in the JIT engine";
     run = ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
     assert run() == 201 , (

@@ -14,7 +14,7 @@ import ctypes;
 import os;
 import shutil;
 import tempfile;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.diagnostics { E5095, W6008 }
@@ -54,7 +54,7 @@ def _compile_src(source: str, gc_mode: str | None = None) -> tuple {
 }
 
 def _get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function {name} not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);

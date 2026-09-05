@@ -24,7 +24,7 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
+import from tests.support { TESTS_DIR, native_address, native_force_opts, native_str_func }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -62,7 +62,7 @@ def _compile(fixture: str, options: any | None = None) -> tuple {
 
 
 def _get(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
 }

@@ -17,7 +17,7 @@ HIGH's ordinal) or past the end of the array (25, 40) -- a segfault -- and
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts, native_str_func }
+import from tests.support { TESTS_DIR, native_address, native_force_opts, native_str_func }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -44,7 +44,7 @@ def compile_native(fixture: str) -> ExecutionEngine {
     assert eng is not None , f"No native engine produced for {fixture}";
     # The glob tables live in module globals; without jac_entry they are null
     # and every table read segfaults the JIT.
-    entry_addr = eng.get_function_address("jac_entry");
+    entry_addr = native_address(eng, "jac_entry");
     assert entry_addr != 0 , "no jac_entry to initialize module globals";
     ctypes.CFUNCTYPE(None)(entry_addr)();
     _ENG.append(eng);
@@ -70,7 +70,7 @@ def same_str(eng: any, name: str) {
 
 """Assert the native int-returning function matches the sv one."""
 def same_int(eng: any, name: str) {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     native = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
     sv = getattr(sv_module(), name)();

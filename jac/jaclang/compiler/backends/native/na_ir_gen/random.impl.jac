@@ -31,6 +31,7 @@ impl NaIRGenRandom._mt_ensure -> None {
     f_init = ir.Function(
         self.llvm_module, ir.FunctionType(void, [i32]), "__mt_init_genrand"
     );
+    f_init.linkage = "internal";
     b = ir.IRBuilder(f_init.append_basic_block("e"));
     s = f_init.args[0];
     b.store(s, elem(b, ir.Constant(i32, 0)));
@@ -61,6 +62,7 @@ impl NaIRGenRandom._mt_ensure -> None {
         ir.FunctionType(void, [i32.as_pointer(), i32]),
         "__mt_init_by_array"
     );
+    f_iba.linkage = "internal";
     b = ir.IRBuilder(f_iba.append_basic_block("e"));
     key = f_iba.args[0];
     keylen = f_iba.args[1];
@@ -148,6 +150,7 @@ impl NaIRGenRandom._mt_ensure -> None {
     b.ret_void();
 
     f_gen = ir.Function(self.llvm_module, ir.FunctionType(i32, []), "__mt_genrand_u32");
+    f_gen.linkage = "internal";
     b = ir.IRBuilder(f_gen.append_basic_block("e"));
     need = b.icmp_unsigned(">=", b.load(idx), ir.Constant(i32, _MT_N));
     regen = f_gen.append_basic_block("regen");
@@ -196,6 +199,7 @@ impl NaIRGenRandom._mt_ensure -> None {
     f_grb = ir.Function(
         self.llvm_module, ir.FunctionType(i64, [i32]), "__mt_getrandbits"
     );
+    f_grb.linkage = "internal";
     b = ir.IRBuilder(f_grb.append_basic_block("e"));
     kk = f_grb.args[0];
     resp = b.alloca(i64, name="res");
@@ -231,6 +235,7 @@ impl NaIRGenRandom._mt_ensure -> None {
     b.ret(b.load(resp));
 
     f_rb = ir.Function(self.llvm_module, ir.FunctionType(i64, [i64]), "__mt_randbelow");
+    f_rb.linkage = "internal";
     b = ir.IRBuilder(f_rb.append_basic_block("e"));
     n = f_rb.args[0];
 

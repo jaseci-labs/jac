@@ -61,8 +61,7 @@ test "an AOT compile that lowers nothing names the module" {
         options=CompileOptions(
             aot_mode=True,
             force_codespace='native',
-            force_target_program=True,
-            no_ir_cache=True
+            force_target_program=True
         )
     );
     assert ir.gen.llvm_ir is None , "the fixture is not supposed to lower";

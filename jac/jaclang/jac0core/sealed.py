@@ -24,12 +24,13 @@ sibling ``cache_paths.py`` / ``ext_registry.py``).
 
 Manifest layout (``_precompiled/MANIFEST.json``, format ``MANIFEST_FORMAT``
 below; every version in ``MANIFEST_FORMATS_ACCEPTED`` remains loadable --
-format 8 dropped the native seal record that formats 6 and 7
-carried, format 3 lacked native_artifacts, format 2 also lacked
+format 9 records the package's native units and linked artifact, format 8
+carried no native record, formats 6 and 7 carried the earlier native seal,
+format 3 lacked native_artifacts, format 2 also lacked
 kind/capabilities/entry/payloads)::
 
     {
-      "format": 7,
+      "format": 9,
       "kind": "web-app",                # optional: project kind (app images)
       "capabilities": ["has-entry", "has-server", "has-client"],  # optional
       "entry": {"module": "app.main", "path": "main.jac"},        # optional
@@ -59,6 +60,17 @@ kind/capabilities/entry/payloads)::
       "payloads": {                     # optional non-module payloads, baked at
         ".jac/serve_manifest.json": "...",   # bundle time; key: pkg-relative
         ".jac/client/dist/client.abc.js": "..."  # posix path, value: sha256
+      },
+      "native": {                       # optional (format 9): the package's
+        "units": {                      # native units, by pkg-relative source
+          "compiler/jc_unit.jac": {"jir": "compiler/jc_unit.jir",
+                                   "iface_digest": "..."}
+        },
+        "artifact": {                   # the one linked artifact
+          "path": "compiler/libjac_compiler.so",  # pkg-relative
+          "sha256": "...", "layout_digest": "...", "plan_digest": "...",
+          "triple": "x86_64-unknown-linux-gnu", "mode": "objects"
+        }
       }
     }
 
@@ -83,29 +95,32 @@ from pathlib import Path
 from jaclang.jac0core import ext_registry
 
 MANIFEST_NAME = "MANIFEST.json"
-MANIFEST_FORMAT = 8
+MANIFEST_FORMAT = 9
 # Format 3 adds optional app metadata (kind / capabilities / entry) and
 # payloads on top of format 2's module map; format 4 added a per-fullname
 # ``native_artifacts`` map; format 5 adds the optional ``placement`` map
 # (pkg-relative source path -> list of codespaces the module emits into,
 # persisted by the seal so downstream tools read placement instead of
 # re-deriving it). Formats 6 and 7 carried a native seal record for the
-# jaclang image; format 8 drops it (#8732): the image is the JIR tier only.
-# Older APP images stay loadable; a jaclang image must be current format --
-# the image ships with the very code that loads it, so skew means a stale or
-# partial install.
-MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, MANIFEST_FORMAT)
+# jaclang image; format 8 dropped it (#8732); format 9 records the native
+# units of any package and the one artifact the link plan produced from
+# them (#8943). Older APP images stay loadable; a jaclang image must be
+# current format -- the image ships with the very code that loads it, so
+# skew means a stale or partial install.
+MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, 8, MANIFEST_FORMAT)
 # Must match jaclang.compiler.driver.jir.* ; kept literal here because this module
 # must import before any .jac module (including jir.jac) can. This is the whole
 # point of the bootstrap tier: jac0core modules are loaded from their JIR by the
 # pure-Python section reader below, so they need none of the .jac machinery
 # (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
-JIR_FORMAT_VERSION = 24
+JIR_FORMAT_VERSION = 25
 HEADER_SIZE = 32
 SECTIONS_MAGIC = b"JIRX"
 SEC_BYTECODE = 0x02
 SEC_DEBUG_SRC = 0x09
+SEC_NIFACE = 0x11
+SEC_NOBJ = 0x12
 SEC_TERMINATOR = 0xFF
 
 
@@ -183,6 +198,9 @@ class SealedImage:
         # -> codespaces the module emits into (["server"], ["client"], ...).
         # The compiler's verdict, persisted; consumers must not re-derive it.
         self.placement: dict[str, list[str]] = manifest.get("placement") or {}
+        # Optional native record (format 9): the package's native units and
+        # the one linked artifact the link plan produced from them.
+        self.native: dict = manifest.get("native") or {}
         # fullname -> (entry, src_relpath). One tree: full-compiler modules and
         # jac0-compiled bootstrap modules share the JIR container + manifest;
         # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).
@@ -246,6 +264,61 @@ class SealedImage:
         sec = _read_section(data, SEC_DEBUG_SRC)
         return zlib.decompress(sec).decode("utf-8") if sec is not None else None
 
+    def native_artifact(self) -> dict | None:
+        """The native artifact record (path, sha256, layout and plan digests),
+        or None when the package sealed no native unit."""
+        record = self.native.get("artifact") if self.native else None
+        return record if isinstance(record, dict) and record.get("path") else None
+
+    def native_units(self) -> dict[str, dict]:
+        """pkg-relative source path -> {"jir", "iface_digest"}."""
+        units = self.native.get("units") if self.native else None
+        return dict(units) if isinstance(units, dict) else {}
+
+    def verify_native(self) -> None:
+        """Refuse an image whose native units and artifact disagree: the
+        artifact must exist, hash to its record, and carry a sidecar whose
+        plan digest is the manifest's."""
+        record = self.native_artifact()
+        if record is None:
+            return
+        rel = str(record["path"])
+        if os.path.isabs(rel) or ".." in Path(rel).parts:
+            raise RuntimeError(f"sealed image: illegal native artifact path {rel!r}")
+        path = self.pkg_dir / rel
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise RuntimeError(
+                f"sealed image: cannot read native artifact {path}: {exc}"
+            ) from exc
+        if digest != record.get("sha256"):
+            raise RuntimeError(
+                f"sealed image: native artifact {path} does not match its manifest sha256"
+            )
+        try:
+            sidecar = json.loads(Path(str(path) + ".layout.json").read_text())
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                f"sealed image: native artifact {path} has no readable layout sidecar"
+            ) from exc
+        if str(sidecar.get("plan_digest", "")) != str(record.get("plan_digest", "")):
+            raise RuntimeError(
+                f"sealed image: native artifact {path}: sidecar plan digest "
+                "disagrees with the manifest"
+            )
+        if str(sidecar.get("layout_digest", "")) != str(record.get("layout_digest", "")):
+            raise RuntimeError(
+                f"sealed image: native artifact {path}: sidecar layout digest "
+                "disagrees with the manifest"
+            )
+        for src_rel, unit in self.native_units().items():
+            entry = self.manifest.get("modules", {}).get(src_rel)
+            if entry is None or entry.get("jir") != unit.get("jir"):
+                raise RuntimeError(
+                    f"sealed image: native unit {src_rel} is not among the modules"
+                )
+
     def verify(self) -> None:
         """Hash every indexed JIR against its manifest ``sha256`` (fail-closed).
 
@@ -253,6 +326,7 @@ class SealedImage:
         integrity cover; the jaclang image inside a single binary skips this
         because the payload's sha256 trailer already covers the whole tree.
         """
+        self.verify_native()
         for entry, _src in self.index.values():
             path = self.jir_path(entry)
             try:
@@ -368,6 +442,7 @@ def _jaclang_image() -> SealedImage | None:
         pkg_dir = Path(__file__).resolve().parent.parent
         image = load_image(pkg_dir / "_precompiled")
         if image is not None:
+            image.verify_native()
             _images.insert(0, image)
     for img in _images:
         if img.package == "jaclang":
@@ -408,6 +483,19 @@ def source_for(fullname: str) -> str | None:
     if found is None:
         return None
     return found[0].debug_source(fullname)
+
+
+def image_for_path(source_path: str | Path) -> SealedImage | None:
+    """The loaded sealed image whose package directory contains ``source_path``."""
+    _jaclang_image()
+    resolved = Path(source_path).resolve()
+    for img in _images:
+        try:
+            resolved.relative_to(img.pkg_dir.resolve())
+        except ValueError:
+            continue
+        return img
+    return None
 
 
 def image_for_bundle_dir(bundle_dir: str | Path) -> SealedImage | None:

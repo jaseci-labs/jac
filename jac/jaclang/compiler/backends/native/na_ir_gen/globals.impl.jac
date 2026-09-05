@@ -148,9 +148,12 @@ impl NaIRGenGlobals._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
+            _is_priv = bool(nd.access and nd.access.tag.name == Tok.KW_PRIV);
+            _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+            _symbol = self._symbol_for(var_name, None, _is_pub);
             try {
                 global_var = ir.GlobalVariable(
-                    self.llvm_module, var_type, name=var_name
+                    self.llvm_module, var_type, name=_symbol
                 );
             } except Exception as _dup_err {
                 _cur_path = self.ir_in.loc.mod_path
@@ -159,21 +162,20 @@ impl NaIRGenGlobals._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 _origin = self._global_origins.get(var_name, "(imported module)");
                 self.emit(
                     E5026,
-                    symbol=var_name,
+                    symbol=_symbol,
                     existing_module=_origin,
                     new_module=_cur_path
                 );
                 continue;
             }
 
-            _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
             if _is_priv {
                 global_var.linkage = "internal";
             } else {
                 global_var.linkage = "";
+                self._record_export(var_name, _symbol, "global", _is_pub);
             }
 
-            _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
             if _is_pub and self.ir_in?.gen and var_name.isidentifier() {
                 if var_name not in self.ir_in.gen._exported_symbols {
                     self.ir_in.gen._exported_symbols.append(var_name);

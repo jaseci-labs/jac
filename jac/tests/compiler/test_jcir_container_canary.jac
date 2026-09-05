@@ -50,7 +50,6 @@ def emit_both(src: str, path: str) -> tuple {
         options=CompileOptions(
             force_codespace="server",
             skip_native_engine=True,
-            no_ir_cache=True,
             suppress_codes=["E5092"]
         )
     );

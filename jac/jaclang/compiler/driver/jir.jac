@@ -6,16 +6,15 @@ import zlib;
 import from pathlib { Path }
 
 glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 24,
+     FORMAT_VERSION: int = 25,
      HEADER_SIZE: int = 32,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
      SECTIONS_MAGIC: any = b"JIRX",
      SEC_BYTECODE: int = 0x02,
      SEC_MTIR: int = 0x03,
-     SEC_LLVM_IR: int = 0x04,
      SEC_INTEROP: int = 0x05,
-     SEC_NATIVE_OBJ: int = 0x06,
+     SEC_NBITCODE: int = 0x06,
      SEC_SYMINDEX: int = 0x07,
      SEC_MODKEY: int = 0x08,
      SEC_DEBUG_SRC: int = 0x09,
@@ -26,10 +25,100 @@ glob MAGIC = b"JIR\x00",
      SEC_DEPS: int = 0x0E,
      SEC_DIAG: int = 0x0F,
      SEC_CLIENT: int = 0x10,
+     SEC_NIFACE: int = 0x11,
+     SEC_NOBJ: int = 0x12,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
      FLAG_BOOTSTRAP: int = 0x04;
+
+"""The sections the native backend owns. They are keyed by MODKEY plus the
+stamp in their own header rather than by ENVKEY: the frontend modules in the
+native scope are dual, compiled once as bytecode and once as native units
+under different options, and both compiles write into the one JIR entry."""
+glob NATIVE_SECTIONS: tuple[int, ...] = (SEC_NBITCODE, SEC_NIFACE, SEC_NOBJ),
+     NATIVE_STAMP_MAGIC: bytes = b"JNS1";
+
+"""The header every native section carries: which compiler and which codegen
+identity produced it, and for which target. A reader that finds a stamp it
+did not produce treats the section as absent."""
+obj NativeStamp {
+    has compiler_digest: str = "",
+        codegen_identity: str = "",
+        triple: str = "",
+        reloc: str = "pic",
+        code_model: str = "small";
+
+    def key -> str {
+        return "\x1f".join(
+            [
+                self.compiler_digest,
+                self.codegen_identity,
+                self.triple,
+                self.reloc,
+                self.code_model
+            ]
+        );
+    }
+
+    def pack(payload: bytes) -> bytes {
+        head = self.key().encode("utf-8");
+        return NATIVE_STAMP_MAGIC + struct.pack("<I", len(head)) + head + payload;
+    }
+
+    static def unpack(data: (bytes | None)) -> (tuple[NativeStamp, bytes] | None) {
+        if data is None or len(data) < 8 or data[:4] != NATIVE_STAMP_MAGIC {
+            return None;
+        }
+        (head_len, ) = struct.unpack_from("<I", data, 4);
+        if len(data) < 8 + head_len {
+            return None;
+        }
+        try {
+            parts = data[8:8 + head_len].decode("utf-8").split("\x1f");
+        } except Exception {
+            return None;
+        }
+        if len(parts) != 5 {
+            return None;
+        }
+        return (
+            NativeStamp(
+                compiler_digest=parts[0],
+                codegen_identity=parts[1],
+                triple=parts[2],
+                reloc=parts[3],
+                code_model=parts[4]
+            ),
+            data[8 + head_len:]
+        );
+    }
+
+    def matches(other: NativeStamp) -> bool {
+        return self.key() == other.key();
+    }
+}
+
+def current_native_stamp(codegen_identity: str, triple: str) -> NativeStamp {
+    return NativeStamp(
+        compiler_digest=running_compiler_digest(),
+        codegen_identity=codegen_identity,
+        triple=triple
+    );
+}
+
+"""The payload of a native section, or None when the section is missing or
+was produced under a different stamp."""
+def native_section_payload(
+    data: (bytes | None), want: NativeStamp
+) -> (bytes | None) {
+    found = NativeStamp.unpack(data);
+    if found is None {
+        return None;
+    }
+    (stamp, payload) = found;
+    return payload if stamp.matches(want) else None;
+}
 
 obj JirHeader {
     has magic: any = b"JIR\x00",
@@ -582,17 +671,27 @@ def absolutize_ct_deps_section(raw: bytes, base: str) -> bytes {
     return "\n".join(lines).encode("utf-8");
 }
 
-def deps_section(rows: list[tuple[str, str, str]]) -> bytes {
+"""One row per direct dependency: path, type-interface digest, flags, and the
+dependency's native-interface digest ("" when the dependency is not a native
+unit or its record was not available when the importer was compiled)."""
+obj DepRow {
+    has path: str,
+        digest: str = "",
+        flags: str = "",
+        native_digest: str = "";
+}
+
+def deps_section(rows: list[DepRow]) -> bytes {
     lines: list[str] = [];
-    for (path, digest, flags) in sorted(rows) {
-        lines.append(f"{path}\t{digest}\t{flags}");
+    for row in sorted(rows, key=lambda (r: DepRow) { r.path; }) {
+        lines.append(f"{row.path}\t{row.digest}\t{row.flags}\t{row.native_digest}");
     }
     return "\n".join(lines).encode("utf-8");
 }
 
-def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]] {
+def read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow] {
     raw = _read_key_section(data, SEC_DEPS);
-    out: list[tuple[str, str, str]] = [];
+    out: list[DepRow] = [];
     if not raw {
         return out;
     }
@@ -601,9 +700,14 @@ def read_dep_rows(data: bytes, base_dir: str = "") -> list[tuple[str, str, str]]
             continue;
         }
         parts = line.split("\t");
-        digest = parts[1] if len(parts) > 1 else "";
-        flags = parts[2] if len(parts) > 2 else "";
-        out.append((_dep_row_path(parts[0], base_dir), digest, flags, ));
+        out.append(
+            DepRow(
+                path=_dep_row_path(parts[0], base_dir),
+                digest=parts[1] if len(parts) > 1 else "",
+                flags=parts[2] if len(parts) > 2 else "",
+                native_digest=parts[3] if len(parts) > 3 else ""
+            )
+        );
     }
     return out;
 }
@@ -618,8 +722,19 @@ def _dep_row_path(stored: str, base_dir: str) -> str {
 
 def read_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
     out: list[tuple[str, str]] = [];
-    for (path, digest, _flags) in read_dep_rows(data, base_dir) {
-        out.append((path, digest, ));
+    for row in read_dep_rows(data, base_dir) {
+        out.append((row.path, row.digest, ));
+    }
+    return out;
+}
+
+"""The native digests an importer recorded for its native dependencies."""
+def read_native_dep_hashes(data: bytes, base_dir: str = "") -> list[tuple[str, str]] {
+    out: list[tuple[str, str]] = [];
+    for row in read_dep_rows(data, base_dir) {
+        if row.native_digest {
+            out.append((row.path, row.native_digest, ));
+        }
     }
     return out;
 }
@@ -790,7 +905,7 @@ def sweep_stale_generations(cache_root: Path, keep: str) -> int {
         name = item.name;
         is_dir = item.is_dir();
         if is_dir {
-            if name == keep or not (_is_generation_name(name) or name == "native") {
+            if name == keep or not _is_generation_name(name) {
                 continue;
             }
         } elif not name.endswith(".jir") {
@@ -828,23 +943,11 @@ def _sweep_once(cache_root: Path) {
     } except Exception {}
 }
 
-glob _na_ir_cache_region: dict[str, bool] = {"suspended": False};
-
-
-def native_ir_cache_suspended -> bool {
-    return _na_ir_cache_region["suspended"];
-}
-
-
-def native_ir_cache_set_suspended(value: bool) -> bool {
-    prev = _na_ir_cache_region["suspended"];
-    _na_ir_cache_region["suspended"] = value;
-    return prev;
-}
-
-
-def get_native_cache_dir(source_path: str) -> Path {
-    return _get_module_cache_dir(source_path) / "native";
+"""Where `--native-debug` drops its object, symbol map and IR dumps. Nothing
+the compiler reads back lives here; every native product a build consumes is
+a section of the module's JIR."""
+def get_native_debug_dir(source_path: str) -> Path {
+    return _get_module_cache_dir(source_path) / "native-debug";
 }
 
 def scrub_cache_dirs(root_dir: str) -> int {
@@ -1026,6 +1129,13 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
 }
 
 
+"""The sections of an existing entry that a new write may keep.
+
+Everything is kept when both keys match. When only MODKEY matches, the entry
+was produced from the same content under different options: the native
+sections survive, because they carry their own stamp and the native reader
+validates it; everything keyed on ENVKEY is dropped.
+"""
 def _mergeable_sections(
     cache_path: Path, key_sections: dict[int, bytes]
 ) -> tuple[dict[int, bytes], int] {
@@ -1044,11 +1154,16 @@ def _mergeable_sections(
             return ({}, 0, );
         }
         secs = read_sections(data, pos + len(magic));
-        if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY)
-            or secs.get(SEC_ENVKEY) != key_sections.get(SEC_ENVKEY) {
+        if secs.get(SEC_MODKEY) != key_sections.get(SEC_MODKEY) {
             return ({}, 0, );
         }
-        return (secs, header.flags, );
+        if secs.get(SEC_ENVKEY) == key_sections.get(SEC_ENVKEY) {
+            return (secs, header.flags, );
+        }
+        native_only: dict[int, bytes] = {
+            sec: secs[sec] for sec in NATIVE_SECTIONS if sec in secs
+        };
+        return (native_only, 0, );
     } except Exception {
         return ({}, 0, );
     }

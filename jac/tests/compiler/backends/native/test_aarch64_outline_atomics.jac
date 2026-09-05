@@ -16,13 +16,14 @@ and the linux/arm64 `jac` binary linked clean and then refused to start with
 
     jac: symbol lookup error: jac: undefined symbol: __aarch64_ldset8_acq_rel
 
-(#8727). So the emitter hangs off `_finalize_native_ir`, the one point every
-`nacompile` artifact passes through -- shared library and executable alike --
-and it is keyed on the TARGET triple, not on `platform.machine()`: the host
+(#8727). So the emitter hangs off the link plan's glue module
+(`link_glue.link_glue_ir`), the one point every `nacompile` artifact passes
+through -- shared library and executable alike -- and it is keyed on the
+TARGET triple, not on `platform.machine()`: the host
 that cross-compiles an aarch64 image is usually an x86_64 runner.
 
 Our own codegen is not the source and cannot be the fix: under the exact target
-machine `shared_emit` builds, LLVM lowers `atomicrmw` to inline `ldxr`/`stxr`
+machine the link plan builds, LLVM lowers `atomicrmw` to inline `ldxr`/`stxr`
 and never calls a helper. The vendored objects are the callers, so the artifact
 has to bring the callees. The vendored `libcompiler_rt.a` does define all one
 hundred, but as a single 1.9 MB object that also redefines `strlen`, `memset`
@@ -75,14 +76,15 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
-import from jaclang.compiler.backends.native.shared_emit {
+import from jaclang.compiler.backends.native.link_glue {
+    GlueSpec,
+    GlueUnit,
     aarch64_floor_atomics_ir,
-    aarch64_outline_atomics_ir
+    aarch64_outline_atomics_ir,
+    link_glue_ir
 }
-import from jaclang.cli.commands.nacompile { _finalize_native_ir }
 
-glob EXEC_STUB = 'define void @"jac_entry"() {\nentry:\n  ret void\n}\n',
-     FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
+glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
 """Every symbol the LSE outline-atomics ABI defines, spelled out from its axes."""
 def _abi_family -> list[str] {
@@ -206,10 +208,12 @@ test "the asm block is well-formed IR on every host, not just aarch64" {
 }
 
 
-"""The IR `jac nacompile` hands to LLVM for one target, straight off the
-production finalization point. Every argument but the ones a test varies is
+"""The glue IR the link plan (`link_plan.build_link_plan` ->
+`link_artifact`) synthesizes beside its units for one target, straight off
+the production emitter (`link_glue.link_glue_ir`): one stub root unit with
+no initializer or entry body. Every argument but the ones a test varies is
 the launcher's own shape: a plain executable, not shared, not Windows, not
-macOS."""
+macOS. The text carries its own `target triple` line."""
 def _finalized(
     triple: str,
     clib_paths: list[str],
@@ -217,16 +221,16 @@ def _finalized(
     is_macos: bool = False,
     static_musl: bool = False
 ) -> str {
-    (out, _exports) = _finalize_native_ir(
-        llvm_ir_str=EXEC_STUB,
-        triple=triple,
-        clib_paths=clib_paths,
-        manifest=None,
+    spec = GlueSpec(
+        units=[GlueUnit(prefix="stub_root")],
+        root_index=0,
         shared=shared,
-        is_windows=False,
-        is_macos=is_macos,
-        static_musl=static_musl
+        platform="macho" if is_macos else "elf",
+        static_musl=static_musl,
+        triple=triple,
+        clib_paths=list(clib_paths)
     );
+    (out, _exports) = link_glue_ir(spec);
     return out;
 }
 
@@ -306,10 +310,8 @@ test "an aarch64 Mach-O artifact carries none of them" {
 test "the finalized aarch64 executable IR still parses" {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
-    src = (
-        "target triple = \"aarch64-unknown-linux-gnu\"\n"
-        + _finalized("aarch64-unknown-linux-gnu", ["libz.so"])
-    );
+    src = _finalized("aarch64-unknown-linux-gnu", ["libz.so"]);
+    assert src.startswith('target triple = "aarch64-unknown-linux-gnu"') , src[:80];
     mod = llvm.parse_assembly(src);
     mod.verify();
     text = str(mod);
@@ -320,8 +322,9 @@ test "the finalized aarch64 executable IR still parses" {
 
 
 test "the emitter itself is gated on the target, not the host" {
-    # `emit_shared_library` is the other consumer, so the gate is pinned on the
-    # shared helper directly as well as through the nacompile path above.
+    # `link_glue_ir` is the one consumer, for executables and shared
+    # libraries alike, so the gate is pinned on the helper directly as well
+    # as through the glue path above.
     assert aarch64_floor_atomics_ir("aarch64-unknown-linux-gnu", ["libz.so"]) != "";
     assert aarch64_floor_atomics_ir("aarch64-unknown-linux-gnu", []) == "";
     assert aarch64_floor_atomics_ir("x86_64-unknown-linux-gnu", ["libz.so"]) == "";
@@ -359,9 +362,10 @@ test "the aarch64 executable path assembles to a real object (#8788)" {
 test "jac nacompile itself registers a parser for its target (#8788)" {
     # The property that broke the aarch64 release build, driven through the real
     # CLI rather than through a helper the test initializes for itself: revert
-    # nacompile.impl.jac's `init_object_codegen()` to the bare
-    # initialize_all_targets/asmprinters pair and this goes red, which is the
-    # control the previous test did not answer.
+    # link_glue's `init_object_codegen()` (which `link_plan` runs before it
+    # creates a target machine) to the bare initialize_all_targets/asmprinters
+    # pair and this goes red, which is the control the previous test did not
+    # answer.
     #
     # The C floor import is what puts `module asm` in this module at all, so
     # JAC_DUMP_IR is read back first: it holds the finalized module, written

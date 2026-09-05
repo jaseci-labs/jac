@@ -23,7 +23,14 @@ comptime SPEC_NACOMPILE: CommandSpec = CommandSpec(
                  "scrub",
                  kind=ArgKind.FLAG,
                  `default=False,
-                 help="Scrub build: wipe cached IR and recompile everything from scratch"
+                 help="Scrub build: wipe the project's module cache and recompile every unit from scratch"
+             ),
+             Arg.create(
+                 "link-mode",
+                 kind=ArgKind.OPTION,
+                 short="",
+                 `default="",
+                 help="How the link plan combines units: 'objects' (incremental, the default) or 'bitcode' (one whole-program LLVM module, the release lane). Also JAC_NATIVE_LINK_MODE"
              ),
              Arg.create(
                  "target",
@@ -80,7 +87,11 @@ comptime SPEC_NACOMPILE: CommandSpec = CommandSpec(
              ("jac nacompile program.jac", "Compile to ./program"),
              ("jac nacompile program.jac", "Auto-promote and compile to ./program"),
              ("jac nacompile program.jac -o mybin", "Compile to ./mybin"),
-             ("jac nacompile program.jac --scrub", "Clean rebuild (wipe IR cache)"),
+             ("jac nacompile program.jac --scrub", "Clean rebuild (wipe the module cache)"),
+             (
+                 "jac nacompile program.jac --link-mode bitcode",
+                 "Whole-program link: every unit's bitcode optimized as one module"
+             ),
              (
                  "jac nacompile program.jac -g",
                  "Compile with DWARF debug info (gdb ./program works)"
@@ -111,6 +122,7 @@ def nacompile(
     filename: str,
     output: str = "",
     scrub: bool = False,
+    link_mode: str = "",
     target: str = "",
     shared: bool = False,
     debug: bool = False,

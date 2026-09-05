@@ -14,6 +14,7 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._iface: any = None;
+    self._natives: any = None;
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> any {
@@ -22,6 +23,16 @@ impl JacProgram.iface_registry(self: JacProgram) -> any {
         import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
         reg = IfaceRegistry(prog=self);
         self._iface = reg;
+    }
+    return reg;
+}
+
+impl JacProgram.native_units(self: JacProgram) -> any {
+    reg = self._natives;
+    if reg is None {
+        import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+        reg = NativeUnitRegistry(prog=self);
+        self._natives = reg;
     }
     return reg;
 }
@@ -72,6 +83,9 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
         }
     }
 
+    if self._natives is not None {
+        self._natives.forget(resolved_path);
+    }
     if self._iface is not None {
         self._iface.forget(resolved_path);
     }
@@ -275,39 +289,6 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-impl JacProgram.release_native_dep_units(self: JacProgram) -> None {
-    for (path, unit) in self.scratch.na_dep_units.items() {
-        if isinstance(unit, str) {
-            continue;
-        }
-        try {
-            keyed = JacProgram.hub_key(path);
-        } except Exception {
-            keyed = path;
-        }
-        probes: list[str] = [keyed];
-        if path != keyed {
-            probes.append(path);
-        }
-        for probe in probes {
-            if self.mod.hub.get(probe) is unit {
-                self.invalidate_module(probe);
-            }
-        }
-        try {
-            gen = unit.gen;
-        } except Exception {
-            continue;
-        }
-        gen.native_engine = None;
-        gen.llvm_ir = None;
-        gen.native_bitcode = None;
-    }
-    self.scratch.na_dep_units.clear();
-    self.scratch.na_unverified_live.clear();
-    self.scratch.na_verdict_resolving.clear();
-}
-
 impl JacProgram.release_check_caches(self: JacProgram) -> None {
     ev = self.type_evaluator;
     if ev is None {
@@ -330,7 +311,6 @@ impl JacProgram.release_compile_closure(
         return;
     }
 
-    self.release_native_dep_units();
     self.hub.reset();
     self.mod = self.hub.mod;
     self.deps.clear();

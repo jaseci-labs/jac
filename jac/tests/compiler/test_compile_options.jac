@@ -85,11 +85,6 @@ test "JAC_NA_DEBUG enters the options object at construction" {
         assert CompileOptions().na_debug == True;
         assert CompileOptions(na_debug=False).na_debug == False;
         assert CompileOptions().clone_for_native_import().na_debug == True;
-        assert CompileOptions(no_ir_cache=True).clone_for_native_import().no_ir_cache , (
-            "a cache-bypassing compile must bypass it for nested native imports "
-            "too, or a dep-of-a-dep is still served from a stale IR cache"
-        );
-        assert not CompileOptions().clone_for_native_import().no_ir_cache;
         os.environ["JAC_NA_DEBUG"] = "0";
         assert CompileOptions().na_debug == False;
     } finally {

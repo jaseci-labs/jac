@@ -1,3 +1,10 @@
+"""The kernel's unit roster.
+
+`NATIVE_SCOPE` names the frontend modules the compiler runs as bytecode and
+the kernel links as native units. Whether a compile treats them as native is
+`CompileOptions.native_unit` (see `placement_facts.native_unit`); this module
+only answers the roster question.
+"""
 import os;
 
 obj NativeScopeEntry {
@@ -23,47 +30,11 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
 
      );
 
-glob _SCOPE_SUFFIX_CACHE: list = [],
-     _SCOPE_ACTIVE: list = [];
+"""The kernel's link root: the unit whose `jc_*` exports are the C ABI the
+loader binds."""
+glob KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit";
 
-def activate_scope_lowering -> None {
-    if _SCOPE_ACTIVE {
-        return;
-    }
-    _SCOPE_ACTIVE.append(1);
-    try {
-        import from jaclang.runtime.runtime { JacRuntime }
-        sh = JacRuntime.get_selfhost();
-        prog = sh.peek_program();
-        if prog is not None {
-            hub = prog.mod.hub;
-            for k in list(hub.keys()) {
-                if in_native_scope_path(k) {
-                    del hub[k];
-                }
-            }
-        }
-    } except Exception {}
-}
-
-def scope_lowering_active -> bool {
-    return len(_SCOPE_ACTIVE) > 0;
-}
-
-def deactivate_scope_lowering {
-    """Turn scope lowering back off once the build that armed it is done.
-
-    Scope lowering is a property of one ahead-of-time native build (the
-    kernel's), not of the process. While it is on, the selfhost resolver
-    hands NATIVE_SCOPE modules to the target program instead of the
-    compiler's own, so in a sealed image, where those are two different
-    trees, a compile that outlives the build sees the frontend twice:
-    `Source` from the checkout and `Source` from the shipped compiler, and
-    the checker reports "Cannot assign Source to parameter of type Source".
-    The outermost compile that armed it disarms it on exit.
-    """;
-    _SCOPE_ACTIVE.clear();
-}
+glob _SCOPE_SUFFIX_CACHE: list = [];
 
 def native_scope_path_suffixes -> list[str] {
     if not _SCOPE_SUFFIX_CACHE {
@@ -86,4 +57,19 @@ def in_native_scope_path(mod_path: str) -> bool {
         }
     }
     return False;
+}
+
+def scope_module_path(module: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    rel = module.replace("jaclang.", "", 1).replace(".", os.sep) + ".jac";
+    return os.path.join(jaclang_pkg_root(), rel);
+}
+
+"""The source path of every unit in the roster, kernel root last."""
+def native_scope_paths -> list[str] {
+    return [scope_module_path(e.module) for e in NATIVE_SCOPE];
+}
+
+def kernel_root_path -> str {
+    return scope_module_path(KERNEL_ROOT_MODULE);
 }

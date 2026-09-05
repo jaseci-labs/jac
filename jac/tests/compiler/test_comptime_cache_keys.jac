@@ -17,7 +17,6 @@ import os;
 import sys;
 import tempfile;
 import time;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
@@ -351,72 +350,6 @@ test "a bundle promoted into the module cache carries its comptime deps" {
         warm = _folded(paths["consumer"]);
         assert "spec two" in warm , (
             f"the promoted module cache served a stale fold: {warm}"
-        );
-    }
-}
-
-def _native_compile(path: str) {
-    prog = JacProgram();
-    prog.compile(path, options=CompileOptions(force_target_program=True));
-    assert not prog.errors_had , (
-        f"native compile of {path} failed: "
-        f"{[a.pretty_print() for a in prog.errors_had]}"
-    );
-}
-
-def _native_ir(path: str) -> str {
-    import from jaclang.compiler.driver.jir { get_native_cache_dir }
-    cache_dir = str(get_native_cache_dir(path));
-    stem = os.path.splitext(os.path.basename(path))[0];
-    text = "";
-    if os.path.isdir(cache_dir) {
-        for name in sorted(os.listdir(cache_dir)) {
-            if name.startswith(f"{stem}.") and name.endswith(".ir_cache") {
-                with open(os.path.join(cache_dir, name), "r") as fh {
-                    text += fh.read();
-                }
-            }
-        }
-    }
-    return text;
-}
-
-test "a native-placed fold is not served from a stale IR cache" {
-    tmp = tempfile.mkdtemp();
-    with _isolated(tmp) {
-        _write(
-            os.path.join(tmp, "jac.toml"),
-            "[project]\nname = \"natfold\"\n\n"
-            "[placement.pins]\nnatmod = \"native\"\n",
-            backdate=True
-        );
-        producer = os.path.realpath(os.path.join(tmp, "tagmod.jac"));
-        native = os.path.realpath(os.path.join(tmp, "natmod.jac"));
-        main_mod = os.path.realpath(os.path.join(tmp, "entrymod.jac"));
-        _write(producer, "comptime TAG: str = \"alpha\";\n", backdate=True);
-        _write(
-            native,
-            "comptime import from tagmod { TAG }\n\n"
-            "comptime LABEL: str = TAG;\n\n"
-            "def tagged -> str {\n    return LABEL;\n}\n",
-            backdate=True
-        );
-        _write(
-            main_mod,
-            "import from natmod { tagged }\n\n"
-            "with entry {\n    print(tagged());\n}\n",
-            backdate=True
-        );
-        _native_compile(main_mod);
-        cold = _native_ir(native);
-        assert cold , "the native lane wrote no IR cache for the pinned module";
-        assert "alpha" in cold , f"the cold native IR did not fold the producer";
-        _write(producer, "comptime TAG: str = \"beta\";\n");
-        _native_compile(main_mod);
-        warm = _native_ir(native);
-        assert "beta" in warm , (
-            "the native IR cache served a stale fold after its comptime "
-            "producer changed"
         );
     }
 }

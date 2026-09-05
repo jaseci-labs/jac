@@ -39,7 +39,7 @@ def measured -> tuple {
         ir = prog.compile(
             file_path=path,
             options=CompileOptions(
-                force_codespace='native', force_target_program=True, no_ir_cache=True
+                force_codespace='native', force_target_program=True
             )
         );
     } finally {
@@ -100,7 +100,7 @@ test "a mismatched call argument is the checker's refusal, not the emitter's" {
         prog.compile(
             file_path=path,
             options=CompileOptions(
-                force_codespace='native', force_target_program=True, no_ir_cache=True
+                force_codespace='native', force_target_program=True
             )
         );
         hits = [

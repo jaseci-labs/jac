@@ -30,23 +30,40 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from tests.support {
-    JAC_ROOT,
-    TESTS_DIR,
-    compile_native,
-    get_func,
-    native_force_opts
-}
+import from tests.support { JAC_ROOT, TESTS_DIR, compile_native, get_func, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.frontend.codeinfo {
+    native_glob_init_name,
+    native_symbol_name,
+    native_unit_prefix
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
+
+"""The engine symbol of a name the module under test defines.
+
+`:pub` symbols and the synthesized `jac_entry` keep their bare names; every
+other external symbol (functions, `Class.method`) lives under the unit's
+prefix, `native_unit_prefix(path)` (#8943). The unit's interface records the
+exact symbol when the compile produced one.
+"""
+def unit_sym(ir: any, name: str) -> str {
+    iface = ir.gen.native_iface if (ir is not None and ir.gen is not None) else None;
+    if iface is not None {
+        found = iface.symbol_of(name);
+        if found {
+            return found;
+        }
+    }
+    return native_symbol_name(native_unit_prefix(ir.loc.mod_path), name);
+}
 
 class JacStrABI(ctypes.Structure) {
     # Register view of a by-value JacStr {root, data, len} return. LLVM
@@ -70,9 +87,11 @@ def get_sfunc(
     # slots, so each str param is declared as (root, data, len) scalars and
     # bytes/str args build their backing storage via jac_str_new; str
     # returns come back as the full bytes of the result string, so existing
-    # comparisons keep working.
-    addr = eng.get_function_address(name);
-    assert addr != 0 , f"Function '{name}' not found in JIT engine";
+    # comparisons keep working. The address comes through the shared
+    # `get_func`, so the module-qualified symbol rule (#8943) applies here
+    # exactly as it does to every other lookup.
+    addr = ctypes.cast(get_func(eng, name, None), ctypes.c_void_p).value;
+    assert addr , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list = [];
     real_args: list = [];
@@ -91,7 +110,7 @@ def get_sfunc(
     sn_addr = 0;
     for sn in ("jac_str_new", "__jac_str_new") {
         try {
-            sn_addr = eng.get_function_address(sn);
+            sn_addr = native_address(eng, sn);
         } except Exception {
             sn_addr = 0;
         }
@@ -189,7 +208,7 @@ def _arithmetic__arithmetic_float_add(eng: any, _ir: any) {
 """context isolation native ir contains function"""
 def _arithmetic__context_isolation_native_ir_contains_function(eng: any, ir: any) {
     # If we can get the function address, the IR was generated correctly
-    addr = eng.get_function_address("add");
+    addr = native_address(eng, unit_sym(ir, "add"));
     assert addr != 0;
 }
 
@@ -1052,7 +1071,7 @@ test "print_multi_args" {
 """objects make point"""
 def _objects__objects_make_point(eng: any, _ir: any) {
     # make_point returns a Point* (opaque pointer)
-    addr = eng.get_function_address("make_point");
+    addr = native_address(eng, unit_sym(_ir, "make_point"));
     assert addr != 0 , "make_point function not found";
 }
 
@@ -1769,13 +1788,13 @@ test "chess opposite color" {
 
 test "chess create piece" {
     (eng, _ir) = compile_native("chess.jac");
-    addr = eng.get_function_address("create_piece");
+    addr = native_address(eng, unit_sym(_ir, "create_piece"));
     assert addr != 0;
 }
 
 test "chess has entry" {
     (eng, _ir) = compile_native("chess.jac");
-    addr = eng.get_function_address("jac_entry");
+    addr = native_address(eng, "jac_entry");
     assert addr != 0;
 }
 
@@ -1784,7 +1803,7 @@ test "chess all piece types" {
     # Verify all piece class methods are callable.
     piece_types = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
     for piece_type in piece_types {
-        addr = eng.get_function_address(f"{piece_type}.get_symbol");
+        addr = native_address(eng, unit_sym(_ir, f"{piece_type}.get_symbol"));
         assert addr != 0 , f"{piece_type}.get_symbol not found";
     }
 }
@@ -1801,7 +1820,7 @@ test "chess board methods" {
         "Board.display"
     ];
     for method in methods {
-        addr = eng.get_function_address(method);
+        addr = native_address(eng, unit_sym(_ir, method));
         assert addr != 0 , f"{method} not found";
     }
 }
@@ -1818,7 +1837,7 @@ test "chess game methods" {
         "Game.parse_input"
     ];
     for method in methods {
-        addr = eng.get_function_address(method);
+        addr = native_address(eng, unit_sym(_ir, method));
         assert addr != 0 , f"{method} not found";
     }
 }
@@ -2655,9 +2674,10 @@ test "py interop interop module compiles" {
 }
 
 test "py interop native function exists in engine" {
-    # Native function from na block is available in the JIT engine.
-    (eng, _) = compile_native("na_py_interop.jac");
-    addr = eng.get_function_address("native_add_one_to_doubled");
+    # Native function from na block is available in the JIT engine under
+    # the unit's prefix (it is not `:pub`).
+    (eng, ir) = compile_native("na_py_interop.jac");
+    addr = native_address(eng, unit_sym(ir, "native_add_one_to_doubled"));
     assert addr != 0 , "native_add_one_to_doubled not found in JIT engine";
 }
 
@@ -2826,7 +2846,7 @@ test "multi module native module linking" {
     eng = ir.gen.native_engine;
     assert eng is not None , "No native engine created";
     # Imported native functions should be resolvable
-    triple_addr = eng.get_function_address("triple");
+    triple_addr = native_address(eng, "triple");
     assert triple_addr != 0 , "triple not linked into engine";
 }
 
@@ -2880,9 +2900,9 @@ test "cross module struct function call" {
     eng = ir.gen.native_engine;
     assert eng is not None;
     # make_point and get_x should be linked
-    make_point_addr = eng.get_function_address("make_point");
+    make_point_addr = native_address(eng, "make_point");
     assert make_point_addr != 0 , "make_point not linked into engine";
-    get_x_addr = eng.get_function_address("get_x");
+    get_x_addr = native_address(eng, "get_x");
     assert get_x_addr != 0 , "get_x not linked into engine";
 }
 
@@ -2996,8 +3016,9 @@ test "cross module global arithmetic" {
 }
 
 # --- TestNativeCacheMarker ---
-test "cache marker non native file has no llvmir section in jir" {
-    # Compiling a file without na blocks should NOT write SEC_LLVM_IR into the JIR cache.
+test "cache marker non native file has no native section in jir" {
+    # Compiling a file without na blocks should NOT write any native section
+    # (SEC_NBITCODE / SEC_NIFACE / SEC_NOBJ) into the JIR cache.
     import tempfile;
     import time;
     import shutil;
@@ -3006,7 +3027,7 @@ test "cache marker non native file has no llvmir section in jir" {
         read_sections,
         SECTIONS_MAGIC,
         HEADER_SIZE,
-        SEC_LLVM_IR
+        NATIVE_SECTIONS
     }
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False);
@@ -3034,9 +3055,11 @@ test "cache marker non native file has no llvmir section in jir" {
         if pos >= 0 {
             secs = read_sections(data, pos + len(magic_bytes));
         }
-        assert SEC_LLVM_IR not in secs , (
-            "Non-native file should not have SEC_LLVM_IR in JIR cache"
-        );
+        for sec in NATIVE_SECTIONS {
+            assert sec not in secs , (
+                f"Non-native file should not have native section {sec} in JIR cache"
+            );
+        }
     } except Exception as e {
         os.unlink(jac_file);
         raise;
@@ -3052,10 +3075,11 @@ test "llvmir ir has function definitions" {
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
-    assert 'define i64 @"add"' in llvm_ir_str;
-    assert 'define i64 @"multiply"' in llvm_ir_str;
-    assert 'define i64 @"negate"' in llvm_ir_str;
-    assert 'define double @"float_add"' in llvm_ir_str;
+    # Non-`:pub` functions are defined under the unit's prefix (#8943).
+    assert f'define i64 @"{unit_sym(ir, "add")}"' in llvm_ir_str;
+    assert f'define i64 @"{unit_sym(ir, "multiply")}"' in llvm_ir_str;
+    assert f'define i64 @"{unit_sym(ir, "negate")}"' in llvm_ir_str;
+    assert f'define double @"{unit_sym(ir, "float_add")}"' in llvm_ir_str;
 }
 
 # --- TestCLibImportSyntax ---
@@ -3072,8 +3096,8 @@ test "clib import produces extern declares" {
     assert 'declare double @"pow"' in llvm_ir_str;
     assert 'define double @"sqrt"' not in llvm_ir_str;
     assert 'define double @"pow"' not in llvm_ir_str;
-    # Native Jac function should be 'define' (has body)
-    assert 'define double @"hypotenuse"' in llvm_ir_str;
+    # Native Jac function should be 'define' (has body), under the unit prefix
+    assert f'define double @"{unit_sym(ir, "hypotenuse")}"' in llvm_ir_str;
     # Library path should be stored for the compile pass
     assert ir.gen._clib_paths is not None;
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
@@ -3134,8 +3158,8 @@ test "clib import inside na block" {
     # Extern C functions from na {} block should be 'declare'
     assert 'declare double @"ceil"' in llvm_ir_str;
     assert 'declare double @"floor"' in llvm_ir_str;
-    # Native Jac function should be 'define'
-    assert 'define double @"round_up"' in llvm_ir_str;
+    # Native Jac function should be 'define', under the unit prefix
+    assert f'define double @"{unit_sym(ir, "round_up")}"' in llvm_ir_str;
     # Library path should be stored
     assert ir.gen._clib_paths is not None;
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
@@ -3180,7 +3204,7 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
     s = str(ir.gen.llvm_ir);
     assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
     assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
-    assert 'define void @"open_then_close"' in s , "wrapper not defined";
+    assert f'define void @"{unit_sym(ir, "open_then_close")}"' in s , "wrapper not defined";
     assert ir.gen._clib_paths is not None;
     assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
     # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
@@ -3267,13 +3291,13 @@ test "clib struct value-type coercion" {
     # Vec2 struct type should be defined
     assert '%"Vec2"' in llvm_ir_str , "Vec2 struct type not found in IR";
     # Jac functions should use pointer types for Vec2 (Jac semantics)
-    assert '%"Vec2"* @"make_vec"' in llvm_ir_str , "make_vec should return Vec2 pointer";
+    assert f'%"Vec2"* @"{unit_sym(ir, "make_vec")}"' in llvm_ir_str , "make_vec should return Vec2 pointer";
     assert '%"Vec2"* %"v"' in llvm_ir_str , "vec_length should take Vec2 pointer param";
     # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
     # Color struct type should be defined
     assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
     # Jac test_draw function should use Color pointer internally
-    assert 'define void @"test_draw"' in llvm_ir_str;
+    assert f'define void @"{unit_sym(ir, "test_draw")}"' in llvm_ir_str;
     # Struct-by-value coercion at the call site: the small struct is passed in
     # an integer register, loaded out of the struct slot.
     assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
@@ -3648,8 +3672,8 @@ test "inferred-native chess.jac has entry and key functions" {
     eng = ir.gen.native_engine;
     assert eng is not None;
     # jac_entry must exist
-    assert eng.get_function_address("jac_entry") != 0;
-    # Key game functions must be present
+    assert native_address(eng, "jac_entry") != 0;
+    # Key game functions must be present, under the unit's prefix
     for func_name in [
         "opposite_color",
         "create_piece",
@@ -3658,7 +3682,7 @@ test "inferred-native chess.jac has entry and key functions" {
         "Game.find_king",
         "Game.play"
     ] {
-        assert eng.get_function_address(func_name) != 0 , (
+        assert native_address(eng, unit_sym(ir, func_name)) != 0 , (
             f"{func_name} not found in auto-promoted native engine"
         );
     }
@@ -3709,18 +3733,41 @@ test "native-default chess.jac runs via cli" {
 
 test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
     # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
-    # is auto-promoted by `jac nacompile`. The entry point emits a call to each
-    # imported module's `__jac_glob_init_<safe>` (driven by
-    # native_transitive_sources), so the cross-module merge MUST link those
-    # modules' definitions. Before the fix, BoundaryAnalysisPass only classified
-    # the imports as native cross-module when the main file was a `.jac` or the
-    # import sat in a `na {}` block, so the auto-promote case left
-    # native_cross_module_imports empty: the merge was skipped, the glob-init
-    # symbol stayed `declare`-only, and the loader aborted with
-    # `undefined symbol: __jac_glob_init_zlib_na_*`. The `.jac` form already
-    # worked; this pins the auto-promote (plain `.jac`) form on Linux/ELF.
+    # is auto-promoted by `jac nacompile`. The unit records a native edge to
+    # the bundled module (`mod.gen.native_deps`, mirrored in
+    # `mod.gen.native_iface.deps`); the link plan walks those edges and the
+    # synthesized `jac_entry` calls every unit's initializer
+    # (`native_glob_init_name(path)`), so the linked artifact MUST hold the
+    # bundled modules' definitions. Before the fix, BoundaryAnalysisPass only
+    # classified the imports as native cross-module when the main file was a
+    # `.jac` or the import sat in a `na {}` block, so the auto-promote case
+    # recorded no dependency: the bundled unit was never linked, its glob-init
+    # stayed `declare`-only, and the loader aborted with an undefined symbol.
+    # The `.jac` form already worked; this pins the auto-promote (plain
+    # `.jac`) form on Linux/ELF.
     import platform;
     fixture = str(os.path.join(FIXTURES, "autopromote_bundled_zlib.jac"));
+    # Compile side: the dependency edge is recorded on the unit.
+    prog = JacProgram();
+    mod = prog.compile(
+        fixture,
+        options=CompileOptions(
+            aot_mode=True,
+            default_codespace='native',
+            force_target_program=True,
+            skip_native_engine=True
+        )
+    );
+    assert not prog.errors_had , f"Errors: {[str(e) for e in prog.errors_had]}";
+    deps = list(mod.gen.native_deps);
+    assert any(os.path.basename(d) == "zlib.jac" for d in deps) , (
+        f"auto-promoted unit did not record the bundled zlib unit: {deps}"
+    );
+    assert all(os.path.isabs(d) for d in deps) , f"native_deps must be resolved paths: {deps}";
+    assert mod.gen.native_iface is not None , "no native interface exported";
+    assert list(mod.gen.native_iface.deps) == deps , (
+        f"interface deps {mod.gen.native_iface.deps} != gen deps {deps}"
+    );
     with tempfile.TemporaryDirectory() as tmpdir {
         out = os.path.join(tmpdir, "autopromote_bundled_zlib");
         comp = subprocess.run(
@@ -3734,9 +3781,10 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
             f"stdout: {comp.stdout[-600:]}\nstderr: {comp.stderr[-600:]}"
         );
         assert os.path.exists(out) , "nacompile produced no binary";
-        # Only a Linux x86_64 host can execute the produced ELF. A missing merge
-        # leaves `__jac_glob_init_zlib_na_*` an undefined symbol, so the loader
-        # aborts before `main` -- a clean run with the right CRC proves the merge.
+        # Only a Linux x86_64 host can execute the produced ELF. A missing unit
+        # leaves the bundled module's glob-init an undefined symbol, so the
+        # loader aborts before `main` -- a clean run with the right CRC proves
+        # the link.
         if sys.platform.startswith("linux") and ("x86_64" in platform.machine()) {
             res = subprocess.run([out], capture_output=True, text=True, timeout=30);
             assert res.returncode == 0 , (
@@ -3923,10 +3971,12 @@ test "sys stdout/stderr streams via nacompile" {
 
 test "native osp kernel links transitively through an imported module (issue #6669)" {
     # A thin entry that uses no OSP itself but imports a module whose `run_it`
-    # does the `spawn`. The kernel's glob-init is referenced only transitively,
-    # so the entry module's manifest carries no `osp_kernel` mark. The link gate
-    # must still pull the kernel in. Before the fix the binary built cleanly but
-    # failed at load with: undefined symbol: __jac_glob_init_osp_kernel.
+    # does the `spawn`. Only the imported unit records a native edge to the
+    # OSP kernel unit (`runtime/osp_kernel.jac`), so the entry's own interface
+    # names no kernel. The link plan (`link_plan.build_link_plan`) walks the
+    # dep edges transitively and must still pull the kernel unit and its
+    # initializer in. Before the fix the binary built cleanly but failed at
+    # load with an undefined kernel glob-init symbol.
     import tempfile;
     fixture = str(os.path.join(FIXTURES, "osp_kernel_transitive_main.jac"));
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -4411,12 +4461,9 @@ def _na_enum_import__enum_import_value_access(eng: any, _ir: any) {
 
 """enum_import cross module function call"""
 def _na_enum_import__enum_import_cross_module_function_call(eng: any, _ir: any) {
-    # Call both entry functions (imported module needs its globals initialized)
-    renamed_entry_addr = eng.get_function_address("__jac_entry_na_enum_export_na");
-    if renamed_entry_addr {
-        renamed_entry = ctypes.CFUNCTYPE(None)(renamed_entry_addr);
-        renamed_entry();
-    }
+    # The synthesized `jac_entry` runs every unit's initializer in
+    # dependency order (the imported module's globals included) before the
+    # root's own entry body; no per-module entry needs calling by hand.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "check_if_keyword", ctypes.c_int64);
@@ -4492,14 +4539,15 @@ test "switch_stmt" {
 
 # --- TestJIRBitcodeCaching ---
 test "jir bitcode cache round-trip" {
-    import struct;
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.jir {
+        NativeStamp,
         get_module_cache_path,
         SECTIONS_MAGIC,
         HEADER_SIZE,
         read_sections,
-        SEC_NATIVE_OBJ
+        running_compiler_digest,
+        SEC_NBITCODE
     }
 
     compiler = JacCompiler();
@@ -4510,7 +4558,7 @@ test "jir bitcode cache round-trip" {
     code1 = compiler.get_bytecode(fixture, prog1);
     assert code1 is not None , "get_bytecode should return code object";
 
-    # Step 2: Verify SEC_NATIVE_OBJ section exists in the cached JIR file
+    # Step 2: Verify SEC_NBITCODE section exists in the cached JIR file
     cache_path = get_module_cache_path(fixture);
     assert cache_path.exists() , f"JIR cache file should exist at {cache_path}";
     jir_data = cache_path.read_bytes();
@@ -4518,21 +4566,26 @@ test "jir bitcode cache round-trip" {
     pos = jir_data.find(magic, HEADER_SIZE);
     assert pos >= 0 , "JIR file should contain SECTIONS_MAGIC";
     secs = read_sections(jir_data, pos + len(magic));
-    assert SEC_NATIVE_OBJ in secs , f"JIR should contain SEC_NATIVE_OBJ, got sections: {list(
+    assert SEC_NBITCODE in secs , f"JIR should contain SEC_NBITCODE, got sections: {list(
         secs.keys()
     )}";
 
-    # Step 3: Verify platform header in SEC_NATIVE_OBJ
-    sec_data = secs[SEC_NATIVE_OBJ];
-    assert len(sec_data) > 2 , "SEC_NATIVE_OBJ too short";
-    (triple_len, ) = struct.unpack_from('<H', sec_data, 0);
-    cached_triple = sec_data[2:2 + triple_len].decode('utf-8');
+    # Step 3: Verify the native stamp heading SEC_NBITCODE: the compiler
+    # digest, codegen identity and target triple the bitcode was produced
+    # under, followed by the bitcode payload.
+    sec_data = secs[SEC_NBITCODE];
+    unpacked = NativeStamp.unpack(sec_data);
+    assert unpacked is not None , "SEC_NBITCODE does not start with a native stamp";
+    (stamp, payload) = unpacked;
     import jaclang.compiler.backends.native.llvm.binding as llvm;
-    assert cached_triple == llvm.get_default_triple() , (
-        f"Triple mismatch: {cached_triple} != {llvm.get_default_triple()}"
+    assert stamp.triple == llvm.get_default_triple() , (
+        f"Triple mismatch: {stamp.triple} != {llvm.get_default_triple()}"
     );
-    bitcode_size = len(sec_data) - 2 - triple_len;
-    assert bitcode_size > 0 , "Bitcode should not be empty";
+    assert stamp.compiler_digest == running_compiler_digest() , (
+        "stamp does not carry the running compiler digest"
+    );
+    assert stamp.codegen_identity , "stamp carries no codegen identity";
+    assert len(payload) > 0 , "Bitcode should not be empty";
 
     # Step 4: Load from cache with a fresh compiler and call native function
     compiler2 = JacCompiler();
@@ -4778,9 +4831,10 @@ def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue
     # i32(i32, i32). Storing it must go through a __clibcb trampoline with
     # the C signature, not a raw bitcast of the Jac function.
     assert "__clibcb" in llvm_ir_str , "no trampoline emitted for vtable slot";
-    assert 'define internal i32 @"_on_event.__clibcb.0"(i32' in llvm_ir_str , "trampoline must carry the C function signature";
+    on_event = unit_sym(ir, "_on_event");
+    assert f'define internal i32 @"{on_event}.__clibcb.0"(i32' in llvm_ir_str , "trampoline must carry the C function signature";
     # The trampoline calls back into the Jac function.
-    assert '@"_on_event"' in llvm_ir_str;
+    assert f'@"{on_event}"' in llvm_ir_str;
 }
 
 """clib vtable trampolines are cached per (fn, type) pair (issue #6570)"""
@@ -4789,8 +4843,9 @@ def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair
 ) {
     llvm_ir_str = str(ir.gen.llvm_ir);
     # One store site → exactly one trampoline definition.
-    assert llvm_ir_str.count("define internal i32 @\"_on_event.__clibcb.0\"") == 1;
-    assert "_on_event.__clibcb.1" not in llvm_ir_str;
+    on_event = unit_sym(ir, "_on_event");
+    assert llvm_ir_str.count(f'define internal i32 @"{on_event}.__clibcb.0"') == 1;
+    assert f"{on_event}.__clibcb.1" not in llvm_ir_str;
 }
 
 # --- Flat (no-RC) allocation for clib vtable structs (issue #6571) ---
@@ -4941,9 +4996,10 @@ test "cross module glob init: imported glob is non-null on first access" {
     (eng, _ir) = compile_native("cross_module_glob_init.jac");
     # Before the fix, _TABLE in the library module stayed null after import,
     # causing table_len() to return garbage and table_push() to segfault.
-    # After the fix, jac_entry calls __jac_glob_init_cross_module_glob_init_lib_na
+    # After the fix, the synthesized jac_entry calls the imported unit's
+    # initializer (`native_glob_init_name(lib_path)`) before this unit's own,
     # so the list is properly allocated before any code touches it.
-    # Call jac_entry to trigger __jac_glob_init for both this module and the import.
+    # Call jac_entry to trigger the initializers of both this module and the import.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     run_test = get_func(eng, "run_glob_init_test", ctypes.c_int64);
@@ -5026,18 +5082,23 @@ test "mixed transitive dup: unique symbol from B resolves after A was linked" {
 }
 
 # ─── native_safe_sym: per-module glob-init / entry symbol uniqueness ──────────
-# native_safe_sym is the single naming contract shared by the emit side
-# (na_compile_pass.impl.jac, func.impl.jac), the AOT shared-init emitter
-# (nacompile.impl.jac), and the JIT runtime lookup
-# (native_marshal.init_native_globals). The legacy `re.sub(r'[^a-zA-Z0-9_]',
-# '_', src)` collapsed 'math_utils.na' (flat) and 'math/utils.na' (dotted
-# math.utils) to the same 'math_utils_na', so two distinct transitive native
-# deps collided on __jac_glob_init_<safe> and LLVM's first-seen-wins silently
-# dropped the second module's initializer. The hash suffix must keep them
-# distinct, and the result must stay LLVM-identifier-safe.
+# native_safe_sym is the single naming contract behind `native_unit_prefix`:
+# every unit's initializer (`native_glob_init_name`), entry
+# (`native_entry_name`) and non-`:pub` symbol (`native_symbol_name`) is
+# derived from it, and the link plan (`link_plan.build_link_plan`) orders and
+# names those initializers from the same function. The legacy
+# `re.sub(r'[^a-zA-Z0-9_]', '_', src)` collapsed 'math_utils.na' (flat) and
+# 'math/utils.na' (dotted math.utils) to the same 'math_utils_na', so two
+# distinct transitive native deps collided on __jac_glob_init_<safe> and
+# LLVM's first-seen-wins silently dropped the second module's initializer.
+# The hash suffix must keep them distinct, and the result must stay
+# LLVM-identifier-safe.
 test "native_safe_sym disambiguates flat vs dotted path collision" {
     import re;
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+    import from jaclang.compiler.frontend.codeinfo {
+        native_entry_name,
+        native_safe_sym
+    }
     flat = "math_utils.na";
     dotted = "math/utils.na";
     # Document the pre-existing collision under the legacy transform: both
@@ -5061,16 +5122,33 @@ test "native_safe_sym disambiguates flat vs dotted path collision" {
     assert native_safe_sym(flat) == sym_flat , "native_safe_sym must be deterministic";
     # The full glob-init symbols built from these must also differ.
     assert f"__jac_glob_init_{sym_flat}" != f"__jac_glob_init_{sym_dotted}";
-    # The osp_kernel SENTINEL must bypass the hash and map to the bare slug: the
-    # portable OSP kernel is linked under a fixed, hash-free symbol by
-    # _link_osp_kernel / _emit_osp_setup and probed by name, so appending the
-    # disambiguating hash would leave the entry's __jac_glob_init_osp_kernel call
-    # dangling against the kernel's hash-free definition (undefined symbol at
-    # load, issue #6669). Pin it here so the bypass can't silently regress.
-    assert native_safe_sym("osp_kernel") == "osp_kernel" , (
-        f"osp_kernel sentinel must stay hash-free, got {native_safe_sym(
-            'osp_kernel'
-        )!r}"
+    # The unit-level names are pure functions of the resolved path, so two
+    # units with the same stem in different directories never share an
+    # initializer, an entry or a symbol prefix; a unit's own names agree with
+    # each other, which is what lets a consumer name a dependency's symbols
+    # without the dependency's object.
+    with tempfile.TemporaryDirectory() as tmp {
+        a = os.path.join(tmp, "math_utils.jac");
+        b = os.path.join(tmp, "math", "utils.jac");
+        os.makedirs(os.path.dirname(b), exist_ok=True);
+        prefix_a = native_unit_prefix(a);
+        prefix_b = native_unit_prefix(b);
+        assert prefix_a != prefix_b , f"same prefix for {a} and {b}: {prefix_a!r}";
+        assert valid.`match(prefix_a) , f"unsafe unit prefix: {prefix_a!r}";
+        assert native_unit_prefix(a) == prefix_a , "native_unit_prefix must be deterministic";
+        assert native_glob_init_name(a) == f"__jac_glob_init_{prefix_a}";
+        assert native_entry_name(a) == f"__jac_entry_{prefix_a}";
+        assert native_glob_init_name(a) != native_glob_init_name(b);
+        assert native_symbol_name(prefix_a, "fn") == f"{prefix_a}.fn";
+        assert native_symbol_name(prefix_a, "fn") != native_symbol_name(prefix_b, "fn");
+    }
+    # The OSP kernel is an ordinary native unit (`runtime/osp_kernel.jac`, one
+    # of `KERNEL_UNIT_REL`): the link plan pulls it by dependency edge and
+    # names its initializer through `native_glob_init_name` like any other
+    # unit, so no hash-free sentinel spelling exists any more (issue #6669
+    # was the old fixed-symbol kernel link).
+    assert native_safe_sym("osp_kernel") != "osp_kernel" , (
+        "native_safe_sym must not special-case the kernel stem"
     );
 }
 
@@ -5298,8 +5376,12 @@ test "transitive glob init: push through mid updates deep glob list" {
 # When module A imports module B which in turn imports a .so (e.g. libm), the
 # .so was only loaded during B's compilation. When A linked B's bitcode, MCJIT
 # could not resolve the extern symbols from B's clib import, causing a segfault.
-# Fix: _compile_and_link_native_imports now propagates dep._clib_paths back to
-# the main module and calls llvm.load_library_permanently for each entry.
+# Today every unit's interface (`NativeIface.clib_paths` /
+# `clib_symbol_lib`, served by the program's `NativeUnitRegistry`) records the
+# libraries it declares, and the link plan (`link_plan.build_link_plan`)
+# collects them across the whole closure (`plan.clib_paths()`,
+# `plan.clib_symbol_lib()`); `jit_engine` loads each one permanently before
+# the engine is created.
 test "transitive clib: compiles without errors when dep imports a .so" {
     prog = JacProgram();
     ir = prog.compile(
@@ -5310,37 +5392,48 @@ test "transitive clib: compiles without errors when dep imports a .so" {
     assert ir.gen.native_engine is not None , "No native engine created";
 }
 
-test "transitive clib: _clib_paths of dep module propagated to entry module" {
-    # The entry's _clib_paths must include libm even though only the lib module
-    # directly imports it.
+test "transitive clib: clib paths of dep module reach the entry's link plan" {
+    # The plan's clib paths must include libm even though only the lib module
+    # directly imports it: the dep's interface records the library and the
+    # plan walks the dep edge.
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac")),
-        options=native_force_opts()
-    );
+    fixture = str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac"));
+    opts = native_force_opts();
+    ir = prog.compile(fixture, options=opts);
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    clib_paths = ir.gen._clib_paths;
-    assert clib_paths , "_clib_paths not set on entry module IR";
-    assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
+    assert "fix_clib_transitive_lib" in " ".join(ir.gen.native_deps) , (
+        f"entry did not record its native dependency: {ir.gen.native_deps}"
+    );
+    plan = build_link_plan(prog, [fixture], opts);
+    clib_paths = plan.clib_paths();
+    assert clib_paths , "the link plan collected no clib paths";
+    assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in the plan's clib paths: {clib_paths}";
+    dep_unit = [u for u in plan.units if u.path.endswith("fix_clib_transitive_lib.jac")];
+    assert dep_unit , f"dep unit missing from the plan: {[u.path for u in plan.units]}";
+    assert any("libm" in p for p in dep_unit[0].iface.clib_paths) , (
+        f"dep interface does not record libm: {dep_unit[0].iface.clib_paths}"
+    );
 }
 
-test "transitive clib: _clib_symbol_lib of dep module propagated to entry module" {
+test "transitive clib: clib symbol map of dep module reaches the entry's link plan" {
     # The symbol→library map that the PE linker uses to attribute each import
-    # to the right DLL must propagate transitively, just like _clib_paths.
-    # Before the fix only _clib_paths crossed the module boundary while
-    # _clib_symbol_lib was dropped, so on Windows every Win32 symbol imported
-    # from a sub-module fell back to msvcrt.dll → WinError 127 at runtime.
-    # The dep declares `sqrt` from libm; assert the entry module inherits that
-    # symbol→lib mapping (regression guard for PR #6828).
+    # to the right DLL must cross the module boundary, just like the clib
+    # paths. Before the fix only the paths crossed while the symbol map was
+    # dropped, so on Windows every Win32 symbol imported from a sub-module
+    # fell back to msvcrt.dll → WinError 127 at runtime. The dep declares
+    # `sqrt` from libm; assert the plan carries that symbol→lib mapping
+    # (regression guard for PR #6828).
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac")),
-        options=native_force_opts()
-    );
+    fixture = str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac"));
+    opts = native_force_opts();
+    prog.compile(fixture, options=opts);
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    sym_lib = ir.gen._clib_symbol_lib;
-    assert sym_lib , "_clib_symbol_lib not propagated to entry module IR";
-    assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    plan = build_link_plan(prog, [fixture], opts);
+    sym_lib = plan.clib_symbol_lib();
+    assert sym_lib , "the link plan collected no clib symbol map";
+    assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from the plan's symbol map: {sym_lib}";
     assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong library: {sym_lib[
         'sqrt'
     ]}";
@@ -6142,9 +6235,9 @@ test "parameterless no-return function (def foo {}) is not dropped" {
     # `def foo { ... }` (no parens, no return type) is semantically
     # `def foo() -> None`. The native backend used to drop such functions and
     # their call sites entirely, so `run_ticks(n)` returned 0 instead of n.
-    (eng, _) = compile_native("noret_no_params.jac");
+    (eng, ir) = compile_native("noret_no_params.jac");
     # The function must actually be emitted, not silently elided.
-    assert eng.get_function_address("tick") != 0 , "void no-signature function 'tick' was dropped from the module";
+    assert native_address(eng, unit_sym(ir, "tick")) != 0 , "void no-signature function 'tick' was dropped from the module";
     run_ticks = get_func(eng, "run_ticks", ctypes.c_int64, ctypes.c_int64);
     # If the tick() calls are emitted and run, hits == n.
     assert run_ticks(5) == 5 , "calls to a no-signature void function were not emitted";
@@ -6180,7 +6273,7 @@ def _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_is
     # The tuple trigger types `here` as a union of node members; the body must
     # not truncate at `here.val` (the original bug emitted an empty body and no
     # `field.val` load, so `either` silently stayed 0).
-    addr = eng.get_function_address("W.on_either");
+    addr = native_address(eng, unit_sym(_ir, "W.on_either"));
     assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
     fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
     # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
@@ -6222,9 +6315,12 @@ def _test_blocks__native_test_blocks_compile_to_pass_fail_functions(eng: any, ir
             "test_deliberate_failure"
         };
     assert by_name["test_add_works"].description == "add works";
-    # Globals must be initialized before tests touch them.
-    glob_init = get_func(eng, "__jac_glob_init", None);
-    glob_init();
+    # Globals must be initialized before tests touch them. The engine runs
+    # the unit's initializer itself on the first address it hands out; the
+    # initializer is idempotent, so calling it by name is harmless.
+    glob_init_addr = native_address(eng, native_glob_init_name(ir.loc.mod_path));
+    assert glob_init_addr != 0 , "unit initializer not found in JIT engine";
+    ctypes.CFUNCTYPE(None)(glob_init_addr)();
     # Convention: null (None) = pass, static message pointer = fail.
     passing = get_func(eng, by_name["test_add_works"].symbol, ctypes.c_char_p);
     assert passing() is None , "passing test returned a failure message";

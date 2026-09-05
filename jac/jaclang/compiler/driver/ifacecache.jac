@@ -1,6 +1,7 @@
 import os;
 import time;
 import from jaclang.compiler.driver.jir {
+    DepRow,
     SEC_CTDEPS,
     SEC_DEPS,
     SEC_DIAG,
@@ -16,6 +17,7 @@ import from jaclang.compiler.driver.jir {
     jir_cacheable_source_path,
     module_cache_key,
     read_dep_hashes,
+    read_native_dep_hashes,
     read_section_bytes,
     write_module_cache
 }
@@ -309,12 +311,46 @@ obj IfaceRegistry {
         return out;
     }
 
-    def dep_rows(resolved_path: str, mod: any) -> list[tuple[str, str, str]] {
+    """The dependency rows of one importer.
+
+    The native column is filled from the program's native unit registry for
+    every dependency that is a native unit with a record in hand; a direct
+    native edge the IR generator reported (`native_edges`) joins the rows even
+    when the type-interface layer never noted it, so the link plan can walk
+    `SEC_DEPS` native edges alone.
+    """
+    def dep_rows(
+        resolved_path: str, mod: any, native_edges: (list[str] | None) = None
+    ) -> list[DepRow] {
         bucket = self.direct_deps.get(resolved_path, {});
         client = self._client_edges(mod) if mod is not None else set();
-        out: list[tuple[str, str, str]] = [];
+        natives = self.prog.native_units();
+        out: list[DepRow] = [];
+        seen: set[str] = set();
+        edges: set[str] = set(os.path.realpath(e) for e in (native_edges or []));
         for (path, digest) in bucket.items() {
-            out.append((path, digest, "c" if path in client else "", ));
+            seen.add(path);
+            flags = "c" if path in client else "";
+            ndigest = natives.known_digest(path);
+            if path in edges {
+                flags += "n";
+            }
+            out.append(
+                DepRow(path=path, digest=digest, flags=flags, native_digest=ndigest)
+            );
+        }
+        for path in sorted(edges) {
+            if path in seen {
+                continue;
+            }
+            out.append(
+                DepRow(
+                    path=path,
+                    digest="",
+                    flags="n",
+                    native_digest=natives.known_digest(path)
+                )
+            );
         }
         return out;
     }
@@ -403,9 +439,28 @@ obj IfaceRegistry {
         );
     }
 
+    """Freshness of the native side of an entry: every recorded native digest
+    must equal the dependency's current one, recursively through the native
+    unit registry's `ensure`."""
+    def _ndeps_match(data: bytes, base_dir: str = "") -> bool {
+        natives = self.prog.native_units();
+        for (dep, recorded) in read_native_dep_hashes(data, base_dir) {
+            ent = natives.ensure(dep, compile_on_miss=False);
+            if ent is None or ent.digest != recorded {
+                return False;
+            }
+        }
+        return True;
+    }
+
     def _deps_match(data: bytes, base_dir: str = "") -> bool {
-        for (dep, recorded) in read_dep_hashes(data, base_dir) {
+        import from jaclang.compiler.driver.jir { read_dep_rows }
+        for row in read_dep_rows(data, base_dir) {
+            (dep, recorded) = (row.path, row.digest);
             if not recorded {
+                if "n" in row.flags {
+                    continue;
+                }
                 return False;
             }
             if is_stub_like_path(dep) {
@@ -807,7 +862,9 @@ obj IfaceRegistry {
         if payload is not None {
             sections[SEC_IFACE] = payload;
         }
-        sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
+        sections[SEC_DEPS] = deps_section(
+            self.dep_rows(resolved, mod, list(mod.gen.native_deps or []))
+        );
         try {
             import from jaclang.compiler.placement.placement {
                 get_module_summary,
@@ -954,9 +1011,9 @@ obj IfaceRegistry {
         }
         edges: list[str] = [];
         import from jaclang.compiler.driver.jir { read_dep_rows }
-        for (dep, _digest, flags) in read_dep_rows(data, base_dir) {
-            if "c" in flags {
-                edges.append(dep);
+        for row in read_dep_rows(data, base_dir) {
+            if "c" in row.flags {
+                edges.append(row.path);
             }
         }
         self._event("boundary_facts");

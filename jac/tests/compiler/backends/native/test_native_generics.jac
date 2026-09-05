@@ -8,13 +8,7 @@ same body lowers to different operations per instantiation.
 
 import ctypes;
 import os;
-import from tests.support {
-    TESTS_DIR,
-    compile_native,
-    get_func,
-    has_error_code,
-    native_force_opts
-}
+import from tests.support { TESTS_DIR, compile_native, get_func, has_error_code, native_address, native_force_opts }
 import jaclang;
 
 import from jaclang.compiler.driver.program { JacProgram }
@@ -45,7 +39,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     # bytes/str args build their backing storage via jac_str_new; str
     # returns come back as the full bytes of the result string, so existing
     # comparisons keep working.
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list = [];
@@ -65,7 +59,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     sn_addr = 0;
     for sn in ("jac_str_new", "__jac_str_new") {
         try {
-            sn_addr = eng.get_function_address(sn);
+            sn_addr = native_address(eng, sn);
         } except Exception {
             sn_addr = 0;
         }
@@ -146,7 +140,7 @@ test "mono: container type params solve through list[T]" {
 
 test "mono: an uncalled generic def emits no code and no error" {
     (eng, ir) = compile_native("generics_mono.jac");
-    assert eng.get_function_address("never_called") == 0 , (
+    assert native_address(eng, "never_called") == 0 , (
         "a generic template with no instantiations must not exist as a symbol"
     );
 }

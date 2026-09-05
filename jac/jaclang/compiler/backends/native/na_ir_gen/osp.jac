@@ -11,6 +11,7 @@ obj NaIRGenOsp(NaIRGenState) {
     def _osp_active -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;
+    def _osp_kernel_init_fns -> list[ir.Function];
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
     def _emit_osp_setup -> None;
     def _osp_rc_new(struct_name: str) -> (ir.Value | None);

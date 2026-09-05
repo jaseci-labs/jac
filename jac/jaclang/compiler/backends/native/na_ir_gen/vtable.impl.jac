@@ -32,7 +32,7 @@ impl NaIRGenVtable._emit_vtable_global(arch_name: str) -> None {
     vtable_global = self.vtable_globals.get(arch_name);
     if vtable_global is None {
         vtable_global = ir.GlobalVariable(
-            self.llvm_module, vtable_type, name=f"{arch_name}.__vtable"
+            self.llvm_module, vtable_type, name=self._vtable_symbol(arch_name)
         );
         self.vtable_globals[arch_name] = vtable_global;
     }
@@ -40,6 +40,16 @@ impl NaIRGenVtable._emit_vtable_global(arch_name: str) -> None {
 
     vtable_global.linkage = "";
     vtable_global.initializer = vtable_init;
+    self._record_export(f"{arch_name}.__vtable", vtable_global.name, "vtable");
+}
+
+"""The vtable symbol of a class lives under its defining unit's prefix, so a
+consumer's forward reference and the definer's definition name one object."""
+impl NaIRGenVtable._vtable_symbol(arch_name: str) -> str {
+    import from jaclang.compiler.frontend.codeinfo { native_symbol_name }
+    src = self._struct_source_mod.get(arch_name, "");
+    prefix = self._prefix_of_path(src) if src else self._own_prefix();
+    return native_symbol_name(prefix, f"{arch_name}.__vtable");
 }
 
 impl NaIRGenVtable._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None) {
@@ -55,7 +65,7 @@ impl NaIRGenVtable._vtable_global_for(arch_name: str) -> (ir.GlobalVariable | No
     i8_ptr = ir.IntType(8).as_pointer();
     vtable_type = ir.ArrayType(i8_ptr, len(lay.methods) + VTABLE_HEADER_SLOTS);
     vtable_ref = ir.GlobalVariable(
-        self.llvm_module, vtable_type, name=f"{arch_name}.__vtable"
+        self.llvm_module, vtable_type, name=self._vtable_symbol(arch_name)
     );
     vtable_ref.global_constant = True;
     vtable_ref.linkage = "external";
@@ -1020,8 +1030,9 @@ impl NaIRGenVtable._generate_inherited_method_wrappers -> None {
                     orig_fn_type.return_type, new_param_types
                 );
                 wrapper_fn = ir.Function(
-                    self.llvm_module, wrapper_fn_type, name=child_full
+                    self.llvm_module, wrapper_fn_type, name=self._symbol_for(child_full)
                 );
+                wrapper_fn.linkage = "internal";
 
                 wrapper_fn.args[0].name = "self";
                 for i in range(1, len(impl_func.args)) {

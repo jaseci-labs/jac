@@ -183,8 +183,7 @@ test "helpers.jac lowers when a native unit reaches it" {
     opts = CompileOptions(
         aot_mode=True,
         force_codespace='native',
-        force_target_program=True,
-        no_ir_cache=True
+        force_target_program=True
     ).clone_for_native_import();
     na_coverage_begin();
     try {

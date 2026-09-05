@@ -94,12 +94,17 @@ obj NaIRGenState(ModuleCodegenPass) {
         _osp_thunk_uid: int = 0,
         imported_osp_archs: dict[str, tuple] = {},
         _osp_kernel_mod: (object | None) = None,
+        _osp_graph_mod: (object | None) = None,
         _fmt_kernel_mod: (object | None) = None,
         _osp_rt_global: (ir.GlobalVariable | None) = None,
         _osp_setup_fn: (ir.Function | None) = None,
         _osp_ensure_fn: (ir.Function | None) = None,
-        _osp_kernel_inited_gv: (ir.GlobalVariable | None) = None,
-        _osp_kernel_glob_init_fn: (ir.Function | None) = None,
+        _unit_prefix: str = "",
+        _unit_prefixes: dict[str, str] = {},
+        _native_dep_paths: list[str] = [],
+        _pub_symbols: set[str] = set(),
+        _unit_exports: dict[str, tuple] = {},
+        _demoted_names: set[str] = set(),
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
@@ -476,6 +481,19 @@ obj NaIRGenState(ModuleCodegenPass) {
     def _codegen_with(nd: uni.WithStmt) -> None abst;
     def _walk_imported_module_types(imported_mod: uni.Module) -> None abst;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None abst;
+    def _own_prefix -> str abst;
+    def _prefix_of_module(mod: (uni.Module | None)) -> str abst;
+    def _prefix_of_path(path: str) -> str abst;
+    def _symbol_for(
+        name: str, owner: (uni.Module | None) = None, is_pub: bool = False
+    ) -> str abst;
+    def _record_export(
+        name: str, symbol: str, kind: str, is_pub: bool = False
+    ) -> None abst;
+    def _note_native_dep(path: str) -> None abst;
+    def _dep_iface(imported_mod: uni.Module) -> any abst;
+    def _load_native_unit_module(path: str) -> (uni.Module | None) abst;
+    def _is_kernel_unit -> bool abst;
     def _walk_imported_module_abilities(
         imported_mod: uni.Module, with_fn_verdicts: bool = True
     ) -> None abst;
@@ -791,7 +809,8 @@ obj NaIRGenState(ModuleCodegenPass) {
     def _opt_unwrap_subscript(val: (ir.Value | None)) -> (ir.Value | None) abst;
     def _forward_declare_archetype_names(module: uni.Module) -> None abst;
     def _register_archetypes(module: uni.Module) -> None abst;
-    def _codegen_archetype(nd: uni.Archetype) -> None abst;
+    def _codegen_archetype(nd: uni.Archetype, imported: bool = False) -> None abst;
+    def _build_jc_layout -> dict abst;
     def _forward_declare_method(
         arch_name: str,
         method: uni.Ability,

@@ -27,10 +27,10 @@ def native_scan_memo_clear {
 def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None) {
-    import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
+    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
     import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
     import from jaclang.compiler.driver.program { JacProgram }
-    if _is_demoted_native(os.path.realpath(path)) {
+    if module_native_demoted(os.path.realpath(path)) {
         return ("previously-demoted", []);
     }
     import from jaclang.compiler.driver.bccache { discover_annex_files }
@@ -88,12 +88,12 @@ def _native_dep_scan(
 def _native_deps_ok(
     root_path: str, root_deps: list[str], hold_exempt: bool = False
 ) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { effective_native_closure_cap }
-    import from jaclang.compiler.driver.na_coverage { _note_native_closure_cap }
-    import from jaclang.compiler.native_scope {
-        in_native_scope_path,
-        scope_lowering_active
+    import from jaclang.compiler.frontend.codeinfo {
+        effective_native_closure_cap,
+        native_unit_compile_active
     }
+    import from jaclang.compiler.driver.na_coverage { _note_native_closure_cap }
+    import from jaclang.compiler.native_scope { in_native_scope_path }
     cap = effective_native_closure_cap();
     edges: dict[str, list[str]] = {root_path: list(root_deps)};
     queue: list[str] = list(root_deps);
@@ -106,7 +106,7 @@ def _native_deps_ok(
         if dep in edges {
             continue;
         }
-        if in_native_scope_path(dep) and not scope_lowering_active() {
+        if in_native_scope_path(dep) and not native_unit_compile_active() {
             return False;
         }
         info = _native_dep_scan(dep, hold_exempt=hold_exempt);
@@ -143,9 +143,16 @@ def native_default_path_ok(path: str) -> bool {
     return _native_deps_ok(ap, deps, hold_exempt=exempt);
 }
 
-def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
+"""Whether a module with no locked codespace may be lowered natively.
+
+`native_unit_compile` is `CompileOptions.native_unit` of the compile asking;
+the frontend scope modules are native only when the kernel build asks.
+"""
+def native_default_verdict(
+    module: uni.Module, prog: any = None, native_unit_compile: bool = False
+) -> tuple[bool, str] {
     import from jaclang.compiler.driver.schedules { native_pipeline_available }
-    import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
+    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
 
     try {
         import from jaclang.project.config { get_config }
@@ -162,14 +169,11 @@ def native_default_verdict(module: uni.Module) -> tuple[bool, str] {
     if not mod_path {
         return (False, "no module path");
     }
-    if _is_demoted_native(os.path.realpath(mod_path)) {
+    if module_native_demoted(os.path.realpath(mod_path), prog) {
         return (False, "previously-demoted");
     }
-    import from jaclang.compiler.native_scope {
-        in_native_scope_path,
-        scope_lowering_active
-    }
-    if in_native_scope_path(mod_path) and not scope_lowering_active() {
+    import from jaclang.compiler.native_scope { in_native_scope_path }
+    if in_native_scope_path(mod_path) and not native_unit_compile {
         return (False, "compiler frontend module: native only inside the kernel build");
     }
     if not any([isinstance(e, uni.ElementStmt) for e in module.body]) {

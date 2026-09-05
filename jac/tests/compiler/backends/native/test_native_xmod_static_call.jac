@@ -23,7 +23,7 @@ import ctypes;
 import importlib;
 import os;
 import sys;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -37,7 +37,7 @@ glob FIXTURES = os.path.join(
 """Forced-native options that skip the IR cache so the coverage always runs."""
 def _opts -> CompileOptions {
     return CompileOptions(
-        force_codespace='native', force_target_program=True, no_ir_cache=True
+        force_codespace='native', force_target_program=True
     );
 }
 
@@ -178,7 +178,7 @@ test "the control's two lanes agree on the merged value" {
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     eng = ir.gen.native_engine;
     assert eng is not None , "no native engine for the control";
-    addr = eng.get_function_address("run_merge");
+    addr = native_address(eng, "run_merge");
     assert addr != 0 , "run_merge is absent from the JIT engine";
     native_val = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
     py_val = _run_py_lane("xmod_static_native_main", "run_merge");

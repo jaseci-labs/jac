@@ -8,6 +8,7 @@ obj NaIRGenVtable(NaIRGenState) {
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;
     def _vtable_global_for(arch_name: str) -> (ir.GlobalVariable | None);
+    def _vtable_symbol(arch_name: str) -> str;
     def _vtable_candidates(names: list[str]) -> list[ir.GlobalVariable];
     def _isinstance_needs_class_name(names: list[str]) -> bool;
     def _isinstance_unprovable_class(

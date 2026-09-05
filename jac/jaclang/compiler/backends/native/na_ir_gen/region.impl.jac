@@ -1,18 +1,21 @@
-import from jaclang.compiler.backends.kernel_units { REGION_KERNEL_ABI }
+import from jaclang.compiler.backends.native.region_abi { REGION_KERNEL_ABI }
 
 glob REGION_TLS_GLOBAL: str = "__jac_region_tls",
      REGION_TLS_GET: str = "__jac_region_tls_get",
      REGION_TLS_SET: str = "__jac_region_tls_set";
 
+"""The region arena, `runtime/region_native.jac`, is an ordinary native
+unit whose `:pub` functions are the `__jac_region_*` C ABI this emitter
+declares by name. A dependency edge carries it into the link plan; the
+kernel unit itself never depends on itself."""
 impl NaIRGenRegion._register_region_kernel -> None {
     if self._region_kernel_registered {
         return;
     }
     self._region_kernel_registered = True;
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
-    if (_manifest is not None)
-        and ("region_kernel" not in _manifest.native_transitive_sources) {
-        _manifest.native_transitive_sources.append("region_kernel");
+    import from jaclang.compiler.frontend.codeinfo { REGION_KERNEL_REL, kernel_unit_path }
+    if not self._is_kernel_unit() {
+        self._note_native_dep(kernel_unit_path(REGION_KERNEL_REL));
     }
     self._emit_region_tls_slot();
 }

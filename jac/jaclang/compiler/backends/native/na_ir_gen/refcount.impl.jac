@@ -538,6 +538,21 @@ impl NaIRGenRefcount._emit_rc_helpers -> None {
     _pub_b.call(release_fn, [_pub_fn.args[0], ir.Constant(ir.IntType(1), 1)]);
     _pub_b.ret_void();
     self.rc_release_simple_fn = _pub_fn;
+
+    # The retain/release pair a shared library promises over the C ABI. The
+    # helpers above are private to this unit; these two external shims under
+    # the unit prefix are what the link plan's glue binds `jac_retain` and
+    # `jac_release` to for the library's root unit.
+    for (_abi_name, _target) in (("jac_retain", retain_fn), ("jac_release", _pub_fn)) {
+        _shim = ir.Function(
+            self.llvm_module, _pub_fnty, name=self._symbol_for(_abi_name)
+        );
+        _shim.args[0].name = "ptr";
+        _shim_b = ir.IRBuilder(_shim.append_basic_block("entry"));
+        _shim_b.call(_target, [_shim.args[0]]);
+        _shim_b.ret_void();
+        self._record_export(_abi_name, _shim.name, "abi");
+    }
 }
 
 impl NaIRGenRefcount._rc_call_with_ctx(

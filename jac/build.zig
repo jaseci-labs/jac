@@ -329,7 +329,11 @@ pub fn build(b: *std.Build) void {
         // reroute `import jaclang` to a live source dir at startup (see
         // _jac_finder.py apply_dev_source_override). Skips the tree copy AND
         // the JIR precompile, so the build is much faster. The resulting binary
-        // is NOT distributable: it hard-depends on `link_dir`.
+        // is NOT distributable: it hard-depends on `link_dir`. It needs no
+        // kernel step either: the shim placed by `shim.place` is enough, and
+        // the first parse derives libjac_compiler beside native_compiler.jac
+        // through the link plan (compiler/backends/native/kernel_resolve.jac),
+        // relinking only when the plan digest over the scope units moves.
         //   -Ddev            link the build root (jaclang/ in THIS tree)
         //   -Djaclang-dir=P  link an explicit dir containing jaclang/
         const opt_jaclang_dir = b.option([]const u8, "jaclang-dir", "Editable dev binary: link the compiler from this dir (containing jaclang/) instead of bundling it");

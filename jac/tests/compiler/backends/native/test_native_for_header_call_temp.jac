@@ -21,7 +21,7 @@ Refs #8039, #8052
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, names_function, native_address, native_force_opts }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
@@ -72,7 +72,7 @@ def _compiled -> tuple {
 """ctypes handle for an (int) -> int function in the JIT engine."""
 def _get(name: str) -> any {
     (eng, _) = _compiled();
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
@@ -91,7 +91,7 @@ def _fn_ir(name: str) -> str {
     out: list[str] = [];
     inside = False;
     for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside and ln.startswith("define") and (('@"' + name + '"') in ln) {
+        if not inside and ln.startswith("define") and names_function(ln, name) {
             inside = True;
         }
         if inside {

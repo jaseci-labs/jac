@@ -2774,8 +2774,11 @@ def _write_section_header(
 }
 
 
+"""Link `objects` into one Mach-O artifact. The first object seeds the
+linker; every further object and then every archive member is merged
+through the same consolidation."""
 impl MachOLinker.link(
-    obj_bytes: bytes,
+    objects: list[bytes],
     output_path: str,
     needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"],
     symbol_lib_map: dict[str, str] = {},
@@ -2785,8 +2788,11 @@ impl MachOLinker.link(
     soname: str = "",
     archive_members: list[bytes] = []
 ) -> bool {
+    if not objects {
+        return False;
+    }
     linker = MachOLinker(
-        obj_data=obj_bytes,
+        obj_data=objects[0],
         sections=[],
         symbols=[],
         relocations=[],
@@ -2801,12 +2807,14 @@ impl MachOLinker.link(
         return False;
     }
 
-    for member in archive_members {
-        if not linker._merge_member(member) {
+    merged = 0;
+    for extra in list(objects[1:]) + list(archive_members) {
+        if not linker._merge_member(extra) {
             return False;
         }
+        merged += 1;
     }
-    if archive_members {
+    if merged {
         linker._allocate_commons();
         linker._resolve_crossrefs();
     }

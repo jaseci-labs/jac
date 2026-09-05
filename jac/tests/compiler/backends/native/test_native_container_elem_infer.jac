@@ -25,7 +25,7 @@ the checker's `float`.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -54,7 +54,7 @@ def native_engine(fixture: str) -> object {
 
 """Call a no-argument int-returning function out of the JIT engine."""
 def native_call(eng: any, name: str) -> int {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }

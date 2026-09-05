@@ -48,7 +48,6 @@ def _compile(fixture: str) -> tuple {
             options=CompileOptions(
                 force_codespace='native',
                 force_target_program=True,
-                no_ir_cache=True,
                 aot_mode=True
             )
         );

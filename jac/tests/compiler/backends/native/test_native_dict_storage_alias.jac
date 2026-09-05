@@ -16,7 +16,7 @@ an int dict, and reads the members back.
 import os;
 import ctypes;
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -32,7 +32,7 @@ test "a bool-valued dict does not alias an int or enum-valued dict's storage" {
     assert not errs , f"errors: {errs}";
     eng = ir.gen.native_engine;
     assert eng is not None , "no native engine";
-    addr = eng.get_function_address("probe");
+    addr = native_address(eng, "probe");
     assert addr != 0 , "probe not in JIT engine";
     fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
     got = [fn(i) for i in range(4)];

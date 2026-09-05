@@ -828,7 +828,7 @@ Native Jac manages heap values (objects, strings, lists, dicts, sets) with **aut
 
 Under the managed modes (`cycles`, `rc`) a heap value carries a reference count that is incremented on copy and decremented when a reference goes out of scope; the value is freed when its count reaches zero, and its destructor releases field and element references in turn. A [`def drop` hook](ownership-borrowing.md#the-drop-hook) is invoked from the reference-count destructor -- for a uniquely-owned value at the same last-use point a zero-RC build drops at, so program output is identical across gc modes. Setting `JAC_NO_GC` in the environment disables reclamation in a managed-mode binary at runtime (memory is then never freed; useful for isolating memory-management bugs).
 
-There is a third allocation lane alongside reference counting and headerless owned codegen: objects, nodes, and edges constructed while an [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is active on the current thread bump-allocate into the handle's arena and are reclaimed wholesale -- one LIFO dtor-log walk plus a single bulk free -- at the handle's drop point. Every heap construction reads the thread's current region (one thread-local load) and takes the arena arm when one is open; `managed(T(...))` skips that read. The arena itself is a Jac kernel unit, `runtime/region_native.jac`, linked into the module like the OSP kernel. Arena-allocated values carry sentinel-stamped headers that make the managed modes' retain/release call sites inert on them, so regions and reference counting compose safely in the same module.
+There is a third allocation lane alongside reference counting and headerless owned codegen: objects, nodes, and edges constructed while an [`in <handle> { }` region open](ownership-borrowing.md#regions-first-class-region-handles-and-in-opens) is active on the current thread bump-allocate into the handle's arena and are reclaimed wholesale -- one LIFO dtor-log walk plus a single bulk free -- at the handle's drop point. Every heap construction reads the thread's current region (one thread-local load) and takes the arena arm when one is open; `managed(T(...))` skips that read. The arena itself is an ordinary native unit, `runtime/region_native.jac`, whose `:pub` `__jac_region_*` functions are the C ABI the emitter declares; a dependency edge carries it into the link plan like the OSP units. Arena-allocated values carry sentinel-stamped headers that make the managed modes' retain/release call sites inert on them, so regions and reference counting compose safely in the same module.
 
 ### Zero-RC ownership compilation
 
@@ -919,7 +919,7 @@ Assert messages in native tests are limited to string literals: `assert cond, "m
 
 The single authority for codegen-affecting build options is the compile-options object (`CompileOptions` in `jaclang/compiler/driver/compile_options.jac`). It is constructed once at the CLI/program boundary and threaded to every compiler pass through the program; each option resolves as explicit argument, then environment override, then `jac.toml`, then built-in default. No compiler pass reads the environment directly; a source-scan test over `jaclang/compiler/passes/` enforces this.
 
-The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The fingerprint participates in artifact identity: it is folded into the JIR module cache key and into the native import IR cache key, so flipping any codegen option re-keys the artifact and a stale build is never served. Each native import artifact is stamped with the fingerprint of the options that built it; a cached module whose stamp disagrees with the current build is rejected with `E5027` instead of being linked into a mixed-options binary.
+The codegen options carry a canonical identity string and a short hash of it, the codegen fingerprint. The identity participates in artifact identity: every native section of a module's JIR (`SEC_NIFACE`, `SEC_NOBJ`, `SEC_NBITCODE`) is stamped with the compiler digest, the codegen identity and the target triple of the compile that produced it, and the native reader treats a section under any other stamp as absent, so flipping any codegen option rebuilds the unit and a stale product is never linked. The link plan's digest folds every unit's stamp, so an artifact records exactly which identity built it.
 
 ### Codegen options (part of the fingerprint)
 
@@ -937,24 +937,72 @@ The codegen options carry a canonical identity string and a short hash of it, th
 | Environment override | `jac.toml` key | Effect |
 |---|---|---|
 | `JAC_DUMP_IR` | `[build.native] dump_ir` | Writes the final optimized IR to the given path. |
-| `JAC_DEBUG_IR` | (none) | Saves each module's generated IR as `<stem>.ll` in the native cache dir. |
+| `JAC_DEBUG_IR` | (none) | Saves each module's generated IR as `<stem>.ll` in the module cache's `native-debug` dir. |
 | `JAC_RC_STATS` | (none) | Prints the per-module rc-stats line to stderr. |
 | `JAC_NOGC_DEBUG` | (none) | Verbose ownership-enforcement logging to stderr. |
 | `JAC_NA_DEBUG` | (none) | Explains every native demotion: `NA_DEBUG demote <Type>.<method>` followed by the full diagnostics that made the method un-lowerable, and `NA_DEBUG raise <Type>.<method>` plus a Python traceback when the emitter raised. Forces the "native seam" warning on regardless of `[check] warn_native_seams`. |
 | `JAC_SYMMAP` | (none) | Writes a `<binary>.symmap` symbol map beside a linked ELF executable. |
 
-### The native scope (no switches)
+### The native unit model
 
-The compiler modules served from `libjac_compiler` are listed explicitly in
-`jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`). A module is added when
-the full suite is green with it in and its equivalence fixture exists; the
-built image's manifest must agree with the file exactly
-(`tests/compiler/test_native_scope.jac`), and an empty scope is an image
-with no `native` record. Everything outside the scope runs as bytecode from
-the JIR image. There is no environment switch over the scope and no
-build-time gate: a demotion inside a scoped module is routing, reported,
-never a refusal. The historical `JAC_NO_SEAL` override is gone; setting it
-against a sealed image is itself a startup error.
+The module is the native unit. Every native-locked module's JIR carries two
+native sections beside its bytecode and type interface: `SEC_NIFACE`, the
+unit's native interface (exports with their link symbols, class layouts,
+initializer, demoted symbols, C library needs, direct native dependencies;
+digest-prefixed exactly as the type interface is), and `SEC_NOBJ`, its
+relocatable object, plus `SEC_NBITCODE`, its bitcode. The native sections
+are keyed by the module's content key plus a stamp of the compiler digest,
+codegen identity and target triple in their own header, so a module the
+compiler runs as bytecode and the kernel links as a native unit keeps both
+products in one entry. Dependents record each native dependency's interface
+digest in `SEC_DEPS`; a body edit rebuilds one object, an interface edit
+rebuilds the dependents.
+
+Symbols are module-qualified: every external symbol that is not `:pub` is
+emitted as `<unit prefix>.<name>` (methods `<prefix>.Class.method`), where
+the prefix is the safe form of the unit's module key. `:pub` symbols keep
+bare names, the C ABI a library promises. Two modules defining the same Jac
+name therefore never collide at link time; `E5026` remains for two `:pub`
+exports of one name in one link.
+
+Every native artifact is produced by one link plan
+(`compiler/backends/native/link_plan.jac`). It resolves roots (an entry
+module, the kernel root `jc_unit`, or every native unit of a sealed
+package), walks the native edges recorded in `SEC_DEPS`, compiles stale
+units on demand through the driver, checks that every unit's recorded
+dependency digests agree with the plan, orders initializers
+topologically, synthesizes one glue object holding `jac_entry` /
+`__jac_shared_init`, the platform entry point and the `jac_retain` /
+`jac_release` / `jac_str_new` wrappers, and links. Two modes read different
+sections of the same entries: `objects`, the incremental default, links the
+units' relocatable objects; `bitcode` links every unit's bitcode into one
+LLVM module and optimizes it whole-program before a single codegen (the
+release lane; also what the in-process JIT, PE and wasm targets use).
+Select it per build with `jac nacompile --link-mode bitcode` or
+`JAC_NATIVE_LINK_MODE=bitcode`. The plan writes a digest over every unit's
+keys and stamps beside the artifact and into the `<lib>.layout.json`
+sidecar, which is the merge of the units' class layouts.
+
+### The native scope and the kernel
+
+The compiler modules the kernel links are listed in
+`jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`); they are native units
+and bytecode units at once, and the kernel root (`jc_unit`) is native only.
+Whether a compile treats the scope as native is `CompileOptions.native_unit`,
+set by the link plan for the compiles it requests; there is no process-global
+mode flag. The kernel comes from one lookup, `resolve_kernel()`
+(`compiler/backends/native/kernel_resolve.jac`), with a fixed precedence:
+`JAC_COMPILER_LIB` as a path (must carry its sidecar) or `off` (the store
+parser), then a sealed image's `native` record (artifact, sha256, layout
+and plan digests; missing or mismatched is a startup error), then the
+kernel beside `native_compiler.jac` when its recorded plan digest equals the
+one the cache computes now, otherwise a rebuild through the plan under a
+lock with the store parser serving meanwhile, and finally the store parser
+when there is no native toolchain. `zig build -Ddev` needs no kernel step:
+the first parse derives it. A demotion inside a scoped module is routing,
+recorded in the module's own JIR, never a refusal. The historical
+`JAC_NO_SEAL` override is gone; setting it against a sealed image is itself a
+startup error.
 
 Toolchain location variables are read through the same boundary module, never inside passes: `JAC_LLVM_SHIM`, `JAC_LLVM_TYPED_POINTERS` (with `LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS` honored as a fallback), `JAC_NATIVE_WASM_LIBC_DIR`, `JAC_NATIVE_MUSL_DIR`, `JAC_NATIVE_FLOOR_DIR`, `JAC_NATIVE_CA_BUNDLE`.
 

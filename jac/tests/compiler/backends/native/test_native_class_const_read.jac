@@ -35,7 +35,7 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, names_global, native_force_opts, unit_symbol }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -124,7 +124,7 @@ test "each declaring class gets its own constant" {
     (_prog, ir) = compile_native("class_const_read.jac");
     text = str(ir.gen.llvm_ir);
     for name in ("Node.CATEGORY", "Leaf.CATEGORY", "Branch.CATEGORY") {
-        assert f'@"{name}"' in text , (
+        assert names_global(text, name) , (
             f"{name} was folded away instead of getting its own storage"
         );
     }
@@ -154,12 +154,12 @@ test "a constant no subclass redefines stays a plain load" {
 test "the annotation decides the constant's shape, not the literal" {
     (_prog, ir) = compile_native("class_const_read.jac");
     text = str(ir.gen.llvm_ir);
-    assert '@"Metered.RATE" = global double' in text , (
+    assert f'@"{unit_symbol(ir, "Metered.RATE")}" = global double' in text , (
         "`RATE: ClassVar[float] = 0` took its shape from the integer literal, "
         "so every read of it answers with an integer and the subclass's "
         "double-valued global cannot be dispatched against it"
     );
-    assert '@"Fast.RATE" = global double' in text , "the override lost its shape";
+    assert f'@"{unit_symbol(ir, "Fast.RATE")}" = global double' in text , "the override lost its shape";
     assert "cc.RATE.Fast" in text , (
         "the float constant did not dispatch, which is what a shape "
         "disagreement between base and subclass looks like"
@@ -193,7 +193,7 @@ test "a consumer links the declaring module's constants rather than redefining t
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     text = str(ir.gen.llvm_ir);
     for line in text.split("\n") {
-        if line.startswith('@"Unit.SCALE"') or line.startswith('@"Double.SCALE"') {
+        if line.startswith(f'@"{unit_symbol(ir, "Unit.SCALE")}"') or line.startswith(f'@"{unit_symbol(ir, "Double.SCALE")}"') {
             assert "external global" in line , (
                 f"the consumer defined an imported class's constant, which "
                 f"gives the link two definitions of one symbol: {line.strip()}"

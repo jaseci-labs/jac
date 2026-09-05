@@ -24,11 +24,11 @@ obj CompileOptions {
         iface_ok: bool = False,
         need_full_ast: bool = False,
         skip_native_engine: bool = False,
-        no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
-        kernel_unit: bool = False,
+        native_unit: bool = False,
+        native_link_mode: (str | None) = None,
         force_codespace: str = "",
         na_gc_mode: (str | None) = None,
         nogc_enforce_all: bool = False,
@@ -102,6 +102,28 @@ obj CompileOptions {
         if self.na_debug is None {
             self.na_debug = env_na_debug();
         }
+        if self.native_link_mode is None {
+            self.native_link_mode = env_native_link_mode();
+        }
+        if self.native_link_mode not in NATIVE_LINK_MODES {
+            raise ValueError(
+                f"native_link_mode must be one of {NATIVE_LINK_MODES}, "
+                f"got {self.native_link_mode!r}"
+            );
+        }
+    }
+
+    """The target triple this compile emits for: the override, else the host."""
+    def effective_triple -> str {
+        if self.native_target {
+            return str(self.native_target);
+        }
+        try {
+            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            return str(llvm.get_default_triple());
+        } except Exception {
+            return "";
+        }
     }
 
     def codegen_identity -> str {
@@ -115,8 +137,7 @@ obj CompileOptions {
                 f"rc_debug={int(bool(self.rc_debug_codegen))}",
                 f"target={self.native_target}",
                 f"native_debug={int(bool(self.native_debug))}",
-                f"opt={self.opt_level}",
-                f"kernel_unit={int(bool(self.kernel_unit))}"
+                f"opt={self.opt_level}"
             ]
         );
     }
@@ -150,7 +171,8 @@ obj CompileOptions {
             aot_mode=True,
             default_codespace='native',
             force_target_program=True,
-            no_ir_cache=self.no_ir_cache,
+            native_unit=self.native_unit,
+            native_link_mode=self.native_link_mode,
             na_gc_mode=self.na_gc_mode,
             nogc_enforce_all=self.nogc_enforce_all,
             nogc_enforce_modules=list(self.nogc_enforce_modules or []),
@@ -187,6 +209,19 @@ obj CompileOptions {
         }
         return False;
     }
+}
+
+glob NATIVE_LINK_MODE_OBJECTS: str = "objects",
+     NATIVE_LINK_MODE_BITCODE: str = "bitcode",
+     NATIVE_LINK_MODES: tuple[str, str] = ("objects", "bitcode");
+
+"""How the link plan combines units: relocatable objects (the incremental
+default) or one whole-program LLVM module from every unit's bitcode (the
+release lane). `JAC_NATIVE_LINK_MODE` selects it for a whole build."""
+def env_native_link_mode -> str {
+    import os;
+    raw = os.environ.get("JAC_NATIVE_LINK_MODE", "").strip().lower();
+    return raw if raw in NATIVE_LINK_MODES else NATIVE_LINK_MODE_OBJECTS;
 }
 
 def effective_codegen_fingerprint -> str {

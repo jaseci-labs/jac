@@ -41,7 +41,7 @@ import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_address }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -51,7 +51,7 @@ glob FIXTURES = os.path.join(
 """Forced-native options that skip the IR cache."""
 def _opts -> CompileOptions {
     return CompileOptions(
-        force_codespace='native', force_target_program=True, no_ir_cache=True
+        force_codespace='native', force_target_program=True
     );
 }
 
@@ -120,7 +120,7 @@ def _codes(prog: any) -> list[str] {
 def _native_int_fn(ir: any, name: str) -> any {
     eng = ir.gen.native_engine;
     assert eng is not None , f"no native engine for '{name}'";
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
 }

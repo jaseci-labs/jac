@@ -103,9 +103,10 @@ impl JacTestResult.postinit -> None {
     super.init(self.stream, self.descriptions, self.verbosity);
 }
 
-impl invoke_native_test(
-    engine: any, symbol: str, test_name: str, init_symbols: (list | None) = None
-) -> None {
+"""Run one native test through the module's engine. Asking the engine for
+the test's address runs the link plan's initializers first, in dependency
+order, so the test body sees every unit initialized."""
+impl invoke_native_test(engine: any, symbol: str, test_name: str) -> None {
     import ctypes;
     import os;
     import sys;
@@ -118,25 +119,6 @@ impl invoke_native_test(
         raise RuntimeError(f"native test symbol missing: {symbol}");
     }
     native_fn = ctypes.CFUNCTYPE(ctypes.c_char_p)(addr);
-    def run_glob_inits {
-        done = engine?._jac_glob_inits_done;
-        if done is None {
-            done = set();
-            try {
-                setattr(engine, "_jac_glob_inits_done", done);
-            } except Exception {}
-        }
-        for init_sym in (init_symbols or []) {
-            if init_sym in done {
-                continue;
-            }
-            done.add(init_sym);
-            init_addr = engine.get_function_address(init_sym);
-            if init_addr {
-                (ctypes.CFUNCTYPE(None)(init_addr))();
-            }
-        }
-    }
     mirrors: list = [];
     for (fd, name) in ((1, "stdout"), (2, "stderr")) {
         stream = getattr(sys, name, None);
@@ -153,7 +135,6 @@ impl invoke_native_test(
         }
     }
     if not mirrors {
-        run_glob_inits();
         msg = native_fn();
         if msg is not None {
             raise AssertionError(msg.decode("utf-8", "replace"));
@@ -170,7 +151,6 @@ impl invoke_native_test(
     }
     msg: any = None;
     try {
-        run_glob_inits();
         msg = native_fn();
     } finally {
         try {

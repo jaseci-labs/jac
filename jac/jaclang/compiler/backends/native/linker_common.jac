@@ -207,3 +207,126 @@ def clib_symbol_lib_map(
     }
     return symbol_lib_map;
 }
+
+"""The vendored musl tree for `triple`: `JAC_NATIVE_MUSL_DIR`, else the
+matching `.pbs-build/<arch>/musl/lib`, else a bundled floor's `musl`."""
+def musl_lib_dir(triple: str) -> (str | None) {
+    import os;
+    import from jaclang.runtime.graph_utils { triple_arch }
+    env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
+    if env and os.path.isdir(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    want = triple_arch(triple);
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    if os.path.isdir(pbs) {
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "musl", "lib");
+            if os.path.isdir(libdir)
+                and os.path.isfile(os.path.join(libdir, "libc.a"))
+                and (want in d) {
+                return libdir;
+            }
+        }
+    }
+    import from jaclang.dist.fused_binary { bundled_floor_roots }
+    for floor in bundled_floor_roots(pkg_root) {
+        if not os.path.isdir(floor) {
+            continue;
+        }
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d, "musl");
+            if os.path.isdir(cand)
+                and os.path.isfile(os.path.join(cand, "libc.a"))
+                and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return None;
+}
+
+"""The musl members and crt objects a static executable needs, selected by
+the undefined symbols of `objects` transitively. None when no vendored
+musl serves `triple`."""
+def collect_musl_static(
+    objects: list[bytes], triple: str
+) -> (tuple[list[bytes], list[bytes]] | None) {
+    import hashlib;
+    import os;
+    lib_dir = musl_lib_dir(triple);
+    if lib_dir is None {
+        return None;
+    }
+    libc_a = os.path.join(lib_dir, "libc.a");
+    if not os.path.isfile(libc_a) {
+        return None;
+    }
+
+    crt_objects: list[bytes] = [];
+    have_crt1 = False;
+    for crt_name in ["crt1.o", "crti.o", "crtn.o"] {
+        p = os.path.join(lib_dir, crt_name);
+        if os.path.isfile(p) {
+            with open(p, "rb") as cf {
+                crt_objects.append(cf.read());
+            }
+            if crt_name == "crt1.o" {
+                have_crt1 = True;
+            }
+        }
+    }
+    if not have_crt1 {
+        return None;
+    }
+
+    archives_data: list[bytes] = [];
+    for af in ["libc.a", "libzigc.a", "libcompiler_rt.a"] {
+        p = os.path.join(lib_dir, af);
+        if os.path.isfile(p) {
+            with open(p, "rb") as archive {
+                archives_data.append(archive.read());
+            }
+        }
+    }
+
+    work_roots: list[str] = [];
+    known: set[str] = set();
+    for blob in list(objects) + crt_objects {
+        for u in object_undefined_symbols(blob) {
+            if u not in known {
+                known.add(u);
+                work_roots.append(u);
+            }
+        }
+    }
+
+    member_bytes: list[bytes] = [];
+    seen_members: set[bytes] = set();
+    changed = True;
+    while changed {
+        changed = False;
+        for data in archives_data {
+            for m in select_ar_members(data, work_roots) {
+                key = hashlib.sha256(m.data).digest();
+                if key in seen_members {
+                    continue;
+                }
+                seen_members.add(key);
+                member_bytes.append(m.data);
+                changed = True;
+                for u in object_undefined_symbols(m.data) {
+                    if u not in known {
+                        known.add(u);
+                        work_roots.append(u);
+                    }
+                }
+            }
+        }
+    }
+    return (member_bytes, crt_objects);
+}
+
+def object_undefined_symbols(mem: bytes) -> list[str];

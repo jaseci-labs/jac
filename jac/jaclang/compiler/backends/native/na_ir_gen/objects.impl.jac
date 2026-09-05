@@ -97,8 +97,11 @@ impl NaIRGenObjects._register_archetypes(module: uni.Module) -> None {
                             full_name = f"{arch_name}.{method_name}";
                             struct_ptr = self.struct_types[arch_name].as_pointer();
                             fnty = ir.FunctionType(ir.VoidType(), [struct_ptr]);
-                            func = ir.Function(self.llvm_module, fnty, name=full_name);
+                            func = ir.Function(
+                                self.llvm_module, fnty, name=self._symbol_for(full_name)
+                            );
                             func.args[0].name = "self";
+                            self._record_export(full_name, func.name, "method");
                             self.func_symtab[full_name] = func;
                             self.method_funcs[full_name] = func;
                             self.has_native_code = True;
@@ -230,10 +233,6 @@ impl NaIRGenObjects._register_archetypes(module: uni.Module) -> None {
 
     self._register_osp_kernel_module();
     self._emit_osp_setup();
-    import from jaclang.compiler.native_scope { scope_lowering_active }
-    if scope_lowering_active() {
-        self.ir_in.gen.jc_layout = self._build_jc_layout();
-    }
 
     self._predemote_capability_constructors();
     self._codegen_constructors_first(archetypes);
@@ -448,7 +447,7 @@ impl NaIRGenObjects._visit_nonprimary_ancestor_methods(
     }
 }
 
-impl NaIRGenObjects._codegen_archetype(nd: uni.Archetype) -> None {
+impl NaIRGenObjects._codegen_archetype(nd: uni.Archetype, imported: bool = False) -> None {
     arch_name = (nd).name.value if (nd).name else "unknown";
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None {
@@ -572,9 +571,10 @@ impl NaIRGenObjects._codegen_archetype(nd: uni.Archetype) -> None {
     }
 
     if (nd).body is not None {
+        _owner = nd.find_parent_of_type(uni.Module);
         for stmt in (nd).body {
             if isinstance(stmt, uni.ArchHas) and stmt.is_static {
-                self._register_static_fields(arch_name, stmt);
+                self._register_static_fields(arch_name, stmt, _owner, imported);
             } elif isinstance(stmt, uni.ModuleCode) {
                 self._register_class_consts(nd, arch_name, stmt);
             }
@@ -692,8 +692,14 @@ impl NaIRGenObjects._emit_scalar_type_arg_refusal(
     return True;
 }
 
+"""Register a class's static fields. The defining unit emits the definition
+under its own prefix; a consumer declares the defining unit's symbol and
+never re-emits the initializer."""
 impl NaIRGenObjects._register_static_fields(
-    arch_name: str, archhas: uni.ArchHas
+    arch_name: str,
+    archhas: uni.ArchHas,
+    owner: (uni.Module | None) = None,
+    imported: bool = False
 ) -> None {
     for var in archhas.vars {
         fname = var.name.value if var.name else "field";
@@ -711,12 +717,22 @@ impl NaIRGenObjects._register_static_fields(
             }
         }
 
-        if full_name in self.llvm_module.globals {
+        symbol = self._symbol_for(full_name, owner if imported else None);
+        if symbol in self.llvm_module.globals {
             continue;
         }
-        gv = ir.GlobalVariable(self.llvm_module, ftype, name=full_name);
-
+        gv = ir.GlobalVariable(self.llvm_module, ftype, name=symbol);
+        self.static_fields[full_name] = gv;
+        self.static_field_types[full_name] = ftype;
+        self.global_vars[full_name] = gv;
+        self.global_var_types[full_name] = ftype;
+        self.has_native_code = True;
+        if imported {
+            gv.linkage = "external";
+            continue;
+        }
         gv.linkage = "";
+        self._record_export(full_name, symbol, "static");
         const_init = self._codegen_const_expr(var.value, ftype)
             if var.value is not None
             else None;
@@ -725,11 +741,6 @@ impl NaIRGenObjects._register_static_fields(
         } else {
             gv.initializer = ir.Constant(ftype, None);
         }
-        self.static_fields[full_name] = gv;
-        self.static_field_types[full_name] = ftype;
-        self.global_vars[full_name] = gv;
-        self.global_var_types[full_name] = ftype;
-        self.has_native_code = True;
 
         if var.value is not None and const_init is None {
             if not self?._global_init_nodes {
@@ -769,7 +780,9 @@ impl NaIRGenObjects._register_one_class_const(
     arch_name: str, fname: str, target: uni.UniNode, assign: uni.Assignment, owns: bool
 ) -> None {
     full_name = f"{arch_name}.{fname}";
-    if full_name in self.static_fields or full_name in self.llvm_module.globals {
+    _owner = None if owns else assign.find_parent_of_type(uni.Module);
+    symbol = self._symbol_for(full_name, _owner);
+    if full_name in self.static_fields or symbol in self.llvm_module.globals {
         return;
     }
     ftype = self._infer_global_init_type(target)
@@ -781,8 +794,8 @@ impl NaIRGenObjects._register_one_class_const(
     if ftype is None {
         return;
     }
-    gv = ir.GlobalVariable(self.llvm_module, ftype, name=full_name);
-    gv.linkage = "";
+    gv = ir.GlobalVariable(self.llvm_module, ftype, name=symbol);
+    gv.linkage = "" if owns else "external";
     self.static_fields[full_name] = gv;
     self.static_field_types[full_name] = ftype;
     self.global_vars[full_name] = gv;
@@ -791,6 +804,7 @@ impl NaIRGenObjects._register_one_class_const(
     if not owns {
         return;
     }
+    self._record_export(full_name, symbol, "static");
     const_init = self._codegen_const_expr(assign.value, ftype);
     if const_init is None {
         const_init = self._class_const_enum_init(assign.value, ftype);
@@ -919,7 +933,13 @@ impl NaIRGenObjects._forward_declare_method(
     }
     self._sig_decl_kind = _saved_sig_kind;
     fnty = ir.FunctionType(ret_type, param_types);
-    func = ir.Function(self.llvm_module, fnty, name=full_name);
+    _owner = method.find_parent_of_type(uni.Module) if imported else None;
+    func = ir.Function(
+        self.llvm_module, fnty, name=self._symbol_for(full_name, _owner)
+    );
+    if not imported {
+        self._record_export(full_name, func.name, "method");
+    }
 
     _base = 0 if _is_static else 1;
     if not _is_static {
@@ -1175,6 +1195,8 @@ impl NaIRGenObjects._demote_method_if_unlowerable(
     }
     self.func_symtab.pop(full_name, None);
     self._native_skipped_methods.add(full_name);
+    self._demoted_names.add(full_name);
+    self._unit_exports.pop(full_name, None);
     return True;
 }
 
@@ -1592,11 +1614,20 @@ impl NaIRGenObjects._forward_declare_event_method(
         }
     }
     fnty = ir.FunctionType(ir.VoidType(), [struct_type.as_pointer(), loc_type]);
-    func = ir.Function(self.llvm_module, fnty, name=full_name);
+    _owner = method.find_parent_of_type(uni.Module);
+    _imported = _owner is not None and _owner is not self.ir_in;
+    func = ir.Function(
+        self.llvm_module,
+        fnty,
+        name=self._symbol_for(full_name, _owner if _imported else None)
+    );
     func.args[0].name = "self";
     func.args[1].name = "here" if sig.from_walker else "visitor";
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
+    if not _imported {
+        self._record_export(full_name, func.name, "method");
+    }
 }
 
 impl NaIRGenObjects._codegen_event_method(arch_name: str, method: uni.Ability) -> None {
@@ -1943,7 +1974,7 @@ impl NaIRGenObjects._codegen_instantiation(
         _region_eligible = (
             id(nd) != self._managed_ctor_node
             and not self._arch_is_walker_name(type_name)
-            and not bool(getattr(self.prog.options, "kernel_unit", False))
+            and not self._is_kernel_unit()
         );
         if not _region_eligible {
             raw_ptr = self._emit_heap_object_alloc(nd, type_name, size, _headerless);
@@ -4020,7 +4051,10 @@ impl NaIRGenObjects._receiver_routed_method_fn(
                 _spec_fnty = ir.FunctionType(
                     _sfunc.function_type.return_type, _spec_arg_tys
                 );
-                _spec_fn = ir.Function(self.llvm_module, _spec_fnty, name=_spec_key);
+                _spec_fn = ir.Function(
+                    self.llvm_module, _spec_fnty, name=self._symbol_for(_spec_key)
+                );
+                _spec_fn.linkage = "internal";
                 for (_sai, _sa) in enumerate(_sfunc.args) {
                     if _sai < len(_spec_fn.args) {
                         _spec_fn.args[_sai].name = _sa.name;
@@ -4187,12 +4221,20 @@ impl NaIRGenObjects._jc_abi_offsets(field_types: list) -> tuple {
     return (offsets, off);
 }
 
-impl NaIRGenObjects._build_jc_layout -> str {
-    import json;
+"""The C ABI layout of every archetype this unit defines: size, field slots,
+OSP tag, MRO and vtable slot order. It is the `classes` half of the unit's
+native interface; the link plan merges the units' layouts into the sidecar
+the kernel loader registers."""
+impl NaIRGenObjects._build_jc_layout -> dict {
     out: dict = {"classes": {}};
     _model = self.ir_in.gen.osp_model;
     _tags = _model.tags if _model is not None else {};
+    _own_path = os.path.realpath(self.ir_in.loc.mod_path) if self.ir_in?.loc else "";
     for arch_name in self.struct_field_indices {
+        _src = self._struct_source_mod.get(arch_name, "");
+        if _src and _own_path and os.path.realpath(_src) != _own_path {
+            continue;
+        }
         st = self.struct_types.get(arch_name);
         if st is None or st?.elements is None {
             continue;
@@ -4272,8 +4314,11 @@ impl NaIRGenObjects._build_jc_layout -> str {
             "tag_offset": offsets[_lay_tag_idx]
                 if (_lay_tag_idx is not None and _lay_tag_idx < len(offsets))
                 else -1,
-            "fields": fields
+            "fields": fields,
+            "bases": list(self._mro_of(arch_name)),
+            "vtable": list(self.vtable_layouts.get(arch_name) or []),
+            "is_node": "_role_shapes" in fields
         };
     }
-    return json.dumps(out);
+    return out;
 }

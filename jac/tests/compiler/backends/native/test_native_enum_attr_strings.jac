@@ -11,7 +11,7 @@ sealed-artifact crash.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
@@ -39,7 +39,7 @@ def compile_native -> ExecutionEngine {
 
 def call_i64(name: str, arg: int) -> int {
     eng = compile_native();
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr)(arg);
 }

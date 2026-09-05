@@ -18,7 +18,7 @@ two ternary shapes which already lowered did not start paying for a box.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, names_function, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -57,7 +57,7 @@ def _compile(fixture: str) -> tuple {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine for {fixture}";
-    gi = eng.get_function_address("__jac_glob_init");
+    gi = native_address(eng, "__jac_glob_init");
     assert gi != 0 , "fixture emitted no __jac_glob_init";
     ctypes.CFUNCTYPE(None)(gi)();
     return (eng, ir);
@@ -66,7 +66,7 @@ def _compile(fixture: str) -> tuple {
 
 """ctypes handle for an (int) -> int function in the JIT engine."""
 def _get(eng: any, name: str) -> object {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
@@ -95,7 +95,6 @@ def _sv_module -> object {
 
 """LLVM IR text of a single `define ... @name(` function body."""
 def _fn_body(txt: str, name: str) -> str {
-    marker = "@\"" + name + "\"(";
     start = txt.find("define ");
     while start != -1 {
         end = txt.find("\n}", start);
@@ -105,7 +104,7 @@ def _fn_body(txt: str, name: str) -> str {
         block = txt[start:end + 2];
         header_end = block.find("\n");
         header = block[:header_end] if header_end != -1 else block;
-        if marker in header {
+        if names_function(header, name) {
             return block;
         }
         start = txt.find("define ", end);

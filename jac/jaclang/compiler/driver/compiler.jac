@@ -9,9 +9,10 @@ import from jaclang.compiler.frontend.unitree { ability_of_symbol }
 import from jaclang.compiler.driver.jir {
     SEC_BYTECODE,
     SEC_MTIR,
-    SEC_LLVM_IR,
     SEC_INTEROP,
-    SEC_NATIVE_OBJ,
+    SEC_NBITCODE,
+    SEC_NIFACE,
+    SEC_NOBJ,
     SEC_PLACEMENT,
     SEC_IFACE,
     SEC_CLIENT,
@@ -132,16 +133,10 @@ obj JacCompiler {
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_ir: str,
         cached_interop: (dict[str, any] | None)
     ) -> None;
 
-    def _load_native_from_bitcode(
-        full_target: str,
-        target_program: JacProgram,
-        section_data: bytes,
-        cached_interop: (dict[str, any] | None)
-    ) -> None;
+    def _sealed_native_engine(full_target: str) -> (object | None);
 
     def _restore_sections(
         full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
@@ -167,6 +162,14 @@ obj JacCompiler {
     def stamp_access_check_facts(mod: uni.Module) -> None;
     def stamp_native_import_facts(mod: uni.Module, target_program: JacProgram) -> None;
     def _persist_module_cache(
+        full_target: str, result: uni.Module, actual_program: JacProgram
+    ) -> None;
+
+    def _native_sections(
+        full_target: str, result: uni.Module, actual_program: JacProgram
+    ) -> dict[int, bytes];
+
+    def _persist_native_unit(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
 

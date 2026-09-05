@@ -891,6 +891,60 @@ jobs:
         working-directory: jac
         run: zig build test --summary all
 
+  # The dev loop (#8943): a checkout with the LLVM shim in place and NO
+  # kernel beside native_compiler.jac must parse a new file on the first
+  # `jac run`, deriving the kernel through the link plan from the module
+  # cache (rebuilding stale units under a lock), and a second run must
+  # accept the derived kernel by its recorded plan digest without relinking.
+  test-dev-loop:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      # Reroute lane: this checkout's compiler, the kit's shim and floors.
+      JAC_NO_DEV_SOURCE: ""
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: ./.github/actions/jac-kit
+      - name: Restore the LLVM shim into the checkout
+        uses: actions/cache/restore@v4
+        with:
+          path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+          fail-on-cache-miss: true
+      - name: Delete any kernel beside the loader
+        run: rm -f jac/jaclang/compiler/libjac_compiler.* jac/jaclang/compiler/libjac_compiler.*.layout.json
+      - name: First run derives the kernel
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          printf 'with entry { print(6*7); }\n' > "$WORK/first.jac"
+          out="$(jac run "$WORK/first.jac" 2>&1)" || { echo "$out"; exit 1; }
+          echo "$out" | tail -5
+          echo "$out" | grep -q 42
+          test -f jac/jaclang/compiler/libjac_compiler.so
+          test -f jac/jaclang/compiler/libjac_compiler.so.layout.json
+          python3 -c "import json,sys; d=json.load(open('jac/jaclang/compiler/libjac_compiler.so.layout.json')); assert d['plan_digest'] and d['classes'], d.keys()"
+          cp jac/jaclang/compiler/libjac_compiler.so "$WORK/kernel.first"
+      - name: Second run keeps the derived kernel
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          printf 'with entry { print(7*7); }\n' > "$WORK/second.jac"
+          out="$(jac run "$WORK/second.jac" 2>&1)" || { echo "$out"; exit 1; }
+          echo "$out" | grep -q 49
+          if echo "$out" | grep -q "Linking the native compiler kernel"; then
+            echo "::error::the second run relinked a kernel whose plan digest had not moved"
+            exit 1
+          fi
+      - name: Kernel resolver and link plan tests
+        run: |
+          jac test jac/tests/compiler/test_kernel_resolve.jac
+          jac test jac/tests/compiler/backends/native/test_native_iface.jac
+          jac test jac/tests/compiler/backends/native/test_link_plan.jac
+
   # The CEF dispatch build + export/runpath/deps audit lives in the suite
   # (tests/client/test_cef_dispatch_build.jac, in test-client's lane).
 
@@ -1273,6 +1327,7 @@ jobs:
       - test-scale-k8s
       - test-native-aarch64
       - test-bootstrap
+      - test-dev-loop
       - test-jac-pack-smoke
       - installer-test
     runs-on: ubuntu-latest

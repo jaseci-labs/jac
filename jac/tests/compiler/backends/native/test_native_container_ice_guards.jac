@@ -38,7 +38,7 @@ import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_force_opts }
+import from tests.support { JAC_ROOT, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -66,7 +66,7 @@ def engine -> any {
 
 """Call a zero-argument fixture function returning an i64."""
 def call(name: str) -> int {
-    addr = engine().get_function_address(name);
+    addr = native_address(engine(), name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
@@ -112,7 +112,7 @@ test "compr over or lowers, and its absent arm is falsy rather than a fault" {
         ir = prog.compile(
             file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
             options=CompileOptions(
-                force_codespace='native', force_target_program=True, no_ir_cache=True
+                force_codespace='native', force_target_program=True
             )
         );
     } finally {
@@ -156,7 +156,7 @@ test "an optional list held across a branch answers rather than dereferencing nu
         ("tern_local_compr", 2, 0),
         ("tern_inline_or", 7, 0)
     ] {
-        addr = eng.get_function_address(fn);
+        addr = native_address(eng, fn);
         assert addr != 0 , f"'{fn}' is absent from the JIT engine";
         _f = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
         assert _f(1) == present , f"{fn}(True) must be {present}";

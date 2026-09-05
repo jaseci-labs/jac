@@ -7,7 +7,7 @@ These exercise the sv↔na-congruent surface a binary parser needs:
   - `open(path, "rb").read()` returning that length-aware bytes buffer.
 """
 
-import from tests.support { compile_native, get_func, native_force_opts }
+import from tests.support { compile_native, get_func, native_address, native_force_opts }
 import ctypes;
 import os;
 import tempfile;
@@ -37,7 +37,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     # bytes/str args build their backing storage via jac_str_new; str
     # returns come back as the full bytes of the result string, so existing
     # comparisons keep working.
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list = [];
@@ -57,7 +57,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     sn_addr = 0;
     for sn in ("jac_str_new", "__jac_str_new") {
         try {
-            sn_addr = eng.get_function_address(sn);
+            sn_addr = native_address(eng, sn);
         } except Exception {
             sn_addr = 0;
         }

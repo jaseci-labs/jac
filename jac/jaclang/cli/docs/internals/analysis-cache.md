@@ -112,7 +112,7 @@ that does not becomes the stale path:
 | Module cache | `is_module_cache_valid` fails when a row's digest moved |
 | Unsealed precompiled bundle | served only while its rows are fresh; a sealed image is a frozen build and is served on its seal alone |
 | Bundle promoted into the module cache | the bundle's rows ride along on the promotion write, absolutized onto the package root |
-| Native dependency IR cache | `.ir_cache` is keyed on the module's own source, so its `.ir_meta` stamps the rows the fold read and a hit whose stamp moved is dropped and rebuilt |
+| Native unit sections | `SEC_NIFACE` / `SEC_NOBJ` / `SEC_NBITCODE` live in the module JIR under MODKEY plus their own compiler-and-codegen stamp; `SEC_DEPS` carries each native dependency's interface digest, and a dependent whose recorded digest moved is rebuilt |
 
 Bundle rows are stored relative to the package root so a relocated bundle
 still resolves them, and absolutized again on the way into a module cache.

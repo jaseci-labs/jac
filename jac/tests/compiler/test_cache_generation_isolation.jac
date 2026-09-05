@@ -21,7 +21,7 @@ import from pathlib { Path }
 import jaclang.compiler.driver.jir as jir;
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
-    get_native_cache_dir,
+    get_native_debug_dir,
     sweep_stale_generations
 }
 
@@ -72,9 +72,9 @@ test "two compiler generations get disjoint cache slots for one module" {
 test "native artifacts ride the generation of the compiler that emitted them" {
     src = _seeded_module();
     _pin_generation(GEN_A);
-    native = get_native_cache_dir(src);
+    native = get_native_debug_dir(src);
     _unpin_generation();
-    assert native.name == "native";
+    assert native.name == "native-debug";
     assert native.parent.name == GEN_A , (
         "native artifacts escaped their compiler's generation"
     );

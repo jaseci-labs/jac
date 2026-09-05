@@ -25,9 +25,11 @@ impl NaIRGenCore.postinit -> None {
         _target = _llvm_bind.Target.from_default_triple();
     }
 
-    _tm = _target.create_target_machine(codemodel="large");
+    _tm = _target.create_target_machine(reloc="pic", codemodel="small");
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
+    import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
+    self._unit_prefix = native_unit_prefix(_ni_src) if _ni_src else "jac_native";
 
     if _ni_src and _ni_opts.native_debug {
         _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
@@ -175,6 +177,7 @@ impl NaIRGenCore._run_impl(ir_in: uni.Module) -> uni.Module {
             self._emit_glob_init_func();
         }
         self.ir_in.gen.llvm_ir = self.llvm_module;
+        self.ir_in.gen.native_deps = list(self._native_dep_paths);
 
         import os;
         if self.prog.options.rc_stats {
@@ -207,8 +210,215 @@ impl NaIRGenCore._run_impl(ir_in: uni.Module) -> uni.Module {
         }
 
         self._export_native_layout();
+        self._export_native_iface();
     }
     return self.ir_in;
+}
+
+"""Build the unit's native interface from the tables this run filled."""
+impl NaIRGenCore._export_native_iface -> None {
+    import os as _ni_os;
+    import from jaclang.compiler.driver.native_iface {
+        NativeClassLayout,
+        NativeExport,
+        NativeFieldSlot,
+        NativeIface
+    }
+    import from jaclang.compiler.frontend.codeinfo {
+        native_glob_init_name,
+        native_module_key
+    }
+    mod_path = self.ir_in.loc.mod_path if self.ir_in?.loc else "";
+    iface = NativeIface(
+        module=native_module_key(mod_path) if mod_path else "",
+        prefix=self._own_prefix()
+    );
+    layout = self.ir_in.gen.native_layout;
+    iface.layout = layout;
+    for (name, (symbol, kind, is_pub)) in self._unit_exports.items() {
+        ex = NativeExport(name=name, symbol=symbol, kind=kind, is_pub=is_pub);
+        sig: any = None;
+        if layout is not None {
+            sig = layout.functions.get(name) or layout.methods.get(name);
+        }
+        if sig is not None {
+            ex.param_types = list(sig.param_types);
+            ex.param_names = list(sig.param_names);
+            ex.ret_type = sig.ret_type;
+        }
+        fn = self.func_symtab.get(name);
+        if isinstance(fn, ir.Function) {
+            ex.ownership = [
+                "borrow" if "readonly" in [str(a) for a in arg.attributes] else "own"
+                for arg in fn.args
+            ];
+        }
+        iface.exports[name] = ex;
+    }
+    for (cname, body) in self._build_class_layouts().items() {
+        iface.classes[cname] = NativeClassLayout(
+            name=cname,
+            size=int(body.get("size", 0)),
+            tag=int(body.get("tag", 0)),
+            tag_offset=int(body.get("tag_offset", -1)),
+            fields={
+                fname: NativeFieldSlot.from_dict(fd)
+                for (fname, fd) in body.get("fields", {}).items()
+            },
+            bases=list(body.get("bases", [])),
+            vtable=list(body.get("vtable", [])),
+            is_node=bool(body.get("is_node", False))
+        );
+    }
+    for (ename, members) in self.enum_string_values.items() {
+        if self._enum_source_name.get(ename, self.ir_in.name) == self.ir_in.name {
+            iface.enums[ename] = [str(m) for m in members];
+        }
+    }
+    if "__jac_glob_init" in self.func_symtab and mod_path {
+        iface.init = native_glob_init_name(mod_path);
+    }
+    entry_fn = self.func_symtab.get("jac_entry");
+    if entry_fn is not None {
+        iface.entry = str(entry_fn.name);
+    }
+    iface.demoted = sorted(self._demoted_names);
+    iface.clib_paths = list(self.ir_in.gen._clib_paths or []);
+    iface.clib_symbol_lib = dict(self.ir_in.gen._clib_symbol_lib or {});
+    iface.deps = list(self._native_dep_paths);
+    try {
+        import from jaclang.compiler.driver.na_coverage { na_coverage_capture }
+        iface.coverage = na_coverage_capture(mod_path) if mod_path else {};
+    } except Exception {
+        iface.coverage = {};
+    }
+    self.ir_in.gen.native_iface = iface;
+    self.ir_in.gen.native_deps = list(self._native_dep_paths);
+}
+
+impl NaIRGenCore._build_class_layouts -> dict {
+    try {
+        return dict(self._build_jc_layout().get("classes", {}));
+    } except Exception {
+        return {};
+    }
+}
+
+impl NaIRGenCore._own_prefix -> str {
+    return self._unit_prefix;
+}
+
+impl NaIRGenCore._prefix_of_path(path: str) -> str {
+    import os as _pp_os;
+    import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
+    key = _pp_os.path.realpath(path);
+    found = self._unit_prefixes.get(key);
+    if found is None {
+        found = native_unit_prefix(key);
+        self._unit_prefixes[key] = found;
+    }
+    return found;
+}
+
+impl NaIRGenCore._prefix_of_module(mod: (uni.Module | None)) -> str {
+    if mod is None or mod is self.ir_in or not (mod?.loc and mod.loc.mod_path) {
+        return self._own_prefix();
+    }
+    return self._prefix_of_path(mod.loc.mod_path);
+}
+
+"""The one mangling rule. `:pub` keeps the bare name, the C ABI a library
+promises; everything else external lives under its unit's prefix."""
+impl NaIRGenCore._symbol_for(
+    name: str, owner: (uni.Module | None) = None, is_pub: bool = False
+) -> str {
+    if is_pub {
+        return name;
+    }
+    import from jaclang.compiler.frontend.codeinfo { native_symbol_name }
+    return native_symbol_name(self._prefix_of_module(owner), name);
+}
+
+impl NaIRGenCore._record_export(
+    name: str, symbol: str, kind: str, is_pub: bool = False
+) -> None {
+    self._unit_exports[name] = (symbol, kind, is_pub, );
+    if is_pub {
+        self._pub_symbols.add(symbol);
+    }
+}
+
+impl NaIRGenCore._note_native_dep(path: str) -> None {
+    import os as _nd_os;
+    real = _nd_os.path.realpath(path);
+    own = _nd_os.path.realpath(self.ir_in.loc.mod_path) if self.ir_in?.loc else "";
+    if real == own or real in self._native_dep_paths {
+        return;
+    }
+    self._native_dep_paths.append(real);
+}
+
+"""The dependency's native interface for the current codegen identity, from
+the program's native unit registry, compiling the dependency on demand so
+its demotion verdicts are known before this module declares its calls.
+None while the dependency is mid-build higher up the stack (a cycle), in
+which case its exports are declared from its AST and the link plan's
+agreement check catches any disagreement."""
+impl NaIRGenCore._dep_iface(imported_mod: uni.Module) -> any {
+    if not (imported_mod?.loc and imported_mod.loc.mod_path) {
+        return None;
+    }
+    opts = self.prog.options;
+    try {
+        ent = self.prog.native_units().ensure(
+            imported_mod.loc.mod_path, compile_on_miss=True, options=opts
+        );
+    } except Exception {
+        return None;
+    }
+    return ent.iface if ent is not None else None;
+}
+
+"""Materialize a toolchain native unit (an OSP or format kernel) as an
+imported module: served from the hub when the closure already holds it,
+else a symtab-only compile in this program."""
+impl NaIRGenCore._load_native_unit_module(path: str) -> (uni.Module | None) {
+    import os as _lu_os;
+    real = _lu_os.path.realpath(path);
+    found = self.prog.find_module(real);
+    if found is not None {
+        return found;
+    }
+    if not _lu_os.path.isfile(real) {
+        return None;
+    }
+    import from jaclang.compiler.driver.compile_options {
+        CompileOptions as _UnitOpts
+    }
+    saved = self.prog.options;
+    try {
+        return self.prog.compile(
+            real,
+            options=_UnitOpts(
+                no_cgen=True,
+                symtab_ir_only=True,
+                aot_mode=True,
+                default_codespace='native',
+                force_codespace='native',
+                force_target_program=True,
+                native_unit=True
+            )
+        );
+    } except Exception {
+        return None;
+    } finally {
+        self.prog.options = saved;
+    }
+}
+
+impl NaIRGenCore._is_kernel_unit -> bool {
+    import from jaclang.compiler.frontend.codeinfo { is_kernel_unit_path }
+    return bool(self.ir_in?.loc) and is_kernel_unit_path(self.ir_in.loc.mod_path);
 }
 
 impl NaIRGenCore._predemote_capability_unit(
@@ -225,10 +435,15 @@ impl NaIRGenCore._predemote_capability_unit(
     );
 }
 
+"""A function that failed to lower keeps a body that aborts, under its own
+symbol plus the `.__jac_demoted` marker, and leaves the unit's export table
+so a consumer routes the call through the bridge instead."""
 impl NaIRGenCore._rename_demoted_symbol(name: str, func: ir.Function) -> None {
+    self._demoted_names.add(name);
+    self._unit_exports.pop(name, None);
     try {
         self.llvm_module.globals.pop(func.name, None);
-        func.name = f"{name}.__jac_demoted";
+        func.name = f"{func.name}.__jac_demoted";
         self.llvm_module.globals[func.name] = func;
     } except Exception {}
 }
@@ -382,7 +597,7 @@ impl NaIRGenCore._export_native_layout -> None {
         if fname.startswith("__") or fname == "jac_entry" or fname in method_names {
             continue;
         }
-        if ".__jacp_" in str(func.name) {
+        if str(func.linkage) in ("internal", "private") {
             continue;
         }
         if fname in self._clib_symbol_lib {
@@ -557,7 +772,6 @@ impl NaIRGenCore._register_imported_struct_types -> None {
 
     processed_modules: set[str] = set();
     imported_mods: list = [];
-    manifest = self.ir_in.gen.interop_manifest;
 
     entry_base = os.path.dirname(os.path.abspath(self.ir_in.loc.mod_path))
         if (self.ir_in?.loc)
@@ -610,10 +824,8 @@ impl NaIRGenCore._register_imported_struct_types -> None {
     _self_key = (
         os.path.realpath(self.ir_in.loc.mod_path) if (self.ir_in?.loc) else None
     );
-    import from jaclang.compiler.frontend.codeinfo { native_module_key }
 
     _canon_src: dict = {};
-    _src_keys: dict[str, str] = {};
     dep_edges: dict = {};
     qi = 0;
     while qi < len(wq) {
@@ -660,7 +872,6 @@ impl NaIRGenCore._register_imported_struct_types -> None {
         processed_modules.add(abs_key);
         _canon_src[abs_key] = src_mod_str;
         imported_mods.append((src_mod_str, imported_mod));
-        _src_keys[src_mod_str] = native_module_key(full_path);
 
         sub_base = os.path.dirname(os.path.abspath(full_path));
         for sub_imp in ModuleCodegenPass.iter_module_imports(imported_mod)
@@ -674,38 +885,14 @@ impl NaIRGenCore._register_imported_struct_types -> None {
 
     self._foreign_modules = [m for (_s, m) in imported_mods];
 
-    _own_code_keys: set = set();
-    for (_abs_key, (_src_mod_str, imported_mod)) in zip(
-        _canon_src.keys(), imported_mods
-    ) {
-        _has_own_code = any(
+    for _direct in dep_edges.get(None, []) {
+        _direct_mod = self.prog.mod.hub.get(_direct);
+        _has_own_code = _direct_mod is None or any(
             not isinstance(s, uni.Import)
-            for s in ModuleCodegenPass.iter_context_stmts(imported_mod)
+            for s in ModuleCodegenPass.iter_context_stmts(_direct_mod)
         );
         if _has_own_code {
-            _own_code_keys.add(_abs_key);
-        }
-    }
-    _visited: set = set();
-    _order_stack: list = [(None, 0)];
-    while _order_stack {
-        (_nd, _idx) = _order_stack.pop();
-        _kids = dep_edges.get(_nd, []);
-        if _idx < len(_kids) {
-            _order_stack.append((_nd, _idx + 1));
-            _kid = _kids[_idx];
-            if _kid not in _visited {
-                _visited.add(_kid);
-                _order_stack.append((_kid, 0));
-            }
-        } elif (
-            _nd is not None
-            and _nd in _own_code_keys
-            and _canon_src.get(_nd) is not None
-            and _canon_src[_nd] not in manifest.native_transitive_sources
-        ) {
-            manifest.native_transitive_sources.append(_canon_src[_nd]);
-            manifest.native_transitive_keys.append(_src_keys.get(_canon_src[_nd], ""));
+            self._note_native_dep(_direct);
         }
     }
 
@@ -730,20 +917,8 @@ impl NaIRGenCore._register_imported_struct_types -> None {
         self._walk_imported_module_types(imported_mod);
     }
 
-    _self_real = os.path.realpath(self.ir_in.loc.mod_path)
-        if (self.ir_in?.loc)
-        else None;
-    if _self_real is not None {
-        self.prog.scratch.na_dep_inflight.add(_self_real);
-    }
-    try {
-        for (_, imported_mod) in imported_mods {
-            self._walk_imported_module_abilities(imported_mod);
-        }
-    } finally {
-        if _self_real is not None {
-            self.prog.scratch.na_dep_inflight.discard(_self_real);
-        }
+    for (_, imported_mod) in imported_mods {
+        self._walk_imported_module_abilities(imported_mod);
     }
 }
 
@@ -845,7 +1020,11 @@ impl NaIRGenCore._walk_imported_module_types(imported_mod: uni.Module) -> None {
 impl NaIRGenCore._walk_imported_module_abilities(
     imported_mod: uni.Module, with_fn_verdicts: bool = True
 ) -> None {
-    _imp_layout = imported_mod.gen.native_layout;
+    _imp_iface = self._dep_iface(imported_mod) if with_fn_verdicts else None;
+    _imp_layout = _imp_iface.layout if _imp_iface is not None else None;
+    if _imp_layout is None {
+        _imp_layout = imported_mod.gen.native_layout;
+    }
     if _imp_layout is None and imported_mod?.loc and imported_mod.loc.mod_path {
         import os as _wl_os;
         _wl_raw = imported_mod.loc.mod_path;
@@ -859,21 +1038,10 @@ impl NaIRGenCore._walk_imported_module_abilities(
                 _imp_layout = _wl_slim.native_layout;
                 break;
             }
-            try {
-                _imp_layout = self.prog._get_compiler().get_native_layout(
-                    _wl_key, self.prog
-                );
-            } except Exception {
-                _imp_layout = None;
-            }
-            if _imp_layout is not None {
-                break;
-            }
         }
     }
 
     _wl_internal = False;
-    _wl_jac_internal = False;
     if _imp_layout is None and imported_mod?.loc and imported_mod.loc.mod_path {
         import os as _wl_os2;
 
@@ -891,74 +1059,8 @@ impl NaIRGenCore._walk_imported_module_abilities(
         }
     }
     _imp_fn_unavail: (set | None) = None;
-    _imp_verdicts_wanted = (
-        with_fn_verdicts and _imp_layout is None and not _wl_internal
-    );
-    if _imp_verdicts_wanted {
+    if with_fn_verdicts {
         _imp_fn_unavail = self._imported_function_demotions(imported_mod);
-    }
-    if (
-        with_fn_verdicts
-        and _imp_layout is None
-        and _imp_fn_unavail is None
-        and _wl_jac_internal
-    ) {
-        _wl_all_fns: set = set();
-        for _wl_stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_wl_stmt, uni.Ability)
-                and _wl_stmt.name_ref
-                and not _wl_stmt.type_params
-                and isinstance(_wl_stmt.signature, uni.FuncSignature)
-            ) {
-                _wl_all_fns.add(_wl_stmt.name_ref.sym_name);
-            }
-        }
-        _imp_fn_unavail = _wl_all_fns;
-    }
-    if (
-        _imp_verdicts_wanted
-        and _imp_fn_unavail is None
-        and bool(self.prog.options and self.prog.options.aot_mode)
-        and self.ir_in?.loc
-        and self.ir_in.loc.mod_path
-        and imported_mod?.loc
-        and imported_mod.loc.mod_path
-    ) {
-        import os as _uv_os;
-        _uv_self = _uv_os.path.realpath(self.ir_in.loc.mod_path);
-        _uv_callee = _uv_os.path.realpath(imported_mod.loc.mod_path);
-        _uv_names: set = set();
-        for _uv_stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_uv_stmt, uni.Ability)
-                and _uv_stmt.name_ref
-                and _uv_stmt.body is not None
-                and not _uv_stmt.type_params
-                and isinstance(_uv_stmt.signature, uni.FuncSignature)
-            ) {
-                _uv_names.add(_uv_stmt.name_ref.sym_name);
-            } elif isinstance(_uv_stmt, uni.Archetype)
-                and _uv_stmt.body is not None
-                and _uv_stmt.name is not None {
-                for _uv_meth in _uv_stmt.body {
-                    if (
-                        isinstance(_uv_meth, uni.Ability)
-                        and _uv_meth.name_ref
-                        and _uv_meth.body is not None
-                        and isinstance(_uv_meth.signature, uni.FuncSignature)
-                    ) {
-                        _uv_names.add(
-                            f"{_uv_stmt.name.value}.{_uv_meth.name_ref.sym_name}"
-                        );
-                    }
-                }
-            }
-        }
-        if _uv_names {
-            _uv_rec = self.prog.scratch.na_unverified_live.setdefault(_uv_self, {});
-            _uv_rec[_uv_callee] = set(_uv_rec.get(_uv_callee) or set()) | _uv_names;
-        }
     }
     for _imp_arch in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if not isinstance(_imp_arch, uni.Archetype)
@@ -979,7 +1081,8 @@ impl NaIRGenCore._walk_imported_module_abilities(
                     and _im_full not in _imp_layout.methods
                     and not _imp_stmt.type_params
                 )
-                    or (_imp_layout is None and _wl_internal) {
+                    or (_imp_layout is None and _wl_internal)
+                    or (_imp_fn_unavail is not None and _im_full in _imp_fn_unavail) {
                     self._native_skipped_methods.add(_im_full);
                 }
             }
@@ -1136,7 +1239,7 @@ impl NaIRGenCore._register_imported_archetype(arch: uni.Archetype) -> None {
     }
     self._struct_bodies_done.add(aname);
 
-    self._codegen_archetype(arch);
+    self._codegen_archetype(arch, imported=True);
 }
 
 impl NaIRGenCore._register_imported_globals(
@@ -1161,7 +1264,13 @@ impl NaIRGenCore._register_imported_globals(
                 }
                 var_type = self._resolve_jac_type(assign.type_tag.tag);
             }
-            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+            _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+            _owner = nd.find_parent_of_type(uni.Module);
+            global_var = ir.GlobalVariable(
+                self.llvm_module,
+                var_type,
+                name=self._symbol_for(var_name, _owner, _is_pub)
+            );
             global_var.linkage = "external";
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
@@ -1231,93 +1340,24 @@ impl NaIRGenCore._ensure_dep_inference(dep_mod: uni.Module) -> None {
 impl NaIRGenCore._imported_function_demotions(
     imported_mod: uni.Module
 ) -> (set | None) {
-    import os as _fd_os;
-    if not (imported_mod?.loc and imported_mod.loc.mod_path) {
-        return None;
+    if imported_mod.gen.native_iface is not None {
+        return set(imported_mod.gen.native_iface.demoted);
     }
-    mod_path = imported_mod.loc.mod_path;
-    real_path = _fd_os.path.realpath(mod_path);
-    units = self.prog.scratch.na_dep_units;
-    `entry: any = None;
-    if real_path in units {
-        `entry = units[real_path];
-    } elif imported_mod.gen.llvm_ir is not None {
-        `entry = imported_mod;
-    } else {
-        import from jaclang.compiler.driver.compile_options {
-            CompileOptions as _FdOpts
-        }
-        _opts_src = self.prog?.options or _FdOpts();
-        import from jaclang.compiler.driver.jir {
-            native_ir_cache_suspended as _fd_suspended
-        }
-        if not (bool(getattr(_opts_src, "no_ir_cache", False)) or _fd_suspended()) {
-            try {
-                import from jaclang.compiler.backends.native.na_compile_pass {
-                    native_dep_cache_paths
-                }
-                (_fd_ir_p, _fd_meta_p) = native_dep_cache_paths(real_path, _opts_src);
-                if _fd_os.path.exists(_fd_ir_p) and _fd_os.path.exists(_fd_meta_p) {
-                    import json as _fd_json;
-                    with open(_fd_meta_p, "r") as _fd_mf {
-                        _fd_meta = _fd_json.loads(_fd_mf.read());
-                    }
-                    if _fd_meta.get("options_fingerprint")
-                        == _opts_src.codegen_fingerprint() {
-                        return set(_fd_meta.get("demoted_symbols") or []);
-                    }
-                }
-            } except Exception {}
-        }
-        if not bool(_opts_src.aot_mode)
-            or real_path in self.prog.scratch.na_dep_inflight
-            or not _fd_os.path.isfile(real_path) {
-            return None;
-        }
-        try {
-            `entry = self.prog.compile(
-                file_path=mod_path, options=_opts_src.clone_for_native_import()
-            );
-        } except Exception as _fd_exc {
-            `entry = f"{type(_fd_exc).__name__}: {_fd_exc}";
-        }
-        units[real_path] = `entry;
+    iface = self._dep_iface(imported_mod);
+    if iface is not None {
+        return set(iface.demoted);
     }
-
-    if `entry is None or isinstance(`entry, str) or `entry.gen.llvm_ir is None {
-        _fd_all: set = set();
-        for _fd_stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
-            if (
-                isinstance(_fd_stmt, uni.Ability)
-                and _fd_stmt.name_ref
-                and not _fd_stmt.type_params
-                and isinstance(_fd_stmt.signature, uni.FuncSignature)
-            ) {
-                _fd_all.add(_fd_stmt.name_ref.sym_name);
+    if imported_mod.gen.llvm_ir is not None {
+        demoted: set = set();
+        for _fd_gname in list(imported_mod.gen.llvm_ir.globals) {
+            if _fd_gname.endswith(".__jac_demoted") {
+                demoted.add(_fd_gname[:-len(".__jac_demoted")]);
             }
         }
-        return _fd_all;
+        return demoted;
     }
-    demoted: set = set();
-    _fd_mod = `entry.gen.llvm_ir;
-    _fd_names: list = [];
-    try {
-        _fd_names = list(_fd_mod.globals);
-    } except Exception {
-        try {
-            for _fd_fn in _fd_mod.functions {
-                _fd_names.append(_fd_fn.name);
-            }
-        } except Exception {}
-    }
-    for _fd_gname in _fd_names {
-        if _fd_gname.endswith(".__jac_demoted") {
-            demoted.add(_fd_gname[:-len(".__jac_demoted")]);
-        }
-    }
-    return demoted;
+    return None;
 }
-
 impl NaIRGenCore._process_clib_imports(module: uni.Module) -> None {
     imports = ModuleCodegenPass.iter_module_imports(module)
         + ModuleCodegenPass.iter_nested_imports(module, CodeContext.NATIVE);

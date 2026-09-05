@@ -1648,48 +1648,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W5022 = _warn(
          "W5022", Category.CODEGEN, "Failed to load C library '{path}': {error}"
      ),
-     W5023 = _warn("W5023", Category.CODEGEN, "Native module not found: {path}"),
-     E5024 = _err(
-         "E5024",
-         Category.CODEGEN,
-         "Failed to compile native module {path}: {error}. "
-         "Fix the error in the imported module or nacompile will produce a broken binary."
-     ),
-     E5025 = _err(
-         "E5025",
-         Category.CODEGEN,
-         "Failed to link native module {path}: {error}. "
-         "Fix the error in the imported module or nacompile will produce a broken binary."
-     ),
      E5026 = _err(
          "E5026",
          Category.CODEGEN,
          "Symbol collision during native link: '{symbol}' is defined in both "
          "'{existing_module}' and '{new_module}'. "
          "Mark one as :priv or rename to avoid a runtime crash."
-     ),
-     E5027 = _err(
-         "E5027",
-         Category.CODEGEN,
-         "Native module '{path}' was built with different compile options "
-         "(cached fingerprint {cached_fp}, current build {current_fp}); "
-         "refusing a mixed-options link.",
-         help="Every module in a native link must carry the same codegen options fingerprint (gc mode, nogc enforcement, target triple, opt level, debug gates). Rebuild the module under the current options, or scrub the stale native cache with `jac nacompile --scrub`."
-     ),
-     E5028 = _err(
-         "E5028",
-         Category.CODEGEN,
-         "Native module '{path}' still calls {names} as live after {attempts} "
-         "re-emissions, but the defining module's verdict demotes them; the "
-         "demotion/emission order did not converge.",
-         help="Within one native unit a caller's emitted IR must observe the callee module's final demotion verdicts (verdict-before-emission). A caller emitted under an import cycle is re-emitted once its callees' verdicts land; failing to converge means a verdict keeps flipping between emissions, which is a compiler defect worth reporting with JAC_NA_DEBUG=1 output."
-     ),
-     E5029 = _err(
-         "E5029",
-         Category.CODEGEN,
-         "Native link of '{path}' tripped the verdict blast-radius guard: "
-         "{detail}. Refusing to compose further instead of grinding.",
-         help="A healthy native link keeps the unverified-live set near zero and compiles at most a handful of modules at link time. Numbers this size mean verdict resolution is missing systematically -- every miss fails closed into conflict-on-all and another full compile -- which presents as a silent multi-hour build. The counts in the message say which lever moved: taint means the emission lane is recording where it should not, link-time compiles mean dependency identity is splitting, and verdict misses mean the resolver cannot see modules that are already compiled. Report with JAC_NA_DEBUG=1 output."
      ),
      E5030 = _err(
          "E5030",

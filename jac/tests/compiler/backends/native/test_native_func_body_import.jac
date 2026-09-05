@@ -14,7 +14,7 @@ import ctypes;
 import importlib;
 import os;
 import sys;
-import from tests.support { TESTS_DIR, compile_native, native_force_opts }
+import from tests.support { TESTS_DIR, compile_native, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -50,7 +50,7 @@ test "function-body imports lower and agree with sv" {
         "method_import"
     ];
     for name in cases {
-        addr = eng.get_function_address(name);
+        addr = native_address(eng, name);
         assert addr != 0 , f"'{name}' not found in the JIT engine";
         na_fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
         sv_fn = getattr(sv, name);

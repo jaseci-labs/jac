@@ -541,9 +541,7 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 | `E5020` | Native compilation failed: {error} |
 | `W5021` | C library not found: {path} |
 | `W5022` | Failed to load C library '{path}': {error} |
-| `W5023` | Native module not found: {path} |
-| `W5024` | Failed to compile native module {path}: {error} |
-| `W5025` | Failed to link native module {path}: {error} |
+| `E5026` | Symbol collision during native link: '{symbol}' is defined in both '{existing_module}' and '{new_module}' |
 
 ### Layout Pass
 

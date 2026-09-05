@@ -88,6 +88,8 @@ obj PlacementSummary {
         decided: str = '',
         anchors: list[str] = field(default_factory=`list),
         native_blocker: str = '',
+        native_verdict: str = '',
+        native_verdict_code: str = '',
         jac_deps: list[str] = field(default_factory=`list),
         has_refs: bool = False,
         elements: list[ElementSummary] = field(default_factory=`list);
@@ -99,6 +101,8 @@ obj PlacementSummary {
             'decided': self.decided,
             'anchors': list(self.anchors),
             'native_blocker': self.native_blocker,
+            'native_verdict': self.native_verdict,
+            'native_verdict_code': self.native_verdict_code,
             'jac_deps': list(self.jac_deps),
             'has_refs': self.has_refs,
             'elements': [e.to_dict() for e in self.elements]
@@ -114,6 +118,8 @@ obj PlacementSummary {
         ps.decided = str(d.get('decided', ''));
         ps.anchors = [str(x) for x in d.get('anchors', [])];
         ps.native_blocker = str(d.get('native_blocker', ''));
+        ps.native_verdict = str(d.get('native_verdict', ''));
+        ps.native_verdict_code = str(d.get('native_verdict_code', ''));
         ps.jac_deps = [str(x) for x in d.get('jac_deps', [])];
         ps.has_refs = bool(d.get('has_refs', False));
         ps.elements = [
@@ -714,7 +720,9 @@ def scan_native_blockers(
     return ('', deps);
 }
 
-def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSummary {
+def summarize_module(
+    module: uni.Module, with_refs: bool = True, prog: any = None
+) -> PlacementSummary {
     ps = PlacementSummary();
     ps.schema = PLACEMENT_SCHEMA;
     ps.mod_path = module.loc.mod_path or '';
@@ -723,6 +731,13 @@ def summarize_module(module: uni.Module, with_refs: bool = True) -> PlacementSum
     base_dir = os.path.dirname(os.path.abspath(ps.mod_path)) if ps.mod_path else '';
     (blocker, deps) = scan_native_blockers(module, base_dir);
     ps.native_blocker = blocker;
+    if prog is not None and ps.mod_path {
+        pending = native_verdict_notes(prog).get(os.path.realpath(ps.mod_path));
+        if pending is not None {
+            ps.native_verdict_code = pending[0];
+            ps.native_verdict = pending[1];
+        }
+    }
     ps.jac_deps = deps;
     ps.has_refs = with_refs;
     index_by_id: dict[int, int] = {};
@@ -792,6 +807,28 @@ def summary_store(prog: any) -> dict {
         prog.analysis.placement_summaries = store;
     }
     return store;
+}
+
+"""Module-level native verdicts noted during this program's compiles, keyed
+by real path: (code, detail). They ride into the placement summary the next
+time the module is summarized, and from there into `SEC_PLACEMENT`."""
+def native_verdict_notes(prog: any) -> dict[str, tuple[str, str]] {
+    notes = prog?.analysis.native_verdict_notes;
+    if notes is None {
+        notes = {};
+        prog.analysis.native_verdict_notes = notes;
+    }
+    return notes;
+}
+
+def note_native_verdict(prog: any, resolved: str, code: str, detail: str) -> None {
+    native_verdict_notes(prog)[resolved] = (code, detail);
+    store = summary_store(prog);
+    cached = store.get(os.path.abspath(resolved));
+    if isinstance(cached, PlacementSummary) {
+        cached.native_verdict_code = code;
+        cached.native_verdict = detail;
+    }
 }
 
 def placement_state(prog: any) -> dict {
@@ -931,7 +968,7 @@ def get_module_summary(
     if (isinstance(cached, PlacementSummary) and (cached.has_refs or not with_refs)) {
         return cached;
     }
-    ps = summarize_module(module, with_refs=with_refs);
+    ps = summarize_module(module, with_refs=with_refs, prog=prog);
     if key {
         store[key] = ps;
     }

@@ -7,10 +7,11 @@ bytecode cache (``meta_importer``) and the JIR module cache
 platform-resolution logic lives in exactly one place.
 
 This module owns only the genuinely global, config-independent directories.
-The per-module cache locations (``jir/modules/`` and its ``native/`` subdir)
-are project-aware and therefore resolved in ``jaclang.compiler.driver.jir`` via
-``get_module_cache_path``/``get_native_cache_dir(source_path)``, which fall
-back to the project's ``.jac/cache`` when inside a project.
+The per-module cache locations (``jir/modules/``, holding every product of
+a module including its native interface and object) are project-aware and
+therefore resolved in ``jaclang.compiler.driver.jir`` via
+``get_module_cache_path(source_path)``, which falls back to the project's
+``.jac/cache`` when inside a project.
 
 Platform roots:
     Linux:   ~/.cache/jac/jir/             ($XDG_CACHE_HOME honored)

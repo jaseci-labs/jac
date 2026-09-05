@@ -1,52 +1,19 @@
-glob _NA_FMT_KERNEL_MOD: list = [];
-
-def _load_native_fmt_kernel_module -> (uni.Module | None) {
-    if _NA_FMT_KERNEL_MOD {
-        return _NA_FMT_KERNEL_MOD[0];
-    }
-    import from jaclang.compiler.backends.kernel_units { fmt_kernel_unit_path }
-    import from jaclang.compiler.driver.program { JacProgram }
-    mod = None;
-    try {
-        import from jaclang.compiler.driver.compile_options {
-            CompileOptions as _KernelOpts
-        }
-        prog = JacProgram();
-        mod = prog.compile(
-            fmt_kernel_unit_path('na'),
-            options=_KernelOpts(
-                no_cgen=True,
-                symtab_ir_only=True,
-                aot_mode=True,
-                default_codespace='native',
-                force_codespace='native',
-                force_target_program=True
-            )
-        );
-    } except Exception {
-        mod = None;
-    }
-    if mod is not None {
-        _NA_FMT_KERNEL_MOD.append(mod);
-    }
-    return mod;
-}
-
+"""The format kernel, `compiler/backends/fmt_kernel.jac`, is an ordinary
+native unit: its abilities are declared from its AST under its own prefix
+and a dependency edge carries it into the link plan."""
 impl NaIRGenFmt._ensure_fmt_kernel -> bool {
     if self._fmt_kernel_mod is not None {
         return True;
     }
-    kernel_mod = _load_native_fmt_kernel_module();
+    import from jaclang.compiler.frontend.codeinfo { FMT_KERNEL_REL, kernel_unit_path }
+    kernel_mod = self._load_native_unit_module(kernel_unit_path(FMT_KERNEL_REL));
     if kernel_mod is None {
         return False;
     }
     self._walk_imported_module_abilities(kernel_mod, with_fn_verdicts=False);
     self._fmt_kernel_mod = kernel_mod;
-
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
-    if (_manifest is not None)
-        and ("fmt_kernel" not in _manifest.native_transitive_sources) {
-        _manifest.native_transitive_sources.append("fmt_kernel");
+    if kernel_mod?.loc and kernel_mod.loc.mod_path {
+        self._note_native_dep(kernel_mod.loc.mod_path);
     }
     return True;
 }

@@ -1226,15 +1226,19 @@ impl NaIRGenBuiltins._emit_sys_argv -> (ir.Value | None) {
         return None;
     }
 
+    # One argv cell per program: every unit that reads it and the link
+    # plan's glue (which fills it from `main`) define it weak.
     if "__jac_argc" not in self.llvm_module.globals {
         _argc_gv = ir.GlobalVariable(self.llvm_module, i32, name="__jac_argc");
         _argc_gv.initializer = ir.Constant(i32, 0);
+        _argc_gv.linkage = "weak";
     }
     if "__jac_argv" not in self.llvm_module.globals {
         _argv_gv = ir.GlobalVariable(
             self.llvm_module, i8p.as_pointer(), name="__jac_argv"
         );
         _argv_gv.initializer = ir.Constant(i8p.as_pointer(), None);
+        _argv_gv.linkage = "weak";
     }
 
     argc_global = self.llvm_module.get_global("__jac_argc");

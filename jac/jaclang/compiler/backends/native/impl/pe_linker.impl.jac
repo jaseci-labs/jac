@@ -1173,8 +1173,12 @@ def _pe_write_shdr(
 }
 
 
+"""Link `objects` into one PE artifact. The COFF writer merges no
+relocatable objects, so a PE link takes exactly one object: the link plan
+produces it by linking every unit's bitcode into one module (bitcode mode)
+before codegen."""
 impl PeLinker.link(
-    obj_bytes: bytes,
+    objects: list[bytes],
     output_path: str,
     needed_libs: list[str] = ["msvcrt.dll"],
     symbol_lib_map: dict[str, str] = {},
@@ -1183,8 +1187,14 @@ impl PeLinker.link(
     init_funcs: list[str] = [],
     soname: str = ""
 ) -> bool {
+    if len(objects) != 1 {
+        raise ValueError(
+            f"PeLinker.link takes exactly one object (got {len(objects)}); "
+            "link the units in bitcode mode first"
+        );
+    }
     linker = PeLinker(
-        obj_data=obj_bytes,
+        obj_data=objects[0],
         symbols=[],
         sections=[],
         relocations=[],

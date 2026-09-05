@@ -46,7 +46,7 @@ def native_str_func(eng: any, name: str, restype: type | None, *argtypes: type) 
     # slots, so str args pass as (root, data, len) built via
     # jac_str_new, and str returns read back as a two-pointer pair with
     # the payload NUL-bounded at data
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list = [];
@@ -163,12 +163,106 @@ def compile_native(fixture: str, fixture_dir: str = "") -> tuple {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
+    remember_native_unit(eng, ir);
     return (eng, ir);
+}
+
+"""Pin the compiled module's unit path and native interface on its engine,
+so `native_address` can map a Jac-level name to the unit's link symbol."""
+def remember_native_unit(eng: any, ir: any) -> None {
+    try {
+        setattr(eng, "_jac_unit_path", ir.loc.mod_path if ir.loc else "");
+        setattr(eng, "_jac_native_iface", ir.gen.native_iface);
+    } except Exception {}
+}
+
+"""The link symbol of a Jac-level name in the engine's root unit.
+
+Every external symbol that is not `:pub` is module-qualified
+(`<unit prefix>.<name>`, methods `<prefix>.Class.method`); `:pub` symbols,
+the glue's `jac_entry` and the runtime's `__jac_*` / `__rc_*` / `jac_*`
+helpers keep bare names. A name the interface does not list resolves to the
+qualified form, and a name the engine cannot find under either spelling
+falls back to the bare one so the caller's assertion names it.
+"""
+def native_symbol(eng: any, name: str) -> str {
+    path = getattr(eng, "_jac_unit_path", "") or "";
+    if name == "__jac_glob_init" and path {
+        import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
+        return native_glob_init_name(path);
+    }
+    if name == "jac_entry" or name.startswith(("__jac_", "__rc_", "jac_", "__osp", "__mt_")) {
+        return name;
+    }
+    iface = getattr(eng, "_jac_native_iface", None);
+    if iface is not None {
+        found = iface.symbol_of(name);
+        if found is not None {
+            return found;
+        }
+    }
+    if not path {
+        return name;
+    }
+    import from jaclang.compiler.frontend.codeinfo {
+        native_symbol_name,
+        native_unit_prefix
+    }
+    return native_symbol_name(native_unit_prefix(path), name);
+}
+
+"""The link symbol a compiled module gives a Jac-level name: the unit's
+interface record first, the mangling rule second. Tests that grep emitted
+IR for a function or global build their marker from this."""
+def unit_symbol(ir: any, name: str) -> str {
+    iface = ir.gen.native_iface if ir?.gen else None;
+    if iface is not None {
+        found = iface.symbol_of(name);
+        if found is not None {
+            return found;
+        }
+    }
+    path = ir.loc.mod_path if ir?.loc else "";
+    if not path {
+        return name;
+    }
+    import from jaclang.compiler.frontend.codeinfo {
+        native_symbol_name,
+        native_unit_prefix
+    }
+    return native_symbol_name(native_unit_prefix(path), name);
+}
+
+"""Whether `line` names the function `name` under either spelling: bare
+(`@name(` / `@"name"(`, a `:pub` or runtime symbol) or module-qualified
+(`@"<prefix>.name"(`)."""
+def names_function(line: str, name: str) -> bool {
+    return (
+        ('@"' + name + '"(') in line
+        or ("@" + name + "(") in line
+        or ("." + name + '"(') in line
+    );
+}
+
+"""Whether `text` defines or declares the global `name` under either spelling."""
+def names_global(text: str, name: str) -> bool {
+    return ('@"' + name + '"') in text or ("@" + name + " ") in text or ("." + name + '"') in text;
+}
+
+"""The address of a Jac-level name in the engine: the qualified symbol
+first, the bare spelling second."""
+def native_address(eng: any, name: str) -> int {
+    symbol = native_symbol(eng, name);
+    addr = eng.get_function_address(symbol);
+    if addr == 0 and symbol != name {
+        addr = eng.get_function_address(name);
+    }
+    return addr;
 }
 
 """Get a ctypes-callable function from a JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);

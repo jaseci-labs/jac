@@ -145,15 +145,15 @@ def module_own_native_anchor(module: (uni.Module | None)) -> bool {
     return False;
 }
 
-def module_demoted_native(path: str) -> bool {
-    import from jaclang.compiler.placement.placement_pins { _is_demoted_native }
-    return _is_demoted_native(os.path.realpath(path));
+def module_demoted_native(path: str, prog: object = None) -> bool {
+    import from jaclang.compiler.placement.placement_pins { module_native_demoted }
+    return module_native_demoted(os.path.realpath(path), prog);
 }
 
 
 def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
     import from jaclang.compiler.placement.placement_pins {
-        _is_demoted_native,
+        module_native_demoted,
         effective_module_pin
     }
     if (
@@ -178,10 +178,10 @@ def plain_native_import_target(nd: uni.Import, prog: object) -> (str | None) {
     ) {
         return None;
     }
-    if _is_demoted_native(real_resolved) {
+    if module_native_demoted(real_resolved, prog) {
         return None;
     }
-    if effective_module_pin(resolved) == 'native' {
+    if effective_module_pin(resolved, prog) == 'native' {
         return resolved;
     }
     target = hub_module_for_path(resolved, prog);

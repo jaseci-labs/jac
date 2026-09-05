@@ -39,7 +39,7 @@ def _compiled(fixture: str) -> tuple {
     prog = JacProgram();
     mod = prog.compile(
         file_path=os.path.join(FIXTURES, fixture),
-        options=CompileOptions(no_ir_cache=True)
+        options=CompileOptions()
     );
     return (prog, mod, );
 }

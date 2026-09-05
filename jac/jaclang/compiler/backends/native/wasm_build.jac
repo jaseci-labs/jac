@@ -356,10 +356,10 @@ def emit_wasm_from_ir(
     obj_bytes = tm.emit_object(mod);
     assert isinstance(obj_bytes, bytes);
     if not libc_linked {
-        return WasmLinker.link(obj_bytes, export_funcs, 256);
+        return WasmLinker.link([obj_bytes], export_funcs, 256);
     }
     return WasmLinker.link(
-        obj_bytes,
+        [obj_bytes],
         export_funcs,
         256,
         host_abi=WASM_HOST_ABI,
@@ -511,10 +511,15 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
                 f"native lowering produced no IR for '{file_path}': {reason}"
             );
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            native_linked_ir_text
+        import from jaclang.compiler.backends.native.link_plan {
+            ArtifactKind,
+            build_link_plan,
+            whole_program_module
         }
-        llvm_ir_str = native_linked_ir_text(ir);
+        plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
+        spec = plan.glue_spec(ArtifactKind.WASM, "wasm", False);
+        (merged, _exports) = whole_program_module(plan, spec);
+        llvm_ir_str = str(merged);
         app_imports = app_declared_imports(ir);
     } finally {
         pop_native_target_env(prev);

@@ -5,7 +5,7 @@ import from jaclang.compiler.passes.layout_pass {
 import from jaclang.compiler.backends.native.llvm { ir }
 import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.backends.native.na_ir_gen.state { NaIRGenState }
-import from jaclang.compiler.frontend.constant { CodeContext }
+import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5060, E5090, E5092 }
 import from jaclang.compiler.backends.py.module_codegen_pass { ModuleCodegenPass }
 import jaclang.compiler.frontend.unitree as uni;
@@ -37,6 +37,23 @@ walker NaIRGenCore(NaIRGenState) {
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
+    def _own_prefix -> str;
+    def _prefix_of_module(mod: (uni.Module | None)) -> str;
+    def _prefix_of_path(path: str) -> str;
+    def _symbol_for(
+        name: str, owner: (uni.Module | None) = None, is_pub: bool = False
+    ) -> str;
+
+    def _record_export(
+        name: str, symbol: str, kind: str, is_pub: bool = False
+    ) -> None;
+
+    def _note_native_dep(path: str) -> None;
+    def _dep_iface(imported_mod: uni.Module) -> any;
+    def _load_native_unit_module(path: str) -> (uni.Module | None);
+    def _is_kernel_unit -> bool;
+    def _export_native_iface -> None;
+    def _build_class_layouts -> dict;
     def _predemote_capability_unit(
         full_name: str, func: ir.Function, viols: list, keep_func: bool = False
     ) -> bool;

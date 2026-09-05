@@ -1841,56 +1841,9 @@ def build_jac_runtime_js -> str {
     );
 }
 
-glob _OSP_CORE_JS_CACHE: list[str] = [];
-
 def build_osp_core_js -> str {
-    if _OSP_CORE_JS_CACHE {
-        return _OSP_CORE_JS_CACHE[0];
-    }
-    import from jaclang.compiler.backends.kernel_units {
-        es_pass_fingerprint,
-        load_unit_artifact,
-        osp_core_unit_path,
-        store_unit_artifact
-    }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.compiler.backends.es.es_unparse { es_to_js }
-    import from jaclang.compiler.backends.es { estree as es }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    fp = es_pass_fingerprint();
-    cl_copy = osp_core_unit_path('cl');
-    cached = load_unit_artifact(cl_copy, "mjs", fp);
-    if cached is not None {
-        _OSP_CORE_JS_CACHE.append(cached);
-        return cached;
-    }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=cl_copy,
-        options=CompileOptions(force_codespace='client', no_cgen=True)
-    );
-    import from jaclang.compiler.driver.pass_driver { run_pass }
-    program = run_pass(EsastGenPass, ir, prog).ir_out.gen.es_ast;
-    kept: list = [];
-    if isinstance(program, es.Program) {
-        for stmt in program.body {
-            is_jac_rt = (
-                isinstance(stmt, es.VariableDeclaration)
-                and stmt.declarations
-                and isinstance(stmt.declarations[0].id, es.Identifier)
-                and (stmt.declarations[0].id.name == "_jac")
-            );
-            if is_jac_rt or isinstance(stmt, es.ExportNamedDeclaration) {
-                continue;
-            }
-            kept.append(stmt);
-        }
-    }
-    js = es_to_js(es.Program(body=kept));
-    store_unit_artifact(cl_copy, "mjs", fp, js);
-    _OSP_CORE_JS_CACHE.append(js);
-    return js;
+    import from jaclang.compiler.backends.es.client_kernel_cache { osp_core_js }
+    return osp_core_js();
 }
 
 def build_osp_driver_js -> str {

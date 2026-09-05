@@ -35,7 +35,7 @@ def compile_server(fixture: str) -> uni.Module {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, fixture),
-        options=CompileOptions(no_ir_cache=True, force_codespace='server')
+        options=CompileOptions(force_codespace='server')
     );
     assert ir is not None , f"no module for {fixture}";
     return ir;

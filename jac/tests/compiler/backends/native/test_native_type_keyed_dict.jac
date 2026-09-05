@@ -17,7 +17,7 @@ boundary that `type_keyed_dict_lib` puts between two of the key classes.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -45,7 +45,7 @@ def _engine -> any {
     assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {FIXTURE}";
-    entry_addr = eng.get_function_address("jac_entry");
+    entry_addr = native_address(eng, "jac_entry");
     assert entry_addr != 0 , "no jac_entry to initialize module globals";
     ctypes.CFUNCTYPE(None)(entry_addr)();
     _ENG.append(eng);
@@ -82,7 +82,7 @@ def _sv_module -> any {
 
 """Assert the native int-returning function matches the sv one."""
 def _same_int(name: str) -> int {
-    addr = _engine().get_function_address(name);
+    addr = native_address(_engine(), name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     native = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
     sv = getattr(_sv_module(), name)();
@@ -93,7 +93,7 @@ def _same_int(name: str) -> int {
 
 test "a dict keyed by type lowers at all" {
     eng = _engine();
-    assert eng.get_function_address("key_count") != 0 , (
+    assert native_address(eng, "key_count") != 0 , (
         "the fixture produced no `key_count`: a `type` key made the whole "
         "module refuse to lower"
     );

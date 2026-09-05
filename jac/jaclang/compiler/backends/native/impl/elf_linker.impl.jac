@@ -3239,8 +3239,11 @@ impl ElfLinker.build_static_executable -> bytes {
 }
 
 
+"""Link `objects` into one ELF artifact. The first object seeds the linker;
+every further object, then the crt objects, then the archive members, is
+merged through one relocatable-object merge with its locals namespaced."""
 impl ElfLinker.link(
-    obj_bytes: bytes,
+    objects: list[bytes],
     output_path: str,
     needed_libs: list[str] = [],
     crt_objects: list[bytes] = [],
@@ -3251,8 +3254,11 @@ impl ElfLinker.link(
     archive_members: list[bytes] = [],
     static_link: bool = False
 ) -> bool {
+    if not objects {
+        return False;
+    }
     linker = ElfLinker(
-        obj_data=obj_bytes,
+        obj_data=objects[0],
         sections=[],
         symbols=[],
         relocations=[],
@@ -3267,6 +3273,13 @@ impl ElfLinker.link(
     }
 
     merge_ns: int = 0;
+
+    for extra in objects[1:] {
+        merge_ns += 1;
+        if not _merge_crt_object(linker, extra, merge_ns) {
+            return False;
+        }
+    }
 
     for crt_bytes in crt_objects {
         merge_ns += 1;

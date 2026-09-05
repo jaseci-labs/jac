@@ -1712,7 +1712,7 @@ Compile a `.jac` file to a standalone native ELF executable, forcing the whole m
 > **Project-level vs. file-level.** For a whole-project native build, use [`jac build --as native`](#jac-build) (or `--as binary`). `jac nacompile` remains the file-level tool for compiling an individual `.jac` file, building `--shared` C-ABI libraries, and cross-compiling with `--target wasm32`.
 
 ```bash
-jac nacompile filename [-o OUTPUT] [--gc MODE] [--enforce-nogc] [--assert-no-rc] [--shared] [-t TARGET] [-g] [--scrub]
+jac nacompile filename [-o OUTPUT] [--gc MODE] [--enforce-nogc] [--assert-no-rc] [--shared] [-t TARGET] [-g] [--scrub] [--link-mode MODE]
 ```
 
 | Option | Description | Default |
@@ -1722,7 +1722,8 @@ jac nacompile filename [-o OUTPUT] [--gc MODE] [--enforce-nogc] [--assert-no-rc]
 | `-t, --target` | Code target: native host, or `wasm32` for a browser `.wasm` module | host |
 | `--shared` | Build a C-ABI shared library (`.so`/`.dylib`/`.dll`) exporting `:pub` symbols instead of an executable | `False` |
 | `-g, --debug` | Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb | `False` |
-| `--scrub` | Scrub build: wipe cached IR and recompile everything from scratch | `False` |
+| `--scrub` | Scrub build: wipe the project's module cache and recompile every unit from scratch | `False` |
+| `--link-mode` | How the link plan combines units: `objects` (incremental) or `bitcode` (one whole-program LLVM module, the release lane); also `JAC_NATIVE_LINK_MODE` | `objects` |
 | `--gc` | Memory-management runtime to emit: `cycles` (refcounting + cycle collector), `rc` (refcounting only, no collector code), or `none` (no refcounting call sites) | `jac.toml [gc]` default, else `cycles` |
 | `--enforce-nogc` | Enforce zero-RC ownership coverage (`E1401`-`E1406` hard errors) on the compiled module, regardless of `jac.toml [gc.enforce]` patterns | `False` |
 | `--assert-no-rc` | Fail the build if the emitted IR contains any RC/collector machinery: `__rc_*` helpers, trace functions, roots-buffer globals, or entry-point GC env probes | `False` |
@@ -1731,10 +1732,10 @@ The file must contain a `with entry { }` block (which defines the `jac_entry()` 
 
 **What happens under the hood:**
 
-1. Compiles the `.jac` file through the Jac pipeline (native codespace forced) to get LLVM IR
-2. Injects `main()` and `_start` as pure LLVM IR (zero inline assembly)
-3. Emits native object code via llvmlite's `emit_object()`
-4. Links into an ELF executable via the built-in pure-Python ELF linker
+1. Compiles the `.jac` file and every native unit it reaches through the Jac pipeline (native codespace forced); each unit's native interface, relocatable object and bitcode land in its module cache
+2. Builds one link plan over the units: dependency order, an agreement check on every recorded interface digest, and one synthesized glue object holding `jac_entry`, `main()` / `_start` as pure LLVM IR (zero inline assembly)
+3. In `objects` mode links the cached objects; in `bitcode` mode links every unit's bitcode into one LLVM module and optimizes it whole-program before a single codegen
+4. Links into an ELF, Mach-O or PE executable (or a wasm module) via the built-in pure-Python linkers, and writes the plan digest beside the artifact
 
 The resulting binary dynamically links against `libc.so.6`. Memory management uses a self-contained reference counting scheme -- no external garbage collector (libgc) is required -- and `--gc` selects how much of that machinery is emitted, down to `--gc none` with statically inserted frees for [ownership-checked](../language/ownership-borrowing.md) modules. See [Memory Management](../language/native-pathway.md#memory-management) in the native pathway reference.
 

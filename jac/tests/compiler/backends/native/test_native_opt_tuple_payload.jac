@@ -16,7 +16,7 @@ how #8091 surfaced.
 import ctypes;
 import os;
 import jaclang;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, native_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
@@ -43,7 +43,7 @@ def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
 
 """Get a ctypes-callable function from the JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);

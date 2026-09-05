@@ -11,9 +11,10 @@ import from jaclang.compiler.placement.placement_facts {
     emits_server_code,
     is_client_only,
     module_spaces,
+    native_only,
+    native_unit,
     project_root_of,
-    require_project_root,
-    toolchain_native_by_policy
+    require_project_root
 }
 
 glob FIXTURE_DIR = os.path.join(
@@ -154,10 +155,55 @@ test "placement_pins imports stay within the documented allowlist" {
 }
 
 
-test "toolchain native policy matches na_stdlib and desktop native trees" {
-    pkg = os.path.join(JAC_ROOT, "jaclang");
-    na = os.path.join(pkg, "runtime", "na_stdlib", "_bz2_native.jac");
-    assert toolchain_native_by_policy(pkg, na);
-    other = os.path.join(pkg, "dist", "precompile_bytecode.jac");
-    assert not toolchain_native_by_policy(pkg, other);
+"""A toolchain source path under the installed jaclang package."""
+def _pkg_path(*parts: str) -> str {
+    import jaclang;
+    return os.path.join(os.path.dirname(os.path.abspath(str(jaclang.__file__))), *parts);
+}
+
+
+test "native_only names the modules with no bytecode meaning" {
+    # The kernel roots import C symbols; the native standard library lives
+    # under runtime/na_stdlib. Neither is ever bytecoded.
+    assert native_only(_pkg_path("compiler", "jc_unit.jac"));
+    assert native_only(_pkg_path("compiler", "jc_materialize.jac"));
+    assert native_only(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
+    assert native_only(_pkg_path("runtime", "na_stdlib", "zlib.jac"));
+    # A frontend module in the kernel's roster is bytecode and native at once,
+    # so it is not native-only; an ordinary toolchain module is neither.
+    assert not native_only(_pkg_path("compiler", "frontend", "unitree.jac"));
+    assert not native_only(_pkg_path("dist", "precompile_bytecode.jac"));
+    # Anything outside the package is never a toolchain native-only module.
+    d = tempfile.mkdtemp(prefix="jac-native-only-");
+    assert not native_only(os.path.join(d, "jc_unit.jac"));
+}
+
+
+test "native_unit follows native_only, the kernel roster and the native-unit compile" {
+    # Native-only modules are native units under any compile.
+    assert native_unit(_pkg_path("compiler", "jc_unit.jac"));
+    assert native_unit(_pkg_path("compiler", "jc_materialize.jac"));
+    assert native_unit(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
+    assert native_unit(_pkg_path("compiler", "jc_unit.jac"), native_unit_compile=False);
+    # A NATIVE_SCOPE frontend module is a native unit only under a
+    # native-unit compile: the same source is a bytecode unit otherwise.
+    scope_mod = _pkg_path("compiler", "frontend", "unitree.jac");
+    assert native_unit(scope_mod, native_unit_compile=True);
+    assert not native_unit(scope_mod, native_unit_compile=False);
+    # The kernel units every artifact may pull in by dependency edge.
+    for rel in [
+        ("runtime", "osp_kernel.jac"),
+        ("runtime", "osp_graph.jac"),
+        ("runtime", "region_native.jac"),
+        ("compiler", "backends", "fmt_kernel.jac")
+    ] {
+        p = _pkg_path(*rel);
+        assert native_unit(p) , f"{'/'.join(rel)} must be a native unit";
+        assert native_unit(p, native_unit_compile=False) , (
+            f"{'/'.join(rel)} is a native unit regardless of the compile mode"
+        );
+    }
+    # An ordinary toolchain module is not a native unit.
+    assert not native_unit(_pkg_path("dist", "precompile_bytecode.jac"));
+    assert not native_unit(_pkg_path("dist", "precompile_bytecode.jac"), native_unit_compile=True);
 }

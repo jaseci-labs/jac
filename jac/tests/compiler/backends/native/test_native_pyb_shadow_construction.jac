@@ -55,7 +55,7 @@ def _seams(fixture: str) -> list[str] {
         prog.compile(
             file_path=os.path.join(FIXTURES, fixture),
             options=CompileOptions(
-                force_codespace='native', force_target_program=True, no_ir_cache=True
+                force_codespace='native', force_target_program=True
             )
         );
     } finally {

@@ -156,51 +156,11 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         );
     }
 
-    import sys;
-    jc_name = (
-        "libjac_compiler.dylib" if sys.platform == "darwin" else "libjac_compiler.so"
-    );
-    jc_src = os.path.join(repo_root, "jaclang", "compiler", "jc_unit.jac");
-    jc_dst = os.path.join(site, "jaclang", "compiler", jc_name);
-    if not file_exists(jc_src) {
-        log("==> no compiler kernel unit in this tree; skipping kernel build");
-        _bundle_bun(site, opts);
-        return;
-    }
-    log(f"==> building native compiler kernel (nacompile --shared {jc_src})");
-    jc_boot = (
-        "import os, sys\n"
-        + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
-        + "sys.path.insert(0, root)\n"
-        + "import _jac_finder\n"
-        + "_jac_finder.install()\n"
-        + "from jaclang.cli.commands.nacompile import nacompile\n"
-        + "rc = int(nacompile(src, output=dst, shared=True) or 0)\n"
-        + "sys.stdout.flush()\n"
-        + "sys.stderr.flush()\n"
-        + "os._exit(rc)\n"
-    );
-    jc_env = clone_env();
-    jc_env["JAC_LLVM_SHIM"] = os.path.abspath(so);
-    jc_env["JAC_COMPILER_LIB"] = "off";
-    jc_env["JAC_NO_DEV_SOURCE"] = "1";
-    jc_env["JAC_STUBCAT_BUILDING"] = "1";
-    jc_ok = run_child(
-        [sys.executable, "-I", "-c", jc_boot, repo_root, jc_src, jc_dst], jc_env, True
-    );
-    if (
-        not jc_ok or not file_exists(jc_dst) or not file_exists(jc_dst + ".layout.json")
-    ) {
-        raise PayloadDie(
-            f"mkpayload: native compiler kernel build failed; the shipped"
-            f" binary requires {jc_dst} and its .layout.json sidecar."
-        );
-    }
-
-    jc_tree = os.path.join(repo_root, "jaclang", "compiler", jc_name);
-    copy_file(jc_dst, jc_tree);
-    copy_file(jc_dst + ".layout.json", jc_tree + ".layout.json");
-
+    # The native compiler kernel is not built here: `jac precompile --seal`
+    # (run_precompile_stage) links it through the link plan as the package's
+    # native artifact and records it in the manifest, so the shipped image
+    # and the kernel it loads are verified together. A linked-source (-Ddev)
+    # build returns above and derives its kernel on the first parse.
     _bundle_bun(site, opts);
 }
 
@@ -400,18 +360,7 @@ impl stage_tree(
 
     copy_tree(site, os.path.join(stage, "site"), skip_stage_site);
     strip_best_effort(site_shim_path(os.path.join(stage, "site")));
-    import sys as _sys;
-    strip_best_effort(
-        os.path.join(
-            stage,
-            "site",
-            "jaclang",
-            "compiler",
-            "libjac_compiler.dylib"
-                if _sys.platform == "darwin"
-                else "libjac_compiler.so"
-        )
-    );
+    strip_kernel_best_effort(os.path.join(stage, "site"));
 
     stage_python_bin(pbs_py_dir, stage);
 
@@ -760,5 +709,35 @@ impl prune_layer_cache(dir_path: str, keep: str) {
         if os.path.isfile(stale) {
             delete_file(stale);
         }
+    }
+}
+
+"""Strip the sealed kernel in the staged site and re-record its sha256 in
+the manifest: the seal verified the unstripped artifact, and a stripped
+binary must still hash to what the manifest says."""
+impl strip_kernel_best_effort(site: str) {
+    import hashlib;
+    import json;
+    manifest_path = os.path.join(site, "jaclang", "_precompiled", "MANIFEST.json");
+    if not file_exists(manifest_path) {
+        return;
+    }
+    with open(manifest_path, "r", encoding="utf-8") as f {
+        manifest = json.load(f);
+    }
+    record = (manifest.get("native") or {}).get("artifact");
+    if not record {
+        return;
+    }
+    lib = os.path.join(site, "jaclang", record["path"]);
+    if not file_exists(lib) {
+        return;
+    }
+    strip_best_effort(lib);
+    with open(lib, "rb") as f {
+        record["sha256"] = hashlib.sha256(f.read()).hexdigest();
+    }
+    with open(manifest_path, "w", encoding="utf-8") as f {
+        f.write(json.dumps(manifest, sort_keys=True, indent=1) + "\n");
     }
 }

@@ -98,17 +98,11 @@ impl NaIRGenFunc._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         slot_gv.initializer = ir.Constant(fnty.as_pointer(), None);
         self.decorated_fns[name] = (func, slot_gv, _dec_names, fnty);
     } else {
-        _emit_name = name;
-        if nd.access
-            and nd.access.tag.name == Tok.KW_PRIV
-            and nd.find_parent_of_type(uni.Archetype) is None {
-            import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
-            _def_m = nd.find_parent_of_type(uni.Module);
-            if _def_m is not None {
-                _emit_name = f"{name}.__jacp_{native_safe_sym(_def_m.name)}";
-            }
-        }
-        func = ir.Function(self.llvm_module, fnty, name=_emit_name);
+        _def_m = nd.find_parent_of_type(uni.Module);
+        _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+        func = ir.Function(
+            self.llvm_module, fnty, name=self._symbol_for(name, _def_m, _is_pub)
+        );
     }
 
     for (i, p) in enumerate(sig.get_parameters()) {
@@ -119,6 +113,14 @@ impl NaIRGenFunc._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
         self._func_def_mod[name] = _fdm.name;
+    }
+    if _fdm is None or _fdm is self.ir_in {
+        self._record_export(
+            name,
+            func.name,
+            "function",
+            bool(nd.access and nd.access.tag.name == Tok.KW_PUB)
+        );
     }
 
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
@@ -517,6 +519,7 @@ impl NaIRGenFunc._codegen_ability(nd: uni.Ability) -> None {
     _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
     if _is_priv {
         func.linkage = "internal";
+        self._unit_exports.pop(name, None);
     }
 
     _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
@@ -538,9 +541,10 @@ impl NaIRGenFunc._codegen_test(nd: uni.Test) -> None {
     }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
-    symbol = native_test_symbol(test_name, line);
+    symbol = native_test_symbol(test_name, line, self._own_prefix());
     fnty = ir.FunctionType(i8p, []);
     func = ir.Function(self.llvm_module, fnty, name=symbol);
+    self._record_export(native_test_symbol(test_name, line), symbol, "test");
 
     func.attributes.add("optnone");
     func.attributes.add("noinline");
@@ -1305,8 +1309,10 @@ impl NaIRGenFunc._emit_glob_init_func -> None {
     saved_cell_vars = self.closure_cell_vars;
     saved_cell_handles = self.closure_cell_handles;
 
+    import from jaclang.compiler.frontend.codeinfo { native_glob_init_name }
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = self._define_function("__jac_glob_init", fnty);
+    _gi_name = native_glob_init_name(self.ir_in.loc.mod_path) if self.ir_in?.loc else "__jac_glob_init";
+    func = self._define_function(_gi_name, fnty);
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
@@ -1482,13 +1488,15 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     import re;
 
     import from jaclang.compiler.frontend.codeinfo {
-        native_glob_init_name,
-        native_safe_sym
+        native_entry_name,
+        native_runtime_probe_name
     }
 
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = self._define_function("jac_entry", fnty);
+    _entry_sym = native_entry_name(self.ir_in.loc.mod_path) if self.ir_in?.loc else "jac_entry";
+    func = self._define_function(_entry_sym, fnty);
     self.func_symtab["jac_entry"] = func;
+    self._record_export("jac_entry", func.name, "entry");
 
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
@@ -1516,6 +1524,19 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     _i8p = ir.IntType(8).as_pointer();
     _i32 = ir.IntType(32);
 
+    # The runtime probes (`JAC_NO_GC`, `JAC_GC_CYCLES`) are a separate
+    # function the synthesized `jac_entry` calls before any unit's
+    # initializer, so a dependency's initializer allocates under the same
+    # mode as the program body.
+    _probe_fn = self._define_function(
+        native_runtime_probe_name(self.ir_in.loc.mod_path) if self.ir_in?.loc else "__jac_rt_probe",
+        fnty
+    );
+    _probe_block = _probe_fn.append_basic_block(name="entry");
+    _entry_builder = self._builder;
+    self._builder = ir.IRBuilder(_probe_block);
+    self._record_export("__jac_rt_probe", _probe_fn.name, "probe");
+
     if not self._nogc_headerless() {
         _getenv_fn = self._get_or_declare_extern("getenv", _i8p, [_i8p]);
         _nogc_str = self._get_snprintf_fmt("JAC_NO_GC");
@@ -1529,8 +1550,8 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
         _nogc_set = self.builder.icmp_unsigned(
             "!=", _nogc_val, _nogc_null, name="nogc.set"
         );
-        _nogc_then = func.append_basic_block("nogc_disable");
-        _nogc_cont = func.append_basic_block("nogc_cont");
+        _nogc_then = _probe_fn.append_basic_block("nogc_disable");
+        _nogc_cont = _probe_fn.append_basic_block("nogc_cont");
         self.builder.cbranch(_nogc_set, _nogc_then, _nogc_cont);
         b_nogc = ir.IRBuilder(_nogc_then);
         if self.rc_alloc_fn is None {
@@ -1552,8 +1573,8 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
         _cyc_set = self.builder.icmp_unsigned(
             "!=", _cyc_val, ir.Constant(_i8p, None), name="cyc.set"
         );
-        _cyc_then = func.append_basic_block("cyc_enable");
-        _cyc_cont = func.append_basic_block("cyc_cont");
+        _cyc_then = _probe_fn.append_basic_block("cyc_enable");
+        _cyc_cont = _probe_fn.append_basic_block("cyc_cont");
         self.builder.cbranch(_cyc_set, _cyc_then, _cyc_cont);
         b_cyc = ir.IRBuilder(_cyc_then);
         if self.rc_alloc_fn is None {
@@ -1563,90 +1584,13 @@ impl NaIRGenFunc._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
         b_cyc.branch(_cyc_cont);
         self._builder = ir.IRBuilder(_cyc_cont);
     }
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
-    _all_na_sources = _manifest.native_transitive_sources if _manifest else [];
-    _seen_init_mods: set = set();
-    for _source_mod in _all_na_sources {
-        if _source_mod is None or _source_mod in _seen_init_mods {
-            continue;
-        }
-        _seen_init_mods.add(_source_mod);
+    self.builder.ret_void();
+    self._builder = _entry_builder;
 
-        init_name = native_glob_init_name(_source_mod, _manifest);
-
-        imp_init_fn = self.func_symtab.get(init_name);
-        if imp_init_fn is None {
-            imp_init_fnty = ir.FunctionType(ir.VoidType(), []);
-            imp_init_fn = ir.Function(self.llvm_module, imp_init_fnty, name=init_name);
-            self.func_symtab[init_name] = imp_init_fn;
-        }
-
-        _guard_kernel = (
-            (self._osp_kernel_inited_gv is not None)
-            and (imp_init_fn is self._osp_kernel_glob_init_fn)
-        );
-        if _guard_kernel {
-            _i8 = ir.IntType(8);
-            _gk_run = self.builder.function.append_basic_block("osp_kinit_run");
-            _gk_done = self.builder.function.append_basic_block("osp_kinit_done");
-            self.builder.cbranch(
-                self.builder.icmp_unsigned(
-                    "!=",
-                    self.builder.load(
-                        self._osp_kernel_inited_gv, name="osp.kinited.entry"
-                    ),
-                    ir.Constant(_i8, 0)
-                ),
-                _gk_done,
-                _gk_run
-            );
-            self.builder.position_at_end(_gk_run);
-            self.builder.store(ir.Constant(_i8, 1), self._osp_kernel_inited_gv);
-        }
-        _init_call = self.builder.call(imp_init_fn, []);
-
-        if self.di_cu is not None and self._di_current_sp is not None {
-            try {
-                import os as _os_di;
-
-                _mod_fn = _source_mod;
-                if not _mod_fn.endswith(".jac") {
-                    _mod_fn = _mod_fn.replace(".", "/") + ".na.jac";
-                }
-                _di_imp_file = self.llvm_module.add_debug_info(
-                    "DIFile",
-                    {
-                        "filename": _os_di.path.basename(_mod_fn),
-                        "directory": _os_di.path.dirname(_mod_fn) or "."
-                    }
-                );
-                _di_sub_ty = self.llvm_module.add_debug_info(
-                    "DISubroutineType", {"types": self.llvm_module.add_metadata([])}
-                );
-                _di_init_sp = self.llvm_module.add_debug_info(
-                    "DISubprogram",
-                    {
-                        "name": init_name,
-                        "file": _di_imp_file,
-                        "line": 0,
-                        "isDefinition": False,
-                        "unit": self.di_cu,
-                        "type": _di_sub_ty
-                    },
-                    is_distinct=True
-                );
-                _di_init_loc = self.llvm_module.add_debug_info(
-                    "DILocation", {"line": 1, "column": 0, "scope": _di_init_sp}
-                );
-                _init_call.set_metadata("dbg", _di_init_loc);
-            } except Exception {}
-        }
-        if _guard_kernel {
-            self.builder.branch(_gk_done);
-            self.builder.position_at_end(_gk_done);
-        }
-    }
-
+    # Dependency initializers are not called here: the link plan orders every
+    # unit's initializer topologically and calls them from the synthesized
+    # `jac_entry` before this unit's entry runs. Each initializer guards
+    # itself, so the own-module call below is safe under either caller.
     if glob_init_fn is not None {
         self.builder.call(glob_init_fn, []);
     }

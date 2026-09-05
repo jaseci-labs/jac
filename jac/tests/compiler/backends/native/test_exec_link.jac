@@ -87,7 +87,7 @@ def _link_static(relobj: bytes, triple: str, out: str) -> bool {
     }
     (members, crt) = musl;
     return ElfLinker.link(
-        obj_bytes=relobj,
+        objects=[relobj],
         output_path=out,
         needed_libs=[],
         crt_objects=crt,
@@ -278,7 +278,7 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
     ok = MachOLinker.link(
-        obj_bytes=relobj,
+        objects=[relobj],
         output_path=out,
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False
@@ -310,7 +310,7 @@ test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke_arm64");
     ok = MachOLinker.link(
-        obj_bytes=relobj,
+        objects=[relobj],
         output_path=out,
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False

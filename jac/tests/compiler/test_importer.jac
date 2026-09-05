@@ -21,7 +21,6 @@ import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.compiler.driver.jir {
     get_module_cache_path,
     read_bytecode_only,
-    SEC_LLVM_IR,
     SEC_PLACEMENT,
     SECTIONS_MAGIC,
     HEADER_SIZE,

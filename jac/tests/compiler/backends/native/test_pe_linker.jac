@@ -124,7 +124,7 @@ def emit_coff_object(fixture: str) -> bytes {
 def link_pe(relobj: bytes) -> bytes {
     d = tempfile.mkdtemp();
     out = os.path.join(d, "a.exe");
-    ok = PeLinker.link(obj_bytes=relobj, output_path=out);
+    ok = PeLinker.link(objects=[relobj], output_path=out);
     assert ok , "PeLinker.link returned False";
     return Path(out).read_bytes();
 }
@@ -318,7 +318,7 @@ test "data import: direct reference to imported data is a loud link error (#7626
     out = os.path.join(d, "a.exe");
     raised = False;
     try {
-        PeLinker.link(obj_bytes=relobj, output_path=out);
+        PeLinker.link(objects=[relobj], output_path=out);
     } except ValueError as e {
         raised = True;
         assert "__imp_stdout" in str(e) , (

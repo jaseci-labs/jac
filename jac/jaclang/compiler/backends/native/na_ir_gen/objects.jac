@@ -54,14 +54,14 @@ obj NaIRGenObjects(NaIRGenState) {
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_archetypes(module: uni.Module) -> None;
-    def _codegen_archetype(nd: uni.Archetype) -> None;
+    def _codegen_archetype(nd: uni.Archetype, imported: bool = False) -> None;
     def _register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None;
     def _register_class_consts(
         nd: uni.Archetype, arch_name: str, block: uni.ModuleCode
     ) -> None;
 
     def _jc_abi_offsets(field_types: list) -> tuple;
-    def _build_jc_layout -> str;
+    def _build_jc_layout -> dict;
     def _register_one_class_const(
         arch_name: str,
         fname: str,
