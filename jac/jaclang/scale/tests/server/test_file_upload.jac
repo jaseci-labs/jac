@@ -121,12 +121,8 @@ test "file upload requires auth" {
             data={"notes": "Confidential"}
         );
 
-        assert response.status_code in (401, 200);
-        if response.status_code == 200 {
-            result = extract_data(response.json());
-            assert isinstance(result, dict);
-            assert "error" in result;
-        }
+        assert response.status_code == 401 , response.text;
+        assert response.json()["error"]["code"] == "UNAUTHORIZED" , response.text;
     } finally {
         client.close();
     }
@@ -241,16 +237,13 @@ test "upload missing required file" {
             data={"description": "No file attached"}
         );
 
-        assert response.status_code in (422, 400, 200);
-        result = response.json();
-
-        if response.status_code == 422 {
-            assert "detail" in result;
-        } elif response.status_code == 200 {
-            extracted = extract_data(result);
-            assert isinstance(extracted, dict);
-            assert "error" in extracted;
-        }
+        assert response.status_code == 422 , response.text;
+        missing = [
+            d["loc"][-1]
+            for d in response.json()["detail"]
+            if d["type"] == "missing"
+        ];
+        assert "myfile" in missing , response.text;
     } finally {
         client.close();
     }
