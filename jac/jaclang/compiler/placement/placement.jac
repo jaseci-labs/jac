@@ -1,7 +1,7 @@
 import os;
 import json;
 import jaclang.compiler.frontend.unitree as uni;
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 
 glob PLACEMENT_SCHEMA: int = 1,

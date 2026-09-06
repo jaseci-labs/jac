@@ -92,6 +92,7 @@ impl TypeEvaluator._merge_catalog_field_params(
 impl TypeEvaluator._build_field_params(
     class_type: ClassType, skip_deferred: bool = True
 ) -> dict[str, Parameter] {
+    import from jaclang.compiler.symbol_utils { is_field_marker, field_marker_argument }
     param_map: dict[str, Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
         cat_tab = cls.shared.symbol_table;
@@ -114,14 +115,45 @@ impl TypeEvaluator._build_field_params(
                 type_cls = self.get_type_of_expression(var_type_expr);
                 param_type = self._convert_to_instance(type_cls);
             }
+            default_value = has_var.value;
+            param_kind = ParamKind.NORMAL;
+            if isinstance(default_value, FuncCall) and is_field_marker(default_value) {
+                init_flag = field_marker_argument(default_value, 'init');
+                if skip_deferred
+                    and isinstance(init_flag, Bool)
+                    and not init_flag.lit_value {
+                    param_map.pop(has_var.name.value, None);
+                    continue;
+                }
+                keyword_flag = field_marker_argument(default_value, 'kw_only');
+                if isinstance(keyword_flag, Bool) and keyword_flag.lit_value {
+                    param_kind = ParamKind.KWONLY;
+                }
+                factory = field_marker_argument(default_value, 'default_factory');
+                default_value = field_marker_argument(default_value, 'default');
+                if default_value is None and factory is not None {
+                    default_value = factory;
+                }
+            }
             param_map[has_var.name.value] = Parameter(
                 name=has_var.name.value,
                 category=ParameterCategory.Positional,
                 param_type=param_type,
-                default_value=has_var.value,
+                default_value=default_value,
                 is_self=False,
-                param_kind=ParamKind.NORMAL,
+                param_kind=param_kind,
             );
+        }
+    }
+    seen_default = False;
+    for parameter in param_map.values() {
+        if parameter.param_kind == ParamKind.KWONLY {
+            continue;
+        }
+        if parameter.default_value is not None {
+            seen_default = True;
+        } elif seen_default {
+            parameter.param_kind = ParamKind.KWONLY;
         }
     }
     return param_map;
@@ -343,9 +375,7 @@ impl TypeEvaluator._scope_has_fields(tab: any) -> bool {
     return False;
 }
 
-impl TypeEvaluator._create_dataclass_init_method(
-    class_type: ClassType
-) -> FunctionType {
+impl TypeEvaluator._create_object_init_method(class_type: ClassType) -> FunctionType {
     param_map = self._build_field_params(class_type, skip_deferred=True);
     parameters = list(param_map.values());
 
@@ -354,7 +384,10 @@ impl TypeEvaluator._create_dataclass_init_method(
         ret_type = self._convert_to_instance(self.prefetch.none_type_class);
     }
     return FunctionType(
-        func_name="__init__", return_type=ret_type, parameters=parameters,
+        func_name="__init__",
+        return_type=ret_type,
+        parameters=parameters,
+        function_flags=FunctionTypeFlags.SynthesizedMethod,
     );
 }
 

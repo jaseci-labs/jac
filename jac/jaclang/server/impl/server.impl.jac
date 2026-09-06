@@ -1,5 +1,6 @@
 import asyncio;
-import dataclasses;
+import from jaclang.runtime.object_interop { fields as record_fields, is_record }
+import from jaclang.runtime.object_model { MISSING }
 import inspect;
 import json;
 import os;
@@ -1063,9 +1064,9 @@ impl ModuleIntrospector.introspect_walker(
     }
 
     factory_defaults: dict[str, any] = {};
-    if dataclasses.is_dataclass(walker_cls) {
-        for dc_field in dataclasses.fields(walker_cls) {
-            if dc_field.default_factory is dataclasses.MISSING {
+    if is_record(walker_cls) {
+        for dc_field in record_fields(walker_cls) {
+            if dc_field.default_factory is None {
                 continue;
             }
             try {

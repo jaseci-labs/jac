@@ -1010,7 +1010,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                             );
 
                             if not has_explicit_init and has_any_has_vars {
-                                implicit_init_type = self._create_dataclass_init_method(
+                                implicit_init_type = self._create_object_init_method(
                                     base_type
                                 );
                                 expr.right.type = implicit_init_type;
@@ -1074,9 +1074,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.value in ('init', '__init__')
                         and base_type.is_data_class()
                     ) {
-                        implicit_init_type = self._create_dataclass_init_method(
-                            base_type
-                        );
+                        implicit_init_type = self._create_object_init_method(base_type);
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
@@ -3418,7 +3416,7 @@ impl TypeEvaluator.assign_type(
         }
     }
 
-    _rt_base_kinds = {
+    _rt_base_kinds: dict[str, tuple[str, ...]] = {
         'Archetype': ('node', 'edge', 'walker', 'object'),
         'NodeArchetype': ('node', ),
         'EdgeArchetype': ('edge', ),

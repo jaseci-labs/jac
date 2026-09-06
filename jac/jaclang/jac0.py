@@ -411,7 +411,7 @@ class ClassDef:
     bases: str = ""
     body: list = field(default_factory=list)
     decorators: list = field(default_factory=list)
-    is_dataclass: bool = False
+    is_object: bool = False
     arch_kind: str = ""
 
 
@@ -1763,7 +1763,7 @@ class Parser:
             bases=bases,
             body=body,
             decorators=decorators,
-            is_dataclass=is_dc,
+            is_object=is_dc,
             arch_kind=arch_kind,
         )
 
@@ -2360,7 +2360,7 @@ class CodeGen:
     def __init__(self) -> None:
         self.lines: list[str] = []
         self.indent = 0
-        self.needs_dataclass_import = False
+        self.needs_object_model_import = False
         self.needs_enum_import = False
         self.needs_typing_import = False
         self.impl_registry: dict[str, list[ImplDef]] = {}
@@ -2391,8 +2391,8 @@ class CodeGen:
     def generate(self, module: Module) -> str:
         self._scan_needs(module.body)
         self._line("from __future__ import annotations")
-        if self.needs_dataclass_import:
-            self._line("from dataclasses import dataclass, field")
+        if self.needs_object_model_import:
+            self._line("from jaclang.runtime.object_model import make_object as _jac_make_object, field")
         if self.needs_enum_import:
             self._line("import enum")
         if self.needs_typing_import:
@@ -2410,10 +2410,8 @@ class CodeGen:
     def _scan_needs(self, body: list) -> None:
         for node in body:
             if isinstance(node, ClassDef):
-                if node.is_dataclass:
-                    has_dc = any("dataclass" in d for d in node.decorators)
-                    if not has_dc:
-                        self.needs_dataclass_import = True
+                if node.is_object:
+                    self.needs_object_model_import = True
                 self._scan_needs(node.body)
             elif isinstance(node, EnumDef):
                 if not node.bases or node.value_type:
@@ -2529,42 +2527,10 @@ class CodeGen:
     def _emit_class(self, node: ClassDef) -> None:
         for dec in node.decorators:
             self._line(f"@{dec}")
-        # node/edge/walker: the runtime's make_archetype (Archetype.__init_subclass__)
-        # applies dataclass(eq=False) itself, exactly as for full-compiler output;
-        # a second application would clash with the fields it injects.
-        if node.is_dataclass and not node.arch_kind:
-            has_dc = any("dataclass" in d for d in node.decorators)
-            if not has_dc:
-                # Check if the class has 'has' fields. Property-only `has`
-                # declarations (accessor blocks) are not dataclass fields, so a
-                # class whose only `has` is a property must keep its inherited
-                # __init__ rather than getting an arg-less generated one.
-                has_fields = any(
-                    isinstance(n, HasDecl) and any(not v.accessors for v in n.vars)
-                    for n in node.body
-                )
-                # Check if the class has a manual __init__ (def init)
-                impls = self.impl_registry.get(node.name, [])
-                has_init = any(
-                    isinstance(n, FuncDef) and n.name in ("init", "__init__")
-                    for n in node.body
-                ) or any(
-                    i.target.endswith(".init") or i.target.endswith(".__init__")
-                    for i in impls
-                )
-                if has_fields and not has_init:
-                    # Class uses has fields with dataclass-generated __init__
-                    # Use kw_only=True when class has parents to avoid
-                    # field ordering issues (child required fields after
-                    # parent defaulted fields)
-                    if node.bases:
-                        self._line("@dataclass(eq=False, repr=False, kw_only=True)")
-                    else:
-                        self._line("@dataclass(eq=False, repr=False)")
-                else:
-                    # Suppress dataclass __init__ to preserve manual
-                    # or inherited __init__
-                    self._line("@dataclass(eq=False, repr=False, init=False)")
+        # Nodes, edges and walkers use the runtime subclass hook. Plain Jac
+        # objects use the same model directly during seed bootstrapping.
+        if node.is_object and not node.arch_kind:
+            self._line("@_jac_make_object")
         tp_str = f"[{node.type_params}]" if node.type_params else ""
         bases = node.bases
         if node.arch_kind:

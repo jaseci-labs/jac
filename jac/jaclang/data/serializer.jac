@@ -3,7 +3,8 @@ import logging;
 import sys;
 import threading;
 import from time { monotonic }
-import from dataclasses { fields, is_dataclass, MISSING }
+import from jaclang.runtime.object_interop { fields, is_record }
+import from jaclang.runtime.object_model { MISSING }
 import from datetime { date, datetime, time }
 import from enum { Enum }
 import from hashlib { sha256 }

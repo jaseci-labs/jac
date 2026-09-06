@@ -59,7 +59,9 @@ enum CallKind {
     INTRINSIC = "intrinsic"
 }
 
-def erased_import_binds(nd: UniNode, name: str) -> bool {
+def erased_import_binds(
+    nd: UniNode, name: str, imported_name: str | None = None
+) -> bool {
     import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_IMPORTS }
     mod = nd.find_parent_of_type(Module);
     if mod is None {
@@ -70,7 +72,7 @@ def erased_import_binds(nd: UniNode, name: str) -> bool {
             continue;
         }
         allowed = NATIVE_ERASED_IMPORTS.get(imp.from_loc.dot_path_str.lstrip('.'));
-        if allowed is None or name not in allowed {
+        if allowed is None {
             continue;
         }
         for item in imp.items {
@@ -78,7 +80,10 @@ def erased_import_binds(nd: UniNode, name: str) -> bool {
                 continue;
             }
             bound = item.alias if item.alias is not None else item.name;
-            if isinstance(bound, Name) and bound.value == name {
+            if isinstance(bound, Name)
+                and bound.value == name
+                and item.name.value in allowed
+                and (imported_name is None or item.name.value == imported_name) {
                 return True;
             }
         }
@@ -104,25 +109,37 @@ def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
     return params[1];
 }
 
-def is_erased_field_marker(nd: FuncCall) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_FIELD_MARKERS }
+def is_field_marker(nd: FuncCall) -> bool {
     owner = nd.parent;
     if not isinstance(owner, HasVar) or owner.value is not nd {
         return False;
     }
     tgt = nd.target;
-    if not isinstance(tgt, Name) or tgt.sym_name not in NATIVE_ERASED_FIELD_MARKERS {
+    if not isinstance(tgt, Name) {
         return False;
     }
-    return erased_import_binds(nd, tgt.sym_name);
+    if tgt.sym is not None
+        and tgt.sym.decl is not None
+        and not isinstance(tgt.sym.decl, ModuleItem) {
+        source = tgt.sym.decl.find_parent_of_type(Module);
+        if source is not None {
+            decl = tgt.sym.decl;
+            return isinstance(decl, AstSymbolNode)
+                and decl.sym_name == 'field'
+                and source.source.file_path.replace('\\', '/').endswith(
+                    '/runtime/object_model.jac'
+                );
+        }
+    }
+    return erased_import_binds(nd, tgt.sym_name, 'field');
 }
 
-def erased_field_marker_default(nd: FuncCall) -> (Expr | None) {
+def field_marker_argument(nd: FuncCall, name: str) -> (Expr | None) {
     for arg in (nd.params or []) {
         if not isinstance(arg, KWPair) or not isinstance(arg.key, Name) {
             continue;
         }
-        if arg.key.sym_name == 'default' and isinstance(arg.value, Expr) {
+        if arg.key.sym_name == name and isinstance(arg.value, Expr) {
             return arg.value;
         }
     }

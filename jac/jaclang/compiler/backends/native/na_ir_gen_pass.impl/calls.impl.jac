@@ -1395,9 +1395,9 @@ impl NaIRGenPass._emit_intrinsic_call_dtor(
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
     import from jaclang.compiler.symbol_utils {
-        erased_field_marker_default,
+        field_marker_argument,
         erased_identity_call_arg,
-        is_erased_field_marker
+        is_field_marker
     }
 
     _identity_arg = erased_identity_call_arg(nd);
@@ -1405,8 +1405,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_expr(_identity_arg);
     }
 
-    if is_erased_field_marker(nd) {
-        _marker_default = erased_field_marker_default(nd);
+    if is_field_marker(nd) {
+        _marker_default = field_marker_argument(nd, 'default');
         return (
             self._codegen_expr(_marker_default) if _marker_default is not None else None
         );

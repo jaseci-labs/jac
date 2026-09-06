@@ -118,7 +118,7 @@ impl _type_to_schema(
         return _convert_dict_to_schema(ty) | context;
     }
 
-    if is_dataclass(ty) {
+    if is_record(ty) {
         fields: dict[str, type] = {
             name: type
             for (name, type) in get_type_hints(ty).items()

@@ -1,7 +1,7 @@
 import hashlib;
 import from collections.abc { Sequence }
 import from contextvars { ContextVar }
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {
     NATIVE_ERASED_ANNOTATIONS,
     NATIVE_ERASED_TYPE_MARKERS,
@@ -259,7 +259,7 @@ glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"field"});
 
 glob NATIVE_ERASED_IMPORTS: dict[str, frozenset] = {
          "abc": NATIVE_ERASED_ABC_BASES,
-         "dataclasses": NATIVE_ERASED_FIELD_MARKERS,
+         "jaclang.runtime.object_model": NATIVE_ERASED_FIELD_MARKERS,
          "typing": TYPE_PARAM_CONSTRUCTORS
              | NATIVE_ERASED_IDENTITY_CALLS
              | NATIVE_ERASED_TYPE_MARKERS

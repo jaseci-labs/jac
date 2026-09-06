@@ -633,68 +633,13 @@ impl JacArchetype.make_archetype(cls: type[Archetype]) -> type[Archetype] {
         setattr(
             cls,
             'reports',
-            dataclasses.field(
-                default_factory=`list, init=False, repr=False, compare=False
-            )
+            field(default_factory=`list, init=False, repr=False, compare=False)
         );
     }
-    _own_anns: dict[str, object] = cls.__dict__.get('__annotations__', {});
-    if _own_anns {
-        if not cls.__doc__ {
-            cls.__doc__ = cls.__name__;
-        }
-        _pre_attrs = dict(cls.__dict__);
-        try {
-            dataclass(eq=False)(cls);
-        } except TypeError {
-            for _rname in _own_anns {
-                if _rname in _pre_attrs and _rname not in cls.__dict__ {
-                    setattr(cls, _rname, _pre_attrs[_rname]);
-                }
-            }
-
-            _seen_default = False;
-            for _base in reversed(cls.__mro__[1:]) {
-                _base_fields: dict[str, dataclasses.Field] = getattr(
-                    _base, '__dataclass_fields__', {}
-                );
-                for _bf in _base_fields.values() {
-                    if _bf.`default is not dataclasses.MISSING
-                        or _bf.default_factory is not dataclasses.MISSING {
-                        _seen_default = True;
-                    }
-                }
-            }
-            for (_fname, _fann) in _own_anns.items() {
-                if "ClassVar" in str(_fann) or "InitVar" in str(_fann) {
-                    continue;
-                }
-                _own_val = _pre_attrs.get(_fname, dataclasses.MISSING);
-                _has_default = _own_val is not dataclasses.MISSING;
-                if _has_default
-                    and isinstance(_own_val, dataclasses.Field)
-                    and _own_val.`default is dataclasses.MISSING
-                    and _own_val.default_factory is dataclasses.MISSING {
-                    _has_default = False;
-                }
-                if _has_default {
-                    _seen_default = True;
-                } elif _seen_default {
-                    if isinstance(_own_val, dataclasses.Field) {
-                        if _own_val.init {
-                            _own_val.kw_only = True;
-                        }
-                    } else {
-                        setattr(cls, _fname, dataclasses.field(kw_only=True));
-                    }
-                }
-            }
-            dataclass(eq=False)(cls);
-        }
-    } else {
-        dataclass(eq=False, init=False)(cls);
+    if cls.__dict__.get('__annotations__') and not cls.__doc__ {
+        cls.__doc__ = cls.__name__;
     }
-    return cls;
+    return make_object(cls);
 }
 
 impl JacModule.impl_patch_filename(
@@ -1009,16 +954,6 @@ impl JacTest.run_test(
     }
     return ret_count;
 }
-
-impl JacArchetype.field(
-    factory: (Callable[([], T)] | None) = None, `init: bool = True
-) -> T {
-    if factory {
-        return field(default_factory=factory);
-    }
-    return field(`init=`init);
-}
-
 
 impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
     import from jaclang.runtime.osp_kernel { osp_report, _current_scope }

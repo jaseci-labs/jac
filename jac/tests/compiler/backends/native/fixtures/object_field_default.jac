@@ -1,11 +1,11 @@
-"""`dataclasses.field` is a declaration a has-field default reads, not a value.
+"""`Jac field metadata` is a declaration a has-field default reads, not a value.
 
 `field(default_factory=...)` says "construct an empty one of the declared
 type" and `field(default=...)` says "this literal". Both are answered at the
 declaration site, so the call never has to exist at run time.
 """
 
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 
 
 obj Bag {

@@ -490,7 +490,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                 }
             } elif caller_type.is_data_class() {
                 self._validate_constructor_method(
-                    expr, self._create_dataclass_init_method(caller_type)
+                    expr, self._create_object_init_method(caller_type)
                 );
             }
         }
@@ -645,7 +645,8 @@ impl TypeEvaluator._validate_constructor_method(
             ) {
             has_params = len(method_type.parameters) > 1;
         }
-        if has_params {
+        if has_params
+            or method_type.function_flags & FunctionTypeFlags.SynthesizedMethod {
             ctor_type = self._strip_implicit_self_cls(method_type);
             arg_param_match = self.match_args_to_params(expr.params, expr, ctor_type);
             if not arg_param_match.argument_errors {
@@ -1024,7 +1025,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
     );
 
     if caller_type.is_data_class() and keyword_arg_names {
-        dc_init = self._create_dataclass_init_method(caller_type);
+        dc_init = self._create_object_init_method(caller_type);
         if dc_init {
             param_names = {
                 p.name
@@ -1064,7 +1065,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
     }
 
     if caller_type.is_data_class() {
-        return self._create_dataclass_init_method(caller_type);
+        return self._create_object_init_method(caller_type);
     }
 
     return None;

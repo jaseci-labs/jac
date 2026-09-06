@@ -1,4 +1,3 @@
-import dataclasses;
 import from enum { Enum }
 import from typing { get_type_hints, get_origin, get_args, Union }
 
