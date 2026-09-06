@@ -992,145 +992,135 @@ impl NaIRGenPass._codegen_method(
         }
     }
 
-    block = func.append_basic_block(name="entry");
-    saved_builder = self._builder;
-    saved_locals = self.local_vars;
-    saved_param_vars = self.param_vars;
-    saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    self._builder = ir.IRBuilder(block);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.var_list_elem_struct = {};
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-
-    saved_self_arch = self._self_arch;
-    self._self_arch = arch_name;
-
-    self._attach_di_subprogram(
-        func, full_name, method.loc.first_line if method.loc else 0
-    );
-
-    _scan_body = ModuleFacts.unwrap_body(method);
-    if _scan_body is not None {
-        _scan_owner = method.body if isinstance(method.body, uni.ImplDef) else method;
-        self._scan_closure_escapes(_scan_owner, _scan_body);
-    }
-
-    _is_static = method.is_static or method.is_classmethod;
-    _base = 0;
-    sig = method.signature;
-    _body_params = sig.get_parameters() if sig is not None else [];
-    _self_param: (uni.ParamVar | None) = None;
-    if (
-        not _is_static
-        and _body_params
-        and _body_params[0].name
-        and _body_params[0].name.value == "self"
-    ) {
-        _self_param = _body_params[0];
-        _body_params = _body_params[1:];
-    }
-    self._self_owned = _self_param is not None and self._nogc_owned_param(_self_param);
-    if not _is_static {
-        self_alloca = self.builder.alloca(func.args[0].type, name="self");
-        self.builder.store(func.args[0], self_alloca);
-        self.local_vars["self"] = self_alloca;
-        if not self._self_owned {
-            self.param_vars.add("self");
-        }
-        _base = 1;
-    }
-    if (
-        method.is_classmethod
-        and _body_params
-        and _body_params[0].name
-        and _body_params[0].name.value == "cls"
-    ) {
-        _body_params = _body_params[1:];
-    }
-
-    _bound_params: list[tuple[(str, bool)]] = [
-        ((p.name.value if p.name else f"arg{i}"), bool(p.name?.sym?.param_rebound), )
-        for (i, p) in enumerate(_body_params)
-    ];
-    if sig is None and len(func.args) > _base + len(_bound_params) {
-        _bound_params.append(("value", False, ));
-    }
-    for (i, (param_name, _p_rebound)) in enumerate(_bound_params) {
-        arg_val = func.args[i + _base];
-        if param_name in self.closure_cell_vars {
-            slot = self._emit_closure_cell(param_name, arg_val.type);
-            self.builder.store(arg_val, slot);
-            self.local_vars[param_name] = slot;
-            if isinstance(arg_val.type, ir.PointerType) {
-                self._emit_rc_retain(arg_val, op="param_cell", loc=full_name);
-            }
-            continue;
-        }
-        alloca = self.builder.alloca(arg_val.type, name=param_name);
-        self.builder.store(arg_val, alloca);
-        self.local_vars[param_name] = alloca;
-
-        if isinstance(arg_val.type, ir.PointerType) and _p_rebound {
-            self._emit_rc_retain(arg_val, op="param_promote", loc=full_name);
-        } else {
-            self.param_vars.add(param_name);
-        }
-    }
-
-    _is_virtual = method_name in self.vtable_method_indices.get(arch_name, {});
-    _local_mark = len(self.errors_had);
-
+    state = self._enter_function(func);
     try {
-        body = ModuleFacts.unwrap_body(method);
-        if body is not None {
-            self._codegen_body(body);
+        self._self_arch = arch_name;
+
+        self._attach_di_subprogram(
+            func, full_name, method.loc.first_line if method.loc else 0
+        );
+
+        _scan_body = ModuleFacts.unwrap_body(method);
+        if _scan_body is not None {
+            _scan_owner = method.body
+                if isinstance(method.body, uni.ImplDef)
+                else method;
+            self._scan_closure_escapes(_scan_owner, _scan_body);
         }
 
-        if not self.builder.block.is_terminated {
-            _mth_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
-                if method.loc
-                else 0}";
+        _is_static = method.is_static or method.is_classmethod;
+        _base = 0;
+        sig = method.signature;
+        _body_params = sig.get_parameters() if sig is not None else [];
+        _self_param: (uni.ParamVar | None) = None;
+        if (
+            not _is_static
+            and _body_params
+            and _body_params[0].name
+            and _body_params[0].name.value == "self"
+        ) {
+            _self_param = _body_params[0];
+            _body_params = _body_params[1:];
+        }
+        self._self_owned = _self_param is not None
+            and self._nogc_owned_param(_self_param);
+        if not _is_static {
+            self_alloca = self.builder.alloca(func.args[0].type, name="self");
+            self.builder.store(func.args[0], self_alloca);
+            self.local_vars["self"] = self_alloca;
+            if not self._self_owned {
+                self.param_vars.add("self");
+            }
+            _base = 1;
+        }
+        if (
+            method.is_classmethod
+            and _body_params
+            and _body_params[0].name
+            and _body_params[0].name.value == "cls"
+        ) {
+            _body_params = _body_params[1:];
+        }
 
-            self._emit_scope_cleanup(skip_var=None, loc=_mth_loc);
-            ret_type = func.return_value.type;
-            if isinstance(ret_type, ir.VoidType) {
-                self.builder.ret_void();
+        _bound_params: list[tuple[(str, bool)]] = [
+            (
+                (p.name.value if p.name else f"arg{i}"),
+                bool(p.name?.sym?.param_rebound),
+
+            ) for (i, p) in enumerate(_body_params)
+        ];
+        if sig is None and len(func.args) > _base + len(_bound_params) {
+            _bound_params.append(("value", False, ));
+        }
+        for (i, (param_name, _p_rebound)) in enumerate(_bound_params) {
+            arg_val = func.args[i + _base];
+            if param_name in self.closure_cell_vars {
+                slot = self._emit_closure_cell(param_name, arg_val.type);
+                self.builder.store(arg_val, slot);
+                self.local_vars[param_name] = slot;
+                if isinstance(arg_val.type, ir.PointerType) {
+                    self._emit_rc_retain(arg_val, op="param_cell", loc=full_name);
+                }
+                continue;
+            }
+            alloca = self.builder.alloca(arg_val.type, name=param_name);
+            self.builder.store(arg_val, alloca);
+            self.local_vars[param_name] = alloca;
+
+            if isinstance(arg_val.type, ir.PointerType) and _p_rebound {
+                self._emit_rc_retain(arg_val, op="param_promote", loc=full_name);
             } else {
-                self.builder.ret(self._zero_const(ret_type));
+                self.param_vars.add(param_name);
             }
         }
-        method.gen.llvm_ir = func;
 
-        self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
-    } except Exception as _codegen_exc {
-        if self._na_debug_on() {
-            import sys;
-            import traceback;
-            sys.stderr.write(f"NA_DEBUG raise {full_name}\n");
-            traceback.print_exc(file=sys.stderr);
+        _is_virtual = method_name in self.vtable_method_indices.get(arch_name, {});
+        _local_mark = len(self.errors_had);
+
+        try {
+            body = ModuleFacts.unwrap_body(method);
+            if body is not None {
+                self._codegen_body(body);
+            }
+
+            if not self.builder.block.is_terminated {
+                _mth_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+                    if method.loc
+                    else 0}";
+
+                self._emit_scope_cleanup(skip_var=None, loc=_mth_loc);
+                ret_type = func.return_value.type;
+                if isinstance(ret_type, ir.VoidType) {
+                    self.builder.ret_void();
+                } else {
+                    self.builder.ret(self._zero_const(ret_type));
+                }
+            }
+            method.gen.llvm_ir = func;
+
+            self._finalize_di_locations(
+                func, method.loc.first_line if method.loc else 1
+            );
+        } except Exception as _codegen_exc {
+            if self._na_debug_on() {
+                import sys;
+                import traceback;
+                sys.stderr.write(f"NA_DEBUG raise {full_name}\n");
+                traceback.print_exc(file=sys.stderr);
+            }
+            self.emit(
+                E5092,
+                node_override=method,
+                kind="method (native emitter error in)",
+                name=full_name,
+                help_text=f"The native backend raised {type(_codegen_exc).__name__} "
+                f"while lowering this method; it falls back to its Python "
+                f"implementation. Original error: {_codegen_exc}"
+            );
         }
-        self.emit(
-            E5092,
-            node_override=method,
-            kind="method (native emitter error in)",
-            name=full_name,
-            help_text=f"The native backend raised {type(_codegen_exc).__name__} "
-            f"while lowering this method; it falls back to its Python "
-            f"implementation. Original error: {_codegen_exc}"
-        );
+    } finally {
+        self._leave_function(state);
     }
-
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.param_vars = saved_param_vars;
-    self.var_list_elem_struct = saved_list_elem_struct;
-    self._self_arch = saved_self_arch;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
 
     self._demote_method_if_unlowerable(
         full_name, func, _local_mark, keep_func=_is_virtual
@@ -1184,7 +1174,7 @@ impl NaIRGenPass._demote_method_if_unlowerable(
             kind=NativeLoweringKind.CALLABLE,
             source=self.ir_in.loc.mod_path,
             code=_own[0].code.code if _own[0].code is not None else "",
-            detail=str(_own[0])
+            detail=_own[0].pretty_print()
         ).record(
             self.llvm_module
         );
@@ -1264,7 +1254,7 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
         kind=NativeLoweringKind.FIELD,
         source=self.ir_in.loc.mod_path,
         code=_code,
-        detail=_why
+        detail=_own[0].pretty_print()
     ).record(
         self.llvm_module
     );

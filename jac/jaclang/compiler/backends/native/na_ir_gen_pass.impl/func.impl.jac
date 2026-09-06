@@ -1290,102 +1290,87 @@ impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Functi
 }
 
 impl NaIRGenPass._emit_glob_init_func -> None {
-    saved_builder = self._builder;
-    saved_locals = self.local_vars if self?.local_vars else {};
-    saved_param_vars = self.param_vars;
-    saved_di_sp = self._di_current_sp;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = self._define_function("__jac_glob_init", fnty);
-    block = func.append_basic_block(name="entry");
-    self._builder = ir.IRBuilder(block);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-    if self?._global_init_nodes and self._global_init_nodes {
-        self._scan_closure_escapes(self.ir_in, [t[1] for t in self._global_init_nodes]);
-    }
+    state = self._enter_function(func);
+    try {
+        if self?._global_init_nodes and self._global_init_nodes {
+            self._scan_closure_escapes(
+                self.ir_in, [t[1] for t in self._global_init_nodes]
+            );
+        }
 
-    self._attach_di_subprogram(func, "__jac_glob_init", 0);
-    _i8 = ir.IntType(8);
-    _gi_done_gv = ir.GlobalVariable(self.llvm_module, _i8, name="__jac_gi_done");
-    _gi_done_gv.linkage = "internal";
-    _gi_done_gv.initializer = ir.Constant(_i8, 0);
-    _gi_run = func.append_basic_block(name="gi.run");
-    _gi_done = func.append_basic_block(name="gi.done");
-    self.builder.cbranch(
-        self.builder.icmp_unsigned(
-            "!=", self.builder.load(_gi_done_gv, name="gi.flag"), ir.Constant(_i8, 0)
-        ),
-        _gi_done,
-        _gi_run
-    );
-    self.builder.position_at_end(_gi_done);
-    self.builder.ret_void();
-    self.builder.position_at_end(_gi_run);
-    self.builder.store(ir.Constant(_i8, 1), _gi_done_gv);
-    if self?._global_init_nodes and self._global_init_nodes {
-        for init_tuple in self._global_init_nodes {
-            var_name = init_tuple[0];
-            init_node = init_tuple[1];
-            var_type = init_tuple[2];
-            init_val = self._codegen_expr(init_node);
+        self._attach_di_subprogram(func, "__jac_glob_init", 0);
+        _i8 = ir.IntType(8);
+        _gi_done_gv = ir.GlobalVariable(self.llvm_module, _i8, name="__jac_gi_done");
+        _gi_done_gv.linkage = "internal";
+        _gi_done_gv.initializer = ir.Constant(_i8, 0);
+        _gi_run = func.append_basic_block(name="gi.run");
+        _gi_done = func.append_basic_block(name="gi.done");
+        self.builder.cbranch(
+            self.builder.icmp_unsigned(
+                "!=",
+                self.builder.load(_gi_done_gv, name="gi.flag"),
+                ir.Constant(_i8, 0)
+            ),
+            _gi_done,
+            _gi_run
+        );
+        self.builder.position_at_end(_gi_done);
+        self.builder.ret_void();
+        self.builder.position_at_end(_gi_run);
+        self.builder.store(ir.Constant(_i8, 1), _gi_done_gv);
+        if self?._global_init_nodes and self._global_init_nodes {
+            for init_tuple in self._global_init_nodes {
+                var_name = init_tuple[0];
+                init_node = init_tuple[1];
+                var_type = init_tuple[2];
+                init_val = self._codegen_expr(init_node);
 
-            if init_val is None and isinstance(var_type, ir.PointerType) {
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if var_type == dtype.as_pointer() {
-                        helpers = self.dict_helpers.get(dict_key);
-                        if helpers is not None {
-                            init_val = self.builder.call(
-                                helpers["new"], [], name=f"dict.init.{var_name}"
-                            );
-                            break;
+                if init_val is None and isinstance(var_type, ir.PointerType) {
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if var_type == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                init_val = self.builder.call(
+                                    helpers["new"], [], name=f"dict.init.{var_name}"
+                                );
+                                break;
+                            }
                         }
                     }
                 }
-            }
 
-            if init_val is None and isinstance(var_type, ir.PointerType) {
-                for (elem_key, ltype) in self.list_types.items() {
-                    if var_type == ltype.as_pointer() {
-                        helpers = self.list_helpers.get(elem_key);
-                        if helpers is not None {
-                            init_val = self.builder.call(
-                                helpers["new"], [], name=f"list.init.{var_name}"
-                            );
-                            break;
+                if init_val is None and isinstance(var_type, ir.PointerType) {
+                    for (elem_key, ltype) in self.list_types.items() {
+                        if var_type == ltype.as_pointer() {
+                            helpers = self.list_helpers.get(elem_key);
+                            if helpers is not None {
+                                init_val = self.builder.call(
+                                    helpers["new"], [], name=f"list.init.{var_name}"
+                                );
+                                break;
+                            }
                         }
                     }
                 }
-            }
-            if init_val is not None {
-                global_var = self.global_vars.get(var_name);
-                if global_var is not None {
-                    coerced = self._coerce_type(init_val, var_type);
-                    self.builder.store(coerced, global_var);
+                if init_val is not None {
+                    global_var = self.global_vars.get(var_name);
+                    if global_var is not None {
+                        coerced = self._coerce_type(init_val, var_type);
+                        self.builder.store(coerced, global_var);
+                    }
                 }
             }
         }
+        self._apply_static_decorators();
+        self.builder.ret_void();
+
+        self._finalize_di_locations(func, 0);
+        self.func_symtab["__jac_glob_init"] = func;
+    } finally {
+        self._leave_function(state);
     }
-    self._apply_static_decorators();
-    self.builder.ret_void();
-
-    self._finalize_di_locations(func, 0);
-    self.func_symtab["__jac_glob_init"] = func;
-
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.param_vars = saved_param_vars;
-    self._di_current_sp = saved_di_sp;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
 }
 
 impl NaIRGenPass._apply_static_decorators -> None {

@@ -392,37 +392,40 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
 
-    saved_builder = self._builder;
-    saved_locals = self.local_vars;
     saved_func_symtab = dict(self.func_symtab);
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    saved_nogc_no_free = self.nogc_no_free_vars;
-    saved_nogc_owned_str = self.nogc_owned_str_vars;
-    saved_region_handles = self.region_handle_vars;
-    saved_region_opens = self.region_open_stack;
-    entry_bb = anon_fn.append_basic_block("entry");
-    self._builder = ir.IRBuilder(entry_bb);
-    self.local_vars = {};
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
+    state = self._enter_function(anon_fn);
+    try {
+        for (i, arg) in enumerate(anon_fn.args) {
+            alloca = self._entry_alloca(arg.type, all_param_names[i]);
+            self.builder.store(arg, alloca);
+            self.local_vars[all_param_names[i]] = alloca;
+        }
 
-    for (i, arg) in enumerate(anon_fn.args) {
-        alloca = self._entry_alloca(arg.type, all_param_names[i]);
-        self.builder.store(arg, alloca);
-        self.local_vars[all_param_names[i]] = alloca;
-    }
-
-    body = nd.body;
-    _lam_errs0 = len(self.errors_had);
-    if isinstance(body, list) {
-        tail = nd.tail_return_expr();
-        if tail is not None {
-            val = self._codegen_expr(tail);
+        body = nd.body;
+        _lam_errs0 = len(self.errors_had);
+        if isinstance(body, list) {
+            tail = nd.tail_return_expr();
+            if tail is not None {
+                val = self._codegen_expr(tail);
+                if val is not None {
+                    self.builder.ret(self._coerce_type(val, ret_type));
+                } else {
+                    if len(self.errors_had) == _lam_errs0 {
+                        self.emit(
+                            E5092,
+                            node_override=nd,
+                            kind="expression",
+                            name="lambda body",
+                            help_text="An expression in this lambda body could not lower natively; an unresolvable name here usually means the lambda reads a variable its enclosing frame cannot expose (e.g. a module-entry local)."
+                        );
+                    }
+                    self.builder.ret(self._zero_const(ret_type));
+                }
+            } else {
+                self._codegen_body(body);
+            }
+        } else {
+            val = self._codegen_expr(body);
             if val is not None {
                 self.builder.ret(self._coerce_type(val, ret_type));
             } else {
@@ -437,47 +440,22 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
                 }
                 self.builder.ret(self._zero_const(ret_type));
             }
-        } else {
-            self._codegen_body(body);
         }
-    } else {
-        val = self._codegen_expr(body);
-        if val is not None {
-            self.builder.ret(self._coerce_type(val, ret_type));
-        } else {
-            if len(self.errors_had) == _lam_errs0 {
-                self.emit(
-                    E5092,
-                    node_override=nd,
-                    kind="expression",
-                    name="lambda body",
-                    help_text="An expression in this lambda body could not lower natively; an unresolvable name here usually means the lambda reads a variable its enclosing frame cannot expose (e.g. a module-entry local)."
-                );
-            }
-            self.builder.ret(self._zero_const(ret_type));
-        }
-    }
 
-    for bb in anon_fn.basic_blocks {
-        if not bb.is_terminated {
-            term_builder = ir.IRBuilder(bb);
-            if ret_type == ir.VoidType() {
-                term_builder.ret_void();
-            } else {
-                term_builder.ret(self._zero_const(ret_type));
+        for bb in anon_fn.basic_blocks {
+            if not bb.is_terminated {
+                term_builder = ir.IRBuilder(bb);
+                if ret_type == ir.VoidType() {
+                    term_builder.ret_void();
+                } else {
+                    term_builder.ret(self._zero_const(ret_type));
+                }
             }
         }
+    } finally {
+        self._leave_function(state);
+        self.func_symtab = saved_func_symtab;
     }
-
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.func_symtab = saved_func_symtab;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
-    self.nogc_no_free_vars = saved_nogc_no_free;
-    self.nogc_owned_str_vars = saved_nogc_owned_str;
-    self.region_handle_vars = saved_region_handles;
-    self.region_open_stack = saved_region_opens;
 
     if captures {
         _all_cells = True;
