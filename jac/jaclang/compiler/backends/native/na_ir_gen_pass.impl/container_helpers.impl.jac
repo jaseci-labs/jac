@@ -867,11 +867,13 @@ impl NaIRGenPass._emit_key_comparison(
             "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
         );
     } elif (
-        isinstance(key_type, ir.PointerType)
-        and key_size > 0
+        (
+            isinstance(key_type, ir.PointerType)
+            or isinstance(key_type, ir.LiteralStructType)
+        )
         and self._tuple_key_fields(key_type) is not None
     ) {
-        _eq: any = None;
+        _eq: ir.Value = ir.Constant(ir.IntType(1), 1);
         for (_fi, _fk) in self._tuple_key_fields(key_type) {
             _sv = self._tuple_key_field_val(b, stored_val, _fi, _fk);
             _qv = self._tuple_key_field_val(b, search_val, _fi, _fk);
@@ -882,12 +884,14 @@ impl NaIRGenPass._emit_key_comparison(
                 );
             } elif _fk == "f64" {
                 _e = b.fcmp_ordered("==", _sv, _qv, name=f"tk.feq{_fi}");
+            } elif _fk == "tuple" {
+                _e = self._emit_key_comparison(b, _sv.type, _sv, _qv);
             } elif _fk == "ptr" {
                 _e = b.icmp_unsigned("==", _sv, _qv, name=f"tk.peq{_fi}");
             } else {
                 _e = b.icmp_signed("==", _sv, _qv, name=f"tk.ieq{_fi}");
             }
-            _eq = _e if _eq is None else b.and_(_eq, _e, name=f"tk.eq{_fi}");
+            _eq = b.and_(_eq, _e, name=f"tk.eq{_fi}");
         }
         return _eq;
     } elif isinstance(key_type, ir.PointerType) and key_size > 0 {

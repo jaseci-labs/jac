@@ -399,6 +399,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
             alloca = self._entry_alloca(arg.type, all_param_names[i]);
             self.builder.store(arg, alloca);
             self.local_vars[all_param_names[i]] = alloca;
+            self.param_vars.add(all_param_names[i]);
         }
 
         body = nd.body;

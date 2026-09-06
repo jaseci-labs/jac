@@ -430,19 +430,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     }
 
     _local_mark = len(self.errors_had);
+    state = self._enter_function(func);
+    saved_symtab = dict(self.func_symtab);
     try {
-        block = func.append_basic_block(name="entry");
-        self._builder = ir.IRBuilder(block);
-        self.local_vars = {};
-        self.param_vars = set();
-        self.nogc_no_free_vars = set();
-        self.nogc_owned_str_vars = set();
-        self.region_handle_vars = set();
-        self.region_open_stack = [];
-        self.closure_cell_vars = set();
-        self.closure_cell_handles = {};
-        self._self_owned = False;
-
         self._attach_di_subprogram(
             func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
         );
@@ -517,8 +507,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             f"while lowering this function; it falls back to its Python "
             f"implementation. Original error: {_codegen_exc}"
         );
+    } finally {
+        self._leave_function(state);
+        self.func_symtab = saved_symtab;
     }
-    self._builder = None;
     if self._demote_method_if_unlowerable(name, func, _local_mark) {
         self._rename_demoted_symbol(name, func);
         return;
@@ -1042,200 +1034,172 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     resume_fn.args[0].name = "frame";
     resume_fn.args[1].name = "out";
 
-    saved_builder = self._builder;
-    saved_locals = self.local_vars if self?.local_vars else {};
-    saved_params = self.param_vars;
-    saved_nogc = self.nogc_no_free_vars;
-    saved_nogc_owned = self.nogc_owned_str_vars;
-    saved_region = self.region_handle_vars;
-    saved_region_opens = self.region_open_stack;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    saved_try_stack = self._gen_try_stack;
+    state = self._enter_function(resume_fn);
+    saved_symtab = dict(self.func_symtab);
+    entry_bb = self.builder.block;
+    try {
+        gc: dict = {
+            "resume_fn": resume_fn,
+            "frame_i8": resume_fn.args[0],
+            "out_i8": resume_fn.args[1],
+            "elem_type": elem_type,
+            "cursor": 8,
+            "slots": [],
+            "resume_blocks": [],
+            "cell_inits": [],
+            "func_name": name
+        };
+        self._gen_ctx = gc;
 
-    entry_bb = resume_fn.append_basic_block("entry");
-    self._builder = ir.IRBuilder(entry_bb);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-    self._gen_try_stack = [];
-
-    gc: dict = {
-        "resume_fn": resume_fn,
-        "frame_i8": resume_fn.args[0],
-        "out_i8": resume_fn.args[1],
-        "elem_type": elem_type,
-        "cursor": 8,
-        "slots": [],
-        "resume_blocks": [],
-        "cell_inits": [],
-        "func_name": name
-    };
-    self._gen_ctx = gc;
-
-    _gen_scan_body = ModuleFacts.unwrap_body(nd);
-    if _gen_scan_body is not None {
-        self._scan_closure_escapes(nd, _gen_scan_body);
-    }
-
-    param_slots: list[tuple] = [];
-    sig = nd.signature;
-    sig_params = sig.get_parameters() if sig is not None else [];
-    for (i, p) in enumerate(sig_params) {
-        pname = p.name.value if p.name else f"arg{i}";
-        ptype = func.args[i].type;
-        if pname in self.closure_cell_vars {
-            slot = self._emit_closure_cell(pname, ptype);
-            gc["cell_inits"][-1]["param_index"] = i;
-        } else {
-            slot = self._entry_alloca(ptype, pname);
-            (_sn, _soff, _st) = gc["slots"][-1];
-            param_slots.append((pname, _soff, ptype, i));
+        _gen_scan_body = ModuleFacts.unwrap_body(nd);
+        if _gen_scan_body is not None {
+            self._scan_closure_escapes(nd, _gen_scan_body);
         }
-        self.local_vars[pname] = slot;
-        self.param_vars.add(pname);
-    }
 
-    dispatch_bb = resume_fn.append_basic_block("dispatch");
-    body_bb = resume_fn.append_basic_block("body");
-    self.builder.position_at_end(body_bb);
+        param_slots: list[tuple] = [];
+        sig = nd.signature;
+        sig_params = sig.get_parameters() if sig is not None else [];
+        for (i, p) in enumerate(sig_params) {
+            pname = p.name.value if p.name else f"arg{i}";
+            ptype = func.args[i].type;
+            if pname in self.closure_cell_vars {
+                slot = self._emit_closure_cell(pname, ptype);
+                gc["cell_inits"][-1]["param_index"] = i;
+            } else {
+                slot = self._entry_alloca(ptype, pname);
+                (_sn, _soff, _st) = gc["slots"][-1];
+                param_slots.append((pname, _soff, ptype, i));
+            }
+            self.local_vars[pname] = slot;
+            self.param_vars.add(pname);
+        }
 
-    body = ModuleFacts.unwrap_body(nd);
-    if body is not None {
-        _symtab_before = dict(self.func_symtab);
-        self._codegen_body(body);
-        self.func_symtab = _symtab_before;
-    }
+        dispatch_bb = resume_fn.append_basic_block("dispatch");
+        body_bb = resume_fn.append_basic_block("body");
+        self.builder.position_at_end(body_bb);
 
-    if not self.builder.block.is_terminated {
-        _gd_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
-        self._emit_scope_cleanup(skip_var=None, loc=_gd_loc);
-        _ip_done = self.builder.bitcast(gc["frame_i8"], i64p, name="gen.ip.done");
-        self.builder.store(ir.Constant(i64, -1), _ip_done);
+        body = ModuleFacts.unwrap_body(nd);
+        if body is not None {
+            _symtab_before = dict(self.func_symtab);
+            self._codegen_body(body);
+            self.func_symtab = _symtab_before;
+        }
+
+        if not self.builder.block.is_terminated {
+            _gd_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+            self._emit_scope_cleanup(skip_var=None, loc=_gd_loc);
+            _ip_done = self.builder.bitcast(gc["frame_i8"], i64p, name="gen.ip.done");
+            self.builder.store(ir.Constant(i64, -1), _ip_done);
+            self.builder.ret(ir.Constant(i1, 0));
+        }
+        self.builder.position_at_end(entry_bb);
+        self.builder.branch(dispatch_bb);
+
+        self.builder.position_at_end(dispatch_bb);
+        ip_slot = self.builder.bitcast(gc["frame_i8"], i64p, name="gen.ip.slot");
+        ip = self.builder.load(ip_slot, name="gen.ip");
+        default_bb = resume_fn.append_basic_block("gen.exhausted");
+        sw = self.builder.`switch(ip, default_bb);
+        sw.add_case(ir.Constant(i64, 0), body_bb);
+        for (k, rbb) in enumerate(gc["resume_blocks"]) {
+            sw.add_case(ir.Constant(i64, k + 1), rbb);
+        }
+        self.builder.position_at_end(default_bb);
         self.builder.ret(ir.Constant(i1, 0));
-    }
-    self.builder.position_at_end(entry_bb);
-    self.builder.branch(dispatch_bb);
 
-    self.builder.position_at_end(dispatch_bb);
-    ip_slot = self.builder.bitcast(gc["frame_i8"], i64p, name="gen.ip.slot");
-    ip = self.builder.load(ip_slot, name="gen.ip");
-    default_bb = resume_fn.append_basic_block("gen.exhausted");
-    sw = self.builder.`switch(ip, default_bb);
-    sw.add_case(ir.Constant(i64, 0), body_bb);
-    for (k, rbb) in enumerate(gc["resume_blocks"]) {
-        sw.add_case(ir.Constant(i64, k + 1), rbb);
-    }
-    self.builder.position_at_end(default_bb);
-    self.builder.ret(ir.Constant(i1, 0));
-
-    for bb in resume_fn.basic_blocks {
-        if not bb.is_terminated {
-            tb = ir.IRBuilder(bb);
-            tb.ret(ir.Constant(i1, 0));
+        for bb in resume_fn.basic_blocks {
+            if not bb.is_terminated {
+                tb = ir.IRBuilder(bb);
+                tb.ret(ir.Constant(i1, 0));
+            }
         }
-    }
 
-    frame_size = (gc["cursor"] + 7) // 8 * 8;
-    frame_slots = list(gc["slots"]);
-    cell_inits = list(gc["cell_inits"]);
-    self._gen_ctx = None;
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.param_vars = saved_params;
-    self.nogc_no_free_vars = saved_nogc;
-    self.nogc_owned_str_vars = saved_nogc_owned;
-    self.region_handle_vars = saved_region;
-    self.region_open_stack = saved_region_opens;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
-    self._gen_try_stack = saved_try_stack;
+        frame_size = (gc["cursor"] + 7) // 8 * 8;
+        frame_slots = list(gc["slots"]);
+        cell_inits = list(gc["cell_inits"]);
+    } finally {
+        self._leave_function(state);
+        self.func_symtab = saved_symtab;
+    }
 
     drop_fn = self._emit_generator_drop_fn(_sym_base, frame_slots);
 
-    block = func.append_basic_block(name="entry");
-    self._builder = ir.IRBuilder(block);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-
-    if self.rc_alloc_fn is None {
-        self._emit_rc_helpers();
-    }
-    raw = self.builder.call(
-        self.rc_alloc_fn, [ir.Constant(i64, frame_size)], name="gen.frame"
-    );
-    memset_fn = self._get_or_declare_extern("memset", i8p, [i8p, ir.IntType(32), i64]);
-    self.builder.call(
-        memset_fn, [raw, ir.Constant(ir.IntType(32), 0), ir.Constant(i64, frame_size)]
-    );
-    dtor_slot = self.builder.gep(
-        raw, [ir.Constant(i64, HDR_DTOR_OFF)], name="gen.dtor.slot"
-    );
-    dtor_slot_p = self.builder.bitcast(dtor_slot, i64p, name="gen.dtor.p");
-    self.builder.store(
-        self.builder.ptrtoint(drop_fn, i64, name="gen.dtor.i64"), dtor_slot_p
-    );
-
-    for (pname, poff, ptype, pidx) in param_slots {
-        arg = func.args[pidx];
-        p_raw = self.builder.gep(raw, [ir.Constant(i64, poff)], name=f"gen.p.{pname}");
-        p_slot = self.builder.bitcast(
-            p_raw, ptype.as_pointer(), name=f"gen.ps.{pname}"
-        );
-        self.builder.store(arg, p_slot);
-        if isinstance(ptype, ir.PointerType) {
-            self._emit_rc_retain(arg, op="gen_param", loc=name);
+    state = self._enter_function(func);
+    try {
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
         }
-    }
-
-    _ci32 = ir.IntType(32);
-    for ci in cell_inits {
-        cellp = self._alloc_iter_struct(ci["cell_name"]);
-        _cvalp = self.builder.gep(
-            cellp,
-            [ir.Constant(_ci32, 0), ir.Constant(_ci32, 0)],
-            name=f"gen.cell.{ci['name']}.val"
+        raw = self.builder.call(
+            self.rc_alloc_fn, [ir.Constant(i64, frame_size)], name="gen.frame"
         );
-        _vt = ci["val_type"];
-        if isinstance(_vt, ir.IntType) {
-            self.builder.store(ir.Constant(_vt, 0), _cvalp);
-        } elif isinstance(_vt, (ir.DoubleType, ir.FloatType)) {
-            self.builder.store(ir.Constant(_vt, 0.0), _cvalp);
-        } else {
-            self.builder.store(ir.Constant(_vt, None), _cvalp);
-        }
-        if ci["param_index"] is not None {
-            _parg = func.args[ci["param_index"]];
-            self.builder.store(_parg, _cvalp);
-            if isinstance(_vt, ir.PointerType) {
-                self._emit_rc_retain(_parg, op="gen_param", loc=name);
+        memset_fn = self._get_or_declare_extern(
+            "memset", i8p, [i8p, ir.IntType(32), i64]
+        );
+        self.builder.call(
+            memset_fn,
+            [raw, ir.Constant(ir.IntType(32), 0), ir.Constant(i64, frame_size)]
+        );
+        dtor_slot = self.builder.gep(
+            raw, [ir.Constant(i64, HDR_DTOR_OFF)], name="gen.dtor.slot"
+        );
+        dtor_slot_p = self.builder.bitcast(dtor_slot, i64p, name="gen.dtor.p");
+        self.builder.store(
+            self.builder.ptrtoint(drop_fn, i64, name="gen.dtor.i64"), dtor_slot_p
+        );
+
+        for (pname, poff, ptype, pidx) in param_slots {
+            arg = func.args[pidx];
+            p_raw = self.builder.gep(
+                raw, [ir.Constant(i64, poff)], name=f"gen.p.{pname}"
+            );
+            p_slot = self.builder.bitcast(
+                p_raw, ptype.as_pointer(), name=f"gen.ps.{pname}"
+            );
+            self.builder.store(arg, p_slot);
+            if isinstance(ptype, ir.PointerType) {
+                self._emit_rc_retain(arg, op="gen_param", loc=name);
             }
         }
-        _ch_raw = self.builder.gep(
-            raw, [ir.Constant(i64, ci["slot_off"])], name=f"gen.cellh.{ci['name']}"
-        );
-        _ch_slot = self.builder.bitcast(
-            _ch_raw,
-            self.struct_types[ci["cell_name"]].as_pointer().as_pointer(),
-            name=f"gen.cellhs.{ci['name']}"
-        );
-        self.builder.store(cellp, _ch_slot);
+
+        _ci32 = ir.IntType(32);
+        for ci in cell_inits {
+            cellp = self._alloc_iter_struct(ci["cell_name"]);
+            _cvalp = self.builder.gep(
+                cellp,
+                [ir.Constant(_ci32, 0), ir.Constant(_ci32, 0)],
+                name=f"gen.cell.{ci['name']}.val"
+            );
+            _vt = ci["val_type"];
+            if isinstance(_vt, ir.IntType) {
+                self.builder.store(ir.Constant(_vt, 0), _cvalp);
+            } elif isinstance(_vt, (ir.DoubleType, ir.FloatType)) {
+                self.builder.store(ir.Constant(_vt, 0.0), _cvalp);
+            } else {
+                self.builder.store(ir.Constant(_vt, None), _cvalp);
+            }
+            if ci["param_index"] is not None {
+                _parg = func.args[ci["param_index"]];
+                self.builder.store(_parg, _cvalp);
+                if isinstance(_vt, ir.PointerType) {
+                    self._emit_rc_retain(_parg, op="gen_param", loc=name);
+                }
+            }
+            _ch_raw = self.builder.gep(
+                raw, [ir.Constant(i64, ci["slot_off"])], name=f"gen.cellh.{ci['name']}"
+            );
+            _ch_slot = self.builder.bitcast(
+                _ch_raw,
+                self.struct_types[ci["cell_name"]].as_pointer().as_pointer(),
+                name=f"gen.cellhs.{ci['name']}"
+            );
+            self.builder.store(cellp, _ch_slot);
+        }
+
+        ji = self._make_jac_iter(resume_fn, raw);
+        self.builder.ret(ji);
+    } finally {
+        self._leave_function(state);
     }
-
-    ji = self._make_jac_iter(resume_fn, raw);
-    self.builder.ret(ji);
-
-    self._builder = None;
-    self.local_vars = {};
     nd.gen.llvm_ir = func;
     nd.code_context = CodeContext.NATIVE;
     self.has_native_code = True;

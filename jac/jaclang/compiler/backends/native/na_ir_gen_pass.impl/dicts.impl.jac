@@ -1,20 +1,3 @@
-impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
-    if isinstance(key_type, ir.DoubleType) {
-        return ("f64", 0);
-    }
-    if self._is_bytes_type(key_type) {
-        return ("bytes", 0);
-    }
-    if isinstance(key_type, ir.PointerType) {
-        if isinstance(key_type.pointee, ir.LiteralStructType) {
-            _sz = self._get_struct_size(key_type.pointee);
-            return (self._tuple_spec_name(key_type.pointee), _sz);
-        }
-        return ("ptr", 0);
-    }
-    return ("i64", 0);
-}
-
 impl NaIRGenPass._peer_dict_key -> (str | None) {
     """Dict layout an empty display should adopt from the operand beside it.
 
@@ -421,7 +404,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         val_type = helpers["val_type"];
     } else {
         key_type = first_key.type;
-        (key_type_name, key_size) = self._dict_key_spec(key_type);
+        (key_type_name, key_size) = self._hash_key_spec(key_type);
         if use_jacval {
             val_type = self.jacval_type;
             val_type_name = "jacval";

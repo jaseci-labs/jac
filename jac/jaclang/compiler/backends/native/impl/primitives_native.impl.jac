@@ -3353,7 +3353,7 @@ impl NativeDictEmitter.emit_get(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     found_i1 = b.call(helpers["contains"], [target, key], name="dget.found");
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dget.yes");
@@ -3400,6 +3400,7 @@ impl NativeDictEmitter.emit_get(
         _res_cast = b.bitcast(result, ir.IntType(8).as_pointer(), name="dget.ret.cast");
         b.call(p.rc_retain_fn, [_res_cast]);
     }
+    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
@@ -3602,7 +3603,7 @@ impl NativeDictEmitter.emit_pop(
         return None;
     }
     b = get_builder(p);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
     has_default = len(args) >= 2;
 
@@ -3639,6 +3640,7 @@ impl NativeDictEmitter.emit_pop(
     result = b.phi(val_type, name="dpop.result");
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
+    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
@@ -3654,11 +3656,12 @@ impl NativeDictEmitter.emit_remove(
         return None;
     }
     b = get_builder(p);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     found_i1 = b.call(helpers["contains"], [target, key], name="drem.has");
     _not_found = b.not_(found_i1, name="drem.miss");
     p._emit_runtime_raise(_not_found, "KeyError", "key not found");
     b.call(helpers["remove"], [target, key]);
+    p._release_owned_args([key], op="dict_method_key");
     return None;
 }
 
@@ -3750,10 +3753,10 @@ impl NativeDictEmitter.emit_setdefault(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
     if len(args) >= 2 {
-        default_val = args[1];
+        default_val = p._coerce_type(args[1], val_type);
     } elif p._elem_kind(val_type) != "raw" {
         default_val = ir.Constant(val_type, None);
     } else {
@@ -3779,6 +3782,7 @@ impl NativeDictEmitter.emit_setdefault(
     result = b.phi(val_type, name="sdef.result");
     result.add_incoming(existing, found_bb);
     result.add_incoming(default_val, notfound_bb);
+    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 

@@ -160,6 +160,21 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         val_type = ir.IntType(8).as_pointer();
     }
 
+    resolved_key = self._elem_storage_llvm(key_expr.type);
+    if resolved_key is not None {
+        key_type = ir.IntType(8).as_pointer()
+            if self._str_desc_ty is not None and resolved_key == self._str_desc_ty
+            else resolved_key;
+        (key_type_name, key_size) = self._hash_key_spec(key_type);
+    }
+    resolved_value = self._elem_storage_llvm(val_expr.type);
+    if resolved_value is not None {
+        val_type = ir.IntType(8).as_pointer()
+            if self._str_desc_ty is not None and resolved_value == self._str_desc_ty
+            else resolved_value;
+        val_type_name = self._dict_val_spec(val_type);
+    }
+
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     dict_key = f"{key_type_name}:{val_type_name}";
     helpers = self.dict_helpers.get(dict_key);
@@ -238,6 +253,16 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
     if elem_type_name == "i64" and self._struct_name_of(out_expr) is not None {
         elem_type_name = "ptr";
         elem_type = ir.IntType(8).as_pointer();
+    }
+
+    if isinstance(out_expr, uni.Expr) and out_expr.type is not None {
+        resolved = self._elem_storage_llvm(out_expr.type);
+        if resolved is not None {
+            elem_type = ir.IntType(8).as_pointer()
+                if self._str_desc_ty is not None and resolved == self._str_desc_ty
+                else resolved;
+            (elem_type_name, elem_size) = self._hash_key_spec(elem_type);
+        }
     }
 
     self._emit_set_helpers(elem_type_name, elem_type, elem_size);
@@ -403,33 +428,48 @@ impl NaIRGenPass._codegen_compr_walk(
         return;
     }
 
-    coll_elem_type_name = self._infer_list_elem_type(coll_val);
-    if coll_elem_type_name is None {
-        coll_elem_type_name = self._elem_spec_of(collection);
-    }
-    if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
-        coll_elem_type_name = "ptr";
-    }
-    if coll_elem_type_name is None {
-        return;
-    }
-    coll_helpers = self.list_helpers.get(coll_elem_type_name);
-    if coll_helpers is None {
-        return;
-    }
-    _coll_want = coll_helpers["len"].function_type.args[0];
-    if coll_val.type != _coll_want {
-        if self._spec_from_container_ptr(coll_val.type) is None {
-            self.emit(
-                E5092,
-                node_override=collection,
-                kind="expression",
-                name="comprehension over an element-erased collection",
-                help_text="The collection unified to an untyped pointer, so which list layout to read it as is no longer recoverable. Give every branch producing it the same concrete element type."
-            );
+    dict_key = self._dict_key_reconcile(self._dict_key_of(collection), coll_val);
+    if dict_key is not None {
+        coll_helpers = self.dict_helpers.get(dict_key);
+        if coll_helpers is None {
             return;
         }
-        coll_val = self.builder.bitcast(coll_val, _coll_want, name="compr.coll.cast");
+        coll_get = coll_helpers["get_key"];
+        actual_elem_type = coll_helpers["key_type"];
+        coll_elem_type_name = dict_key.split(":")[0];
+    } else {
+        coll_elem_type_name = self._infer_list_elem_type(coll_val);
+        if coll_elem_type_name is None {
+            coll_elem_type_name = self._elem_spec_of(collection);
+        }
+        if coll_elem_type_name is None and isinstance(coll_val.type, ir.PointerType) {
+            coll_elem_type_name = "ptr";
+        }
+        if coll_elem_type_name is None {
+            return;
+        }
+        coll_helpers = self.list_helpers.get(coll_elem_type_name);
+        if coll_helpers is None {
+            return;
+        }
+        coll_get = coll_helpers["get"];
+        actual_elem_type = coll_helpers["elem_type"];
+        _coll_want = coll_helpers["len"].function_type.args[0];
+        if coll_val.type != _coll_want {
+            if self._spec_from_container_ptr(coll_val.type) is None {
+                self.emit(
+                    E5092,
+                    node_override=collection,
+                    kind="expression",
+                    name="comprehension over an element-erased collection",
+                    help_text="The collection unified to an untyped pointer, so which list layout to read it as is no longer recoverable. Give every branch producing it the same concrete element type."
+                );
+                return;
+            }
+            coll_val = self.builder.bitcast(
+                coll_val, _coll_want, name="compr.coll.cast"
+            );
+        }
     }
     loop_var_name = self._get_name(loop_target);
     if loop_var_name is None {
@@ -440,9 +480,8 @@ impl NaIRGenPass._codegen_compr_walk(
     idx_alloca = self._entry_alloca(i64, "compr.idx");
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
 
-    actual_elem_type = coll_helpers["elem_type"];
     inner_type: (ir.Type | None) = None;
-    if coll_elem_type_name == "ptr" {
+    if dict_key is None and coll_elem_type_name == "ptr" {
         inner_type = self._list_elem_llvm_of(collection);
         if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
             inner_type = None;
@@ -472,9 +511,7 @@ impl NaIRGenPass._codegen_compr_walk(
     self.builder.cbranch(cmp, body_bb, end_bb);
     self.builder.position_at_end(body_bb);
     body_idx = self.builder.load(idx_alloca, name="compr.body.idx");
-    elem_val = self.builder.call(
-        coll_helpers["get"], [coll_val, body_idx], name="compr.elem"
-    );
+    elem_val = self.builder.call(coll_get, [coll_val, body_idx], name="compr.elem");
 
     if elem_val.type != actual_elem_type {
         if isinstance(elem_val.type, ir.PointerType)

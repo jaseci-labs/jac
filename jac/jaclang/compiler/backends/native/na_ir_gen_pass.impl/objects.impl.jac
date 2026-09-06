@@ -1300,61 +1300,45 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
         return;
     }
 
-    block = func.append_basic_block(name="entry");
-    saved_builder = self._builder;
-    saved_locals = self.local_vars;
-    saved_param_vars = self.param_vars;
-    saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_self_arch = self._self_arch;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    self._self_arch = arch_name;
-    self._builder = ir.IRBuilder(block);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.var_list_elem_struct = {};
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
+    state = self._enter_function(func);
+    try {
+        self._self_arch = arch_name;
+        self._attach_di_subprogram(
+            func, full_name, method.loc.first_line if method.loc else 0
+        );
 
-    self._attach_di_subprogram(
-        func, full_name, method.loc.first_line if method.loc else 0
-    );
+        _scan_body = ModuleFacts.unwrap_body(method);
+        if _scan_body is not None {
+            _scan_owner = method.body
+                if isinstance(method.body, uni.ImplDef)
+                else method;
+            self._scan_closure_escapes(_scan_owner, _scan_body);
+        }
 
-    _scan_body = ModuleFacts.unwrap_body(method);
-    if _scan_body is not None {
-        _scan_owner = method.body if isinstance(method.body, uni.ImplDef) else method;
-        self._scan_closure_escapes(_scan_owner, _scan_body);
+        self_alloca = self.builder.alloca(func.args[0].type, name="self");
+        self.builder.store(func.args[0], self_alloca);
+        self.local_vars["self"] = self_alloca;
+        self.param_vars.add("self");
+
+        body = ModuleFacts.unwrap_body(method);
+        if body is not None {
+            self._codegen_body(body);
+        }
+
+        if not self.builder.block.is_terminated {
+            _nosig_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+                if method.loc
+                else 0}";
+
+            self._emit_scope_cleanup(skip_var=None, loc=_nosig_loc);
+            self.builder.ret_void();
+        }
+        method.gen.llvm_ir = func;
+
+        self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
+    } finally {
+        self._leave_function(state);
     }
-
-    self_alloca = self.builder.alloca(func.args[0].type, name="self");
-    self.builder.store(func.args[0], self_alloca);
-    self.local_vars["self"] = self_alloca;
-    self.param_vars.add("self");
-
-    body = ModuleFacts.unwrap_body(method);
-    if body is not None {
-        self._codegen_body(body);
-    }
-
-    if not self.builder.block.is_terminated {
-        _nosig_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
-            if method.loc
-            else 0}";
-
-        self._emit_scope_cleanup(skip_var=None, loc=_nosig_loc);
-        self.builder.ret_void();
-    }
-    method.gen.llvm_ir = func;
-
-    self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
-
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.param_vars = saved_param_vars;
-    self.var_list_elem_struct = saved_list_elem_struct;
-    self._self_arch = saved_self_arch;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
 }
 
 impl NaIRGenPass._trigger_member_structs(tag: (uni.UniNode | None)) -> list[str] {

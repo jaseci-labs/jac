@@ -459,35 +459,12 @@ impl NaIRGenPass._stamp_mono_fn(
     self._mono_fns[memo_key] = fn;
     self._record_ret_facts(spec_name, sig);
 
-    saved_builder = self._builder;
-    saved_locals = self.local_vars if self?.local_vars else {};
-    saved_param_vars = self.param_vars;
-    saved_nogc = self.nogc_no_free_vars;
-    saved_nogc_owned = self.nogc_owned_str_vars;
-    saved_region = self.region_handle_vars;
-    saved_region_opens = self.region_open_stack;
-    saved_list_struct = self.var_list_elem_struct;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
     saved_symtab = dict(self.func_symtab);
-    saved_gen_ctx = self._gen_ctx;
-    self._gen_ctx = None;
     self.func_symtab[name] = fn;
     try {
         self._codegen_ability(ability);
     } finally {
-        self._builder = saved_builder;
-        self.local_vars = saved_locals;
-        self.param_vars = saved_param_vars;
-        self.nogc_no_free_vars = saved_nogc;
-        self.nogc_owned_str_vars = saved_nogc_owned;
-        self.region_handle_vars = saved_region;
-        self.region_open_stack = saved_region_opens;
-        self.var_list_elem_struct = saved_list_struct;
-        self.closure_cell_vars = saved_cell_vars;
-        self.closure_cell_handles = saved_cell_handles;
         self.func_symtab = saved_symtab;
-        self._gen_ctx = saved_gen_ctx;
     }
     return fn;
 }

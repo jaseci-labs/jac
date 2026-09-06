@@ -1930,7 +1930,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     }
                 }
                 if func_name == "set" {
-                    self._emit_set_helpers(_ez_spec, _ez_elem);
+                    (_ez_spec, _ez_size) = self._hash_key_spec(_ez_elem);
+                    self._emit_set_helpers(_ez_spec, _ez_elem, _ez_size);
                     _ez_h = self.set_helpers.get(_ez_spec);
                 } else {
                     self._emit_list_helpers(_ez_spec, _ez_elem);

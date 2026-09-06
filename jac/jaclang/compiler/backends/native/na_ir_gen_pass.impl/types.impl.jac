@@ -788,7 +788,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             }
         }
 
-        (k_spec, k_size) = self._dict_key_spec(k_llvm);
+        (k_spec, k_size) = self._hash_key_spec(k_llvm);
         v_spec = self._dict_val_spec(v_llvm);
         self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
         return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
@@ -809,17 +809,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         if self._str_desc_ty is not None and elem_llvm == self._str_desc_ty {
             elem_llvm = ir.IntType(8).as_pointer();
         }
-        spec = "i64";
-        esize = 0;
-        if isinstance(elem_llvm, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem_llvm, ir.PointerType) {
-            spec = "ptr";
-            if isinstance(elem_llvm.pointee, ir.LiteralStructType) {
-                esize = self._get_struct_size(elem_llvm.pointee);
-                spec = self._tuple_spec_name(elem_llvm.pointee);
-            }
-        }
+        (spec, esize) = self._hash_key_spec(elem_llvm);
         self._emit_set_helpers(spec, elem_llvm, esize);
         return self.set_types[spec].as_pointer();
     }
@@ -4293,7 +4283,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                                 _dv = ir.IntType(8).as_pointer();
                             }
                         }
-                        (_dk_spec, _dk_size) = self._dict_key_spec(_dk);
+                        (_dk_spec, _dk_size) = self._hash_key_spec(_dk);
                         _dv_spec = self._dict_val_spec(_dv);
                         self._emit_dict_helpers(_dk_spec, _dv_spec, _dk, _dv, _dk_size);
                         _dict_ty = self.dict_types.get(f"{_dk_spec}:{_dv_spec}");

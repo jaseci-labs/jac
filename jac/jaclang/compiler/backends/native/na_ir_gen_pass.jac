@@ -923,7 +923,7 @@ walker NaIRGenPass(Transform) {
     def _finalize_di_locations(func: ir.Function, fallback_line: int) -> None;
     def post_transform -> None;
     def _peer_dict_key -> (str | None);
-    def _dict_key_spec(key_type: ir.Type) -> tuple;
+    def _hash_key_spec(key_type: ir.Type) -> tuple[str, int];
     def _dict_val_spec(val_type: ir.Type) -> str;
     def _unwrap_opt_container(val: ir.Value) -> ir.Value;
     def _emit_dict_helpers(
@@ -1214,7 +1214,8 @@ walker NaIRGenPass(Transform) {
     ) -> dict;
 
     def _str_fnv_fn -> ir.Function;
-    def _tuple_key_fields(key_type: ir.Type) -> (list | None);
+    def _tuple_key_fields(key_type: ir.Type) -> list[tuple[int, str]] | None;
+    def _emit_tuple_key_hash(b: ir.IRBuilder, value: ir.Value) -> ir.Value;
     def _tuple_spec_name(struct_type: ir.LiteralStructType) -> str;
     def _tuple_key_field_val(
         b: ir.IRBuilder, key_ptr: ir.Value, idx: int, kind: str

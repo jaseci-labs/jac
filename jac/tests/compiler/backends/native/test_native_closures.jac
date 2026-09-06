@@ -14,6 +14,7 @@ silently mis-bound value.
 """
 
 import ctypes;
+import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import os;
 import from tests.support {
     TESTS_DIR,
@@ -24,6 +25,16 @@ import from tests.support {
     native_str_func
 }
 import jaclang;
+
+test "lambda parameters remain borrowed across explicit returns" {
+    (engine, module) = compile_native("lambda_borrowed_params.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(engine, "call_lambda", ctypes.c_int64);
+    drops = get_func(engine, "drop_count", ctypes.c_int64);
+    assert call() == 770;
+    assert drops() == 1;
+}
 
 import from jaclang.compiler.driver.program { JacProgram }
 
