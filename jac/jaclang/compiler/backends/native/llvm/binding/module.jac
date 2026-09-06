@@ -37,7 +37,7 @@ def parse_assembly(llvmir: any, context: any = None) -> ModuleRef {
 """
     Create Module from a LLVM *bitcode* (a bytes object).
     """
-def parse_bitcode(bitcode: any, context: any = None) -> object {
+def parse_bitcode(bitcode: bytes, context: any = None) -> ModuleRef {
     if (context is None) {
         context = get_global_context();
     }
@@ -74,7 +74,7 @@ class ModuleRef(ffi.ObjectRef) {
     """
         Return the module's LLVM bitcode, as a bytes object.
         """
-    def as_bitcode(self: ModuleRef) -> object {
+    def as_bitcode(self: ModuleRef) -> bytes {
         ptr = c_char_p(None);
         size = c_size_t(-1);
         ffi.lib.LLVMPY_WriteBitcodeToString(self, byref(ptr), byref(size));
@@ -120,7 +120,7 @@ class ModuleRef(ffi.ObjectRef) {
     """
         Verify the module IR's correctness.  RuntimeError is raised on error.
         """
-    def verify(self: ModuleRef) -> object {
+    def verify(self: ModuleRef) {
         with ffi.OutputString() as outmsg {
             if ffi.lib.LLVMPY_VerifyModule(self, outmsg) {
                 raise RuntimeError(str(outmsg));

@@ -437,12 +437,14 @@ impl native_build(
     import from jaclang.compiler.backends.native.na_compile_pass {
         native_demoted_ir_symbols as _demoted_syms
     }
-    _demoted = _demoted_syms(llvm_ir_str);
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    _issues = native_lowering_issues(llvm_ir_str);
+    _demoted = sorted(
+        set(_demoted_syms(llvm_ir_str)) | {issue.symbol for issue in _issues}
+    );
     if _demoted and not lib {
         console.error(
-            f"{len(
-                _demoted
-            )} function(s) in the native closure were demoted to Python-only: "
+            f"{len(_demoted)} declaration(s) in the native closure could not lower: "
                 + ", ".join(_demoted),
             hint="A self-contained binary cannot run a demoted function; run `jac explain placement` on the file to see why each one failed to lower."
         );

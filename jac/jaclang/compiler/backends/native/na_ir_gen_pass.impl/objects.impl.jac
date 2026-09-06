@@ -1179,6 +1179,15 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     del self.errors_had[local_mark:];
 
     if stub_body {
+        NativeLoweringIssue(
+            symbol=full_name,
+            kind=NativeLoweringKind.CALLABLE,
+            source=self.ir_in.loc.mod_path,
+            code=_own[0].code.code if _own[0].code is not None else "",
+            detail=str(_own[0])
+        ).record(
+            self.llvm_module
+        );
         func.blocks.clear();
         blk = func.append_basic_block(name="entry");
         b = ir.IRBuilder(blk);
@@ -1250,6 +1259,15 @@ impl NaIRGenPass._opaque_field_if_unlowerable(
             f"{arch_name}.{fname}: " + (f"[{_code}] " if _code else "") + _why
         );
     } except Exception {}
+    NativeLoweringIssue(
+        symbol=f"{arch_name}.{fname}",
+        kind=NativeLoweringKind.FIELD,
+        source=self.ir_in.loc.mod_path,
+        code=_code,
+        detail=_why
+    ).record(
+        self.llvm_module
+    );
     del self.errors_had[local_mark:];
     if arch_name not in self.struct_field_opaque {
         self.struct_field_opaque[arch_name] = {};
@@ -1630,80 +1648,63 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
             return;
         }
     }
-    block = func.append_basic_block(name="entry");
-    saved_builder = self._builder;
-    saved_locals = self.local_vars;
-    saved_param_vars = self.param_vars;
-    saved_list_elem_struct = dict(self.var_list_elem_struct);
-    saved_self_arch = self._self_arch;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    saved_region_opens = self.region_open_stack;
+    state = self._enter_function(func);
     self._self_arch = arch_name;
-    self._builder = ir.IRBuilder(block);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.var_list_elem_struct = {};
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-    self.region_open_stack = [];
-    self._attach_di_subprogram(
-        func, full_name, method.loc.first_line if method.loc else 0
-    );
-    _scan_body = ModuleFacts.unwrap_body(method);
-    if _scan_body is not None {
-        _scan_owner = method.body if isinstance(method.body, uni.ImplDef) else method;
-        self._scan_closure_escapes(_scan_owner, _scan_body);
-    }
-    self_alloca = self.builder.alloca(func.args[0].type, name="self");
-    self.builder.store(func.args[0], self_alloca);
-    self.local_vars["self"] = self_alloca;
-    self.param_vars.add("self");
-
-    loc_name = "here" if sig.from_walker else "visitor";
-    loc_arg = func.args[1];
-    loc_alloca = self.builder.alloca(loc_arg.type, name=loc_name);
-    self.builder.store(loc_arg, loc_alloca);
-    self.local_vars[loc_name] = loc_alloca;
-    self.param_vars.add(loc_name);
-    _grow_anchor = loc_arg if sig.from_walker else func.args[0];
-    self._region_enter(self._region_of_value(_grow_anchor));
-    self.region_open_stack.append(len(self.loop_stack));
-    if sig.arch_tag_info is not None {
-        _members = self._trigger_struct_names(method);
-        _conflict = self._union_layout_conflict(_members);
-        if _conflict is not None {
-            self.emit(
-                E5091,
-                node_override=sig.arch_tag_info,
-                members=", ".join(_members),
-                field=_conflict
-            );
+    try {
+        self._attach_di_subprogram(
+            func, full_name, method.loc.first_line if method.loc else 0
+        );
+        _scan_body = ModuleFacts.unwrap_body(method);
+        if _scan_body is not None {
+            _scan_owner = method.body
+                if isinstance(method.body, uni.ImplDef)
+                else method;
+            self._scan_closure_escapes(_scan_owner, _scan_body);
         }
+        self_alloca = self.builder.alloca(func.args[0].type, name="self");
+        self.builder.store(func.args[0], self_alloca);
+        self.local_vars["self"] = self_alloca;
+        self.param_vars.add("self");
+
+        loc_name = "here" if sig.from_walker else "visitor";
+        loc_arg = func.args[1];
+        loc_alloca = self.builder.alloca(loc_arg.type, name=loc_name);
+        self.builder.store(loc_arg, loc_alloca);
+        self.local_vars[loc_name] = loc_alloca;
+        self.param_vars.add(loc_name);
+        _grow_anchor = loc_arg if sig.from_walker else func.args[0];
+        self._region_enter(self._region_of_value(_grow_anchor));
+        self.region_open_stack.append(len(self.loop_stack));
+        if sig.arch_tag_info is not None {
+            _members = self._trigger_struct_names(method);
+            _conflict = self._union_layout_conflict(_members);
+            if _conflict is not None {
+                self.emit(
+                    E5091,
+                    node_override=sig.arch_tag_info,
+                    members=", ".join(_members),
+                    field=_conflict
+                );
+            }
+        }
+        body = ModuleFacts.unwrap_body(method);
+        if body is not None {
+            self._codegen_body(body);
+        }
+        self.region_open_stack.pop();
+        if not self.builder.block.is_terminated {
+            self._region_leave();
+            _ev_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+                if method.loc
+                else 0}";
+            self._emit_scope_cleanup(skip_var=None, loc=_ev_loc);
+            self.builder.ret_void();
+        }
+        method.gen.llvm_ir = func;
+        self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
+    } finally {
+        self._leave_function(state);
     }
-    body = ModuleFacts.unwrap_body(method);
-    if body is not None {
-        self._codegen_body(body);
-    }
-    self.region_open_stack.pop();
-    if not self.builder.block.is_terminated {
-        self._region_leave();
-        _ev_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
-            if method.loc
-            else 0}";
-        self._emit_scope_cleanup(skip_var=None, loc=_ev_loc);
-        self.builder.ret_void();
-    }
-    method.gen.llvm_ir = func;
-    self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.param_vars = saved_param_vars;
-    self.var_list_elem_struct = saved_list_elem_struct;
-    self._self_arch = saved_self_arch;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
-    self.region_open_stack = saved_region_opens;
 }
 
 impl NaIRGenPass._emit_heap_object_alloc(

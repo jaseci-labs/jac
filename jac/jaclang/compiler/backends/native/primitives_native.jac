@@ -295,6 +295,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_affix(
+        self: NativeStrEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        suffix: bool
+    ) -> (ir.Value | None);
+
     def emit_startswith(
         self: NativeStrEmitter,
         ctx: NativeEmitCtx,

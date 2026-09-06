@@ -2,6 +2,10 @@ import jaclang.compiler.frontend.unitree as uni;
 import os;
 import sys;
 import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
+import from jaclang.compiler.backends.native.lowering {
+    NativeLoweringIssue,
+    NativeLoweringKind
+}
 import from jaclang.runtime.scalars { ScalarShape }
 import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.codeinfo {
@@ -80,6 +84,29 @@ obj NativeFinalizer {
 
 obj NativeErrorHandler {
     has dispatch: ir.Block;
+}
+
+obj NativeFunctionState {
+    has _builder: ir.IRBuilder | None,
+        local_vars: dict[str, ir.Value],
+        param_vars: set[str],
+        nogc_no_free_vars: set[str],
+        nogc_owned_str_vars: set[str],
+        region_handle_vars: set[str],
+        region_open_stack: list[int],
+        loop_stack: list[tuple],
+        var_list_elem_struct: dict[str, ir.Type | None],
+        closure_cell_vars: set[str],
+        closure_cell_handles: dict[str, ir.Value],
+        _self_owned: bool,
+        _self_arch: str | None,
+        _di_current_sp: object,
+        _gen_ctx: dict | None,
+        _gen_try_stack: list,
+        _slot_try_stack: list[NativeErrorHandler],
+        _finally_stack: list[NativeFinalizer],
+        _caught_error_stack:
+            list[tuple[ir.Function, tuple[ir.Value, ir.Value, ir.Value]]];
 }
 
 walker NaIRGenPass(Transform) {
@@ -451,6 +478,8 @@ walker NaIRGenPass(Transform) {
     def _is_bytes_type(t: ir.Type) -> bool;
     def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
     def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
+    def _enter_function(func: ir.Function) -> NativeFunctionState;
+    def _leave_function(state: NativeFunctionState) -> None;
     def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;

@@ -725,73 +725,55 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
     }
 
-    saved_builder = self._builder;
-    saved_locals = self.local_vars;
-    saved_param_vars = self.param_vars;
-    saved_var_list_struct = self.var_list_elem_struct;
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
-    self.local_vars = {};
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-    self.param_vars = set();
-    self.var_list_elem_struct = {};
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-    if body is not None {
-        self._scan_closure_escapes(nd, body);
-    }
-    for (i, arg) in enumerate(fn.args) {
-        if i < len(param_names) {
-            if param_names[i] in self.closure_cell_vars {
-                slot = self._emit_closure_cell(param_names[i], arg.type);
-                self.builder.store(arg, slot);
-                self.local_vars[param_names[i]] = slot;
-                if isinstance(arg.type, ir.PointerType) {
-                    self._emit_rc_retain(arg, op="param_cell", loc=name);
+    state = self._enter_function(fn);
+    try {
+        if body is not None {
+            self._scan_closure_escapes(nd, body);
+        }
+        for (i, arg) in enumerate(fn.args) {
+            if i < len(param_names) {
+                if param_names[i] in self.closure_cell_vars {
+                    slot = self._emit_closure_cell(param_names[i], arg.type);
+                    self.builder.store(arg, slot);
+                    self.local_vars[param_names[i]] = slot;
+                    if isinstance(arg.type, ir.PointerType) {
+                        self._emit_rc_retain(arg, op="param_cell", loc=name);
+                    }
+                    continue;
                 }
+                alloca = self._entry_alloca(arg.type, param_names[i]);
+                self.builder.store(arg, alloca);
+                self.local_vars[param_names[i]] = alloca;
+                self.param_vars.add(param_names[i]);
                 continue;
             }
-            alloca = self._entry_alloca(arg.type, param_names[i]);
-            self.builder.store(arg, alloca);
-            self.local_vars[param_names[i]] = alloca;
-            self.param_vars.add(param_names[i]);
-            continue;
-        }
-        (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];
-        if cap_mode == "ptr" {
-            self.local_vars[cap_name] = arg;
-        } else {
-            alloca = self._entry_alloca(arg.type, cap_name);
-            self.builder.store(arg, alloca);
-            self.local_vars[cap_name] = alloca;
-        }
-        self.param_vars.add(cap_name);
-    }
-    if body is not None {
-        self._codegen_body(body);
-    }
-
-    for bb in fn.basic_blocks {
-        if not bb.is_terminated {
-            tb = ir.IRBuilder(bb);
-            if isinstance(ret_type, ir.VoidType) {
-                tb.ret_void();
+            (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];
+            if cap_mode == "ptr" {
+                self.local_vars[cap_name] = arg;
             } else {
-                tb.ret(self._zero_const(ret_type));
+                alloca = self._entry_alloca(arg.type, cap_name);
+                self.builder.store(arg, alloca);
+                self.local_vars[cap_name] = alloca;
+            }
+            self.param_vars.add(cap_name);
+        }
+        if body is not None {
+            self._codegen_body(body);
+        }
+
+        for bb in fn.basic_blocks {
+            if not bb.is_terminated {
+                tb = ir.IRBuilder(bb);
+                if isinstance(ret_type, ir.VoidType) {
+                    tb.ret_void();
+                } else {
+                    tb.ret(self._zero_const(ret_type));
+                }
             }
         }
+    } finally {
+        self._leave_function(state);
     }
-
-    self._builder = saved_builder;
-    self.local_vars = saved_locals;
-    self.param_vars = saved_param_vars;
-    self.var_list_elem_struct = saved_var_list_struct;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
     nd.gen.llvm_ir = fn;
 }
 

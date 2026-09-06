@@ -291,7 +291,15 @@ impl native_demoted_ir_symbols(llvm_ir_text: str) -> list[str] {
         r'|([A-Za-z0-9_.$\-]+\.__jac_demoted))\(',
         _ds_re.MULTILINE
     );
-    found: set[str] = set();
+    import from jaclang.compiler.backends.native.lowering {
+        NativeLoweringKind,
+        native_lowering_issues
+    }
+    found: set[str] = {
+        issue.symbol
+        for issue in native_lowering_issues(llvm_ir_text)
+        if issue.kind == NativeLoweringKind.CALLABLE
+    };
     for (_ds_q, _ds_bare) in _ds_def.findall(llvm_ir_text) {
         found.add((_ds_q or _ds_bare)[:-len(".__jac_demoted")]);
     }
