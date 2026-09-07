@@ -323,7 +323,7 @@ impl NaIRGenPass._codegen_delete_location(
 
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     _gc = self._gen_ctx;
-    if _gc is not None and self.builder.function is _gc["resume_fn"] {
+    if _gc is not None and self.builder.function is _gc.resume_fn {
         _gr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
             if nd.loc
             else 0}";
@@ -341,7 +341,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
         self._emit_scope_cleanup(skip_var=None, loc=_gr_loc);
         _gr_i64 = ir.IntType(64);
         _gr_ip = self.builder.bitcast(
-            _gc["frame_i8"], _gr_i64.as_pointer(), name="gen.ret.ip"
+            _gc.frame_i8, _gr_i64.as_pointer(), name="gen.ret.ip"
         );
         self.builder.store(ir.Constant(_gr_i64, -1), _gr_ip);
         self.builder.ret(ir.Constant(ir.IntType(1), 0));
@@ -1041,7 +1041,7 @@ impl NaIRGenPass._match_seq_cond(
     self.builder.cbranch(len_ok, chk_bb, merge_bb);
     self.builder.position_at_end(chk_bb);
     for (i, sub_pat) in enumerate(heads) {
-        elem = self.builder.call(
+        elem: ir.Value = self.builder.call(
             helpers["get"], [subj, ir.Constant(i64, i)], name="match.seq.elem"
         );
         elem = self._match_cast_elem(elem, elem_ty);
@@ -1177,7 +1177,7 @@ impl NaIRGenPass._match_map_cond(
         if _mgh is not None {
             _get_args.append(_mgh);
         }
-        v = self.builder.call(_get_fn, _get_args, name="match.map.get");
+        v: ir.Value = self.builder.call(_get_fn, _get_args, name="match.map.get");
         v = self._match_cast_elem(v, val_ty);
         sub_cond = self._match_pattern_cond(kv.value, v, val_ty);
         if sub_cond is None {
@@ -1458,7 +1458,7 @@ impl NaIRGenPass._bind_match_seq(
     len_val = self.builder.call(helpers["len"], [subj], name="match.seq.blen");
     n_tails = len(tails);
     for (i, sub_pat) in enumerate(heads) {
-        elem = self.builder.call(
+        elem: ir.Value = self.builder.call(
             helpers["get"], [subj, ir.Constant(i64, i)], name="match.seq.belem"
         );
         elem = self._match_cast_elem(elem, elem_ty);
@@ -1536,7 +1536,7 @@ impl NaIRGenPass._bind_match_map(
         if _mgh is not None {
             _get_args.append(_mgh);
         }
-        v = self.builder.call(_get_fn, _get_args, name="match.map.bget");
+        v: ir.Value = self.builder.call(_get_fn, _get_args, name="match.map.bget");
         v = self._match_cast_elem(v, val_ty);
         self._bind_match_pattern(kv.value, v, val_ty);
     }
@@ -2836,7 +2836,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
             _in_gen_frame = (
                 self._gen_ctx is not None
-                and self.builder.function is self._gen_ctx["resume_fn"]
+                and self.builder.function is self._gen_ctx.resume_fn
             );
             if (
                 isinstance(var_type, ir.PointerType)
@@ -3671,7 +3671,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             self._emit_chunk_header(_bcoll, _b_chk_n, _bidx, _b_hdr, helpers["len"]);
             self.builder.store(_b_hdr, _lv_alloca);
         } else {
-            _elem = self.builder.call(
+            _elem: ir.Value = self.builder.call(
                 helpers["get"], [_bcoll, _bidx], name="ffor.elem"
             );
             if _elem_cast is not None {
@@ -3758,7 +3758,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     _tb.call(_body_fn, [_t_ctx, _t_lo, _t_hi, _t_red]);
     _tb.ret(ir.Constant(i8p, None));
 
-    _len_val = self.builder.call(helpers["len"], [coll], name="ffor.len");
+    _len_val: ir.Value = self.builder.call(helpers["len"], [coll], name="ffor.len");
     if _chk_n is not None {
         _len_val = self.builder.sdiv(
             self.builder.sub(
@@ -4096,7 +4096,7 @@ impl NaIRGenPass._codegen_for_indexed(
 
     _gen_yield_loop = (
         self._gen_ctx is not None
-        and self.builder.function is self._gen_ctx["resume_fn"]
+        and self.builder.function is self._gen_ctx.resume_fn
         and bool(nd.get_all_sub_nodes(typ=uni.YieldExpr))
     );
     _gen_stop_slot: (ir.Value | None) = None;
@@ -4158,7 +4158,7 @@ impl NaIRGenPass._codegen_for_indexed(
             alloca = _existing if _reuse else self._entry_alloca(vtype, vname);
             _in_resume_fn = (
                 self._gen_ctx is not None
-                and self.builder.function is self._gen_ctx["resume_fn"]
+                and self.builder.function is self._gen_ctx.resume_fn
             );
             if isinstance(vtype, ir.PointerType) and (rc_vars or kind == "str") {
                 null_const = ir.Constant(vtype, None);
@@ -4271,7 +4271,7 @@ impl NaIRGenPass._codegen_for_indexed(
             );
         } elif kind in ("list", "dict", "set") {
             fetch_fn = helpers["get_key"] if kind == "dict" else helpers["get"];
-            elem_val = self.builder.call(
+            elem_val: ir.Value = self.builder.call(
                 fetch_fn, [collection_val, body_idx], name="for.elem"
             );
             if elem_cast is not None {

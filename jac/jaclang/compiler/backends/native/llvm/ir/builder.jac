@@ -638,7 +638,7 @@ class IRBuilder(object) {
         fastmath: any = (),
         attrs: any = (),
         arg_attrs: any = None
-    ) -> values.Value {
+    ) -> instructions.CallInstr {
         inst = instructions.CallInstr(
             self.block,
             fn,

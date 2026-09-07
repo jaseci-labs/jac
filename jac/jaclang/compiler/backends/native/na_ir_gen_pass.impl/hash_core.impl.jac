@@ -1114,6 +1114,7 @@ impl NaIRGenPass._emit_tuple_key_hash(b: ir.IRBuilder, value: ir.Value) -> ir.Va
     result: ir.Value = ir.Constant(i64, HASH_FNV_BASIS);
     for (idx, kind) in fields {
         field = self._tuple_key_field_val(b, value, idx, kind);
+        hashed: ir.Value;
         if kind in ("str", "jacstr") {
             hashed = b.call(self._str_fnv_fn(), [field], name="tk.str.hash");
         } elif kind == "tuple" {

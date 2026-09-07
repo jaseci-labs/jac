@@ -1255,8 +1255,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     is_tuple_target = isinstance(nd.target, uni.TupleVal);
 
     _gen_it_spill: (ir.Value | None) = None;
-    if self._gen_ctx is not None
-        and self.builder.function is self._gen_ctx["resume_fn"] {
+    if self._gen_ctx is not None and self.builder.function is self._gen_ctx.resume_fn {
         _gen_it_spill = self._entry_alloca(iter_val.type, "iterf.itslot");
         self.builder.store(iter_val, _gen_it_spill);
     }

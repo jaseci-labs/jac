@@ -99,6 +99,30 @@ obj NativeErrorHandler {
     has dispatch: ir.Block;
 }
 
+obj NativeGeneratorHandler(NativeErrorHandler) {
+    has state: ir.Value;
+}
+
+obj NativeGeneratorCellInit {
+    has name: str,
+        cell_name: str,
+        slot_off: int,
+        val_type: ir.Type,
+        param_index: int | None = None;
+}
+
+obj NativeGeneratorState {
+    has resume_fn: ir.Function,
+        frame_i8: ir.Value,
+        out_i8: ir.Value,
+        elem_type: ir.Type,
+        func_name: str,
+        cursor: int = 8,
+        slots: list[tuple[str, int, ir.Type]] = [],
+        resume_blocks: list[ir.Block] = [],
+        cell_inits: list[NativeGeneratorCellInit] = [];
+}
+
 obj NativeBindingState {
     has local_vars: dict[str, ir.Value],
         param_vars: set[str],
@@ -121,8 +145,8 @@ obj NativeFunctionState {
         _self_owned: bool,
         _self_arch: str | None,
         _di_current_sp: object,
-        _gen_ctx: dict | None,
-        _gen_try_stack: list,
+        _gen_ctx: NativeGeneratorState | None,
+        _gen_try_stack: list[NativeGeneratorHandler],
         _slot_try_stack: list[NativeErrorHandler],
         _finally_stack: list[NativeFinalizer],
         _caught_error_stack:
@@ -364,8 +388,8 @@ walker NaIRGenPass(Transform) {
         _mono_solution: (dict | None) = None,
         _mono_mangle_map: (dict | None) = None,
         _ct_bindings: dict = {},
-        _gen_ctx: (dict | None) = None,
-        _gen_try_stack: list = [],
+        _gen_ctx: NativeGeneratorState | None = None,
+        _gen_try_stack: list[NativeGeneratorHandler] = [],
         decorated_fns: dict[str, tuple] = {},
         closure_cell_vars: set[str] = set(),
         closure_cell_handles: dict[str, ir.Value] = {},
@@ -1027,7 +1051,7 @@ walker NaIRGenPass(Transform) {
     def _method_receiver_type(arch_name: str) -> ir.Type | None;
     def _enum_methods(nd: uni.Enum) -> list[uni.Ability];
     def _register_enum_methods(module: uni.Module, declare: bool) -> None;
-    def _codegen_class_form_enum_member(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None);
     def _codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None;
     def _codegen_enum_layout(enum_name: str, owner: (uni.Module | None)) -> None;
     def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
@@ -1992,12 +2016,14 @@ walker NaIRGenPass(Transform) {
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
     def _opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None);
     def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
-    def _narrowed_flow_type(nd: uni.UniNode) -> (any | None);
+    def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
     def _narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool;
     def _loop_rebinds_name(loop: uni.UniNode, name: str) -> bool;
     def _body_assigns_before(
-        loop: uni.UniNode, child: (uni.UniNode | None), name: str
+        loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
+        child: (uni.UniNode | None),
+        name: str
     ) -> bool;
 
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
@@ -2119,7 +2145,7 @@ walker NaIRGenPass(Transform) {
     def _aos_elem_of(type_expr: uni.UniNode | None) -> (str | None);
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
-    def _infer_compr_elem_struct(compr: object) -> (str | None);
+    def _infer_compr_elem_struct(compr: uni.InnerCompr) -> (str | None);
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;

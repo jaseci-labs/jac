@@ -127,8 +127,11 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
             }
         }
 
-        if isinstance(_result.type, ir.PointerType)
-            or (self?.jacval_type and _result.type == self.jacval_type) {
+        if isinstance(nd, uni.Expr)
+            and (
+                isinstance(_result.type, ir.PointerType)
+                or (self?.jacval_type and _result.type == self.jacval_type)
+            ) {
             import from jaclang.compiler.passes.rc_facts_pass {
                 Ownership,
                 result_ownership
@@ -207,7 +210,7 @@ impl NaIRGenPass._reads_unlowered_local(nd: uni.UniNode) -> bool {
 impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
     gc = self._gen_ctx;
     i64 = ir.IntType(64);
-    if gc is None or self.builder.function is not gc["resume_fn"] {
+    if gc is None or self.builder.function is not gc.resume_fn {
         self.emit(
             E5092,
             node_override=nd,
@@ -220,8 +223,9 @@ impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
     if nd.with_from {
         return self._codegen_yield_from(nd);
     }
+    v: ir.Value | None;
     if nd.expr is None {
-        elem_t = gc["elem_type"];
+        elem_t = gc.elem_type;
         if isinstance(elem_t, ir.PointerType) {
             v = ir.Constant(elem_t, None);
         } elif isinstance(elem_t, (ir.IntType, ir.DoubleType, ir.FloatType)) {
@@ -243,33 +247,35 @@ impl NaIRGenPass._codegen_yield(nd: uni.YieldExpr) -> (ir.Value | None) {
     if v is None {
         return None;
     }
-    self._emit_yield_suspend(self._coerce_type(v, gc["elem_type"]));
+    self._emit_yield_suspend(self._coerce_type(v, gc.elem_type));
     return ir.Constant(i64, 0);
 }
 
 impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
     gc = self._gen_ctx;
+    assert gc is not None;
+    assert self.builder.function is gc.resume_fn;
     i1 = ir.IntType(1);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     out_typed = self.builder.bitcast(
-        gc["out_i8"], gc["elem_type"].as_pointer(), name="yield.out"
+        gc.out_i8, gc.elem_type.as_pointer(), name="yield.out"
     );
     self.builder.store(v, out_typed);
     for _entry in self._gen_try_stack {
         self.builder.call(self._exc_pop_fn, []);
     }
-    k = len(gc["resume_blocks"]) + 1;
-    ip_slot = self.builder.bitcast(gc["frame_i8"], i64.as_pointer(), name="yield.ip");
+    k = len(gc.resume_blocks) + 1;
+    ip_slot = self.builder.bitcast(gc.frame_i8, i64.as_pointer(), name="yield.ip");
     self.builder.store(ir.Constant(i64, k), ip_slot);
     self.builder.ret(ir.Constant(i1, 1));
 
-    rbb = gc["resume_fn"].append_basic_block(f"resume{k}");
-    gc["resume_blocks"].append(rbb);
+    rbb = gc.resume_fn.append_basic_block(f"resume{k}");
+    gc.resume_blocks.append(rbb);
     self.builder.position_at_end(rbb);
     for _entry in self._gen_try_stack {
-        exc_state = _entry["state"];
+        exc_state = _entry.state;
         self.builder.call(self._exc_push_fn, [exc_state]);
         env_ptr = self.builder.gep(
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
@@ -281,14 +287,16 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
         is_exc = self.builder.icmp_signed(
             "!=", sj, ir.Constant(i32, 0), name=f"rearm.isexc.{k}"
         );
-        cont_bb = gc["resume_fn"].append_basic_block(f"resume{k}.armed");
-        self.builder.cbranch(is_exc, _entry["dispatch"], cont_bb);
+        cont_bb = gc.resume_fn.append_basic_block(f"resume{k}.armed");
+        self.builder.cbranch(is_exc, _entry.dispatch, cont_bb);
         self.builder.position_at_end(cont_bb);
     }
 }
 
 impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
     gc = self._gen_ctx;
+    assert gc is not None;
+    assert self.builder.function is gc.resume_fn;
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     _errs0 = len(self.errors_had);
@@ -312,7 +320,7 @@ impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
     _elem_is_ptr = isinstance(elem_type, ir.PointerType);
     elem_slot = self._entry_alloca(i64 if _elem_is_ptr else elem_type, "yf.elem");
 
-    func = gc["resume_fn"];
+    func = gc.resume_fn;
     cond_bb = func.append_basic_block("yf.cond");
     body_bb = func.append_basic_block("yf.body");
     end_bb = func.append_basic_block("yf.end");
@@ -329,7 +337,7 @@ impl NaIRGenPass._codegen_yield_from(nd: uni.YieldExpr) -> (ir.Value | None) {
     if _elem_is_ptr {
         v = self.builder.inttoptr(v, elem_type, name="yf.v.ptr");
     }
-    self._emit_yield_suspend(self._coerce_type(v, gc["elem_type"]));
+    self._emit_yield_suspend(self._coerce_type(v, gc.elem_type));
     self.builder.branch(cond_bb);
 
     self.builder.position_at_end(end_bb);
@@ -354,12 +362,12 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
             param_names.append(p_name);
         }
     }
-    ret_type = ir.IntType(64);
+    ret_type: ir.Type = ir.IntType(64);
     if sig is not None and sig.return_type is not None {
         ret_type = self._resolve_jac_type(sig.return_type);
     }
 
-    captures: list[tuple] = [];
+    captures: list[tuple[str, ir.Value, ir.Type]] = [];
     free_var_names: list[str] = [];
     for cap_sym in nd.captures {
         if cap_sym.sym_name not in free_var_names {
@@ -403,12 +411,12 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
         body = nd.body;
         _lam_errs0 = len(self.errors_had);
-        if isinstance(body, list) {
+        if not isinstance(body, uni.Expr) {
             tail = nd.tail_return_expr();
             if tail is not None {
-                val = self._codegen_expr(tail);
-                if val is not None {
-                    self.builder.ret(self._coerce_type(val, ret_type));
+                body_value = self._codegen_expr(tail);
+                if body_value is not None {
+                    self.builder.ret(self._coerce_type(body_value, ret_type));
                 } else {
                     if len(self.errors_had) == _lam_errs0 {
                         self.emit(
@@ -425,9 +433,9 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
                 self._codegen_body(body);
             }
         } else {
-            val = self._codegen_expr(body);
-            if val is not None {
-                self.builder.ret(self._coerce_type(val, ret_type));
+            body_value = self._codegen_expr(body);
+            if body_value is not None {
+                self.builder.ret(self._coerce_type(body_value, ret_type));
             } else {
                 if len(self.errors_had) == _lam_errs0 {
                     self.emit(
@@ -665,10 +673,12 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     right_name = self._spawn_operand_name(nd.right);
     left_is_walker = left_name is not None and self._is_walker_arch(left_name);
     right_is_walker = right_name is not None and self._is_walker_arch(right_name);
-    (walker_name, walker_val, loc_val) = (None, None, None);
-    if left_is_walker {
+    walker_name: str;
+    walker_val: ir.Value;
+    loc_val: ir.Value;
+    if left_name is not None and left_is_walker {
         (walker_name, walker_val, loc_val) = (left_name, left_val, right_val);
-    } elif right_is_walker {
+    } elif right_name is not None and right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
         self.emit(
@@ -914,6 +924,7 @@ impl NaIRGenPass._codegen_compare_link(
     }
 
     if op == Tok.KW_IN or op == Tok.KW_NIN {
+        result: ir.Value;
         is_not_in = op == Tok.KW_NIN;
         left = self._str_norm(left);
         right = self._str_norm(right);
@@ -1040,7 +1051,7 @@ impl NaIRGenPass._codegen_compare_link(
                 );
                 self.builder.cbranch(at_end, done_bb, check_bb);
                 self.builder.position_at_start(check_bb);
-                elem = self.builder.call(
+                elem: ir.Value = self.builder.call(
                     helpers["get"], [right, idx], name="list.in.elem"
                 );
                 _lin_left_tk = self._type_key_of(left_node);
@@ -1091,9 +1102,10 @@ impl NaIRGenPass._codegen_compare_link(
                 self.builder.position_at_start(found_bb);
                 self.builder.branch(done_bb);
                 self.builder.position_at_start(done_bb);
-                result = self.builder.phi(i64, name="list.in.result");
-                result.add_incoming(ir.Constant(i64, 0), loop_bb);
-                result.add_incoming(ir.Constant(i64, 1), found_bb);
+                list_result = self.builder.phi(i64, name="list.in.result");
+                list_result.add_incoming(ir.Constant(i64, 0), loop_bb);
+                list_result.add_incoming(ir.Constant(i64, 1), found_bb);
+                result = list_result;
                 if _lin_gate is not None {
                     result = self.builder.select(
                         _lin_gate, result, ir.Constant(i64, 0), name="list.in.opt"
@@ -1130,7 +1142,7 @@ impl NaIRGenPass._codegen_compare_link(
             if n > 0 {
                 i64 = ir.IntType(64);
                 i1_t = ir.IntType(1);
-                found = ir.Constant(i1_t, 0);
+                found: ir.Value = ir.Constant(i1_t, 0);
                 for i in range(n) {
                     elem = self.builder.extract_value(tin_val, i, name=f"tuple.in.{i}");
                     left_c = self._coerce_type(left, elem.type);
@@ -1879,7 +1891,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if mem_enum is not None
                 and mem_name is not None
                 and f"{mem_enum}.{mem_name}" in self.enum_values {
-                member_val = self.enum_values[f"{mem_enum}.{mem_name}"];
+                member_val: ir.Value | None = self.enum_values[
+                    f"{mem_enum}.{mem_name}"
+                ];
                 if mem_enum in self.enum_string_values {
                     return self._wrap_enum_str(
                         self._codegen_enum_value_lookup(
@@ -2094,7 +2108,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
             _fa_type_name = self._struct_name_of(nd.target);
             if _fa_type_name is not None {
-                type_name = _fa_type_name;
+                type_name: str | None = _fa_type_name;
                 _fa_idx = self.struct_field_indices.get(type_name);
                 _fa_get = self._accessor_slot_of(type_name, right_name, "property");
                 if (
@@ -2150,7 +2164,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 );
                 if target_val is not None {
                     _shape = self._infer_list_elem_type(target_val);
-                    elem_type_name = _shape if _shape is not None else _slice_list_spec;
+                    elem_type_name: str | None = _shape
+                        if _shape is not None
+                        else _slice_list_spec;
                     result = self._codegen_list_slice(target_val, s, elem_type_name);
                     if result is not None {
                         return result;

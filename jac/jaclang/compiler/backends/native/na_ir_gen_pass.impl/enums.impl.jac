@@ -28,11 +28,9 @@ impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> No
     }
 }
 
-impl NaIRGenPass._codegen_class_form_enum_member(
-    nd: uni.AtomTrailer
-) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None) {
     import from jaclang.compiler.passes.layout_pass { class_form_enum_member }
-    _member = class_form_enum_member(nd.type if isinstance(nd, uni.Expr) else None);
+    _member = class_form_enum_member(nd.type);
     if _member is None {
         return None;
     }

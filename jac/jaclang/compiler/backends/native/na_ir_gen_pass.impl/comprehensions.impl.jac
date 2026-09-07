@@ -545,7 +545,9 @@ impl NaIRGenPass._codegen_compr_walk_body(
     self.builder.cbranch(cmp, body_bb, end_bb);
     self.builder.position_at_end(body_bb);
     body_idx = self.builder.load(idx_alloca, name="compr.body.idx");
-    elem_val = self.builder.call(coll_get, [coll_val, body_idx], name="compr.elem");
+    elem_val: ir.Value = self.builder.call(
+        coll_get, [coll_val, body_idx], name="compr.elem"
+    );
 
     if elem_val.type != actual_elem_type {
         if isinstance(elem_val.type, ir.PointerType)

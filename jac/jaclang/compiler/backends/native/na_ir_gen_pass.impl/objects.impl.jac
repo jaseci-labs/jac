@@ -1684,7 +1684,7 @@ impl NaIRGenPass._emit_heap_object_alloc(
     i64 = ir.IntType(64);
     if headerless {
         _malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
-        raw_ptr = self.builder.call(_malloc_fn, [size], name="raw.ptr");
+        raw_ptr: ir.Value = self.builder.call(_malloc_fn, [size], name="raw.ptr");
         self._emit_struct_drop_fn(type_name);
         return raw_ptr;
     }

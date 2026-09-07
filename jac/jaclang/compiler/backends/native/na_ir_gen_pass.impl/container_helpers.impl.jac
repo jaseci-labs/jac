@@ -322,7 +322,9 @@ impl NaIRGenPass._emit_spread_copy(
     );
 
     self._builder = ir.IRBuilder(_body_bb);
-    _elem = self.builder.call(src_helpers["get"], [src, _idx], name="spread.elem");
+    _elem: ir.Value = self.builder.call(
+        src_helpers["get"], [src, _idx], name="spread.elem"
+    );
     _dest_elem = dest_helpers["elem_type"];
     if isinstance(_elem.type, ir.PointerType) and _dest_elem == i8p {
         _elem = self.builder.bitcast(_elem, i8p, name="spread.elem.cast");

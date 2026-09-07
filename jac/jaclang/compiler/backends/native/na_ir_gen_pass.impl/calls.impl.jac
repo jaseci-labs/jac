@@ -968,7 +968,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
             _cont_bb = _bfn.append_basic_block("kwbind.cont");
             self.builder.cbranch(_do, _bind_bb, _cont_bb);
             self.builder.position_at_end(_bind_bb);
-            _bv = self.builder.call(
+            _bv: ir.Value = self.builder.call(
                 helpers["get_ph"], [sv, _kg, _rkh], name="kwbind.get"
             );
             _bv = self._coerce_type(_bv, _rec["slot_type"]);
