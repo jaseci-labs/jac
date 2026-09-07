@@ -1943,10 +1943,15 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
+        import from jaclang.compiler.symbol_utils { imported_module_name }
+        module_name = imported_module_name(nd.target);
+        if module_name is not None {
+            target_name = module_name;
+        }
         if target_name is not None and right_name is not None {
             if (
-                target_name == "sys"
-                and self?._native_stdlib_modules
+                module_name == "sys"
+                and self._native_stdlib_modules
                 and "sys" in self._native_stdlib_modules
             ) {
                 if right_name == "argv" {
@@ -1969,8 +1974,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
 
             if (
-                target_name == "math"
-                and self?._native_stdlib_modules
+                module_name == "math"
+                and self._native_stdlib_modules
                 and "math" in self._native_stdlib_modules
             ) {
                 _mc = self._emit_math_const(right_name);
@@ -1980,8 +1985,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
 
             if (
-                target_name == "os"
-                and self?._native_stdlib_modules
+                module_name == "os"
+                and self._native_stdlib_modules
                 and "os" in self._native_stdlib_modules
             ) {
                 _oc = self._emit_os_const(right_name);
@@ -1991,10 +1996,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
 
             if (
-                self?._native_module_imports
-                and target_name in self._native_module_imports
-                and target_name not in self.local_vars
-                and target_name not in self.struct_types
+                module_name is not None
+                and module_name in self._native_module_imports
                 and right_name in self.global_vars
             ) {
                 return self.builder.load(

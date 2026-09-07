@@ -312,14 +312,12 @@ impl native_capability_violations(
                 if is_bundled_native_module(mod_name) {
                     continue;
                 }
-                _plain_bare = (
+                _plain_module = (
                     not stmt.is_absorb
                     and isinstance(item, ModulePath)
-                    and item.alias is None
                     and item.path is not None
-                    and len(item.path) == 1
                 );
-                if (stmt.is_absorb or _plain_bare)
+                if (stmt.is_absorb or _plain_module)
                     and resolve_native_module(mod_name, _base_dir)[1] is not None {
                     continue;
                 }
@@ -350,7 +348,7 @@ impl native_capability_violations(
                         f"{_supported_list}; C-library imports "
                         f"(`import from \"lib\" {{...}}`); and other Jac "
                         f"modules on the native pathway (`import mod` or "
-                        f"`import from mod {{...}}`, unaliased). Move "
+                        f"`import from mod {{...}}`). Move "
                         f"Python-dependent code to a @sv/Python context."
                     );
                 }

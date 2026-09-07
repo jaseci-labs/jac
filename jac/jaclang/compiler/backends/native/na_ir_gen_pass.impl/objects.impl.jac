@@ -2412,7 +2412,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
     }
-    target_name = self._get_name(trailer.target);
+    import from jaclang.compiler.symbol_utils { imported_module_name }
+    module_name = imported_module_name(trailer.target);
+    target_name = module_name or self._get_name(trailer.target);
     method_name = self._get_name(trailer.right);
     if method_name is None {
         return None;
@@ -2627,8 +2629,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if (
-        target_name == "math"
-        and self?._native_stdlib_modules
+        module_name == "math"
+        and self._native_stdlib_modules
         and "math" in self._native_stdlib_modules
     ) {
         _mres = self._emit_math_call(method_name, nd);
@@ -2638,8 +2640,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if (
-        target_name == "time"
-        and self?._native_stdlib_modules
+        module_name == "time"
+        and self._native_stdlib_modules
         and "time" in self._native_stdlib_modules
         and method_name in NATIVE_TIME_FUNCS
     ) {
@@ -2649,7 +2651,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if (
         isinstance(trailer.target, uni.AtomTrailer)
         and trailer.target.is_attr
-        and self._get_name(trailer.target.target) == "os"
+        and imported_module_name(trailer.target.target) == "os"
         and self._get_name(trailer.target.right) == "path"
         and self?._native_stdlib_modules
         and "os" in self._native_stdlib_modules
@@ -2664,7 +2666,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if (
         isinstance(trailer.target, uni.AtomTrailer)
         and trailer.target.is_attr
-        and self._get_name(trailer.target.target) == "os"
+        and imported_module_name(trailer.target.target) == "os"
         and self._get_name(trailer.target.right) == "environ"
         and self?._native_stdlib_modules
         and "os" in self._native_stdlib_modules
@@ -2676,8 +2678,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if (
-        target_name == "os"
-        and self?._native_stdlib_modules
+        module_name == "os"
+        and self._native_stdlib_modules
         and "os" in self._native_stdlib_modules
         and method_name in NATIVE_OS_FUNCS
     ) {
@@ -2685,8 +2687,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if (
-        target_name == "random"
-        and self?._native_stdlib_modules
+        module_name == "random"
+        and self._native_stdlib_modules
         and "random" in self._native_stdlib_modules
         and method_name in NATIVE_RANDOM_FUNCS
     ) {
@@ -2694,8 +2696,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if (
-        target_name == "struct"
-        and self?._native_stdlib_modules
+        module_name == "struct"
+        and self._native_stdlib_modules
         and "struct" in self._native_stdlib_modules
         and method_name in NATIVE_STRUCT_FUNCS
     ) {

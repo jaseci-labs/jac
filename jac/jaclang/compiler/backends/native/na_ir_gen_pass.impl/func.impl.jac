@@ -125,7 +125,7 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self.func_symtab[name] = func;
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
-        self._func_def_mod[name] = _fdm.name;
+        self._module_functions[(os.path.realpath(_fdm.source.file_path), name)] = func;
     }
 
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;

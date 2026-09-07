@@ -595,8 +595,6 @@ impl NaIRGenPass._register_imported_struct_types -> None {
                 if (
                     id(imp) not in _native_ids
                     or _item0 is None
-                    or _item0.alias is not None
-                    or len(_item0.path) != 1
                     or resolve_native_module(mod_name, entry_base)[1] is None
                 ) {
                     continue;
@@ -1354,8 +1352,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         mod_name is not None
                         and not stmt.is_absorb
                         and isinstance(item, uni.ModulePath)
-                        and item.alias is None
-                        and len(item.path) == 1
                     ) {
                         _mb = os.path.dirname(os.path.abspath(module.loc.mod_path))
                             if module?.loc

@@ -336,7 +336,7 @@ walker NaIRGenPass(Transform) {
         di_cu: object = None,
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {},
-        _func_def_mod: dict[str, str] = {},
+        _module_functions: dict[tuple[str, str], ir.Function] = {},
         _linked_fn_decls: dict[int, tuple] = {},
         _pyb_base_memo: dict[str, tuple | None] = {},
         _pyb_helper_fns: dict[str, ir.Function] = {},
@@ -543,7 +543,7 @@ walker NaIRGenPass(Transform) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list
     ) -> (ir.Value | None);
 
-    def _native_module_call_target(nd: uni.FuncCall) -> (tuple | None);
+    def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
     def _empty_ctor_args_of(nd: uni.FuncCall) -> list;
     def _container_type_args(t: any) -> list;

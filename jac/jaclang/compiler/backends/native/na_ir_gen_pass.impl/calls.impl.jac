@@ -1183,27 +1183,22 @@ impl NaIRGenPass._emit_new(nd: uni.FuncCall) -> (ir.Value | None) {
     );
 }
 
-impl NaIRGenPass._native_module_call_target(nd: uni.FuncCall) -> (tuple | None) {
+impl NaIRGenPass._native_module_call_target(
+    nd: uni.FuncCall
+) -> tuple[str, str] | None {
     trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
     }
 
-    if isinstance(trailer.target, uni.AtomTrailer) {
-        return None;
-    }
-    mod_name = self._get_name(trailer.target);
+    import from jaclang.compiler.symbol_utils { imported_module_name }
+    mod_name = imported_module_name(trailer.target);
     method_name = self._get_name(trailer.right);
     if mod_name is None or method_name is None {
         return None;
     }
 
-    if (
-        self?._native_module_imports
-        and mod_name in self._native_module_imports
-        and mod_name not in self.local_vars
-        and mod_name not in self.struct_types
-    ) {
+    if mod_name in self._native_module_imports {
         return (mod_name, method_name);
     }
     return None;
@@ -2134,7 +2129,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     if func_name in self.struct_types {
-        return self._codegen_instantiation(nd);
+        return self._codegen_instantiation(nd, type_name_override=func_name);
     }
     _alias_arch = self._arch_alias_target(nd.target);
     if _alias_arch is not None and _alias_arch in self.struct_types {
@@ -2159,11 +2154,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_decorated_call(nd, func_name);
     }
     func = self.func_symtab.get(func_name);
-    if func is not None and _mod_qual is not None {
-        _dm = self._func_def_mod.get(func_name);
-        if _dm is not None and _dm != _mod_qual {
-            func = None;
-        }
+    if _mod_qual is not None {
+        import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+        (_, source) = resolve_native_module(
+            _mod_qual, os.path.dirname(nd.loc.mod_path)
+        );
+        func = self._module_functions.get((os.path.realpath(source), func_name))
+            if source is not None else None;
     }
     if func is None {
         manifest = self.ir_in.gen.interop_manifest;

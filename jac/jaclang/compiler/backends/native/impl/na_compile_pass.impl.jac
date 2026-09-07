@@ -16,7 +16,7 @@ def _mod_bitcode(mod: ModuleRef) -> bytes {
     return bitcode;
 }
 
-impl native_compiler_fingerprint(options: any) -> str {
+impl native_compiler_fingerprint(options: CompileOptions) -> str {
     import glob as _cgl;
     import hashlib as _cfh_hash;
     import os as _cfp_os;
@@ -52,7 +52,9 @@ impl native_compiler_fingerprint(options: any) -> str {
     return _comp_h.hexdigest()[:8];
 }
 
-impl native_dep_cache_paths(real_path: str, options: any) -> tuple {
+impl native_dep_cache_paths(
+    real_path: str, options: CompileOptions
+) -> tuple[str, str] {
     import os as _dcp_os;
     import from jaclang.compiler.driver.jir { ct_dep_digest, get_native_cache_dir }
     _ir_cache_dir = str(get_native_cache_dir(real_path));
@@ -98,7 +100,7 @@ impl DepClibMeta.from_meta(meta: dict) -> DepClibMeta {
 }
 
 impl native_verdict_blast_guard(
-    prog: any, composed: int, aot_lane: bool = False
+    prog: JacProgram, composed: int, aot_lane: bool = False
 ) -> str {
     _bg_taint = 0;
     _bg_mods = 0;
@@ -176,10 +178,10 @@ impl native_prune_live_record(
 }
 
 impl native_unit_demotions(
-    prog: any, real_path: str, options: any
+    prog: JacProgram, real_path: str, options: CompileOptions
 ) -> (set[str] | None) {
     import os as _ud_os;
-    `entry: any = prog.scratch.na_dep_units.get(real_path);
+    `entry: uni.Module | str | None = prog.scratch.na_dep_units.get(real_path);
     _ud_mid_compile = False;
     if `entry is None {
         for _ud_key in (real_path, _ud_os.path.abspath(real_path)) {
@@ -210,7 +212,7 @@ impl native_unit_demotions(
         import from jaclang.compiler.driver.jir {
             native_ir_cache_suspended as _ud_suspended
         }
-        if not (getattr(options, "no_ir_cache", False) or _ud_suspended()) {
+        if not (options.no_ir_cache or _ud_suspended()) {
             try {
                 import json as _ud_json;
                 (_, _ud_meta_path) = native_dep_cache_paths(real_path, options);
@@ -235,7 +237,9 @@ impl native_unit_demotions(
         } finally {
             prog.scratch.na_verdict_resolving.discard(real_path);
         }
-        prog.scratch.na_dep_units[real_path] = `entry;
+        if `entry is not None {
+            prog.scratch.na_dep_units[real_path] = `entry;
+        }
     }
     if `entry is None or isinstance(`entry, str) or `entry.gen.llvm_ir is None {
         prog.scratch.na_verdict_misses += 1;
@@ -245,7 +249,7 @@ impl native_unit_demotions(
         if _ud_tree is None {
             return None;
         }
-        _ud_all: set = set();
+        _ud_all: set[str] = set();
         import jaclang.compiler.frontend.unitree as _ud_uni;
         import from jaclang.compiler.frontend.module_facts { ModuleFacts as _UdWalk }
         for _ud_stmt in _UdWalk.iter_context_stmts(_ud_tree) {
@@ -269,7 +273,7 @@ impl native_unit_demotions(
 }
 
 impl native_live_call_conflicts(
-    prog: any, pending: dict, options: any
+    prog: JacProgram, pending: dict, options: CompileOptions
 ) -> dict[str, set[str]] {
     conflicts: dict[str, set[str]] = {};
     for (_cc_callee, _cc_names) in (pending or {}).items() {
@@ -400,10 +404,10 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             module.gen._interop_callbacks = callbacks_list;
         }
 
-        cross_module_imports = manifest.native_cross_module_imports;
-        if cross_module_imports {
+        dependency_sources = manifest.native_dependency_sources;
+        if dependency_sources {
             self._compile_and_link_native_imports(
-                module, mod, cross_module_imports, target_machine
+                module, mod, dependency_sources, target_machine
             );
 
             module.gen.llvm_ir = mod;
@@ -621,7 +625,7 @@ impl NativeCompilePass._jit_load_clib(lib_path: str) -> bool {
 impl NativeCompilePass._compile_and_link_native_imports(
     module: uni.Module,
     main_mod: ModuleRef,
-    imports: list,
+    sources: list[str],
     target_machine: TargetMachine
 ) -> None {
     import os;
@@ -691,26 +695,22 @@ impl NativeCompilePass._compile_and_link_native_imports(
         symbol_owned[_mgv_name] = _mgv_name not in _main_imported_names;
     }
 
-    class _DepBinding {
-        def init(self: _DepBinding, sm: str) {
-            self.source_module = sm;
-        }
-    }
-    work_queue: list = [];
     base_dir = os.path.dirname(module.loc.mod_path) if module.loc else ".";
-    for binding in imports {
-        work_queue.append((binding, base_dir));
-    }
+    work_queue: list[tuple[str, str]] = [(source, base_dir) for source in sources];
 
     import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
     _bundled_stdlib_root = native_stdlib_root();
     queue_idx = 0;
     _lk_composed = 0;
     while queue_idx < len(work_queue) {
-        (binding, cur_base_dir) = work_queue[queue_idx];
+        (source_mod_path, cur_base_dir) = work_queue[queue_idx];
         queue_idx += 1;
-        source_mod_path = binding.source_module;
-        if source_mod_path is None {
+        if source_mod_path in ("osp_kernel", "fmt_kernel", "region_kernel") {
+            manifest = module.gen.interop_manifest;
+            if source_mod_path not in manifest.native_transitive_sources {
+                manifest.native_transitive_sources.append(source_mod_path);
+                manifest.native_transitive_keys.append("");
+            }
             continue;
         }
         _bg_aot = bool(self.prog.options and self.prog.options.aot_mode);
@@ -849,7 +849,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             na_coverage_replay(real_path, meta.coverage);
             dep_base = os.path.dirname(full_path);
             for dep_mod_path in meta.transitive_deps {
-                work_queue.append((_DepBinding(dep_mod_path), dep_base));
+                work_queue.append((dep_mod_path, dep_base));
             }
         } else {
             imported_ir: (uni.Module | None) = None;
@@ -987,12 +987,11 @@ impl NativeCompilePass._compile_and_link_native_imports(
             dep_manifest = imported_ir.gen.interop_manifest;
             if dep_manifest is not None {
                 dep_base = os.path.dirname(full_path);
+                for source in dep_manifest.native_dependency_sources {
+                    meta.transitive_deps.append(source);
+                    work_queue.append((source, dep_base));
+                }
                 for dep_binding in dep_manifest.native_cross_module_imports {
-                    if dep_binding.source_module is not None {
-                        meta.transitive_deps.append(dep_binding.source_module);
-                        work_queue.append((dep_binding, dep_base));
-                    }
-
                     if dep_binding.name {
                         meta.imported_symbols.append(dep_binding.name);
                     }
