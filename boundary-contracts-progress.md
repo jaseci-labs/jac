@@ -11,8 +11,8 @@ Jac will retain boundary contracts across compilation and deployment, use them f
 | Pending | Precise CLI and authentication boundary types | Consumers use declared records instead of dynamic field reconstruction. |
 | Pending | External API contracts and response validation | Declared external shapes drive clients and validate responses. |
 | Pending | Conservative effect analysis | Separate read/write dependencies and explicit unknown effects compose through calls. |
-| Pending | Wildcard dependency matching | Reader and writer wildcards conservatively overlap. |
-| Pending | Concurrent cache operations | Writes prevent older reads from being cached or reused as fresh results. |
+| Implemented; browser validation pending | Wildcard dependency matching | Reader and writer wildcards conservatively overlap. |
+| Implemented; browser validation pending | Concurrent cache operations | Writes prevent older reads from being cached or reused as fresh results. |
 | Pending | Qualified endpoint identities | App/module/declaration identities survive generation, routing, and cache metadata. |
 | Pending | Reusable WebGL graphics adapter | Browser graphics implementation lives behind the shared host contract. |
 | Pending | Application migration and removal of scaffolding | jaclang_org consumes the shared mechanisms; redundant paths are removed. |
@@ -25,3 +25,5 @@ Run jaclang_org using the development compiler and exercise it with `jac browse`
 ## Progress
 
 - Created implementation branch and recorded full scope before implementation.
+
+- Cache invalidation now advances endpoint generations, fences writes before and after completion (including ambiguous failures), separates pending reads by generation, and clears pending authentication-context reads. Wildcard overlap is symmetric.

@@ -95,6 +95,7 @@ async def:pub __cachedEndpointCall(
     endpoint_key: str, args_key: str, fetch_fn: any
 ) -> any;
 
+def:pub __invalidateEffects(writes: list[str]) -> None;
 def:pub __invalidateEndpoint(endpoint_key: str) -> None;
 def:pub __overlaps(list1: list[str], list2: list[str]) -> bool;
 

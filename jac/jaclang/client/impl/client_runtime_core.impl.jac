@@ -64,6 +64,9 @@ impl __getCacheState -> dict {
             "cache": {},
             "order": [],
             "pending": {},
+            "generations": {},
+            "epoch": 0,
+            "activeWrites": 0,
             "config": {"maxEntries": 500, "defaultTtlMs": 60000}
         };
         globalThis.__jacCacheState__ = state;
@@ -122,6 +125,9 @@ impl __evictOldest -> None {
 }
 
 impl __overlaps(list1: list[str], list2: list[str]) -> bool {
+    if "*" in list1 or "*" in list2 {
+        return bool(list1) and bool(list2);
+    }
     for item in list1 {
         if item in list2 {
             return True;
@@ -132,9 +138,10 @@ impl __overlaps(list1: list[str], list2: list[str]) -> bool {
 
 impl __invalidateEndpoint(endpoint_key: str) -> None {
     state = __getCacheState();
+    state["generations"][endpoint_key] = (state["generations"][endpoint_key] or 0) + 1;
     keys_to_delete = [];
     for key in Object.keys(state["cache"]) {
-        if key.startswith(endpoint_key) {
+        if key.startswith(endpoint_key + ":") {
             keys_to_delete.append(key);
         }
     }
@@ -277,43 +284,57 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
+    generation = state["generations"][endpoint_key] or 0;
+    epoch = state["epoch"];
 
-    if info and not info["is_writer"] {
+    if info and not info["is_writer"] and state["activeWrites"] == 0 {
         cached = __cacheGet(args_key);
         if cached and __isFresh(cached) {
             return cached["data"];
         }
-
-        if state["pending"][args_key] {
-            return await state["pending"][args_key];
+        pending = state["pending"][args_key];
+        if pending and pending["generation"] == generation and pending["epoch"] == epoch {
+            return await pending["promise"];
         }
         fetch_promise = fetch_fn();
-        state["pending"][args_key] = fetch_promise;
+        request = {"promise": fetch_promise, "generation": generation, "epoch": epoch};
+        state["pending"][args_key] = request;
         try {
             data = await fetch_promise;
-            __cacheSet(args_key, data, state["config"]["defaultTtlMs"]);
+            if state["epoch"] == epoch
+                and (state["generations"][endpoint_key] or 0) == generation
+                and state["activeWrites"] == 0 {
+                __cacheSet(args_key, data, state["config"]["defaultTtlMs"]);
+            }
             return data;
         } finally {
-            Reflect.deleteProperty(state["pending"], args_key);
-        }
-    }
-
-    if info and info["is_writer"] {
-        data = await fetch_fn();
-        writer_touches = info["touches"];
-        for endpoint_name in Object.keys(effects) {
-            reader_info = effects[endpoint_name];
-            if reader_info and not reader_info["is_writer"] {
-                if writer_touches.includes("*")
-                    or __overlaps(reader_info["touches"], writer_touches) {
-                    __invalidateEndpoint(endpoint_name);
-                }
+            if state["pending"][args_key] == request {
+                Reflect.deleteProperty(state["pending"], args_key);
             }
         }
-        return data;
     }
 
+    if not info or info["is_writer"] {
+        state["activeWrites"] += 1;
+        __invalidateEffects(info["touches"] if info else ["*"]);
+        try {
+            return await fetch_fn();
+        } finally {
+            __invalidateEffects(info["touches"] if info else ["*"]);
+            state["activeWrites"] -= 1;
+        }
+    }
     return await fetch_fn();
+}
+
+impl __invalidateEffects(writes: list[str]) -> None {
+    effects = __getEndpointEffects();
+    for endpoint_name in Object.keys(effects) {
+        reader = effects[endpoint_name];
+        if reader and not reader["is_writer"] and __overlaps(reader["touches"], writes) {
+            __invalidateEndpoint(endpoint_name);
+        }
+    }
 }
 
 impl __jacSpawn(
@@ -485,6 +506,8 @@ impl jacIsLoggedIn -> bool {
 
 impl __jacClearCache -> None {
     state = __getCacheState();
+    state["epoch"] += 1;
+    state["pending"] = {};
     for key in Object.keys(state["cache"]) {
         Reflect.deleteProperty(state["cache"], key);
     }
