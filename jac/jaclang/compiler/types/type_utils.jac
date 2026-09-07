@@ -2,13 +2,10 @@ import from enum { Enum }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import from jaclang.compiler.frontend.unitree {
     Ability,
-    ArchHas,
     Archetype,
-    AstDocNode,
     AtomTrailer,
     ElseIf,
     ElseStmt,
-    Enum as UniEnum,
     Expr,
     HasVar,
     IfStmt,
@@ -33,7 +30,6 @@ import from .types {
     AnyType,
     ClassType,
     FunctionType,
-    ModuleType,
     ParamKind,
     Parameter,
     TypeBase,
@@ -85,49 +81,6 @@ obj ParamAssignmentTracker {
     def match_positional_argument(arg: Expr) -> (Parameter | None);
     def get_unmatched_required_params -> list[Parameter];
 }
-
-enum CompletionItemKind {
-    Text = 1,
-    Method = 2,
-    Function = 3,
-    Constructor = 4,
-    Field = 5,
-    Variable = 6,
-    Class = 7,
-    Interface = 8,
-    Module = 9,
-    Property = 10,
-    Unit = 11,
-    Value = 12,
-    Enum = 13,
-    Keyword = 14,
-    Snippet = 15,
-    Color = 16,
-    File = 17,
-    Reference = 18,
-    Folder = 19,
-    EnumMember = 20,
-    Constant = 21,
-    Struct = 22,
-    Event = 23,
-    Operator = 24,
-    TypeParameter = 25,
-}
-
-obj CompletionItem {
-    has label: str,
-        kind: CompletionItemKind,
-        detail: (str | None) = None,
-        documentation: (str | None) = None;
-}
-
-def doc_of_sym(sym: Symbol) -> (str | None);
-
-def completion_item_from_sym(name: str, sym: Symbol) -> CompletionItem;
-
-def completion_kind_from_sym(sym: Symbol) -> CompletionItemKind;
-
-def get_completion_items(ty: (TypeBase | UniScopeNode)) -> list[CompletionItem];
 
 def lookup_symtab(
     symtable: UniScopeNode, name: str, builtins_to_inject: Module | None

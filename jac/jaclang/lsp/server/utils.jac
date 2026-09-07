@@ -1,4 +1,6 @@
 import builtins;
+import from jaclang.compiler.types.types { TypeBase, ClassType, ModuleType }
+import from jaclang.compiler.types.type_utils { compute_mro_linearization }
 import from typing { Optional }
 
 import jaclang.compiler.frontend.unitree as uni;
@@ -33,3 +35,8 @@ def kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind;
 def add_unique_text_edit(
     changes: dict[(str, list[lspt.TextEdit])], key: str, new_edit: lspt.TextEdit
 ) -> None;
+
+def doc_of_sym(sym: Symbol) -> str | None;
+def completion_item_from_sym(name: str, sym: Symbol) -> lspt.CompletionItem;
+def completion_kind_from_sym(sym: Symbol) -> lspt.CompletionItemKind;
+def get_completion_items(ty: TypeBase | UniScopeNode) -> list[lspt.CompletionItem];
