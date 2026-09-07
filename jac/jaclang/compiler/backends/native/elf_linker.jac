@@ -91,6 +91,7 @@ obj ElfLinker {
     ) -> bool;
 
     def parse_object -> bool;
+    def _undefined_bindings -> dict[str, int];
     def build_executable -> bytes;
     def build_static_executable -> bytes;
     def build_shared_object -> bytes;

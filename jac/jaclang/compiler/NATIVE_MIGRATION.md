@@ -73,6 +73,13 @@ type operations. Five metadata tests, a source-prelude integration probe,
 and all 81 bootstrap seed modules passed. Python stub loading and quoted
 type-expression parsing remain separate migration work.
 
+The ELF linker now preserves optional weak imports and requires strong imports
+regardless of object merge order. It emits dynamic imports only for referenced
+symbols and eagerly binds images with weak function imports so address guards
+observe null for absent hooks. Direct executable/shared-library probes and a
+round trip using the bundled PBS zstd archive pass. This addresses the packaged
+binary's missing zstd tracing-hook failure; full CI still needs to pass.
+
 ## Remaining work
 
 | Area | Required work in Jac |
