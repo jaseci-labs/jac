@@ -2197,8 +2197,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     func: ir.Function | None = self.func_symtab.get(func_name);
     declaration = self._callee_ability_of(nd);
     if declaration is not None and declaration.name_ref is not None {
-        declaring_module = declaration.find_parent_of_type(uni.Module);
-        if declaring_module is not None {
+        declaring_module = declaration.parent_scope;
+        if isinstance(declaring_module, uni.Module) {
             declared_function = self._module_functions.get(
                 (
                     os.path.realpath(declaring_module.source.file_path),

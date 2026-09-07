@@ -2831,6 +2831,11 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
 
             self._clear_rc_ctx();
             if result is not None {
+                if method_name == "pop"
+                    and isinstance(_elem_struct, ir.PointerType)
+                    and isinstance(result.type, ir.PointerType) {
+                    result = self._coerce_type(result, _elem_struct);
+                }
                 if method_name == "insert" and not self._nogc_headerless() {
                     self._release_owned_args(_orig_args, op="list_method_arg");
                 }
