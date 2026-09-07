@@ -85,7 +85,7 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
         return False;
     }
     stem = native_wasm_stem(str(module_path));
-    dist = self.jac_client_compiler._get_client_dir() / 'dist';
+    dist = self.vite_bundler.output_dir;
     dist.mkdir(parents=True, exist_ok=True);
     out_path = dist / f"{stem}.wasm";
     out_path.write_bytes(wasm);
