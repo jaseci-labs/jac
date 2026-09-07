@@ -1,50 +1,97 @@
 #!/usr/bin/env bash
-# Real-cluster e2e for jac-scale KEDA HTTP Add-on activation (#7403/#7421).
+# Real-cluster e2e for jac-scale KEDA HTTP Add-on activation (#7403/#7421),
+# deployed through the jac.toml [scale.kubernetes.http_activation] wiring
+# (#7475) instead of calling KEDAAutoscaler.apply_http_activation directly.
 #
-# Starts from a zero-replica Deployment, applies HTTP activation twice (create
-# then patch, to exercise both branches of apply_http_activation against a
-# real API server), sends an HTTP request through the KEDA HTTP Add-on
-# interceptor, waits for the target to become Ready, then confirms it scales
-# back to zero after cooldown. Requires KEDA core + the HTTP Add-on already
-# installed on the target cluster (this script does not install them -- see
-# README.md in the fixture dir / the CI step that calls this script for the
-# `helm install` invocations).
+# Deploys the fixture app via `jac scale deploy`, confirms the resulting
+# InterceptorRoute + ScaledObject reconcile to Ready, sends an HTTP request
+# through the KEDA HTTP Add-on interceptor (should block on cold start, then
+# respond), waits for the target to scale 0 -> 1 and become Available, then
+# confirms it scales back to zero after cooldown. Requires KEDA core + the
+# HTTP Add-on already installed on the target cluster (this script does not
+# install them -- see README.md in the fixture dir for the `helm install`
+# invocations).
 
 set -euo pipefail
 
+# shellcheck source=../../scripts/e2e_lib.sh
+source "$(cd "$(dirname "$0")/../../scripts" && pwd)/e2e_lib.sh"
+e2e_timing_init
+
 FIXTURE_DIR="${1:-$(cd "$(dirname "$0")/../fixtures/keda_http_activation_e2e" && pwd)}"
-if [ ! -f "${FIXTURE_DIR}/fixture.yaml" ]; then
-    echo "FAIL: ${FIXTURE_DIR}/fixture.yaml not found" >&2
+if [ ! -f "${FIXTURE_DIR}/jac.toml" ]; then
+    echo "FAIL: ${FIXTURE_DIR}/jac.toml not found" >&2
     echo "Usage: $0 [FIXTURE_DIR]" >&2
     exit 1
 fi
 
-# This script lives at jac/jaclang/scale/tests/deploy/, so the repo root is
-# five levels up.
-REPO_ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
-DRIVER="${REPO_ROOT}/jac/jaclang/scale/tests/deploy/keda_http_activation_verify.jac"
-if [ ! -f "${DRIVER}" ]; then
-    echo "FAIL: driver script not found at ${DRIVER}" >&2
-    exit 1
+# The manifest builder refuses to guess a RWX-capable StorageClass for the
+# bundle PVC (see manifest_builder.jac): most cloud defaults are
+# ReadWriteOnce-only, so it now requires bundle_storage_class set explicitly
+# rather than trusting the cluster default. Local/kind runs edit jac.toml by
+# hand per the fixture README; a CI lane on a different cluster type sets
+# BUNDLE_STORAGE_CLASS instead, applied here so the file itself stays
+# cluster-agnostic.
+if [ -n "${BUNDLE_STORAGE_CLASS:-}" ]; then
+    python3 - "${FIXTURE_DIR}/jac.toml" "${BUNDLE_STORAGE_CLASS}" <<'PYEOF'
+import sys
+
+path, storage_class = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    lines = f.readlines()
+out, in_k8s, done = [], False, False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("["):
+        in_k8s = stripped == "[scale.kubernetes]"
+    if in_k8s and stripped.startswith("bundle_storage_class"):
+        continue
+    out.append(line)
+    if in_k8s and not done and stripped == "[scale.kubernetes]":
+        out.append(f'bundle_storage_class = "{storage_class}"\n')
+        done = True
+with open(path, "w") as f:
+    f.writelines(out)
+PYEOF
 fi
 
-export KEDA_HTTP_E2E_NAMESPACE="${KEDA_HTTP_E2E_NAMESPACE:-jac-http-e2e}"
-export KEDA_HTTP_E2E_DEPLOYMENT="${KEDA_HTTP_E2E_DEPLOYMENT:-echo}"
-export KEDA_HTTP_E2E_SERVICE="${KEDA_HTTP_E2E_SERVICE:-echo-svc}"
-export KEDA_HTTP_E2E_ROUTE_HOST="${KEDA_HTTP_E2E_ROUTE_HOST:-echo.jac-http-e2e.local}"
-export KEDA_HTTP_E2E_POLLING_INTERVAL="${KEDA_HTTP_E2E_POLLING_INTERVAL:-10}"
-export KEDA_HTTP_E2E_COOLDOWN_PERIOD="${KEDA_HTTP_E2E_COOLDOWN_PERIOD:-60}"
-NAMESPACE="${KEDA_HTTP_E2E_NAMESPACE}"
-DEPLOYMENT="${KEDA_HTTP_E2E_DEPLOYMENT}"
+CFG=$(cd "${FIXTURE_DIR}" && jac -c "
+import tomllib
+with open('jac.toml', 'rb') as f:
+    cfg = tomllib.load(f)
+proj = cfg['project']
+k8s = cfg['scale']['kubernetes']
+act = k8s['http_activation']
+print(proj['name'])
+print(k8s.get('namespace', 'default'))
+print(act['rules'][0]['hosts'][0])
+print(act.get('polling_interval', 30))
+print(act.get('cooldown_period', 300))
+")
+APP_NAME=$(echo "${CFG}" | sed -n '1p')
+# The unified deploy path names every workload "<app>-deployment" (even a solo
+# app behind its gateway), and the KEDA InterceptorRoute/ScaledObject are named
+# after that scale target, so they are "<app>-deployment-http-{route,scaledobject}".
+SCALE_TARGET="${APP_NAME}-deployment"
+NAMESPACE=$(echo "${CFG}" | sed -n '2p')
+ROUTE_HOST=$(echo "${CFG}" | sed -n '3p')
+POLLING_INTERVAL=$(echo "${CFG}" | sed -n '4p')
+COOLDOWN_PERIOD=$(echo "${CFG}" | sed -n '5p')
+
 # Bare seconds, like every other *_TIMEOUT var here -- "s" is appended at the
 # call site. kubectl's --timeout requires a unit suffix (e.g. "120s"); baking
 # it into the default here would make DELETE_TIMEOUT the only timeout var
 # that breaks if overridden with a bare integer like the rest.
 DELETE_TIMEOUT="${DELETE_TIMEOUT:-120}"
-READY_TIMEOUT="${READY_TIMEOUT:-90}"
-# Bound the scale-down wait comfortably above cooldown + one poll tick so a
+# A real jac-scale pod's cold start runs jac-pvc-bootstrap + jac-bootstrap
+# init containers (installing deps, first-run compile) before it's Ready -
+# tens of seconds, not the near-instant start of a bare container image. 90s
+# (right for the old fixture.yaml's http-echo image) was too tight for that;
+# 180s gives real headroom while still failing fast on an actual hang.
+READY_TIMEOUT="${READY_TIMEOUT:-180}"
+# Bound the scale-down wait comfortably above cooldown + three poll ticks so a
 # real hang fails loudly instead of the script exiting early on a fluke.
-SCALE_DOWN_TIMEOUT="${SCALE_DOWN_TIMEOUT:-$(( KEDA_HTTP_E2E_COOLDOWN_PERIOD + KEDA_HTTP_E2E_POLLING_INTERVAL * 3 + 30 ))}"
+SCALE_DOWN_TIMEOUT="${SCALE_DOWN_TIMEOUT:-$(( COOLDOWN_PERIOD + POLLING_INTERVAL * 3 + 30 ))}"
 
 echo "=== preflight: KEDA HTTP Add-on CRDs ==="
 if ! kubectl get crd interceptorroutes.http.keda.sh >/dev/null 2>&1; then
@@ -62,9 +109,9 @@ dump_state() {
     kubectl get pods -n "${NAMESPACE}" -o wide || true
     kubectl describe pods -n "${NAMESPACE}" || true
     kubectl get events -n "${NAMESPACE}" --sort-by=.lastTimestamp || true
-    kubectl logs -n "${NAMESPACE}" -l "app=${DEPLOYMENT}" --tail=200 --all-containers=true || true
-    kubectl describe interceptorroute "${DEPLOYMENT}-http-route" -n "${NAMESPACE}" || true
-    kubectl describe scaledobject "${DEPLOYMENT}-http-scaledobject" -n "${NAMESPACE}" || true
+    kubectl logs -n "${NAMESPACE}" -l "app=${APP_NAME}" --tail=200 --all-containers=true || true
+    kubectl describe interceptorroute "${SCALE_TARGET}-http-route" -n "${NAMESPACE}" || true
+    kubectl describe scaledobject "${SCALE_TARGET}-http-scaledobject" -n "${NAMESPACE}" || true
     echo "--- HTTP Add-on component logs (namespace=keda) ---"
     kubectl logs -n keda -l app=keda-add-ons-http-interceptor --tail=100 || true
     kubectl logs -n keda -l app=keda-add-ons-http-external-scaler --tail=100 || true
@@ -88,13 +135,11 @@ cleanup() {
         echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
         return
     fi
-    (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" destroy) || true
+    # Deleting the namespace sweeps the Deployment/Service and the namespaced
+    # InterceptorRoute/ScaledObject together; no separate destroy call needed.
     kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout="${DELETE_TIMEOUT}s" || true
 }
 trap 'cleanup "$?"' EXIT
-
-_T0=$(date +%s)
-_t() { echo "[TIMING +$(( $(date +%s) - _T0 ))s] $1"; }
 
 # Polls a resource's status.conditions[type=Ready].status, per the HTTP
 # Add-on's own "Autoscale an App" verify step (kubectl get <kind> <name> and
@@ -120,39 +165,29 @@ wait_for_ready() {
     return 1
 }
 
-_t "fixture apply start"
-echo "=== apply zero-replica Deployment + Service fixture ==="
-kubectl apply -f "${FIXTURE_DIR}/fixture.yaml"
-REPLICAS=$(kubectl get deployment "${DEPLOYMENT}" -n "${NAMESPACE}" -o jsonpath='{.spec.replicas}')
-if [ "${REPLICAS}" != "0" ]; then
-    echo "FAIL: fixture Deployment '${DEPLOYMENT}' did not start at 0 replicas (got ${REPLICAS})" >&2
-    exit 1
-fi
-echo "  ${DEPLOYMENT} starts at 0 replicas"
-
-_t "apply_http_activation (create path)"
-echo "=== apply_http_activation: reconcile InterceptorRoute + ScaledObject (create) ==="
-if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" apply); then
-    echo "FAIL: first apply_http_activation call (create path) errored" >&2
+_t "deploy start"
+echo "=== deploy via jac scale deploy (jac.toml [scale.kubernetes.http_activation] wiring) ==="
+if ! (cd "${FIXTURE_DIR}" && jac scale deploy app.jac); then
+    echo "FAIL: deploy failed" >&2
     dump_state
     exit 1
 fi
 
-_t "apply_http_activation (patch path)"
-echo "=== re-apply: both resources already exist, so this exercises the get-then-patch branch against the real API server (required behavior: idempotent create-or-patch) ==="
-if ! (cd "${REPO_ROOT}/jac" && jac run "${DRIVER}" apply); then
-    echo "FAIL: second apply_http_activation call (patch path) errored" >&2
+_t "redeploy (idempotency check)"
+echo "=== redeploy: confirms InterceptorRoute + ScaledObject reconcile is idempotent (get-then-patch, not create-or-duplicate) ==="
+if ! (cd "${FIXTURE_DIR}" && jac scale deploy app.jac); then
+    echo "FAIL: redeploy failed" >&2
     dump_state
     exit 1
 fi
 
 _t "wait for InterceptorRoute + ScaledObject Ready"
 echo "=== confirm InterceptorRoute and ScaledObject reconciled to Ready ==="
-if ! wait_for_ready interceptorroute "${DEPLOYMENT}-http-route"; then
+if ! wait_for_ready interceptorroute "${SCALE_TARGET}-http-route"; then
     dump_state
     exit 1
 fi
-if ! wait_for_ready scaledobject "${DEPLOYMENT}-http-scaledobject"; then
+if ! wait_for_ready scaledobject "${SCALE_TARGET}-http-scaledobject"; then
     dump_state
     exit 1
 fi
@@ -177,8 +212,9 @@ echo "=== send HTTP request through the interceptor (should block on cold start,
 RESP_BODY_FILE="$(mktemp)"
 RESP_CODE=$(curl -s -o "${RESP_BODY_FILE}" -w "%{http_code}" \
     --max-time "${READY_TIMEOUT}" \
-    -H "Host: ${KEDA_HTTP_E2E_ROUTE_HOST}" \
-    "http://localhost:${INTERCEPTOR_LOCAL_PORT}/" || echo "000")
+    -X POST \
+    -H "Host: ${ROUTE_HOST}" \
+    "http://localhost:${INTERCEPTOR_LOCAL_PORT}/walker/echo" || echo "000")
 if [ "${RESP_CODE}" != "200" ]; then
     echo "FAIL: interceptor request returned '${RESP_CODE}' (expected 200) within ${READY_TIMEOUT}s" >&2
     dump_state
@@ -190,27 +226,27 @@ rm -f "${RESP_BODY_FILE}"
 
 _t "wait for readiness"
 echo "=== confirm the target scaled 0 -> 1 and became Ready ==="
-if ! kubectl wait --for=condition=Available "deployment/${DEPLOYMENT}" \
+if ! kubectl wait --for=condition=Available "deployment/${SCALE_TARGET}" \
         -n "${NAMESPACE}" --timeout="${READY_TIMEOUT}s"; then
-    echo "FAIL: ${DEPLOYMENT} did not become Available within ${READY_TIMEOUT}s" >&2
+    echo "FAIL: ${APP_NAME} did not become Available within ${READY_TIMEOUT}s" >&2
     dump_state
     exit 1
 fi
-READY_REPLICAS=$(kubectl get deployment "${DEPLOYMENT}" -n "${NAMESPACE}" \
+READY_REPLICAS=$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" \
     -o jsonpath='{.status.readyReplicas}')
-echo "  ${DEPLOYMENT} readyReplicas=${READY_REPLICAS}"
+echo "  ${APP_NAME} readyReplicas=${READY_REPLICAS}"
 
 kill "${PORT_FORWARD_PID}" 2>/dev/null || true
 PORT_FORWARD_PID=""
 
 _t "wait for scale-down after cooldown"
-echo "=== stop traffic; wait up to ${SCALE_DOWN_TIMEOUT}s for scale-down after ${KEDA_HTTP_E2E_COOLDOWN_PERIOD}s cooldown ==="
+echo "=== stop traffic; wait up to ${SCALE_DOWN_TIMEOUT}s for scale-down after ${COOLDOWN_PERIOD}s cooldown ==="
 SCALED_DOWN=0
 ELAPSED=0
 while [ "${ELAPSED}" -lt "${SCALE_DOWN_TIMEOUT}" ]; do
-    sleep "${KEDA_HTTP_E2E_POLLING_INTERVAL}"
-    ELAPSED=$(( ELAPSED + KEDA_HTTP_E2E_POLLING_INTERVAL ))
-    CURRENT_REPLICAS=$(kubectl get deployment "${DEPLOYMENT}" -n "${NAMESPACE}" \
+    sleep "${POLLING_INTERVAL}"
+    ELAPSED=$(( ELAPSED + POLLING_INTERVAL ))
+    CURRENT_REPLICAS=$(kubectl get deployment "${SCALE_TARGET}" -n "${NAMESPACE}" \
         -o jsonpath='{.spec.replicas}')
     echo "  +${ELAPSED}s replicas=${CURRENT_REPLICAS}"
     if [ "${CURRENT_REPLICAS}" = "0" ]; then
@@ -219,7 +255,7 @@ while [ "${ELAPSED}" -lt "${SCALE_DOWN_TIMEOUT}" ]; do
     fi
 done
 if [ "${SCALED_DOWN}" != "1" ]; then
-    echo "FAIL: ${DEPLOYMENT} did not scale back to 0 within ${SCALE_DOWN_TIMEOUT}s of cooldown" >&2
+    echo "FAIL: ${APP_NAME} did not scale back to 0 within ${SCALE_DOWN_TIMEOUT}s of cooldown" >&2
     dump_state
     exit 1
 fi

@@ -11,6 +11,10 @@ import from jaclang.scale.deploy.autoscale.http_activation {
     HTTPActivationSpec,
     HTTPRoutingRule
 }
+import from jaclang.scale.deploy.autoscale.keda_capabilities {
+    KEDACapabilities,
+    SUPPORTED_HTTP_INTERCEPTOR_API_VERSIONS
+}
 import from jaclang.scale.observability.logger { Logger }
 import hashlib;
 
@@ -20,10 +24,15 @@ obj KEDAAutoscaler(Autoscaler) {
         _apps_api: (any | None) = None,
         _core_api: (any | None) = None,
         http_scaler_address: str = "keda-add-ons-http-external-scaler.keda:9090",
-        logger: (Logger | None) = None;
+        interceptor_service_address: str = "keda-add-ons-http-interceptor-proxy.keda:8080",
+        logger: (Logger | None) = None,
+        _capabilities_cache: dict[str, any] = {};
 
     static has _preflight_cache: dict[str, any] = {},
-        _http_preflight_cache: dict[str, any] = {};
+        _APPLY_ORDER: list[tuple[str, str]] = [
+            ("TriggerAuthentication", "triggerauthentications"),
+            ("ScaledObject", "scaledobjects")
+        ];
 
     def _get_cluster_key -> str;
     def _trigger_key(trigger: Trigger, trigger_index: int) -> str;
@@ -33,15 +42,34 @@ obj KEDAAutoscaler(Autoscaler) {
         trigger: Trigger, app_name: str, trigger_index: int
     ) -> dict[str, any];
 
-    def _apply_trigger_auth(
-        api: any, trigger: Trigger, namespace: str, app_name: str, trigger_index: int
+    static def _owner_label_value(name: str) -> str;
+    def _scaled_object_name(spec: AutoscalerSpec, app_name: str) -> str;
+    def _build_trigger_auth_manifest(
+        trigger: Trigger, namespace: str, app_name: str, trigger_index: int, owner: str
+    ) -> (dict[str, any] | None);
+
+    def _apply_custom_object(
+        api: any,
+        group: str,
+        version: str,
+        namespace: str,
+        plural: str,
+        name: str,
+        body: dict[str, any]
     ) -> None;
 
-    def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
+    def _prune_orphan_trigger_auths(
+        api: any, namespace: str, owner: str, desired_auth_names: set[str]
+    ) -> None;
+
+    def _build_manifests(spec: AutoscalerSpec) -> list[dict[str, any]];
     def preflight -> list[str];
     def apply(spec: AutoscalerSpec) -> bool;
-    def destroy(autoscaler_name: str, namespace: str) -> None;
-    def destroy_collection(namespace: str, label_selector: str) -> None;
+    def destroy(app_name: str, namespace: str) -> None;
+    def destroy_collection(
+        namespace: str, label_selector: str, best_effort: bool = False
+    ) -> None;
+
     def resource_name_for(target: str) -> str;
     def _validate_http_activation_spec(spec: HTTPActivationSpec) -> None;
     def _build_routing_rules(rules: list[HTTPRoutingRule]) -> list[dict[str, any]];
@@ -51,4 +79,9 @@ obj KEDAAutoscaler(Autoscaler) {
     def http_scaled_object_name_for(target: str) -> str;
     def apply_http_activation(spec: HTTPActivationSpec) -> bool;
     def destroy_http_activation(target: str, namespace: str) -> None;
+    def discover_capabilities(refresh: bool = False) -> KEDACapabilities;
+    def invalidate_capabilities -> None;
+    def _capabilities_cache_key -> str;
+    def _check_service_address(core_api: any, address: str) -> (str | None);
+    def format_capabilities(caps: KEDACapabilities) -> str;
 }

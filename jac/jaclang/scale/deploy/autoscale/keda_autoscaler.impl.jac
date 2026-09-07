@@ -59,6 +59,13 @@ impl KEDAAutoscaler.preflight{
             KEDAAutoscaler._preflight_cache[cluster_key] = False;
             return install_warning;
         }
+        if e.status == 403 {
+            return [
+                "Permission denied (403) discovering KEDA core "
+                "(keda.sh/v1alpha1 ScaledObject). Grant RBAC list/get on "
+                "this resource to the jac-scale service account."
+            ];
+        }
         raise;
     }
 }
@@ -98,10 +105,22 @@ impl KEDAAutoscaler._build_trigger{
     return keda_trigger;
 }
 
+impl KEDAAutoscaler._owner_label_value{
+    if len(name) <= 63 {
+        return name;
+    }
+    return f"so-{hashlib.sha256(name.encode()).hexdigest()[:16]}";
+}
+
+impl KEDAAutoscaler._scaled_object_name{
+    return spec.autoscaler_name or self.resource_name_for(app_name);
+}
+
 impl KEDAAutoscaler._build_manifests{
-    scaled_obj_name = spec.autoscaler_name or f"{spec.scale_target_name}-scaledobject";
-    keda_triggers: list[dict[str, any]] = [];
     app_name = spec.app_name or spec.scale_target_name;
+    self._validate_triggers(spec, app_name);
+    scaled_obj_name = self._scaled_object_name(spec, app_name);
+    keda_triggers: list[dict[str, any]] = [];
     for (i, trigger) in enumerate(spec.triggers) {
         keda_triggers.append(self._build_trigger(trigger, app_name, i));
     }
@@ -140,30 +159,36 @@ impl KEDAAutoscaler._build_manifests{
     if spec.initial_cooldown_period > 0 {
         scaled_obj_spec["initialCooldownPeriod"] = spec.initial_cooldown_period;
     }
-    return {
-        "name": scaled_obj_name,
-        "body": {
-            "apiVersion": "keda.sh/v1alpha1",
-            "kind": "ScaledObject",
-            "metadata": {
-                "name": scaled_obj_name,
-                "namespace": spec.namespace,
-                "labels": {
-                    "app": spec.scale_target_name,
-                    ** Autoscaler._managed_labels()
-                }
-            },
-            "spec": scaled_obj_spec
-        }
+
+    scaled_object = {
+        "apiVersion": "keda.sh/v1alpha1",
+        "kind": "ScaledObject",
+        "metadata": {
+            "name": scaled_obj_name,
+            "namespace": spec.namespace,
+            "labels": {"app": spec.scale_target_name, ** Autoscaler._managed_labels()}
+        },
+        "spec": scaled_obj_spec
     };
+
+    manifests: list[dict[str, any]] = [scaled_object];
+    for (i, trigger) in enumerate(spec.triggers) {
+        auth_manifest = self._build_trigger_auth_manifest(
+            trigger, spec.namespace, app_name, i, scaled_obj_name
+        );
+        if auth_manifest is not None {
+            manifests.append(auth_manifest);
+        }
+    }
+    return manifests;
 }
 
-impl KEDAAutoscaler._apply_trigger_auth{
+impl KEDAAutoscaler._build_trigger_auth_manifest{
     if not trigger.auth {
-        return;
+        return None;
     }
     if not trigger.auth.secret_refs {
-        return;
+        return None;
     }
     auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
     secret_target_refs: list[dict[str, any]] = [];
@@ -179,40 +204,43 @@ impl KEDAAutoscaler._apply_trigger_auth{
             {"parameter": param, "name": ref.get("name", ""), "key": ref.get("key", "")}
         );
     }
-    auth_body = {
+    return {
         "apiVersion": "keda.sh/v1alpha1",
         "kind": "TriggerAuthentication",
         "metadata": {
             "name": auth_name,
             "namespace": namespace,
-            "labels": Autoscaler._managed_labels()
+            "labels": {
+                "app": app_name,
+                "jac-scale/owner": self._owner_label_value(owner),
+                ** Autoscaler._managed_labels()
+            }
         },
         "spec": {"secretTargetRef": secret_target_refs}
     };
+}
+
+impl KEDAAutoscaler._apply_custom_object{
     try {
         api.get_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=namespace,
-            plural="triggerauthentications",
-            name=auth_name
+            group=group, version=version, namespace=namespace, plural=plural, name=name
         );
         api.patch_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
+            group=group,
+            version=version,
             namespace=namespace,
-            plural="triggerauthentications",
-            name=auth_name,
-            body=auth_body
+            plural=plural,
+            name=name,
+            body=body
         );
     } except ApiException as e {
         if e.status == 404 {
             api.create_namespaced_custom_object(
-                group="keda.sh",
-                version="v1alpha1",
+                group=group,
+                version=version,
                 namespace=namespace,
-                plural="triggerauthentications",
-                body=auth_body
+                plural=plural,
+                body=body
             );
         } else {
             raise;
@@ -222,7 +250,7 @@ impl KEDAAutoscaler._apply_trigger_auth{
 
 impl KEDAAutoscaler.apply{
     app_name = spec.app_name or spec.scale_target_name;
-    self._validate_triggers(spec, app_name);
+    manifests = self._build_manifests(spec);
     warnings = self.preflight();
     if warnings {
         if self.logger {
@@ -244,53 +272,128 @@ impl KEDAAutoscaler.apply{
         }
     }
 
-    for (i, trigger) in enumerate(spec.triggers) {
-        self._apply_trigger_auth(api, trigger, spec.namespace, app_name, i);
+    known_kinds = [kind for (kind, _) in KEDAAutoscaler._APPLY_ORDER];
+    unknown_kinds = [
+        manifest["kind"]
+        for manifest in manifests
+        if manifest["kind"] not in known_kinds
+    ];
+    if unknown_kinds {
+        raise ValueError(
+            f"_build_manifests returned unhandled kind(s) {unknown_kinds}; "
+            "add them to KEDAAutoscaler._APPLY_ORDER."
+        );
     }
-    manifests = self._build_manifests(spec);
-    name = manifests["name"];
-    body = manifests["body"];
-    try {
-        api.get_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=spec.namespace,
-            plural="scaledobjects",
-            name=name
-        );
-        api.patch_namespaced_custom_object(
-            group="keda.sh",
-            version="v1alpha1",
-            namespace=spec.namespace,
-            plural="scaledobjects",
-            name=name,
-            body=body
-        );
-    } except ApiException as e {
-        if e.status == 404 {
-            api.create_namespaced_custom_object(
-                group="keda.sh",
-                version="v1alpha1",
-                namespace=spec.namespace,
-                plural="scaledobjects",
-                body=body
-            );
-        } else {
-            raise;
+    for (kind, plural) in KEDAAutoscaler._APPLY_ORDER {
+        for manifest in manifests {
+            if manifest["kind"] == kind {
+                self._apply_custom_object(
+                    api,
+                    "keda.sh",
+                    "v1alpha1",
+                    spec.namespace,
+                    plural,
+                    manifest["metadata"]["name"],
+                    manifest
+                );
+            }
         }
     }
+
+    owner = self._scaled_object_name(spec, app_name);
+    desired_auth_names: set[str] = set();
+    for manifest in manifests {
+        if manifest["kind"] == "TriggerAuthentication" {
+            desired_auth_names.add(manifest["metadata"]["name"]);
+        }
+    }
+    self._prune_orphan_trigger_auths(api, spec.namespace, owner, desired_auth_names);
     return True;
+}
+
+impl KEDAAutoscaler._prune_orphan_trigger_auths{
+    selector = f"jac-scale/owner={self._owner_label_value(owner)},managed=jac-scale";
+    try {
+        existing = api.list_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="triggerauthentications",
+            label_selector=selector
+        );
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+        return;
+    }
+    for item in existing.get("items", []) {
+        item_name = item["metadata"]["name"];
+        if item_name in desired_auth_names {
+            continue;
+        }
+        try {
+            api.delete_namespaced_custom_object(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="triggerauthentications",
+                name=item_name
+            );
+        } except ApiException as e {
+            if e.status not in [404, 422] {
+                raise;
+            }
+        }
+    }
 }
 
 impl KEDAAutoscaler.destroy{
     api = self._custom_api or client.CustomObjectsApi();
+    scaled_object_name = self.resource_name_for(app_name);
+    selector = f"jac-scale/owner={self._owner_label_value(
+        scaled_object_name
+    )},managed=jac-scale";
+    try {
+        existing = api.list_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="triggerauthentications",
+            label_selector=selector
+        );
+        listing: dict[str, list[dict[str, any]]] = existing
+            if isinstance(existing, dict)
+            else {};
+        for item in listing.get("items", []) {
+            item_name = item["metadata"]["name"];
+            try {
+                api.delete_namespaced_custom_object(
+                    group="keda.sh",
+                    version="v1alpha1",
+                    namespace=namespace,
+                    plural="triggerauthentications",
+                    name=item_name
+                );
+            } except ApiException as e {
+                if e.status not in [404, 422] {
+                    raise;
+                }
+            }
+        }
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+    }
+
     try {
         api.delete_namespaced_custom_object(
             group="keda.sh",
             version="v1alpha1",
             namespace=namespace,
             plural="scaledobjects",
-            name=autoscaler_name
+            name=scaled_object_name
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
@@ -306,6 +409,9 @@ impl KEDAAutoscaler.destroy_collection{
         ("keda.sh", "v1alpha1", "triggerauthentications"),
         ("http.keda.sh", "v1beta1", "interceptorroutes")
     ] {
+        tolerated = [404, 422, 403]
+            if (group == "http.keda.sh" or best_effort)
+            else [404, 422];
         try {
             items = api.list_namespaced_custom_object(
                 group=group,
@@ -325,13 +431,13 @@ impl KEDAAutoscaler.destroy_collection{
                         name=item_name
                     );
                 } except ApiException as e {
-                    if e.status not in [404, 422] {
+                    if e.status not in tolerated {
                         raise;
                     }
                 }
             }
         } except ApiException as e {
-            if e.status not in [404, 422] {
+            if e.status not in tolerated {
                 raise;
             }
         }
@@ -365,33 +471,22 @@ impl KEDAAutoscaler.http_scaled_object_name_for{
 impl KEDAAutoscaler.apply_http_activation{
     self._validate_http_activation_spec(spec);
 
-    cluster_key = self._get_cluster_key();
-    api = self._custom_api or client.CustomObjectsApi();
-    if cluster_key not in KEDAAutoscaler._http_preflight_cache {
-        try {
-            api.list_cluster_custom_object(
-                group="http.keda.sh", version="v1beta1", plural="interceptorroutes"
-            );
-            KEDAAutoscaler._http_preflight_cache[cluster_key] = True;
-        } except ApiException as e {
-            if e.status in [404, 422] {
-                KEDAAutoscaler._http_preflight_cache[cluster_key] = False;
-            } else {
-                raise;
-            }
-        }
+    caps = self.discover_capabilities();
+    if caps.errors {
+        raise ValueError(
+            "KEDA HTTP Add-on capability check failed:\n" + "\n".join(caps.errors)
+        );
     }
-    if not KEDAAutoscaler._http_preflight_cache[cluster_key] {
+    if not caps.core_available or not caps.http_addon_available {
         if self.logger {
-            self.logger.warn(
-                "KEDA HTTP Add-on CRDs not found on cluster. Install the HTTP "
-                "Add-on from the official docs, then redeploy: "
-                "https://keda.sh/docs/latest/deploy/#http-add-on"
-            );
+            for warning in caps.warnings {
+                self.logger.warn(warning);
+            }
         }
         return False;
     }
 
+    api = self._custom_api or client.CustomObjectsApi();
     apps_api = self._apps_api or client.AppsV1Api();
     core_api = self._core_api or client.CoreV1Api();
 
@@ -520,6 +615,9 @@ impl KEDAAutoscaler.apply_http_activation{
 
 impl KEDAAutoscaler.destroy_http_activation{
     api = self._custom_api or client.CustomObjectsApi();
+
+    interceptor_error: (ApiException | None) = None;
+    scaled_object_error: (ApiException | None) = None;
     try {
         api.delete_namespaced_custom_object(
             group="http.keda.sh",
@@ -530,7 +628,7 @@ impl KEDAAutoscaler.destroy_http_activation{
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
-            raise;
+            interceptor_error = e;
         }
     }
     try {
@@ -543,8 +641,19 @@ impl KEDAAutoscaler.destroy_http_activation{
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
-            raise;
+            scaled_object_error = e;
         }
+    }
+
+    if interceptor_error is not None and interceptor_error.status != 403 {
+        raise interceptor_error;
+    }
+    if scaled_object_error is not None and scaled_object_error.status != 403 {
+        raise scaled_object_error;
+    }
+    pending_error = interceptor_error or scaled_object_error;
+    if pending_error is not None {
+        raise pending_error;
     }
 }
 
@@ -594,7 +703,7 @@ impl KEDAAutoscaler._build_interceptor_route{
     } elif spec.request_rate is not None {
         scaling_metric["requestRate"] = {
             "targetValue": spec.request_rate.target_value,
-            "window": spec.request_rate.window,
+            "window": spec.request_rate.rate_window,
             "granularity": spec.request_rate.granularity
         };
     }
@@ -681,7 +790,7 @@ impl KEDAAutoscaler._build_http_scaled_object{
         trigger_metadata["targetValue"] = str(spec.concurrency.target_value);
     } elif spec.request_rate is not None {
         trigger_metadata["targetValue"] = str(spec.request_rate.target_value);
-        trigger_metadata["window"] = spec.request_rate.window;
+        trigger_metadata["window"] = spec.request_rate.rate_window;
         trigger_metadata["granularity"] = spec.request_rate.granularity;
     }
 
@@ -740,4 +849,171 @@ impl KEDAAutoscaler._validate_http_activation_spec{
             "HTTPActivationSpec requires at least one of concurrency or request_rate."
         );
     }
+}
+
+impl KEDAAutoscaler._check_service_address{
+    (host, _, __) = address.partition(":");
+    parts = host.split(".");
+    name = parts[0];
+    namespace = parts[1] if len(parts) > 1 else "keda";
+    try {
+        core_api.read_namespaced_service(name=name, namespace=namespace);
+        return None;
+    } except ApiException as e {
+        if e.status == 403 {
+            return (
+                f"Permission denied (403) checking Service '{name}' in "
+                f"namespace '{namespace}'. Verify RBAC grants get/list on "
+                f"services for the jac-scale service account."
+            );
+        }
+        if e.status in [404, 422] {
+            return f"Service '{name}' not found in namespace '{namespace}' (address: '{address}').";
+        }
+        raise;
+    }
+}
+
+impl KEDAAutoscaler._capabilities_cache_key{
+    return (
+        f"{self._get_cluster_key()}::{self.http_scaler_address}"
+        f"::{self.interceptor_service_address}::{id(self._custom_api)}"
+        f"::{id(self._core_api)}"
+    );
+}
+
+impl KEDAAutoscaler.discover_capabilities{
+    cluster_key = self._capabilities_cache_key();
+    if not refresh and cluster_key in self._capabilities_cache {
+        return self._capabilities_cache[cluster_key];
+    }
+
+    api = self._custom_api or client.CustomObjectsApi();
+    core_api = self._core_api or client.CoreV1Api();
+    caps = KEDACapabilities();
+
+    keda_docs_url = "https://keda.sh/http-add-on/0.15/getting-started/";
+    http_addon_docs_url = "https://keda.sh/http-add-on/0.15/getting-started/";
+    install_core_cmd = (
+        "helm repo add kedacore https://kedacore.github.io/charts && "
+        "helm repo update && helm install keda kedacore/keda -n keda "
+        f"--create-namespace --wait (see {keda_docs_url} for current instructions)"
+    );
+    install_addon_cmd = (
+        "helm install http-add-on kedacore/keda-add-ons-http -n keda --wait "
+        f"(see {http_addon_docs_url} for current instructions)"
+    );
+    upgrade_addon_cmd = (
+        "helm upgrade http-add-on kedacore/keda-add-ons-http -n keda --wait "
+        f"(see {http_addon_docs_url} for current instructions)"
+    );
+
+    try {
+        api.list_cluster_custom_object(
+            group="keda.sh", version="v1alpha1", plural="scaledobjects"
+        );
+        caps.core_available = True;
+    } except ApiException as e {
+        if e.status == 403 {
+            caps.errors.append(
+                "Permission denied (403) discovering KEDA core "
+                "(keda.sh/v1alpha1 ScaledObject). Grant RBAC list/get on "
+                "this resource to the jac-scale service account."
+            );
+        } elif e.status in [404, 422] {
+            caps.warnings.append(
+                f"KEDA core not found on cluster. Install it with: {install_core_cmd}"
+            );
+        } else {
+            raise;
+        }
+    }
+
+    http_addon_status: (int | None) = None;
+    for version in SUPPORTED_HTTP_INTERCEPTOR_API_VERSIONS {
+        try {
+            api.list_cluster_custom_object(
+                group="http.keda.sh", version=version, plural="interceptorroutes"
+            );
+            caps.http_addon_available = True;
+            caps.interceptor_route_api_version = version;
+            break;
+        } except ApiException as e {
+            http_addon_status = e.status;
+            if e.status == 403 {
+                caps.errors.append(
+                    "Permission denied (403) discovering the KEDA HTTP Add-on "
+                    f"(http.keda.sh/{version} InterceptorRoute). Grant RBAC "
+                    "list/get on this resource to the jac-scale service account."
+                );
+                break;
+            } elif e.status not in [404, 422] {
+                raise;
+            }
+        }
+    }
+
+    if not caps.http_addon_available and http_addon_status in [404, 422] {
+        try {
+            api.list_cluster_custom_object(
+                group="http.keda.sh", version="v1alpha1", plural="httpscaledobjects"
+            );
+            caps.warnings.append(
+                "Legacy KEDA HTTP Add-on detected (http.keda.sh/v1alpha1 "
+                "HTTPScaledObject); jac-scale requires v1beta1 "
+                f"InterceptorRoute. Upgrade with: {upgrade_addon_cmd}"
+            );
+        } except ApiException as e {
+            if e.status == 403 {
+                caps.errors.append(
+                    "Permission denied (403) probing the legacy KEDA HTTP "
+                    "Add-on API (http.keda.sh/v1alpha1 HTTPScaledObject) "
+                    "while checking for an outdated install. Grant RBAC "
+                    "list/get on this resource to the jac-scale service "
+                    "account."
+                );
+            } elif e.status in [404, 422] {
+                caps.warnings.append(
+                    f"KEDA HTTP Add-on not found on cluster. Install it with: {install_addon_cmd}"
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
+    if caps.http_addon_available {
+        caps.external_scaler_address = self.http_scaler_address;
+        caps.interceptor_service_address = self.interceptor_service_address;
+        scaler_error = self._check_service_address(core_api, self.http_scaler_address);
+        if scaler_error is not None {
+            caps.errors.append(scaler_error);
+        }
+        interceptor_error = self._check_service_address(
+            core_api, self.interceptor_service_address
+        );
+        if interceptor_error is not None {
+            caps.errors.append(interceptor_error);
+        }
+    }
+
+    self._capabilities_cache[cluster_key] = caps;
+    return caps;
+}
+
+impl KEDAAutoscaler.invalidate_capabilities{
+    self._capabilities_cache.pop(self._capabilities_cache_key(), None);
+}
+
+impl KEDAAutoscaler.format_capabilities{
+    if caps.core_available and caps.http_addon_available and not caps.errors {
+        return "KEDA HTTP Add-on capabilities ready: core and HTTP Add-on both available.";
+    }
+    if caps.errors {
+        return f"KEDA HTTP Add-on not ready: {caps.errors[0]}";
+    }
+    if caps.warnings {
+        return f"KEDA HTTP Add-on not ready: {caps.warnings[0]}";
+    }
+    return "KEDA HTTP Add-on capabilities unknown.";
 }

@@ -13,6 +13,29 @@ import from jaclang.project.pyvenv {
 glob EMIT_EJECT: str = "eject",
      EMIT_PUBLISH: str = "publish";
 
+glob VENV_DEPS_MARKER: str = ".jac-deps-hash";
+
+
+def _venv_deps_hash(specs: list[str]) -> str {
+    import hashlib;
+    return hashlib.sha256("\n".join(sorted(specs)).encode("utf-8")).hexdigest();
+}
+
+
+def venv_deps_satisfied(venv_dir: Path, specs: list[str]) -> bool {
+    try {
+        marker = (venv_dir / VENV_DEPS_MARKER).read_text(encoding="utf-8");
+    } except OSError {
+        return False;
+    }
+    return marker.strip() == _venv_deps_hash(specs);
+}
+
+
+def write_venv_deps_marker(venv_dir: Path, specs: list[str]) {
+    (venv_dir / VENV_DEPS_MARKER).write_text(_venv_deps_hash(specs), encoding="utf-8");
+}
+
 obj ResolvedDependency {
     has name: str,
         version: str = "",
@@ -306,8 +329,14 @@ obj PythonProvider(EcosystemProvider) {
             return self._install_global(specs, ctx);
         }
         venv_dir = self._project_venv(config);
-        ensure_venv(venv_dir, ctx.verbose);
         is_dry_run = ctx.is_dry_run();
+        # Checked before ensure_venv: a venv restored from a sealed bundle
+        # carries a marker but no host-runnable interpreter, so probing it
+        # with ensure_venv would classify it as corrupted and delete it.
+        if not is_dry_run and venv_deps_satisfied(venv_dir, specs) {
+            return True;
+        }
+        ensure_venv(venv_dir, ctx.verbose);
         (before_snapshot_ok, before_set) = (
             self._snapshot_installed(config) if not is_dry_run else (False, set())
         );

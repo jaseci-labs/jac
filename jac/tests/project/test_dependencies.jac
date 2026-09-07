@@ -29,10 +29,13 @@ import from jaclang.project.providers {
     InstallContext,
     PythonProvider,
     ResolvedDependency,
+    VENV_DEPS_MARKER,
     get_provider_registry,
     get_python_provider,
     reset_provider_registry,
-    resolve_plan
+    resolve_plan,
+    venv_deps_satisfied,
+    write_venv_deps_marker
 }
 
 """Reset global config singleton."""
@@ -1967,6 +1970,140 @@ test "install package failure returns error code" {
     } finally {
         os.chdir(original_cwd);
         reset_config();
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+# ===== sealed-venv marker fast path =====
+test "venv_deps_satisfied matches the marker regardless of spec order" {
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = project_dir / ".jac" / "venv";
+        venv_dir.mkdir(parents=True);
+        write_venv_deps_marker(venv_dir, ["b==2", "a==1"]);
+        assert venv_deps_satisfied(venv_dir, ["a==1", "b==2"]);
+        assert not venv_deps_satisfied(venv_dir, ["a==1", "b==3"]);
+        assert not venv_deps_satisfied(venv_dir, ["a==1"]);
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "venv_deps_satisfied is False without a marker or without a venv" {
+    (tmp, project_dir) = make_temp_project();
+    try {
+        venv_dir = project_dir / ".jac" / "venv";
+        assert not venv_deps_satisfied(venv_dir, ["a==1"]);
+        venv_dir.mkdir(parents=True);
+        assert not venv_deps_satisfied(venv_dir, ["a==1"]);
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install_specs skips pip entirely when the marker matches" {
+    # The marker is written only by the seal (pack_jab), never by a local
+    # install, so this venv stands in for one restored from a sealed bundle:
+    # no interpreter inside, only the marker. install_specs must return
+    # before ensure_venv, which would classify it as corrupted and delete it.
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        venv_dir = config.get_venv_dir();
+        venv_dir.mkdir(parents=True);
+        write_venv_deps_marker(venv_dir, ["requests>=2.28.0"]);
+        python = PythonProvider();
+        with patch("jaclang.project.providers.ensure_venv") as mock_ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            result = python.install_specs(
+                config, ["requests>=2.28.0"], InstallContext()
+            );
+            assert result is True;
+            mock_ev.assert_not_called();
+            mock_pip.assert_not_called();
+        }
+        assert venv_dir.exists();
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "install_specs runs pip when the marker is stale" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        venv_dir = config.get_venv_dir();
+        venv_dir.mkdir(parents=True);
+        write_venv_deps_marker(venv_dir, ["requests>=2.27.0"]);
+        python = PythonProvider();
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "Successfully installed", "");
+            result = python.install_specs(
+                config, ["requests>=2.28.0"], InstallContext()
+            );
+            assert result is True;
+            assert mock_pip.call_count == 3;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "a matching marker never short-circuits a dry run" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        venv_dir = config.get_venv_dir();
+        venv_dir.mkdir(parents=True);
+        write_venv_deps_marker(venv_dir, ["requests>=2.28.0"]);
+        python = PythonProvider();
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "Would install requests", "");
+            result = python.install_specs(
+                config,
+                ["requests>=2.28.0"],
+                InstallContext(install_flags=["--dry-run"])
+            );
+            assert result is True;
+            mock_pip.assert_called();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "a local install never writes the marker" {
+    # Local `jac install` semantics stay unchanged: only pack_jab stamps the
+    # marker, so repeated local installs keep running pip (and keep repairing
+    # a hand-broken venv) exactly as before.
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        venv_dir = config.get_venv_dir();
+        python = PythonProvider();
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "Successfully installed", "");
+            assert python.install_specs(
+                config, ["requests>=2.28.0"], InstallContext()
+            ) is True;
+        }
+        assert not (venv_dir / VENV_DEPS_MARKER).exists();
+    } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
