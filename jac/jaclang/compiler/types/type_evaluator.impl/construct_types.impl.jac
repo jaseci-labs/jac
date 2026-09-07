@@ -7,7 +7,7 @@ impl TypeEvaluator._get_type_of_root(node_: SpecialVarRef) -> TypeBase {
     return UnknownType();
 }
 
-impl TypeEvaluator._get_type_of_self(node_: SpecialVarRef) -> TypeBase {
+impl TypeEvaluator._get_type_of_self(node_: Name) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
         cls = method.method_owner;
 
@@ -26,7 +26,7 @@ impl TypeEvaluator._get_type_of_self(node_: SpecialVarRef) -> TypeBase {
     return UnknownType();
 }
 
-impl TypeEvaluator._get_type_of_super(node_: SpecialVarRef) -> TypeBase {
+impl TypeEvaluator._get_type_of_super(node_: Name) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
         cls = method.method_owner;
         if isinstance(cls, Archetype) {
@@ -677,9 +677,7 @@ impl TypeEvaluator.get_none_type -> TypeBase {
 }
 
 
-impl TypeEvaluator._super_owner_for(
-    node_: SpecialVarRef, rest: list[ClassType]
-) -> ClassType {
+impl TypeEvaluator._super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType {
     import from jaclang.compiler.types.type_utils { collect_member_syms }
     parent = node_.parent;
     member_name: str | None = None;

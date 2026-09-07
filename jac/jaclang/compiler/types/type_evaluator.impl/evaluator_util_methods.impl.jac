@@ -26,6 +26,24 @@ impl TypeEvaluator._try_resolve_forward_ref(expr: String) -> TypeBase | None {
     return resolved;
 }
 
+impl TypeEvaluator._annotation_args(expr: Expr | None) -> list[Expr] {
+    if expr is None {
+        return [];
+    }
+    if not isinstance(expr, TupleVal) {
+        return [expr];
+    }
+    args: list[Expr] = [];
+    for item in expr.values {
+        if not isinstance(item, Expr) {
+            self.emit_diag(E1038, item);
+            return [];
+        }
+        args.append(item);
+    }
+    return args;
+}
+
 impl TypeEvaluator._type_from_union_annotation_arg(val: Expr) -> TypeBase {
     string_expr: String | None = None;
     if isinstance(val, MultiString) and val.strings {
@@ -417,9 +435,8 @@ impl TypeEvaluator._create_namedtuple_new_method(
 }
 
 impl TypeEvaluator._lookup_object_member(
-    base_type: ClassType, member: str
+    base_type: TypeBase, member: str
 ) -> ClassMember | None {
-    assert self.prefetch.int_class is not None;
     if isinstance(base_type, ClassType) and base_type.is_class_instance() {
         return self._lookup_class_member(base_type, member);
     }
@@ -990,7 +1007,8 @@ impl TypeEvaluator._get_declared_return_type(
     if not isinstance(fn_type_base, FunctionType) {
         return None;
     }
-    return self._convert_to_instance(fn_type_base.return_type);
+    result = fn_type_base.return_type;
+    return self._convert_to_instance(result) if result is not None else None;
 }
 
 impl TypeEvaluator._get_enclosing_function(nd: UniNode) -> Ability | None {
@@ -1126,7 +1144,7 @@ impl TypeEvaluator._is_unbound_method_call(expr: FuncCall) -> bool {
     return False;
 }
 
-impl TypeEvaluator._set_symbol_to_expr(expr: Expr, sym: Symbol) -> TypeBase {
+impl TypeEvaluator._set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase {
     sym.add_use(expr);
     sym_type = self.get_type_of_symbol(sym);
     if isinstance(sym_type, UnknownType) and sym_type.is_incomplete {
@@ -1309,7 +1327,7 @@ impl TypeEvaluator._collect_typevars_from_base(
     }
     type_vars = base_class.right.slices[0].start;
     if isinstance(type_vars, TupleVal) {
-        for val in type_vars.values {
+        for val in self._annotation_args(type_vars) {
             type_var_type = self.get_type_of_expression(val);
             if isinstance(type_var_type, TypeVarType) {
                 if type_var_type.name in outer_names {
@@ -1330,7 +1348,7 @@ impl TypeEvaluator._collect_typevars_from_base(
                 }
             }
         }
-    } else {
+    } elif type_vars is not None {
         type_var_type = self.get_type_of_expression(type_vars);
         if isinstance(type_var_type, TypeVarType) {
             if type_var_type.name in outer_names {
@@ -1602,7 +1620,7 @@ impl TypeEvaluator._create_callable_type(
     }
 
     if isinstance(type_args_expr, TupleVal) {
-        type_arg_values = type_args_expr.values;
+        type_arg_values = self._annotation_args(type_args_expr);
         if len(type_arg_values) == 0 {
             self.emit_diag(E1070, error_node);
             return create_callable_type([], UnknownType(), is_gradual=True);
@@ -1851,7 +1869,7 @@ impl TypeEvaluator._get_signature_type_params(sig: FuncSignature) -> list[TypeVa
         } elif isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
             collect_typevars(expr.value);
         } elif isinstance(expr, TupleVal) {
-            for v in expr.values {
+            for v in self._annotation_args(expr) {
                 collect_typevars(v);
             }
         } elif isinstance(expr, BinaryExpr) {
@@ -1902,7 +1920,7 @@ impl TypeEvaluator.validate_typevar_in_type_expr(expr: Expr) -> None {
             }
         }
     } elif isinstance(expr, TupleVal) {
-        for val in expr.values {
+        for val in self._annotation_args(expr) {
             self.validate_typevar_in_type_expr(val);
         }
     } elif isinstance(expr, BinaryExpr) {
@@ -2086,7 +2104,7 @@ impl TypeEvaluator._get_outer_scope_type_params(node_: UniNode) -> list[TypeVarT
     return type_params;
 }
 
-impl TypeEvaluator._is_ellipsis_only_body(body: list[CodeBlockStmt]) -> bool {
+impl TypeEvaluator._is_ellipsis_only_body(body: Sequence[CodeBlockStmt]) -> bool {
     has_ellipsis = False;
     for stmt in body {
         if isinstance(stmt, Semi) {
@@ -2102,7 +2120,7 @@ impl TypeEvaluator._is_ellipsis_only_body(body: list[CodeBlockStmt]) -> bool {
 }
 
 impl TypeEvaluator._infer_lambda_block_return_type(
-    body: list[CodeBlockStmt]
+    body: Sequence[CodeBlockStmt]
 ) -> TypeBase {
     import from jaclang.compiler.types { types }
 
@@ -2152,7 +2170,7 @@ impl TypeEvaluator._infer_lambda_block_return_type(
 }
 
 impl TypeEvaluator._collect_return_types(
-    stmts: list[CodeBlockStmt], out: list[TypeBase]
+    stmts: Sequence[CodeBlockStmt], out: list[TypeBase]
 ) -> bool {
     for stmt in stmts {
         if isinstance(stmt, (Ability, LambdaExpr)) {

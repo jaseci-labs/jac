@@ -206,6 +206,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1033,
     E1034,
     E1035,
+    E1038,
     E1040,
     E1041,
     E1043,
@@ -473,6 +474,7 @@ walker TypeEvaluator {
     def _untyped_external_is_error(node_: UniNode) -> bool;
     def _is_fstring_all_literal(fstring: FString) -> bool;
     def _try_resolve_forward_ref(expr: String) -> TypeBase | None;
+    def _annotation_args(expr: Expr | None) -> list[Expr];
     def _type_from_union_annotation_arg(val: Expr) -> TypeBase;
     def get_type_of_module(node_: ModulePath) -> TypeBase;
     def get_type_of_module_item(node_: ModuleItem) -> TypeBase;
@@ -588,24 +590,27 @@ walker TypeEvaluator {
 
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
-    def _set_symbol_to_expr(expr: Expr, sym: Symbol) -> TypeBase;
+    def _set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase;
     def _resolution_scope_for(expr: UniNode) -> UniScopeNode | None;
     def _is_expr_self(expr: Expr) -> bool;
     def _is_expr_super(expr: Expr) -> bool;
     def _get_enclosing_function(nd: UniNode) -> Ability | None;
     def _get_enclosing_return_scope(nd: UniNode) -> Ability | LambdaExpr | None;
     def _get_declared_return_type(scope: Ability | LambdaExpr) -> TypeBase | None;
-    def _infer_lambda_block_return_type(body: list[CodeBlockStmt]) -> TypeBase;
-    def _collect_return_types(stmts: list[CodeBlockStmt], out: list[TypeBase]) -> bool;
+    def _infer_lambda_block_return_type(body: Sequence[CodeBlockStmt]) -> TypeBase;
+    def _collect_return_types(
+        stmts: Sequence[CodeBlockStmt], out: list[TypeBase]
+    ) -> bool;
+
     def _collect_if_else_returns(
         else_body: ElseIf | ElseStmt | None, out: list[TypeBase]
     ) -> bool;
 
     def _get_enclosing_method(nd: UniNode) -> Ability | None;
     def _get_enclosing_class(nd: UniNode) -> Archetype | None;
-    def _get_type_of_self(node_: SpecialVarRef) -> TypeBase;
-    def _get_type_of_super(node_: SpecialVarRef) -> TypeBase;
-    def _super_owner_for(node_: SpecialVarRef, rest: list[ClassType]) -> ClassType;
+    def _get_type_of_self(node_: Name) -> TypeBase;
+    def _get_type_of_super(node_: Name) -> TypeBase;
+    def _super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType;
     def _get_type_of_root(node_: SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
@@ -650,7 +655,7 @@ walker TypeEvaluator {
     ) -> FunctionType;
 
     def _lookup_class_member(base_type: ClassType, member: str) -> ClassMember | None;
-    def _lookup_object_member(base_type: ClassType, member: str) -> ClassMember | None;
+    def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;
     def _filter_order_name(expr: Expr) -> (Name | None);
@@ -846,7 +851,7 @@ walker TypeEvaluator {
 
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
-    def _is_ellipsis_only_body(body: list[CodeBlockStmt]) -> bool;
+    def _is_ellipsis_only_body(body: Sequence[CodeBlockStmt]) -> bool;
     def _is_type_alias_annotation(annotation_type: TypeBase, tag_expr: Expr) -> bool;
     def _type_alias_tag_ident(tag_expr: Expr) -> (str | None);
     def _resolve_type_alias_rhs(value: Expr) -> TypeBase;

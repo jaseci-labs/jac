@@ -447,6 +447,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Explicit 'any' type annotation disables type checking here;"
          " consider a more specific type"
      ),
+     E1038 = _err(
+         "E1038",
+         Category.TYPE,
+         "Mapping unpacking is not valid in a type argument list"
+     ),
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
      E1042 = _err(

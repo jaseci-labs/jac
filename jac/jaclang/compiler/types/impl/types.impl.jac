@@ -54,12 +54,12 @@ impl TypeVarType.bound.setter(bound: (TypeBase | None)) -> None {
     c["bound"] = bound;
 }
 
-impl TypeVarType.constraints.getter -> (list[TypeBase] | None) {
+impl TypeVarType.constraints.getter -> list[TypeBase] {
     c = self._acc_cache;
     if (c is not None) and ("constraints" in c) {
         return c["constraints"];
     }
-    val = [self->:ConstraintOf:->];
+    val = [self->:ConstraintOf:->][?:TypeBase];
     if c is None {
         c = {};
         self._acc_cache = c;
@@ -212,7 +212,7 @@ impl ClassDetailsShared.enum_value_type.setter(
     c["enum_value_type"] = enum_value_type;
 }
 
-impl ClassDetailsShared.typeddict_fields.getter -> (dict[str, TypeBase] | None) {
+impl ClassDetailsShared.typeddict_fields.getter -> dict[str, TypeBase] {
     d: dict[str, TypeBase] = {};
     for ea in [edge self->:TypeMemberOf:->] {
         d[ea.name] = getattr(ea, "__jac__").target.archetype;
@@ -229,7 +229,7 @@ impl ClassDetailsShared.typeddict_fields.setter(
     }
 }
 
-impl ClassDetailsShared.enum_members.getter -> (dict[str, EnumMemberInfo] | None) {
+impl ClassDetailsShared.enum_members.getter -> dict[str, EnumMemberInfo] {
     d: dict[str, EnumMemberInfo] = {};
     for ea in [edge self->:EnumMemberOf:->] {
         d[ea.name] = getattr(ea, "__jac__").target.archetype;
@@ -619,12 +619,12 @@ impl FunctionType.type_guard.setter(type_guard: (TypeBase | None)) -> None {
     c["type_guard"] = type_guard;
 }
 
-impl OverloadedType.overloads.getter -> (list[FunctionType] | None) {
+impl OverloadedType.overloads.getter -> list[FunctionType] {
     c = self._acc_cache;
     if (c is not None) and ("overloads" in c) {
         return c["overloads"];
     }
-    val = [self->:OverloadOf:->];
+    val = [self->:OverloadOf:->][?:FunctionType];
     if c is None {
         c = {};
         self._acc_cache = c;
@@ -653,12 +653,12 @@ impl OverloadedType.init(
     self.overloads = overloads;
 }
 
-impl UnionType.types.getter -> (list[TypeBase] | None) {
+impl UnionType.types.getter -> list[TypeBase] {
     c = self._acc_cache;
     if (c is not None) and ("types" in c) {
         return c["types"];
     }
-    val = [self->:UnionMemberOf:->];
+    val = [self->:UnionMemberOf:->][?:TypeBase];
     if c is None {
         c = {};
         self._acc_cache = c;

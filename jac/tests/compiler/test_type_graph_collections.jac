@@ -5,6 +5,8 @@ import from jaclang.compiler.types.types {
     ClassDetailsPrivate,
     ClassDetailsShared,
     FunctionType,
+    OverloadedType,
+    UnionType,
     TypeVarType
 }
 
@@ -45,4 +47,29 @@ test "type arguments and function parameters normalize absent input to empty lis
     assert function.type_params[0] is parameter;
     function.type_params = None;
     assert function.type_params == [];
+}
+
+
+test "union overload and constraint collections survive graph cache invalidation" {
+    argument = AnyType();
+    parameter = TypeVarType(name="T", constraints=[argument]);
+    function = FunctionType(func_name="f", return_type=argument, parameters=[]);
+    overload = OverloadedType(overloads=[function]);
+    union = UnionType(types=[parameter, argument]);
+    parameter._acc_cache = None;
+    overload._acc_cache = None;
+    union._acc_cache = None;
+    assert parameter.constraints[0] is argument;
+    assert overload.overloads[0] is function;
+    assert union.types[0] is parameter;
+    assert union.types[1] is argument;
+    parameter.constraints = None;
+    overload.overloads = None;
+    union.types = None;
+    parameter._acc_cache = None;
+    overload._acc_cache = None;
+    union._acc_cache = None;
+    assert parameter.constraints == [];
+    assert overload.overloads == [];
+    assert union.types == [];
 }

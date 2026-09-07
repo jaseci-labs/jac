@@ -1743,7 +1743,7 @@ impl ProgramModule.init(
 }
 
 impl ProgramModule.main_mod.getter -> (Module | None) {
-    found = [self->:MainRole:->];
+    found = [item for item in [self->:MainRole:->] if isinstance(item, Module)];
     if not found {
         return None;
     }
