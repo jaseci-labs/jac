@@ -986,18 +986,8 @@ impl NaIRGenPass._decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] |
 
 impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
     if self._subclassed_arch_names is None {
-        _cached = self.prog?._na_subclassed_arch_names;
-        if isinstance(_cached, set) {
-            self._subclassed_arch_names = _cached;
-            return arch_name in _cached;
-        }
         _names: set[str] = set();
-        _mods: list = [];
-        try {
-            _mods = list(self.prog.mod.hub.values());
-        } except Exception {
-            _mods = [];
-        }
+        _mods: list[uni.Module] = list(self.prog.mod.hub.values());
         if self.ir_in not in _mods {
             _mods.append(self.ir_in);
         }
@@ -1012,9 +1002,6 @@ impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
             }
         }
         self._subclassed_arch_names = _names;
-        try {
-            self.prog._na_subclassed_arch_names = _names;
-        } except Exception {}
     }
     return arch_name in self._subclassed_arch_names;
 }

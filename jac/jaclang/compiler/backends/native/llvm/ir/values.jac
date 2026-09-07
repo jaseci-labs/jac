@@ -1123,7 +1123,7 @@ class Function(GlobalValue) {
         super.init(module, ftype.as_pointer(), name=name);
         self.ftype = ftype;
         self.scope = _utils.NameScope();
-        self.blocks = [];
+        self.blocks: list[Block] = [];
         self.attributes = FunctionAttributes();
         self.args = `tuple([Argument(self, t) for t in ftype.args]);
         self.return_value = ReturnValue(self, ftype.return_type);
@@ -1137,12 +1137,12 @@ class Function(GlobalValue) {
     }
 
     @property
-    def entry_basic_block(self: Function) -> object {
+    def entry_basic_block(self: Function) -> Block {
         return self.blocks[0];
     }
 
     @property
-    def basic_blocks(self: Function) -> object {
+    def basic_blocks(self: Function) -> list[Block] {
         return self.blocks;
     }
 
