@@ -38,6 +38,7 @@ obj Item {
     has value: int = 0;
     def add(amount: int) -> int {
         result = self.value + amount;
+        self.value = result;
         return result;
     }
 }

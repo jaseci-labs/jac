@@ -1204,6 +1204,10 @@ impl NaIRGenPass._native_module_call_target(
         return None;
     }
 
+    if mod_name == "os.path" and method_name in NATIVE_OSPATH_FUNCS {
+        return None;
+    }
+
     if mod_name in self._native_module_imports {
         return (mod_name, method_name);
     }
@@ -1393,11 +1397,39 @@ impl NaIRGenPass._emit_intrinsic_call_dtor(
     return None;
 }
 
+impl NaIRGenPass._codegen_synthetic_call(
+    target: uni.Expr,
+    params: list[uni.Expr | uni.KWPair],
+    origin: uni.Expr,
+    result_type: TypeBase | None
+) -> (ir.Value | None) {
+    call = uni.FuncCall(
+        target=target, params=params, genai_call=None, kid=[target, *params]
+    );
+    import from jaclang.compiler.symbol_utils {
+        ability_of_symbol,
+        classify_call,
+        resolve_expr_symbol
+    }
+    call.call_kind = classify_call(call).value;
+    call.callee_decl = ability_of_symbol(resolve_expr_symbol(target));
+    owner = origin.parent;
+    if owner is not None {
+        call.set_parent(owner);
+    }
+    call.type = result_type;
+    try {
+        return self._codegen_expr(call);
+    } finally {
+        del [edge call-->];
+    }
+}
+
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     import from jaclang.compiler.intrinsic_registry { INTRINSIC_REGISTRY }
-    import from jaclang.compiler.symbol_utils {
-        field_marker_argument,
-        erased_identity_call_arg,
+    import from jaclang.compiler.symbol_utils { erased_identity_call_arg }
+    import from jaclang.compiler.field_semantics {
+        field_initialization,
         is_field_marker
     }
 
@@ -1407,10 +1439,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
 
     if is_field_marker(nd) {
-        _marker_default = field_marker_argument(nd, 'default');
-        return (
-            self._codegen_expr(_marker_default) if _marker_default is not None else None
-        );
+        owner = nd.parent;
+        assert isinstance(owner, uni.HasVar);
+        initialization = field_initialization(owner);
+        factory = initialization.factory_expr;
+        if factory is not None {
+            return self._codegen_synthetic_call(factory, [], nd, owner.type);
+        }
+        default_expr = initialization.default_expr;
+        return self._codegen_expr(default_expr) if default_expr is not None else None;
     }
 
     _call_kind = nd.call_kind or "";

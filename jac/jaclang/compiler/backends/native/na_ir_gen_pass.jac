@@ -60,6 +60,8 @@ import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.types.types {
     ClassType,
+    TypeBase,
+    UnionType,
     FunctionType as SemanticFunctionType
 }
 import from jaclang.compiler.frontend.const_fold { fold_const }
@@ -180,7 +182,8 @@ walker NaIRGenPass(Transform) {
         struct_field_indices: dict[str, dict] = {},
         struct_field_order: dict[str, list] = {},
         struct_field_types: dict[str, dict] = {},
-        struct_field_defaults: dict[str, object] = {},
+        struct_field_defaults: dict[str, dict[str, uni.Expr]] = {},
+        struct_constructor_order: dict[str, list[str]] = {},
         struct_field_foreign: dict[str, set] = {},
         struct_field_opaque: dict[str, dict] = {},
         struct_field_erased_tv: dict[str, dict] = {},
@@ -510,6 +513,13 @@ walker NaIRGenPass(Transform) {
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_synthetic_call(
+        target: uni.Expr,
+        params: list[uni.Expr | uni.KWPair],
+        origin: uni.Expr,
+        result_type: TypeBase | None
+    ) -> (ir.Value | None);
+
     def _codegen_sized_builtin_call(
         nd: uni.FuncCall, func_name: (str | None), call_kind: str
     ) -> (ir.Value | None);
@@ -910,7 +920,7 @@ walker NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _split_call_kwargs(nd: uni.FuncCall) -> dict;
-    def _ct_ctor_slots(target: uni.UniNode) -> list[tuple];
+    def _ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniNode]];
     def _emit_rc_roots_globals -> None;
     def _emit_rc_collect_cycles -> None;
     def _emit_rc_color_load(
@@ -1443,7 +1453,7 @@ walker NaIRGenPass(Transform) {
 
     def _receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] | None);
     def _jc_reference_schema(
-        ft: ir.Type, layouts: dict, semantic: object = None
+        ft: ir.Type, layouts: dict, semantic: TypeBase | None = None
     ) -> (dict | None);
 
     def _codegen_union_member(
@@ -1947,7 +1957,9 @@ walker NaIRGenPass(Transform) {
     def _struct_has_ref_fields(arch_name: str) -> bool;
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(
-        targets: Sequence[uni.UniNode], tuple_val: ir.Value, tuple_node: (uni.UniNode | None)
+        targets: Sequence[uni.UniNode],
+        tuple_val: ir.Value,
+        tuple_node: (uni.UniNode | None)
     ) -> bool;
 
     def _codegen_tuple_index(
@@ -1979,7 +1991,7 @@ walker NaIRGenPass(Transform) {
     def _jac_optional_type(payload: ir.Type) -> ir.Type;
     def _opt_payload_of(t: ir.Type) -> (ir.Type | None);
     def _opt_ptr_payload_of(t: ir.Type) -> (ir.Type | None);
-    def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (any | None);
+    def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
     def _narrowed_flow_type(nd: uni.UniNode) -> (any | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
     def _narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool;
@@ -2017,7 +2029,7 @@ walker NaIRGenPass(Transform) {
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list) -> (ir.Type | None);
-    def _lower_class_type(t: any) -> (ir.Type | None);
+    def _lower_class_type(t: ClassType) -> (ir.Type | None);
     def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
@@ -2101,7 +2113,7 @@ walker NaIRGenPass(Transform) {
     def _codegen_float_floor_div(left: ir.Value, right: ir.Value) -> ir.Value;
     def _codegen_float_floor_mod(left: ir.Value, right: ir.Value) -> ir.Value;
     def _spec_name_match(tk: str, names: tuple) -> bool;
-    def _opt_sole_member(t: any) -> (any | None);
+    def _opt_sole_member(t: any) -> (TypeBase | None);
     def _spec_union_agreement(t: any, names: tuple) -> (any | None);
     def _elem_storage_llvm(t: any) -> (ir.Type | None);
     def _aos_elem_of(type_expr: uni.UniNode | None) -> (str | None);

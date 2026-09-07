@@ -5,6 +5,30 @@ glob sep: str = "/",
      pardir: str = "..",
      curdir: str = ".";
 
+def:pub exists(path: str) -> bool {
+    return os.path.exists(path);
+}
+
+def:pub isfile(path: str) -> bool {
+    return os.path.isfile(path);
+}
+
+def:pub isdir(path: str) -> bool {
+    return os.path.isdir(path);
+}
+
+def:pub realpath(path: str) -> str {
+    return os.path.realpath(path);
+}
+
+def:pub getsize(path: str) -> int {
+    return os.path.getsize(path);
+}
+
+def:pub getmtime(path: str) -> float {
+    return os.path.getmtime(path);
+}
+
 
 def:pub isabs(p: str) -> bool {
     return p.startswith("/");

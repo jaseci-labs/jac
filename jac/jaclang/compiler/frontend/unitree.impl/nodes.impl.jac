@@ -2776,16 +2776,21 @@ impl Ability.is_method.getter -> bool {
 }
 
 impl Ability.is_cls_method.getter -> bool {
-    return (
-        self.is_classmethod
-        or (
-            self.is_method
-            and `any(
-                (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
-                for dec in (self.decorators or ())
-            )
-        )
-    );
+    if self.is_classmethod {
+        return True;
+    }
+    if not self.is_method {
+        return False;
+    }
+    decorators = self.decorators;
+    if decorators is not None {
+        for dec in decorators {
+            if isinstance(dec, Name) and dec.sym_name == 'classmethod' {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 impl Ability.is_def.getter -> bool {

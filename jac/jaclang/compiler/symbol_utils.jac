@@ -114,43 +114,6 @@ def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
     return params[1];
 }
 
-def is_field_marker(nd: FuncCall) -> bool {
-    owner = nd.parent;
-    if not isinstance(owner, HasVar) or owner.value is not nd {
-        return False;
-    }
-    tgt = nd.target;
-    if not isinstance(tgt, Name) {
-        return False;
-    }
-    if tgt.sym is not None
-        and tgt.sym.decl is not None
-        and not isinstance(tgt.sym.decl, ModuleItem) {
-        source = tgt.sym.decl.find_parent_of_type(Module);
-        if source is not None {
-            decl = tgt.sym.decl;
-            return isinstance(decl, AstSymbolNode)
-                and decl.sym_name == 'field'
-                and source.source.file_path.replace('\\', '/').endswith(
-                    '/runtime/object_model.jac'
-                );
-        }
-    }
-    return erased_import_binds(nd, tgt.sym_name, 'field');
-}
-
-def field_marker_argument(nd: FuncCall, name: str) -> (Expr | None) {
-    for arg in (nd.params or []) {
-        if not isinstance(arg, KWPair) or not isinstance(arg.key, Name) {
-            continue;
-        }
-        if arg.key.sym_name == name and isinstance(arg.value, Expr) {
-            return arg.value;
-        }
-    }
-    return None;
-}
-
 def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol | None) {
     if isinstance(expr, AstSymbolNode) and expr.sym {
         return expr.sym;

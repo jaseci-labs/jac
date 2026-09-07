@@ -37,6 +37,8 @@ test "module aliases resolve bundled native library implementations" {
     assert not issues , "\n".join(issue.detail for issue in issues);
     probe = get_func(engine, "standard_library_module_alias_probe", ctypes.c_bool);
     assert probe();
+    mixed_path = get_func(engine, "mixed_path_dispatch_probe", ctypes.c_bool);
+    assert mixed_path();
 }
 
 test "qualified module members do not resolve a same-named local callable" {

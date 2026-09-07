@@ -464,7 +464,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     field_types: list[ir.Type] = [];
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};
-    field_default_map: dict[(str, object)] = {};
+    field_default_map: dict[str, uni.Expr] = {};
     foreign_fields: set = set();
     erased_tv_fields: dict[(str, list)] = {};
 
@@ -606,6 +606,17 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     }
     self.struct_field_indices[arch_name] = field_index_map;
     self.struct_field_order[arch_name] = [f.name for f in layout.fields];
+    import from jaclang.compiler.field_semantics { positional_field_names }
+    constructor_fields: list[uni.HasVar] = [];
+    for field in layout.fields {
+        declaration = field.decl_node;
+        if isinstance(declaration, uni.HasVar) {
+            constructor_fields.append(declaration);
+        }
+    }
+    self.struct_constructor_order[arch_name] = positional_field_names(
+        constructor_fields
+    );
     self.struct_field_types[arch_name] = field_type_map;
     self.struct_field_defaults[arch_name] = field_default_map;
     self.struct_field_foreign[arch_name] = foreign_fields;
@@ -1809,7 +1820,7 @@ impl NaIRGenPass._codegen_instantiation(
         f"{type_name}.init" in self.method_funcs
         or f"{type_name}.__init__" in self.method_funcs
     );
-    _pos_field_pairs: list = [];
+    _pos_field_pairs: list[tuple[str, uni.UniNode]] = [];
     if not _has_init {
         _pos_args = [
             p
@@ -1831,7 +1842,7 @@ impl NaIRGenPass._codegen_instantiation(
             return None;
         }
         if _pos_args {
-            _order = self.struct_field_order.get(type_name);
+            _order = self.struct_constructor_order.get(type_name);
             if _order is None or len(_pos_args) > len(_order) {
                 self.emit(
                     E5092,
@@ -2013,7 +2024,7 @@ impl NaIRGenPass._codegen_instantiation(
     foreign_fields = self.struct_field_foreign.get(type_name, set());
 
     set_fields: set[str] = set();
-    _field_inits: list = list(_pos_field_pairs);
+    _field_inits: list[tuple[str, uni.UniNode]] = list(_pos_field_pairs);
     for param in params {
         if isinstance(param, uni.KWPair) {
             _kn = param.key.sym_name if param.key else None;
@@ -2647,14 +2658,15 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         return self._emit_time_call(method_name, nd);
     }
 
-    if (
-        isinstance(trailer.target, uni.AtomTrailer)
-        and trailer.target.is_attr
-        and imported_module_name(trailer.target.target) == "os"
-        and self._get_name(trailer.target.right) == "path"
-        and self?._native_stdlib_modules
-        and "os" in self._native_stdlib_modules
-    ) {
+    if module_name == "os.path"
+        or (
+            isinstance(trailer.target, uni.AtomTrailer)
+            and trailer.target.is_attr
+            and imported_module_name(trailer.target.target) == "os"
+            and self._get_name(trailer.target.right) == "path"
+            and self?._native_stdlib_modules
+            and "os" in self._native_stdlib_modules
+        ) {
         if method_name not in NATIVE_OSPATH_FUNCS {
             self.emit(E5090, node_override=nd, kind="os.path member", name=method_name);
             return None;
@@ -4282,7 +4294,7 @@ impl NaIRGenPass._emit_class_routed_call(
 
 
 impl NaIRGenPass._jc_reference_schema(
-    ft: ir.Type, layouts: dict, semantic: object = None
+    ft: ir.Type, layouts: dict, semantic: TypeBase | None = None
 ) -> (dict | None) {
     """Combine semantic reference types with the backend's container ABI.""";
     args = semantic.private.type_args or [] if isinstance(semantic, ClassType) else [];
@@ -4296,7 +4308,7 @@ impl NaIRGenPass._jc_reference_schema(
         if semantic_name in self.struct_field_indices {
             return {"code": "obj", "class": semantic_name};
         }
-        return {"code": "str"};
+        return {"code": "str"} if semantic_name == "str" else None;
     }
     name = getattr(ft.pointee, "name", "") or "";
     if name in self.struct_field_indices {
@@ -4371,7 +4383,9 @@ impl NaIRGenPass._build_jc_layout -> str {
             ft = ftypes.get(fname);
             code = "opaque";
             aux = "";
-            if fname in enum_map {
+            if fname in self.struct_field_foreign.get(arch_name, set()) {
+                code = "opaque";
+            } elif fname in enum_map {
                 code = "enum";
                 aux = enum_map[fname];
             } elif fname in self.struct_field_erased_tv.get(arch_name, {}) {
@@ -4381,7 +4395,13 @@ impl NaIRGenPass._build_jc_layout -> str {
                 and isinstance(ft.pointee, ir.IntType)
                 and ft.pointee.width == 8
             ) {
-                code = "str";
+                reference = self._jc_reference_schema(
+                    ft, layouts, semantic_fields.get(fname)
+                );
+                if reference is not None {
+                    code = reference["code"];
+                    aux = reference.get("class", "");
+                }
             } elif getattr(ft, "name", "") == "JacVal" {
                 code = "union";
             } elif (

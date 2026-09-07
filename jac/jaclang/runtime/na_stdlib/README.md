@@ -25,6 +25,11 @@ bundled one. A bundled module links through the existing cross-module machinery
 (binding population, then extern forward-decl, then `link_in`), on both the AOT
 (`jac build --native`) and JIT execution paths.
 
+Bundled library functions use module-qualified LLVM symbols derived from their
+relative library paths. This keeps symbols stable across installations and
+separates Jac functions from libc symbols and functions in other modules. The
+native layout records the emitted name separately from its source-level key.
+
 ## Shipped modules
 
 - **`os/path.jac`** (#6940 Phase 0, extended #8201) -- pure-string POSIX path
@@ -33,7 +38,10 @@ bundled one. A bundled module links through the existing cross-module machinery
   algorithm verbatim: absolutize both sides, drop empty components, walk off
   the shared prefix with `..` for each remaining `start` component, and answer
   `.` when nothing is left. `normcase` is the identity, which is what it is on
-  POSIX.
+  POSIX. Filesystem operations (`exists`, `isfile`, `isdir`, `realpath`,
+  `getsize`, and `getmtime`) expose typed entry points backed by the existing
+  native OS primitives. These declarations keep direct and aliased imports
+  consistent with calls through `os.path`.
 - **`json.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
   CPython's default `(', ', ': ')` separators and insertion-ordered keys.

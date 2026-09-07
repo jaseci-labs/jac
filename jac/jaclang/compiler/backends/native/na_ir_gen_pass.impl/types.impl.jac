@@ -298,7 +298,7 @@ impl NaIRGenPass._spec_name_match(tk: str, names: tuple) -> bool {
     return False;
 }
 
-impl NaIRGenPass._opt_sole_member(t: any) -> (any | None) {
+impl NaIRGenPass._opt_sole_member(t: any) -> (TypeBase | None) {
     try {
         import from jaclang.compiler.types.types {
             ClassType as _OsClassType,
@@ -471,7 +471,9 @@ impl NaIRGenPass._split_union_key(tk: str) -> list[str] {
     return out;
 }
 
-impl NaIRGenPass._flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (any | None) {
+impl NaIRGenPass._flow_narrowed_type_of(
+    expr: (uni.UniNode | None)
+) -> (TypeBase | None) {
     """The narrow the analysis pipeline stamped on this occurrence.
 
     `Expr.type` records what the evaluator computed for the expression, and
@@ -560,15 +562,17 @@ impl NaIRGenPass._typed_elem_llvm_of(
         }
         _ty = _sole;
     }
-    for _cand in (_ty?.types or [_ty]) {
-        _priv = _cand?.private;
-        if _priv is not None and (_priv?.type_args or []) {
+    candidates = _ty.types if isinstance(_ty, UnionType) else [_ty];
+    for _cand in candidates {
+        if isinstance(_cand, ClassType) and _cand.private.type_args {
             _ty = _cand;
             break;
         }
     }
-    _priv = _ty?.private;
-    args = (_priv?.type_args or []) if _priv is not None else [];
+    if not isinstance(_ty, ClassType) {
+        return None;
+    }
+    args = _ty.private.type_args;
     if not args {
         return None;
     }
@@ -662,7 +666,10 @@ impl NaIRGenPass._static_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | 
         }
         _t = _sole;
     }
-    _args = _t.private.type_args or [];
+    if not isinstance(_t, ClassType) {
+        return None;
+    }
+    _args = _t.private.type_args;
     if not _args {
         return None;
     }
@@ -722,7 +729,7 @@ impl NaIRGenPass._lower_view_container(t: any) -> (ir.Type | None) {
     return self._lower_list_for_elem(_elem);
 }
 
-impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
+impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     cname = t.shared.class_name;
     if cname in self.type_map {
         return self.type_map[cname];
@@ -762,7 +769,9 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
 
     if cname in ("Iterator", "Iterable") {
         self._ensure_iter_types();
-        return self._jac_iter_type.as_pointer();
+        iterator_type = self._jac_iter_type;
+        assert iterator_type is not None;
+        return iterator_type.as_pointer();
     }
 
     if cname in ("list", "Sequence") {
@@ -907,10 +916,11 @@ impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
     if _sole is not None {
         _t = _sole;
     }
-    _priv = _t?.private;
-    _args = (_priv?.type_args or []) if _priv is not None else [];
-    _shared = _t?.shared;
-    if _shared is None or _shared.class_name != "list" or not _args {
+    if not isinstance(_t, ClassType) or _t.shared.class_name != "list" {
+        return None;
+    }
+    _args = _t.private.type_args;
+    if not _args {
         return None;
     }
     return self._aos_elem_name(_args[0]);
@@ -1031,8 +1041,7 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return _sig_seq;
         }
         if not self._type_base_is_unknown(_ptb) {
-            _sig_shared = _ptb?.shared;
-            _sig_cn = _sig_shared.class_name if _sig_shared is not None else None;
+            _sig_cn = _ptb.shared.class_name if isinstance(_ptb, ClassType) else None;
             if _sig_cn in ("tuple", "list", "dict", "set", "type") {
                 _sig_lmark = len(self.errors_had);
                 _sig_res = self._resolve_jac_type(type_expr);

@@ -1343,7 +1343,7 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
 }
 
 impl TypeCheckPass.exit_has_var with HasVar exit {
-    import from jaclang.compiler.symbol_utils { is_field_marker, field_marker_argument }
+    import from jaclang.compiler.field_semantics { field_initialization }
     if (here.defer and here.kid and isinstance(here.kid[-1], Name)) {
         postinit_nd: Name = here.kid[-1];
         if postinit_nd.sym is None {
@@ -1377,19 +1377,15 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
             if here.find_parent_of_type(Import) is not None {
                 return;
             }
-            value_expr = here.value;
+            initialization = field_initialization(here);
+            value_expr = initialization.default_expr;
             is_factory = False;
-            if isinstance(value_expr, FuncCall) and is_field_marker(value_expr) {
-                default_expr = field_marker_argument(value_expr, 'default');
-                factory_expr = field_marker_argument(value_expr, 'default_factory');
-                if default_expr is not None {
-                    value_expr = default_expr;
-                } elif factory_expr is not None {
-                    value_expr = factory_expr;
-                    is_factory = True;
-                } else {
-                    return;
-                }
+            if value_expr is None {
+                value_expr = initialization.factory_expr;
+                is_factory = True;
+            }
+            if value_expr is None {
+                return;
             }
             right_type = self.evaluator.get_type_of_expression(
                 value_expr, expected_type=here.type if not is_factory else None

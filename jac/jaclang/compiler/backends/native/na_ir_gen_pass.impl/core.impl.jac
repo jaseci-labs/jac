@@ -452,7 +452,7 @@ impl NaIRGenPass._export_native_layout -> None {
             ret_elem = self.func_ret_elem_keys.get(fname);
         }
         layout.functions[fname] = NativeFuncLayout(
-            name=fname,
+            name=func.name,
             param_types=param_types,
             param_names=param_names,
             ret_type=ret_type,
@@ -1187,8 +1187,24 @@ impl NaIRGenPass._forward_declare_imported_ability(
     nd: uni.Ability, unavailable: (set | None) = None, imp_layout: any = None
 ) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else None;
-    if name is None or name in self.func_symtab {
+    if name is None {
         return;
+    }
+    declaring_module = nd.find_parent_of_type(uni.Module);
+    if declaring_module is not None
+        and (os.path.realpath(declaring_module.source.file_path), name)
+            in self._module_functions {
+        return;
+    }
+    if name in self.func_symtab {
+        import from jaclang.compiler.frontend.codeinfo {
+            native_library_function_symbol
+        }
+        if declaring_module is None
+            or native_library_function_symbol(declaring_module.source.file_path, name)
+                == name {
+            return;
+        }
     }
 
     if nd.body is None {
@@ -1206,8 +1222,12 @@ impl NaIRGenPass._forward_declare_imported_ability(
             return;
         }
     }
+    previous = self.func_symtab.get(name);
     self._maybe_declare_ability(nd);
     self._record_linked_decl(self.func_symtab.get(name), nd);
+    if previous is not None {
+        self.func_symtab[name] = previous;
+    }
 }
 
 impl NaIRGenPass._record_linked_decl(
@@ -1635,8 +1655,8 @@ impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict {
     return out;
 }
 
-impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple] {
-    out: list[tuple] = [];
+impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniNode]] {
+    out: list[tuple[str, uni.UniNode]] = [];
     if not isinstance(target, uni.AtomTrailer) or target.is_attr {
         return out;
     }
@@ -1644,8 +1664,11 @@ impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple] {
         return out;
     }
     t = target.target.type;
-    shared = t?.shared;
-    if shared is None or not shared.ct_params {
+    if not isinstance(t, ClassType) {
+        return out;
+    }
+    shared = t.shared;
+    if not shared.ct_params {
         return out;
     }
     arch = shared.symbol_table;
@@ -1654,7 +1677,7 @@ impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple] {
     }
     s0 = target.right.slices[0] if target.right.slices else None;
     head = s0.start if s0 is not None else None;
-    vals: list = `list(head.values)
+    vals: list[uni.UniNode] = `list(head.values)
         if isinstance(head, uni.TupleVal)
         else ([head] if head else []);
     for (i, tp) in enumerate(arch.type_params or []) {

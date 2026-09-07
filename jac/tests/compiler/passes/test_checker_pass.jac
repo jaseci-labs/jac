@@ -9,11 +9,13 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.testing.test { parametrize }
 
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"),
-     CHECKER_FIXTURES = os.path.join(
+glob FIXTURES: str = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "fixtures"
+     ),
+     CHECKER_FIXTURES: str = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
      ),
-     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+     LANG_FIXTURES: str = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      NO_TC = CompileOptions(default_codespace='server');
 
 def assert_error_pretty_found(needle: str, haystack: str) {

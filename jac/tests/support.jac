@@ -183,7 +183,13 @@ def _compile_native_fixture(
     base = fixture_dir or NATIVE_FIXTURES;
     prog = JacProgram();
     ir = prog.compile(file_path=str(Path(base) / fixture), options=options);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    errors = [e.pretty_print() for e in prog.errors_had] if prog.errors_had else [];
+    if errors and ir is not None and ir.gen.llvm_ir is not None {
+        import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+        errors.extend(
+            issue.detail for issue in native_lowering_issues(str(ir.gen.llvm_ir))
+        );
+    }
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     assert ir is not None , f"No module produced for {fixture}";
     return ir;

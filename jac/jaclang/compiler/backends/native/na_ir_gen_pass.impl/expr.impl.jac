@@ -536,22 +536,13 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    call_params: list[uni.Expr | uni.KWPair] = [];
     if isinstance(nd.left, uni.TupleVal) and nd.left.values {
         call_params = list(nd.left.values);
     } else {
         call_params = [nd.left];
     }
-    call = uni.FuncCall(
-        target=nd.right,
-        params=call_params,
-        genai_call=None,
-        kid=[nd.right, *call_params]
-    );
-    _owner = nd.parent;
-    if _owner is not None {
-        call.set_parent(_owner);
-    }
-    return self._codegen_expr(call);
+    return self._codegen_synthetic_call(nd.right, call_params, nd, nd.type);
 }
 
 impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {

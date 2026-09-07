@@ -160,6 +160,21 @@ def native_safe_sym(src: str) -> str {
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }
 
+def native_library_function_symbol(mod_path: str, name: str) -> str {
+    import os;
+    library_root = native_stdlib_root();
+    if library_root is None {
+        return name;
+    }
+    source = os.path.realpath(mod_path);
+    root_path = os.path.realpath(library_root) + os.sep;
+    if not source.startswith(root_path) {
+        return name;
+    }
+    module_name = source[len(root_path):].replace(os.sep, "/");
+    return f"__jac_lib_{native_safe_sym(module_name)}_{name}";
+}
+
 def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
     import os;
     path = mod_path.replace("\\", "/");
@@ -477,6 +492,10 @@ def _native_variant_path(base_no_ext: str) -> (str | None) {
 
 def _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if candidate is None {
+        return None;
+    }
+    import from jaclang.compiler.native_scope { scope_allows_inferred_path }
+    if not scope_allows_inferred_path(candidate) {
         return None;
     }
     import from jaclang.compiler.placement.placement_solver { native_default_path_ok }

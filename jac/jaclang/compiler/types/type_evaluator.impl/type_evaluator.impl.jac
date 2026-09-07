@@ -5906,15 +5906,16 @@ impl TypeEvaluator._filter_union_to_callables(union_type: TypeBase) -> TypeBase 
 impl TypeEvaluator._is_type_alias_annotation(
     annotation_type: TypeBase, tag_expr: Expr
 ) -> bool {
-    if not self.prefetch or not self.prefetch.callable_class {
-        return False;
-    }
-
     if self._type_alias_tag_ident(tag_expr) != "TypeAlias" {
         return False;
     }
+    if self._is_typing_special_form(annotation_type, "_SpecialForm") {
+        return True;
+    }
     is_special_form = (
         isinstance(annotation_type, ClassType)
+        and self.prefetch is not None
+        and self.prefetch.callable_class is not None
         and annotation_type.shared == self.prefetch.callable_class.shared
     );
     return is_special_form or isinstance(annotation_type, UnknownType);

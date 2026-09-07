@@ -102,7 +102,7 @@ impl TypeEvaluator._merge_catalog_field_params(
 impl TypeEvaluator._build_field_params(
     class_type: ClassType, skip_deferred: bool = True
 ) -> dict[str, Parameter] {
-    import from jaclang.compiler.symbol_utils { is_field_marker, field_marker_argument }
+    import from jaclang.compiler.field_semantics { field_initialization }
     import from jaclang.compiler.types.stubcat.reader { CatScope }
     param_map: dict[str, Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
@@ -130,26 +130,18 @@ impl TypeEvaluator._build_field_params(
                 type_cls = self.get_type_of_expression(var_type_expr);
                 param_type = self._convert_to_instance(type_cls);
             }
-            default_value = has_var.value;
-            param_kind = ParamKind.NORMAL;
-            if isinstance(default_value, FuncCall) and is_field_marker(default_value) {
-                init_flag = field_marker_argument(default_value, 'init');
-                if skip_deferred
-                    and isinstance(init_flag, Bool)
-                    and not init_flag.lit_value {
-                    param_map.pop(has_var.name.value, None);
-                    continue;
-                }
-                keyword_flag = field_marker_argument(default_value, 'kw_only');
-                if isinstance(keyword_flag, Bool) and keyword_flag.lit_value {
-                    param_kind = ParamKind.KWONLY;
-                }
-                factory = field_marker_argument(default_value, 'default_factory');
-                default_value = field_marker_argument(default_value, 'default');
-                if default_value is None and factory is not None {
-                    default_value = factory;
-                }
+            initialization = field_initialization(has_var);
+            if skip_deferred and not initialization.participates_in_init {
+                param_map.pop(has_var.name.value, None);
+                continue;
             }
+            default_value = initialization.default_expr;
+            if default_value is None {
+                default_value = initialization.factory_expr;
+            }
+            param_kind = ParamKind.KWONLY
+                if initialization.keyword_only
+                else ParamKind.NORMAL;
             param_map[has_var.name.value] = Parameter(
                 name=has_var.name.value,
                 category=ParameterCategory.Positional,

@@ -397,7 +397,7 @@ impl NaIRGenPass._emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
         );
         self.builder.cbranch(is_null, null_bb, ok_bb);
         self.builder.position_at_end(null_bb);
-        fallback = self._rc_strdup(p, name="rp.fallback");
+        fallback = self._rc_strdup(p, name="rp.fallback", raw=True);
         self.builder.branch(merge_bb);
         null_end = self.builder.block;
         self.builder.position_at_end(ok_bb);

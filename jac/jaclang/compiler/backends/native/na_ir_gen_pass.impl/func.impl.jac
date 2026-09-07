@@ -106,6 +106,15 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
         self.decorated_fns[name] = (func, slot_gv, _dec_names, fnty);
     } else {
         _emit_name = name;
+        import from jaclang.compiler.frontend.codeinfo {
+            native_library_function_symbol
+        }
+        _def_module = nd.find_parent_of_type(uni.Module);
+        if _def_module is not None {
+            _emit_name = native_library_function_symbol(
+                _def_module.source.file_path, name
+            );
+        }
         if nd.access
             and nd.access.tag.name == Tok.KW_PRIV
             and nd.find_parent_of_type(uni.Archetype) is None {
@@ -288,6 +297,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         sysv_sret = plan["sret"];
         sysv_ret_plan = plan["ret"];
         _sig_ret = plan["sig_ret"];
+        sysv_ret_type: ir.Type;
         if _sig_ret[0] == "void" {
             sysv_ret_type = ir.VoidType();
         } elif _sig_ret[0] == "coerce" {
@@ -314,7 +324,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         if sysv_sret and len(sysv_func.args) > 0 {
             sysv_func.args[0].add_attribute("sret");
             _sal = sysv_ret_plan["align"];
-            sysv_func.args[0].align = _sal if _sal > 8 else 8;
+            sysv_func.args[0].attributes.align = _sal if _sal > 8 else 8;
             sysv_func.args[0].name = "agg.result";
         }
         for pp in param_plan {
@@ -325,7 +335,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                 if pp["byval"] {
                     _ba.add_attribute("byval");
                     _bal = pp["align"];
-                    _ba.align = _bal if _bal > 8 else 8;
+                    _ba.attributes.align = _bal if _bal > 8 else 8;
                 }
                 _ba.name = pp["pname"];
             } elif pp["kind"] == "scalar" and _pos < len(sysv_func.args) {

@@ -138,9 +138,7 @@ impl NaIRGenPass._solve_generic_call(
     sig = ability.signature;
     params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     _ft = ability.name_ref.type if ability.name_ref is not None else None;
-    _ft_params = list(_ft.parameters or [])
-        if _ft is not None and _ft?.parameters
-        else [];
+    _ft_params = list(_ft.parameters) if isinstance(_ft, SemanticFunctionType) else [];
     positional: list = [];
     kw_map: dict = {};
     for a in (nd.params or []) {
@@ -488,7 +486,10 @@ impl NaIRGenPass._instantiate_generic_for_target(
         return None;
     }
     ability = self.generic_fns.get(func_name);
-    sig = ability.signature if ability is not None else None;
+    if ability is None {
+        return None;
+    }
+    sig = ability.signature;
     if not isinstance(sig, uni.FuncSignature) {
         return None;
     }
@@ -651,7 +652,7 @@ impl NaIRGenPass._find_source_ability(
 ) -> (uni.Ability | None) {
     import os;
     import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
-    _base = os.path.dirname(self.ir_in.loc.mod_path) if self.ir_in?.loc else None;
+    _base = os.path.dirname(self.ir_in.loc.mod_path);
     _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
     (_src, full_path) = resolve_native_module(_clean, _base);
     if full_path is None {

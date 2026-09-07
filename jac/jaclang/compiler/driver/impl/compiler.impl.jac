@@ -1244,7 +1244,7 @@ impl JacCompiler.compile(
             and in_native_scope_path(str(file_path))
             and not scope_lowering_active()
         ) {
-            activate_scope_lowering();
+            activate_scope_lowering(str(file_path));
             _scope_armed = True;
         }
         if self._reentrant_depth == 0 and not self.stub_catalog_disabled {

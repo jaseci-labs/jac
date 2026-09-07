@@ -3308,6 +3308,18 @@ test "clib System V AMD64 ABI lowering" {
     assert '%"Cam.cabi" = type' in s , "C-layout type for nested struct";
     assert 'byval(%"Cam.cabi")' in s , "Cam passed byval";
     assert 'sret(%"Cam.cabi")' in s , "Cam returned via sret";
+    result_declaration = next(
+        line
+        for line in s.splitlines()
+        if line.startswith('declare void @"cam_mk"')
+    );
+    argument_declaration = next(
+        line
+        for line in s.splitlines()
+        if line.startswith('declare float @"cam_fovy"')
+    );
+    assert 'sret(%"Cam.cabi") align 8' in result_declaration;
+    assert 'byval(%"Cam.cabi") align 8' in argument_declaration;
     # The non-injective return-boxing (gap #7) is gone: a scalar return is never
     # rerouted through struct boxing.
     assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
