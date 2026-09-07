@@ -1,5 +1,4 @@
 import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
-import sys;
 import types;
 import from threading { Event }
 import jaclang.compiler.frontend.unitree as uni;
@@ -19,12 +18,6 @@ import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import type from jaclang.compiler.driver.compiler { JacCompiler }
 import type from jaclang.compiler.driver.mtp { Info }
 import type from jaclang.compiler.passes.transform { Transform }
-
-with entry {
-    if sys.getrecursionlimit() < 12000 {
-        sys.setrecursionlimit(12000);
-    }
-}
 
 class JacProgram {
     has hub: ModuleHub,
