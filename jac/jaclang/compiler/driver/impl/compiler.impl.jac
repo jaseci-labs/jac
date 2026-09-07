@@ -572,6 +572,7 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
     interop_data: dict = {'bindings': {}};
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
+            'name': binding.name,
             'source_context': binding.source_context.value,
             'callers': [c.value for c in binding.callers],
             'ret_type': binding.ret_type,
@@ -606,7 +607,7 @@ impl JacCompiler._deserialize_interop_table(
     cached_bindings: dict[str, dict[str, any]] = cached_interop.get('bindings', {});
     for (name, data) in cached_bindings.items() {
         binding = InteropBinding(
-            name=name,
+            name=data['name'],
             source_context=InteropContext(data['source_context']),
             callers={InteropContext(c) for c in data.get('callers', [])},
             ret_type=data.get('ret_type', 'int'),
