@@ -2,7 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.8 (Latest Release)
+## jaclang 0.37.9 (Latest Release)
+
+### Breaking Changes
+
+- **Retained boundary contracts and typed Wasm integration**: Native browser imports now generate scalar conversions and opaque ownership handles from declarations. Replace `set_na_env` and manual host dictionaries with `bind_na_host(export, typed_host)`; reusable graphics support is available through `@jac/webgl`. Signup returns a `SignupResult` record instead of a dictionary, so consumers use its `success`, `user_id`, `error`, and `status` fields. Qualified endpoint identities, conservative effect summaries, concurrent cache invalidation, external JSON response contracts, and a production boundary audit share retained compiler metadata. Compiler and client artifact caches are invalidated for the new formats.
+
+### New Features
+
+- **Selective guide retrieval**: Add `jac guide <topic> --sections` and `--section <slug>` with JSON output so readers and coding agents can retrieve individual sections of bundled guides and documentation. New project instructions and generic MCP startup begin with a compact essentials guide and route to task-specific references.
+
+## jaclang 0.37.8
 
 ### Breaking Changes
 
