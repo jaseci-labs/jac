@@ -206,6 +206,9 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
             or handle.instance != inst or handle.type != contract.type {
             raise Error("Invalid, consumed, or foreign native handle for " + contract.type);
         }
+        if contract.mode == "borrow_mut" and not handle.owned and handle.mode != "borrow_mut" {
+            raise Error("Cannot mutably borrow a shared native handle");
+        }
         return handle.pointer;
     }
     if contract.type in ["int", "i64", "u64"] {
@@ -242,7 +245,7 @@ def _na_result(value: any, contract: any, module_stem: str, inst: any, parents: 
         if contract.mode == "own" { inst.__jac_owned_handles += 1; }
         _na_handles.set(token, {
             "pointer": value, "type": contract.type, "module": module_stem,
-            "instance": inst, "live": True, "owned": contract.mode == "own",
+            "instance": inst, "live": True, "owned": contract.mode == "own", "mode": contract.mode,
             "parents": [] if contract.mode == "own" else parents
         });
         return token;
