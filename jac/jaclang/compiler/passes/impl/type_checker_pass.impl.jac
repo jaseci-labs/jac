@@ -1483,6 +1483,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         self.evaluator.get_type_of_expression(here.target);
     } elif isinstance(here.target, (TupleVal, ListVal)) {
         self._eval_unpacking_names(here.target);
+        self.evaluator.get_type_of_expression(here.target);
     }
 
     collection_type = self.evaluator.get_type_of_expression(here.collection);

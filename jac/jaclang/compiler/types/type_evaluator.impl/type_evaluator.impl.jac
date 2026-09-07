@@ -1,7 +1,7 @@
 impl TypeEvaluator._walk_compr_clauses(comprs: list[InnerCompr]) -> None {
     for compr in comprs {
         self.get_type_of_expression(compr.collection);
-        if isinstance(compr.target, Name) {
+        if isinstance(compr.target, (Name, TupleVal, ListVal)) {
             self.get_type_of_expression(compr.target);
         }
         if compr.conditional {
@@ -502,23 +502,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case DictCompr():
             if self.prefetch and self.prefetch.dict_class {
                 dict_inst = self._convert_to_instance(self.prefetch.dict_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, Name) {
-                        self.get_type_of_expression(compr.target);
-                    } elif isinstance(compr.target, (TupleVal, ListVal)) {
-                        for v in compr.target.values {
-                            if isinstance(v, Name) {
-                                self.get_type_of_expression(v);
-                            }
-                        }
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
                 if isinstance(expr.kv_pair, KVPair) and expr.kv_pair.key is not None {
                     key_type = self.get_type_of_expression(expr.kv_pair.key);
                     val_type = self.get_type_of_expression(expr.kv_pair.value);
