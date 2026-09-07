@@ -35,8 +35,12 @@ def value_contract(
             "numeric": "float" if shape.is_float else "int"
         };
         if not shape.is_float {
-            import from jaclang.runtime.scalars { shape_range }
-            limits = shape_range(shape);
+            import from jaclang.runtime.scalars { ScalarShape, shape_range }
+            limits = shape_range(
+                ScalarShape(
+                    name=shape.name, width=shape.width, signed=shape.signed, sized=True
+                )
+            );
             value["minimum"] = str(limits[0]);
             value["maximum"] = str(limits[1]);
         }
