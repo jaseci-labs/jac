@@ -34,100 +34,35 @@ impl __createJacSchema(zodLib: any) -> any {
 }
 
 impl __getEndpointEffects -> dict {
-    effects: any = globalThis.__jacEndpointEffects__;
-    if not effects {
-        seed_fn: any = globalThis.__jacSeedEndpointEffects__;
-        effects = seed_fn() if seed_fn else {};
-        globalThis.__jacEndpointEffects__ = effects;
-    }
-    return effects;
+    return cache___getEndpointEffects();
 }
 
 impl __getCacheState -> dict {
-    state: any = globalThis.__jacCacheState__;
-    if not state {
-        state = {
-            "cache": {},
-            "order": [],
-            "pending": {},
-            "config": {"maxEntries": 500, "defaultTtlMs": 60000}
-        };
-        globalThis.__jacCacheState__ = state;
-    }
-    return state;
+    return cache___getCacheState();
 }
 
 impl __isFresh(`entry: dict) -> bool {
-    if not `entry {
-        return False;
-    }
-    age = Date.now() - `entry["timestamp"];
-    return age < `entry["ttl"];
+    return cache___isFresh(`entry);
 }
 
 impl __cacheGet(key: str) -> dict | None {
-    state = __getCacheState();
-    `entry = state["cache"][key];
-    if not `entry {
-        return None;
-    }
-    idx = state["order"].indexOf(key);
-    if idx > -1 {
-        state["order"].splice(idx, 1);
-    }
-    state["order"].push(key);
-    return `entry;
+    return cache___cacheGet(key);
 }
 
 impl __cacheSet(key: str, data: any, ttl: int) -> None {
-    state = __getCacheState();
-    if state["cache"][key] {
-        idx = state["order"].indexOf(key);
-        if idx > -1 {
-            state["order"].splice(idx, 1);
-        }
-    }
-    while len(state["order"]) >= state["config"]["maxEntries"] {
-        __evictOldest();
-    }
-    state["cache"][key] = {"data": data, "timestamp": Date.now(), "ttl": ttl};
-    state["order"].push(key);
+    return cache___cacheSet(key, data, ttl);
 }
 
 impl __evictOldest -> None {
-    state = __getCacheState();
-    if len(state["order"]) > 0 {
-        oldest = state["order"].shift();
-        if oldest and state["cache"][oldest] {
-            Reflect.deleteProperty(state["cache"], oldest);
-        }
-    }
+    return cache___evictOldest();
 }
 
 impl __overlaps(list1: list[str], list2: list[str]) -> bool {
-    for item in list1 {
-        if item in list2 {
-            return True;
-        }
-    }
-    return False;
+    return cache___overlaps(list1, list2);
 }
 
 impl __invalidateEndpoint(endpoint_key: str) -> None {
-    state = __getCacheState();
-    keys_to_delete = [];
-    for key in Object.keys(state["cache"]) {
-        if key.startswith(endpoint_key) {
-            keys_to_delete.append(key);
-        }
-    }
-    for key in keys_to_delete {
-        Reflect.deleteProperty(state["cache"], key);
-        idx = state["order"].indexOf(key);
-        if idx > -1 {
-            state["order"].splice(idx, 1);
-        }
-    }
+    return cache___invalidateEndpoint(endpoint_key);
 }
 
 impl __bridgeErrorFor(
@@ -268,42 +203,7 @@ impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -
 }
 
 impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
-    effects = __getEndpointEffects();
-    info = effects[endpoint_key];
-    state = __getCacheState();
-    if info and not info["is_writer"] {
-        cached = __cacheGet(args_key);
-        if cached and __isFresh(cached) {
-            return cached["data"];
-        }
-        if state["pending"][args_key] {
-            return await state["pending"][args_key];
-        }
-        fetch_promise = fetch_fn();
-        state["pending"][args_key] = fetch_promise;
-        try {
-            data = await fetch_promise;
-            __cacheSet(args_key, data, state["config"]["defaultTtlMs"]);
-            return data;
-        } finally {
-            Reflect.deleteProperty(state["pending"], args_key);
-        }
-    }
-    if info and info["is_writer"] {
-        data = await fetch_fn();
-        writer_touches = info["touches"];
-        for endpoint_name in Object.keys(effects) {
-            reader_info = effects[endpoint_name];
-            if reader_info and not reader_info["is_writer"] {
-                if writer_touches.includes("*")
-                    or __overlaps(reader_info["touches"], writer_touches) {
-                    __invalidateEndpoint(endpoint_name);
-                }
-            }
-        }
-        return data;
-    }
-    return await fetch_fn();
+    return await cache___cachedEndpointCall(endpoint_key, args_key, fetch_fn);
 }
 
 impl __jacSpawn(
@@ -316,7 +216,7 @@ impl __jacSpawn(
         return await __doWalkerFetch(left, right, fields, opts);
     }
     app = opts["app"] if opts and opts["app"] else "";
-    endpoint_key = f"walker:{left}";
+    endpoint_key = __endpointKey("walker", left, opts);
     args_key = f"{endpoint_key}:{app}:{right}:{JSON.stringify(
         fields, globalThis.__jacFwReplacer__
     )}";
@@ -337,7 +237,7 @@ impl __jacCallFunction(
     function_name: str, args: dict = {}, opts: (dict | None) = None
 ) -> any {
     app = opts["app"] if opts and opts["app"] else "";
-    endpoint_key = f"func:{function_name}";
+    endpoint_key = __endpointKey("func", function_name, opts);
     args_key = f"{endpoint_key}:{app}:{JSON.stringify(
         args, globalThis.__jacFwReplacer__
     )}";
@@ -366,7 +266,7 @@ impl jacSignup(
     identities_or_username: (str | list),
     credential_or_password: (str | dict),
     profile: (dict | None) = None
-) -> dict {
+) -> SignupResult {
     base_url = globalThis.__jacGetApiBaseUrl__();
     credential = __normalizeCredential(credential_or_password);
     identities = (
@@ -388,30 +288,27 @@ impl jacSignup(
     );
     if response.ok {
         body_text = await response.text();
-        user_id = None;
+        user_id = "";
         try {
             data = JSON.parse(body_text);
             if data["data"] and data["data"]["user_id"] {
+                if not isinstance(data["data"]["user_id"], str) {
+                    return SignupResult(success=False, error="Signup response has an invalid user ID");
+                }
                 user_id = data["data"]["user_id"];
             }
         } except Exception as e {
-            return {
-                "success": False,
-                "error": f"Signup response was not valid JSON: {e}"
-            };
+            return SignupResult(success=False, error=f"Signup response was not valid JSON: {e}");
         }
-        return {"success": True, "user_id": user_id};
+        if not user_id {
+            return SignupResult(success=False, error="Signup response is missing its user ID");
+        }
+        return SignupResult(success=True, user_id=user_id);
     } else {
         error_text = await response.text();
         try {
             error_data = JSON.parse(error_text);
-            return {
-                "success": False,
-                "status": response.status,
-                "error": error_data["error"]
-                    if error_data["error"] != None
-                    else "Signup failed"
-            };
+            return SignupResult(success=False, status=response.status, error=str(error_data["error"] or "Signup failed"));
         } except Exception {
             return {"success": False, "status": response.status, "error": error_text};
         }
@@ -443,11 +340,7 @@ impl jacLogin(
             console.warn("Failed to extract login token:", e);
         }
         if token {
-            state = __getCacheState();
-            for key in Object.keys(state["cache"]) {
-                Reflect.deleteProperty(state["cache"], key);
-            }
-            state["order"].splice(0, state["order"].length);
+            __jacClearCache();
             globalThis.__jacSetLocalStorage__("jac_token", token);
             return True;
         }
@@ -456,11 +349,7 @@ impl jacLogin(
 }
 
 impl jacLogout -> None {
-    state = __getCacheState();
-    for key in Object.keys(state["cache"]) {
-        Reflect.deleteProperty(state["cache"], key);
-    }
-    state["order"].splice(0, state["order"].length);
+    __jacClearCache();
     globalThis.__jacRemoveLocalStorage__("jac_token");
 }
 

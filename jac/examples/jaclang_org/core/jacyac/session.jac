@@ -83,9 +83,9 @@ def:pub useSession -> Session {
         busy = True;
         try {
             if signup {
-                result: dict[str, any] = await jacSignup(username.strip(), password);
-                if not result["success"] {
-                    error = str(result["error"] or "Signup failed");
+                result = await jacSignup(username.strip(), password);
+                if not result.success {
+                    error = str(result.error or "Signup failed");
                     return;
                 }
             }

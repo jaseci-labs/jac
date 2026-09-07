@@ -311,20 +311,14 @@ def _http_call(app: str, fn: str, kwargs: dict, headers: dict[str, str]) -> any 
 }
 
 def _rehydrate_walker(envelope: any, stub_cls: any) -> any {
-    result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
-    reports = envelope.get("reports") if isinstance(envelope, dict) else None;
-    instance = stub_cls._from_wire(result_dict)
-        if (stub_cls is not None and result_dict is not None)
-        else result_dict;
-    if instance is None and stub_cls is not None {
-        instance = stub_cls._from_wire({});
+    if not isinstance(envelope, dict) or stub_cls is None {
+        raise BridgeError(detail="Walker response has no declared boundary contract");
     }
-    if instance is not None and reports is not None {
-        try {
-            instance.reports = reports;
-        } except Exception {}
+    payload = dict(envelope.get("result") or {});
+    if "reports" in envelope {
+        payload["reports"] = envelope["reports"];
     }
-    return instance;
+    return stub_cls._from_wire(payload);
 }
 
 def _http_spawn(

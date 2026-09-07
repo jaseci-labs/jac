@@ -278,11 +278,11 @@ impl EsastGenPass._generate_sv_import_stubs(
                 if binding.ast_node is not None
                 else None;
             if _src_mod is not None {
-                src_effect = _src_mod.gen.interop_manifest.endpoint_effects.get(
-                    f"func:{func_name}"
-                );
+                import from jaclang.compiler.endpoint_contract { endpoint_key }
+                effect_key = endpoint_key(_src_mod, "func", func_name);
+                src_effect = _src_mod.gen.interop_manifest.endpoint_effects.get(effect_key);
                 if src_effect is not None {
-                    self.client_manifest.endpoint_effects[f"func:{func_name}"] = (
+                    self.client_manifest.endpoint_effects[effect_key] = (
                         src_effect
                     );
                 }
@@ -369,6 +369,9 @@ impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
 
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
+    import json;
+    import from jaclang.compiler.backends.native.wasm_contract { function_contract }
+    contracts: dict = {};
     resolved_path = nd.from_loc.resolve_relative_path();
     stem = native_wasm_stem(resolved_path);
 
@@ -399,19 +402,21 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     }
 
     props: list[(es.AssignmentProperty | es.RestElement)] = [];
-    export_names: list[(es.Expression | es.SpreadElement | None)] = [];
     for item in nd.items {
         if not isinstance(item, uni.ModuleItem)
             or not isinstance(item.name, uni.Name) {
             continue;
         }
+        if self._sv_import_item_is_type(nd, item) {
+            continue;
+        }
         export_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else export_name;
-        export_names.append(
-            self.sync_loc(
-                es.Literal(value=export_name, raw=f'"{export_name}"'), jac_node=item
-            )
-        );
+        binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
+        if binding is None or binding.ast_node is None {
+            raise ValueError(f"Missing native contract for '{export_name}'");
+        }
+        contracts[export_name] = function_contract(binding.ast_node);
         props.append(
             self.sync_loc(
                 es.AssignmentProperty(
@@ -432,7 +437,7 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
             callee=es.Identifier(name=bind_local),
             arguments=[
                 self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
-                self.sync_loc(es.ArrayExpression(elements=export_names), jac_node=nd),
+                self.sync_loc(es.Literal(value=json.dumps(contracts)), jac_node=nd),
 
             ]
         ),

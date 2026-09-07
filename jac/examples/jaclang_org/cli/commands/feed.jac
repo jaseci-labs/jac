@@ -1,11 +1,10 @@
 import from core.social_graph { create_tweet, load_feed }
+import type from core.social_graph { Tweet }
 import from jaclang.server.bridge { BridgeError }
 import from .common {
     EXIT_OK,
     EXIT_USAGE,
     explain_bridge_error,
-    list_field,
-    str_field,
     warn
 }
 
@@ -17,13 +16,13 @@ obj FeedLine {
         comments: int = 0;
 }
 
-def feed_line(raw: object) -> FeedLine {
+def feed_line(raw: Tweet) -> FeedLine {
     return FeedLine(
-        author=str_field(raw, "author_username"),
-        content=str_field(raw, "content"),
-        created_at=str_field(raw, "created_at"),
-        likes=len(list_field(raw, "likes")),
-        comments=len(list_field(raw, "comments"))
+        author=raw.author_username,
+        content=raw.content,
+        created_at=raw.created_at,
+        likes=len(raw.likes),
+        comments=len(raw.comments)
     );
 }
 
@@ -67,7 +66,7 @@ async def run_post(text: str) -> int {
     }
     try {
         made = await create_tweet(content=body);
-        posted = list_field(made, "reports");
+        posted = made.reports;
         if posted {
             line = feed_line(posted[0]);
             print("posted as @" + (line.author or "you") + ": " + line.content);

@@ -133,22 +133,80 @@ async def _na_instance(module_stem: str) -> any {
     }
 }
 
-def _na_caller(module_stem: str, fn_name: str) -> any {
+glob _na_handles: any = new(WeakMap);
+
+def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any {
+    if contract.kind == "handle" {
+        handle = _na_handles.get(value);
+        if not handle or not handle.live or handle.module != module_stem
+            or handle.instance != inst or handle.type != contract.type {
+            raise Error("Invalid, consumed, or foreign native handle for " + contract.type);
+        }
+        return handle.pointer;
+    }
+    if contract.type in ["int", "i64", "u64"] {
+        return BigInt(value);
+    }
+    if contract.type == "bool" {
+        return 1 if value else 0;
+    }
+    return value;
+}
+
+def _na_result(value: any, contract: any, module_stem: str, inst: any) -> any {
+    if contract.kind == "handle" {
+        token: any = Object.freeze({});
+        _na_handles.set(token, {
+            "pointer": value, "type": contract.type, "module": module_stem,
+            "instance": inst, "live": True
+        });
+        return token;
+    }
+    if contract.type == "None" {
+        return None;
+    }
+    if contract.type == "bool" {
+        return bool(value);
+    }
+    if contract.type == "int" {
+        result = Number(value);
+        if not Number.isSafeInteger(result) {
+            raise Error("Native integer exceeds JavaScript's exact integer range");
+        }
+        return result;
+    }
+    return value;
+}
+
+def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
     async def _call(*args: any) -> any {
         inst = await _na_instance(module_stem);
         fn: any = inst.exports[fn_name];
         if not fn {
             raise Error(f"na module '{module_stem}' has no export '{fn_name}'");
         }
-        return fn(*args);
+        if len(args) != len(contract.params) {
+            raise Error("Native argument count mismatch for " + fn_name);
+        }
+        values: list = [];
+        for i in range(len(args)) {
+            values.append(_na_argument(args[i], contract.params[i], module_stem, inst));
+        }
+        for i in range(len(args)) {
+            if contract.params[i].kind == "handle" and contract.params[i].mode == "own" {
+                _na_handles.get(args[i]).live = False;
+            }
+        }
+        return _na_result(fn(*values), contract.result, module_stem, inst);
     }
     return _call;
 }
 
-def:pub __na_bind(module_stem: str, names: list) -> any {
+def:pub __na_bind(module_stem: str, contract_json: str) -> any {
+    contracts = JSON.parse(contract_json);
     out: any = {};
-    for nm in names {
-        out[nm] = _na_caller(module_stem, nm);
+    for name in Object.keys(contracts) {
+        out[name] = _na_caller(module_stem, name, contracts[name]);
     }
     return out;
 }

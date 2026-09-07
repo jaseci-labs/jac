@@ -3,7 +3,8 @@ import os;
 glob JAC_VIRTUAL_MODULE_SOURCES: dict[str, str] = {
          "mobui": "client_mobui",
          "pwa": "pwa_runtime",
-         "wasm_host": "wasm_host"
+         "wasm_host": "wasm_host",
+         "webgl": "webgl"
      };
 
 def jac_virtual_module_basenames(module_name: str) -> list[str] {

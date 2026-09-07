@@ -24,16 +24,19 @@ import from jaclang.compiler.passes.uni_pass { UniPass }
 
 walker EndpointEffectPass(UniPass) {
     has _is_writer: bool = False,
+        _unknown: bool = False,
         _touches: set[str] = field(default_factory=`set),
         _visited: set[int] = field(default_factory=set);
 
     def before_pass {
         self._is_writer = False;
+        self._unknown = False;
         self._touches.clear();
         self._visited.clear();
     }
 
     can enter_ability with Ability entry {
+        import from jaclang.compiler.endpoint_contract { endpoint_key }
         if (
             not here.is_method
             and not here.in_client_context()
@@ -42,12 +45,13 @@ walker EndpointEffectPass(UniPass) {
             and isinstance(here.name_ref, Name)
         ) {
             self.ir_in.gen.interop_manifest.endpoint_effects[
-                f"func:{here.name_ref.sym_name}"
-            ] = self._classify(self._resolved_body(here));
+                endpoint_key(self.ir_in, "func", here.name_ref.sym_name)
+            ] = self._classify(self._resolved_body(here), "func", here.name_ref.sym_name);
         }
     }
 
     can enter_archetype with Archetype entry {
+        import from jaclang.compiler.endpoint_contract { endpoint_key }
         if here.arch_kind != "walker" {
             return;
         }
@@ -55,19 +59,25 @@ walker EndpointEffectPass(UniPass) {
             return;
         }
         self.ir_in.gen.interop_manifest.endpoint_effects[
-            f"walker:{here.name.sym_name}"
-        ] = self._classify(self._resolved_body(here));
+            endpoint_key(self.ir_in, "walker", here.name.sym_name)
+        ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
     }
 
-    def _classify(body_nodes: list) -> dict {
+    def _classify(body_nodes: list, kind: str, name: str) -> dict {
+        import from jaclang.compiler.endpoint_contract { endpoint_descriptor }
         self._is_writer = False;
+        self._unknown = False;
         self._touches.clear();
         self._visited.clear();
         for nd in body_nodes {
             self._scan(nd);
         }
-        touches_list = sorted(list(self._touches)) if self._touches else ["*"];
-        return {"is_writer": self._is_writer, "touches": touches_list};
+        result = endpoint_descriptor(self.ir_in, kind, name);
+        result["reads"] = ["*"];
+        result["writes"] = ["*"] if self._is_writer or self._unknown else [];
+        result["unknown"] = self._unknown;
+        result["observed_tags"] = sorted(list(self._touches));
+        return result;
     }
 
     def _scan(nd: (UniNode | None)) -> None {
@@ -104,9 +114,7 @@ walker EndpointEffectPass(UniPass) {
                         isinstance(root_expr, SpecialVarRef)
                         and root_expr.sym_name == 'self'
                     );
-                    if not is_self {
-                        self._is_writer = True;
-                    }
+                    self._is_writer = True;
                 }
             }
         }
@@ -121,7 +129,11 @@ walker EndpointEffectPass(UniPass) {
 
             if id(nd) not in self._visited {
                 self._visited.add(id(nd));
-                for stmt in self._callee_body(nd) {
+                body = self._callee_body(nd);
+                if not body {
+                    self._unknown = True;
+                }
+                for stmt in body {
                     self._scan(stmt);
                 }
             }

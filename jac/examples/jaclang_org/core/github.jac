@@ -1,3 +1,6 @@
+import from jaclang.data.contracts { JsonEndpoint }
+import from core.github_contracts { GithubRepository, GithubCommit }
+
 glob API_ROOT: str = "https://api.github.com/repos/",
      CODELOAD_ROOT: str = "https://codeload.github.com/",
      CHUNK_BYTES: int = 262144;
