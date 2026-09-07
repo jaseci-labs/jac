@@ -88,8 +88,10 @@ def check_host_call(call: any) -> None {
     if not call.params or len(call.params) != 2 { raise ValueError("bind_na_host requires a native export and a typed host"); }
     export = call.params[0];
     provider = ability_of_symbol(export.sym) if isinstance(export, Name) else None;
+    import from jaclang.compiler.types.types { ClassType }
     host = call.params[1];
-    scope = host.type_sym_tab;
+    host_type = host.narrowed_type or host.type;
+    scope = host_type.shared.symbol_table if isinstance(host_type, ClassType) else None;
     if provider is None or scope is None { raise ValueError("Host binding requires statically known export and host types"); }
     methods: dict = {};
     todo = [scope];
@@ -103,7 +105,8 @@ def check_host_call(call: any) -> None {
         }
         if isinstance(current, Archetype) {
             for base in current.base_classes or [] {
-                if base.type_sym_tab is not None { todo.append(base.type_sym_tab); }
+                base_type = base.type;
+                if isinstance(base_type, ClassType) { todo.append(base_type.shared.symbol_table); }
             }
         }
     }

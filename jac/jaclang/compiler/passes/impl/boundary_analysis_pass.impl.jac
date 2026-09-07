@@ -1469,7 +1469,9 @@ impl BoundaryAnalysisPass._record_access_levels(manifest: any) -> None {
 
 impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
     if not here.is_attr or self._get_context(here) != InteropContext.CLIENT { return; }
-    scope = here.target.type_sym_tab;
+    import from jaclang.compiler.types.types { ClassType }
+    target_type = here.target.narrowed_type or here.target.type;
+    scope = target_type.shared.symbol_table if isinstance(target_type, ClassType) else None;
     if isinstance(scope, Archetype) and scope.in_native_context() {
         import from jaclang.compiler.frontend.diagnostics { E5112 }
         self.emit(E5112, node_override=here, name=scope.sym_name);
