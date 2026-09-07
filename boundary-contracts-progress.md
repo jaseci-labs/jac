@@ -47,3 +47,7 @@ Run jaclang_org using the development compiler and exercise it with `jac browse`
 
 - Application startup exposed native `import type` declarations being pulled into client placement. The solver now excludes type-only imports from execution placement; rebuilding the app with that fix.
 - Game HUD reads preserve declared types and check session lifetime after each await. Native argument adapters reject inexact or out-of-range integers.
+
+- Resolved the native placement import failure, an AST unparse API mismatch, and a bootstrap import cycle. Client bundle diagnostics now include the self-hosting compiler program's errors.
+- Corrected signup JSON narrowing/status conversion and Wasm host object typing. The five shared client runtime modules produce compiler artifacts in diagnostic runs; application/browser acceptance remains pending.
+- Host registration now resolves `ClassType` scopes (including bases), replacing an empty legacy scope shortcut; rebuilding the app to validate this correction.
