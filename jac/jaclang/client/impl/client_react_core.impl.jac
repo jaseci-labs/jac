@@ -190,7 +190,7 @@ impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -
             app=app,
             name=function_name,
             detail=f"Function {function_name} failed: {error_msg}",
-            status=response.status
+            status=int(response.status)
         );
     }
     result = None;
@@ -294,10 +294,11 @@ impl jacSignup(
         try {
             data = JSON.parse(body_text);
             if data["data"] and data["data"]["user_id"] {
-                if not isinstance(data["data"]["user_id"], str) {
+                candidate_id = data["data"]["user_id"];
+                if not isinstance(candidate_id, str) {
                     return SignupResult(success=False, error="Signup response has an invalid user ID");
                 }
-                user_id = data["data"]["user_id"];
+                user_id = candidate_id;
             }
         } except Exception as e {
             return SignupResult(success=False, error=f"Signup response was not valid JSON: {e}");
@@ -310,9 +311,9 @@ impl jacSignup(
         error_text = await response.text();
         try {
             error_data = JSON.parse(error_text);
-            return SignupResult(success=False, status=response.status, error=str(error_data["error"] or "Signup failed"));
+            return SignupResult(success=False, status=int(response.status), error=str(error_data["error"] or "Signup failed"));
         } except Exception {
-            return SignupResult(success=False, status=response.status, error=error_text);
+            return SignupResult(success=False, status=int(response.status), error=error_text);
         }
     }
 }

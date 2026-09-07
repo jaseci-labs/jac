@@ -281,10 +281,11 @@ impl jacSignup(
         try {
             data = JSON.parse(body_text);
             if data["data"] and data["data"]["user_id"] {
-                if not isinstance(data["data"]["user_id"], str) {
+                candidate_id = data["data"]["user_id"];
+                if not isinstance(candidate_id, str) {
                     return SignupResult(success=False, error="Signup response has an invalid user ID");
                 }
-                user_id = data["data"]["user_id"];
+                user_id = candidate_id;
             }
         } except Exception as e {
             return SignupResult(success=False, error=f"Signup response was not valid JSON: {e}");
@@ -298,9 +299,9 @@ impl jacSignup(
         try {
             error_data = JSON.parse(error_text);
             message = __errorMessage(error_data["error"]);
-            return SignupResult(success=False, error=message or "Signup failed", status=response.status);
+            return SignupResult(success=False, error=message or "Signup failed", status=int(response.status));
         } except Exception {
-            return SignupResult(success=False, error=error_text, status=response.status);
+            return SignupResult(success=False, error=error_text, status=int(response.status));
         }
     }
 }

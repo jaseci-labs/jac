@@ -114,7 +114,7 @@ async def:pub instantiate_na_wasm(url: str, sh: any, extra_imports: any = None) 
 glob _na_env_cfg: dict = {},
      _na_pending: dict = {},
      _na_contracts: dict = {},
-     _na_exports: any = new(globalThis.WeakMap);
+     _na_exports: any = new(globalThis.WeakMap as any);
 
 def _host_callback(host: any, name: str, contract: any) -> any {
     return lambda (*args: any) -> any {
@@ -174,7 +174,7 @@ async def _na_instance(module_stem: str) -> any {
         return await _na_pending[module_stem];
     }
     cfg = _na_env_cfg.get(module_stem);
-    if not cfg and Object.keys(_na_contracts[module_stem].imports).length > 0 {
+    if not cfg and len(Object.keys(_na_contracts[module_stem].imports)) > 0 {
         raise Error("Native module requires a checked host binding: " + module_stem);
     }
     sh: any = cfg[0] if cfg else {};
@@ -189,7 +189,7 @@ async def _na_instance(module_stem: str) -> any {
     }
 }
 
-glob _na_handles: any = new(globalThis.WeakMap);
+glob _na_handles: any = new(globalThis.WeakMap as any);
 
 def _handle_live(handle: any) -> bool {
     if not handle or not handle.live or not handle.instance.__jac_live { return False; }
@@ -308,7 +308,7 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
 }
 
 def:pub __na_bind(module_stem: str, contract_json: str) -> any {
-    metadata = JSON.parse(contract_json);
+    metadata: any = JSON.parse(contract_json);
     _na_contracts[module_stem] = metadata;
     contracts = metadata.exports;
     out: any = {};
