@@ -245,7 +245,15 @@ def make_object(cls: type) -> type {
             )
         );
     }
+    if not hasattr(cls, "__get_pydantic_core_schema__") {
+        setattr(cls, "__get_pydantic_core_schema__", classmethod(_pydantic_schema));
+    }
     return cls;
+}
+
+def _pydantic_schema(cls: type, source: object, handler: any) -> object {
+    import from jaclang.runtime.object_pydantic { object_schema }
+    return object_schema(cls, source, handler);
 }
 
 def asdict(value: object) -> dict[str, object] {
