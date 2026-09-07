@@ -6,6 +6,7 @@ import from jaclang.compiler.types.ct_eval { CtEvaluator }
 import from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.frontend.unitree {
+    literal_string_value,
     Ability,
     Archetype,
     AssertStmt,
@@ -175,7 +176,6 @@ import from jaclang.compiler.types.type_utils {
     get_declared_generator_return_type,
     is_generator_family_type,
     lookup_symtab,
-    literal_string_value,
     shadowed_type_var_names,
     specialize_for_base_class,
     synthesize_self_type_var
@@ -392,8 +392,6 @@ walker TypeEvaluator {
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True
     ) -> bool;
 
-    def _read_dunder_all(path: str) -> (set[str] | None);
-    def _read_ambient_imports_by_module(path: str) -> dict[str, set[str]];
     def _load_stub_module(path: str) -> Module;
     def _init_prelude_from_catalog(catalog: StubCatalog) -> list[Module];
     def _init_prelude_from_sources -> list[Module];

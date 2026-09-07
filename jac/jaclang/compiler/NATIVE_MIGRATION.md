@@ -66,6 +66,13 @@ original run. The remaining warnings include substantial erased typing;
 zero source errors does not prove successful native lowering or execution
 of the entire compiler.
 
+Prelude export lists and ambient import groups now come from `ModuleFacts`
+over the already loaded Unitree. This removes two direct Python AST parsing
+paths from the evaluator and shares literal-string extraction with other
+type operations. Five metadata tests, a source-prelude integration probe,
+and all 81 bootstrap seed modules passed. Python stub loading and quoted
+type-expression parsing remain separate migration work.
+
 ## Remaining work
 
 | Area | Required work in Jac |

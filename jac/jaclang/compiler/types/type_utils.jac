@@ -15,8 +15,6 @@ import from jaclang.compiler.frontend.unitree {
     ModuleItem,
     Name,
     ModulePath,
-    MultiString,
-    String,
     Symbol,
     UnaryExpr,
     UniNode,
@@ -37,11 +35,7 @@ import from .types {
     UnknownType
 }
 
-enum PropertyWriteKind {
-    NOT_PROPERTY = 0,
-    READ_ONLY = 1,
-    WRITABLE = 2,
-}
+enum PropertyWriteKind { NOT_PROPERTY = 0, READ_ONLY = 1, WRITABLE = 2, }
 
 obj PropertyWriteResult {
     has kind: PropertyWriteKind,
@@ -136,5 +130,3 @@ def build_solution_from_specialized_class(
 ) -> dict[str, TypeBase];
 
 def specialize_for_base_class(src_type: ClassType, base_class: ClassType) -> ClassType;
-
-def literal_string_value(expr: UniNode) -> str | None;

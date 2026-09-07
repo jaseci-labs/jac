@@ -9,10 +9,16 @@ import from jaclang.compiler.frontend.unitree {
     ElementStmt,
     Enum,
     FuncCall,
+    GlobalVars,
     ImplDef,
     Import,
     Module,
+    ModuleCode,
+    ModuleItem,
+    ListVal,
     Name,
+    literal_string_value,
+    TupleVal,
     UniNode
 }
 import from jaclang.compiler.frontend.constant {
@@ -22,6 +28,77 @@ import from jaclang.compiler.frontend.constant {
 }
 
 obj ModuleFacts {
+    """Read a module's literal export declaration from the shared syntax tree."""
+    static def literal_exports(module: Module) -> set[str] | None {
+        assignments: list[Assignment] = [];
+        for stmt in module.body {
+            if isinstance(stmt, GlobalVars) {
+                assignments.extend(stmt.assignments);
+            } elif isinstance(stmt, ModuleCode) {
+                for item in stmt.body {
+                    if isinstance(item, Assignment) {
+                        assignments.append(item);
+                    }
+                }
+            }
+        }
+        for assignment in assignments {
+            targets = assignment.target;
+            if len(targets) != 1 {
+                continue;
+            }
+            target = targets[0];
+            value = assignment.value;
+            if not isinstance(target, Name)
+                or target.value != "__all__"
+                or not isinstance(value, (ListVal, TupleVal)) {
+                continue;
+            }
+            exports: set[str] = set();
+            for element in value.values or [] {
+                literal = literal_string_value(element);
+                if literal is not None {
+                    exports.add(literal);
+                }
+            }
+            return exports;
+        }
+        return None;
+    }
+
+    """Group explicitly exported from-import bindings by their source module."""
+    static def exported_import_names(module: Module) -> dict[str, set[str]] {
+        allowed = ModuleFacts.literal_exports(module);
+        groups: dict[str, set[str]] = {};
+        if allowed is None {
+            return groups;
+        }
+        for statement in ModuleFacts.iter_module_imports(module) {
+            source = statement.from_loc;
+            if source is None {
+                continue;
+            }
+            module_name = source.dot_path_str.lstrip(".");
+            if not module_name {
+                continue;
+            }
+            public: set[str] = set();
+            for item in statement.items {
+                if isinstance(item, ModuleItem) {
+                    alias = item.alias;
+                    name = alias.value if alias is not None else item.name.value;
+                    if name in allowed {
+                        public.add(name);
+                    }
+                }
+            }
+            if public {
+                groups[module_name] = groups.get(module_name, set()) | public;
+            }
+        }
+        return groups;
+    }
+
     static def unwrap_body(
         nd: Archetype | Enum | Ability | ImplDef
     ) -> (Sequence[UniNode] | None) {

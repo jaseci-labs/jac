@@ -1010,13 +1010,3 @@ def _apply_to_function(
 
     return clone;
 }
-
-impl literal_string_value(expr: UniNode) -> str | None {
-    if isinstance(expr, (String, MultiString)) {
-        value = expr.lit_value;
-        if isinstance(value, str) {
-            return value;
-        }
-    }
-    return None;
-}

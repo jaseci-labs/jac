@@ -4062,64 +4062,6 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
     return mod;
 }
 
-impl TypeEvaluator._read_dunder_all(path: str) -> (set[str] | None) {
-    import from ast {
-        Assign as PyAssign,
-        Constant as PyConstant,
-        List as PyList,
-        Name as PyName,
-        Tuple as PyTuple,
-        parse as py_parse
-    }
-    try {
-        py_tree = py_parse(read_file_with_encoding(path));
-        for node in py_tree.body {
-            if (
-                isinstance(node, PyAssign)
-                and len(node.targets) == 1
-                and isinstance(node.targets[0], PyName)
-                and node.targets[0].id == "__all__"
-                and isinstance(node.value, (PyList, PyTuple))
-            ) {
-                result: set[str] = set();
-                for elt in node.value.elts {
-                    if (isinstance(elt, PyConstant) and isinstance(elt.value, str)) {
-                        result.add(elt.value);
-                    }
-                }
-                return result;
-            }
-        }
-    } except Exception {
-        return None;
-    }
-    return None;
-}
-
-impl TypeEvaluator._read_ambient_imports_by_module(path: str) -> dict[str, set[str]] {
-    import from ast { ImportFrom as PyImportFrom, parse as py_parse }
-    out: dict[str, set[str]] = {};
-    try {
-        allowed = self._read_dunder_all(path);
-        if allowed is None {
-            return out;
-        }
-        py_tree = py_parse(read_file_with_encoding(path));
-        for node in py_tree.body {
-            if (isinstance(node, PyImportFrom) and node.module is not None) {
-                public = {(alias.asname or alias.name) for alias in node.names}
-                    & allowed;
-                if public {
-                    out[node.module] = out.get(node.module, set()) | public;
-                }
-            }
-        }
-    } except Exception {
-        return {};
-    }
-    return out;
-}
-
 impl TypeEvaluator.postinit -> None {
     self.ct_eval = CtEvaluator(evaluator=self);
     self._BUILTINS_STUB_FILE_PATH = os.path.join(
@@ -4207,6 +4149,7 @@ impl TypeEvaluator._init_prelude_from_catalog(catalog: StubCatalog) -> list[Modu
 }
 
 impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     typing_mod = self._load_stub_module(self._TYPING_STUB_FILE_PATH);
     types_mod = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
     enum_mod = self._load_stub_module(self._ENUM_STUB_FILE_PATH);
@@ -4225,7 +4168,7 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
     na_builtins_mod = self._load_stub_module(self._NA_BUILTINS_STUB_FILE_PATH);
     js_globals_mod = self._load_stub_module(self._JS_GLOBALS_STUB_FILE_PATH);
 
-    jac_allowed = self._read_dunder_all(self._JAC_BUILTINS_STUB_FILE_PATH);
+    jac_allowed = ModuleFacts.literal_exports(jac_builtins_mod);
     for (name, sym) in jac_builtins_mod.names_in_scope.items() {
         if jac_allowed is not None and name not in jac_allowed {
             continue;
@@ -4239,7 +4182,7 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
     builtin_overrides_module = self._load_stub_module(
         self._BUILTIN_OVERRIDES_STUB_FILE_PATH
     );
-    overrides_allowed = self._read_dunder_all(self._BUILTIN_OVERRIDES_STUB_FILE_PATH);
+    overrides_allowed = ModuleFacts.literal_exports(builtin_overrides_module);
     for (name, sym) in builtin_overrides_module.names_in_scope.items() {
         if overrides_allowed is not None and name not in overrides_allowed {
             continue;
@@ -4254,9 +4197,8 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
         }
     }
 
-    raw_groups = self._read_ambient_imports_by_module(
-        self._TYPING_AMBIENT_STUB_FILE_PATH
-    );
+    ambient_mod = self._load_stub_module(self._TYPING_AMBIENT_STUB_FILE_PATH);
+    raw_groups = ModuleFacts.exported_import_names(ambient_mod);
     typing_ambient_flat: set[str] = set();
     for names in raw_groups.values() {
         typing_ambient_flat = typing_ambient_flat | names;

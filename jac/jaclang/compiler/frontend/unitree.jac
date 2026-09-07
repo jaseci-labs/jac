@@ -2709,6 +2709,17 @@ def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
     return bytes(out);
 }
 
+"""Read a text literal without depending on type evaluation."""
+def literal_string_value(expr: UniNode) -> str | None {
+    if isinstance(expr, (String, MultiString)) {
+        value = expr.lit_value;
+        if isinstance(value, str) {
+            return value;
+        }
+    }
+    return None;
+}
+
 def decode_string_literal(text: str) -> str | bytes {
     start = _lit_prefix_len(text);
     if (start < 0) {
