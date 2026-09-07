@@ -35,21 +35,17 @@ obj:pub WebGLHost {
         on_blur: Callable[[Event], None] | None = None;
 
     def InitWindow(w: int, h: int, title: str) {}
-
     def WindowShouldClose -> bool {
         return bool(0);
     }
 
     def CloseWindow {}
-
     def SetTargetFPS(f: int) {}
-
     def BeginDrawing {
         self.gl.viewport(0, 0, 960, 600);
     }
 
     def EndDrawing {}
-
     def EndMode3D {
         _flush(self);
     }
@@ -63,7 +59,6 @@ obj:pub WebGLHost {
     }
 
     def DrawFPS(x: int, y: int) {}
-
     def IsKeyDown(k: int) -> bool {
         return bool(self.keys.get(k, 0));
     }
