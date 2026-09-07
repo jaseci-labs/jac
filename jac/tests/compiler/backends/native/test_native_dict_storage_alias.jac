@@ -75,3 +75,14 @@ def probe -> int {
     probe = ctypes.CFUNCTYPE(ctypes.c_int64)(engine.get_function_address("probe"));
     assert probe() == 311;
 }
+
+
+test "object hash layouts stay distinct from strings and other object classes" {
+    import from tests.support { compile_native, get_func }
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    (engine, module) = compile_native("object_hash_layouts.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    probe = get_func(engine, "probe", ctypes.c_int64);
+    assert probe() == 157;
+}

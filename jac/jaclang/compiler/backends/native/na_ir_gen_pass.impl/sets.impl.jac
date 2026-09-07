@@ -151,17 +151,11 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         }
         elem_type = _spread_elem;
     }
-    elem_type_name = "i64";
-    if isinstance(elem_type, ir.DoubleType) {
-        elem_type_name = "f64";
-    } elif isinstance(elem_type, ir.PointerType) {
-        elem_type_name = "ptr";
-        if isinstance(elem_type.pointee, ir.LiteralStructType) {
-            elem_size = self._get_struct_size(elem_type.pointee);
-            elem_type_name = self._tuple_spec_name(elem_type.pointee);
-        } elif elem_size {
-            elem_type_name = f"tuple{elem_size}";
-        }
+    (elem_type_name, key_size) = self._hash_key_spec(elem_type);
+    if key_size {
+        elem_size = key_size;
+    } elif elem_size and elem_type_name == "ptr" {
+        elem_type_name = f"tuple{elem_size}";
     }
 
     self._emit_set_helpers(elem_type_name, elem_type, elem_size);

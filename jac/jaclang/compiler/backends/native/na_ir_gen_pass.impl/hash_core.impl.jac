@@ -10,6 +10,9 @@ impl NaIRGenPass._hash_key_spec(key_type: ir.Type) -> tuple[str, int] {
             _sz = self._get_struct_size(key_type.pointee);
             return (self._tuple_spec_name(key_type.pointee), _sz);
         }
+        if isinstance(key_type.pointee, ir.IdentifiedStructType) {
+            return ("ref." + key_type.pointee.name, 0);
+        }
         return ("ptr", 0);
     }
     return ("i64", 0);

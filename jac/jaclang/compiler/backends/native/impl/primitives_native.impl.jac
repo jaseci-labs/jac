@@ -5546,8 +5546,21 @@ impl NativeBuiltinEmitter.emit_set(
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
-            p._emit_set_helpers(lk, lhelpers["elem_type"]);
-            shelpers = p.set_helpers.get(lk);
+            elem_type = p._list_elem_llvm_of(ctx.arg_nodes[0])
+                if ctx.arg_nodes
+                else None;
+            if elem_type is None {
+                elem_type = lhelpers["elem_type"];
+            }
+            if p._str_desc_ty is not None and elem_type == p._str_desc_ty {
+                elem_type = ir.IntType(8).as_pointer();
+            }
+            if p.jacval_type is not None and elem_type == p.jacval_type {
+                return None;
+            }
+            (key_spec, key_size) = p._hash_key_spec(elem_type);
+            p._emit_set_helpers(key_spec, elem_type, key_size);
+            shelpers = p.set_helpers.get(key_spec);
             if shelpers is None {
                 return None;
             }
@@ -5566,6 +5579,7 @@ impl NativeBuiltinEmitter.emit_set(
             b.cbranch(at_end, done_bb, body_bb);
             b.position_at_start(body_bb);
             elem = b.call(lhelpers["get"], [val, idx], name="l2s.elem");
+            elem = p._cast_to_list_elem(b, elem, elem_type, "l2s.key");
             b.call(shelpers["add"], [new_set, elem]);
             nidx = b.add(idx, ir.Constant(i64, 1), name="l2s.nidx");
             idx.add_incoming(nidx, body_bb);

@@ -6,9 +6,10 @@ import from jaclang.compiler.frontend.unitree {
     Int,
     Name,
     NameAtom,
-    String
+    String,
+    UniNode
 }
-import from .types { ClassType, EnumMemberInfo, TypeBase }
+import from .types { ClassDetailsShared, ClassType, EnumMemberInfo, TypeBase }
 import type from .type_evaluator { TypeEvaluator, PrefetchedTypes }
 
 glob ENUM_RESERVED_NAMES: set[str] = {
