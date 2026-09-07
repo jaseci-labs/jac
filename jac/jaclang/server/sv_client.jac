@@ -466,6 +466,7 @@ async def call(
 async def spawn_walker(
     app: str, walker_name: str, kwargs: dict, stub_cls: any, idempotency_key: str = ""
 ) -> any {
+    _active_writes[app] = _active_writes.get(app, 0) + 1;
     clear_read_cache(app);
     try {
         if app in _local_providers {
@@ -482,6 +483,9 @@ async def spawn_walker(
         return _http_spawn(app, walker_name, kwargs, stub_cls, headers);
     } except Exception as e {
         raise bridge_error_from(e, app, walker_name);
+    } finally {
+        clear_read_cache(app);
+        _active_writes[app] -= 1;
     }
 }
 

@@ -244,13 +244,27 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
             raise Error("Native argument count mismatch for " + fn_name);
         }
         values: list = [];
+        handles: list = [];
         for i in range(len(args)) {
-            values.append(_na_argument(args[i], contract.params[i], module_stem, inst));
+            parameter = contract.params[i];
+            values.append(_na_argument(args[i], parameter, module_stem, inst));
+            if parameter.kind == "handle" {
+                handle = _na_handles.get(args[i]);
+                if parameter.mode == "own" and not handle.owned {
+                    raise Error("Cannot consume a borrowed native handle");
+                }
+                for previous in handles {
+                    if previous.handle.pointer == handle.pointer
+                        and (parameter.mode != "borrow" or previous.mode != "borrow") {
+                        raise Error("Aliased native handles require shared borrows");
+                    }
+                }
+                handles.append({"handle": handle, "mode": parameter.mode});
+            }
         }
         for i in range(len(args)) {
             if contract.params[i].kind == "handle" and contract.params[i].mode == "own" {
                 handle = _na_handles.get(args[i]);
-                if not handle.owned { raise Error("Cannot consume a borrowed native handle"); }
                 handle.live = False;
                 inst.__jac_owned_handles -= 1;
             }
