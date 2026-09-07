@@ -948,7 +948,7 @@ impl TypeCheckPass.exit_ability with Ability exit {
                 or (
                     any_cls is not None
                     and isinstance(props_param.type, ClassType)
-                    and props_param.type.shared == any_cls.shared
+                    and props_param.type.shared.same_class(any_cls.shared)
                 )
             );
             if is_untyped_bag {
@@ -1873,7 +1873,7 @@ impl TypeCheckPass.exit_visit_stmt with VisitStmt exit {
             if t.is_node_type() or t.is_edge_type() {
                 return True;
             }
-            if path_class is not None and t.shared == path_class.shared {
+            if path_class is not None and t.shared.same_class(path_class.shared) {
                 return True;
             }
             if (

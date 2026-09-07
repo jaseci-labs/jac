@@ -581,7 +581,8 @@ impl TypeEvaluator._resolve_enum_value_type(enum_type: ClassType) -> TypeBase | 
             and all(
                 isinstance(t, ClassType)
                     and isinstance(member_types[0], ClassType)
-                    and t.shared == member_types[0].shared for t in member_types
+                    and t.shared.same_class(member_types[0].shared)
+                for t in member_types
             ) {
             val_type = member_types[0];
         }
@@ -706,7 +707,7 @@ impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> boo
     import from jaclang.compiler.types.type_utils { types_equivalent }
     for existing in type_list {
         if isinstance(ty, ClassType) and isinstance(existing, ClassType) {
-            if ty.shared == existing.shared {
+            if ty.shared.same_class(existing.shared) {
                 return True;
             }
         } elif ty is existing {
@@ -749,7 +750,7 @@ impl TypeEvaluator._get_expected_container_type(
     found: ClassType | None = None;
     for candidate in candidates {
         if isinstance(candidate, ClassType)
-            and candidate.shared == container_class.shared {
+            and candidate.shared.same_class(container_class.shared) {
             if found is not None {
                 return None;
             }
@@ -1381,7 +1382,7 @@ impl TypeEvaluator._is_ability_classmethod(node_: Ability) -> bool {
             if (
                 isinstance(decor_type, ClassType)
                 and self.prefetch.classmethod_class is not None
-                and self.prefetch.classmethod_class.shared == decor_type.shared
+                and self.prefetch.classmethod_class.shared.same_class(decor_type.shared)
             ) {
                 return True;
             }
@@ -1664,7 +1665,7 @@ impl TypeEvaluator._get_special_form_type(
     is_special_form = (
         isinstance(symbol_type, ClassType)
         and self.prefetch.callable_class
-        and symbol_type.shared == self.prefetch.callable_class.shared
+        and symbol_type.shared.same_class(self.prefetch.callable_class.shared)
     );
 
     is_known_special_form_name = name

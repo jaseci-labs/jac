@@ -54,7 +54,7 @@ impl validate_enum_member_annotation(
     if (
         isinstance(annotation_type, ClassType)
         and isinstance(member_info.value_type, ClassType)
-        and annotation_type.shared != member_info.value_type.shared
+        and not annotation_type.shared.same_class(member_info.value_type.shared)
     ) {
         evaluator.emit_diag(
             E1001,
@@ -95,7 +95,9 @@ impl build_enum_members(
                 if enum_value_type
                     and isinstance(enum_value_type, ClassType)
                     and isinstance(member_info.value_type, ClassType)
-                    and member_info.value_type.shared != enum_value_type.shared {
+                    and not member_info.value_type.shared.same_class(
+                        enum_value_type.shared
+                    ) {
                     evaluator.emit_diag(
                         E1001,
                         stmt,

@@ -59,3 +59,33 @@ test "generic specialization recognizes equivalent class graphs" {
     );
     assert specialize_for_base_class(child, unrelated) is unrelated;
 }
+
+test "class values assign to a reconstructed builtin type annotation" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.types.type_utils { types_equivalent }
+    evaluator = JacProgram().get_type_evaluator();
+    builtin_type = evaluator.prefetch.type_class;
+    integer = evaluator.prefetch.int_class;
+    assert builtin_type is not None and integer is not None;
+    reconstructed = ClassType(
+        flags=builtin_type.flags,
+        _shared=ClassDetailsShared(
+            class_name="type",
+            symbol_table=builtin_type.shared.symbol_table,
+            _identity_key=builtin_type.shared.canonical_key()
+        )
+    );
+    assert reconstructed.shared is not builtin_type.shared;
+    assert types_equivalent(builtin_type, reconstructed);
+    assert evaluator.assign_type(integer, reconstructed.clone_as_instance());
+    unrelated = ClassType(
+        flags=builtin_type.flags,
+        _shared=ClassDetailsShared(
+            class_name="type",
+            symbol_table=builtin_type.shared.symbol_table,
+            _identity_key=("user_defined.jac", 1, 0, "type")
+        )
+    );
+    assert not types_equivalent(builtin_type, unrelated);
+    assert not evaluator.assign_type(integer, unrelated.clone_as_instance());
+}

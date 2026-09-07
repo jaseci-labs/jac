@@ -352,7 +352,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if (
                         isinstance(expected_type, ClassType)
                         and self.prefetch.tuple_class
-                        and expected_type.shared == self.prefetch.tuple_class.shared
+                        and expected_type.shared.same_class(
+                            self.prefetch.tuple_class.shared
+                        )
                         and expected_type.private.type_args
                         and elem_types_t
                     ) {
@@ -950,7 +952,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     if (
                         self.prefetch.final_class
-                        and base_type.shared == self.prefetch.final_class.shared
+                        and base_type.shared.same_class(
+                            self.prefetch.final_class.shared
+                        )
                         and base_type.private.type_args
                     ) {
                         inner = base_type.private.type_args[0];
@@ -2606,7 +2610,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     if (
                         isinstance(declared_inst, ClassType)
                         and self.prefetch.final_class is not None
-                        and declared_inst.shared == self.prefetch.final_class.shared
+                        and declared_inst.shared.same_class(
+                            self.prefetch.final_class.shared
+                        )
                     ) {
                         final_args = declared_inst.private.type_args;
                         if final_args {
@@ -2843,13 +2849,13 @@ impl TypeEvaluator._assign_class(
     unwrapped_dest: TypeBase = dest_type;
     unwrapped_src: TypeBase = src_type;
     if self.prefetch.final_class is not None
-        and dest_type.shared == self.prefetch.final_class.shared {
+        and dest_type.shared.same_class(self.prefetch.final_class.shared) {
         if len(dest_type.private.type_args) > 0 {
             unwrapped_dest = dest_type.private.type_args[0];
         }
     }
     if self.prefetch.final_class is not None
-        and src_type.shared == self.prefetch.final_class.shared {
+        and src_type.shared.same_class(self.prefetch.final_class.shared) {
         if len(src_type.private.type_args) > 0 {
             unwrapped_src = src_type.private.type_args[0];
         }
@@ -2942,7 +2948,7 @@ impl TypeEvaluator._assign_class(
         }
 
         for mro_cls in src_type.shared.mro {
-            if mro_cls.shared != src_type.shared {
+            if not mro_cls.shared.same_class(src_type.shared) {
                 if class_implements_protocol(mro_cls, dest_type, self) {
                     return True;
                 }
@@ -2959,7 +2965,7 @@ impl TypeEvaluator._is_protocol_class(cls_type: ClassType) -> bool {
         }
 
         if self.prefetch.protocol_class is not None
-            and base_cls.shared == self.prefetch.protocol_class.shared {
+            and base_cls.shared.same_class(self.prefetch.protocol_class.shared) {
             return True;
         }
 
@@ -3169,7 +3175,7 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     if isinstance(ty, ClassType) {
         if (
             self.prefetch.type_var_class
-            and ty.shared == self.prefetch.type_var_class.shared
+            and ty.shared.same_class(self.prefetch.type_var_class.shared)
         ) {
             return True;
         }
@@ -3258,7 +3264,7 @@ impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
         self.prefetch
         and self.prefetch.type_var_class
         and isinstance(ty, ClassType)
-        and ty.shared == self.prefetch.type_var_class.shared
+        and ty.shared.same_class(self.prefetch.type_var_class.shared)
     ) {
         return True;
     }
@@ -3270,7 +3276,7 @@ impl TypeEvaluator.is_paramspec_class(ty: TypeBase) -> bool {
         self.prefetch
         and self.prefetch.param_spec_class
         and isinstance(ty, ClassType)
-        and ty.shared == self.prefetch.param_spec_class.shared
+        and ty.shared.same_class(self.prefetch.param_spec_class.shared)
     ) {
         return True;
     }
@@ -3282,7 +3288,7 @@ impl TypeEvaluator.is_type_var_tuple_class(ty: TypeBase) -> bool {
         self.prefetch
         and self.prefetch.type_var_tuple_class
         and isinstance(ty, ClassType)
-        and ty.shared == self.prefetch.type_var_tuple_class.shared
+        and ty.shared.same_class(self.prefetch.type_var_tuple_class.shared)
     ) {
         return True;
     }
@@ -3417,35 +3423,39 @@ impl TypeEvaluator.assign_type(
         if src_type.is_literal_type()
             and self.prefetch.str_class
             and self.prefetch.literal_string_class {
-            if src_type.shared == self.prefetch.str_class.shared {
-                if dest_type.shared == self.prefetch.literal_string_class.shared {
+            if src_type.shared.same_class(self.prefetch.str_class.shared) {
+                if dest_type.shared.same_class(
+                    self.prefetch.literal_string_class.shared
+                ) {
                     return True;
                 }
             }
         }
 
         if src_type.is_literal_type() and not dest_type.is_literal_type() {
-            if src_type.shared == dest_type.shared {
+            if src_type.shared.same_class(dest_type.shared) {
                 return True;
             }
         }
 
         if src_type.is_literal_type() and dest_type.is_literal_type() {
-            if src_type.shared == dest_type.shared {
+            if src_type.shared.same_class(dest_type.shared) {
                 return src_type.get_literal_value() == dest_type.get_literal_value();
             }
         }
 
         if not src_type.is_literal_type() and dest_type.is_literal_type() {
-            if src_type.shared == dest_type.shared {
+            if src_type.shared.same_class(dest_type.shared) {
                 return True;
             }
         }
 
         if self.prefetch.literal_string_class and self.prefetch.str_class {
             if (
-                src_type.shared == self.prefetch.literal_string_class.shared
-                and dest_type.shared != self.prefetch.literal_string_class.shared
+                src_type.shared.same_class(self.prefetch.literal_string_class.shared)
+                and not dest_type.shared.same_class(
+                    self.prefetch.literal_string_class.shared
+                )
             ) {
                 str_instance = self._convert_to_instance(self.prefetch.str_class);
                 if self.assign_type(str_instance, dest_type, strict) {
@@ -3457,8 +3467,10 @@ impl TypeEvaluator.assign_type(
 
     if self.prefetch and self.prefetch.jsx_element_class {
         if isinstance(dest_type, ClassType) and isinstance(src_type, ClassType) {
-            if dest_type.shared == self.prefetch.jsx_element_class.shared {
-                if src_type.shared != self.prefetch.jsx_element_class.shared {
+            if dest_type.shared.same_class(self.prefetch.jsx_element_class.shared) {
+                if not src_type.shared.same_class(
+                    self.prefetch.jsx_element_class.shared
+                ) {
                     return False;
                 }
             }
@@ -3584,7 +3596,7 @@ impl TypeEvaluator.assign_type(
 
     if self.prefetch and self.prefetch.type_class {
         if isinstance(dest_type, ClassType) and isinstance(src_type, ClassType) {
-            if dest_type.shared == self.prefetch.type_class.shared {
+            if dest_type.shared.same_class(self.prefetch.type_class.shared) {
                 if src_type.is_instantiable_class() {
                     if dest_type.private.type_args {
                         target_inner = self._convert_to_instance(
@@ -5349,7 +5361,7 @@ impl TypeEvaluator._type_matches_isinstance(
     }
 
     if isinstance(t, ClassType) and isinstance(target_type, ClassType) {
-        if t.shared == target_type.shared {
+        if t.shared.same_class(target_type.shared) {
             return True;
         }
 
@@ -5601,7 +5613,7 @@ impl TypeEvaluator._isinstance_tuple_alternatives(
         or not arg_type.is_instance()
         or not self.prefetch
         or self.prefetch.tuple_class is None
-        or arg_type.shared != self.prefetch.tuple_class.shared
+        or not arg_type.shared.same_class(self.prefetch.tuple_class.shared)
     ) {
         return None;
     }
@@ -5616,7 +5628,7 @@ impl TypeEvaluator._isinstance_tuple_alternatives(
         }
         if (
             self.prefetch.type_class is not None
-            and elem.shared == self.prefetch.type_class.shared
+            and elem.shared.same_class(self.prefetch.type_class.shared)
             and elem.private.type_args
         ) {
             alts.append(self._convert_to_instance(elem.private.type_args[0]));
@@ -5792,7 +5804,7 @@ impl TypeEvaluator._is_callable_type(t: TypeBase) -> bool {
         if (
             self.prefetch
             and self.prefetch.callable_class
-            and t.shared == self.prefetch.callable_class.shared
+            and t.shared.same_class(self.prefetch.callable_class.shared)
         ) {
             return True;
         }
@@ -5840,7 +5852,7 @@ impl TypeEvaluator._is_type_alias_annotation(
         isinstance(annotation_type, ClassType)
         and self.prefetch is not None
         and self.prefetch.callable_class is not None
-        and annotation_type.shared == self.prefetch.callable_class.shared
+        and annotation_type.shared.same_class(self.prefetch.callable_class.shared)
     );
     return is_special_form or isinstance(annotation_type, UnknownType);
 }

@@ -225,7 +225,7 @@ impl types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool {
         return True;
     }
     if isinstance(a, ClassType) and isinstance(b, ClassType) {
-        if a.shared != b.shared or a.flags != b.flags {
+        if not a.shared.same_class(b.shared) or a.flags != b.flags {
             return False;
         }
         if a.get_literal_value() != b.get_literal_value() {
