@@ -133,7 +133,9 @@ impl NaIRGenPass._run_impl(ir_in: uni.Module) -> uni.Module {
     self._register_globals(self.ir_in);
     self._register_entry_globals(self.ir_in);
 
+    self._register_enum_methods(self.ir_in, declare=True);
     self._register_archetypes(self.ir_in);
+    self._register_enum_methods(self.ir_in, declare=False);
 
     _entry_nodes: list = [];
     for stmt in ModuleFacts.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
@@ -841,6 +843,9 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
             }
         } elif isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);
+            for method in self._enum_methods(stmt) {
+                self._forward_declare_method(stmt.name.value, method, imported=True);
+            }
         } elif isinstance(stmt, uni.GlobalVars) {
             _imp_path = imported_mod.loc.mod_path if imported_mod?.loc else "";
             self._register_imported_globals(stmt, _imp_path);

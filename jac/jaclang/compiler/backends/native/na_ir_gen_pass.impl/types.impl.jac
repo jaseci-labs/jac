@@ -183,25 +183,37 @@ impl NaIRGenPass._type_key_of(expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._enum_name_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
+    if not isinstance(expr, uni.Expr) {
         return None;
     }
-    try {
-        import from jaclang.compiler.types.types { EnumMemberType as _EnumMemberType }
-    } except ImportError {
+    import from jaclang.compiler.types.types {
+        ClassType as EnumClassType,
+        EnumMemberType,
+        TypeBase,
+        UnionType
+    }
+    t = self._flow_narrowed_type_of(expr);
+    if not isinstance(t, TypeBase) {
         return None;
     }
-    import from jaclang.compiler.passes.layout_pass {
-        is_enum_class_type as _is_enum_type
+    pending: list[TypeBase] = [t];
+    enum_class: EnumClassType | None = None;
+    while pending {
+        member = pending.pop();
+        if isinstance(member, UnionType) {
+            pending.extend(member.types);
+            continue;
+        }
+        candidate = member.enum_class if isinstance(member, EnumMemberType) else member;
+        if not isinstance(candidate, EnumClassType) or not candidate.is_enum_class() {
+            return None;
+        }
+        if enum_class is not None and candidate.shared is not enum_class.shared {
+            return None;
+        }
+        enum_class = candidate;
     }
-    t = expr.type;
-    if isinstance(t, _EnumMemberType) and t.enum_class is not None {
-        return t.enum_class.shared.class_name;
-    }
-    if _is_enum_type(t) {
-        return t.shared.class_name;
-    }
-    return None;
+    return enum_class.shared.class_name if enum_class is not None else None;
 }
 
 impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {

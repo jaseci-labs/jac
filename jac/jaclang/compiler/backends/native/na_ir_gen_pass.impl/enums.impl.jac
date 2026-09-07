@@ -1,9 +1,31 @@
-impl NaIRGenPass._class_form_enum_self_type(arch_name: str) -> (ir.Type | None) {
-    _arch = self.arch_ast_map.get(arch_name);
-    if _arch is None or not (_arch?.name) {
-        return None;
+impl NaIRGenPass._enum_methods(nd: uni.Enum) -> list[uni.Ability] {
+    methods: list[uni.Ability] = [];
+    for stmt in ModuleFacts.unwrap_body(nd) or [] {
+        if isinstance(stmt, uni.Ability) {
+            methods.append(stmt);
+        } elif isinstance(stmt, uni.ModuleCode) {
+            for member in stmt.body {
+                if isinstance(member, uni.Ability) {
+                    methods.append(member);
+                }
+            }
+        }
     }
-    return self._ensure_enum_lowered(_arch.name.type);
+    return methods;
+}
+
+impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> None {
+    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Enum) {
+            for method in self._enum_methods(stmt) {
+                if declare {
+                    self._forward_declare_method(stmt.name.value, method);
+                } else {
+                    self._codegen_method(stmt.name.value, method);
+                }
+            }
+        }
+    }
 }
 
 impl NaIRGenPass._codegen_class_form_enum_member(

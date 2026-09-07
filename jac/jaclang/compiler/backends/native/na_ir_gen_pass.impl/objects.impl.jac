@@ -856,6 +856,22 @@ impl NaIRGenPass._method_slot_name(
     return method.name_ref.sym_name if method.name_ref else "unnamed";
 }
 
+impl NaIRGenPass._method_receiver_type(arch_name: str) -> ir.Type | None {
+    enum_type = self.enum_types.get(arch_name);
+    if enum_type is not None {
+        return enum_type;
+    }
+    arch = self.arch_ast_map.get(arch_name);
+    if arch is not None {
+        scalar = self._ensure_enum_lowered(arch.name.type);
+        if scalar is not None {
+            return scalar;
+        }
+    }
+    struct_type = self.struct_types.get(arch_name);
+    return struct_type.as_pointer() if struct_type is not None else None;
+}
+
 impl NaIRGenPass._forward_declare_method(
     arch_name: str,
     method: uni.Ability,
@@ -880,8 +896,8 @@ impl NaIRGenPass._forward_declare_method(
         return;
     }
     sig = method.signature;
-    struct_type = self.struct_types.get(arch_name);
-    if struct_type is None or (sig is None and field is None) {
+    receiver_type = self._method_receiver_type(arch_name);
+    if receiver_type is None or (sig is None and field is None) {
         return;
     }
 
@@ -905,13 +921,11 @@ impl NaIRGenPass._forward_declare_method(
         _m_params = _m_params[1:];
     }
 
-    _self_type = self._class_form_enum_self_type(arch_name) or struct_type.as_pointer();
-
     _sig_mark = len(self.errors_had);
     _saved_sig_kind = self._sig_decl_kind;
     self._sig_decl_kind = "signature type";
 
-    param_types: list[ir.Type] = [] if _is_static else [_self_type];
+    param_types: list[ir.Type] = [] if _is_static else [receiver_type];
     for p in _m_params {
         param_types.append(
             self._resolve_sig_type(p) if p.type_tag is not None else ir.IntType(64)
@@ -946,6 +960,7 @@ impl NaIRGenPass._forward_declare_method(
     self._apply_ownership_param_attrs(func, _m_params, _base);
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
+    self._record_linked_decl(func, method);
     if _is_static {
         self.static_methods[full_name] = True;
     }
@@ -2972,7 +2987,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         }
     }
 
-    type_name: (str | None) = self._struct_name_of(trailer.target);
+    type_name: (str | None) = self._enum_name_of(trailer.target)
+        or self._struct_name_of(trailer.target);
     obj_val: (ir.Value | None) = None;
     if type_name is None {
         obj_val = self._codegen_receiver(trailer.target);

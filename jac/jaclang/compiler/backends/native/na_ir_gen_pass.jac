@@ -976,7 +976,9 @@ walker NaIRGenPass(Transform) {
 
     def _dict_key_reconcile(dk: (str | None), val: (ir.Value | None)) -> (str | None);
     def _ensure_enum_lowered(t: any) -> (ir.Type | None);
-    def _class_form_enum_self_type(arch_name: str) -> (ir.Type | None);
+    def _method_receiver_type(arch_name: str) -> ir.Type | None;
+    def _enum_methods(nd: uni.Enum) -> list[uni.Ability];
+    def _register_enum_methods(module: uni.Module, declare: bool) -> None;
     def _codegen_class_form_enum_member(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None;
     def _codegen_enum_layout(enum_name: str, owner: (uni.Module | None)) -> None;
