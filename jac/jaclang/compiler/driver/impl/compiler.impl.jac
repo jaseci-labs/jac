@@ -83,15 +83,15 @@ impl JacCompiler.get_native_interop_setup(
 
 impl JacCompiler.get_native_layout(
     full_target: str, target_program: JacProgram
-) -> (object | None) {
+) -> (NativeModuleLayout | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
-    _layout: any = None;
+    _layout: NativeModuleLayout | None = None;
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
-        _layout = gen?.native_layout;
+        _layout = gen.native_layout;
     } elif (full_target in actual_program.mod.hub) {
         mod = actual_program.mod.hub[full_target];
-        _layout = mod.gen?.native_layout;
+        _layout = mod.gen.native_layout;
     }
     if _layout is not None {
         JacCompiler._check_native_abi(_layout, full_target);
@@ -99,9 +99,11 @@ impl JacCompiler.get_native_layout(
     return _layout;
 }
 
-impl JacCompiler._check_native_abi(layout: any, full_target: str) -> None {
+impl JacCompiler._check_native_abi(
+    layout: NativeModuleLayout, full_target: str
+) -> None {
     import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
-    stamped = layout?.abi_version;
+    stamped = layout.abi_version;
     if stamped is not None and stamped != NATIVE_ABI_VERSION {
         import logging as _abi_log;
         _abi_log.getLogger(__name__).warning(

@@ -31,7 +31,10 @@ import from jaclang.compiler.driver.jir {
     HEADER_SIZE
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact }
+import type from jaclang.compiler.frontend.codeinfo {
+    ClientArtifact,
+    NativeModuleLayout
+}
 import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
@@ -110,9 +113,9 @@ obj JacCompiler {
 
     def get_native_layout(
         full_target: str, target_program: JacProgram
-    ) -> (object | None);
+    ) -> (NativeModuleLayout | None);
 
-    static def _check_native_abi(layout: any, full_target: str) -> None;
+    static def _check_native_abi(layout: NativeModuleLayout, full_target: str) -> None;
     def get_bytecode(
         full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);

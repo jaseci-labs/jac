@@ -406,7 +406,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         key_type = first_key.type;
         (key_type_name, key_size) = self._hash_key_spec(key_type);
         if use_jacval {
-            val_type = self.jacval_type;
+            val_type: ir.Type = self.jacval_type;
             val_type_name = "jacval";
         } else {
             val_type = first_val.type;

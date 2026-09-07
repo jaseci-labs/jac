@@ -500,7 +500,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         }
         if isinstance(var, uni.TypeParam) {
             ftype = self._resolve_jac_type(var.bound);
-        } elif var is not None and var.type_tag is not None {
+        } elif isinstance(var, uni.HasVar) and var.type_tag is not None {
             if finfo.owner in self.clib_struct_names {
                 _cf_fnty = False;
                 try {
@@ -601,7 +601,8 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         }
     }
 
-    if arch_name in self.clib_struct_names and not struct_type.is_opaque {} else {
+    assert struct_type is not None;
+    if arch_name not in self.clib_struct_names or struct_type.is_opaque {
         struct_type.set_body(*field_types);
     }
     self.struct_field_indices[arch_name] = field_index_map;
@@ -648,13 +649,16 @@ impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict {
         }
         _mname = stmt.name_ref.sym_name if stmt.name_ref else "unnamed";
         for p in stmt.signature.get_parameters() {
-            if p.type_tag is None or self._erased_seq_type(p?.type) is None {
+            param_type = p.type;
+            if p.type_tag is None
+                or not isinstance(param_type, ClassType)
+                or self._erased_seq_type(param_type) is None {
                 continue;
             }
             _pname = p.name.value if p.name else "arg";
             _star = "*" if p.is_vararg else "";
             out[f"{_mname}({_star}{_pname})"] = self._erased_typevar_names(
-                (p.type.private.type_args or [None])[0]
+                (param_type.private.type_args or [None])[0]
             );
         }
     }
@@ -791,6 +795,10 @@ impl NaIRGenPass._register_class_consts(
 impl NaIRGenPass._register_one_class_const(
     arch_name: str, fname: str, target: uni.UniNode, assign: uni.Assignment, owns: bool
 ) -> None {
+    value = assign.value;
+    if value is None {
+        return;
+    }
     full_name = f"{arch_name}.{fname}";
     if full_name in self.static_fields or full_name in self.llvm_module.globals {
         return;
@@ -799,7 +807,7 @@ impl NaIRGenPass._register_one_class_const(
         if assign.type_tag is not None
         else None;
     if ftype is None {
-        ftype = self._infer_global_init_type(assign.value);
+        ftype = self._infer_global_init_type(value);
     }
     if ftype is None {
         return;
@@ -814,9 +822,9 @@ impl NaIRGenPass._register_one_class_const(
     if not owns {
         return;
     }
-    const_init = self._codegen_const_expr(assign.value, ftype);
+    const_init = self._codegen_const_expr(value, ftype);
     if const_init is None {
-        const_init = self._class_const_enum_init(assign.value, ftype);
+        const_init = self._class_const_enum_init(value, ftype);
     }
     gv.initializer = const_init if const_init is not None else ir.Constant(ftype, None);
 
@@ -843,7 +851,7 @@ impl NaIRGenPass._class_const_enum_init(
     if _full not in self.enum_values {
         self._codegen_enum_layout(_cls, None);
     }
-    _val = self.enum_values.get(_full);
+    _val: ir.Value | None = self.enum_values.get(_full);
     if _val is None {
         _val = self._codegen_class_form_enum_member(value);
     }
@@ -944,7 +952,7 @@ impl NaIRGenPass._forward_declare_method(
     }
 
     ret_type = self._resolve_sig_type(sig.return_type)
-        if sig is not None
+        if isinstance(sig, uni.FuncSignature)
         else ir.IntType(64);
 
     if sig is None and field is not None {
@@ -1748,30 +1756,30 @@ impl NaIRGenPass._empty_container_for_field(
     }
     for (dict_key, dtype) in self.dict_types.items() {
         if ftype == dtype.as_pointer() {
-            dict_helpers = self.dict_helpers.get(dict_key);
+            dict_ops = self.dict_helpers.get(dict_key);
             return (
-                self.builder.call(dict_helpers["new"], [], name=f"dict.{label}")
-                    if dict_helpers is not None
+                self.builder.call(dict_ops["new"], [], name=f"dict.{label}")
+                    if dict_ops is not None
                     else None
             );
         }
     }
     for (list_key, ltype) in self.list_types.items() {
         if ftype == ltype.as_pointer() {
-            list_helpers = self.list_helpers.get(list_key);
+            list_ops = self.list_helpers.get(list_key);
             return (
-                self.builder.call(list_helpers["new"], [], name=f"list.{label}")
-                    if list_helpers is not None
+                self.builder.call(list_ops["new"], [], name=f"list.{label}")
+                    if list_ops is not None
                     else None
             );
         }
     }
     for (set_key, stype) in self.set_types.items() {
         if ftype == stype.as_pointer() {
-            set_helpers = self.set_helpers.get(set_key);
+            set_ops = self.set_helpers.get(set_key);
             return (
-                self.builder.call(set_helpers["new"], [], name=f"set.{label}")
-                    if set_helpers is not None
+                self.builder.call(set_ops["new"], [], name=f"set.{label}")
+                    if set_ops is not None
                     else None
             );
         }
@@ -1787,7 +1795,7 @@ impl NaIRGenPass._codegen_instantiation(
     _is_call = isinstance(nd, uni.FuncCall);
     type_name = type_name_override
         if type_name_override is not None
-        else self._get_name(nd.target if _is_call else nd);
+        else self._get_name(nd.target if isinstance(nd, uni.FuncCall) else nd);
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -1815,7 +1823,7 @@ impl NaIRGenPass._codegen_instantiation(
 
     params = ctor_params
         if ctor_params is not None
-        else ((nd.params or []) if _is_call else []);
+        else ((nd.params or []) if isinstance(nd, uni.FuncCall) else []);
     _has_init = (
         f"{type_name}.init" in self.method_funcs
         or f"{type_name}.__init__" in self.method_funcs
@@ -2384,7 +2392,11 @@ impl NaIRGenPass._unregistered_class_target(target: uni.UniNode) -> (str | None)
     if name is None or name in self.struct_types or name in self.local_vars {
         return None;
     }
-    sym = target?.sym;
+    if not isinstance(target, uni.Expr) {
+        return None;
+    }
+    import from jaclang.compiler.symbol_utils { resolve_expr_symbol }
+    sym = resolve_expr_symbol(target);
     decl = sym.decl if sym is not None else None;
     if decl is None {
         return None;
@@ -2394,7 +2406,7 @@ impl NaIRGenPass._unregistered_class_target(target: uni.UniNode) -> (str | None)
         return None;
     }
     decl_mod = decl.find_parent_of_type(uni.Module);
-    path = decl_mod.loc.mod_path if decl_mod?.loc else None;
+    path = decl_mod.loc.mod_path if decl_mod is not None else None;
     if not path or not path.endswith(".jac") {
         return None;
     }
@@ -2756,7 +2768,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
         list_val = self._codegen_receiver(trailer.target);
         if list_val is not None {
             _shape_spec = self._infer_list_elem_type(list_val);
-            elem_type_name = _shape_spec if _shape_spec is not None else list_spec;
+            elem_type_name: str | None = _shape_spec
+                if _shape_spec is not None
+                else list_spec;
             arg_vals = self._codegen_call_args(nd);
             _orig_args = list(arg_vals);
 
@@ -2779,7 +2793,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                 }
             }
 
-            _elem_struct = self.var_list_elem_struct.get(target_name);
+            _elem_struct = self.var_list_elem_struct.get(target_name)
+                if target_name is not None
+                else None;
             if _elem_struct is not None
                 and isinstance(_elem_struct, ir.PointerType)
                 and isinstance(_elem_struct.pointee, ir.LiteralStructType) {
@@ -3180,9 +3196,11 @@ impl NaIRGenPass._emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Val
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
 
+    allocator = self.rc_alloc_fn;
+    assert allocator is not None;
     buf_len = len(type_name) + 48;
     buf = self._rc_call_with_ctx(
-        self.rc_alloc_fn,
+        allocator,
         [ir.Constant(i64, buf_len)],
         op="obj_repr",
         loc="",
@@ -3438,7 +3456,7 @@ impl NaIRGenPass._emit_dispatched_field_ptr(
             continue;
         }
         _cls_elems = self.struct_types[_cls].elements;
-        if _ci >= len(_cls_elems) {
+        if _cls_elems is None or _ci >= len(_cls_elems) {
             continue;
         }
         if ftype is None {
@@ -3733,6 +3751,7 @@ impl NaIRGenPass._field_slot_ptr(
     _struct_t = self.struct_types.get(type_name);
     if (
         _struct_t is not None
+        and _struct_t.elements is not None
         and idx < len(_struct_t.elements)
         and field_name not in self.struct_field_inline.get(type_name, set())
     ) {
@@ -3794,7 +3813,10 @@ impl NaIRGenPass._codegen_place_ptr(
 }
 
 impl NaIRGenPass._hasvar_is_own(var: uni.UniNode) -> bool {
-    _tt = var?.type_tag;
+    if not isinstance(var, uni.HasVar) {
+        return False;
+    }
+    _tt = var.type_tag;
     if _tt is None {
         return False;
     }
@@ -4371,7 +4393,7 @@ impl NaIRGenPass._build_jc_layout -> str {
         semantic_fields = {
             f.name: f.decl_node.type
             for f in arch_layout.fields
-            if f.decl_node is not None
+            if isinstance(f.decl_node, uni.Expr)
         }
             if arch_layout is not None
             else {};
@@ -4405,7 +4427,7 @@ impl NaIRGenPass._build_jc_layout -> str {
             } elif getattr(ft, "name", "") == "JacVal" {
                 code = "union";
             } elif (
-                ft?.elements
+                isinstance(ft, ir.BaseStructType)
                 and ft.elements is not None
                 and len(ft.elements) == 2
                 and isinstance(ft.elements[0], ir.IntType)

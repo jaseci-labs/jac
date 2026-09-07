@@ -1268,7 +1268,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
     a0: (ir.Value | None) = None;
     a1: (ir.Value | None) = None;
-    if is_tuple_target {
+    if isinstance(nd.target, uni.TupleVal) {
         targets = nd.target.values or [];
         if len(targets) != 2 {
             return False;
@@ -1277,6 +1277,9 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         t1_type = elem_type.elements[1];
         n0 = self._get_name(targets[0]);
         n1 = self._get_name(targets[1]);
+        if n0 is None or n1 is None {
+            return False;
+        }
         a0 = self._entry_alloca(t0_type, n0);
         a1 = self._entry_alloca(t1_type, n1);
         self.local_vars[n0] = a0;

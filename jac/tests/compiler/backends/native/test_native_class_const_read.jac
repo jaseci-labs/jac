@@ -60,12 +60,13 @@ glob FIXTURES = os.path.join(
          "True"
      );
 
-"""Compile a fixture natively and hand back the program and the module."""
+"""Inspect emitted IR before optimization; runtime parity uses the built binary."""
 def compile_native(fixture: str) -> tuple {
     prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-    );
+    options = native_force_opts();
+    options.skip_native_engine = True;
+    options.no_ir_cache = True;
+    ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=options);
     return (prog, ir, );
 }
 

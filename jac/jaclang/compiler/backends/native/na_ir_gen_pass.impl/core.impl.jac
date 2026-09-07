@@ -323,7 +323,7 @@ impl NaIRGenPass._export_native_layout -> None {
     for (arch_name, field_indices) in self.struct_field_indices.items() {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
-        enum_types = self.struct_field_enum_type.get(arch_name, {});
+        field_enums = self.struct_field_enum_type.get(arch_name, {});
         elem_keys = self.struct_field_elem_keys.get(arch_name, {});
         _foreign_flds = self.struct_field_foreign.get(arch_name, set());
         for (fname, idx) in sorted(field_indices.items(), key=lambda (x) { x[1]; }) {
@@ -347,7 +347,7 @@ impl NaIRGenPass._export_native_layout -> None {
                     name=fname,
                     llvm_type=llvm_t,
                     index=idx,
-                    enum_type=enum_types.get(fname),
+                    enum_type=field_enums.get(fname),
                     is_func_ptr=is_fn_ptr,
                     func_param_types=fn_param_types,
                     func_ret_type=fn_ret_type,
@@ -573,7 +573,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for _nested_imp in _nested_native {
         _native_ids.add(id(_nested_imp));
     }
-    wq: list = [];
+    wq: list[tuple[str, str, str | None]] = [];
     for imp in ModuleFacts.iter_module_imports(self.ir_in) + _nested_native {
         mod_name = self._extract_import_module_name(imp);
         if not mod_name {
@@ -617,6 +617,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     while qi < len(wq) {
         (mod_name, cur_base, parent_key) = wq[qi];
         qi += 1;
+        assert mod_name is not None;
         (src_mod_str, full_path) = resolve_native_module(mod_name, cur_base);
         if src_mod_str is None or full_path is None {
             continue;
@@ -1104,7 +1105,7 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     }
 
     _arch_mod = arch.find_parent_of_type(uni.Module);
-    _arch_src = _arch_mod.loc.mod_path if _arch_mod?.loc else "";
+    _arch_src = _arch_mod.loc.mod_path if _arch_mod is not None else "";
     _seen_src = self._struct_source_mod.get(aname);
     if _seen_src is not None and _arch_src and _seen_src != _arch_src {
         import from jaclang.cli.console { console }
@@ -1349,7 +1350,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         resolve_native_module
                     }
                     (mod_name, _supported) = classify_native_import(item);
-                    if _supported {
+                    if _supported and mod_name is not None {
                         self._native_stdlib_modules.add(mod_name);
                     } elif mod_name is not None
                         and is_bundled_native_module(mod_name) {

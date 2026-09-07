@@ -56,6 +56,16 @@ comparison, and optional-payload tests. Its source audit reduced the native
 generator diagnostics to 114 errors and 765 warnings. This is progress on
 compiling the backend itself, not a successful full native checker build.
 
+The subsequent object, call, statement, and driver-layout contract batch
+reduced that source audit to zero errors and 704 warnings. Native primitive
+source checking also passed with zero errors. The focused behavioral run
+passed 41 tests; four class-constant structural assertions needed to inspect
+emitted IR before LLVM optimization, and all five selected tests passed
+after that adjustment. Optimized-binary class-constant parity passed in the
+original run. The remaining warnings include substantial erased typing;
+zero source errors does not prove successful native lowering or execution
+of the entire compiler.
+
 ## Remaining work
 
 | Area | Required work in Jac |

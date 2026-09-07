@@ -70,7 +70,11 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if alloca is None {
             continue;
         }
-        slot_ty = alloca.type?.pointee;
+        allocation_type = alloca.type;
+        if not isinstance(allocation_type, ir.PointerType) {
+            continue;
+        }
+        slot_ty = allocation_type.pointee;
         _lu_ptr = isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee;
         if not _lu_ptr
             and (
@@ -155,7 +159,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             _a_line = nd.loc.first_line if nd.loc else 0;
             _a_text = "assertion failed";
             if isinstance(nd.error_msg, uni.String) {
-                _a_text = nd.error_msg.lit_value;
+                _a_text = str(nd.error_msg.lit_value);
             }
             self._emit_runtime_raise(
                 is_false, "AssertionError", f"{_a_text} at {_a_path}:{_a_line}"
@@ -881,7 +885,7 @@ impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
 }
 
 impl NaIRGenPass._match_pattern_cond(
-    pat: uni.MatchPattern, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchPattern, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     if isinstance(pat, uni.MatchWild) {
@@ -926,7 +930,7 @@ impl NaIRGenPass._match_pattern_cond(
     return None;
 }
 
-impl NaIRGenPass._match_subj_ty(expr: (uni.UniNode | None)) -> (object | None) {
+impl NaIRGenPass._match_subj_ty(expr: (uni.UniNode | None)) -> (TypeBase | None) {
     if not isinstance(expr, uni.Expr) {
         return None;
     }
@@ -973,9 +977,13 @@ impl NaIRGenPass._match_seq_parts(pat: uni.MatchSequence) -> tuple {
 }
 
 impl NaIRGenPass._match_elem_ty_of(
-    subj_ty: (object | None), prefix: str, idx: int
-) -> (object | None) {
-    if subj_ty is None or not self._mangled_of(subj_ty).startswith(prefix) {
+    subj_ty: (TypeBase | None), prefix: str, idx: int
+) -> (TypeBase | None) {
+    if not isinstance(subj_ty, ClassType) {
+        return None;
+    }
+    mangled = self._mangled_of(subj_ty);
+    if mangled is None or not mangled.startswith(prefix) {
         return None;
     }
     targs = subj_ty.private.type_args or [];
@@ -986,7 +994,7 @@ impl NaIRGenPass._match_elem_ty_of(
 }
 
 impl NaIRGenPass._match_cast_elem(
-    elem: ir.Value, elem_ty: (object | None)
+    elem: ir.Value, elem_ty: (TypeBase | None)
 ) -> ir.Value {
     if elem_ty is None or not isinstance(elem.type, ir.PointerType) {
         return elem;
@@ -1001,7 +1009,7 @@ impl NaIRGenPass._match_cast_elem(
 }
 
 impl NaIRGenPass._match_seq_cond(
-    pat: uni.MatchSequence, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchSequence, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     i64 = ir.IntType(64);
@@ -1078,7 +1086,7 @@ impl NaIRGenPass._match_seq_cond(
 }
 
 impl NaIRGenPass._match_tuple_seq_cond(
-    pat: uni.MatchSequence, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchSequence, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     (heads, star, tails) = self._match_seq_parts(pat);
@@ -1092,7 +1100,13 @@ impl NaIRGenPass._match_tuple_seq_cond(
         );
         return None;
     }
-    if len(subj.type.pointee.elements) != len(heads) {
+    subject_type = subj.type;
+    assert isinstance(subject_type, ir.PointerType);
+    tuple_type = subject_type.pointee;
+    assert isinstance(tuple_type, ir.BaseStructType);
+    elements = tuple_type.elements;
+    assert elements is not None;
+    if len(elements) != len(heads) {
         return ir.Constant(i1, 0);
     }
     loaded = self.builder.load(subj, name="match.tup");
@@ -1131,7 +1145,7 @@ impl NaIRGenPass._match_map_key(
 }
 
 impl NaIRGenPass._match_map_cond(
-    pat: uni.MatchMapping, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchMapping, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     dict_info = self._infer_dict_type(subj);
@@ -1220,7 +1234,7 @@ impl NaIRGenPass._match_arch_fields(
 }
 
 impl NaIRGenPass._match_arch_cond(
-    pat: uni.MatchArch, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> (ir.Value | None) {
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
@@ -1251,7 +1265,7 @@ impl NaIRGenPass._match_arch_cond(
     if static_name is None
         and subj_ty is not None
         and isinstance(subj.type, ir.PointerType) {
-        tk = self._mangled_of(subj_ty);
+        tk = self._mangled_of(subj_ty) or "";
         cands = [tk] + (tk.split("|") if "|" in tk else []);
         for part in cands {
             if part in self.struct_types {
@@ -1380,7 +1394,7 @@ impl NaIRGenPass._match_value_eq(
 }
 
 impl NaIRGenPass._bind_match_pattern(
-    pat: uni.MatchPattern, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchPattern, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
     if isinstance(pat, uni.MatchAs) {
         cap_name = self._get_name(pat.name) if pat.name else None;
@@ -1433,7 +1447,7 @@ impl NaIRGenPass._bind_match_capture(
 }
 
 impl NaIRGenPass._bind_match_seq(
-    pat: uni.MatchSequence, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchSequence, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
     i64 = ir.IntType(64);
     (heads, star, tails) = self._match_seq_parts(pat);
@@ -1508,7 +1522,7 @@ impl NaIRGenPass._bind_match_seq(
 }
 
 impl NaIRGenPass._bind_match_map(
-    pat: uni.MatchMapping, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchMapping, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
     i64 = ir.IntType(64);
     dict_info = self._infer_dict_type(subj);
@@ -1592,7 +1606,7 @@ impl NaIRGenPass._bind_match_map(
 }
 
 impl NaIRGenPass._bind_match_arch(
-    pat: uni.MatchArch, subj: ir.Value, subj_ty: (object | None) = None
+    pat: uni.MatchArch, subj: ir.Value, subj_ty: (TypeBase | None) = None
 ) -> None {
     arch_name = self._get_name(pat.name);
     if arch_name is None or arch_name not in self.struct_types {
@@ -1663,39 +1677,39 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     if self._lower_partition_unpack(nd) {
         return;
     }
-    value: (ir.Value | None) = None;
+    pending_value: (ir.Value | None) = None;
     if (
         isinstance(nd.value, uni.Name)
         and nd.value.value in self.generic_fns
         and nd.type_tag is not None
         and nd.type_tag.tag is not None
     ) {
-        value = self._instantiate_generic_for_target(nd.value.value, nd.type_tag.tag);
+        pending_value = self._instantiate_generic_for_target(
+            nd.value.value, nd.type_tag.tag
+        );
     }
-    if value is None {
-        value = self._codegen_expr(nd.value) if nd.value else None;
+    if pending_value is None {
+        pending_value = self._codegen_expr(nd.value) if nd.value else None;
     }
 
-    if value is None and isinstance(nd.value, uni.FuncCall) {
+    if pending_value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
         if func_name == "set" and nd.type_tag is not None {
-            _set_t0 = nd.target[0]
-                if isinstance(nd.target, (list, tuple))
-                else nd.target;
+            _set_t0 = nd.target[0] if nd.target else None;
             set_type = self._resolve_jac_type(_set_t0);
             if isinstance(set_type, ir.PointerType) {
                 for (elem_name, stype) in self.set_types.items() {
                     if set_type == stype.as_pointer() {
                         helpers = self.set_helpers.get(elem_name);
                         if helpers is not None {
-                            value = self.builder.call(
+                            pending_value = self.builder.call(
                                 helpers["new"], [], name="set.new"
                             );
                             self._nogc_stamp_elem_drops(
-                                value, self._nogc_type_arg_mangles(_set_t0)
+                                pending_value, self._nogc_type_arg_mangles(_set_t0)
                             );
 
-                            self._mark_owned(value);
+                            self._mark_owned(pending_value);
                         }
                         break;
                     }
@@ -1703,7 +1717,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
         }
     }
-    if value is None {
+    if pending_value is None {
         if nd.value is not None
             and len(self.errors_had) == _rhs_errs_before
             and not self._reads_unlowered_local(nd.value) {
@@ -1730,10 +1744,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
         return;
     }
-    assignment_rhs: ir.Value = value;
+    assignment_rhs: ir.Value = pending_value;
     targets = nd.target if isinstance(nd.target, (list, tuple)) else [(nd.target)];
     for target_expr in targets {
-        value = assignment_rhs;
+        value: ir.Value = assignment_rhs;
         if isinstance(target_expr, uni.TupleVal) {
             _unpack_errs = len(self.errors_had);
             if not self._codegen_tuple_unpack(target_expr.values, value, nd.value) {
@@ -1796,7 +1810,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and self?._native_stdlib_modules
                 and "os" in self._native_stdlib_modules
                 and nd.aug_op is None
-                and target_expr.right?.slices
+                and isinstance(target_expr.right, uni.IndexSlice)
+                and target_expr.right.slices
             ) {
                 _env_slices = target_expr.right.slices or [];
                 _env_key: (ir.Value | None) = None;
@@ -1838,7 +1853,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and "u8" in self.list_types
                 and target_val.type == self.list_types["u8"].as_pointer()
                 and target_expr.right?.is_range
-                and target_expr.right?.slices
+                and isinstance(target_expr.right, uni.IndexSlice)
+                and target_expr.right.slices
             ) {
                 _ba_sl = target_expr.right.slices[0];
                 _ba_start = (
@@ -1874,7 +1890,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     continue;
                 }
             }
-            if target_val is not None and target_expr.right?.slices {
+            if target_val is not None
+                and isinstance(target_expr.right, uni.IndexSlice)
+                and target_expr.right.slices {
                 slices = target_expr.right.slices or [];
                 if slices {
                     idx_node = slices[0];
@@ -1908,7 +1926,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                             value,
                                             nd.aug_op.value,
                                             nd.value,
-                                            checked=self._is_sized_node(nd.target)
+                                            checked=self._is_sized_node(target_expr)
                                                 or self._is_sized_node(nd.value)
                                         );
                                     }
@@ -1917,6 +1935,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     store_val = self._nogc_elem_prep(
                                         nd.value, store_val
                                     );
+                                    if store_val is None {
+                                        continue;
+                                    }
                                     self._codegen_dict_set(
                                         target_val,
                                         idx_val,
@@ -1948,7 +1969,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                             value,
                                             nd.aug_op.value,
                                             nd.value,
-                                            checked=self._is_sized_node(nd.target)
+                                            checked=self._is_sized_node(target_expr)
                                                 or self._is_sized_node(nd.value)
                                         );
                                     }
@@ -1957,6 +1978,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     store_val = self._nogc_elem_prep(
                                         nd.value, store_val
                                     );
+                                    if store_val is None {
+                                        continue;
+                                    }
                                     self._codegen_index_set(
                                         target_val, idx_val, store_val, elem_type_name
                                     );
@@ -2080,10 +2104,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value = current;
                     } elif isinstance(current.type, ir.PointerType) {
                         _aug_str_rhs = coerced;
-                        value = self._emit_binary_op(Tok.PLUS, current, _aug_str_rhs);
-                        if value is None {
-                            value = current;
-                        } else {
+                        augmented = self._emit_binary_op(
+                            Tok.PLUS, current, _aug_str_rhs
+                        );
+                        value = augmented if augmented is not None else current;
+                        if augmented is not None {
                             if self._is_owned(_aug_str_rhs) {
                                 _aug_rhs_loc = f"{os.path.basename(
                                     self.ir_in.loc.mod_path
@@ -2548,10 +2573,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                     } elif isinstance(current.type, ir.PointerType) {
                         _aug_gstr_rhs = coerced;
-                        value = self._emit_binary_op(Tok.PLUS, current, _aug_gstr_rhs);
-                        if value is None {
-                            value = current;
-                        } else {
+                        augmented = self._emit_binary_op(
+                            Tok.PLUS, current, _aug_gstr_rhs
+                        );
+                        value = augmented if augmented is not None else current;
+                        if augmented is not None {
                             if self._is_owned(_aug_gstr_rhs) {
                                 _aug_grhs_loc = f"{os.path.basename(
                                     self.ir_in.loc.mod_path
@@ -3634,7 +3660,11 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         _b_hdr: (ir.Value | None) = None;
         if _chk is not None {
             _lv_alloca = self._entry_alloca(coll.type, loop_var);
-            _b_hdr = self._entry_alloca(coll.type.pointee, f"{loop_var}.chunk.hdr");
+            collection_type = coll.type;
+            assert isinstance(collection_type, ir.PointerType);
+            _b_hdr = self._entry_alloca(
+                collection_type.pointee, f"{loop_var}.chunk.hdr"
+            );
             self.nogc_no_free_vars.add(loop_var);
         } else {
             _lv_alloca = self._entry_alloca(actual_elem_type, loop_var);
@@ -3668,6 +3698,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         self.builder.position_at_end(_c_body);
         _bidx = self.builder.load(_idx_alloca, name="ffor.bidx");
         if _chk is not None {
+            assert _b_chk_n is not None and _b_hdr is not None;
             self._emit_chunk_header(_bcoll, _b_chk_n, _bidx, _b_hdr, helpers["len"]);
             self.builder.store(_b_hdr, _lv_alloca);
         } else {
@@ -3834,7 +3865,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
 
     func = self.builder.function;
     _nred = len(_reds);
-    _red_arr = ir.Constant(i64.as_pointer(), None);
+    _red_arr: ir.Value = ir.Constant(i64.as_pointer(), None);
     if _reds {
         _red_arr = self.builder.alloca(
             i64,
@@ -4178,6 +4209,7 @@ impl NaIRGenPass._codegen_for_indexed(
                     self.builder.store(null_const, alloca);
                 }
             }
+            assert alloca is not None;
             self.local_vars[vname] = alloca;
             if rc_vars
                 and isinstance(vtype, ir.PointerType)
@@ -4465,7 +4497,9 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
         _nv,
         name="chunk.ntasks"
     );
-    _hdr = self._entry_alloca(coll.type.pointee, f"{loop_var}.chunk.hdr");
+    collection_type = coll.type;
+    assert isinstance(collection_type, ir.PointerType);
+    _hdr = self._entry_alloca(collection_type.pointee, f"{loop_var}.chunk.hdr");
     _lv_alloca = self._entry_alloca(coll.type, loop_var);
     self.local_vars[loop_var] = _lv_alloca;
     self.nogc_no_free_vars.add(loop_var);
