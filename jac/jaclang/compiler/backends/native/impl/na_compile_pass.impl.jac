@@ -1206,11 +1206,11 @@ impl NativeCompilePass._compile_and_link_native_imports(
 glob _OSP_KERNEL_IR_CACHE: dict[str, str] = {},
      _REGION_KERNEL_IR_CACHE: dict[str, str] = {};
 
-def _kernel_unit_opts(gc_mode: str, enforce: bool) -> any {
-    import from jaclang.compiler.driver.compile_options {
-        CompileOptions as _KernelOpts
-    }
-    return _KernelOpts(
+def _kernel_unit_opts(
+    gc_mode: str, enforce: bool, no_ir_cache: bool = False
+) -> CompileOptions {
+    return CompileOptions(
+        no_ir_cache=no_ir_cache,
         aot_mode=True,
         kernel_unit=True,
         default_codespace='native',
@@ -1245,20 +1245,19 @@ def _kernel_unit_opts(gc_mode: str, enforce: bool) -> any {
 }
 
 def _compile_kernel_unit_ir(
-    unit: str, cache: dict[str, str], gc_mode: str, enforce: bool
+    unit: str, cache: dict[str, str], kernel_opts: CompileOptions
 ) -> (str | None) {
     import from jaclang.compiler.backends.common.kernel_units {
         load_unit_artifact,
         store_unit_artifact
     }
     import from jaclang.compiler.driver.program { JacProgram }
-    kernel_opts = _kernel_unit_opts(gc_mode, enforce);
-    cache_key = f"{unit}|{kernel_opts.codegen_fingerprint()}";
-    if cache_key in cache {
+    fp = native_compiler_fingerprint(kernel_opts);
+    cache_key = f"{unit}|{fp}";
+    if not kernel_opts.no_ir_cache and cache_key in cache {
         return cache[cache_key];
     }
-    fp = native_compiler_fingerprint(kernel_opts);
-    ir_str = load_unit_artifact(unit, "ll", fp);
+    ir_str = None if kernel_opts.no_ir_cache else load_unit_artifact(unit, "ll", fp);
     if ir_str is not None {
         cache[cache_key] = ir_str;
         return ir_str;
@@ -1280,24 +1279,28 @@ def _compile_kernel_unit_ir(
 }
 
 def _compile_osp_kernel_ir(
-    gc_mode: str = "cycles", enforce: bool = False
+    gc_mode: str = "cycles", enforce: bool = False, no_ir_cache: bool = False
 ) -> (str | None) {
     import from jaclang.compiler.backends.common.kernel_units { osp_core_unit_path }
     variant = f"na_{gc_mode}_enf" if enforce else f"na_{gc_mode}";
     return _compile_kernel_unit_ir(
-        osp_core_unit_path(variant), _OSP_KERNEL_IR_CACHE, gc_mode, enforce
+        osp_core_unit_path(variant),
+        _OSP_KERNEL_IR_CACHE,
+        _kernel_unit_opts(gc_mode, enforce, no_ir_cache)
     );
 }
 
 def _compile_region_kernel_ir(
-    gc_mode: str = "cycles", enforce: bool = False
+    gc_mode: str = "cycles", enforce: bool = False, no_ir_cache: bool = False
 ) -> (str | None) {
     import from jaclang.compiler.backends.common.kernel_units {
         region_kernel_unit_path
     }
     variant = f"na_{gc_mode}_enf" if enforce else f"na_{gc_mode}";
     return _compile_kernel_unit_ir(
-        region_kernel_unit_path(variant), _REGION_KERNEL_IR_CACHE, gc_mode, enforce
+        region_kernel_unit_path(variant),
+        _REGION_KERNEL_IR_CACHE,
+        _kernel_unit_opts(gc_mode, enforce, no_ir_cache)
     );
 }
 
@@ -1342,7 +1345,9 @@ impl NativeCompilePass._link_region_kernel(main_mod: ModuleRef) -> None {
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
         or bool(getattr(self.ir_in.gen, "nogc_enforced", False));
-    ir_str = _compile_region_kernel_ir(_gc, _enf and _gc == "none");
+    ir_str = _compile_region_kernel_ir(
+        _gc, _enf and _gc == "none", self.prog.options.no_ir_cache
+    );
     if ir_str is None {
         self.emit(
             E5025,
@@ -1401,7 +1406,9 @@ impl NativeCompilePass._link_osp_kernel(main_mod: ModuleRef) -> None {
     _gc = str(getattr(self.prog?.options, "na_gc_mode", "cycles") or "cycles");
     _enf = bool(getattr(self.prog?.options, "nogc_enforce_all", False))
         or bool(getattr(self.ir_in.gen, "nogc_enforced", False));
-    ir_str = _compile_osp_kernel_ir(_gc, _enf and _gc == "none");
+    ir_str = _compile_osp_kernel_ir(
+        _gc, _enf and _gc == "none", self.prog.options.no_ir_cache
+    );
     if ir_str is None {
         self.emit(
             E5025,
@@ -1422,48 +1429,20 @@ impl NativeCompilePass._link_osp_kernel(main_mod: ModuleRef) -> None {
     }
 }
 
-glob _FMT_KERNEL_IR_CACHE: dict = {};
+glob _FMT_KERNEL_IR_CACHE: dict[str, str] = {};
 
-def _compile_fmt_kernel_ir -> (str | None) {
-    import from jaclang.compiler.backends.common.kernel_units {
-        fmt_kernel_unit_path,
-        load_unit_artifact,
-        store_unit_artifact
-    }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options {
-        CompileOptions as _KernelOpts
-    }
-
-    kernel_opts = _KernelOpts(
-        aot_mode=True, default_codespace='native', memory_profile='managed'
+def _compile_fmt_kernel_ir(no_ir_cache: bool = False) -> (str | None) {
+    import from jaclang.compiler.backends.common.kernel_units { fmt_kernel_unit_path }
+    return _compile_kernel_unit_ir(
+        fmt_kernel_unit_path('na_cycles'),
+        _FMT_KERNEL_IR_CACHE,
+        CompileOptions(
+            aot_mode=True,
+            default_codespace='native',
+            memory_profile='managed',
+            no_ir_cache=no_ir_cache
+        )
     );
-    cache_key = kernel_opts.codegen_fingerprint();
-    if cache_key in _FMT_KERNEL_IR_CACHE {
-        return _FMT_KERNEL_IR_CACHE[cache_key];
-    }
-
-    unit = fmt_kernel_unit_path('na_cycles');
-    fp = native_compiler_fingerprint(kernel_opts);
-    ir_str = load_unit_artifact(unit, "ll", fp);
-    if ir_str is not None {
-        _FMT_KERNEL_IR_CACHE[cache_key] = ir_str;
-        return ir_str;
-    }
-    try {
-        prog = JacProgram();
-        m = prog.compile(unit, options=kernel_opts);
-        if (m is not None) and m?.gen and (m.gen.llvm_ir is not None) {
-            ir_str = str(m.gen.llvm_ir);
-        }
-    } except Exception {
-        ir_str = None;
-    }
-    if ir_str is not None {
-        _FMT_KERNEL_IR_CACHE[cache_key] = ir_str;
-        store_unit_artifact(unit, "ll", fp, ir_str);
-    }
-    return ir_str;
 }
 
 impl NativeCompilePass._references_undefined_fmt_kernel(main_mod: ModuleRef) -> bool {
@@ -1486,7 +1465,7 @@ impl NativeCompilePass._references_undefined_fmt_kernel(main_mod: ModuleRef) -> 
 }
 
 impl NativeCompilePass._link_fmt_kernel(main_mod: ModuleRef) -> None {
-    ir_str = _compile_fmt_kernel_ir();
+    ir_str = _compile_fmt_kernel_ir(self.prog.options.no_ir_cache);
     if ir_str is None {
         return;
     }

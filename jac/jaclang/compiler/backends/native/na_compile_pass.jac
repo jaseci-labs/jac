@@ -1,3 +1,4 @@
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
