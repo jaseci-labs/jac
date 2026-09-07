@@ -4,19 +4,19 @@ Jac will retain boundary contracts across compilation and deployment, use them f
 
 | Status | Scope item | Completion requirement |
 | --- | --- | --- |
-| Implemented; integration pending | Typed Wasm exports and generated calls | Native declarations drive ordinary typed imports and generated invocation. |
-| Implemented; integration pending | Value conversions and opaque handles | Runtime adapters preserve declared values and manage native handles without application integer casts. |
-| Implemented; integration pending | Checked host-import interfaces | Required host signatures check implementations and drive registration. |
-| Implemented; integration pending | Module loading and host registration | Shared runtime owns instantiation, readiness, registration, and cleanup. |
-| Implemented; integration pending | Precise CLI and authentication boundary types | Consumers use declared records instead of dynamic field reconstruction. |
-| Implemented; integration pending | External API contracts and response validation | Declared external shapes drive clients and validate responses. |
-| Implemented; integration pending | Conservative effect analysis | Separate read/write dependencies and explicit unknown effects compose through calls. |
-| Implemented; browser validation pending | Wildcard dependency matching | Reader and writer wildcards conservatively overlap. |
-| Implemented; browser validation pending | Concurrent cache operations | Writes prevent older reads from being cached or reused as fresh results. |
-| Implemented; integration pending | Qualified endpoint identities | App/module/declaration identities survive generation, routing, and cache metadata. |
-| Implemented; integration pending | Reusable WebGL graphics adapter | Browser graphics implementation lives behind the shared host contract. |
-| Implemented; integration pending | Application migration and removal of scaffolding | jaclang_org consumes the shared mechanisms; redundant paths are removed. |
-| Implemented; integration pending | Boundary audit | Compiler exposes contracts, placement, effects, and unchecked assumptions. |
+| Implemented | Typed Wasm exports and generated calls | Native declarations drive ordinary typed imports and generated invocation. |
+| Implemented | Value conversions and opaque handles | Runtime adapters preserve declared values and manage native handles without application integer casts. |
+| Implemented | Checked host-import interfaces | Required host signatures check implementations and drive registration. |
+| Implemented | Module loading and host registration | Shared runtime owns instantiation, readiness, registration, and cleanup. |
+| Implemented | Precise CLI and authentication boundary types | Consumers use declared records instead of dynamic field reconstruction. |
+| Implemented | External API contracts and response validation | Declared external shapes drive clients and validate responses. |
+| Implemented | Conservative effect analysis | Separate read/write dependencies and explicit unknown effects compose through calls. |
+| Implemented | Wildcard dependency matching | Reader and writer wildcards conservatively overlap. |
+| Implemented | Concurrent cache operations | Writes prevent older reads from being cached or reused as fresh results. |
+| Implemented | Qualified endpoint identities | App/module/declaration identities survive generation, routing, and cache metadata. |
+| Implemented | Reusable WebGL graphics adapter | Browser graphics implementation lives behind the shared host contract. |
+| Implemented | Application migration and removal of scaffolding | jaclang_org consumes the shared mechanisms; redundant paths are removed. |
+| Implemented; production verification pending | Boundary audit | Compiler exposes contracts, placement, effects, and unchecked assumptions. |
 
 ## Acceptance validation
 
@@ -56,3 +56,6 @@ Run jaclang_org using the development compiler and exercise it with `jac browse`
 - A local browser account completed signup, automatic login, post creation, post deletion, and logout. Feed and hashtag counts updated after both mutations; the validation post was removed.
 - The GitHub project flow fetched a public repository and commit through the typed contracts and correctly rejected the repository for containing no Jac code. The docs page loaded its 105-page navigation.
 - Production build and emitted audit verification are in progress. Browser observations do not claim exhaustive cache-race, ABI, or external OAuth coverage.
+
+- Production served the home page successfully. Its audit initially lost boundary and host records after syntax-tree eviction; client artifacts now serialize the shared interop records, and bundling collects them before eviction. Client artifact format 3 replaces format 2. Final production/browser verification of this fix is pending.
+- No benchmarks or regression suites are part of acceptance, as requested.
