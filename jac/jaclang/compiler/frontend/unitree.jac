@@ -2731,6 +2731,8 @@ def is_identifier_slot(nd: UniNode) -> bool;
 
 def find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None);
 
+def same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool;
+
 def find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode;
 
 def def_insert_unpacking(

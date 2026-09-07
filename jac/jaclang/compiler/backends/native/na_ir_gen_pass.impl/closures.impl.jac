@@ -51,7 +51,7 @@ impl NaIRGenPass._scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) ->
             continue;
         }
         for cap_sym in sub.get_enclosing_captures() {
-            if cap_sym.parent_tab is nd {
+            if uni.same_lexical_scope(cap_sym.parent_tab, nd) {
                 self.closure_cell_vars.add(cap_sym.sym_name);
             }
         }
@@ -61,7 +61,7 @@ impl NaIRGenPass._scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) ->
             continue;
         }
         for cap_sym in lam.captures {
-            if cap_sym.parent_tab is nd {
+            if uni.same_lexical_scope(cap_sym.parent_tab, nd) {
                 self.closure_cell_vars.add(cap_sym.sym_name);
             }
         }

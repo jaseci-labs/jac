@@ -1476,14 +1476,7 @@ impl Symbol.storage.getter -> SymbolStorage {
         ) {
             cur = cur.parent;
         }
-        if (cur is None) or (cur is def_scope) {
-            continue;
-        }
-
-        if isinstance(cur, ImplDef) and (cur.decl_link is def_scope) {
-            continue;
-        }
-        if isinstance(def_scope, ImplDef) and (def_scope.decl_link is cur) {
+        if cur is None or same_lexical_scope(cur, def_scope) {
             continue;
         }
         return SymbolStorage.CAPTURED;
@@ -1679,6 +1672,15 @@ impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
     return None;
 }
 
+impl same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool {
+    if left is None or right is None {
+        return False;
+    }
+    return left is right
+        or (isinstance(left, ImplDef) and left.decl_link is right)
+        or (isinstance(right, ImplDef) and right.decl_link is left);
+}
+
 impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
     out: list[Symbol] = [];
     names: list[Name] = self.get_all_sub_nodes(Name);
@@ -1701,7 +1703,7 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
         }
         if (
             (tab is None)
-            or (tab is self)
+            or same_lexical_scope(tab, self)
             or not isinstance(tab, (Ability, ImplDef, LambdaExpr, Test))
         ) {
             continue;
@@ -1709,7 +1711,7 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
 
         scope = self.parent_scope;
         while (scope is not None) {
-            if (scope is tab) {
+            if same_lexical_scope(scope, tab) {
                 if sym not in out {
                     out.append(sym);
                 }
@@ -4117,16 +4119,10 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
 
 impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
     outer_tab = sym.parent_tab;
-    if outer_tab is None or outer_tab is py_scope {
+    if outer_tab is None or same_lexical_scope(outer_tab, py_scope) {
         return;
     }
     if not isinstance(py_scope, (Ability, ImplDef, Test)) {
-        return;
-    }
-    if isinstance(py_scope, ImplDef) and py_scope.decl_link is outer_tab {
-        return;
-    }
-    if isinstance(outer_tab, ImplDef) and outer_tab.decl_link is py_scope {
         return;
     }
     if isinstance(outer_tab, Module) {

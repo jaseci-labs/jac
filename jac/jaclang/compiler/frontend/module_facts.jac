@@ -23,7 +23,7 @@ import from jaclang.compiler.frontend.constant {
 }
 
 obj ModuleFacts {
-    static def unwrap_body(nd: Archetype | Enum | Ability) -> (Sequence | None) {
+    static def unwrap_body(nd: Archetype | Enum | Ability | ImplDef) -> (Sequence | None) {
         body = nd.body;
         if (isinstance(body, ImplDef) and isinstance(body.body, `list)) {
             return body.body;

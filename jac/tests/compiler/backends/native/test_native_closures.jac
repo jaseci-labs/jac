@@ -138,6 +138,31 @@ def drops -> int { return dropped; }
     assert drops() - before == 1;
 }
 
+test "closure: split method implementations capture their declaration scope" {
+    (prog, module) = compile_na_inline_ir(
+        "impl_receiver",
+        """
+obj Factory {
+    has value: int = 30;
+    def callback(label: str) -> Callable[[], int];
+}
+impl Factory.callback {
+    def read -> int { return self.value + len(label); }
+    return read;
+}
+def probe -> int {
+    callback = Factory().callback("scope");
+    return callback();
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    assert call() == 35;
+}
+
 test "closure: read captures are late-bound (py backend parity)" {
     (eng, _) = compile_native("closures.jac");
     f = get_func(eng, "late_bound", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
