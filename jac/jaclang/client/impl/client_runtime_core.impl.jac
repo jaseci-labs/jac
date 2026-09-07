@@ -39,11 +39,11 @@ impl __cacheGet(key: str) -> dict | None {
 }
 
 impl __cacheSet(key: str, data: any, ttl: int) -> None {
-    return cache___cacheSet(key, data, ttl);
+    cache___cacheSet(key, data, ttl);
 }
 
 impl __evictOldest -> None {
-    return cache___evictOldest();
+    cache___evictOldest();
 }
 
 impl __overlaps(list1: list[str], list2: list[str]) -> bool {
@@ -51,7 +51,7 @@ impl __overlaps(list1: list[str], list2: list[str]) -> bool {
 }
 
 impl __invalidateEndpoint(endpoint_key: str) -> None {
-    return cache___invalidateEndpoint(endpoint_key);
+    cache___invalidateEndpoint(endpoint_key);
 }
 
 impl __bridgeErrorFor(
@@ -190,7 +190,7 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
 }
 
 impl __invalidateEffects(writes: list[str]) -> None {
-    return cache___invalidateEffects(writes);
+    cache___invalidateEffects(writes);
 }
 
 impl __jacSpawn(
@@ -377,7 +377,7 @@ impl jacIsLoggedIn -> bool {
 }
 
 impl __jacClearCache -> None {
-    return cache___jacClearCache();
+    cache___jacClearCache();
 }
 
 impl jacSetToken(token: str) -> None {

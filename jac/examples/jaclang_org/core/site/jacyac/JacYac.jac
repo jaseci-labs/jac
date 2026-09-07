@@ -94,7 +94,11 @@ def:pub JacYac(initialTab: str = "feed") -> JsxElement {
     }
 
     profileUsername = model.myProfile.profile.username if model.myProfile else "";
-    displayUsername = name_of(model.myProfile.profile) if model.myProfile else "";
+    displayUsername = name_of(
+        model.myProfile.profile.display_name, model.myProfile.profile.username
+    )
+        if model.myProfile
+        else "";
     profileAvatar = avatar_of(model.avatars, profileUsername);
     myProfileId = jid(model.myProfile.profile) if model.myProfile else "";
     followingIds = [
@@ -110,7 +114,9 @@ def:pub JacYac(initialTab: str = "feed") -> JsxElement {
         for u in model.allProfiles
         if jid(u) not in followingIds and jid(u) != myProfileId
     ];
-    viewedName = name_of(model.viewedProfile.profile)
+    viewedName = name_of(
+        model.viewedProfile.profile.display_name, model.viewedProfile.profile.username
+    )
         if model.viewedProfile
         else "Profile";
     tab_title = "Ninja Scores"

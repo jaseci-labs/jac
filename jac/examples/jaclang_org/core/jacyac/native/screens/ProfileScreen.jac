@@ -29,7 +29,9 @@ def:pub ProfileScreen(
     C = theme.colors;
     styles = makeStyles(C);
     username = profile.profile.username if profile else "";
-    name = name_of(profile.profile) if profile else "";
+    name = name_of(profile.profile.display_name, profile.profile.username)
+        if profile
+        else "";
     bio = profile.profile.bio if profile else "";
     followers = len(profile.followers) if profile else 0;
     following = len(profile.following) if profile else 0;

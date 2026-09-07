@@ -483,7 +483,7 @@ impl _deliver_one(item: OutboxEntry) -> any {
         item.app,
         item.`walker,
         dict(item.kwargs),
-        None,
+        DeliveryReceipt,
         idempotency_key=item.idempotency_key
     );
 }

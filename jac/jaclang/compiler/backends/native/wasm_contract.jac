@@ -17,27 +17,30 @@ def value_contract(
         OwnershipKind.MUT_BORROW: "borrow_mut",
         OwnershipKind.IMM: "borrow"
     }[ownership];
-    primitives = {
-        "int",
-        "float",
-        "bool",
-        "None",
-        "i8",
-        "u8",
-        "i16",
-        "u16",
-        "i32",
-        "u32",
-        "i64",
-        "u64",
-        "f32",
-        "f64"
-    };
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    shape = JAC_TYPE_REGISTRY.shape_of(name);
     if host and name == "str" {
         return {"type": name, "mode": mode, "kind": "cstring"};
     }
-    if name in primitives {
+    if name == "None" {
         return {"type": name, "mode": mode, "kind": "scalar"};
+    }
+    if shape is not None {
+        value = {
+            "type": name,
+            "mode": mode,
+            "kind": "scalar",
+            "bits": shape.width,
+            "signed": shape.signed,
+            "numeric": "float" if shape.is_float else "int"
+        };
+        if not shape.is_float {
+            import from jaclang.runtime.scalars { shape_range }
+            limits = shape_range(shape);
+            value["minimum"] = str(limits[0]);
+            value["maximum"] = str(limits[1]);
+        }
+        return value;
     }
     if mode == "value" {
         raise ValueError(

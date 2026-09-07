@@ -30,7 +30,7 @@ What the one import does:
   (`__na_bind` in `@jac/wasm_host`) that instantiates the module on first
   call and dispatches to its export - so calls are `await`ed, exactly like
   client calls to server endpoints. `__jac_glob_init()` and BigInt marshalling
-  of the *stub-crossed scalars still apply* (an int return arrives as BigInt).
+  are handled by the generated contract (an int return becomes an exact JavaScript number).
 - **Direction decides the crossing**: the same import written in *server*
   code is the server -> native ctypes crossing and executes the module
   server-side; written in client code it is the wasm edge and compiles to
@@ -44,7 +44,8 @@ If the native module declares host imports, provide a typed implementation befor
 calling its exports. The compiler checks the host methods against the native
 declarations and generates registration and conversions:
 
-```jac
+```
+# host.jac, alongside the native arena module
 import from "@jac/wasm_host" { bind_na_host }
 import from "@jac/webgl" { WebGLHost }
 import from .arena { init, frame, shutdown }

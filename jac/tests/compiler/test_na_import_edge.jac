@@ -72,9 +72,30 @@ test "native import binds generated wasm stubs in the client js" {
     contract = json.loads(json.loads(encoded.group(1)));
     assert set(contract["exports"]) == {"fib"};
     assert contract["exports"]["fib"]["params"]
-        == [{"name": "n", "type": "int", "kind": "scalar", "mode": "value"}];
+        == [
+            {
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "mode": "value",
+                "bits": 64,
+                "signed": True,
+                "numeric": "int",
+                "minimum": "-9223372036854775808",
+                "maximum": "9223372036854775807"
+            }
+        ];
     assert contract["exports"]["fib"]["result"]
-        == {"type": "int", "kind": "scalar", "mode": "value"};
+        == {
+            "type": "int",
+            "kind": "scalar",
+            "mode": "value",
+            "bits": 64,
+            "signed": True,
+            "numeric": "int",
+            "minimum": "-9223372036854775808",
+            "maximum": "9223372036854775807"
+        };
     assert "fast_fib" in js , "expected the alias as the local binding";
 }
 
