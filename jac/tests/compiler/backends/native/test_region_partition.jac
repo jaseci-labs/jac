@@ -50,7 +50,9 @@ test "children draw pages from the parent behind the reabsorb contract" {
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     text = str(ir.gen.llvm_ir);
     assert "__jac_region_partition" in text , "no partition call in the module";
-    linked: any = parse_bitcode(ir.gen.native_bitcode);
+    bitcode = ir.gen.native_bitcode;
+    assert bitcode is not None , "native linking produced no bitcode";
+    linked = parse_bitcode(bitcode);
     fn_names = {str(f.name) for f in linked.functions};
     assert "_draw_page" in fn_names , "the region kernel's parent draw path is not linked";
     assert "_reabsorb" in fn_names , "the region kernel's reabsorb path is not linked";

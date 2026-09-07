@@ -201,7 +201,7 @@ class ModuleRef(ffi.ObjectRef) {
          LLVM parlance)
         """
     @property
-    def global_variables(self: ModuleRef) -> object {
+    def global_variables(self: ModuleRef) -> _GlobalsIterator {
         it = ffi.lib.LLVMPY_ModuleGlobalsIter(self);
         return _GlobalsIterator(it, `dict(module=self));
     }
@@ -211,7 +211,7 @@ class ModuleRef(ffi.ObjectRef) {
         The iterator will yield a ValueRef for each function.
         """
     @property
-    def functions(self: ModuleRef) -> object {
+    def functions(self: ModuleRef) -> _FunctionsIterator {
         it = ffi.lib.LLVMPY_ModuleFunctionsIter(self);
         return _FunctionsIterator(it, `dict(module=self));
     }
@@ -233,20 +233,19 @@ class _Iterator(ffi.ObjectRef) {
     }
 
     def _next(self: _Iterator) -> object abst;
-    def __next__(self: _Iterator) -> object {
+    def __next__(self: _Iterator) -> ValueRef {
         vp = self._next();
         if vp {
             return ValueRef(vp, self.kind, self._parents);
-        } else {
-            raise StopIteration;
         }
+        raise StopIteration;
     }
 
     with entry {
         next = __next__;
     }
 
-    def __iter__(self: _Iterator) -> object {
+    def __iter__(self: _Iterator) -> _Iterator {
         return self;
     }
 }
