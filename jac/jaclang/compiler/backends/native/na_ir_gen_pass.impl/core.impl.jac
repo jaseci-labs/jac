@@ -1616,7 +1616,8 @@ impl NaIRGenPass._dispatch_builtin(
         pass_ref=self,
         type_key=type_key,
         call_kwargs=(kwargs or {}),
-        arg_nodes=(arg_nodes or [])
+        arg_nodes=(arg_nodes or []),
+        call_node=kw_node
     );
     return _emit_fn(_ctx, args);
 }

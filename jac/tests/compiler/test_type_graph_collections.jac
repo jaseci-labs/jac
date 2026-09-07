@@ -4,10 +4,38 @@ import from jaclang.compiler.types.types {
     AnyType,
     ClassDetailsPrivate,
     ClassDetailsShared,
+    ClassType,
     FunctionType,
     OverloadedType,
     UnionType,
     TypeVarType
+}
+
+test "union mangles normalize repeated storage types without erasing generics" {
+    module = Module.make_stub("union_mangles");
+    string = ClassType(
+        _shared=ClassDetailsShared(class_name="str", symbol_table=module)
+    );
+    literal_a = ClassType(
+        _shared=string.shared, private=ClassDetailsPrivate(literal_value="a")
+    );
+    literal_b = ClassType(
+        _shared=string.shared, private=ClassDetailsPrivate(literal_value="b")
+    );
+    assert UnionType(types=[literal_a, literal_b]).mangle() == "str";
+    integer = ClassType(
+        _shared=ClassDetailsShared(class_name="int", symbol_table=module)
+    );
+    sequence = ClassType(
+        _shared=ClassDetailsShared(class_name="list", symbol_table=module)
+    );
+    ints = sequence.specialize_generics([integer]);
+    strings = sequence.specialize_generics([string]);
+    assert UnionType(types=[strings, ints, strings]).mangle() == "list[int]|list[str]";
+    nested = sequence.specialize_generics(
+        [UnionType(types=[integer, string, integer])]
+    );
+    assert nested.mangle() == "list[int|str]";
 }
 
 test "class relations return typed lists and regenerate from graph edges" {

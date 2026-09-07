@@ -1952,12 +1952,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         arg_nodes=[params_l[0]]
                     );
 
-                    if isinstance(arg_val.type, ir.PointerType)
-                        and self._is_owned(arg_val) {
-                        self._emit_rc_release_simple(
-                            arg_val, op="builtin1_arg", loc=""
-                        );
-                    }
+                    self._release_owned_args([arg_val], op="builtin1_arg");
                     if result is not None {
                         return result;
                     }

@@ -5387,6 +5387,25 @@ impl NativeBuiltinEmitter.emit_list(
         val = b.extract_value(val, 1, name="l.opt.payload");
     }
 
+    source = ctx.arg_nodes[0] if ctx.arg_nodes else None;
+    if p._tuple_iter_shape(source, val) {
+        sequence = p._tuple_iter_seq(
+            source,
+            val,
+            consume_source=False,
+            element_type=p._list_elem_llvm_of(ctx.call_node),
+            own_elements=True
+        );
+        if sequence is None {
+            return None;
+        }
+        result = sequence[0];
+        if ctx.call_node is not None and not p._container_is_view(ctx.call_node) {
+            p._nogc_stamp_elem_drops(result, p._nogc_type_arg_mangles(ctx.call_node));
+        }
+        return result;
+    }
+
     if p._jac_iter_type is not None
         and val.type == p._jac_iter_type.as_pointer()
         and ctx.arg_nodes {

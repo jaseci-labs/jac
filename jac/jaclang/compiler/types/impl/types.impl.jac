@@ -1283,7 +1283,7 @@ impl TypeBase.mangle -> str {
         return base;
     }
     if isinstance(self, UnionType) {
-        members = sorted(ty.mangle() for ty in (self.types or []));
+        members = sorted(set(ty.mangle() for ty in (self.types or [])));
         return "|".join(members) if members else "<union>";
     }
     if isinstance(self, FunctionType) {

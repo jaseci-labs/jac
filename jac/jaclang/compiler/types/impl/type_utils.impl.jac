@@ -863,7 +863,11 @@ impl build_solution_from_specialized_class(
         ) {
         parameter = class_type.shared.type_params[0];
         if parameter.name {
-            solution[parameter.name] = UnionType(types=class_type.private.type_args);
+            arguments = class_type.private.type_args;
+            first = arguments[0];
+            solution[parameter.name] = first
+                if all(types_equivalent(first, argument) for argument in arguments[1:])
+                else UnionType(types=arguments);
             return solution;
         }
     }

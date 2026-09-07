@@ -675,7 +675,9 @@ impl NaIRGenPass._release_owned_operands(
     }
 }
 
-impl NaIRGenPass._release_owned_args(call_args: list, op: str = "call_arg") -> None {
+impl NaIRGenPass._release_owned_args(
+    call_args: list[ir.Value], op: str = "call_arg"
+) -> None {
     for _arg in call_args {
         if isinstance(_arg.type, ir.PointerType) and self._is_owned(_arg) {
             self._emit_rc_release_simple(_arg, op=op, loc="");
@@ -685,6 +687,19 @@ impl NaIRGenPass._release_owned_args(call_args: list, op: str = "call_arg") -> N
             and self._is_owned(_arg)
         ) {
             self.builder.call(self._emit_jacval_release_fn(), [_arg]);
+        } elif isinstance(_arg.type, ir.LiteralStructType)
+            and self._gc_mode() != "none" {
+            owned = _arg.na_tuple_owned;
+            if owned is not None {
+                for (index, is_owned) in enumerate(owned) {
+                    if is_owned {
+                        value = self.builder.extract_value(
+                            _arg, index, name="arg.tuple.field"
+                        );
+                        self._release_owned_args([self._mark_owned(value)], op=op);
+                    }
+                }
+            }
         }
     }
 }
@@ -2165,7 +2180,8 @@ impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
             "mstr_old",
             "mstr_val",
             "fstring",
-            "str_index"
+            "str_index",
+            "tuple_move_box"
         ) {
         return;
     }

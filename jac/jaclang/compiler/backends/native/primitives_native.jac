@@ -15,12 +15,14 @@ import from jaclang.compiler.backends.common.primitives {
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.diagnostics { E5092 }
+import from jaclang.compiler.frontend.unitree { UniNode }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
         call_kwargs: dict = {},
-        arg_nodes: list = [];
+        arg_nodes: list[UniNode] = [],
+        call_node: UniNode | None = None;
 }
 
 

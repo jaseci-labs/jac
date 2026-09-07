@@ -678,6 +678,7 @@ walker NaIRGenPass(Transform) {
     def _closure_sig_struct(
         fnty: ir.FunctionType
     ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
+
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _closure_cell_struct(slot_type: ir.Type) -> str;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
@@ -1729,7 +1730,7 @@ walker NaIRGenPass(Transform) {
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;
 
-    def _release_owned_args(call_args: list, op: str = "call_arg") -> None;
+    def _release_owned_args(call_args: list[ir.Value], op: str = "call_arg") -> None;
     def _rc_call_with_ctx(
         fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
@@ -1959,10 +1960,14 @@ walker NaIRGenPass(Transform) {
     ) -> (ir.LiteralStructType | None);
 
     def _tuple_iter_shape(expr: (uni.UniNode | None), val: (ir.Value | None)) -> bool;
-    def _tuple_seq_flavor(elem_types: list) -> (tuple | None);
+    def _tuple_seq_flavor(elem_types: list[ir.Type]) -> tuple[str, ir.Type] | None;
     def _tuple_iter_seq(
-        expr: (uni.UniNode | None), val: (ir.Value | None)
-    ) -> (tuple | None);
+        expr: uni.UniNode | None,
+        val: ir.Value | None,
+        consume_source: bool = True,
+        element_type: ir.Type | None = None,
+        own_elements: bool = False
+    ) -> tuple[ir.Value, str, ir.Type, ir.Type | None] | None;
 
     def _variadic_tuple_seq_type(type_args: list) -> (ir.Type | None);
     def _tuple_seq_coerce(val: ir.Value, target_type: ir.Type) -> (ir.Value | None);
