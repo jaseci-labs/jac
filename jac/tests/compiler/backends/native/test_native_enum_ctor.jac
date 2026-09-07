@@ -28,7 +28,12 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    native_force_opts,
+    python_run,
+    compile_native_ir
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
@@ -47,17 +52,11 @@ def compile_native(fixture: str) -> tuple {
 
 
 def sv_lines(fixture: str) -> list {
-    proc = subprocess.run(
-        [sys.executable, "-m", "jaclang", "run", os.path.join(FIXTURES, fixture)],
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert proc.returncode == 0 , f"server run failed: {proc.stderr[-800:]}";
+    output = python_run(os.path.join(FIXTURES, fixture), timeout=900);
     return [
-        _l
-        for _l in proc.stdout.split("\n")
-        if _l.strip()
+        line
+        for line in output.splitlines()
+        if line.strip()
     ];
 }
 
@@ -111,7 +110,7 @@ test "the enum-constructor fixture lowers with no seam" {
 
 
 test "the call validates against every declared member" {
-    (_prog, ir) = compile_native("enum_ctor.jac");
+    ir = compile_native_ir("enum_ctor.jac");
     text = str(ir.gen.llvm_ir);
     for member in ("Null", "Instantiable", "Instance", "Ambiguous") {
         assert f"ec.Flags.{member}" in text , (
@@ -127,7 +126,7 @@ test "the call validates against every declared member" {
 
 
 test "the declared-enum spelling validates the same way" {
-    (_prog, ir) = compile_native("enum_ctor.jac");
+    ir = compile_native_ir("enum_ctor.jac");
     text = str(ir.gen.llvm_ir);
     for member in ("LOW", "MID", "HIGH") {
         assert f"ec.Level.{member}" in text , (
