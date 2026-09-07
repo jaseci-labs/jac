@@ -161,6 +161,7 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
     import from types { SimpleNamespace }
     import from unittest.mock { MagicMock, patch }
     import from jaclang.server.endpoints.pages { register_page_endpoints }
+    import from jaclang.server.server { JacAPIServer, ModuleIntrospector }
 
     with tempfile.TemporaryDirectory() as tmp {
         img_root = _sealed_root(tmp);
@@ -170,10 +171,9 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
         (dist / "arena.wasm.imports.json").write_text('{"imports":{}}');
         unrelated = Path(tmp) / "elsewhere";
         unrelated.mkdir();
-        server: any = MagicMock();
-        server.introspector.module = SimpleNamespace(
-            __file__=str(Path(img_root) / "main.jac")
-        );
+        server: any = MagicMock(spec=JacAPIServer);
+        server.introspector = MagicMock(spec=ModuleIntrospector);
+        server.module = SimpleNamespace(__file__=str(Path(img_root) / "main.jac"));
         server.introspector.resolve_root_app.return_value = "app";
         server.resolved_settings.return_value = SimpleNamespace(client_dist="");
         with patch("jaclang.server.endpoints.pages.get_config", return_value=None), patch(
