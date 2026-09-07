@@ -100,7 +100,6 @@ walker EndpointEffectPass(UniPass) {
     }
 
     def _scan(nd: (UniNode | None)) -> None {
-        import from jaclang.compiler.tools.unparse_pass { unparse_node }
         if nd is None {
             return;
         }
@@ -143,6 +142,7 @@ walker EndpointEffectPass(UniPass) {
                 self._visited.add(id(nd));
                 declared = self._declared_effects(nd);
                 if declared is not None {
+                    import from jaclang.compiler.tools.unparse_pass { unparse_node }
                     self._declared_reads.update(declared["reads"]);
                     self._declared_writes.update(declared["writes"]);
                     self._assumptions.add("Declared effects of " + unparse_node(nd.target));
@@ -205,13 +205,13 @@ walker EndpointEffectPass(UniPass) {
 
     def _declaration_effects(decl: Ability) -> dict | None {
         import ast;
-        import from jaclang.compiler.tools.unparse_pass { unparse_node }
         for decorator in decl.decorators or [] {
             if not isinstance(decorator, FuncCall) { continue; }
             target = ability_of_symbol(self._call_target_symbol(decorator));
             if target is None or not target.loc.mod_path.replace("\\", "/").endswith("/jaclang/lib/effects.jac") {
                 continue;
             }
+            import from jaclang.compiler.tools.unparse_pass { unparse_node }
             result: dict = {"reads": [], "writes": []};
             for pair in decorator.params or [] {
                 if not isinstance(pair, KWPair) or pair.key is None or pair.key.sym_name not in result {
