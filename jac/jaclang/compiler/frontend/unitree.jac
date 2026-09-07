@@ -254,6 +254,14 @@ node UniNode {
     def __repr__ -> str;
 }
 
+obj SymbolProvider {
+    def resolve_type(symbol: Symbol) -> TypeBase abst;
+    def definition -> Symbol | None abst;
+    def property_kind -> int abst;
+    def property_write_kind -> int abst;
+    def property_write_type -> TypeBase | None abst;
+}
+
 node Symbol {
     has name: str postinit,
         access: SymbolAccess postinit,
@@ -268,7 +276,7 @@ node Symbol {
         na_stack_ok: bool = False,
         _in_stub_scope: (bool | None) = None,
         _binding_kind: (BindingKind | None) = None,
-        provider: any = None;
+        provider: SymbolProvider | None = None;
 
     def init(
         defn: NameAtom,

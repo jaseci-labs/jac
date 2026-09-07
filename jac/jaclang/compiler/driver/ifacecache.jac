@@ -1008,7 +1008,7 @@ obj IfaceRegistry {
         provider = sym.provider;
         try {
             if provider is not None {
-                resolved_type = provider.resolve_type(None, sym);
+                resolved_type = provider.resolve_type(sym);
             } else {
                 resolved_type = self.prog.get_type_evaluator().get_type_of_symbol(sym);
             }

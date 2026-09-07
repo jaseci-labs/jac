@@ -442,6 +442,7 @@ class FuncDef:
     is_static: bool = False
     is_classmethod: bool = False
     is_async: bool = False
+    is_abstract: bool = False
     event: str = ""
     trigger: str = ""
 
@@ -1914,8 +1915,12 @@ class Parser:
         event, trigger = self._parse_event_clause()
         return_type = ""
         if self._match(TT.ARROW):
-            return_type = self._collect_type()
-        if self._match(TT.SEMI):
+            return_type = self._collect_type(stop_names={"abst"})
+        is_abstract = bool(self._match(TT.NAME, "abst"))
+        if is_abstract:
+            self._expect(TT.SEMI)
+            body = [PassStmt()]
+        elif self._match(TT.SEMI):
             body = [PassStmt()]
         else:
             self._expect(TT.LBRACE)
@@ -1930,6 +1935,7 @@ class Parser:
             is_static=is_static,
             is_classmethod=is_classmethod,
             is_async=is_async,
+            is_abstract=is_abstract,
             event=event,
             trigger=trigger,
         )
@@ -2429,6 +2435,8 @@ class CodeGen:
             self.lines.insert(1, "import jaclang.jac0core.osp0 as _jac_osp")
         if any("ClassVar[" in ln for ln in self.lines[header_len:]):
             self.lines.insert(1, "from typing import ClassVar")
+        if any("_jac_abc." in ln for ln in self.lines[header_len:]):
+            self.lines.insert(1, "import abc as _jac_abc")
         return "\n".join(self.lines) + "\n"
 
     def _scan_needs(self, body: list) -> None:
@@ -2560,6 +2568,8 @@ class CodeGen:
         if node.arch_kind:
             arch_base = "_jac_osp." + node.arch_kind.capitalize()
             bases = f"{bases}, {arch_base}" if bases else arch_base
+        if any(isinstance(member, FuncDef) and member.is_abstract for member in node.body):
+            bases = f"{bases}, _jac_abc.ABC" if bases else "_jac_abc.ABC"
         base_str = f"({bases})" if bases else ""
         self._line(f"class {node.name}{tp_str}{base_str}:")
         self.indent += 1
@@ -2689,6 +2699,8 @@ class CodeGen:
             self._line("@classmethod")
         if node.is_static:
             self._line("@staticmethod")
+        if node.is_abstract:
+            self._line("@_jac_abc.abstractmethod")
         _dunder_names = {"init": "__init__", "postinit": "__post_init__"}
         name = _dunder_names.get(node.name, node.name)
         func_params = list(node.params)

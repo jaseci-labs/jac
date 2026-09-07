@@ -519,7 +519,7 @@ impl TypeEvaluator._resolve_importer_path(ast_node: UniNode) -> (str | None) {
 impl TypeEvaluator.get_type_of_symbol(symbol: Symbol) -> TypeBase {
     provider = symbol.provider;
     if provider is not None {
-        return provider.resolve_type(self, symbol);
+        return provider.resolve_type(symbol);
     }
     if self.push_symbol_resolution(symbol) {
         try {
