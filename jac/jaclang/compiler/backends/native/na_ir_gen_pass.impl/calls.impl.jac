@@ -2149,6 +2149,21 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_decorated_call(nd, func_name);
     }
     func = self.func_symtab.get(func_name);
+    declaration = self._callee_ability_of(nd);
+    if declaration is not None and declaration.name_ref is not None {
+        declaring_module = declaration.find_parent_of_type(uni.Module);
+        if declaring_module is not None {
+            declared_function = self._module_functions.get(
+                (
+                    os.path.realpath(declaring_module.source.file_path),
+                    declaration.name_ref.sym_name
+                )
+            );
+            if declared_function is not None {
+                func = declared_function;
+            }
+        }
+    }
     if _mod_qual is not None {
         import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
         (_, source) = resolve_native_module(
