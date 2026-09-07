@@ -1,14 +1,15 @@
 import json;
 import types;
+import typing;
 import from dataclasses { fields, is_dataclass, MISSING }
-import from typing { get_args, get_origin, get_type_hints, Union, Any }
+import from typing { get_args, get_origin, get_type_hints, Union }
 
 obj:pub ContractError(ValueError) {}
 
 def:pub decode_contract(value: any, contract: any, path: str = "response") -> any {
     origin = get_origin(contract);
     args = get_args(contract);
-    if contract is Any {
+    if contract is typing.Any {
         raise ContractError(f"{path}: external contracts must specify a value shape");
     }
     if origin is Union or origin is types.UnionType {

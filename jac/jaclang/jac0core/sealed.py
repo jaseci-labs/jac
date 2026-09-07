@@ -101,7 +101,7 @@ MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, MANIFEST_FORMAT)
 # pure-Python section reader below, so they need none of the .jac machinery
 # (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
-JIR_FORMAT_VERSION = 24
+JIR_FORMAT_VERSION = 25
 HEADER_SIZE = 32
 SECTIONS_MAGIC = b"JIRX"
 SEC_BYTECODE = 0x02
