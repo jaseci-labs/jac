@@ -572,7 +572,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
         else 0}";
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
-        slot_type = alloca.type.pointee;
+        slot_type = alloca.pointee_type;
         value = self._coerce_type(value, slot_type);
         if isinstance(slot_type, ir.PointerType) {
             if not self._is_owned(value) {
@@ -2158,7 +2158,10 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         }
     }
 
-    if not nd.is_attr and nd.right?.slices and nd.right.is_range {
+    if not nd.is_attr
+        and isinstance(nd.right, uni.IndexSlice)
+        and nd.right.slices
+        and nd.right.is_range {
         target_name = self._get_name(nd.target);
         slices = nd.right.slices or [];
         if slices {
@@ -2217,7 +2220,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         }
     }
 
-    if not nd.is_attr and nd.right?.slices {
+    if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) and nd.right.slices {
         target_name = self._get_name(nd.target);
 
         _idx_list_spec = self._list_spec_of(nd.target)

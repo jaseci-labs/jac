@@ -242,7 +242,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
             if _tn is not None {
                 _slot = self.local_vars.get(_tn);
                 if _slot is not None and isinstance(_slot.type, ir.PointerType) {
-                    _spec = self._spec_from_list_slot_type(_slot.type.pointee);
+                    _spec = self._spec_from_list_slot_type(_slot.pointee_type);
                     if _spec is not None {
                         return _spec;
                     }

@@ -1405,7 +1405,7 @@ impl NaIRGenPass._bind_match_capture(
     alloca = self.local_vars.get(cap_name);
     if alloca is None
         or not isinstance(alloca.type, ir.PointerType)
-        or alloca.type.pointee != val.type {
+        or alloca.pointee_type != val.type {
         alloca = self._entry_alloca(val.type, cap_name);
         if isinstance(val.type, ir.PointerType) {
             _func_b = self.builder.function;
@@ -2016,7 +2016,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if not _skip_redecl {
                     _declared_type = self._resolve_jac_type(_redecl_tag);
                     if _declared_type is not None
-                        and _declared_type != alloca.type.pointee {
+                        and _declared_type != alloca.pointee_type {
                         alloca = self._entry_alloca(_declared_type, var_name);
                         self.local_vars[var_name] = alloca;
                     }
@@ -2304,7 +2304,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         _rhs_alloca_ior = self.local_vars[_rhs_var_ior];
                                         self.builder.store(
                                             ir.Constant(
-                                                _rhs_alloca_ior.type.pointee, None
+                                                _rhs_alloca_ior.pointee_type, None
                                             ),
                                             _rhs_alloca_ior
                                         );
@@ -2363,15 +2363,15 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
             if nd.aug_op is not None
                 and nd.aug_op.value == "**="
-                and value.type != alloca.type.pointee {
+                and value.type != alloca.pointee_type {
                 coerced = value;
             } else {
-                coerced = self._coerce_type(value, alloca.type.pointee);
+                coerced = self._coerce_type(value, alloca.pointee_type);
             }
 
             _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr';
             self._register_region_handle_var(nd, var_name);
-            if isinstance(alloca.type.pointee, ir.PointerType)
+            if isinstance(alloca.pointee_type, ir.PointerType)
                 and not is_inplace_set_op {
                 if var_name in self.region_handle_vars {
                     _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
@@ -2423,7 +2423,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             } elif (
                 self._str_desc_ty is not None
-                and alloca.type.pointee == self._str_desc_ty
+                and alloca.pointee_type == self._str_desc_ty
                 and not is_inplace_set_op
                 and not _is_raw_int_ptr
             ) {
@@ -2456,7 +2456,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                         coerced = self.builder.insert_value(
                             self.builder.insert_value(
-                                ir.Constant(alloca.type.pointee, None),
+                                ir.Constant(alloca.pointee_type, None),
                                 _osr_new,
                                 0,
                                 name="own.re.d0"
@@ -2477,7 +2477,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             } elif (
                 self?.jacval_type
-                and alloca.type.pointee == self.jacval_type
+                and alloca.pointee_type == self.jacval_type
                 and isinstance(value.type, ir.PointerType)
                 and getattr(value, 'opname', '') != 'inttoptr'
                 and not is_inplace_set_op
@@ -2494,13 +2494,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self.rc_ops_elided += 1;
                 }
             } elif var_name in self.region_handle_vars
-                and self._opt_ptr_payload_of(alloca.type.pointee) is not None {
+                and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
                 _old_opt_hdl = self.builder.load(alloca, name=f"{var_name}.old");
                 self.builder.call(
                     self._region_kernel_fn("__jac_region_drop"),
                     [self._region_i64(_old_opt_hdl, name=f"{var_name}.old.i64")]
                 );
-            } elif self._opt_ptr_payload_of(alloca.type.pointee) is not None
+            } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
                 and not self._nogc_headerless()
                 and not is_inplace_set_op
                 and not _is_raw_int_ptr {
@@ -2662,13 +2662,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 }
             }
-            coerced = self._coerce_type(value, global_var.type.pointee);
+            coerced = self._coerce_type(value, global_var.value_type);
             _is_raw_int_ptr_g = getattr(coerced, 'opname', '') == 'inttoptr';
             if (
-                isinstance(global_var.type.pointee, ir.PointerType)
+                isinstance(global_var.value_type, ir.PointerType)
                 or (
                     self._str_desc_ty is not None
-                    and global_var.type.pointee == self._str_desc_ty
+                    and global_var.value_type == self._str_desc_ty
                 )
             )
                 and not _is_raw_int_ptr_g {
@@ -2687,7 +2687,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 _own_str_glob = (
                     self._nogc_headerless()
                     and self._str_desc_ty is not None
-                    and global_var.type.pointee == self._str_desc_ty
+                    and global_var.value_type == self._str_desc_ty
                     and len(nd.target) == 1
                     and isinstance(nd.target[0], uni.Name)
                     and nd.target[0].sym is not None
@@ -2708,7 +2708,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     );
                     coerced = self.builder.insert_value(
                         self.builder.insert_value(
-                            ir.Constant(global_var.type.pointee, None),
+                            ir.Constant(global_var.value_type, None),
                             _osg_new,
                             0,
                             name="own.glit.d0"

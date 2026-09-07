@@ -160,7 +160,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 
     _raw_tag_str = self._get_snprintf_fmt("raw");
     _raw_tag_gep = ir.GlobalVariable.__new__(ir.GlobalVariable);
-    self._rc_raw_tag_gv = _raw_tag_str;
 
     alloc_fnty = ir.FunctionType(i8_ptr, [i64]);
     alloc_fn = self._define_function("__rc_alloc", alloc_fnty);
@@ -599,7 +598,7 @@ impl NaIRGenPass._mark_owned(val: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
-    return bool(getattr(val, 'is_owned', False));
+    return val.is_owned;
 }
 
 impl NaIRGenPass._opt_result_owned(val: ir.Value, expr: object) -> bool {
@@ -632,16 +631,16 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
         self._nogc_headerless()
         and self._str_desc_ty is not None
         and isinstance(src_alloca.type, ir.PointerType)
-        and src_alloca.type.pointee == self._str_desc_ty
+        and src_alloca.pointee_type == self._str_desc_ty
     );
     if not (
         isinstance(src_alloca.type, ir.PointerType)
-        and isinstance(src_alloca.type.pointee, ir.PointerType)
+        and isinstance(src_alloca.pointee_type, ir.PointerType)
     )
         and not _mv_desc_slot {
         return False;
     }
-    self.builder.store(ir.Constant(src_alloca.type.pointee, None), src_alloca);
+    self.builder.store(ir.Constant(src_alloca.pointee_type, None), src_alloca);
     self.rc_ops_elided += 1;
     return True;
 }
@@ -2059,7 +2058,7 @@ impl NaIRGenPass._nogc_consume_local(expr: uni.UniNode | None) -> bool {
     if _slot is None or not isinstance(_slot.type, ir.PointerType) {
         return False;
     }
-    _slot_ty = _slot.type.pointee;
+    _slot_ty = _slot.pointee_type;
     _movable = (
         isinstance(_slot_ty, ir.PointerType)
         or (self._str_desc_ty is not None and _slot_ty == self._str_desc_ty)
@@ -2246,39 +2245,39 @@ impl NaIRGenPass._emit_scope_cleanup(
         if self._nogc_headerless()
             and self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
-            and alloca.type.pointee == self._str_desc_ty {
+            and alloca.pointee_type == self._str_desc_ty {
             if var_name == skip_var {
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             } elif var_name in self.nogc_owned_str_vars {
                 val = self.builder.load(alloca, name=f"cleanup.{var_name}");
                 self._nogc_str_free_owned(val);
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
             continue;
         }
         if var_name in self.region_handle_vars
             and isinstance(alloca.type, ir.PointerType)
-            and self._opt_ptr_payload_of(alloca.type.pointee) is not None {
+            and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
             if var_name != skip_var {
                 _region_handles.append((var_name, alloca));
             }
             continue;
         }
         if isinstance(alloca.type, ir.PointerType)
-            and self._opt_ptr_payload_of(alloca.type.pointee) is not None {
+            and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
             if var_name == skip_var {
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             } elif self._nogc_opt_slots_owned() {
                 val = self._rc_unwrap_optional(
                     self.builder.load(alloca, name=f"cleanup.{var_name}")
                 );
                 self._emit_rc_release_simple(val, op="scope_exit", loc=loc);
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
             continue;
         }
         if isinstance(alloca.type, ir.PointerType)
-            and isinstance(alloca.type.pointee, ir.PointerType) {
+            and isinstance(alloca.pointee_type, ir.PointerType) {
             if var_name in self.region_handle_vars {
                 if var_name != skip_var {
                     _region_handles.append((var_name, alloca));
@@ -2287,10 +2286,10 @@ impl NaIRGenPass._emit_scope_cleanup(
             }
             val = self.builder.load(alloca, name=f"cleanup.{var_name}");
             if var_name == skip_var {
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             } else {
                 self._emit_rc_release_typed(val, op="scope_exit", loc=loc);
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
         }
     }
@@ -2326,34 +2325,34 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
         if self._nogc_headerless()
             and self._str_desc_ty is not None
             and isinstance(alloca.type, ir.PointerType)
-            and alloca.type.pointee == self._str_desc_ty {
+            and alloca.pointee_type == self._str_desc_ty {
             if var_name in self.nogc_owned_str_vars {
                 val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
                 self._nogc_str_free_owned(val);
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
             continue;
         }
         if var_name in self.region_handle_vars
             and isinstance(alloca.type, ir.PointerType)
-            and self._opt_ptr_payload_of(alloca.type.pointee) is not None {
+            and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
             _region_handles.append((var_name, alloca));
             continue;
         }
         if isinstance(alloca.type, ir.PointerType)
-            and self._opt_ptr_payload_of(alloca.type.pointee) is not None {
+            and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
             if self._nogc_opt_slots_owned() {
                 val = self._rc_unwrap_optional(
                     self.builder.load(alloca, name=f"iter.cleanup.{var_name}")
                 );
                 self._emit_rc_release_simple(val, op="iter_end", loc=loc);
-                self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+                self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
             }
             continue;
         }
         if (
             isinstance(alloca.type, ir.PointerType)
-            and isinstance(alloca.type.pointee, ir.PointerType)
+            and isinstance(alloca.pointee_type, ir.PointerType)
         ) {
             if var_name in self.region_handle_vars {
                 _region_handles.append((var_name, alloca));
@@ -2361,7 +2360,7 @@ impl NaIRGenPass._emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> No
             }
             val = self.builder.load(alloca, name=f"iter.cleanup.{var_name}");
             self._emit_rc_release_typed(val, op="iter_end", loc=loc);
-            self.builder.store(ir.Constant(alloca.type.pointee, None), alloca);
+            self.builder.store(ir.Constant(alloca.pointee_type, None), alloca);
         }
     }
     for (var_name, alloca) in _region_handles {
@@ -2391,7 +2390,7 @@ impl NaIRGenPass._release_loop_coll_slot(
     _val = self.builder.load(_slot, name=f"{var_name}.end");
     self._mark_owned(_val);
     self._emit_rc_release_simple(_val, op=op, loc=loc);
-    self.builder.store(ir.Constant(_slot.type.pointee, None), _slot);
+    self.builder.store(ir.Constant(_slot.pointee_type, None), _slot);
 }
 
 impl NaIRGenPass._rc_strdup(

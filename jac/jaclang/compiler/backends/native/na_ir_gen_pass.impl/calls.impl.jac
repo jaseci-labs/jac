@@ -3558,7 +3558,7 @@ impl NaIRGenPass._emit_take(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
     _val = self.builder.load(_slot, name="take.val");
-    self.builder.store(ir.Constant(_slot.type.pointee, None), _slot);
+    self.builder.store(ir.Constant(_slot.pointee_type, None), _slot);
     return _val;
 }
 

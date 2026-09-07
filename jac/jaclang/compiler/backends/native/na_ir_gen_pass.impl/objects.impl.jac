@@ -3585,10 +3585,12 @@ impl NaIRGenPass._class_const_global(
     return None;
 }
 
-impl NaIRGenPass._class_const_variants(arch_name: str, field_name: str) -> tuple {
+impl NaIRGenPass._class_const_variants(
+    arch_name: str, field_name: str
+) -> tuple[list[tuple[str, ir.GlobalVariable, ir.GlobalVariable]], bool] {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
     reg = get_layout_registry(self.ir_in, self.prog);
-    out: list[tuple] = [];
+    out: list[tuple[str, ir.GlobalVariable, ir.GlobalVariable]] = [];
     _whole = True;
     for _cls in reg.mro_order {
         if _cls == arch_name or arch_name not in self._mro_of(_cls) {
@@ -3616,10 +3618,10 @@ impl NaIRGenPass._codegen_class_const_read(
     if not _whole or (_own is None and not _variants) {
         return None;
     }
-    _ty = _own.type.pointee if _own is not None else _variants[0][2].type.pointee;
+    _ty = _own.value_type if _own is not None else _variants[0][2].value_type;
     _uniform = True;
     for (_vc, _vt, _gv) in _variants {
-        if _gv.type.pointee != _ty {
+        if _gv.value_type != _ty {
             return None;
         }
         if _gv is not _own {

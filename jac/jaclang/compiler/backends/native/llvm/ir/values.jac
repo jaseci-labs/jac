@@ -443,10 +443,20 @@ class _ConstOpMixin(object) {
     """
 class Value(object) {
     has type: types.Type,
+        is_owned: bool = False,
         jac_loc: str = "",
         jac_signed: bool = False,
         jac_env_struct: str | None = None,
         na_tuple_owned: list[bool] | None = None;
+
+    @property
+    def pointee_type(self: Value) -> types.Type {
+        ty = self.type;
+        if not isinstance(ty, types._TypedPointerType) {
+            raise TypeError(f"Value has no typed pointee: {ty}");
+        }
+        return ty.pointee;
+    }
 
     def get_reference(self: Value) -> str {
         raise NotImplementedError;
@@ -910,7 +920,11 @@ class GlobalVariable(GlobalValue) {
     }
 
     def init(
-        self: GlobalVariable, module: any, typ: any, name: any, addrspace: any = 0
+        self: GlobalVariable,
+        module: any,
+        typ: types.Type,
+        name: any,
+        addrspace: any = 0
     ) -> object {
         assert isinstance(typ, types.Type);
         super.init(module, typ.as_pointer(addrspace), name=name);

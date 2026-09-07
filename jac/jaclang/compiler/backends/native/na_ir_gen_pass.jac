@@ -132,10 +132,10 @@ walker NaIRGenPass(Transform) {
     has ir_in: uni.Module,
         _llvm_module: (ir.Module | None) = None,
         _type_map: (dict[str, ir.Type] | None) = None,
-        _complex_struct_type: (ir.Type | None) = None,
-        _range_struct_type: (ir.Type | None) = None,
-        _slice_struct_type: (ir.Type | None) = None,
-        _jacval_type: (ir.Type | None) = None,
+        _complex_struct_type: (ir.IdentifiedStructType | None) = None,
+        _range_struct_type: (ir.IdentifiedStructType | None) = None,
+        _slice_struct_type: (ir.IdentifiedStructType | None) = None,
+        _jacval_type: (ir.IdentifiedStructType | None) = None,
         _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.Value] = {},
@@ -173,7 +173,7 @@ walker NaIRGenPass(Transform) {
         loop_stack: list[tuple] = [],
         _loop_coll_seq: int = 0,
         _str_count: int = 0,
-        struct_types: dict[str, ir.Type] = {},
+        struct_types: dict[str, ir.IdentifiedStructType] = {},
         struct_field_indices: dict[str, dict] = {},
         struct_field_order: dict[str, list] = {},
         struct_field_types: dict[str, dict] = {},
@@ -237,9 +237,9 @@ walker NaIRGenPass(Transform) {
         tuple_types: dict[str, ir.LiteralStructType] = {},
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
-        dict_types: dict[str, ir.Type] = {},
+        dict_types: dict[str, ir.IdentifiedStructType] = {},
         dict_helpers: dict[str, dict] = {},
-        set_types: dict[str, ir.Type] = {},
+        set_types: dict[str, ir.IdentifiedStructType] = {},
         set_helpers: dict[str, dict] = {},
         _peer_container_ty: (ir.Type | None) = None,
         _exc_state_type: (ir.Type | None) = None,
@@ -368,16 +368,16 @@ walker NaIRGenPass(Transform) {
         _closure_cell_structs: dict[str, str] = {},
         closure_thunks: dict[str, ir.Function] = {},
         _closure_uid: int = 0,
-        _opt_struct_types: dict[str, ir.Type] = {},
+        _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
         _loop_rebind_memo: dict[tuple, bool] = {};
 
     has builder: ir.IRBuilder { getter; }
     has llvm_module: ir.Module { getter; }
     has type_map: dict[str, ir.Type] { getter; }
-    has complex_struct_type: ir.Type { getter; }
-    has range_struct_type: ir.Type { getter; }
-    has slice_struct_type: ir.Type { getter; }
-    has jacval_type: ir.Type { getter; }
+    has complex_struct_type: ir.IdentifiedStructType { getter; }
+    has range_struct_type: ir.IdentifiedStructType { getter; }
+    has slice_struct_type: ir.IdentifiedStructType { getter; }
+    has jacval_type: ir.IdentifiedStructType { getter; }
 
     def _register_region_kernel -> None;
     def _region_kernel_fn(name: str) -> ir.Function;
@@ -1448,7 +1448,10 @@ walker NaIRGenPass(Transform) {
         arch_name: str, field_name: str
     ) -> (ir.GlobalVariable | None);
 
-    def _class_const_variants(arch_name: str, field_name: str) -> tuple;
+    def _class_const_variants(
+        arch_name: str, field_name: str
+    ) -> tuple[list[tuple[str, ir.GlobalVariable, ir.GlobalVariable]], bool];
+
     def _codegen_class_const_read(
         obj_val: ir.Value, type_name: str, field_name: str
     ) -> (ir.Value | None);

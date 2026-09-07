@@ -1427,11 +1427,11 @@ impl NaIRGenPass._get_name(nd: (uni.UniNode | None)) -> (str | None) {
     if isinstance(nd, uni.Name) {
         return nd.value;
     }
-    if nd?.sym_name {
-        return nd.sym_name;
+    if isinstance(nd, (uni.NameAtom, uni.AstSymbolNode)) {
+        return nd.sym_name or None;
     }
-    if nd?.value and isinstance(getattr(nd, "value"), str) {
-        return nd.value;
+    if isinstance(nd, uni.Token) {
+        return nd.value or None;
     }
     return None;
 }

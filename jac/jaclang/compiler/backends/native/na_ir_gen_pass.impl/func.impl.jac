@@ -665,7 +665,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
             cap_alloca = self.local_vars[fv_name];
             cap_mode = cap_modes[fv_name];
             cap_type = (
-                cap_alloca.type if cap_mode == "ptr" else cap_alloca.type.pointee
+                cap_alloca.type if cap_mode == "ptr" else cap_alloca.pointee_type
             );
             captures.append((fv_name, cap_mode, cap_type));
             param_types.append(cap_type);
@@ -855,7 +855,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             _slot = self.local_vars.get(_cn);
             if _slot is not None {
                 _cap_types[_cn] = (
-                    _slot.type if _cap_modes[s][_cn] == "ptr" else _slot.type.pointee
+                    _slot.type if _cap_modes[s][_cn] == "ptr" else _slot.pointee_type
                 );
                 continue;
             }
