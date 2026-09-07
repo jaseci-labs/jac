@@ -79,7 +79,7 @@ def:pub __cacheGet(key: str) -> dict | None {
     return `entry;
 }
 
-def:pub __cacheSet(key: str, data: any, ttl: int) -> None {
+def:pub __cacheSet(key: str, data: any, ttl: int) {
     state = __getCacheState();
 
     if state["cache"][key] {
@@ -96,7 +96,7 @@ def:pub __cacheSet(key: str, data: any, ttl: int) -> None {
     state["order"].push(key);
 }
 
-def:pub __evictOldest -> None {
+def:pub __evictOldest {
     state = __getCacheState();
     if len(state["order"]) > 0 {
         oldest = state["order"].shift();
@@ -118,7 +118,7 @@ def:pub __overlaps(list1: list[str], list2: list[str]) -> bool {
     return False;
 }
 
-def:pub __invalidateEndpoint(endpoint_key: str) -> None {
+def:pub __invalidateEndpoint(endpoint_key: str) {
     state = __getCacheState();
     state["generations"][endpoint_key] = (state["generations"][endpoint_key] or 0) + 1;
     keys_to_delete = [];
@@ -136,20 +136,27 @@ def:pub __invalidateEndpoint(endpoint_key: str) -> None {
     }
 }
 
-async def:pub __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
+async def:pub __cachedEndpointCall(
+    endpoint_key: str, args_key: str, fetch_fn: any
+) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
     generation = state["generations"][endpoint_key] or 0;
     epoch = state["epoch"];
 
-    if info and not info["unknown"] and len(info["writes"]) == 0 and state["activeWrites"] == 0 {
+    if info
+        and not info["unknown"]
+        and len(info["writes"]) == 0
+        and state["activeWrites"] == 0 {
         cached = __cacheGet(args_key);
         if cached and __isFresh(cached) {
             return cached["data"];
         }
         pending = state["pending"][args_key];
-        if pending and pending["generation"] == generation and pending["epoch"] == epoch {
+        if pending
+            and pending["generation"] == generation
+            and pending["epoch"] == epoch {
             return await pending["promise"];
         }
         fetch_promise = fetch_fn();
@@ -183,17 +190,20 @@ async def:pub __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: a
     return await fetch_fn();
 }
 
-def:pub __invalidateEffects(writes: list[str]) -> None {
+def:pub __invalidateEffects(writes: list[str]) {
     effects = __getEndpointEffects();
     for endpoint_name in Object.keys(effects) {
         reader = effects[endpoint_name];
-        if reader and not reader["unknown"] and len(reader["writes"]) == 0 and __overlaps(reader["reads"], writes) {
+        if reader
+            and not reader["unknown"]
+            and len(reader["writes"]) == 0
+            and __overlaps(reader["reads"], writes) {
             __invalidateEndpoint(endpoint_name);
         }
     }
 }
 
-def:pub __jacClearCache -> None {
+def:pub __jacClearCache {
     state = __getCacheState();
     state["epoch"] += 1;
     state["pending"] = {};
@@ -214,7 +224,8 @@ def:pub __endpointKey(kind: str, name: str, opts: dict | None) -> str {
     matches: list[str] = [];
     for key in Object.keys(effects) {
         info = effects[key];
-        if info["kind"] == kind and info["name"] == name
+        if info["kind"] == kind
+            and info["name"] == name
             and (not app or info["app"] == app)
             and (not module or info["module"] == module) {
             matches.append(key);

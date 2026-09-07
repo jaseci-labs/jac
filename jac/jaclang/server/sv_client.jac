@@ -165,7 +165,12 @@ def _read_cache_enabled -> bool {
 
 def _read_cache_key(app: str, fn: str, kwargs: dict) -> tuple {
     import json;
-    return (app, fn, json.dumps(kwargs, sort_keys=True, `default=str), json.dumps(request_headers(), sort_keys=True));
+    return (
+        app,
+        fn,
+        json.dumps(kwargs, sort_keys=True, `default=str),
+        json.dumps(request_headers(), sort_keys=True)
+    );
 }
 
 def auth_headers -> dict[str, str] {
@@ -422,7 +427,11 @@ async def _local_spawn(app: str, walker_name: str, kwargs: dict) -> any {
 }
 
 async def call(
-    app: str, fn: str, kwargs: dict, effects: (list[str] | None) = None, contract: str = ""
+    app: str,
+    fn: str,
+    kwargs: dict,
+    effects: (list[str] | None) = None,
+    contract: str = ""
 ) -> any {
     writer = effects is None or bool(effects);
     if writer {
@@ -430,7 +439,9 @@ async def call(
         clear_read_cache(app);
     }
     epoch = _cache_epoch[0];
-    cacheable = not writer and _active_writes.get(app, 0) == 0 and _read_cache_enabled();
+    cacheable = not writer
+        and _active_writes.get(app, 0) == 0
+        and _read_cache_enabled();
     key = _read_cache_key(app, contract or fn, kwargs) if cacheable else None;
     if cacheable and key in _read_cache {
         return _read_cache[key];
@@ -441,7 +452,9 @@ async def call(
         } else {
             _ensure_available(app, fn);
             headers = request_headers();
-            if contract { headers["X-Jac-Endpoint"] = contract; }
+            if contract {
+                headers["X-Jac-Endpoint"] = contract;
+            }
             transport = _scale_transport();
             if transport is not None and app not in _test_clients {
                 result = transport.sv_service_call(app, fn, kwargs, headers=headers);

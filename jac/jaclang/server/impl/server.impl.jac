@@ -855,7 +855,6 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
 }
 
 
-
 impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., any)]] {
     if not self._module {
         return {};

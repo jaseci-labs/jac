@@ -126,7 +126,7 @@ def:pub AuthForms -> JsxElement {
                 if result.success {
                     status = "signup_old_ok";
                 } else {
-                    err = result.error if "error" in result else "unknown";
+                    err = result.error or "unknown";
                     status = f"signup_old_fail:{err}";
                 }
             } except Exception as e {
@@ -147,7 +147,7 @@ def:pub AuthForms -> JsxElement {
                 if result.success {
                     status = "signup_new_ok";
                 } else {
-                    err = result.error if "error" in result else "unknown";
+                    err = result.error or "unknown";
                     status = f"signup_new_fail:{err}";
                 }
             } except Exception as e {

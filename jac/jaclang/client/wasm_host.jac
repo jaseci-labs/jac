@@ -69,12 +69,18 @@ def:pub make_jac_host(sh: any) -> dict {
         "getenv": lambda (p: int) { return 0; },
         "fopen": lambda (p: int, m: int) { return 0; },
         "fclose": lambda (f: int) { return -1; },
-        "fread": lambda (b: int, sz: int, n: int, f: int) { return globalThis.BigInt(0); },
-        "fwrite": lambda (b: int, sz: int, n: int, f: int) { return globalThis.BigInt(0); },
+        "fread": lambda (b: int, sz: int, n: int, f: int) { return globalThis.BigInt(
+            0
+        ); },
+        "fwrite": lambda (b: int, sz: int, n: int, f: int) { return globalThis.BigInt(
+            0
+        ); },
         "fgets": lambda (b: int, n: int, f: int) { return 0; },
         "ftell": lambda (f: int) { return globalThis.BigInt(-1); },
         "fseek": lambda (f: int, o: int, w: int) { return -1; },
-        "getdelim": lambda (lp: int, np: int, d: int, f: int) { return globalThis.BigInt(-1); },
+        "getdelim": lambda (lp: int, np: int, d: int, f: int) { return globalThis.BigInt(
+            -1
+        ); },
         "getpid": lambda { return 1; },
         "getcwd": lambda (b: int, n: int) { return 0; },
         "system": lambda (c: int) { return -1; },
@@ -125,28 +131,40 @@ def _host_callback(host: any, name: str, contract: any) -> any {
             if c.kind == "cstring" {
                 memory_bytes = new(Uint8Array, host.mem.buffer);
                 end = value;
-                while end < memory_bytes.length and memory_bytes[end] != 0 { end += 1; }
+                while end < memory_bytes.length and memory_bytes[end] != 0 {
+                    end += 1;
+                }
                 value = new(TextDecoder).decode(memory_bytes.subarray(value, end));
             } elif c.type == "bool" {
                 value = bool(value);
             } elif c.type in ["int", "i64", "u64"] {
                 value = globalThis.Number(value);
-                if not Number.isSafeInteger(value) { raise Error("Host integer exceeds exact range"); }
+                if not Number.isSafeInteger(value) {
+                    raise Error("Host integer exceeds exact range");
+                }
             }
             values.append(value);
         }
         result = host[name].apply(host, values);
-        if contract.result.type in ["int", "i64", "u64"] { return globalThis.BigInt(result); }
-        if contract.result.type == "bool" { return 1 if result else 0; }
+        if contract.result.type in ["int", "i64", "u64"] {
+            return globalThis.BigInt(result);
+        }
+        if contract.result.type == "bool" {
+            return 1 if result else 0;
+        }
         return result;
     }
     return callback;
 }
 
-def:pub bind_na_host(native_export: any, host: any) -> None {
+def:pub bind_na_host(native_export: any, host: any) {
     module = _na_exports.get(native_export);
-    if not module { raise Error("Host binding requires a generated native export"); }
-    if module in _na_pending { raise Error("Bind the native host before instantiation"); }
+    if not module {
+        raise Error("Host binding requires a generated native export");
+    }
+    if module in _na_pending {
+        raise Error("Bind the native host before instantiation");
+    }
     env: any = {};
     required = _na_contracts[module].imports;
     for name in Object.keys(required) {
@@ -158,12 +176,16 @@ def:pub bind_na_host(native_export: any, host: any) -> None {
     _na_env_cfg[module] = [host, {"env": env}];
 }
 
-async def:pub release_na_module(native_export: any) -> None {
+async def:pub release_na_module(native_export: any) {
     module = _na_exports.get(native_export);
-    if not module { raise Error("Module release requires a generated native export"); }
+    if not module {
+        raise Error("Module release requires a generated native export");
+    }
     if module in _na_pending {
         inst = await _na_pending[module];
-        if inst.__jac_owned_handles != 0 { raise Error("Native module still has live owned handles"); }
+        if inst.__jac_owned_handles != 0 {
+            raise Error("Native module still has live owned handles");
+        }
         inst.__jac_live = False;
         _na_pending.pop(module, None);
     }
@@ -193,9 +215,13 @@ async def _na_instance(module_stem: str) -> any {
 glob _na_handles: any = new(globalThis.WeakMap as any);
 
 def _handle_live(handle: any) -> bool {
-    if not handle or not handle.live or not handle.instance.__jac_live { return False; }
+    if not handle or not handle.live or not handle.instance.__jac_live {
+        return False;
+    }
     for parent in handle.parents {
-        if not _handle_live(parent) { return False; }
+        if not _handle_live(parent) {
+            return False;
+        }
     }
     return True;
 }
@@ -203,11 +229,17 @@ def _handle_live(handle: any) -> bool {
 def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any {
     if contract.kind == "handle" {
         handle = _na_handles.get(value);
-        if not _handle_live(handle) or handle.module != module_stem
-            or handle.instance != inst or handle.type != contract.type {
-            raise Error("Invalid, consumed, or foreign native handle for " + contract.type);
+        if not _handle_live(handle)
+            or handle.module != module_stem
+            or handle.instance != inst
+            or handle.type != contract.type {
+            raise Error(
+                "Invalid, consumed, or foreign native handle for " + contract.type
+            );
         }
-        if contract.mode == "borrow_mut" and not handle.owned and handle.mode != "borrow_mut" {
+        if contract.mode == "borrow_mut"
+            and not handle.owned
+            and handle.mode != "borrow_mut" {
             raise Error("Cannot mutably borrow a shared native handle");
         }
         return handle.pointer;
@@ -217,21 +249,34 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
             raise Error("Native integer arguments must be exact integers");
         }
         integer: any = globalThis.BigInt(value);
-        minimum: any = globalThis.BigInt(0) if contract.type == "u64" else globalThis.BigInt("-9223372036854775808");
-        maximum: any = globalThis.BigInt("18446744073709551615") if contract.type == "u64" else globalThis.BigInt("9223372036854775807");
-        if integer < minimum or integer > maximum { raise Error("Native integer argument is out of range"); }
+        minimum: any = globalThis.BigInt(0)
+            if contract.type == "u64"
+            else globalThis.BigInt("-9223372036854775808");
+        maximum: any = globalThis.BigInt("18446744073709551615")
+            if contract.type == "u64"
+            else globalThis.BigInt("9223372036854775807");
+        if integer < minimum or integer > maximum {
+            raise Error("Native integer argument is out of range");
+        }
         return integer;
     }
     if contract.type == "bool" {
-        if typeof(value) != "boolean" { raise Error("Native bool argument requires a boolean"); }
+        if typeof(value) != "boolean" {
+            raise Error("Native bool argument requires a boolean");
+        }
         return 1 if value else 0;
     }
     bounds: any = {
-        "i8": [-128, 127], "u8": [0, 255], "i16": [-32768, 32767],
-        "u16": [0, 65535], "i32": [-2147483648, 2147483647], "u32": [0, 4294967295]
+        "i8": [-128, 127],
+        "u8": [0, 255],
+        "i16": [-32768, 32767],
+        "u16": [0, 65535],
+        "i32": [-2147483648, 2147483647],
+        "u32": [0, 4294967295]
     };
     limit = bounds[contract.type];
-    if limit and (not Number.isSafeInteger(value) or value < limit[0] or value > limit[1]) {
+    if limit
+        and (not Number.isSafeInteger(value) or value < limit[0] or value > limit[1]) {
         raise Error("Native integer argument is out of range");
     }
     if contract.type in ["float", "f32", "f64"] and typeof(value) != "number" {
@@ -240,15 +285,27 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
     return value;
 }
 
-def _na_result(value: any, contract: any, module_stem: str, inst: any, parents: list) -> any {
+def _na_result(
+    value: any, contract: any, module_stem: str, inst: any, parents: list
+) -> any {
     if contract.kind == "handle" {
         token: any = Object.freeze({});
-        if contract.mode == "own" { inst.__jac_owned_handles += 1; }
-        _na_handles.set(token, {
-            "pointer": value, "type": contract.type, "module": module_stem,
-            "instance": inst, "live": True, "owned": contract.mode == "own", "mode": contract.mode,
-            "parents": [] if contract.mode == "own" else parents
-        });
+        if contract.mode == "own" {
+            inst.__jac_owned_handles += 1;
+        }
+        _na_handles.set(
+            token,
+            {
+                "pointer": value,
+                "type": contract.type,
+                "module": module_stem,
+                "instance": inst,
+                "live": True,
+                "owned": contract.mode == "own",
+                "mode": contract.mode,
+                "parents": [] if contract.mode == "own" else parents
+            }
+        );
         return token;
     }
     if contract.type == "None" {
@@ -297,13 +354,16 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
             }
         }
         for i in range(len(args)) {
-            if contract.params[i].kind == "handle" and contract.params[i].mode == "own" {
+            if contract.params[i].kind == "handle"
+                and contract.params[i].mode == "own" {
                 handle = _na_handles.get(args[i]);
                 handle.live = False;
                 inst.__jac_owned_handles -= 1;
             }
         }
-        return _na_result(fn(*values), contract.result, module_stem, inst, [h.handle for h in handles]);
+        return _na_result(
+            fn(*values), contract.result, module_stem, inst, [h.handle for h in handles]
+        );
     }
     return _call;
 }

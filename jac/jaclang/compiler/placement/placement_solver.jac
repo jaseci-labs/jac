@@ -815,7 +815,9 @@ def _pull_boundary_import(imp: uni.Import, module: uni.Module, prog: any) -> int
         return 0;
     }
     import from jaclang.compiler.driver.boundary_classify { plain_native_import_target }
-    if plain_native_import_target(imp, prog) is not None { return 0; }
+    if plain_native_import_target(imp, prog) is not None {
+        return 0;
+    }
     resolved = imp.from_loc.resolve_relative_path();
     if not isinstance(resolved, str) or not resolved.endswith('.jac') {
         return 0;

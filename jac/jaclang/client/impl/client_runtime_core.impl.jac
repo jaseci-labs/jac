@@ -102,7 +102,9 @@ impl __doWalkerFetch(
         url = f"{base_url}/walker/{`walker}/{nodeId}";
     }
     headers = {"Content-Type": "application/json", "Accept": "application/json"};
-    if opts and opts["contract"] { headers["X-Jac-Endpoint"] = opts["contract"]; }
+    if opts and opts["contract"] {
+        headers["X-Jac-Endpoint"] = opts["contract"];
+    }
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }
@@ -136,7 +138,9 @@ impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -
     token = __getLocalStorage("jac_token");
     base_url = __bridgeApiBase(opts);
     headers = {"Content-Type": "application/json"};
-    if opts and opts["contract"] { headers["X-Jac-Endpoint"] = opts["contract"]; }
+    if opts and opts["contract"] {
+        headers["X-Jac-Endpoint"] = opts["contract"];
+    }
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }
@@ -283,15 +287,21 @@ impl jacSignup(
             if data["data"] and data["data"]["user_id"] {
                 candidate_id = data["data"]["user_id"];
                 if not isinstance(candidate_id, str) {
-                    return SignupResult(success=False, error="Signup response has an invalid user ID");
+                    return SignupResult(
+                        success=False, error="Signup response has an invalid user ID"
+                    );
                 }
                 user_id = candidate_id;
             }
         } except Exception as e {
-            return SignupResult(success=False, error=f"Signup response was not valid JSON: {e}");
+            return SignupResult(
+                success=False, error=f"Signup response was not valid JSON: {e}"
+            );
         }
         if not user_id {
-            return SignupResult(success=False, error="Signup response is missing its user ID");
+            return SignupResult(
+                success=False, error="Signup response is missing its user ID"
+            );
         }
         return SignupResult(success=True, user_id=user_id);
     } else {
@@ -299,9 +309,15 @@ impl jacSignup(
         try {
             error_data = JSON.parse(error_text);
             message = __errorMessage(error_data["error"]);
-            return SignupResult(success=False, error=message or "Signup failed", status=int(response.status));
+            return SignupResult(
+                success=False,
+                error=message or "Signup failed",
+                status=int(response.status)
+            );
         } except Exception {
-            return SignupResult(success=False, error=error_text, status=int(response.status));
+            return SignupResult(
+                success=False, error=error_text, status=int(response.status)
+            );
         }
     }
 }

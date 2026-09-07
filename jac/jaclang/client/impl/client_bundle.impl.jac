@@ -134,7 +134,9 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
             f"No active Jac program; cannot compile '{source_path}' for client bundle."
         );
     }
-    diagnostic_program = program._get_compiler().selfhost.resolve(str(source_path), program);
+    diagnostic_program = program._get_compiler().selfhost.resolve(
+        str(source_path), program
+    );
     prev_error_count = len(diagnostic_program.errors_had);
     artifact = program.get_client_artifact(str(source_path));
     if artifact is None {

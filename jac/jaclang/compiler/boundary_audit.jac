@@ -14,12 +14,16 @@ def boundary_audit(program: any, artifacts: list[dict]) -> dict {
         }
     }
     for manifest in manifests {
-        if not manifest { continue; }
+        if not manifest {
+            continue;
+        }
         effects.update(manifest["endpoint_effects"]);
         host_imports.update(manifest["native_host_imports"]);
         for binding in manifest["bindings"].values() {
             identity = binding["endpoint_id"];
-            if not identity { continue; }
+            if not identity {
+                continue;
+            }
             (app, source, kind, name) = json.loads(identity);
             native = binding["native_contract"];
             parameters = dict(zip(binding["param_names"], binding["param_types"]));
@@ -33,13 +37,25 @@ def boundary_audit(program: any, artifacts: list[dict]) -> dict {
                 callers.update(boundaries[identity]["callers"]);
             }
             boundaries[identity] = {
-                "app": app, "module": source, "kind": kind, "name": name,
-                "placement": binding["source_context"], "callers": sorted(callers),
-                "parameters": parameters, "result": result, "native_contract": native,
+                "app": app,
+                "module": source,
+                "kind": kind,
+                "name": name,
+                "placement": binding["source_context"],
+                "callers": sorted(callers),
+                "parameters": parameters,
+                "result": result,
+                "native_contract": native,
                 "unchecked": ["dynamic value shape"]
-                    if "any" in parameters.values() or result == "any" else []
+                    if "any" in parameters.values() or result == "any"
+                    else []
             };
         }
     }
-    return {"version": 1, "boundaries": boundaries, "effects": effects, "native_host_imports": host_imports};
+    return {
+        "version": 1,
+        "boundaries": boundaries,
+        "effects": effects,
+        "native_host_imports": host_imports
+    };
 }

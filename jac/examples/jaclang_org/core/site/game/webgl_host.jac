@@ -1,5 +1,11 @@
 import from "@jac/wasm_host" { bind_na_host }
-import from "@jac/webgl" { WebGLHost, _m_ident, _init_gl, _install_input, _remove_input }
+import from "@jac/webgl" {
+    WebGLHost,
+    _m_ident,
+    _init_gl,
+    _install_input,
+    _remove_input
+}
 import from .arena { init, frame, get_score, get_hp, get_deaths, shutdown }
 import type from .sim { Game }
 
@@ -76,11 +82,17 @@ async def _frame_tick(sh: Shim, session: int, ts: float) {
         if sh.on_tick is not None {
             fps = int(Math.round(1.0 / sh.dt)) if sh.dt > 0.0 else 0;
             score = await get_score(game);
-            if sh.stopped or session != sh.session { return; }
+            if sh.stopped or session != sh.session {
+                return;
+            }
             hp = await get_hp(game);
-            if sh.stopped or session != sh.session { return; }
+            if sh.stopped or session != sh.session {
+                return;
+            }
             deaths = await get_deaths(game);
-            if sh.stopped or session != sh.session { return; }
+            if sh.stopped or session != sh.session {
+                return;
+            }
             if sh.on_tick is not None {
                 sh.on_tick(score, hp, deaths, fps);
             }
@@ -95,7 +107,9 @@ async def _frame_tick(sh: Shim, session: int, ts: float) {
             );
         }
     } except Exception as err {
-        if sh.stopped or session != sh.session { return; }
+        if sh.stopped or session != sh.session {
+            return;
+        }
         _stop(sh, session);
         console.error("arena frame failed", err);
     }

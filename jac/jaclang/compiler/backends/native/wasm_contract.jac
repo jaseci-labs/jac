@@ -1,7 +1,9 @@
 import from jaclang.compiler.frontend.unitree { Ability, FuncSignature, UnaryExpr }
 import from jaclang.compiler.frontend.constant { OwnershipKind }
 
-def value_contract(expr: any, ownership: OwnershipKind = OwnershipKind.NONE, host: bool = False) -> dict {
+def value_contract(
+    expr: any, ownership: OwnershipKind = OwnershipKind.NONE, host: bool = False
+) -> dict {
     if isinstance(expr, UnaryExpr) and expr.ownership != OwnershipKind.NONE {
         ownership = expr.ownership;
         expr = expr.operand;
@@ -9,12 +11,28 @@ def value_contract(expr: any, ownership: OwnershipKind = OwnershipKind.NONE, hos
     import from jaclang.compiler.tools.unparse_pass { unparse_node }
     name = unparse_node(expr).strip() if expr is not None else "None";
     mode = {
-        OwnershipKind.NONE: "value", OwnershipKind.OWN: "own",
-        OwnershipKind.BORROW: "borrow", OwnershipKind.MUT_BORROW: "borrow_mut",
+        OwnershipKind.NONE: "value",
+        OwnershipKind.OWN: "own",
+        OwnershipKind.BORROW: "borrow",
+        OwnershipKind.MUT_BORROW: "borrow_mut",
         OwnershipKind.IMM: "borrow"
     }[ownership];
-    primitives = {"int", "float", "bool", "None", "i8", "u8", "i16", "u16",
-                  "i32", "u32", "i64", "u64", "f32", "f64"};
+    primitives = {
+        "int",
+        "float",
+        "bool",
+        "None",
+        "i8",
+        "u8",
+        "i16",
+        "u16",
+        "i32",
+        "u32",
+        "i64",
+        "u64",
+        "f32",
+        "f64"
+    };
     if host and name == "str" {
         return {"type": name, "mode": mode, "kind": "cstring"};
     }
@@ -22,7 +40,9 @@ def value_contract(expr: any, ownership: OwnershipKind = OwnershipKind.NONE, hos
         return {"type": name, "mode": mode, "kind": "scalar"};
     }
     if mode == "value" {
-        raise ValueError(f"Wasm boundary type '{name}' requires an explicit ownership contract");
+        raise ValueError(
+            f"Wasm boundary type '{name}' requires an explicit ownership contract"
+        );
     }
     return {"type": name, "mode": mode, "kind": "handle"};
 }
@@ -47,14 +67,20 @@ def function_contract(decl: Ability, host: bool = False) -> dict {
 
 def host_contracts(module: any) -> dict {
     import from jaclang.compiler.frontend.unitree { Import }
-    import from jaclang.compiler.driver.boundary_classify { symbol_linked_source_module }
-    import from jaclang.compiler.passes.boundary_analysis_pass { _parse_module_for_types }
+    import from jaclang.compiler.driver.boundary_classify {
+        symbol_linked_source_module
+    }
+    import from jaclang.compiler.passes.boundary_analysis_pass {
+        _parse_module_for_types
+    }
     visited: set[str] = set();
     todo = [module];
     contracts: dict = {};
     while todo {
         current = todo.pop();
-        if current is None or current.loc.mod_path in visited { continue; }
+        if current is None or current.loc.mod_path in visited {
+            continue;
+        }
         visited.add(current.loc.mod_path);
         for imp in current.get_all_sub_nodes(Import) {
             if imp.has_clib_decls {
@@ -65,9 +91,13 @@ def host_contracts(module: any) -> dict {
                 linked = symbol_linked_source_module(imp);
                 if linked is None {
                     path = imp.from_loc.resolve_relative_path();
-                    if path.endswith(".jac") { linked = _parse_module_for_types(path); }
+                    if path.endswith(".jac") {
+                        linked = _parse_module_for_types(path);
+                    }
                 }
-                if linked is not None { todo.append(linked); }
+                if linked is not None {
+                    todo.append(linked);
+                }
             }
         }
     }
@@ -75,48 +105,85 @@ def host_contracts(module: any) -> dict {
 }
 
 def _host_type(name: str) -> str {
-    if name in ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"] { return "int"; }
-    if name in ["f32", "f64"] { return "float"; }
+    if name in ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"] {
+        return "int";
+    }
+    if name in ["f32", "f64"] {
+        return "float";
+    }
     return name;
 }
 
 def check_host_call(call: any) -> None {
-    import from jaclang.compiler.frontend.unitree { Name, Module, Archetype, ability_of_symbol }
-    if not isinstance(call.target, Name) or call.target.value != "bind_na_host" { return; }
+    import from jaclang.compiler.frontend.unitree {
+        Name,
+        Module,
+        Archetype,
+        ability_of_symbol
+    }
+    if not isinstance(call.target, Name) or call.target.value != "bind_na_host" {
+        return;
+    }
     target = ability_of_symbol(call.target.sym);
-    if target is None or not target.loc.mod_path.replace("\\", "/").endswith("/client/wasm_host.jac") { return; }
-    if not call.params or len(call.params) != 2 { raise ValueError("bind_na_host requires a native export and a typed host"); }
+    if target is None
+        or not target.loc.mod_path.replace("\\", "/").endswith(
+            "/client/wasm_host.jac"
+        ) {
+        return;
+    }
+    if not call.params or len(call.params) != 2 {
+        raise ValueError("bind_na_host requires a native export and a typed host");
+    }
     export = call.params[0];
     provider = ability_of_symbol(export.sym) if isinstance(export, Name) else None;
     import from jaclang.compiler.types.types { ClassType }
     host = call.params[1];
     host_type = host.narrowed_type or host.type;
     scope = host_type.shared.symbol_table if isinstance(host_type, ClassType) else None;
-    if provider is None or scope is None { raise ValueError("Host binding requires statically known export and host types"); }
+    if provider is None or scope is None {
+        raise ValueError(
+            "Host binding requires statically known export and host types"
+        );
+    }
     methods: dict = {};
     todo = [scope];
     seen: set[int] = set();
     while todo {
         current = todo.pop();
-        if id(current) in seen { continue; }
+        if id(current) in seen {
+            continue;
+        }
         seen.add(id(current));
         for method in current.get_all_sub_nodes(Ability) {
-            if method.sym_name not in methods { methods[method.sym_name] = method; }
+            if method.sym_name not in methods {
+                methods[method.sym_name] = method;
+            }
         }
         if isinstance(current, Archetype) {
             for base in current.base_classes or [] {
                 base_type = base.type;
-                if isinstance(base_type, ClassType) { todo.append(base_type.shared.symbol_table); }
+                if isinstance(base_type, ClassType) {
+                    todo.append(base_type.shared.symbol_table);
+                }
             }
         }
     }
-    for (name, required) in host_contracts(provider.find_parent_of_type(Module)).items() {
-        if name not in methods { raise ValueError(f"Host is missing native import '{name}'"); }
+    for (name, required) in host_contracts(
+        provider.find_parent_of_type(Module)
+    ).items() {
+        if name not in methods {
+            raise ValueError(f"Host is missing native import '{name}'");
+        }
         supplied = function_contract(methods[name], host=True);
         expected = [_host_type(p["type"]) for p in required["params"]];
         actual = [p["type"] for p in supplied["params"]];
-        if expected != actual or _host_type(required["result"]["type"]) != supplied["result"]["type"] {
-            raise ValueError(f"Host import '{name}' has incompatible signature: expected {expected} -> {_host_type(required['result']['type'])}");
+        if expected != actual
+            or _host_type(required["result"]["type"]) != supplied["result"]["type"] {
+            raise ValueError(
+                f"Host import '{name}' has incompatible signature: expected {expected} -> {_host_type(
+                    required['result']['type']
+                )}"
+            );
         }
     }
 }

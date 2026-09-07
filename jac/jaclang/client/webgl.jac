@@ -34,31 +34,23 @@ obj:pub WebGLHost {
         on_lock_change: Callable[[Event], None] | None = None,
         on_blur: Callable[[Event], None] | None = None;
 
-    def InitWindow(w: int, h: int, title: str) -> None {
-
-    }
+    def InitWindow(w: int, h: int, title: str) {}
 
     def WindowShouldClose -> bool {
         return bool(0);
     }
 
-    def CloseWindow -> None {
+    def CloseWindow {}
 
-    }
+    def SetTargetFPS(f: int) {}
 
-    def SetTargetFPS(f: int) -> None {
-
-    }
-
-    def BeginDrawing -> None {
+    def BeginDrawing {
         self.gl.viewport(0, 0, 960, 600);
     }
 
-    def EndDrawing -> None {
+    def EndDrawing {}
 
-    }
-
-    def EndMode3D -> None {
+    def EndMode3D {
         _flush(self);
     }
 
@@ -70,9 +62,7 @@ obj:pub WebGLHost {
         return self.time;
     }
 
-    def DrawFPS(x: int, y: int) -> None {
-
-    }
+    def DrawFPS(x: int, y: int) {}
 
     def IsKeyDown(k: int) -> bool {
         return bool(self.keys.get(k, 0));
@@ -94,41 +84,39 @@ obj:pub WebGLHost {
         return bool(self.mpressed.get(b, 0));
     }
 
-    def DisableCursor -> None {
+    def DisableCursor {
         self.canvas.requestPointerLock();
     }
 
-    def EnableCursor -> None {
+    def EnableCursor {
         document.exitPointerLock();
     }
 
-    def rlClearColor(r: int, g: int, b: int, a: int) -> None {
-        self.gl.clearColor(
-            float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0
-        );
+    def rlClearColor(r: int, g: int, b: int, a: int) {
+        self.gl.clearColor(float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0);
     }
 
-    def rlClearScreenBuffers -> None {
+    def rlClearScreenBuffers {
         self.gl.clear(16384 | 256);
     }
 
-    def rlEnableDepthTest -> None {
+    def rlEnableDepthTest {
         self.gl.enable(self.gl.DEPTH_TEST);
     }
 
-    def rlDisableDepthTest -> None {
+    def rlDisableDepthTest {
         self.gl.disable(self.gl.DEPTH_TEST);
     }
 
-    def rlMatrixMode(m: int) -> None {
+    def rlMatrixMode(m: int) {
         self.mode = m;
     }
 
-    def rlLoadIdentity -> None {
+    def rlLoadIdentity {
         _setcur(self, _m_ident());
     }
 
-    def rlPushMatrix -> None {
+    def rlPushMatrix {
         if self.mode == 0x1701 {
             self.pstack.append(self.proj);
         } else {
@@ -136,7 +124,7 @@ obj:pub WebGLHost {
         }
     }
 
-    def rlPopMatrix -> None {
+    def rlPopMatrix {
         if self.mode == 0x1701 {
             self.proj = self.pstack.pop();
         } else {
@@ -144,59 +132,46 @@ obj:pub WebGLHost {
         }
     }
 
-    def rlTranslatef(x: float, y: float, z: float) -> None {
-        _setcur(
-            self, _m_mul(_cur(self), _m_translate(x, y, z))
-        );
+    def rlTranslatef(x: float, y: float, z: float) {
+        _setcur(self, _m_mul(_cur(self), _m_translate(x, y, z)));
     }
 
-    def rlRotatef(a: float, x: float, y: float, z: float) -> None {
-        _setcur(
-            self, _m_mul(_cur(self), _m_rotate(a, x, y, z))
-        );
+    def rlRotatef(a: float, x: float, y: float, z: float) {
+        _setcur(self, _m_mul(_cur(self), _m_rotate(a, x, y, z)));
     }
 
-    def rlFrustum(
-            l: float, r: float, b: float, t: float, n: float, f: float
-        ) -> None {
+    def rlFrustum(l: float, r: float, b: float, t: float, n: float, f: float) {
         _setcur(self, _m_mul(_cur(self), _m_frustum(l, r, b, t, n, f)));
     }
 
-    def rlOrtho(
-            l: float, r: float, b: float, t: float, n: float, f: float
-        ) -> None {
+    def rlOrtho(l: float, r: float, b: float, t: float, n: float, f: float) {
         _setcur(self, _m_mul(_cur(self), _m_ortho(l, r, b, t, n, f)));
     }
 
-    def rlBegin(m: int) -> None {
+    def rlBegin(m: int) {
         self.bmode = m;
-            self.verts = [];
+        self.verts = [];
     }
 
-    def rlEnd -> None {
+    def rlEnd {
         _flush(self);
     }
 
-    def rlVertex3f(x: float, y: float, z: float) -> None {
+    def rlVertex3f(x: float, y: float, z: float) {
         self.verts.append(x);
-            self.verts.append(y);
-            self.verts.append(z);
-            self.verts.append(self.color[0]);
-            self.verts.append(self.color[1]);
-            self.verts.append(self.color[2]);
-            self.verts.append(self.color[3]);
+        self.verts.append(y);
+        self.verts.append(z);
+        self.verts.append(self.color[0]);
+        self.verts.append(self.color[1]);
+        self.verts.append(self.color[2]);
+        self.verts.append(self.color[3]);
     }
 
-    def rlColor4ub(r: int, g: int, b: int, a: int) -> None {
-        self.color = [
-            float(r) / 255.0,
-            float(g) / 255.0,
-            float(b) / 255.0,
-            1.0
-        ];
+    def rlColor4ub(r: int, g: int, b: int, a: int) {
+        self.color = [float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0];
     }
 
-    def rlSetLineWidth(w: float) -> None {
+    def rlSetLineWidth(w: float) {
         self.gl.lineWidth(w);
     }
 }
@@ -437,10 +412,6 @@ def _keymap(code: str) -> int {
     return m.get(code, 0);
 }
 
-# The game owns the keyboard only while it is engaged: the pointer is locked
-# to its canvas, or the canvas is the focused element. Anywhere else on the
-# page (a login form, the docs search) WASD, Space, Tab and the arrows keep
-# their normal meaning.
 def _engaged(sh: WebGLHost) -> bool {
     return sh.locked or document.activeElement == sh.canvas;
 }

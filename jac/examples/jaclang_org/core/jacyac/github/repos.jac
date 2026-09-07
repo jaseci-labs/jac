@@ -33,7 +33,9 @@ def:pub github_repositories(session_token: str, page: int = 1) -> GithubRepos {
         return GithubRepos();
     }
     try {
-        info = JsonEndpoint[GithubUser](GithubUser, "/user/" + external_id).read(public_api);
+        info = JsonEndpoint[GithubUser](GithubUser, "/user/" + external_id).read(
+            public_api
+        );
         login = info.login;
         if str(info.id) != external_id or not login {
             return GithubRepos(
@@ -41,16 +43,18 @@ def:pub github_repositories(session_token: str, page: int = 1) -> GithubRepos {
             );
         }
         current = max(1, min(page, 100));
-        raw = JsonEndpoint[list[GithubRepository]](list[GithubRepository],
+        raw = JsonEndpoint[list[GithubRepository]](
+            list[GithubRepository],
             "/users/"
                 + quote(login, safe="")
                 + "/repos?type=owner&sort=updated&per_page=30&page="
                 + str(current)
-        ).read(public_api);
+        ).read(
+            public_api
+        );
         repos: list[GithubRepo] = [];
         for repo in raw {
-            if not repo.private
-                and str(repo.owner.id) == external_id {
+            if not repo.private and str(repo.owner.id) == external_id {
                 full = repo.full_name;
                 repos.append(
                     GithubRepo(
@@ -81,9 +85,10 @@ def verified_owner(full: str, session_token: str) -> bool {
         return False;
     }
     try {
-        repo = JsonEndpoint[GithubRepository](GithubRepository, "/repos/" + full).read(public_api);
-        return not repo.private
-            and str(repo.owner.id) == external_id;
+        repo = JsonEndpoint[GithubRepository](GithubRepository, "/repos/" + full).read(
+            public_api
+        );
+        return not repo.private and str(repo.owner.id) == external_id;
     } except Exception {
         return False;
     }

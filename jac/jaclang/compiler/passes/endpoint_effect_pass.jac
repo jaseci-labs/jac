@@ -54,7 +54,9 @@ walker EndpointEffectPass(UniPass) {
         ) {
             self.ir_in.gen.interop_manifest.endpoint_effects[
                 endpoint_key(self.ir_in, "func", here.name_ref.sym_name)
-            ] = self._classify(self._resolved_body(here), "func", here.name_ref.sym_name, here);
+            ] = self._classify(
+                self._resolved_body(here), "func", here.name_ref.sym_name, here
+            );
         }
     }
 
@@ -71,7 +73,9 @@ walker EndpointEffectPass(UniPass) {
         ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
     }
 
-    def _classify(body_nodes: list, kind: str, name: str, declaration: Ability | None = None) -> dict {
+    def _classify(
+        body_nodes: list, kind: str, name: str, declaration: Ability | None = None
+    ) -> dict {
         import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
         self._is_writer = False;
         self._unknown = False;
@@ -80,7 +84,9 @@ walker EndpointEffectPass(UniPass) {
         self._assumptions.clear();
         self._touches.clear();
         self._visited.clear();
-        declared = self._declaration_effects(declaration) if declaration is not None else None;
+        declared = self._declaration_effects(declaration)
+            if declaration is not None
+            else None;
         if declared is not None {
             self._declared_reads.update(declared["reads"]);
             self._declared_writes.update(declared["writes"]);
@@ -91,8 +97,12 @@ walker EndpointEffectPass(UniPass) {
             }
         }
         result = endpoint_descriptor(self.ir_in, kind, name);
-        result["reads"] = sorted(list(self._declared_reads)) if declared is not None else ["*"];
-        result["writes"] = ["*"] if self._is_writer or self._unknown else sorted(list(self._declared_writes));
+        result["reads"] = sorted(list(self._declared_reads))
+            if declared is not None
+            else ["*"];
+        result["writes"] = ["*"]
+            if self._is_writer or self._unknown
+            else sorted(list(self._declared_writes));
         result["assumptions"] = sorted(list(self._assumptions));
         result["unknown"] = self._unknown;
         result["observed_tags"] = sorted(list(self._touches));
@@ -145,7 +155,9 @@ walker EndpointEffectPass(UniPass) {
                     import from jaclang.compiler.tools.unparse_pass { unparse_node }
                     self._declared_reads.update(declared["reads"]);
                     self._declared_writes.update(declared["writes"]);
-                    self._assumptions.add("Declared effects of " + unparse_node(nd.target));
+                    self._assumptions.add(
+                        "Declared effects of " + unparse_node(nd.target)
+                    );
                 } else {
                     body = self._callee_body(nd);
                     if not body {
@@ -206,20 +218,32 @@ walker EndpointEffectPass(UniPass) {
     def _declaration_effects(decl: Ability) -> dict | None {
         import ast;
         for decorator in decl.decorators or [] {
-            if not isinstance(decorator, FuncCall) { continue; }
+            if not isinstance(decorator, FuncCall) {
+                continue;
+            }
             target = ability_of_symbol(self._call_target_symbol(decorator));
-            if target is None or not target.loc.mod_path.replace("\\", "/").endswith("/jaclang/lib/effects.jac") {
+            if target is None
+                or not target.loc.mod_path.replace("\\", "/").endswith(
+                    "/jaclang/lib/effects.jac"
+                ) {
                 continue;
             }
             import from jaclang.compiler.tools.unparse_pass { unparse_node }
             result: dict = {"reads": [], "writes": []};
             for pair in decorator.params or [] {
-                if not isinstance(pair, KWPair) or pair.key is None or pair.key.sym_name not in result {
-                    raise ValueError("Effect declarations require reads= and writes= literal lists");
+                if not isinstance(pair, KWPair)
+                    or pair.key is None
+                    or pair.key.sym_name not in result {
+                    raise ValueError(
+                        "Effect declarations require reads= and writes= literal lists"
+                    );
                 }
                 values = ast.literal_eval(unparse_node(pair.value));
-                if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values) {
-                    raise ValueError("Effect dependencies must be literal nonempty strings");
+                if not isinstance(values, list)
+                    or any(not isinstance(v, str) or not v for v in values) {
+                    raise ValueError(
+                        "Effect dependencies must be literal nonempty strings"
+                    );
                 }
                 result[pair.key.sym_name] = values;
             }

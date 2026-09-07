@@ -1,11 +1,6 @@
 import from core.social_graph { create_tweet, load_feed }
 import from jaclang.server.bridge { BridgeError }
-import from .common {
-    EXIT_OK,
-    EXIT_USAGE,
-    explain_bridge_error,
-    warn
-}
+import from .common { EXIT_OK, EXIT_USAGE, explain_bridge_error, warn }
 
 obj FeedLine {
     has author: str = "",
@@ -37,10 +32,17 @@ async def run_feed(limit: int, query: str) -> int {
             return EXIT_OK;
         }
         for raw in rows[:limit] {
-            print(render_line(FeedLine(
-                author=raw.author_username, content=raw.content,
-                created_at=raw.created_at, likes=len(raw.likes), comments=len(raw.comments)
-            )));
+            print(
+                render_line(
+                    FeedLine(
+                        author=raw.author_username,
+                        content=raw.content,
+                        created_at=raw.created_at,
+                        likes=len(raw.likes),
+                        comments=len(raw.comments)
+                    )
+                )
+            );
         }
         if len(rows) > limit {
             print("... " + str(len(rows) - limit) + " more; raise --limit to see them");
@@ -62,7 +64,9 @@ async def run_post(text: str) -> int {
         posted = made.reports;
         if posted {
             tweet = posted[0];
-            print("posted as @" + (tweet.author_username or "you") + ": " + tweet.content);
+            print(
+                "posted as @" + (tweet.author_username or "you") + ": " + tweet.content
+            );
         } else {
             print(
                 "posted nothing: the site found no profile for this identity "

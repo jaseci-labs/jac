@@ -20,12 +20,18 @@ def:pub decode_contract(value: any, contract: any, path: str = "response") -> an
         raise ContractError(f"{path}: value does not match {contract}");
     }
     if contract is type(None) {
-        if value is None { return None; }
+        if value is None {
+            return None;
+        }
         raise ContractError(f"{path}: expected null");
     }
     if origin is list {
-        if not isinstance(value, list) { raise ContractError(f"{path}: expected list"); }
-        return [decode_contract(v, args[0], f"{path}[{i}]") for (i, v) in enumerate(value)];
+        if not isinstance(value, list) {
+            raise ContractError(f"{path}: expected list");
+        }
+        return [
+            decode_contract(v, args[0], f"{path}[{i}]") for (i, v) in enumerate(value)
+        ];
     }
     if contract in (str, int, bool, float) {
         if type(value) is not contract {
@@ -39,14 +45,18 @@ def:pub decode_contract(value: any, contract: any, path: str = "response") -> an
     hints = get_type_hints(contract);
     kwargs: dict = {};
     for f in fields(contract) {
-        if not f.init { continue; }
+        if not f.init {
+            continue;
+        }
         if f.name not in value {
             if f.default is MISSING and f.default_factory is MISSING {
                 raise ContractError(f"{path}.{f.name}: missing required field");
             }
             continue;
         }
-        kwargs[f.name] = decode_contract(value[f.name], hints[f.name], path + "." + f.name);
+        kwargs[f.name] = decode_contract(
+            value[f.name], hints[f.name], path + "." + f.name
+        );
     }
     return contract(**kwargs);
 }

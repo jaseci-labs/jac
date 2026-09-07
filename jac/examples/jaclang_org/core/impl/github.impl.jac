@@ -68,18 +68,30 @@ impl repo_meta(repo: str, agent: str) -> RepoMeta | None {
     raw = JsonEndpoint[GithubRepository](GithubRepository, API_ROOT + repo).read(
         lambda (url: str) -> bytes { return _api_bytes(url, agent); }
     );
-    if raw.private { return None; }
+    if raw.private {
+        return None;
+    }
     return RepoMeta(
-        full_name=raw.full_name, owner=raw.owner.login, name=raw.name,
-        description=(raw.description or "")[:220], avatar_url=raw.owner.avatar_url,
-        html_url=raw.html_url, default_branch=raw.default_branch,
-        stars=raw.stargazers_count, forks=raw.forks_count, size_kb=raw.size,
-        topics=raw.topics[:6], pushed_at=raw.pushed_at or "", created_at=raw.created_at
+        full_name=raw.full_name,
+        owner=raw.owner.login,
+        name=raw.name,
+        description=(raw.description or "")[:220],
+        avatar_url=raw.owner.avatar_url,
+        html_url=raw.html_url,
+        default_branch=raw.default_branch,
+        stars=raw.stargazers_count,
+        forks=raw.forks_count,
+        size_kb=raw.size,
+        topics=raw.topics[:6],
+        pushed_at=raw.pushed_at or "",
+        created_at=raw.created_at
     );
 }
 
 impl head_sha(repo: str, ref: str, agent: str) -> str {
-    result = JsonEndpoint[GithubCommit](GithubCommit, API_ROOT + repo + "/commits/" + ref).read(
+    result = JsonEndpoint[GithubCommit](
+        GithubCommit, API_ROOT + repo + "/commits/" + ref
+    ).read(
         lambda (url: str) -> bytes { return _api_bytes(url, agent); }
     );
     return result.sha;

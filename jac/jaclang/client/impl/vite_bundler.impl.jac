@@ -509,9 +509,13 @@ impl ViteBundler._generate_vite_config_content(
     import from jaclang.client.runtime_source { JAC_VIRTUAL_MODULE_SOURCES }
     virtual_alias_str = '';
     for (module_name, source_name) in JAC_VIRTUAL_MODULE_SOURCES.items() {
-        if module_name in ('mobui', 'pwa') { continue; }
+        if module_name in ('mobui', 'pwa') {
+            continue;
+        }
         compiled_relative = f"{compiled_base}/{source_name}.js";
-        if os.path.isfile(os.path.join(str(self._get_client_dir()), compiled_relative)) {
+        if os.path.isfile(
+            os.path.join(str(self._get_client_dir()), compiled_relative)
+        ) {
             virtual_alias_str += f'\n      "@jac/{module_name}": path.resolve(buildDir, "{compiled_relative}"),';
         }
     }

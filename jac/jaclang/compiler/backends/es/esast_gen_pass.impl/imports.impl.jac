@@ -281,11 +281,11 @@ impl EsastGenPass._generate_sv_import_stubs(
             if _src_mod is not None {
                 import from jaclang.compiler.frontend.codeinfo { endpoint_key }
                 effect_key = endpoint_key(_src_mod, "func", func_name);
-                src_effect = _src_mod.gen.interop_manifest.endpoint_effects.get(effect_key);
+                src_effect = _src_mod.gen.interop_manifest.endpoint_effects.get(
+                    effect_key
+                );
                 if src_effect is not None {
-                    self.client_manifest.endpoint_effects[effect_key] = (
-                        src_effect
-                    );
+                    self.client_manifest.endpoint_effects[effect_key] = src_effect;
                 }
             }
         }
@@ -329,10 +329,16 @@ impl EsastGenPass._generate_sv_import_stubs(
             provider_opts = es.ObjectExpression(properties=[]);
         }
         if effect_key and isinstance(provider_opts, es.ObjectExpression) {
-            provider_opts.properties.append(es.Property(
-                key=es.Literal(value="contract"), value=es.Literal(value=effect_key),
-                kind="init", method=False, shorthand=False, computed=False
-            ));
+            provider_opts.properties.append(
+                es.Property(
+                    key=es.Literal(value="contract"),
+                    value=es.Literal(value=effect_key),
+                    kind="init",
+                    method=False,
+                    shorthand=False,
+                    computed=False
+                )
+            );
         }
         call_args.append(provider_opts);
         call_expr = self.sync_loc(
@@ -446,7 +452,14 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
             callee=es.Identifier(name=bind_local),
             arguments=[
                 self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
-                self.sync_loc(es.Literal(value=json.dumps({"exports": contracts, "imports": host_imports})), jac_node=nd),
+                self.sync_loc(
+                    es.Literal(
+                        value=json.dumps(
+                            {"exports": contracts, "imports": host_imports}
+                        )
+                    ),
+                    jac_node=nd
+                ),
 
             ]
         ),

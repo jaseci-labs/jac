@@ -776,10 +776,18 @@ impl EsastGenPass._try_lower_server_rpc_call(
             arguments=[
                 self.sync_loc(es.Literal(value=func_name), jac_node=nd),
                 args_obj,
-                es.ObjectExpression(properties=[es.Property(
-                    key=es.Literal(value="contract"), value=es.Literal(value=contract_id),
-                    kind="init", method=False, shorthand=False, computed=False
-                )])
+                es.ObjectExpression(
+                    properties=[
+                        es.Property(
+                            key=es.Literal(value="contract"),
+                            value=es.Literal(value=contract_id),
+                            kind="init",
+                            method=False,
+                            shorthand=False,
+                            computed=False
+                        )
+                    ]
+                )
             ]
         ),
         jac_node=nd
