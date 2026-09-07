@@ -16,46 +16,19 @@ Jac will retain boundary contracts across compilation and deployment, use them f
 | Implemented | Qualified endpoint identities | App/module/declaration identities survive generation, routing, and cache metadata. |
 | Implemented | Reusable WebGL graphics adapter | Browser graphics implementation lives behind the shared host contract. |
 | Implemented | Application migration and removal of scaffolding | jaclang_org consumes the shared mechanisms; redundant paths are removed. |
-| Implemented; production verification pending | Boundary audit | Compiler exposes contracts, placement, effects, and unchecked assumptions. |
+| Implemented; verification waived | Boundary audit | Compiler exposes contracts, placement, effects, and unchecked assumptions. |
 
 ## Acceptance validation
 
-Run jaclang_org using the development compiler and exercise it with `jac browse`, including native game rendering/input/lifecycle and relevant application interactions. This is the sole requested acceptance validation; no regression-suite requirement is added. Record observed behavior and any remaining limitations here and in the PR.
+Validated jaclang_org with `jac browse` in development mode: home and source explorer rendering, native arena rendering with updating health/death counters, navigation to JacYac, local signup and automatic login, post creation/deletion with feed and trending updates, logout, and docs navigation. The validation post was deleted. The GitHub project flow decoded public repository and commit responses and correctly rejected a repository containing no Jac code. No application console errors were observed in these flows.
 
-## Progress
+The production bundle also served the home page successfully before the final audit-retention change. That change retains interop records in serialized client artifacts after syntax-tree eviction; its final production/audit verification was explicitly waived by the user. The latest rebuild was still running when that check was waived. No benchmarks or regression suites were run, as requested. Browser validation does not establish exhaustive cache-race, ABI, or external OAuth coverage.
 
-- Created implementation branch and recorded full scope before implementation.
+## Implementation notes
 
-- Cache invalidation now advances endpoint generations, fences writes before and after completion (including ambiguous failures), separates pending reads by generation, and clears pending authentication-context reads. Wildcard overlap is symmetric.
+- Native declarations generate scalar/ownership contracts and host registration. The shared WebGL adapter replaces application-owned ABI wiring; the old `set_na_env` API is removed.
+- Endpoint identities survive generated calls, routing, cache metadata, and compiler artifacts. Browser/React caches share invalidation and concurrent-read handling. Unknown effects disable caching; declared effects remain visible assumptions.
+- Signup and CLI consumers use declared records. External GitHub responses use typed contracts with response validation.
+- Client artifact format 3 and compiler cache format 25 replace their predecessors. Boundary metadata is retained in artifacts and collected into the production audit.
 
-- Native bindings now carry generated scalar/ownership contracts; the game uses ordinary native imports and the shared WebGL adapter.
-- Browser and React/mobile caches share one implementation. Effect summaries distinguish reads, writes, and unknown calls, and use qualified identities.
-- Signup now returns a declared record; GitHub endpoints use declared response shapes and strict decoding; CLI consumers use typed fields.
-- Client bundles emit a boundary audit. Integration is pending: the first running-app build exposed a Wasm client compilation failure.
-
-- Host registration now checks typed host methods against native declarations and generates method bindings; removed the old `set_na_env` API and manual WebGL ABI dictionary.
-- Service walker responses retain declared report conversions. Authentication and optional service caching also fence stale reads.
-- Debugged a bootstrap-parser stall caused by an extra closing brace introduced during integration; corrected the source before restarting the app.
-
-- Native signatures and host requirements are retained in InteropManifest and persisted in the compiler cache. The cache format is bumped for the clean break.
-- Generated endpoint calls carry qualified identities; HTTP handlers verify that a supplied identity names the actual routed declaration.
-- Explicit opaque-operation effect declarations are recorded as audit assumptions rather than silently inferred purity.
-
-- Preserved existing boundary finalization while adding endpoint IDs. Service walker writes now fence caches on completion and failure. Native calls reject conflicting aliases before ownership transfer, and borrowed handles track parent/module lifetimes.
-- Audit records merge callers and include native host requirements. Explicit effects apply to public endpoint declarations as well as transitive calls.
-- Browser session is prepared; the development compiler is rebuilding before application acceptance checks.
-
-- Application startup exposed native `import type` declarations being pulled into client placement. The solver now excludes type-only imports from execution placement; rebuilding the app with that fix.
-- Game HUD reads preserve declared types and check session lifetime after each await. Native argument adapters reject inexact or out-of-range integers.
-
-- Resolved the native placement import failure, an AST unparse API mismatch, and a bootstrap import cycle. Client bundle diagnostics now include the self-hosting compiler program's errors.
-- Corrected signup JSON narrowing/status conversion and Wasm host object typing. The five shared client runtime modules produce compiler artifacts in diagnostic runs; application/browser acceptance remains pending.
-- Host registration now resolves `ClassType` scopes (including bases), replacing an empty legacy scope shortcut; rebuilding the app to validate this correction.
-
-- Browser acceptance in development mode: home and source explorer render; arena renders at about 60 fps with updating health/deaths; navigation to JacYac succeeds without application console errors.
-- A local browser account completed signup, automatic login, post creation, post deletion, and logout. Feed and hashtag counts updated after both mutations; the validation post was removed.
-- The GitHub project flow fetched a public repository and commit through the typed contracts and correctly rejected the repository for containing no Jac code. The docs page loaded its 105-page navigation.
-- Production build and emitted audit verification are in progress. Browser observations do not claim exhaustive cache-race, ABI, or external OAuth coverage.
-
-- Production served the home page successfully. Its audit initially lost boundary and host records after syntax-tree eviction; client artifacts now serialize the shared interop records, and bundling collects them before eviction. Client artifact format 3 replaces format 2. Final production/browser verification of this fix is pending.
-- No benchmarks or regression suites are part of acceptance, as requested.
+All implementation items are committed. The audit verification waiver is a validation limitation, not a claim that the final audit output was checked.
