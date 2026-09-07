@@ -108,13 +108,14 @@ impl ClientArtifact.to_bytes -> bytes {
     import pickle;
     return pickle.dumps(
         (
-            2,
+            3,
             self.js,
             self.manifest,
             list(self.native_import_sources),
             list(self.source_map),
             dict(self.dep_digests),
-            self.framework
+            self.framework,
+            self.boundary_contracts
         ),
         int(pickle.HIGHEST_PROTOCOL)
     );
@@ -130,12 +131,13 @@ impl ClientArtifact.from_bytes(raw: bytes) -> (ClientArtifact | None) {
             native_import_sources,
             source_map,
             dep_digests,
-            framework
+            framework,
+            boundary_contracts
         ) = pickle.loads(raw);
     } except Exception {
         return None;
     }
-    if version != 2
+    if version != 3
         or not isinstance(js, str)
         or not isinstance(manifest, ClientManifest) {
         return None;
@@ -146,6 +148,7 @@ impl ClientArtifact.from_bytes(raw: bytes) -> (ClientArtifact | None) {
         native_import_sources=[str(s) for s in native_import_sources],
         source_map=[tuple(seg) for seg in source_map],
         dep_digests={str(k): str(v) for (k, v) in dict(dep_digests).items()},
-        framework=str(framework)
+        framework=str(framework),
+        boundary_contracts=dict(boundary_contracts)
     );
 }

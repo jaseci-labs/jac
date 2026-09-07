@@ -1,38 +1,44 @@
-import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor, endpoint_key }
+import json;
 
-def boundary_audit(program: any) -> dict {
+def boundary_audit(program: any, artifacts: list[dict]) -> dict {
     boundaries: dict = {};
     effects: dict = {};
     host_imports: dict = {};
+    manifests = list(artifacts);
+    compiler = program._get_compiler();
     for hub in program._search_hubs() {
         for module in hub.values() {
-            if module is None or module.gen is None { continue; }
-            manifest = module.gen.interop_manifest;
-            effects.update(manifest.endpoint_effects);
-            host_imports.update(manifest.native_host_imports);
-            for binding in manifest.bindings.values() {
-                source = binding.ast_node.find_parent_of_type(type(module))
-                    if binding.ast_node is not None else None;
-                if source is None { source = module; }
-                kind = "func" if binding.kind == "function" else binding.kind;
-                identity = binding.endpoint_id or endpoint_key(source, kind, binding.name);
-                item = endpoint_descriptor(source, kind, binding.name);
-                item["placement"] = binding.source_context.value;
-                item["callers"] = sorted([c.value for c in binding.callers]);
-                item["parameters"] = dict(zip(binding.param_names, binding.param_types));
-                item["result"] = binding.ret_type;
-                item["native_contract"] = binding.native_contract;
-                if binding.native_contract {
-                    item["parameters"] = {p["name"]: p["type"] for p in binding.native_contract["params"]};
-                    item["result"] = binding.native_contract["result"]["type"];
-                }
-                item["unchecked"] = ["dynamic value shape"]
-                    if "any" in binding.param_types or binding.ret_type == "any" else [];
-                if identity in boundaries {
-                    item["callers"] = sorted(list(set(item["callers"]) | set(boundaries[identity]["callers"])));
-                }
-                boundaries[identity] = item;
+            if module is not None and module.gen is not None {
+                manifests.append(compiler._build_interop_dict(module));
             }
+        }
+    }
+    for manifest in manifests {
+        if not manifest { continue; }
+        effects.update(manifest["endpoint_effects"]);
+        host_imports.update(manifest["native_host_imports"]);
+        for binding in manifest["bindings"].values() {
+            identity = binding["endpoint_id"];
+            if not identity { continue; }
+            (app, source, kind, name) = json.loads(identity);
+            native = binding["native_contract"];
+            parameters = dict(zip(binding["param_names"], binding["param_types"]));
+            result = binding["ret_type"];
+            if native {
+                parameters = {p["name"]: p["type"] for p in native["params"]};
+                result = native["result"]["type"];
+            }
+            callers = set(binding["callers"]);
+            if identity in boundaries {
+                callers.update(boundaries[identity]["callers"]);
+            }
+            boundaries[identity] = {
+                "app": app, "module": source, "kind": kind, "name": name,
+                "placement": binding["source_context"], "callers": sorted(callers),
+                "parameters": parameters, "result": result, "native_contract": native,
+                "unchecked": ["dynamic value shape"]
+                    if "any" in parameters.values() or result == "any" else []
+            };
         }
     }
     return {"version": 1, "boundaries": boundaries, "effects": effects, "native_host_imports": host_imports};

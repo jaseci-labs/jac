@@ -57,7 +57,10 @@ impl ViteClientBundleBuilder._compile_bundle(
     import from jaclang.compiler.boundary_audit { boundary_audit }
     if self.vite_output_dir is not None {
         (self.vite_output_dir / "boundaries.json").write_text(
-            json.dumps(boundary_audit(Jac.get_program()), indent=2), encoding="utf-8"
+            json.dumps(boundary_audit(
+                Jac.get_program(),
+                list(compiler.jac_client_compiler.jac_compiler.boundary_contracts.values())
+            ), indent=2), encoding="utf-8"
         );
     }
     return ClientBundle(

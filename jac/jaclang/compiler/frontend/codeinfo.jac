@@ -43,6 +43,7 @@ obj ClientArtifact {
         native_import_sources: list[str] = field(default_factory=`list),
         source_map: list[tuple[int, int, int, int, str]] = field(default_factory=`list),
         dep_digests: dict[str, str] = field(default_factory=`dict),
+        boundary_contracts: dict = field(default_factory=`dict),
         framework: str = "";
 
     def to_bytes -> bytes;

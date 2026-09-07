@@ -2228,6 +2228,7 @@ impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) 
         native_import_sources=native_sources,
         source_map=segments,
         dep_digests=digests,
+        boundary_contracts=self._build_interop_dict(mod),
         framework=resolve_active_backend().name()
     );
 }
