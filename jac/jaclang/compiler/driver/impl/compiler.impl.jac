@@ -580,7 +580,8 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
             'source_module': binding.source_module,
             'kind': binding.kind,
             'provider_app': binding.provider_app,
-            'native_contract': binding.native_contract
+            'native_contract': binding.native_contract,
+            'endpoint_id': binding.endpoint_id
         };
     }
 
@@ -614,7 +615,8 @@ impl JacCompiler._deserialize_interop_table(
             source_module=data.get('source_module'),
             kind=data.get('kind', 'function'),
             provider_app=data['provider_app'],
-            native_contract=data['native_contract']
+            native_contract=data['native_contract'],
+            endpoint_id=data['endpoint_id']
         );
         manifest.bindings[name] = binding;
     }

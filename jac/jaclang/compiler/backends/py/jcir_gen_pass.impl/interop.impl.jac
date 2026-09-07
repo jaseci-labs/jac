@@ -279,6 +279,7 @@ impl JcirGenPass._gen_py_sv_func_stub(
         + args_dict
         + ", effects="
         + repr(effects)
+        + ", contract=" + repr(binding.endpoint_id)
         + ")"
     );
     if (ret_type in boundary_types and boundary_types[ret_type].kind != "enum") {

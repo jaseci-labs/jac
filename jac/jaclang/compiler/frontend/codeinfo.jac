@@ -666,7 +666,8 @@ obj InteropBinding {
         source_module: (str | None) = None,
         kind: str = 'function',
         provider_app: str = '',
-        native_contract: dict = field(default_factory=`dict);
+        native_contract: dict = field(default_factory=`dict),
+        endpoint_id: str = '';
 
     has is_cross_module: bool { getter; }
 }

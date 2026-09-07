@@ -96,6 +96,8 @@ walker BoundaryAnalysisPass(UniPass) {
         type_name: str, search_mods: list[Module]
     ) -> (Archetype | Enum | None);
 
+    def after_pass -> None;
+    can enter_atom_trailer with AtomTrailer entry;
     can enter_ability with Ability entry;
     can enter_func_call with FuncCall entry;
     def _extract_subscript_inner(expr: (UniNode | None)) -> str;
