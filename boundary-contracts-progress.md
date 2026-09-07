@@ -44,3 +44,6 @@ Run jaclang_org using the development compiler and exercise it with `jac browse`
 - Preserved existing boundary finalization while adding endpoint IDs. Service walker writes now fence caches on completion and failure. Native calls reject conflicting aliases before ownership transfer, and borrowed handles track parent/module lifetimes.
 - Audit records merge callers and include native host requirements. Explicit effects apply to public endpoint declarations as well as transitive calls.
 - Browser session is prepared; the development compiler is rebuilding before application acceptance checks.
+
+- Application startup exposed native `import type` declarations being pulled into client placement. The solver now excludes type-only imports from execution placement; rebuilding the app with that fix.
+- Game HUD reads preserve declared types and check session lifetime after each await. Native argument adapters reject inexact or out-of-range integers.
