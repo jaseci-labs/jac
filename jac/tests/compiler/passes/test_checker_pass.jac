@@ -694,6 +694,34 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              []
          ),
          ("expr_narrowing", "checker", "checker_expr_narrowing.jac", 0, True, []),
+         # `x == "literal"` narrows like the int, float and bool forms; `!=`
+         # rules out one value, never the whole class.
+         (
+             "literal_eq_narrowing",
+             "checker",
+             "checker_literal_eq_narrowing.jac",
+             0,
+             True,
+             []
+         ),
+         (
+             "literal_ne_does_not_over_narrow",
+             "checker",
+             "checker_literal_ne_no_over_narrow.jac",
+             9,
+             True,
+             [
+                 (0, "Cannot assign str | NoneType to NoneType"),
+                 (1, "Cannot assign int | NoneType to NoneType"),
+                 (2, "Cannot assign float | NoneType to NoneType"),
+                 (3, "Cannot assign bool | NoneType to NoneType"),
+                 (4, "Cannot assign str | NoneType to NoneType"),
+                 (5, "Cannot assign int | NoneType to NoneType"),
+                 (6, "Cannot assign float | NoneType to NoneType"),
+                 (7, "Cannot assign bool | NoneType to NoneType"),
+                 (8, "Cannot assign Literal[\"b\"] to NoneType")
+             ]
+         ),
          (
              "reassign_in_branch",
              "checker",

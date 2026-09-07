@@ -4997,20 +4997,16 @@ impl TypeEvaluator.classify_condition(condition: Expr) -> ConditionInfo | None {
         and len(condition.rights) == 1
     ) {
         left_key = self.create_key_for_reference(condition.left);
-        right_expr = condition.rights[0];
-        if left_key is not None
-            and isinstance(right_expr, (String, Int, Float, Bool)) {
-            literal_type = self.get_type_of_expression(right_expr);
-            op_name = condition.ops[0].name;
-            if op_name == Tok.EE {
+        op_name = condition.ops[0].name;
+        if left_key is not None and op_name in (Tok.EE, Tok.NE) {
+            literal_type = self._extract_literal_operand_type(condition.rights[0]);
+            if literal_type is not None {
                 return ConditionInfo(
-                    kind=NarrowingKind.LITERAL_EQ,
-                    key=left_key,
-                    narrow_type=literal_type
-                );
-            } elif op_name == Tok.NE {
-                return ConditionInfo(
-                    kind=NarrowingKind.LITERAL_NE,
+                    kind=(
+                        NarrowingKind.LITERAL_EQ
+                            if op_name == Tok.EE
+                            else NarrowingKind.LITERAL_NE
+                    ),
                     key=left_key,
                     narrow_type=literal_type
                 );
@@ -5246,12 +5242,18 @@ impl TypeEvaluator._find_predicate_for(
 
             case NarrowingKind.LITERAL_EQ:
                 return NarrowingPredicate(
-                    key=key, narrow_type=info.narrow_type, is_inverted=False
+                    key=key,
+                    narrow_type=info.narrow_type,
+                    is_inverted=False,
+                    narrows_on_false=self._literal_comparison_excludes(info.narrow_type)
                 );
 
             case NarrowingKind.LITERAL_NE:
                 return NarrowingPredicate(
-                    key=key, narrow_type=info.narrow_type, is_inverted=True
+                    key=key,
+                    narrow_type=info.narrow_type,
+                    is_inverted=True,
+                    narrows_on_true=self._literal_comparison_excludes(info.narrow_type)
                 );
 
             case NarrowingKind.TRUTHINESS:
@@ -5570,36 +5572,44 @@ impl TypeEvaluator._union_narrowed_types(types_list: list) -> TypeBase {
     return UnionType(types=unique);
 }
 
+impl TypeEvaluator._exclusion_drops_member(
+    member: TypeBase, to_exclude: TypeBase
+) -> bool {
+    if not (isinstance(member, ClassType) and isinstance(to_exclude, ClassType)) {
+        return member is to_exclude;
+    }
+    if not member.shared.same_class(to_exclude.shared) {
+        return False;
+    }
+    if to_exclude.is_literal_type() {
+        return (
+            member.is_literal_type()
+            and member.get_literal_value() == to_exclude.get_literal_value()
+        );
+    }
+    return True;
+}
+
+impl TypeEvaluator._literal_comparison_excludes(compared: TypeBase | None) -> bool {
+    return isinstance(compared, ClassType) and compared.is_literal_type();
+}
+
 impl TypeEvaluator.exclude_type_from_union(
     original: TypeBase, to_exclude: TypeBase
 ) -> TypeBase {
     if isinstance(original, UnionType) and original.types {
-        exclude_shareds: set = set();
-        exclude_ids: set = set();
-        to_exclude_list: list[TypeBase] = [];
-        if isinstance(to_exclude, UnionType) and to_exclude.types {
-            to_exclude_list = to_exclude.types;
-        } else {
-            to_exclude_list = [to_exclude];
-        }
-        for excl_t in to_exclude_list {
-            if isinstance(excl_t, ClassType) {
-                exclude_shareds.add(excl_t.shared.canonical_key() or id(excl_t.shared));
-            } else {
-                exclude_ids.add(id(excl_t));
-            }
-        }
-        remaining: list[TypeBase] = [];
-        for t in original.types {
-            if isinstance(t, ClassType) {
-                if (t.shared.canonical_key() or id(t.shared)) in exclude_shareds {
-                    continue;
-                }
-            } elif id(t) in exclude_ids {
-                continue;
-            }
-            remaining.append(t);
-        }
+        to_exclude_list: list[TypeBase] = (
+            to_exclude.types
+                if isinstance(to_exclude, UnionType) and to_exclude.types
+                else [to_exclude]
+        );
+        remaining: list[TypeBase] = [
+            t
+            for t in original.types
+            if not any(
+                self._exclusion_drops_member(t, excl_t) for excl_t in to_exclude_list
+            )
+        ];
         if len(remaining) == 0 {
             return NeverType();
         } elif len(remaining) == 1 {
@@ -5609,13 +5619,7 @@ impl TypeEvaluator.exclude_type_from_union(
         }
     }
 
-    if isinstance(original, ClassType)
-        and isinstance(to_exclude, ClassType)
-        and original.shared.same_class(to_exclude.shared) {
-        return NeverType();
-    }
-
-    if original is to_exclude {
+    if self._exclusion_drops_member(original, to_exclude) {
         return NeverType();
     }
     return original;
@@ -5871,6 +5875,30 @@ impl TypeEvaluator._extract_callable_info(condition: Expr) -> str | None {
         return None;
     }
     return self.create_key_for_reference(condition.params[0]);
+}
+
+impl TypeEvaluator._extract_literal_operand_type(operand: Expr) -> TypeBase | None {
+    if self.create_key_for_reference(operand) is not None {
+        return None;
+    }
+    if isinstance(operand, AtomUnit) {
+        wrapped = operand.value;
+        if isinstance(wrapped, Expr) {
+            return self._extract_literal_operand_type(wrapped);
+        }
+        return None;
+    }
+    if isinstance(operand, Literal) {
+        if isinstance(operand, (Null, Ellipsis, BuiltinType)) {
+            return None;
+        }
+        return self.get_type_of_expression(operand);
+    }
+    operand_type = self.get_type_of_expression(operand);
+    if isinstance(operand_type, ClassType) and operand_type.is_literal_type() {
+        return operand_type;
+    }
+    return None;
 }
 
 impl TypeEvaluator._extract_hasattr_info(condition: Expr) -> tuple[str, str] | None {
