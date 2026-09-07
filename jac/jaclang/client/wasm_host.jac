@@ -41,8 +41,8 @@ def _clock_gettime(st: _HostState, clk: int, ts: int) -> int {
     ms = Date.now() if clk == 0 else performance.now();
     sec = Math.floor(ms / 1000.0);
     nsec = Math.floor((ms - sec * 1000.0) * 1000000.0);
-    dv.setBigInt64(ts, BigInt(sec), True);
-    dv.setBigInt64(ts + 8, BigInt(nsec), True);
+    dv.setBigInt64(ts, globalThis.BigInt(sec), True);
+    dv.setBigInt64(ts + 8, globalThis.BigInt(nsec), True);
     return 0;
 }
 
@@ -69,12 +69,12 @@ def:pub make_jac_host(sh: any) -> dict {
         "getenv": lambda (p: int) { return 0; },
         "fopen": lambda (p: int, m: int) { return 0; },
         "fclose": lambda (f: int) { return -1; },
-        "fread": lambda (b: int, sz: int, n: int, f: int) { return BigInt(0); },
-        "fwrite": lambda (b: int, sz: int, n: int, f: int) { return BigInt(0); },
+        "fread": lambda (b: int, sz: int, n: int, f: int) { return globalThis.BigInt(0); },
+        "fwrite": lambda (b: int, sz: int, n: int, f: int) { return globalThis.BigInt(0); },
         "fgets": lambda (b: int, n: int, f: int) { return 0; },
-        "ftell": lambda (f: int) { return BigInt(-1); },
+        "ftell": lambda (f: int) { return globalThis.BigInt(-1); },
         "fseek": lambda (f: int, o: int, w: int) { return -1; },
-        "getdelim": lambda (lp: int, np: int, d: int, f: int) { return BigInt(-1); },
+        "getdelim": lambda (lp: int, np: int, d: int, f: int) { return globalThis.BigInt(-1); },
         "getpid": lambda { return 1; },
         "getcwd": lambda (b: int, n: int) { return 0; },
         "system": lambda (c: int) { return -1; },
@@ -117,29 +117,30 @@ glob _na_env_cfg: dict = {},
      _na_exports: any = new(globalThis.WeakMap as any);
 
 def _host_callback(host: any, name: str, contract: any) -> any {
-    return lambda (*args: any) -> any {
+    def callback(*args: any) -> any {
         values: list = [];
         for i in range(len(args)) {
             value = args[i];
             c = contract.params[i];
             if c.kind == "cstring" {
-                bytes = new(Uint8Array, host.mem.buffer);
+                memory_bytes = new(Uint8Array, host.mem.buffer);
                 end = value;
-                while end < bytes.length and bytes[end] != 0 { end += 1; }
-                value = new(TextDecoder).decode(bytes.subarray(value, end));
+                while end < memory_bytes.length and memory_bytes[end] != 0 { end += 1; }
+                value = new(TextDecoder).decode(memory_bytes.subarray(value, end));
             } elif c.type == "bool" {
                 value = bool(value);
             } elif c.type in ["int", "i64", "u64"] {
-                value = Number(value);
+                value = globalThis.Number(value);
                 if not Number.isSafeInteger(value) { raise Error("Host integer exceeds exact range"); }
             }
             values.append(value);
         }
         result = host[name].apply(host, values);
-        if contract.result.type in ["int", "i64", "u64"] { return BigInt(result); }
+        if contract.result.type in ["int", "i64", "u64"] { return globalThis.BigInt(result); }
         if contract.result.type == "bool" { return 1 if result else 0; }
         return result;
-    };
+    }
+    return callback;
 }
 
 def:pub bind_na_host(native_export: any, host: any) -> None {
@@ -215,9 +216,9 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
         if typeof(value) != "bigint" and not Number.isSafeInteger(value) {
             raise Error("Native integer arguments must be exact integers");
         }
-        integer = BigInt(value);
-        minimum = BigInt(0) if contract.type == "u64" else BigInt("-9223372036854775808");
-        maximum = BigInt("18446744073709551615") if contract.type == "u64" else BigInt("9223372036854775807");
+        integer = globalThis.BigInt(value);
+        minimum = globalThis.BigInt(0) if contract.type == "u64" else globalThis.BigInt("-9223372036854775808");
+        maximum = globalThis.BigInt("18446744073709551615") if contract.type == "u64" else globalThis.BigInt("9223372036854775807");
         if integer < minimum or integer > maximum { raise Error("Native integer argument is out of range"); }
         return integer;
     }
@@ -257,7 +258,7 @@ def _na_result(value: any, contract: any, module_stem: str, inst: any, parents: 
         return bool(value);
     }
     if contract.type == "int" {
-        result = Number(value);
+        result = globalThis.Number(value);
         if not Number.isSafeInteger(result) {
             raise Error("Native integer exceeds JavaScript's exact integer range");
         }
