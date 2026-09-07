@@ -826,7 +826,7 @@ walker TypeEvaluator {
     ) -> TypeBase;
 
     def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
-    def _union_narrowed_types(types_list: list) -> TypeBase;
+    def _union_narrowed_types(types_list: list[TypeBase]) -> TypeBase;
     def _if_exit_type(
         target: NarrowingTarget,
         stmt: IfStmt,

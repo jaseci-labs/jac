@@ -5477,7 +5477,7 @@ impl TypeEvaluator._filter_union_for_hasattr(
     }
 }
 
-impl TypeEvaluator._union_narrowed_types(types_list: list) -> TypeBase {
+impl TypeEvaluator._union_narrowed_types(types_list: list[TypeBase]) -> TypeBase {
     if len(types_list) == 0 {
         return NeverType();
     }
