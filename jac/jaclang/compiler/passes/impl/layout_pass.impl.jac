@@ -911,3 +911,15 @@ impl LayoutPass.transform(ir_in: Module) -> Module {
 impl LayoutPass.run_walk with Module entry {
     self.ir_out = self._run_impl(here);
 }
+
+
+impl FieldInfo.semantic_type.getter -> TypeBase | None {
+    declaration = self.decl_node;
+    if isinstance(declaration, AstTypedVarNode) {
+        return declaration.type;
+    }
+    if isinstance(declaration, TypeParam) {
+        return declaration.name.type;
+    }
+    return None;
+}

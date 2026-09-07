@@ -4390,11 +4390,7 @@ impl NaIRGenPass._build_jc_layout -> str {
         ftypes = self.struct_field_types.get(arch_name, {});
         enum_map = self.struct_field_enum_type.get(arch_name, {});
         arch_layout = self._arch_layout(arch_name);
-        semantic_fields = {
-            f.name: f.decl_node.type
-            for f in arch_layout.fields
-            if isinstance(f.decl_node, uni.Expr)
-        }
+        semantic_fields = {f.name: f.semantic_type for f in arch_layout.fields}
             if arch_layout is not None
             else {};
         fields: dict = {};

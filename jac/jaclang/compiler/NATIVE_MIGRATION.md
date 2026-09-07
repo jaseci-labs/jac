@@ -80,6 +80,13 @@ observe null for absent hooks. Direct executable/shared-library probes and a
 round trip using the bundled PBS zstd archive pass. This addresses the packaged
 binary's missing zstd tracing-hook failure; full CI still needs to pass.
 
+The subsequent packaged smoke failure exposed a field-schema regression:
+checking for expression nodes excluded `HasVar` declarations, so string fields
+were marked opaque and materialized as `None`. `FieldInfo.semantic_type` now
+provides the typed declaration contract used by materialization, including
+inherited fields. A focused native layout regression confirms string fields
+remain strings while foreign fields remain opaque.
+
 ## Remaining work
 
 | Area | Required work in Jac |
