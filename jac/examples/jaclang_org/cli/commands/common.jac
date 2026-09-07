@@ -42,4 +42,3 @@ def explain_bridge_error(e: BridgeError) -> int {
     warn("jacorg: " + where + " failed" + _suffix(e.detail));
     return EXIT_FAILURE;
 }
-

@@ -75,12 +75,15 @@ async def _frame_tick(sh: Shim, session: int, ts: float) {
         }
         if sh.on_tick is not None {
             fps = int(Math.round(1.0 / sh.dt)) if sh.dt > 0.0 else 0;
-            sh.on_tick(
-                await get_score(game),
-                await get_hp(game),
-                await get_deaths(game),
-                fps
-            );
+            score = await get_score(game);
+            if sh.stopped or session != sh.session { return; }
+            hp = await get_hp(game);
+            if sh.stopped or session != sh.session { return; }
+            deaths = await get_deaths(game);
+            if sh.stopped or session != sh.session { return; }
+            if sh.on_tick is not None {
+                sh.on_tick(score, hp, deaths, fps);
+            }
         }
         sh.pressed = {};
         sh.mpressed = {};
@@ -92,6 +95,7 @@ async def _frame_tick(sh: Shim, session: int, ts: float) {
             );
         }
     } except Exception as err {
+        if sh.stopped or session != sh.session { return; }
         _stop(sh, session);
         console.error("arena frame failed", err);
     }
@@ -101,7 +105,7 @@ async def _boot(sh: Shim, session: int) {
     try {
         game = await init();
         if sh.stopped or session != sh.session {
-            _ = shutdown(game);
+            await shutdown(game);
             return;
         }
         sh.game = game;

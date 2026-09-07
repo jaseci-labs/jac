@@ -35,7 +35,7 @@ obj:pub WebGLHost {
         on_blur: Callable[[Event], None] | None = None;
 
     def InitWindow(w: int, h: int, title: str) -> None {
-        
+
     }
 
     def WindowShouldClose -> bool {
@@ -43,11 +43,11 @@ obj:pub WebGLHost {
     }
 
     def CloseWindow -> None {
-        
+
     }
 
     def SetTargetFPS(f: int) -> None {
-        
+
     }
 
     def BeginDrawing -> None {
@@ -55,7 +55,7 @@ obj:pub WebGLHost {
     }
 
     def EndDrawing -> None {
-        
+
     }
 
     def EndMode3D -> None {
@@ -71,7 +71,7 @@ obj:pub WebGLHost {
     }
 
     def DrawFPS(x: int, y: int) -> None {
-        
+
     }
 
     def IsKeyDown(k: int) -> bool {
@@ -505,4 +505,3 @@ def:pub _remove_input(sh: WebGLHost) {
     document.removeEventListener("mousemove", sh.on_mouse_move);
     document.removeEventListener("pointerlockchange", sh.on_lock_change);
 }
-

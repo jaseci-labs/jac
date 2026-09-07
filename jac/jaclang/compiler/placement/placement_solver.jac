@@ -805,6 +805,7 @@ def _pull_boundary_import(imp: uni.Import, module: uni.Module, prog: any) -> int
     work.observe(module);
     if (
         _is_sv_import(imp)
+        or imp.is_typed
         or imp.is_virtual_jac
         or imp.has_string_path
         or imp.from_loc is None
