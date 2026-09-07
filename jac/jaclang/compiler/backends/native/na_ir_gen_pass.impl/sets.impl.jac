@@ -109,7 +109,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     _first_src_info: (dict | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
-            self._str_norm(self._codegen_expr(_first_spread))
+            self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
             self.emit(
@@ -122,7 +122,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
             return None;
         }
     } else {
-        first_val = self._str_norm(self._codegen_expr(nd.values[0]));
+        first_val = self._str_norm_optional(self._codegen_expr(nd.values[0]));
         if first_val is None {
             return None;
         }
@@ -203,7 +203,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         _spread_op = self._spread_operand(nd.values[i]);
         if _spread_op is not None {
             _src_info = self._container_src_info(
-                self._str_norm(self._codegen_expr(_spread_op))
+                self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
                 self.emit(
@@ -233,7 +233,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
             );
             continue;
         }
-        val = self._str_norm(self._codegen_expr(nd.values[i]));
+        val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
             self.emit(
                 E5092,

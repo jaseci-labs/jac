@@ -2831,10 +2831,9 @@ impl NaIRGenPass._emit_binary_op(
 
     for (sk, st) in self.set_types.items() {
         if left.type == st.as_pointer() and right.type == st.as_pointer() {
-            self._ensure_emitters();
-            _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=sk);
-            _se = self._native_emitters.get("set");
-            if _se is not None {
+            _ctx = NativeEmitCtx(pass_ref=self, type_key=sk);
+            _se = self._ensure_emitters().get("set");
+            if isinstance(_se, NativeSetEmitter) {
                 if op == Tok.BW_OR {
                     return _se.emit_union(_ctx, left, [right]);
                 }
@@ -3824,10 +3823,9 @@ impl NaIRGenPass._emit_comparison(
             if left.type == st.as_pointer() and right.type == st.as_pointer() {
                 shelpers = self.set_helpers.get(sk);
                 if shelpers is not None {
-                    self._ensure_emitters();
-                    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=sk);
-                    _se = self._native_emitters.get("set");
-                    if _se is not None {
+                    _ctx = NativeEmitCtx(pass_ref=self, type_key=sk);
+                    _se = self._ensure_emitters().get("set");
+                    if isinstance(_se, NativeSetEmitter) {
                         i64 = ir.IntType(64);
                         i1_t = ir.IntType(1);
                         if op == Tok.LTE {

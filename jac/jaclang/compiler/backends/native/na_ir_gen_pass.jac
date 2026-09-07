@@ -1,8 +1,14 @@
 import jaclang.compiler.frontend.unitree as uni;
 import os;
-import from collections.abc { Sequence }
 import sys;
 import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
+import from jaclang.compiler.backends.native.primitives_native {
+    NativeEmitCtx,
+    NativeSetEmitter,
+    NativeDictEmitter,
+    NativeIntEmitter,
+    NativeFloatEmitter
+}
 import from jaclang.compiler.backends.native.lowering {
     NativeLoweringIssue,
     NativeLoweringKind
@@ -47,6 +53,7 @@ import from jaclang.compiler.passes.layout_pass {
     ACCESSOR_SLOT_SUFFIX,
     archetype_accessors,
     ArchetypeLayout,
+    EnumLayout,
     VTABLE_HEADER_SLOTS
 }
 import from jaclang.compiler.type_registry { JacTypeEntry }
@@ -155,11 +162,11 @@ walker NaIRGenPass(Transform) {
         clib_trampoline_funcs: dict[str, ir.Function] = {},
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
-        enum_string_values: dict[str, list] = {},
+        enum_string_values: dict[str, list[tuple[str, str, int]]] = {},
         enum_value_arrays: dict[str, ir.GlobalVariable] = {},
         enum_name_arrays: dict[str, ir.GlobalVariable] = {},
         enum_member_ordinal: dict[str, int] = {},
-        enum_int_values: dict[str, list] = {},
+        enum_int_values: dict[str, list[tuple[int, int]]] = {},
         enum_ordinal_fns: dict[str, ir.Function] = {},
         struct_field_enum_type: dict[str, dict] = {},
         struct_field_elem_keys: dict[str, dict] = {},
@@ -290,7 +297,7 @@ walker NaIRGenPass(Transform) {
         str_wrap_raw_fn: (ir.Function | None) = None,
         str_import_fn: (ir.Function | None) = None,
         str_unwrap_fn: (ir.Function | None) = None,
-        _str_desc_ty: (ir.Type | None) = None,
+        _str_desc_ty: (ir.IdentifiedStructType | None) = None,
         rc_roots_buf_gv: object = None,
         rc_roots_cap_gv: object = None,
         rc_roots_count_gv: object = None,
@@ -330,7 +337,6 @@ walker NaIRGenPass(Transform) {
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
-        _native_emit_ctx_class: (type | None) = None,
         _lowered_type_cache: dict[str, ir.Type] = {},
         di_file: object = None,
         di_cu: object = None,
@@ -493,6 +499,7 @@ walker NaIRGenPass(Transform) {
     def _bind_function_parameter(
         name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False
     ) -> None;
+
     def _leave_function(state: NativeFunctionState) -> None;
     def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
@@ -663,7 +670,7 @@ walker NaIRGenPass(Transform) {
     def _lower_clib_function_type(arch_name: str, fname: str, t: any) -> ir.Type;
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
     def _clib_fnptr_ret(arch_name: str, fname: str, result: ir.Value) -> ir.Value;
-    def _scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None;
+    def _scan_closure_escapes(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
     def _closure_sig_struct(fnty: ir.FunctionType) -> tuple;
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _closure_cell_struct(slot_type: ir.Type) -> str;
@@ -874,7 +881,7 @@ walker NaIRGenPass(Transform) {
     def _export_native_layout -> None;
     def _exported_accessors(arch_name: str) -> dict[(str, dict[(str, str)])];
     def _ret_tuple_hints(fname: str, ret_tuple: any) -> (list | None);
-    def _ensure_emitters -> None;
+    def _ensure_emitters -> dict[str, object];
     def _primitive_method_names(type_name: str) -> set[str];
     def _dispatch_primitive_method(
         type_name: str,
@@ -1006,7 +1013,7 @@ walker NaIRGenPass(Transform) {
     def _codegen_class_form_enum_member(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_enum(nd: (uni.Enum | uni.Archetype)) -> None;
     def _codegen_enum_layout(enum_name: str, owner: (uni.Module | None)) -> None;
-    def _enum_ctor_layout(enum_name: str) -> (any | None);
+    def _enum_ctor_layout(enum_name: str) -> (EnumLayout | None);
     def _enum_ctor_target(nd: uni.FuncCall) -> (str | None);
     def _emit_enum_ctor_refusal(nd: uni.FuncCall, enum_name: str, why: str) -> None;
     def _codegen_enum_ctor(nd: uni.FuncCall, enum_name: str) -> (ir.Value | None);
@@ -1267,6 +1274,7 @@ walker NaIRGenPass(Transform) {
     def _make_collection_iter(
         next_fn: ir.Function, state_name: str, collection: ir.Value
     ) -> ir.Value;
+
     def _emit_iter_advance(
         b: ir.IRBuilder, iter_val: ir.Value, out_ptr: ir.Value
     ) -> ir.Value;
@@ -1656,7 +1664,7 @@ walker NaIRGenPass(Transform) {
         name: str = "s.cmp3"
     ) -> ir.Value;
 
-    def _str_cmp_parts_of(val: ir.Value) -> (tuple | None);
+    def _str_cmp_parts_of(val: ir.Value) -> (tuple[ir.Value, ir.Value] | None);
     def _emit_str_dup_helper -> None;
     def _call_str_dup(b: ir.IRBuilder, ptr: ir.Value, name: str = "s.dup") -> ir.Value;
     def _emit_str_len_raw_helper -> None;
@@ -1664,9 +1672,10 @@ walker NaIRGenPass(Transform) {
         b: ir.IRBuilder, ptr: ir.Value, name: str = "s.rlen"
     ) -> ir.Value;
 
-    def _str_desc_type -> ir.Type;
+    def _str_desc_type -> ir.IdentifiedStructType;
     def _str_desc_kind -> str;
-    def _str_norm(val: ir.Value | None) -> (ir.Value | None);
+    def _str_norm(val: ir.Value) -> ir.Value;
+    def _str_norm_optional(val: ir.Value | None) -> (ir.Value | None);
     def _str_arg(val: ir.Value | None) -> (ir.Value | None);
     def _emit_str_desc_helpers -> None;
     def _membrane_str_out(b: ir.IRBuilder, val: ir.Value) -> ir.Value;
@@ -1723,9 +1732,7 @@ walker NaIRGenPass(Transform) {
     def _emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None;
     def _bind_loop_coll_slot(val: ir.Value) -> (str | None);
     def _release_loop_coll_slot(var_name: str, op: str = "", loc: str = "") -> None;
-    def _rc_strdup(
-        ptr: ir.Value, name: str = "rc.str", raw: bool = False
-    ) -> ir.Value;
+    def _rc_strdup(ptr: ir.Value, name: str = "rc.str", raw: bool = False) -> ir.Value;
     def _emit_struct_release_fn(arch_name: str) -> None;
     def _emit_container_repr(
         val: ir.Value, type_key: (str | None)
@@ -1804,7 +1811,7 @@ walker NaIRGenPass(Transform) {
         left: ir.Value, right: ir.Value, unsigned: bool, trap_min: bool = True
     ) -> tuple[(ir.Value, ir.Value)];
 
-    def _codegen_body(stmts: (list | tuple)) -> None;
+    def _codegen_body(stmts: Sequence[uni.UniNode]) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
     def _codegen_delete(nd: uni.DeleteStmt) -> None;

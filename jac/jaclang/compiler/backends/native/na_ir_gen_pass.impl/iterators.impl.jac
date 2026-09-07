@@ -723,7 +723,7 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
             return self._build_iter_from_expr(params[0]);
         }
     }
-    val = self._str_norm(self._codegen_expr(expr));
+    val = self._str_norm_optional(self._codegen_expr(expr));
     if val is None {
         return None;
     }

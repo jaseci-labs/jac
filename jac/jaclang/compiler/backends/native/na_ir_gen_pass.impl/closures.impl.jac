@@ -1,4 +1,6 @@
-impl NaIRGenPass._scan_closure_escapes(nd: uni.UniNode, body: (list | tuple)) -> None {
+impl NaIRGenPass._scan_closure_escapes(
+    nd: uni.UniNode, body: Sequence[uni.UniNode]
+) -> None {
     def nearest_scope(n: uni.UniNode) -> (uni.UniNode | None) {
         p = n.parent;
         while p is not None {

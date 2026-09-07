@@ -1,5 +1,4 @@
 import from jaclang.runtime.object_model { field }
-import from collections.abc { Sequence }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -23,7 +22,9 @@ import from jaclang.compiler.frontend.constant {
 }
 
 obj ModuleFacts {
-    static def unwrap_body(nd: Archetype | Enum | Ability | ImplDef) -> (Sequence | None) {
+    static def unwrap_body(
+        nd: Archetype | Enum | Ability | ImplDef
+    ) -> (Sequence[UniNode] | None) {
         body = nd.body;
         if (isinstance(body, ImplDef) and isinstance(body.body, `list)) {
             return body.body;

@@ -2160,7 +2160,8 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             _mod_qual, os.path.dirname(nd.loc.mod_path)
         );
         func = self._module_functions.get((os.path.realpath(source), func_name))
-            if source is not None else None;
+            if source is not None
+            else None;
     }
     if func is None {
         manifest = self.ir_in.gen.interop_manifest;

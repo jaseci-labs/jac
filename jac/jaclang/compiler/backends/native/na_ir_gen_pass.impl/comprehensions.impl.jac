@@ -295,8 +295,8 @@ impl NaIRGenPass._emit_compr_element(
     spec: str
 ) -> None {
     if kind == "dict" {
-        key_val = self._str_norm(self._codegen_expr(key_expr));
-        value_val = self._str_norm(self._codegen_expr(val_expr));
+        key_val = self._str_norm_optional(self._codegen_expr(key_expr));
+        value_val = self._str_norm_optional(self._codegen_expr(val_expr));
         value_val = self._nogc_elem_prep(val_expr, value_val);
         if key_val is not None and value_val is not None {
             helpers = self.dict_helpers.get(spec);
@@ -326,7 +326,7 @@ impl NaIRGenPass._emit_compr_element(
         return;
     }
     if kind == "set" {
-        val = self._str_norm(self._codegen_expr(key_expr));
+        val = self._str_norm_optional(self._codegen_expr(key_expr));
         val = self._nogc_elem_prep(key_expr, val);
         if val is not None {
             helpers = self.set_helpers.get(spec);
@@ -357,7 +357,7 @@ impl NaIRGenPass._emit_compr_element(
         return;
     }
 
-    val = self._str_norm(self._codegen_expr(key_expr));
+    val = self._str_norm_optional(self._codegen_expr(key_expr));
     val = self._nogc_elem_prep(key_expr, val);
     if val is not None {
         helpers = self.list_helpers.get(spec);

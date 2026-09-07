@@ -1,4 +1,4 @@
-impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
+impl NaIRGenPass._codegen_body(stmts: Sequence[uni.UniNode]) -> None {
     for stmt in stmts {
         if self.builder.block.is_terminated {
             break;
@@ -569,7 +569,7 @@ impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_switch(nd: uni.SwitchStmt) -> None {
-    target_val = self._str_norm(self._codegen_expr(nd.target));
+    target_val = self._str_norm_optional(self._codegen_expr(nd.target));
     if target_val is None {
         return;
     }
@@ -1730,8 +1730,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         }
         return;
     }
+    assignment_rhs: ir.Value = value;
     targets = nd.target if isinstance(nd.target, (list, tuple)) else [(nd.target)];
     for target_expr in targets {
+        value = assignment_rhs;
         if isinstance(target_expr, uni.TupleVal) {
             _unpack_errs = len(self.errors_had);
             if not self._codegen_tuple_unpack(target_expr.values, value, nd.value) {
@@ -2102,14 +2104,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"{var_name}.sub"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_difference_update(
                                         _ctx, current, [coerced]
                                     );
@@ -2186,14 +2185,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"{var_name}.and"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_intersection_update(
                                         _ctx, current, [coerced]
                                     );
@@ -2214,10 +2210,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             self._dict_key_of(target_expr), current
                         );
                         if dict_type_key is not None {
-                            self._ensure_emitters();
-                            _de = self._native_emitters.get("dict");
-                            if _de is not None {
-                                _ctx = self._native_emit_ctx_class(
+                            _de = self._ensure_emitters().get("dict");
+                            if isinstance(_de, NativeDictEmitter) {
+                                _ctx = NativeEmitCtx(
                                     pass_ref=self, type_key=dict_type_key
                                 );
                                 _de.emit_update(_ctx, current, [coerced]);
@@ -2324,14 +2319,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"{var_name}.xor"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_symmetric_difference_update(
                                         _ctx, current, [coerced]
                                     );
@@ -2580,14 +2572,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"glob.{var_name}.fsub"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_difference_update(
                                         _ctx, current, [coerced]
                                     );
@@ -2619,14 +2608,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"glob.{var_name}.and"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_intersection_update(
                                         _ctx, current, [coerced]
                                     );
@@ -2642,14 +2628,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"glob.{var_name}.or"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_update(_ctx, current, [coerced]);
                                 }
                                 value = current;
@@ -2663,14 +2646,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"glob.{var_name}.xor"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        self._ensure_emitters();
-                        _se = self._native_emitters.get("set");
+                        _se = self._ensure_emitters().get("set");
                         for (sname, stype) in self.set_types.items() {
                             if current.type == stype.as_pointer() {
-                                _ctx = self._native_emit_ctx_class(
-                                    pass_ref=self, type_key=sname
-                                );
-                                if _se is not None {
+                                _ctx = NativeEmitCtx(pass_ref=self, type_key=sname);
+                                if isinstance(_se, NativeSetEmitter) {
                                     _se.emit_symmetric_difference_update(
                                         _ctx, current, [coerced]
                                     );
@@ -3234,7 +3214,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
 
     coll_name = self._get_name(nd.collection);
     _coll_memo: (ir.Value | None) = self._opt_unwrap_iterable(
-        self._str_norm(self._codegen_expr(nd.collection))
+        self._str_norm_optional(self._codegen_expr(nd.collection))
     );
 
     dict_type_key: (str | None) = self._dict_key_of(nd.collection);
@@ -3493,7 +3473,7 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
     };
     _chk = self._na_chunks_shape(nd.collection.operand);
     if _chk is not None {
-        coll = self._str_norm(self._codegen_expr(_chk[0]));
+        coll = self._str_norm_optional(self._codegen_expr(_chk[0]));
     } else {
         coll = self._codegen_expr(nd.collection);
     }
@@ -4448,7 +4428,7 @@ impl NaIRGenPass._try_chunked_for(nd: uni.InForStmt) -> bool {
         return False;
     }
     coll = self._codegen_expr(_chk[0]);
-    coll = self._str_norm(coll);
+    coll = self._str_norm_optional(coll);
     if coll is None {
         return False;
     }

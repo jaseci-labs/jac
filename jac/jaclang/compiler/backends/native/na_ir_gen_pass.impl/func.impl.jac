@@ -442,7 +442,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             self._scan_closure_escapes(_scan_owner, body);
         }
 
-        sig = (nd).signature;
+        sig = nd.signature;
+        assert isinstance(sig, uni.FuncSignature) , "a declared function has a function signature";
         for (i, p) in enumerate(sig.get_parameters()) {
             param_name = p.name.value if p.name else f"arg{i}";
             arg_val = func.args[i];
@@ -514,8 +515,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             self.ir_in.gen._exported_symbols.append(func.name);
         }
     }
-
-    (nd).gen.llvm_ir = func;
 }
 
 impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
@@ -602,7 +601,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
 
     param_types: list = [];
     param_names: list = [];
-    sig_params = sig.get_parameters() if sig is not None else [];
+    sig_params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     for (i, p) in enumerate(sig_params) {
         p_name = p.name.value if p?.name and p.name else f"arg{i}";
 
@@ -729,7 +728,6 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     } finally {
         self._leave_function(state);
     }
-    nd.gen.llvm_ir = fn;
 }
 
 impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
@@ -1021,7 +1019,7 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
 
         param_slots: list[tuple] = [];
         sig = nd.signature;
-        sig_params = sig.get_parameters() if sig is not None else [];
+        sig_params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
         for (i, p) in enumerate(sig_params) {
             pname = p.name.value if p.name else f"arg{i}";
             ptype = func.args[i].type;
@@ -1162,7 +1160,6 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     } finally {
         self._leave_function(state);
     }
-    nd.gen.llvm_ir = func;
     nd.code_context = CodeContext.NATIVE;
     self.has_native_code = True;
 }

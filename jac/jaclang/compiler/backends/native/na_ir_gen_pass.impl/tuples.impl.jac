@@ -26,9 +26,6 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
             return None;
         }
         v = self._str_norm(v);
-        if v is None {
-            return None;
-        }
 
         _owns = self._is_owned(v);
         if _in_return and isinstance(v.type, ir.PointerType) and not _owns {

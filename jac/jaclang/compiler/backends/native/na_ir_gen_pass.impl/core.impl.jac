@@ -1307,24 +1307,10 @@ impl NaIRGenPass._imported_function_demotions(
         }
         return _fd_all;
     }
-    demoted: set = set();
-    _fd_mod = `entry.gen.llvm_ir;
-    _fd_names: list = [];
-    try {
-        _fd_names = list(_fd_mod.globals);
-    } except Exception {
-        try {
-            for _fd_fn in _fd_mod.functions {
-                _fd_names.append(_fd_fn.name);
-            }
-        } except Exception {}
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_demoted_ir_symbols
     }
-    for _fd_gname in _fd_names {
-        if _fd_gname.endswith(".__jac_demoted") {
-            demoted.add(_fd_gname[:-len(".__jac_demoted")]);
-        }
-    }
-    return demoted;
+    return set(native_demoted_ir_symbols(str(`entry.gen.llvm_ir)));
 }
 
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
@@ -1499,26 +1485,26 @@ impl NaIRGenPass._resolve_clib_lib_name(components: list[str], level: int) -> st
     return filename;
 }
 
-impl NaIRGenPass._ensure_emitters -> None {
+impl NaIRGenPass._ensure_emitters -> dict[str, object] {
     if self._native_emitters is not None {
-        return;
+        return self._native_emitters;
     }
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.backends.native.primitives_native as _pn;
-    self._native_emitters = {};
+    emitters: dict[str, object] = {};
     for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pn, "Native" + _suffix, None);
         if _ecls is not None {
-            self._native_emitters[_tn] = _ecls();
+            emitters[_tn] = _ecls();
         }
     }
     self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
-    self._native_emit_ctx_class = _pn.NativeEmitCtx;
+    self._native_emitters = emitters;
+    return emitters;
 }
 
 impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
     import inspect;
-    self._ensure_emitters();
     if self._primitive_method_name_cache is None {
         self._primitive_method_name_cache = {};
     }
@@ -1527,7 +1513,7 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
         return _cached;
     }
     _names: set[str] = set();
-    _emitter = self._native_emitters.get(type_name);
+    _emitter = self._ensure_emitters().get(type_name);
     if _emitter is not None {
         for _n in dir(_emitter) {
             if _n.startswith("emit_") and not _n.startswith("emit_op_") {
@@ -1552,10 +1538,9 @@ impl NaIRGenPass._dispatch_primitive_method(
     kwargs: (dict | None) = None,
     kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
-    self._ensure_emitters();
     target = self._str_norm(target);
     args = [self._str_norm(_a) for _a in args];
-    _emitter = self._native_emitters.get(type_name);
+    _emitter = self._ensure_emitters().get(type_name);
     if _emitter is None {
         return None;
     }
@@ -1572,9 +1557,7 @@ impl NaIRGenPass._dispatch_primitive_method(
         );
         return None;
     }
-    _ctx = self._native_emit_ctx_class(
-        pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {})
-    );
+    _ctx = NativeEmitCtx(pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {}));
     try {
         return _emit_fn(_ctx, target, args);
     } except Exception as _pm_exc {
@@ -1629,7 +1612,7 @@ impl NaIRGenPass._dispatch_builtin(
         );
         return None;
     }
-    _ctx = self._native_emit_ctx_class(
+    _ctx = NativeEmitCtx(
         pass_ref=self,
         type_key=type_key,
         call_kwargs=(kwargs or {}),

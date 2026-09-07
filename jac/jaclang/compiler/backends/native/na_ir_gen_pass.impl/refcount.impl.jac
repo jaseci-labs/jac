@@ -1105,7 +1105,7 @@ impl NaIRGenPass._call_str_len_raw(
     return b.call(self.str_len_raw_fn, [ptr], name=name);
 }
 
-impl NaIRGenPass._str_desc_type -> ir.Type {
+impl NaIRGenPass._str_desc_type -> ir.IdentifiedStructType {
     if self._str_desc_ty is not None {
         return self._str_desc_ty;
     }
@@ -1201,9 +1201,7 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     ub.ret(ub.call(self.str_new_fn, [_u_data, _u_len], name="u.copy"));
     self.str_unwrap_fn = uf;
 
-    incoming = self._define_function(
-        "__jac_str_import", ir.FunctionType(i8p, [i8p])
-    );
+    incoming = self._define_function("__jac_str_import", ir.FunctionType(i8p, [i8p]));
     incoming.linkage = "private";
     incoming.args[0].name = "source";
     ib = ir.IRBuilder(incoming.append_basic_block("entry"));
@@ -1224,8 +1222,8 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     self.str_import_fn = incoming;
 }
 
-impl NaIRGenPass._str_norm(val: ir.Value | None) -> (ir.Value | None) {
-    if val is None or self._str_desc_ty is None or val.type != self._str_desc_ty {
+impl NaIRGenPass._str_norm(val: ir.Value) -> ir.Value {
+    if self._str_desc_ty is None or val.type != self._str_desc_ty {
         return val;
     }
     if self.str_unwrap_fn is None {
@@ -1238,8 +1236,12 @@ impl NaIRGenPass._str_norm(val: ir.Value | None) -> (ir.Value | None) {
     return _normed;
 }
 
+impl NaIRGenPass._str_norm_optional(val: ir.Value | None) -> (ir.Value | None) {
+    return self._str_norm(val) if val is not None else None;
+}
+
 impl NaIRGenPass._str_arg(val: ir.Value | None) -> (ir.Value | None) {
-    val = self._str_norm(val);
+    val = self._str_norm_optional(val);
     if val is not None
         and self._opt_ptr_payload_of(val.type) == ir.IntType(8).as_pointer() {
         return self._coerce_type(val, ir.IntType(8).as_pointer());
@@ -2615,7 +2617,9 @@ impl NaIRGenPass._call_str_cmp3(
     return b.call(self.str_cmp3_fn, [l_data, l_len, r_data, r_len], name=name);
 }
 
-impl NaIRGenPass._str_cmp_parts_of(val: ir.Value) -> (tuple | None) {
+impl NaIRGenPass._str_cmp_parts_of(
+    val: ir.Value
+) -> (tuple[ir.Value, ir.Value] | None) {
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {
         _hl = self._nogc_headerless();
         _d = self.builder.extract_value(val, 0 if _hl else 1, name="scmp.data");

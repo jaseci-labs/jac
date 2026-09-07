@@ -903,7 +903,7 @@ impl NaIRGenPass._forward_declare_method(
 
     _is_static = method.is_static or method.is_classmethod;
 
-    _m_params = sig.get_parameters() if sig is not None else [];
+    _m_params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     if (
         not _is_static
         and _m_params
@@ -1026,7 +1026,9 @@ impl NaIRGenPass._codegen_method(
         _is_static = method.is_static or method.is_classmethod;
         _base = 0;
         sig = method.signature;
-        _body_params = sig.get_parameters() if sig is not None else [];
+        _body_params = sig.get_parameters()
+            if isinstance(sig, uni.FuncSignature)
+            else [];
         _self_param: (uni.ParamVar | None) = None;
         if (
             not _is_static
@@ -1091,7 +1093,6 @@ impl NaIRGenPass._codegen_method(
                     self.builder.ret(self._zero_const(ret_type));
                 }
             }
-            method.gen.llvm_ir = func;
 
             self._finalize_di_locations(
                 func, method.loc.first_line if method.loc else 1
@@ -1325,7 +1326,6 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
             self._emit_scope_cleanup(skip_var=None, loc=_nosig_loc);
             self.builder.ret_void();
         }
-        method.gen.llvm_ir = func;
 
         self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     } finally {
@@ -1660,7 +1660,6 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
             self._emit_scope_cleanup(skip_var=None, loc=_ev_loc);
             self.builder.ret_void();
         }
-        method.gen.llvm_ir = func;
         self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     } finally {
         self._leave_function(state);
@@ -2707,10 +2706,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if target_name == "int" and method_name == "from_bytes" {
         arg_vals = self._codegen_call_args(nd);
         if arg_vals {
-            self._ensure_emitters();
-            _emitter = self._native_emitters.get("int");
-            if _emitter is not None {
-                _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+            _emitter = self._ensure_emitters().get("int");
+            if isinstance(_emitter, NativeIntEmitter) {
+                _ctx = NativeEmitCtx(pass_ref=self, type_key="");
                 result = _emitter.emit_from_bytes(_ctx, arg_vals);
                 if result is not None {
                     return result;
@@ -2721,10 +2719,9 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if target_name == "float" and method_name == "fromhex" {
         arg_vals = self._codegen_call_args(nd);
         if arg_vals {
-            self._ensure_emitters();
-            _emitter = self._native_emitters.get("float");
-            if _emitter is not None {
-                _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+            _emitter = self._ensure_emitters().get("float");
+            if isinstance(_emitter, NativeFloatEmitter) {
+                _ctx = NativeEmitCtx(pass_ref=self, type_key="");
                 result = _emitter.emit_fromhex(_ctx, arg_vals);
                 if result is not None {
                     return result;
@@ -2944,7 +2941,7 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     }
 
     if method_name in self._primitive_method_names("str") {
-        str_val = self._str_norm(self._codegen_receiver(trailer.target));
+        str_val = self._str_norm_optional(self._codegen_receiver(trailer.target));
         if str_val is not None
             and self._opt_payload_of(str_val.type) == ir.IntType(8).as_pointer() {
             str_val = self._coerce_type(str_val, ir.IntType(8).as_pointer());

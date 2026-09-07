@@ -136,7 +136,7 @@ impl NaIRGenPass._solve_generic_call(
     }
 
     sig = ability.signature;
-    params = sig.get_parameters() if sig is not None else [];
+    params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     _ft = ability.name_ref.type if ability.name_ref is not None else None;
     _ft_params = list(_ft.parameters or [])
         if _ft is not None and _ft?.parameters
@@ -443,7 +443,10 @@ impl NaIRGenPass._stamp_mono_fn(
 ) -> (ir.Function | None) {
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
-    param_types: list = [];
+    if not isinstance(sig, uni.FuncSignature) {
+        return None;
+    }
+    param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
@@ -486,7 +489,7 @@ impl NaIRGenPass._instantiate_generic_for_target(
     }
     ability = self.generic_fns.get(func_name);
     sig = ability.signature if ability is not None else None;
-    if sig is None {
+    if not isinstance(sig, uni.FuncSignature) {
         return None;
     }
     _tgt_params = tag_t.parameters or [];
@@ -599,13 +602,13 @@ impl NaIRGenPass._stamp_mono_method(
     struct_type = self.struct_types.get(arch_name);
     sig = ability.signature;
     if struct_type is None
-        or sig is None
+        or not isinstance(sig, uni.FuncSignature)
         or ability.is_static
         or ability.is_classmethod {
         self.emit(E5092, node_override=ability, kind="method", name=full_name);
         return None;
     }
-    param_types: list = [struct_type.as_pointer()];
+    param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)

@@ -14,6 +14,7 @@ import type from jaclang.compiler.frontend.unitree { CommentToken }
 import type from jaclang.compiler.tools.doc_ir { Doc }
 import type from jaclang.compiler.frontend.unitree { Source, Token }
 import type from jaclang.runtime.osp_model { OspModel }
+import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
     ExecutionEngine
@@ -707,7 +708,7 @@ obj CodeGenTarget {
         py_bytecode: (bytes | None) = None,
         jcir: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
-        llvm_ir: (ModuleRef | None) = None,
+        llvm_ir: (ModuleRef | IRModule | None) = None,
         native_engine: (ExecutionEngine | None) = None,
         native_bitcode: (bytes | None) = None,
         native_linked_ir: (str | None) = None,

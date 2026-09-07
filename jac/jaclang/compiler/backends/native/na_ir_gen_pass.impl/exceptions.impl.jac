@@ -301,7 +301,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
         exc_msg = self._make_global_string(exc_type_name, name_prefix=".exc.msg");
     }
     exc_msg = self._str_norm(exc_msg);
-    exc_payload = self._str_norm(exc_payload);
+    exc_payload = self._str_norm_optional(exc_payload);
     if exc_msg is None {
         return;
     }

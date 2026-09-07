@@ -207,9 +207,7 @@ impl NaIRGenPass._emit_dict_helpers(
 }
 
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
-    _normed = self._str_norm(value);
-    assert _normed is not None , "a boxed value is always present";
-    value = _normed;
+    value = self._str_norm(value);
     b = self.builder;
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
@@ -389,7 +387,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
 
     first_pair = nd.kv_pairs[0];
     first_key = self._codegen_expr(first_pair.key);
-    first_val = self._str_norm(self._codegen_expr(first_pair.value));
+    first_val = self._str_norm_optional(self._codegen_expr(first_pair.value));
     if first_key is None or first_val is None {
         return None;
     }
