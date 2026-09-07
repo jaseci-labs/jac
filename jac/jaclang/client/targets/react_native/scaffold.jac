@@ -146,10 +146,6 @@ def _build_app_json(app_slug: str, app_id: str, app_name: str) -> str {
             "version": "1.0.0",
             "orientation": "portrait",
             "userInterfaceStyle": "light",
-            # No newArchEnabled/jsEngine keys: SDK 57 dropped both from the
-            # config schema (the new architecture and Hermes are the only
-            # options now), and `expo-doctor` fails a project that still sets
-            # them. Re-adding either is a schema error, not a default.
             "ios": {"supportsTablet": True, "bundleIdentifier": app_id},
             "android": {
                 "package": app_id,
