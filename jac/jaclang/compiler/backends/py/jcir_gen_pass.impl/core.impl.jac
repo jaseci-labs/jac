@@ -278,15 +278,16 @@ impl JcirGenPass._with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode {
 }
 
 impl JcirGenPass.jaclib_obj(obj_name: str) -> CgNode {
-    alias = self._runtime_aliases.get(obj_name);
-    if alias is None {
-        alias = "_jac_runtime_" + obj_name;
-        while alias in self._reserved_names {
-            alias += "_";
-        }
-        self._reserved_names.add(alias);
-        self._runtime_aliases[obj_name] = alias;
+    cached = self._runtime_aliases.get(obj_name);
+    if cached is not None {
+        return self.name_load(cached);
     }
+    alias = "_jac_runtime_" + obj_name;
+    while alias in self._reserved_names {
+        alias += "_";
+    }
+    self._reserved_names.add(alias);
+    self._runtime_aliases[obj_name] = alias;
     return self.name_load(alias);
 }
 
