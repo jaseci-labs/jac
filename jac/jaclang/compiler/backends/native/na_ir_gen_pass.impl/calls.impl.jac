@@ -1119,6 +1119,12 @@ impl NaIRGenPass._emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None
         _tr_pv = self.builder.extract_value(value, 1, name="takeref.opt.pv");
         self._emit_rc_retain(_tr_pv, op=op, loc=loc);
     }
+    if self.jacval_type is not None
+        and value.type == self.jacval_type
+        and not self._is_owned(value)
+        and self._gc_mode() != "none" {
+        self.builder.call(self._emit_jacval_retain_fn(), [value]);
+    }
 }
 
 impl NaIRGenPass._codegen_decorated_call(

@@ -3273,7 +3273,7 @@ impl NaIRGenPass._codegen_accessor_call(
     if self._arch_has_vtable(type_name) {
         result = self._codegen_virtual_call(obj_val, slot, _all_args, type_name);
         if result is not None {
-            return self._own_accessor_result(result);
+            return self._mark_reference_owned(result);
         }
     }
     coerced: list[ir.Value] = [];
@@ -3282,19 +3282,11 @@ impl NaIRGenPass._codegen_accessor_call(
             self._coerce_type(arg, func.args[i].type) if i < len(func.args) else arg
         );
     }
-    return self._own_accessor_result(
+    return self._mark_reference_owned(
         self.builder.call(func, coerced, name=f"acc.{slot}")
     );
 }
 
-impl NaIRGenPass._own_accessor_result(result: ir.Value) -> ir.Value {
-    if isinstance(result.type, ir.PointerType)
-        or self._opt_ptr_payload_of(result.type) is not None
-        or (self?.jacval_type and result.type == self.jacval_type) {
-        return self._mark_owned(result);
-    }
-    return result;
-}
 
 impl NaIRGenPass._receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] | None) {
     if not isinstance(nd, uni.AtomTrailer) or not isinstance(nd.target, uni.Expr) {
@@ -3383,7 +3375,7 @@ impl NaIRGenPass._codegen_union_member(
         result.add_incoming(value, block);
     }
     self._release_owned_args([source_receiver], op="call_arg");
-    return self._own_accessor_result(result);
+    return self._mark_reference_owned(result);
 }
 
 impl NaIRGenPass._emit_dispatched_field_ptr(

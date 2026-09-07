@@ -1428,7 +1428,7 @@ walker NaIRGenPass(Transform) {
 
     def _method_slot_name(method: uni.Ability, field: (uni.HasVar | None)) -> str;
     def _accessor_slot_of(type_name: str, field_name: str, kind: str) -> (str | None);
-    def _own_accessor_result(result: ir.Value) -> ir.Value;
+    def _mark_reference_owned(result: ir.Value) -> ir.Value;
     def _codegen_accessor_call(
         obj_val: ir.Value, type_name: str, slot: str, args: list[ir.Value]
     ) -> (ir.Value | None);

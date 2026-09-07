@@ -597,6 +597,16 @@ impl NaIRGenPass._mark_owned(val: ir.Value) -> ir.Value {
     return val;
 }
 
+impl NaIRGenPass._mark_reference_owned(result: ir.Value) -> ir.Value {
+    if isinstance(result.type, ir.PointerType)
+        or self._opt_ptr_payload_of(result.type) is not None
+        or (self?.jacval_type and result.type == self.jacval_type) {
+        return self._mark_owned(result);
+    }
+    return result;
+}
+
+
 impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
     return val.is_owned;
 }

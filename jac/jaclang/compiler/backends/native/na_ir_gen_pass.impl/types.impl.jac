@@ -2460,32 +2460,11 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
     }
 
     if isinstance(val.type, ir.LiteralStructType)
-        and val.type != target_type
-        and len(val.type.elements) >= 2 {
-        _all_prim = True;
-        for _el in val.type.elements {
-            if not isinstance(
-                _el, (ir.IntType, ir.DoubleType, ir.FloatType, ir.PointerType)
-            ) {
-                _all_prim = False;
-                break;
-            }
-        }
-        if _all_prim {
-            boxed = self._box_value_tuple(val);
-            if boxed.type == target_type {
-                return boxed;
-            }
-
-            if isinstance(boxed.type, ir.PointerType)
-                and isinstance(target_type, ir.PointerType) {
-                _cast = self.builder.bitcast(boxed, target_type, name="tuple.box.cast");
-
-                self._mark_owned(_cast);
-                return _cast;
-            }
-        }
+        and isinstance(target_type, ir.PointerType) {
+        boxed = self._box_value_tuple(val);
+        return self._coerce_type(boxed, target_type);
     }
+
     return val;
 }
 

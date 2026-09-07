@@ -422,6 +422,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
 
+    semantic_val_type = self._lower_type(_dk_args[1])
+        if _dk_args is not None and len(_dk_args) >= 2
+        else None;
+    tuple_value_type = semantic_val_type.pointee
+        if isinstance(semantic_val_type, ir.PointerType)
+            and isinstance(semantic_val_type.pointee, ir.LiteralStructType)
+        else None;
+
     _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
@@ -433,6 +441,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         if nd.loc
         else 0}";
 
+    if tuple_value_type is not None {
+        first_val = self._coerce_tuple_to_struct(first_val, tuple_value_type);
+    }
     first_val = self._nogc_elem_prep(first_pair.value, first_val);
     if first_val is None {
         return None;
@@ -441,30 +452,25 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         and self._reject_ptr_into_raw_slot(nd, first_val, val_type, "dict value") {
         return dict_val;
     }
-    first_store_val = (
-        self._box_to_jacval(first_val)
-            if use_jacval
-            else self._coerce_type(first_val, val_type)
-    );
+    first_store_key = self._coerce_type(first_key, key_type);
+    first_store_val = self._coerce_type(first_val, val_type);
     (_set_fn, _kh) = self._static_key_op(helpers, "set", first_pair.key);
-    _set_args = [dict_val, self._coerce_type(first_key, key_type), first_store_val];
+    _set_args = [dict_val, first_store_key, first_store_val];
     if _kh is not None {
         _set_args.append(_kh);
     }
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_init", loc=_dinit_loc);
 
-    if isinstance(first_key.type, ir.PointerType) and self._is_owned(first_key) {
-        self._emit_rc_release_simple(first_key, op="dict_init", loc=_dinit_loc);
-    }
-    if isinstance(first_val.type, ir.PointerType) and self._is_owned(first_val) {
-        self._emit_rc_release_simple(first_val, op="dict_init", loc=_dinit_loc);
-    }
+    self._release_owned_args([first_store_key, first_store_val], op="dict_init");
 
     for i in range(1, len(nd.kv_pairs)) {
         pair = nd.kv_pairs[i];
         k = self._codegen_expr(pair.key);
         v = self._codegen_expr(pair.value);
         if k is not None and v is not None {
+            if tuple_value_type is not None {
+                v = self._coerce_tuple_to_struct(v, tuple_value_type);
+            }
             v = self._nogc_elem_prep(pair.value, v);
             if v is None {
                 return None;
@@ -473,14 +479,8 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
                 and self._reject_ptr_into_raw_slot(nd, v, val_type, "dict value") {
                 return dict_val;
             }
-            _orig_k = k;
-            _orig_v = v;
             k = self._coerce_type(k, key_type);
-            if use_jacval {
-                v = self._box_to_jacval(v);
-            } else {
-                v = self._coerce_type(v, val_type);
-            }
+            v = self._coerce_type(v, val_type);
             (_set_fn, _kh) = self._static_key_op(helpers, "set", pair.key);
             _set_args = [dict_val, k, v];
             if _kh is not None {
@@ -488,12 +488,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             }
             self._rc_call_with_ctx(_set_fn, _set_args, op="dict_init", loc=_dinit_loc);
 
-            if isinstance(_orig_k.type, ir.PointerType) and self._is_owned(_orig_k) {
-                self._emit_rc_release_simple(_orig_k, op="dict_init", loc=_dinit_loc);
-            }
-            if isinstance(_orig_v.type, ir.PointerType) and self._is_owned(_orig_v) {
-                self._emit_rc_release_simple(_orig_v, op="dict_init", loc=_dinit_loc);
-            }
+            self._release_owned_args([k, v], op="dict_init");
         }
     }
 
@@ -529,7 +524,13 @@ impl NaIRGenPass._codegen_dict_access(
     if _gh is not None {
         _get_args.append(_gh);
     }
-    return self.builder.call(_get_fn, _get_args, name="dict.get");
+    result = self.builder.call(_get_fn, _get_args, name="dict.get");
+    if self._is_owned(target_val) and self._gc_mode() != "none" {
+        self._emit_take_ref(result, op="dict_get");
+        self._release_owned_args([target_val], op="call_arg");
+        return self._mark_reference_owned(result);
+    }
+    return result;
 }
 
 impl NaIRGenPass._codegen_dict_set(
