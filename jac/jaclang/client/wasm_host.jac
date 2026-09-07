@@ -209,10 +209,29 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
         return handle.pointer;
     }
     if contract.type in ["int", "i64", "u64"] {
-        return BigInt(value);
+        if typeof(value) != "bigint" and not Number.isSafeInteger(value) {
+            raise Error("Native integer arguments must be exact integers");
+        }
+        integer = BigInt(value);
+        minimum = BigInt(0) if contract.type == "u64" else BigInt("-9223372036854775808");
+        maximum = BigInt("18446744073709551615") if contract.type == "u64" else BigInt("9223372036854775807");
+        if integer < minimum or integer > maximum { raise Error("Native integer argument is out of range"); }
+        return integer;
     }
     if contract.type == "bool" {
+        if typeof(value) != "boolean" { raise Error("Native bool argument requires a boolean"); }
         return 1 if value else 0;
+    }
+    bounds: any = {
+        "i8": [-128, 127], "u8": [0, 255], "i16": [-32768, 32767],
+        "u16": [0, 65535], "i32": [-2147483648, 2147483647], "u32": [0, 4294967295]
+    };
+    limit = bounds[contract.type];
+    if limit and (not Number.isSafeInteger(value) or value < limit[0] or value > limit[1]) {
+        raise Error("Native integer argument is out of range");
+    }
+    if contract.type in ["float", "f32", "f64"] and typeof(value) != "number" {
+        raise Error("Native floating point argument requires a number");
     }
     return value;
 }
