@@ -1053,7 +1053,7 @@ impl ModuleIntrospector.introspect_walker(
     walker_cls: type[WalkerArchetype]
 ) -> dict[str, any] {
     try {
-        sig = inspect.signature(walker_cls.init);
+        sig = inspect.signature(walker_cls);
         try {
             type_hints = get_type_hints(walker_cls.init);
         } except Exception {
@@ -1078,7 +1078,8 @@ impl ModuleIntrospector.introspect_walker(
     }
     fields: dict[str, dict[str, any]] = {};
     for (name, param) in sig.parameters.items() {
-        if (name in ('self', 'args', 'kwargs')) {
+        if param.kind
+            in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) {
             continue;
         }
 

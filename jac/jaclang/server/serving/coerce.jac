@@ -68,10 +68,11 @@ def _construct_object(value: any, target: any) -> any {
     } except Exception {
         hints = {};
     }
-    sig = inspect.signature(init_fn);
+    sig = inspect.signature(target);
     kwargs: dict[str, any] = {};
     for (pname, param) in sig.parameters.items() {
-        if pname in ('self', 'args', 'kwargs') {
+        if param.kind
+            in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) {
             continue;
         }
         if pname in value {
