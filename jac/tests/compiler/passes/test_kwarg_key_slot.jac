@@ -115,8 +115,7 @@ test "the native nested function takes no phantom capture" {
     options.no_ir_cache = True;
     options.skip_native_engine = True;
     ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "kwarg_key_slot.jac"),
-        options=options
+        file_path=os.path.join(FIXTURES, "kwarg_key_slot.jac"), options=options
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     defs = [

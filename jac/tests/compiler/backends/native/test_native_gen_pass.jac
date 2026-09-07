@@ -6442,8 +6442,11 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
 # buf[i], and a struct load + store into the element pointer for buf[i] = val.
 test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
     prog = JacProgram();
+    options = native_force_opts();
+    options.no_ir_cache = True;
+    options.skip_native_engine = True;
     ir = prog.compile(
-        str(os.path.join(FIXTURES, "ptr_subscript.jac")), options=native_force_opts()
+        str(os.path.join(FIXTURES, "ptr_subscript.jac")), options=options
     );
     e5090 = [
         e.code.code

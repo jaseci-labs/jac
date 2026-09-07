@@ -87,7 +87,12 @@ def _account(name: str, n: int) -> tuple {
 
 """Slice one function's textual IR out of the module dump."""
 def _fn_ir(name: str) -> str {
-    (_, ir) = _compiled();
+    options = native_force_opts();
+    options.no_ir_cache = True;
+    options.skip_native_engine = True;
+    prog = JacProgram();
+    ir = prog.compile(file_path=os.path.join(FIXTURES, FIXTURE), options=options);
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
     out: list[str] = [];
     inside = False;
     for ln in str(ir.gen.llvm_ir).split("\n") {
