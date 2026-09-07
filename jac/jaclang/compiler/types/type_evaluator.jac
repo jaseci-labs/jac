@@ -1,6 +1,6 @@
 import os;
 import from pathlib { Path }
-import type from jaclang.compiler.types.stubcat.reader { CatScope }
+import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
 import from jaclang.compiler.types.ct_value { CtValue }
@@ -392,7 +392,7 @@ walker TypeEvaluator {
     def _read_dunder_all(path: str) -> (set[str] | None);
     def _read_ambient_imports_by_module(path: str) -> dict[str, set[str]];
     def _load_stub_module(path: str) -> Module;
-    def _init_prelude_from_catalog(catalog: any) -> list[Module];
+    def _init_prelude_from_catalog(catalog: StubCatalog) -> list[Module];
     def _init_prelude_from_sources -> list[Module];
     def _get_type_from_module(module: Module, name: str) -> TypeBase;
     def _get_class_from_module(module: Module | None, name: str) -> ClassType | None;

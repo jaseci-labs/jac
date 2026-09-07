@@ -1,3 +1,4 @@
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import ast as py_ast;
 import marshal;
 import os;
@@ -92,7 +93,7 @@ obj JacCompiler {
     has _selfhost: (SelfHostCache | None) = None,
         _reentrant_depth: int = 0,
         _closure_opts: (CompileOptions | None) = None,
-        _stub_catalog: any = None,
+        _stub_catalog: StubCatalog | None = None,
         _stub_catalog_tried: bool = False,
         stub_catalog_disabled: bool = False,
         _stub_trees_served: bool = False,
@@ -100,8 +101,8 @@ obj JacCompiler {
 
     has selfhost: SelfHostCache { getter; }
 
-    def stub_catalog -> any;
-    def ensure_stub_catalog -> any;
+    def stub_catalog -> StubCatalog | None;
+    def ensure_stub_catalog -> StubCatalog | None;
     def note_stub_tree_served(path: str, program: JacProgram) -> None;
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram

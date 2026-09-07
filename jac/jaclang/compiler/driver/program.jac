@@ -1,3 +1,4 @@
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import sys;
 import types;
 import from threading { Event }
@@ -44,7 +45,7 @@ class JacProgram {
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def iface_registry(self: JacProgram) -> any;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
-    def stub_catalog(self: JacProgram) -> any;
+    def stub_catalog(self: JacProgram) -> StubCatalog | None;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
     def release_compile_closure(self: JacProgram, collect: bool = True) -> None;
     def release_native_dep_units(self: JacProgram) -> None;

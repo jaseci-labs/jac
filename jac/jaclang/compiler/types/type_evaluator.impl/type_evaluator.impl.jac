@@ -4165,7 +4165,7 @@ impl TypeEvaluator.postinit -> None {
     self._prefetch_types();
 }
 
-impl TypeEvaluator._init_prelude_from_catalog(catalog: any) -> list[Module] {
+impl TypeEvaluator._init_prelude_from_catalog(catalog: StubCatalog) -> list[Module] {
     names = (
         "builtins",
         "typing",

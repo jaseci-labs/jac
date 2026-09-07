@@ -8,7 +8,7 @@ impl JacCompiler.selfhost.getter -> SelfHostCache {
     return cache;
 }
 
-impl JacCompiler.stub_catalog -> any {
+impl JacCompiler.stub_catalog -> StubCatalog | None {
     if self.stub_catalog_disabled or self._stub_trees_served {
         return None;
     }
@@ -35,7 +35,7 @@ impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
     }
 }
 
-impl JacCompiler.ensure_stub_catalog -> any {
+impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
     if self.stub_catalog_disabled or self._stub_trees_served {
         return None;
     }
