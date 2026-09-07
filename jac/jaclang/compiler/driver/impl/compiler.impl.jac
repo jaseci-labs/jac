@@ -741,6 +741,8 @@ impl JacCompiler.parse_str(
         } elif (codespace == 'native') {
             _coerce_native_module(mod);
             na_coverage_record(mod.loc.mod_path, 'native');
+        } elif codespace == 'server' {
+            mod.set_code_context(CodeContext.SERVER);
         } else {
             run_codespace_infer = True;
         }
