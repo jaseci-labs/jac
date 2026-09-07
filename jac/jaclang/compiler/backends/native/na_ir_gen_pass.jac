@@ -1945,10 +1945,9 @@ walker NaIRGenPass(Transform) {
     def _finalize_trace_lookup -> None;
     def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
     def _struct_has_ref_fields(arch_name: str) -> bool;
-    def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(
-        targets: Sequence[uni.UniNode], tuple_val: ir.Value, tuple_node: (object | None)
+        targets: Sequence[uni.UniNode], tuple_val: ir.Value, tuple_node: (uni.UniNode | None)
     ) -> bool;
 
     def _codegen_tuple_index(

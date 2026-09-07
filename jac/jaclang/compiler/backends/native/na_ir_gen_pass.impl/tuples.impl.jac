@@ -57,33 +57,10 @@ impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
     return val;
 }
 
-impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
-    list_name: (str | None) = None;
-    list_expr: (object | None) = None;
-    if isinstance(nd, uni.FuncCall) {
-        tgt = nd.target;
-        if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
-            list_name = self._get_name(tgt.target);
-            list_expr = tgt.target;
-        }
-    } elif isinstance(nd, uni.AtomTrailer) and not nd.is_attr and nd.right?.slices {
-        list_name = self._get_name(nd.target);
-        list_expr = nd.target;
-    }
-    if list_name is None {
-        return None;
-    }
-
-    cast = self._list_elem_llvm_of(list_expr);
-    if cast is not None and isinstance(cast, ir.PointerType) {
-        return cast;
-    }
-
-    return self.var_list_elem_struct.get(list_name);
-}
-
 impl NaIRGenPass._codegen_tuple_unpack(
-    targets: Sequence[uni.UniNode], tuple_val: ir.Value, tuple_node: (object | None)
+    targets: Sequence[uni.UniNode],
+    tuple_val: ir.Value,
+    tuple_node: (uni.UniNode | None)
 ) -> bool {
     _elem_owned = tuple_val?.na_tuple_owned;
     _tu_opt = self._opt_payload_of(tuple_val.type);
@@ -91,20 +68,11 @@ impl NaIRGenPass._codegen_tuple_unpack(
         tuple_val = self._coerce_type(tuple_val, _tu_opt);
     }
     _orig_tv = tuple_val;
-    struct_type: (ir.LiteralStructType | None) = None;
-    is_value = False;
-    if isinstance(tuple_val.type, ir.LiteralStructType) {
-        struct_type = tuple_val.type;
-        is_value = True;
-    } elif isinstance(tuple_val.type, ir.PointerType)
-        and isinstance(tuple_val.type.pointee, ir.LiteralStructType) {
-        struct_type = tuple_val.type.pointee;
-    }
-
-    if struct_type is None
-        and isinstance(tuple_val.type, ir.PointerType)
-        and tuple_node is not None {
-        cast_ptr_type = self._infer_unpack_struct_ptr(tuple_node);
+    struct_type = self._tuple_struct_of_value(tuple_val);
+    is_value = isinstance(tuple_val.type, ir.LiteralStructType);
+    if isinstance(tuple_val.type, ir.PointerType)
+        and isinstance(tuple_node, uni.Expr) {
+        cast_ptr_type = self._lower_type(tuple_node.type);
         if cast_ptr_type is not None
             and isinstance(cast_ptr_type, ir.PointerType)
             and isinstance(cast_ptr_type.pointee, ir.LiteralStructType) {

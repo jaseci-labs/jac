@@ -126,6 +126,10 @@ impl NaIRGenPass._emit_dict_helpers(
         return;
     }
 
+    if val_type_name == "ptr" and isinstance(val_type, ir.PointerType) {
+        val_type = ir.IntType(8).as_pointer();
+    }
+
     _key_sz: int = int(key_size);
     if _key_sz == 0 and isinstance(key_type, ir.PointerType) {
         _pointee = key_type?.pointee;
@@ -398,8 +402,6 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     if _own_dk is not None and not use_jacval and _own_dk in self.dict_helpers {
         dict_key = _own_dk;
         helpers = self.dict_helpers[dict_key];
-        key_type = helpers["key_type"];
-        val_type = helpers["val_type"];
     } else {
         key_type = first_key.type;
         (key_type_name, key_size) = self._hash_key_spec(key_type);
@@ -416,6 +418,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         );
         helpers = self.dict_helpers[dict_key];
     }
+
+    key_type = helpers["key_type"];
+    val_type = helpers["val_type"];
 
     _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
