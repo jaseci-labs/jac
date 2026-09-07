@@ -375,15 +375,14 @@ def _bridge_workspace -> str {
 }
 
 
-test "a cross-app import is reported as an edge, not swallowed by the walk" {
+test "a compiled cross-app import is reported as a consumer/provider edge" {
     d = _bridge_workspace();
     try {
         cfg = _config(d);
         apps = [cfg.app("web"), cfg.app("orders"), cfg.app("cart")];
         edges = consumer_provider_edges(cfg, d, apps);
         assert ("orders", "cart") in edges , (
-            "boundary analysis registers modules into the hubs the edge walk "
-            f"reads, and the edge went missing instead of being reported: {edges!r}"
+            f"a declared cross-app import produced no edge: {edges!r}"
         );
     } finally {
         shutil.rmtree(d, ignore_errors=True);
