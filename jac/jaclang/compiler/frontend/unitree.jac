@@ -20,6 +20,7 @@ import from jaclang.compiler.frontend.constant { JacSemTokenType as SemTokType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { ParamKind }
 import type from jaclang.compiler.types.types { TypeBase }
+import type from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.roles {
     Role,
     Kid,
@@ -499,7 +500,7 @@ node Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) postinit,
         _type_cache: (TypeBase | None) postinit,
         _type_cache_ok: bool postinit,
-        ct_value: any postinit,
+        ct_value: CtValue | None postinit,
         coerce_to: (str | None) postinit,
         fw: (str | None) postinit,
         fw_safe: bool postinit,
@@ -739,7 +740,7 @@ node TypeParam(AstSymbolNode, UniNode) {
 node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
     has is_distinct: bool = False;
     has name: Name { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
     has value: Expr { getter; }
 
     def init(
@@ -940,9 +941,9 @@ node ModuleItem(UniNode) {
 node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     has name: Name { getter; }
     has arch_type: Token { getter; }
-    has base_classes: (Sequence[Expr] | None) { getter; }
+    has base_classes: list[Expr] { getter; }
     has keywords: (Sequence[KWPair] | None) { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
     has src_endpoint: (Expr | None) { getter; }
     has tgt_endpoint: (Expr | None) { getter; }
 
@@ -1018,7 +1019,7 @@ node SemDef(ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
 node Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
     has name: Name { getter; }
     has value_type: (Expr | None) { getter; }
-    has base_classes: (Sequence[Expr] | None) { getter; }
+    has base_classes: list[Expr] { getter; }
 
     def init(
         *,
@@ -1054,7 +1055,7 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     has name_ref: (NameAtom | None) { getter; }
     has signature: FuncSignature | EventSignature | None { getter; }
     has decorators: (Sequence[Expr] | None) { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
 
     def init(
         *,

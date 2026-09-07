@@ -3320,8 +3320,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                     E5092,
                     node_override=nd.collection or nd,
                     kind="for-loop iterable",
-                    name="tuple with mixed element storage",
-                    help_text="Every element of an iterated tuple must share one storage width, because the loop variable is a single slot and the checker types it from the tuple's FIRST element -- boxing the elements instead would answer `isinstance` in the body against the wrong member. Use a list literal, whose element type widens to a union, or bind the elements individually."
+                    name="tuple with unsupported element storage",
+                    help_text="Tuple iteration requires elements supported by the native sequence representation."
                 );
             }
             return;

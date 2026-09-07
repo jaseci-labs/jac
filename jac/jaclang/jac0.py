@@ -950,6 +950,30 @@ def _lower_edge_refs(tokens: list[Token]) -> list[Token]:
                     break
             j += 1
         inner = tokens[i + 1 : j]
+        if len(inner) >= 2 and inner[0].value == "?" and inner[1].type == TT.COLON:
+            type_tokens = inner[2:]
+            if not type_tokens or any(
+                t.type != (TT.NAME if n % 2 == 0 else TT.DOT)
+                for n, t in enumerate(type_tokens)
+            ) or len(type_tokens) % 2 == 0:
+                raise ParseError(f"line {tok.line}: seed type filters require a type name")
+            origin = _pop_primary_expr(out)
+            if not origin:
+                raise ParseError(f"line {tok.line}: type filter needs an iterable")
+            item = "_jac_seed_filter_item"
+            names = {t.value for t in tokens if t.type == TT.NAME}
+            while item in names:
+                item += "_"
+            out.extend([
+                _tok(TT.LBRACKET, "[", tok), _tok(TT.NAME, item, tok),
+                _tok(TT.NAME, "for", tok), _tok(TT.NAME, item, tok),
+                _tok(TT.NAME, "in", tok), *origin, _tok(TT.NAME, "if", tok),
+                _tok(TT.NAME, "isinstance", tok), _tok(TT.LPAREN, "(", tok),
+                _tok(TT.NAME, item, tok), _tok(TT.COMMA, ",", tok), *type_tokens,
+                _tok(TT.RPAREN, ")", tok), _tok(TT.RBRACKET, "]", tok),
+            ])
+            i = j + 1
+            continue
         edges_only = False
         if inner and inner[0].type == TT.NAME and inner[0].value == "edge" and not inner[0].backtick:
             edges_only = True

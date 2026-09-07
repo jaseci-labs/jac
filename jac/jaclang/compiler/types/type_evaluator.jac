@@ -491,7 +491,7 @@ walker TypeEvaluator {
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
-    ) -> (tuple | None);
+    ) -> (tuple[dict[str, any], set[int]] | None);
 
     def _is_class_scoped_type_param(node_: TypeParam) -> bool;
     def _collect_typevars_from_base(

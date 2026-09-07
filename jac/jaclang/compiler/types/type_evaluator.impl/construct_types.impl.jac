@@ -205,6 +205,31 @@ impl TypeEvaluator._get_iterable_element_type(
             is_incomplete=iterable_type.is_incomplete
         );
     }
+    if isinstance(iterable_type, ClassType) {
+        members: list[TypeBase] = [];
+        if iterable_type.is_namedtuple() {
+            scope = iterable_type.shared.symbol_table;
+            if isinstance(scope, Archetype) {
+                for field in scope.get_has_vars() {
+                    if field.type_tag is not None {
+                        members.append(
+                            self._convert_to_instance(
+                                self.get_type_of_expression(field.type_tag.tag)
+                            )
+                        );
+                    }
+                }
+            }
+        } elif iterable_type.is_builtin("tuple") {
+            members = [
+                self._convert_to_instance(arg)
+                for arg in iterable_type.private.type_args
+            ];
+        }
+        if members {
+            return members[0] if len(members) == 1 else UnionType(types=members);
+        }
+    }
     iter_type = self.get_type_of_magic_method_call(
         iterable_type, "__iter__", [], node_for_error
     );

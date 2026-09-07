@@ -958,8 +958,6 @@ impl TypeEvaluator._get_enclosing_return_scope(
 impl TypeEvaluator._get_declared_return_type(
     scope: Ability | LambdaExpr
 ) -> TypeBase | None {
-    import from jaclang.compiler.types { types }
-
     if isinstance(scope, LambdaExpr) {
         if (
             isinstance(scope.signature, FuncSignature)
@@ -1199,7 +1197,7 @@ impl TypeEvaluator._set_module_item_symbol_and_type(
 
 impl TypeEvaluator._ct_args_for_class(
     base_type: ClassType, slot_vals: list[Expr]
-) -> (tuple | None) {
+) -> (tuple[dict[str, any], set[int]] | None) {
     if not base_type.shared.ct_params {
         return None;
     }
@@ -1209,12 +1207,12 @@ impl TypeEvaluator._ct_args_for_class(
     }
     ct_args: dict[str, any] = {};
     ct_slots: set[int] = set();
-    for (i, tp) in enumerate(arch.type_params or []) {
+    for (i, tp) in enumerate(arch.type_params) {
         if not tp.is_comptime {
             continue;
         }
         ct_slots.add(i);
-        pname = tp.name.value;
+        pname = tp.sym_name;
         if i >= len(slot_vals) {
             continue;
         }
@@ -1230,7 +1228,7 @@ impl TypeEvaluator._ct_args_for_class(
 
 impl TypeEvaluator._extract_ct_params(node_: Archetype) -> (list[str] | None) {
     names: list[str] = [];
-    for tp in (node_.type_params or []) {
+    for tp in node_.type_params {
         if tp.is_comptime {
             names.append(tp.sym_name);
         }
@@ -1257,7 +1255,7 @@ impl TypeEvaluator._extract_type_params(node_: Archetype) -> list[TypeVarType] {
 
     seen_names: set[str] = set();
     generic_base: AtomTrailer | None = None;
-    for base_class in node_.base_classes or [] {
+    for base_class in node_.base_classes {
         if (not isinstance(base_class, AtomTrailer))
             or base_class.is_attr
             or base_class.is_null_ok {
@@ -1286,7 +1284,7 @@ impl TypeEvaluator._extract_type_params(node_: Archetype) -> list[TypeVarType] {
         );
     }
 
-    for base_class in node_.base_classes or [] {
+    for base_class in node_.base_classes {
         if (not isinstance(base_class, AtomTrailer))
             or base_class.is_attr
             or base_class.is_null_ok {
@@ -1894,7 +1892,7 @@ impl TypeEvaluator._get_signature_type_params(sig: FuncSignature) -> list[TypeVa
 impl TypeEvaluator._get_function_type_params(func: Ability) -> list[TypeVarType] {
     type_params: list[TypeVarType] = [];
 
-    for tp in func.type_params or [] {
+    for tp in func.type_params {
         type_params.append(TypeVarType(name=tp.sym_name));
     }
 
@@ -2122,8 +2120,6 @@ impl TypeEvaluator._is_ellipsis_only_body(body: Sequence[CodeBlockStmt]) -> bool
 impl TypeEvaluator._infer_lambda_block_return_type(
     body: Sequence[CodeBlockStmt]
 ) -> TypeBase {
-    import from jaclang.compiler.types { types }
-
     none_type = self._convert_to_instance(self.get_none_type());
     return_types: list[TypeBase] = [];
     always_returns = self._collect_return_types(body, return_types);

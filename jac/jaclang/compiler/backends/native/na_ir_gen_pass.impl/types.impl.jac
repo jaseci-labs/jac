@@ -272,10 +272,6 @@ impl NaIRGenPass._spec_of(
         }
     }
     if not matched {
-        if self._na_debug_on() and ("Sequence" in tk or "UniNode" in tk) {
-            import sys as _so_sys;
-            _so_sys.stderr.write(f"SPECMISS {tk}\n");
-        }
         return None;
     }
     lowered = self._lower_type(_t);

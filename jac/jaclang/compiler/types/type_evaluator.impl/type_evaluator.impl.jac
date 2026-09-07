@@ -2695,83 +2695,12 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     return instance_type;
                 }
 
-                if isinstance(collection_type, ClassType)
-                    and collection_type.is_namedtuple() {
-                    field_scope = collection_type.shared.symbol_table;
-                    has_vars = field_scope.get_has_vars()
-                        if isinstance(field_scope, Archetype)
-                        else [];
-                    if has_vars {
-                        field_types: list[TypeBase] = [];
-                        for field in has_vars {
-                            if field.type_tag {
-                                field_type = self.get_type_of_expression(
-                                    field.type_tag.tag
-                                );
-                                field_types.append(
-                                    self._convert_to_instance(field_type)
-                                );
-                            }
-                        }
-
-                        if field_types {
-                            first_type = field_types[0];
-                            all_same = all(
-                                isinstance(ft, ClassType)
-                                    and isinstance(first_type, ClassType)
-                                    and ft.shared == first_type.shared
-                                for ft in field_types
-                            );
-                            if all_same {
-                                node_.type = first_type;
-                                return first_type;
-                            }
-
-                            node_.type = field_types[0];
-                            return field_types[0];
-                        }
-                    }
-                }
-
-                iter_type = self.get_type_of_magic_method_call(
-                    collection_type, "__iter__", [], node_.parent,
+                element_type = self._get_iterable_element_type(
+                    collection_type, node_.parent
                 );
-                if isinstance(iter_type, ClassType) {
-                    next_type = self.get_type_of_magic_method_call(
-                        iter_type, "__next__", [], node_.parent
-                    );
-                    if next_type and not isinstance(next_type, UnknownType) {
-                        result_type = self._convert_to_instance(next_type);
-                        node_.type = result_type;
-                        return result_type;
-                    }
-
-                    if iter_type.private
-                        and iter_type.private.type_args
-                        and len(iter_type.private.type_args) == 1 {
-                        elem_type = iter_type.private.type_args[0];
-
-                        if isinstance(elem_type, ClassType) {
-                            result_type = elem_type.clone_as_instance();
-                            node_.type = result_type;
-                            return result_type;
-                        }
-
-                        if isinstance(collection_type, ClassType)
-                            and collection_type.private.type_args {
-                            specialized = iter_type.specialize_generics(
-                                collection_type.private.type_args
-                            );
-                            if len(specialized.private.type_args) == 1 {
-                                iterable_type = specialized.private.type_args[0];
-                                if isinstance(iterable_type, ClassType) {
-                                    result_type = iterable_type.clone_as_instance();
-                                    node_.type = result_type;
-                                    return result_type;
-                                }
-                            }
-                        }
-                    }
+                if element_type is not None {
+                    node_.type = element_type;
+                    return element_type;
                 }
                 return UnknownType();
             }

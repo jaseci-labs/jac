@@ -484,7 +484,7 @@ impl NaIRGenPass._tuple_seq_flavor(elem_types: list) -> (tuple | None) {
     first = elem_types[0];
     for t in elem_types[1:] {
         if t != first {
-            return None;
+            return ("jacval", self.jacval_type);
         }
     }
     if isinstance(first, ir.DoubleType) {

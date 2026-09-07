@@ -18,10 +18,8 @@ a different arrival path: homogeneous str/int/float tuples, the empty and
 single-element literals, a tuple bound to a local, a tuple returned from a
 call, and a nested loop with `break`/`continue` over the tuple.
 
-A tuple of mixed element storage is the one shape that must not iterate, and
-it gets its own fixture: the loop variable is one slot typed from the tuple's
-first element, so boxing the elements would answer the body's `isinstance`
-against the wrong member. It has to refuse loudly instead.
+Mixed tuples use the union of their element types and the shared tagged-value
+representation, so narrowing in the loop observes the current member.
 """
 
 import ctypes;
@@ -146,40 +144,32 @@ test "the mixed list twin still iterates boxed and reads the right member" {
 }
 
 
-test "a tuple of mixed element storage refuses instead of answering wrong" {
-    import contextlib;
-    import io;
-    buf = io.StringIO();
+test "mixed tuple iteration retains values and narrowing" {
     prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, MIXED_FIXTURE)),
-            options=native_force_opts()
-        );
+    mod = prog.compile(
+        file_path=str(os.path.join(FIXTURES, MIXED_FIXTURE)),
+        options=native_force_opts()
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+    eng = mod.gen.native_engine;
+    assert eng is not None;
+    for name in ["mixed_tuple", "mixed_list"] {
+        address = eng.get_function_address(name);
+        assert address != 0 , name;
+        fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
+        for seed in SEEDS {
+            assert fn(seed) == seed * 125 + 38 , name;
+        }
     }
-    # The refusal demotes mixed_tuple to a seam whose reason names the
-    # construct, and the module entry that natively calls the demoted
-    # function stays a loud E5092 -- a mixed tuple must never lower
-    # silently: the loop variable is typed from the tuple's first element,
-    # so a boxed iteration answers the body's isinstance against the wrong
-    # member.
-    seam = buf.getvalue();
-    assert "demoting mixed_tuple" in seam , (
-        f"expected the mixed-tuple refusal to demote mixed_tuple, got:\n{seam}"
-    );
-    assert "for-loop iterable" in seam and "mixed element storage" in seam , (
-        f"the demotion reason must name the mixed-tuple refusal, got:\n{seam}"
-    );
-    errs = [str(e) for e in (prog.errors_had or [])];
-    joined = " ".join(errs);
-    assert "mixed_tuple" in joined , (
-        f"the native entry caller of the demoted function must stay loud, "
-        f"got: {errs}"
-    );
+    address = eng.get_function_address("optional_tuple");
+    assert address != 0;
+    fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
+    assert fn(11) == 22;
+    assert fn(0) == 0;
 }
 
 
-test "the refused tuple still gives the right answer through sv" {
+test "mixed tuple iteration agrees with the host" {
     prev = get_effective_default_codespace_override();
     set_effective_default_codespace("server");
     try {
@@ -191,7 +181,7 @@ test "the refused tuple still gives the right answer through sv" {
     }
     assert mods , "sv import of the mixed fixture produced no module";
     assert mods[0].mixed_tuple(0) == 38 , (
-        "the demoted spelling must still compute 1, len('ab'), 3 folded by 5"
+        "the tuple must compute 1, len('ab'), 3 folded by 5"
     );
     assert mods[0].mixed_list(0) == 38 , "the list spelling agrees";
 }
