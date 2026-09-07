@@ -1,4 +1,3 @@
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
@@ -24,7 +23,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E5029
 }
 import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 obj DepClibMeta {
     has clib_paths: list[str] = [],
