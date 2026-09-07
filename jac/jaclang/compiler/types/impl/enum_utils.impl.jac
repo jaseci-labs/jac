@@ -136,18 +136,21 @@ impl get_special_enum_value_type_from_bases(
         return None;
     }
 
-    mro_shared_set: set[ClassDetailsShared] = set();
+    has_enum = False;
+    has_int = False;
+    has_str = False;
     for base in base_classes {
         if isinstance(base, ClassType) {
             for mro_cls in base.shared.mro {
-                mro_shared_set.add(mro_cls.shared);
+                has_enum = has_enum
+                    or mro_cls.shared.same_class(prefetch.enum_class.shared);
+                has_int = has_int
+                    or mro_cls.shared.same_class(prefetch.int_class.shared);
+                has_str = has_str
+                    or mro_cls.shared.same_class(prefetch.str_class.shared);
             }
         }
     }
-
-    has_enum = prefetch.enum_class.shared in mro_shared_set;
-    has_int = prefetch.int_class.shared in mro_shared_set;
-    has_str = prefetch.str_class.shared in mro_shared_set;
 
     if has_enum {
         if has_str {

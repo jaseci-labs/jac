@@ -599,8 +599,17 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
     is_data_class = node_.sym_category != SymbolType.TYPE;
 
     is_enum_class = any(
-        isinstance(base, ClassType) and base.shared.is_enum_class
-        for base in base_classes
+        isinstance(base, ClassType)
+            and (
+                base.shared.is_enum_class
+                or (
+                    self.prefetch.enum_class is not None
+                    and any(
+                        ancestor.shared.same_class(self.prefetch.enum_class.shared)
+                        for ancestor in base.shared.mro
+                    )
+                )
+            ) for base in base_classes
     );
 
     is_namedtuple = any(

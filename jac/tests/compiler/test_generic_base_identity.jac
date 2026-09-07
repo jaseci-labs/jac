@@ -89,3 +89,23 @@ test "class values assign to a reconstructed builtin type annotation" {
     assert not types_equivalent(builtin_type, unrelated);
     assert not evaluator.assign_type(integer, unrelated.clone_as_instance());
 }
+
+test "stdlib enum ancestry survives independently loaded class graphs" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    program.compile(
+        file_path="enum_base_identity.jac",
+        use_str="import from enum { StrEnum, IntEnum }\n"
+            + "import from jaclang.compiler.frontend.constant { Constants }\n"
+            + "class Label(StrEnum) { with entry { FIRST = 'first'; } }\n"
+            + "class Number(IntEnum) { with entry { FIRST = 1; } }\n"
+            + "def label -> str { return Label.FIRST.value; }\n"
+            + "def number -> int { return Number.FIRST.value; }\n"
+            + "def guest -> str { return Constants.GUEST.value; }\n",
+        options=CompileOptions(
+            no_cgen=True, force_target_program=True, need_full_ast=True
+        )
+    );
+    assert not program.errors_had , str(program.errors_had);
+}
