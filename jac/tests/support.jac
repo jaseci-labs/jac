@@ -167,8 +167,10 @@ def compile_native(
 }
 
 """Inspect fresh lowering output before LLVM optimization removes layout types."""
-def compile_native_ir(fixture: str, fixture_dir: str = "") -> Module {
-    options = native_force_opts();
+def compile_native_ir(
+    fixture: str, fixture_dir: str = "", options: CompileOptions | None = None
+) -> Module {
+    options = options or native_force_opts();
     options.skip_native_engine = True;
     options.no_ir_cache = True;
     return _compile_native_fixture(fixture, fixture_dir, options);
