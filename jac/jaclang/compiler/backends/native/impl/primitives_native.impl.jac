@@ -3528,17 +3528,6 @@ impl NativeDictEmitter.emit_items(
 
     tuple_type = ir.LiteralStructType([key_type, val_type]);
 
-    kt_str = "i8p"
-        if isinstance(key_type, ir.PointerType)
-        else ("f64" if isinstance(key_type, ir.DoubleType) else "i64");
-    vt_str = "i8p"
-        if isinstance(val_type, ir.PointerType)
-        else ("f64" if isinstance(val_type, ir.DoubleType) else "i64");
-    tkey = f"{kt_str}.{vt_str}";
-    if tkey not in p.tuple_types {
-        p.tuple_types[tkey] = tuple_type;
-    }
-
     p._emit_list_helpers("ptr", i8p);
     lhelpers = p.list_helpers.get("ptr");
     if lhelpers is None {
@@ -3550,10 +3539,6 @@ impl NativeDictEmitter.emit_items(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.len.ptr"
     );
     dict_len = b.load(len_ptr, name="ditems.len");
-
-    null_ptr = ir.Constant(tuple_type.as_pointer(), None);
-    size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="ditems.sizeof.gep");
-    tup_size = b.ptrtoint(size_gep, i64, name="ditems.sizeof");
 
     func = b.basic_block.function;
     entry_bb = b.basic_block;
@@ -3571,21 +3556,15 @@ impl NativeDictEmitter.emit_items(
     key = b.call(helpers["get_key"], [target, idx], name="ditems.key");
     val = b.call(helpers["get"], [target, key], name="ditems.val");
 
-    raw = b.call(p.rc_alloc_fn, [tup_size], name="ditems.alloc");
-    tup_ptr = b.bitcast(raw, tuple_type.as_pointer(), name="ditems.tup");
-    k_ptr = b.gep(
-        tup_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.k.ptr"
-    );
-    v_ptr = b.gep(
-        tup_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="ditems.v.ptr"
-    );
-    b.store(key, k_ptr);
-    b.store(val, v_ptr);
-
-    tup_i8p = b.bitcast(tup_ptr, i8p, name="ditems.i8p");
+    pair: ir.Value = ir.Constant(tuple_type, ir.Undefined);
+    pair = b.insert_value(pair, key, 0, name="ditems.key.field");
+    pair = b.insert_value(pair, val, 1, name="ditems.val.field");
+    boxed = p._box_value_tuple(pair);
+    tup_i8p = b.bitcast(boxed, i8p, name="ditems.i8p");
     b.call(lhelpers["append"], [new_list, tup_i8p]);
+    p._emit_rc_release_simple(boxed, op="dict_items", loc="");
     next_idx = b.add(idx, ir.Constant(i64, 1), name="ditems.next");
-    idx.add_incoming(next_idx, body_bb);
+    idx.add_incoming(next_idx, b.basic_block);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
     return new_list;

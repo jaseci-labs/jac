@@ -407,6 +407,23 @@ impl NaIRGenPass._codegen_compr_walk(
         self._emit_compr_element(kind, acc, key_expr, val_expr, spec);
         return;
     }
+    state = self._enter_bindings(inherit=True);
+    try {
+        self._codegen_compr_walk_body(comprs, idx, kind, acc, key_expr, val_expr, spec);
+    } finally {
+        self._leave_bindings(state, release=True);
+    }
+}
+
+impl NaIRGenPass._codegen_compr_walk_body(
+    comprs: list,
+    idx: int,
+    kind: str,
+    acc: ir.Value,
+    key_expr: uni.UniNode,
+    val_expr: (uni.UniNode | None),
+    spec: str
+) -> None {
     inner = comprs[idx];
     loop_target = inner.target;
     collection = inner.collection;
@@ -428,6 +445,7 @@ impl NaIRGenPass._codegen_compr_walk(
         return;
     }
 
+    coll_elem_type_name: str | None = None;
     dict_key = self._dict_key_reconcile(self._dict_key_of(collection), coll_val);
     if dict_key is not None {
         coll_helpers = self.dict_helpers.get(dict_key);
@@ -471,10 +489,20 @@ impl NaIRGenPass._codegen_compr_walk(
             );
         }
     }
+    unpack_target = loop_target if isinstance(loop_target, uni.TupleVal) else None;
     loop_var_name = self._get_name(loop_target);
-    if loop_var_name is None {
+    if loop_var_name is None and unpack_target is None {
         return;
     }
+    targets = unpack_target.values if unpack_target is not None else [loop_target];
+    names: list[str] = [];
+    for target in targets {
+        name = self._get_name(target);
+        if name is not None {
+            names.append(name);
+        }
+    }
+    self._shadow_bindings(names);
     i64 = ir.IntType(64);
     len_val = self.builder.call(coll_helpers["len"], [coll_val], name="compr.len");
     idx_alloca = self._entry_alloca(i64, "compr.idx");
@@ -483,6 +511,9 @@ impl NaIRGenPass._codegen_compr_walk(
     inner_type: (ir.Type | None) = None;
     if dict_key is None and coll_elem_type_name == "ptr" {
         inner_type = self._list_elem_llvm_of(collection);
+        if inner_type is None {
+            inner_type = self._iterable_elem_llvm_of(collection);
+        }
         if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
             inner_type = None;
         }
@@ -490,15 +521,18 @@ impl NaIRGenPass._codegen_compr_walk(
             actual_elem_type = inner_type;
         }
     }
-    loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    loop_alloca: ir.Value | None = None;
+    if unpack_target is None and loop_var_name is not None {
+        loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
 
-    if isinstance(actual_elem_type, ir.PointerType) {
-        _compr_saved_block = self.builder.block;
-        self.builder.position_after(loop_alloca);
-        self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
-        self.builder.position_at_end(_compr_saved_block);
+        if isinstance(actual_elem_type, ir.PointerType) {
+            _compr_saved_block = self.builder.block;
+            self.builder.position_after(loop_alloca);
+            self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
+            self.builder.position_at_end(_compr_saved_block);
+        }
+        self.local_vars[loop_var_name] = loop_alloca;
     }
-    self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="compr.cond");
     body_bb = func.append_basic_block(name="compr.body");
@@ -522,12 +556,24 @@ impl NaIRGenPass._codegen_compr_walk(
         }
     }
 
-    if isinstance(actual_elem_type, ir.PointerType) {
-        _compr_old = self.builder.load(loop_alloca, name="compr.old");
-        self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
-        self._emit_rc_retain(elem_val, op="compr_elem", loc="");
+    if unpack_target is not None {
+        if not self._codegen_tuple_unpack(unpack_target.values, elem_val, None) {
+            self.emit(
+                E5092,
+                node_override=unpack_target,
+                kind="comprehension target",
+                name="tuple unpacking"
+            );
+            return;
+        }
+    } elif loop_alloca is not None {
+        if isinstance(actual_elem_type, ir.PointerType) {
+            _compr_old = self.builder.load(loop_alloca, name="compr.old");
+            self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
+            self._emit_rc_retain(elem_val, op="compr_elem", loc="");
+        }
+        self.builder.store(elem_val, loop_alloca);
     }
-    self.builder.store(elem_val, loop_alloca);
     if conditionals {
         filter_bb = func.append_basic_block(name="compr.filter");
         skip_bb = func.append_basic_block(name="compr.skip");
@@ -607,6 +653,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     i64 = ir.IntType(64);
     start_val = self._coerce_type(start_val, i64);
     stop_val = self._coerce_type(stop_val, i64);
+    self._shadow_bindings([loop_var_name]);
     loop_alloca = self._entry_alloca(i64, loop_var_name);
     self.builder.store(start_val, loop_alloca);
     self.local_vars[loop_var_name] = loop_alloca;

@@ -363,7 +363,7 @@ class _ConstOpMixin(object) {
         Pointer cast to a different pointer type.
         """
     @_castop('bitcast')
-    def bitcast(self: _ConstOpMixin, typ: any) -> object {}
+    def bitcast(self: _ConstOpMixin, typ: any) -> Value {}
 
     """
         Convert unsigned integer to floating-point.
@@ -418,7 +418,7 @@ class _ConstOpMixin(object) {
     """
         Call getelementptr on this pointer constant.
         """
-    def gep(self: _ConstOpMixin, indices: any) -> object {
+    def gep(self: _ConstOpMixin, indices: any) -> FormattedConstant {
         if not isinstance(self.type, types.PointerType) {
             raise TypeError(
                 ("can only call gep() on pointer constants, not '%s'" % (self.type, ))

@@ -90,7 +90,7 @@ impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
 }
 
 impl NaIRGenPass._codegen_tuple_unpack(
-    targets: list, tuple_val: ir.Value, tuple_node: (object | None)
+    targets: Sequence[uni.UniNode], tuple_val: ir.Value, tuple_node: (object | None)
 ) -> bool {
     _elem_owned = tuple_val?.na_tuple_owned;
     _tu_opt = self._opt_payload_of(tuple_val.type);
@@ -189,6 +189,12 @@ impl NaIRGenPass._codegen_tuple_unpack(
                 self.builder.position_at_end(_saved_block);
                 if not moved {
                     self._emit_rc_retain(new_ref, op="unpack", loc="");
+                }
+                old_ref = self._rc_slot_ref(
+                    self.builder.load(alloca, name=f"unpack.{i}.old")
+                );
+                if old_ref is not None {
+                    pending_old.append(old_ref);
                 }
             }
             self.builder.store(elem_val, alloca);

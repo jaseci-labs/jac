@@ -18,7 +18,7 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     i8_ptr = ir.IntType(8).as_pointer();
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
-    entries: list[ir.Constant] = [self._emit_class_name_const(arch_name)];
+    entries: list[ir.Value] = [self._emit_class_name_const(arch_name)];
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);
         if func is not None {
@@ -384,7 +384,7 @@ impl NaIRGenPass._codegen_virtual_call(
     return _vt_res;
 }
 
-impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Value {
+impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
     cached = self._class_name_consts.get(arch_name);
     if cached is not None {
         return cached;

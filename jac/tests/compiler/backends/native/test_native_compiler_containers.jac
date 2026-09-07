@@ -39,4 +39,22 @@ test "dictionary comprehensions preserve key types and iteration order" {
     empty = get_func(engine, "empty_dictionary_comprehensions", ctypes.c_int64);
     assert selected() == 23;
     assert empty() == 0;
+    object_items = get_func(engine, "object_items_comprehension", ctypes.c_int64);
+    drops = get_func(engine, "item_drop_count", ctypes.c_int64);
+    before = drops();
+    assert object_items() == 223;
+    assert drops() - before == 2;
+    scope = get_func(engine, "comprehension_scope", ctypes.c_int64, ctypes.c_int64);
+    before = drops();
+    scope_value = scope(7);
+    assert scope_value == 125 , scope_value;
+    assert drops() - before == 3;
+    stored = get_func(engine, "stored_items_lifetime", ctypes.c_int64);
+    before = drops();
+    assert stored() == 9;
+    assert drops() - before == 2;
+    set_items = get_func(engine, "set_items_lifetime", ctypes.c_int64);
+    before = drops();
+    assert set_items() == 2;
+    assert drops() - before == 2;
 }

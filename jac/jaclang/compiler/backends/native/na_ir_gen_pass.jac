@@ -1,5 +1,6 @@
 import jaclang.compiler.frontend.unitree as uni;
 import os;
+import from collections.abc { Sequence }
 import sys;
 import from jaclang.compiler.backends.native.llvm { binding as llvm, ir }
 import from jaclang.compiler.backends.native.lowering {
@@ -86,21 +87,25 @@ obj NativeErrorHandler {
     has dispatch: ir.Block;
 }
 
-obj NativeFunctionState {
-    has _builder: ir.IRBuilder | None,
-        func_symtab: dict[str, ir.Function],
-        nested_captures: dict[str, tuple[ir.Function, list[tuple[str, str]]]],
-        lambda_captures: dict[str, list[tuple[str, ir.Value]]],
-        local_vars: dict[str, ir.Value],
+obj NativeBindingState {
+    has local_vars: dict[str, ir.Value],
         param_vars: set[str],
         nogc_no_free_vars: set[str],
         nogc_owned_str_vars: set[str],
         region_handle_vars: set[str],
-        region_open_stack: list[int],
-        loop_stack: list[tuple],
         var_list_elem_struct: dict[str, ir.Type | None],
         closure_cell_vars: set[str],
-        closure_cell_handles: dict[str, ir.Value],
+        closure_cell_handles: dict[str, ir.Value];
+}
+
+obj NativeFunctionState {
+    has bindings: NativeBindingState,
+        _builder: ir.IRBuilder | None,
+        func_symtab: dict[str, ir.Function],
+        nested_captures: dict[str, tuple[ir.Function, list[tuple[str, str]]]],
+        lambda_captures: dict[str, list[tuple[str, ir.Value]]],
+        region_open_stack: list[int],
+        loop_stack: list[tuple],
         _self_owned: bool,
         _self_arch: str | None,
         _di_current_sp: object,
@@ -204,7 +209,7 @@ walker NaIRGenPass(Transform) {
         _capability_demotions: dict[int, list] = {},
         _claimed_capability_demotions: set[int] = set(),
         _sig_decl_kind: (str | None) = None,
-        _class_name_consts: dict[str, ir.Value] = {},
+        _class_name_consts: dict[str, ir.Constant] = {},
         _isa_fn: (ir.Function | None) = None,
         _isa_seq_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
@@ -481,6 +486,9 @@ walker NaIRGenPass(Transform) {
     def _is_bytes_type(t: ir.Type) -> bool;
     def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
     def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
+    def _enter_bindings(inherit: bool = False) -> NativeBindingState;
+    def _leave_bindings(state: NativeBindingState, release: bool = False) -> None;
+    def _shadow_bindings(names: list[str]) -> None;
     def _enter_function(func: ir.Function) -> NativeFunctionState;
     def _bind_function_parameter(
         name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False
@@ -686,6 +694,16 @@ walker NaIRGenPass(Transform) {
     ) -> None;
 
     def _codegen_compr_walk(
+        comprs: list,
+        idx: int,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
+    ) -> None;
+
+    def _codegen_compr_walk_body(
         comprs: list,
         idx: int,
         kind: str,
@@ -1913,7 +1931,7 @@ walker NaIRGenPass(Transform) {
     def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(
-        targets: list, tuple_val: ir.Value, tuple_node: (object | None)
+        targets: Sequence[uni.UniNode], tuple_val: ir.Value, tuple_node: (object | None)
     ) -> bool;
 
     def _codegen_tuple_index(
@@ -1997,6 +2015,7 @@ walker NaIRGenPass(Transform) {
     def _ptr_box_kind(rt: any) -> int;
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
+    def _iterable_elem_llvm_of(expr: uni.UniNode | None) -> ir.Type | None;
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _typed_elem_llvm_of(
@@ -2082,7 +2101,7 @@ walker NaIRGenPass(Transform) {
         obj_ptr: ir.Value, names: list[str]
     ) -> (ir.Value | None);
 
-    def _emit_class_name_const(arch_name: str) -> ir.Value;
+    def _emit_class_name_const(arch_name: str) -> ir.Constant;
     def _emit_runtime_class_name_fn -> (ir.Function | None);
     def _codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None);
     def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);
