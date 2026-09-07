@@ -283,6 +283,7 @@ walker NaIRGenPass(Transform) {
         str_len_raw_fn: (ir.Function | None) = None,
         str_wrap_fn: (ir.Function | None) = None,
         str_wrap_raw_fn: (ir.Function | None) = None,
+        str_import_fn: (ir.Function | None) = None,
         str_unwrap_fn: (ir.Function | None) = None,
         _str_desc_ty: (ir.Type | None) = None,
         rc_roots_buf_gv: object = None,

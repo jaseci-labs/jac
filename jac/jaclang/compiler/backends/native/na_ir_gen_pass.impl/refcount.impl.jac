@@ -1200,6 +1200,28 @@ impl NaIRGenPass._emit_str_desc_helpers -> None {
     ub = ir.IRBuilder(_u_copy);
     ub.ret(ub.call(self.str_new_fn, [_u_data, _u_len], name="u.copy"));
     self.str_unwrap_fn = uf;
+
+    incoming = self._define_function(
+        "__jac_str_import", ir.FunctionType(i8p, [i8p])
+    );
+    incoming.linkage = "private";
+    incoming.args[0].name = "source";
+    ib = ir.IRBuilder(incoming.append_basic_block("entry"));
+    null_bb = incoming.append_basic_block("null");
+    copy_bb = incoming.append_basic_block("copy");
+    ib.cbranch(
+        ib.icmp_unsigned("==", incoming.args[0], ir.Constant(i8p, None)),
+        null_bb,
+        copy_bb
+    );
+    ib.position_at_end(null_bb);
+    ib.ret(ir.Constant(i8p, None));
+    ib.position_at_end(copy_bb);
+    raw = ib.call(self.str_wrap_raw_fn, [incoming.args[0]], name="raw");
+    data = ib.extract_value(raw, _di, name="raw.data");
+    size = ib.extract_value(raw, _li, name="raw.len");
+    ib.ret(ib.call(self.str_new_fn, [data, size], name="owned"));
+    self.str_import_fn = incoming;
 }
 
 impl NaIRGenPass._str_norm(val: ir.Value | None) -> (ir.Value | None) {
@@ -1237,8 +1259,8 @@ impl NaIRGenPass._membrane_str_in(b: ir.IRBuilder, val: ir.Value) -> ir.Value {
     if self.str_unwrap_fn is None {
         self._emit_str_desc_helpers();
     }
-    d = b.call(self.str_wrap_raw_fn, [val], name="mem.in.wrap");
-    return b.call(self.str_unwrap_fn, [d], name="mem.in");
+    result = b.call(self.str_import_fn, [val], name="mem.in");
+    return self._mark_owned(result);
 }
 
 impl NaIRGenPass._str_alloc(
