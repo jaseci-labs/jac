@@ -51,3 +51,8 @@ Run jaclang_org using the development compiler and exercise it with `jac browse`
 - Resolved the native placement import failure, an AST unparse API mismatch, and a bootstrap import cycle. Client bundle diagnostics now include the self-hosting compiler program's errors.
 - Corrected signup JSON narrowing/status conversion and Wasm host object typing. The five shared client runtime modules produce compiler artifacts in diagnostic runs; application/browser acceptance remains pending.
 - Host registration now resolves `ClassType` scopes (including bases), replacing an empty legacy scope shortcut; rebuilding the app to validate this correction.
+
+- Browser acceptance in development mode: home and source explorer render; arena renders at about 60 fps with updating health/deaths; navigation to JacYac succeeds without application console errors.
+- A local browser account completed signup, automatic login, post creation, post deletion, and logout. Feed and hashtag counts updated after both mutations; the validation post was removed.
+- The GitHub project flow fetched a public repository and commit through the typed contracts and correctly rejected the repository for containing no Jac code. The docs page loaded its 105-page navigation.
+- Production build and emitted audit verification are in progress. Browser observations do not claim exhaustive cache-race, ABI, or external OAuth coverage.
