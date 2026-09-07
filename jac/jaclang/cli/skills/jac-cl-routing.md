@@ -1,6 +1,6 @@
 ---
 name: jac-cl-routing
-description: Multi-page navigation on the client - pages/ directory routing, [id] params, layouts, route groups, redirects, and programmatic navigation. Load when adding pages or multi-screen flows. Pair with `jac-cl-components` (the components being routed), `jac-cl-auth` (protected routes).
+description: Implement page routes, parameters, layouts, groups, redirects, and navigation. Use when adding screens or debugging route resolution.
 ---
 
 Two routing systems, both client-side (URL changes, no full reload). **File-based routing is the recommended default**: files in a `pages/` directory become routes by convention - no Router wiring at all. Manual `<Router>`/`<Routes>` is the explicit alternative for apps that want one file of route declarations.

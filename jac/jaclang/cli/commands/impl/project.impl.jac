@@ -518,15 +518,17 @@ files, consult the reference guides bundled with the compiler.
 
 ## Reference guides
 
-The `jac` CLI ships curated reference guides ("Agent Skills") -- the
-authoritative spec for writing correct, idiomatic Jac:
+The `jac` CLI ships curated reference guides ("Agent Skills") -- versioned
+coding guidance for the installed compiler:
 
 - `jac guide` -- list every available guide
 - `jac guide <name>` -- print a guide (e.g. `jac guide jac-types`)
 - `jac guide --search <keyword>` -- find guides by topic
 - `jac guide --json` -- machine-readable output for tooling
 
-Start with `jac guide jac-core-cheatsheet` and `jac guide jac-types`.
+Start with `jac guide jac-essentials`, then load the guide for your task.
+Use `jac guide <name> --sections` to list headings and
+`jac guide <name> --section <slug>` to retrieve a relevant section.
 
 ## Validate your work
 

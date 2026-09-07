@@ -2,7 +2,7 @@
 
 Jac's built-in client framework lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: declarations with client-only syntax (JSX, npm imports) -- plus anything client code references -- compile to JavaScript and run in the browser, while everything else compiles to Python and runs on the server.
 
-This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) is built in, so changes to both frontend and backend code reflect instantly during development.
+This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) updates client code during development. Restart the development server after changing server code.
 
 In this tutorial, you'll set up a full-stack project, understand the file structure, and get the development server running.
 
@@ -13,7 +13,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 > - Install: `curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash` (installs the self-contained `jac` binary -- no Python, pip, or uv required)
 > - Time: ~15 minutes
 
-!!! note "Explicit markers are optional"
+!!! note "Placement is inferred"
     Nothing in this tutorial marks the client/server split -- the compiler infers client placement from JSX and npm imports (and from what that client code uses). When a decision must be forced, the override is a `[placement.pins]` entry in `jac.toml`. See [Core Concepts](../../quick-guide/what-makes-jac-different.md) for how inference works.
 
 ---
@@ -21,7 +21,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 ## Create a Project
 
 ```bash
-jac create --kind web-static myapp
+jac create --kind web-app myapp
 cd myapp
 ```
 

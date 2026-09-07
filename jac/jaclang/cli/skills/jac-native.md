@@ -1,6 +1,6 @@
 ---
 name: jac-native
-description: Compiling Jac to native machine code via LLVM - whole-module native inference under `jac run` (the default codespace), native sections in mixed .jac files (inferred from extern C seeds; [placement.pins] pins pure compute), and standalone zero-dependency binaries via `jac build --native`; the supported subset, Python-congruent stdlib, C FFI, and gotchas. Load when speeding up a hot loop, building a native binary or CLI tool, or working with native code. For C-ABI shared libraries see `jac-native-shared`; for in-browser wasm see `jac-native-wasm`.
+description: Compile Jac to native executables. Use for supported native constructs, C interoperation, build options, or native diagnostics.
 ---
 
 The native codespace compiles Jac through LLVM to machine code - no Python runtime, no external compiler or linker (Jac bundles the whole toolchain). Three verbs:

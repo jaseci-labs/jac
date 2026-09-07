@@ -1,6 +1,6 @@
 ---
 name: jac-types
-description: The Jac type system - annotations, unions, optionals, inference, `as` casts, any-boundary fixes, import type, ambient typing names, generics, and common type errors. Load before writing any non-trivial typed function or when debugging a type-check failure.
+description: Resolve Jac type annotations, inference, any boundaries, generics, and narrowing. Use for type errors or unfamiliar typing constructs.
 ---
 
 Jac is statically typed at **annotation boundaries** and inferred inside function bodies. Every `def` parameter and every `has` field needs an explicit type; a `def` that returns a value needs an explicit return type (a `def` with no `return` infers `None` - don't write `-> None`, it warns W3037). Local variables get their type from the right-hand side. Types are unified across client and server code.

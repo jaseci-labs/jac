@@ -1816,7 +1816,8 @@ JAC_APP_INVENTORY_URL=http://host-a:8001 jac run orders --port 8000
 
 #### Troubleshooting
 
-- **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchors persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to cross-app calls; any `def:pub` call can hit this after a schema change.
+If an endpoint reports an invalid anchor, check its ID, the selected app and store, and recent schema changes. Run `jac guide jac-debugging --section diagnose-state-and-cache-errors` for the diagnostic sequence. Preserve existing data until you have identified the cause and chosen a repair.
+
 - **`BridgeUnavailable: app 'x' is not registered`.** The provider app is neither colocated nor reachable: the served app has no `[apps.x]` table to colocate, or in a fleet/multi-host setup `JAC_APP_X_URL` is unset.
 - **`BridgeRejected` with status 404 / 401.** The element is not on the provider's bridge surface (`jac check` reports `E5106` for the compile-time half), or the hop carried no usable `Authorization` for a `:priv` endpoint.
 - **`E1042` at a call you did not think was remote.** The imported element is owned by another app; add `await` (and make the enclosing function `async`).

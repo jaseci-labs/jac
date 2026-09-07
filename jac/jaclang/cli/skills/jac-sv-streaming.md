@@ -1,6 +1,6 @@
 ---
 name: jac-sv-streaming
-description: Streaming endpoints - SSE (server-sent events), `def:pub ... -> Generator`, `report stream()`, progress updates, live feeds, token-by-token output, sv-to-sv stream pass-through, consuming a stream in the browser with fetch + getReader. Load when an endpoint must deliver results incrementally instead of one response. Pair with `jac-sv-endpoints`, `jac-sv-microservices`.
+description: Produce and consume incremental endpoint responses. Use for SSE, streamed reports, token output, or cross-app stream forwarding.
 ---
 
 A function endpoint streams by returning a `Generator`: build a nested generator and `report` it - the ONE place a `def` uses `report` (everywhere else only walkers report). Each `yield` leaves the server as one SSE frame the moment it happens:

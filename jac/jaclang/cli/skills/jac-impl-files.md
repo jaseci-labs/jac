@@ -1,6 +1,6 @@
 ---
 name: jac-impl-files
-description: Splitting declarations from method bodies via impl blocks, .impl.jac files, impl/ and .impl/ directory layouts, client-component handler annexes, .test.jac annexes, and package layout. Load when a source file grows past ~100 lines, or to separate a clean public-API surface from implementation.
+description: Separate declarations and implementations using impl blocks and annex files. Use when organizing interfaces, bodies, tests, or client handlers.
 ---
 
 A `.jac` file declares fields, enums, method signatures. Implementations live in `impl <name>` blocks - inline in the same file, or in auto-discovered `.impl.jac` annex files. The compiler auto-pairs them by **basename** - no `import` between them. Three layouts work (all verified):

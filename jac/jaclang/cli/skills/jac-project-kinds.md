@@ -1,6 +1,6 @@
 ---
 name: jac-project-kinds
-description: Choosing the right guides for what you're building - maps every Jac project kind (CLI, API service, service apps, full-stack, native binary, shared library, wasm, desktop, mobile, PyPI/npm packages) to its build verbs and the guides to load, and explains workspaces (several apps of different kinds over one shared core/ via [apps.<name>] tables). Load FIRST when starting any new project or when unsure which guides apply.
+description: Choose a Jac project kind and its build commands. Use when starting a project or selecting task-specific guides.
 ---
 
 Jac compiles one language to three runtimes - Python bytecode (server), JavaScript (client), and native machine code (which also targets WebAssembly). Every project kind is a combination of those codespaces. Placement is inferred: JSX/npm imports mark code client and references pull helpers along, server is the default, and native is seeded by extern C declarations; overrides live in `jac.toml` under `[placement.pins]` (see `jac-codespaces`). Find your kind, run its verbs, load its guides (`jac guide <name>`).

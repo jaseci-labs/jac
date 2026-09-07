@@ -1,6 +1,6 @@
 ---
 name: jac-testing
-description: Writing and running tests in Jac - `test "name" { }` blocks, `jac test` flags, testing walkers via spawn + .reports, the persisted-root/`jac clean` gotcha, file-naming rules, parametrize(), JacTestClient for in-process endpoint tests, [test] config. Load before writing any test or when a test run behaves strangely. Pair with `jac-debugging` (diagnosing failures) and `jac-by-llm` (MockLLM).
+description: Write and run Jac unit, graph, and endpoint tests. Use for test fixtures, isolation, runner options, and failed repeat runs.
 ---
 
 Tests are first-class language blocks written alongside the code they test - `jac run` ignores them; `jac test` runs them. All checks are plain `assert` statements, with an optional message: `assert user.is_valid(), f"bad user: {user.name}";`.
@@ -46,7 +46,7 @@ Verified behavior: `jac test` runs test blocks **in parallel across isolated wor
 - Never rely on one test seeing nodes another test created in the same run - each test builds and asserts on its own data.
 - A green suite can go red on re-run because last run's persisted nodes are still there - or crash with `NodeAnchor <id> is not a valid reference` when stale persisted anchors meet recompiled code.
 
-Fix the persistence half with `jac clean --all --force` (or `jac clean --data`) before the run. Write graph assertions defensively - count nodes you just created (or filter by a unique field) rather than asserting totals on `root`.
+Use isolated graph fixtures and remove only the nodes each test creates. Filter assertions by a unique test identifier instead of counting all nodes on `root`. For storage or schema failures, follow `jac-debugging`; clearing project directories is not a substitute for test isolation.
 
 ## Testing walkers: spawn + `.reports`
 

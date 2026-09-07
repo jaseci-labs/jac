@@ -1665,16 +1665,18 @@ jac build --as client web
 
 ### jac guide
 
-Show the curated Jac reference guides bundled with the compiler -- the authoritative spec for writing correct, idiomatic Jac. AI coding agents and humans can read them straight from the CLI; nothing to install.
+Show versioned coding guides and documentation bundled with the compiler. AI coding agents and humans can read them straight from the CLI; nothing to install.
 
 ```bash
-jac guide [-h] [-s SEARCH] [-e EXPORT] [-n] [-j] [topic]
+jac guide [-h] [-s SEARCH] [-e EXPORT] [-n] [-j] [--sections | --section SECTION] [topic]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `topic` | Guide or doc to print, or a doc set (`reference`, `quick-guide`, `build`, `tutorials`, `internals`, `community`) to list; omit to show the full index | None |
 | `-s, --search` | Grep every bundled guide and doc (`name:line:` hits) | None |
+| `--sections` | List a topic's headings and section slugs | False |
+| `--section` | Retrieve a topic section by slug or exact heading | None |
 | `-e, --export` | Export all guides as a Claude Code skills directory at this path | None |
 | `-n, --nav` | Print the docs navigation: sections, titles, and reading order | `False` |
 | `-j, --json` | Emit machine-readable JSON (for tools and agents) | `False` |
@@ -1686,7 +1688,9 @@ jac guide [-h] [-s SEARCH] [-e EXPORT] [-n] [-j] [topic]
 jac guide
 
 # Print a specific guide
-jac guide jac-types
+jac guide jac-essentials
+jac guide jac-types --sections
+jac guide jac-types --section pitfalls
 
 # Find guides by keyword
 jac guide --search walker
