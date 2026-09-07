@@ -1392,7 +1392,7 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
             );
             if is_factory {
                 if isinstance(right_type, FunctionType) {
-                    right_type = right_type.return_type;
+                    right_type = right_type.return_type or UnknownType();
                 } elif isinstance(right_type, ClassType) {
                     right_type = self.evaluator._convert_to_instance(right_type);
                 }

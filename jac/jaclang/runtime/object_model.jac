@@ -89,7 +89,7 @@ def is_jac_object(value: object) -> bool {
 
 def fields(value: object) -> tuple[ObjectField, ...] {
     cls = value if isinstance(value, `type) else type(value);
-    declared = cls?.__jac_fields__;
+    declared = cast(dict[str, ObjectField] | None, cls?.__jac_fields__);
     if declared is None {
         raise TypeError("Expected a Jac object or object type");
     }

@@ -242,10 +242,11 @@ class EdgeArchetype(Archetype) {
 }
 
 class WalkerArchetype(Archetype) {
+    has reports: list[any] = field(default_factory=`list);
+
     with entry {
         __jac_async__: ClassVar[bool] = False;
         __jac_base__: ClassVar[bool] = True;
-        reports: list[any] = field(default_factory=`list);
     }
 
     @cached_property
