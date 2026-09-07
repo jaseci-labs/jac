@@ -5408,6 +5408,40 @@ impl NativeBuiltinEmitter.emit_list(
         val = b.extract_value(val, 1, name="l.opt.payload");
     }
 
+    if p._jac_iter_type is not None
+        and val.type == p._jac_iter_type.as_pointer()
+        and ctx.arg_nodes {
+        elem_type = p._iter_elem_llvm_of(ctx.arg_nodes[0]);
+        if elem_type is None {
+            return None;
+        }
+        list_type = p._lower_list_for_elem(elem_type);
+        spec = p._spec_from_container_ptr(list_type);
+        helpers = p.list_helpers.get(spec);
+        if helpers is None {
+            return None;
+        }
+        slot_type = ir.IntType(8).as_pointer()
+            if elem_type == p._str_desc_ty
+            else elem_type;
+        slot = p._entry_alloca(slot_type, "list.iter.element");
+        result = b.call(helpers["new"], [], name="list.iter.result");
+        func = b.basic_block.function;
+        condition = func.append_basic_block("list.iter.next");
+        body = func.append_basic_block("list.iter.append");
+        done = func.append_basic_block("list.iter.done");
+        b.branch(condition);
+        b.position_at_end(condition);
+        available = p._emit_iter_advance(b, val, slot);
+        b.cbranch(available, body, done);
+        b.position_at_end(body);
+        element = p._coerce_type(b.load(slot), helpers["elem_type"]);
+        b.call(helpers["append"], [result, element]);
+        b.branch(condition);
+        b.position_at_end(done);
+        return result;
+    }
+
     for (sk, shelpers) in p.set_helpers.items() {
         stype = p.set_types.get(sk);
         if stype is not None and val.type == stype.as_pointer() {

@@ -13,7 +13,8 @@ type-checks accurately instead of degrading to UnknownType.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, TypeVar, overload
+from collections.abc import Iterable as Iterable, Iterator as Iterator
+from typing import Literal, TypeVar, overload
 
 __all__ = [
     "File",
@@ -49,13 +50,6 @@ class Region:
 # The region a value was allocated in (the growth anchor of a traversal),
 # or None for a managed value.
 def region_of(__x: object) -> Region | None: ...
-
-class Iterable(Protocol[_T]):
-    def __iter__(self) -> Iterator[_T]: ...
-
-class Iterator(Iterable[_T], Protocol[_T]):
-    def __iter__(self) -> Iterator[_T]: ...
-    def __next__(self) -> _T: ...
 
 def iter(__o: Iterable[_T]) -> Iterator[_T]: ...
 def next(__i: Iterator[_T]) -> _T: ...

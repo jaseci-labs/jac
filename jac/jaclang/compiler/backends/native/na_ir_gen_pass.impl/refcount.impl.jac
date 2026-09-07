@@ -2370,11 +2370,15 @@ impl NaIRGenPass._release_loop_coll_slot(
     self.builder.store(ir.Constant(_slot.type.pointee, None), _slot);
 }
 
-impl NaIRGenPass._rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value {
+impl NaIRGenPass._rc_strdup(
+    ptr: ir.Value, name: str = "rc.str", raw: bool = False
+) -> ir.Value {
     i8_ptr = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
 
-    slen = self._call_str_len(self.builder, ptr, name="str.len");
+    slen = self._call_str_len_raw(self.builder, ptr, name="str.len")
+        if raw
+        else self._call_str_len(self.builder, ptr, name="str.len");
 
     alloc_size = self.builder.add(slen, ir.Constant(i64, 1), name="str.alloc.size");
     _strdup_loc = getattr(ptr, 'jac_loc', '');
