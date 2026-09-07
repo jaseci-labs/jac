@@ -33,6 +33,172 @@ obj:pub WebGLHost {
         on_mouse_move: Callable[[MouseEvent], None] | None = None,
         on_lock_change: Callable[[Event], None] | None = None,
         on_blur: Callable[[Event], None] | None = None;
+
+    def InitWindow(w: int, h: int, title: str) -> None {
+        
+    }
+
+    def WindowShouldClose -> bool {
+        return bool(0);
+    }
+
+    def CloseWindow -> None {
+        
+    }
+
+    def SetTargetFPS(f: int) -> None {
+        
+    }
+
+    def BeginDrawing -> None {
+        self.gl.viewport(0, 0, 960, 600);
+    }
+
+    def EndDrawing -> None {
+        
+    }
+
+    def EndMode3D -> None {
+        _flush(self);
+    }
+
+    def GetFrameTime -> float {
+        return self.dt;
+    }
+
+    def GetTime -> float {
+        return self.time;
+    }
+
+    def DrawFPS(x: int, y: int) -> None {
+        
+    }
+
+    def IsKeyDown(k: int) -> bool {
+        return bool(self.keys.get(k, 0));
+    }
+
+    def IsKeyPressed(k: int) -> bool {
+        return bool(self.pressed.get(k, 0));
+    }
+
+    def GetMouseX -> int {
+        return int(self.mouseX);
+    }
+
+    def GetMouseY -> int {
+        return int(self.mouseY);
+    }
+
+    def IsMouseButtonPressed(b: int) -> bool {
+        return bool(self.mpressed.get(b, 0));
+    }
+
+    def DisableCursor -> None {
+        self.canvas.requestPointerLock();
+    }
+
+    def EnableCursor -> None {
+        document.exitPointerLock();
+    }
+
+    def rlClearColor(r: int, g: int, b: int, a: int) -> None {
+        self.gl.clearColor(
+            float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0
+        );
+    }
+
+    def rlClearScreenBuffers -> None {
+        self.gl.clear(16384 | 256);
+    }
+
+    def rlEnableDepthTest -> None {
+        self.gl.enable(self.gl.DEPTH_TEST);
+    }
+
+    def rlDisableDepthTest -> None {
+        self.gl.disable(self.gl.DEPTH_TEST);
+    }
+
+    def rlMatrixMode(m: int) -> None {
+        self.mode = m;
+    }
+
+    def rlLoadIdentity -> None {
+        _setcur(self, _m_ident());
+    }
+
+    def rlPushMatrix -> None {
+        if self.mode == 0x1701 {
+            self.pstack.append(self.proj);
+        } else {
+            self.mvstack.append(self.mv);
+        }
+    }
+
+    def rlPopMatrix -> None {
+        if self.mode == 0x1701 {
+            self.proj = self.pstack.pop();
+        } else {
+            self.mv = self.mvstack.pop();
+        }
+    }
+
+    def rlTranslatef(x: float, y: float, z: float) -> None {
+        _setcur(
+            self, _m_mul(_cur(self), _m_translate(x, y, z))
+        );
+    }
+
+    def rlRotatef(a: float, x: float, y: float, z: float) -> None {
+        _setcur(
+            self, _m_mul(_cur(self), _m_rotate(a, x, y, z))
+        );
+    }
+
+    def rlFrustum(
+            l: float, r: float, b: float, t: float, n: float, f: float
+        ) -> None {
+        _setcur(self, _m_mul(_cur(self), _m_frustum(l, r, b, t, n, f)));
+    }
+
+    def rlOrtho(
+            l: float, r: float, b: float, t: float, n: float, f: float
+        ) -> None {
+        _setcur(self, _m_mul(_cur(self), _m_ortho(l, r, b, t, n, f)));
+    }
+
+    def rlBegin(m: int) -> None {
+        self.bmode = m;
+            self.verts = [];
+    }
+
+    def rlEnd -> None {
+        _flush(self);
+    }
+
+    def rlVertex3f(x: float, y: float, z: float) -> None {
+        self.verts.append(x);
+            self.verts.append(y);
+            self.verts.append(z);
+            self.verts.append(self.color[0]);
+            self.verts.append(self.color[1]);
+            self.verts.append(self.color[2]);
+            self.verts.append(self.color[3]);
+    }
+
+    def rlColor4ub(r: int, g: int, b: int, a: int) -> None {
+        self.color = [
+            float(r) / 255.0,
+            float(g) / 255.0,
+            float(b) / 255.0,
+            1.0
+        ];
+    }
+
+    def rlSetLineWidth(w: float) -> None {
+        self.gl.lineWidth(w);
+    }
 }
 
 def:pub _m_ident -> list[float] {
@@ -211,78 +377,6 @@ def _flush(sh: WebGLHost) -> None {
     sh.verts = [];
 }
 
-def:pub _build_env(sh: WebGLHost) -> dict[str, any] {
-    return {
-        "InitWindow": lambda (w: int, h: int, t: int) {},
-        "WindowShouldClose": lambda { return 0; },
-        "CloseWindow": lambda {},
-        "SetTargetFPS": lambda (f: int) {},
-        "BeginDrawing": lambda { sh.gl.viewport(0, 0, 960, 600); },
-        "EndDrawing": lambda {},
-        "EndMode3D": lambda { _flush(sh); },
-        "GetFrameTime": lambda { return sh.dt; },
-        "GetTime": lambda { return sh.time; },
-        "DrawFPS": lambda (x: int, y: int) {},
-        "IsKeyDown": lambda (k: int) { return sh.keys.get(k, 0); },
-        "IsKeyPressed": lambda (k: int) { return sh.pressed.get(k, 0); },
-        "GetMouseX": lambda { return sh.mouseX; },
-        "GetMouseY": lambda { return sh.mouseY; },
-        "IsMouseButtonPressed": lambda (b: int) { return sh.mpressed.get(b, 0); },
-        "DisableCursor": lambda { sh.canvas.requestPointerLock(); },
-        "EnableCursor": lambda { document.exitPointerLock(); },
-        "rlClearColor": lambda (r: int, g: int, b: int, a: int) { sh.gl.clearColor(
-            float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0
-        ); },
-        "rlClearScreenBuffers": lambda { sh.gl.clear(16384 | 256); },
-        "rlEnableDepthTest": lambda { sh.gl.enable(sh.gl.DEPTH_TEST); },
-        "rlDisableDepthTest": lambda { sh.gl.disable(sh.gl.DEPTH_TEST); },
-        "rlMatrixMode": lambda (m: int) { sh.mode = m; },
-        "rlLoadIdentity": lambda { _setcur(sh, _m_ident()); },
-        "rlPushMatrix": lambda { if sh.mode == 0x1701 {
-            sh.pstack.append(sh.proj);
-        } else {
-            sh.mvstack.append(sh.mv);
-        } },
-        "rlPopMatrix": lambda { if sh.mode == 0x1701 {
-            sh.proj = sh.pstack.pop();
-        } else {
-            sh.mv = sh.mvstack.pop();
-        } },
-        "rlTranslatef": lambda (x: float, y: float, z: float) { _setcur(
-            sh, _m_mul(_cur(sh), _m_translate(x, y, z))
-        ); },
-        "rlRotatef": lambda (a: float, x: float, y: float, z: float) { _setcur(
-            sh, _m_mul(_cur(sh), _m_rotate(a, x, y, z))
-        ); },
-        "rlFrustum": lambda (
-            l: float, r: float, b: float, t: float, n: float, f: float
-        ) { _setcur(sh, _m_mul(_cur(sh), _m_frustum(l, r, b, t, n, f))); },
-        "rlOrtho": lambda (
-            l: float, r: float, b: float, t: float, n: float, f: float
-        ) { _setcur(sh, _m_mul(_cur(sh), _m_ortho(l, r, b, t, n, f))); },
-        "rlBegin": lambda (m: int) {
-            sh.bmode = m;
-            sh.verts = [];
-        },
-        "rlEnd": lambda { _flush(sh); },
-        "rlVertex3f": lambda (x: float, y: float, z: float) {
-            sh.verts.append(x);
-            sh.verts.append(y);
-            sh.verts.append(z);
-            sh.verts.append(sh.color[0]);
-            sh.verts.append(sh.color[1]);
-            sh.verts.append(sh.color[2]);
-            sh.verts.append(sh.color[3]);
-        },
-        "rlColor4ub": lambda (r: int, g: int, b: int, a: int) { sh.color = [
-            float(r) / 255.0,
-            float(g) / 255.0,
-            float(b) / 255.0,
-            1.0
-        ]; },
-        "rlSetLineWidth": lambda (w: float) { sh.gl.lineWidth(w); }
-    };
-}
 
 def _compile_shader(gl: any, kind: int, source: str) -> any {
     shader = gl.createShader(kind);

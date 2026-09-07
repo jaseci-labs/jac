@@ -1,5 +1,4 @@
 import from core.social_graph { create_tweet, load_feed }
-import type from core.social_graph { Tweet }
 import from jaclang.server.bridge { BridgeError }
 import from .common {
     EXIT_OK,
@@ -16,15 +15,6 @@ obj FeedLine {
         comments: int = 0;
 }
 
-def feed_line(raw: Tweet) -> FeedLine {
-    return FeedLine(
-        author=raw.author_username,
-        content=raw.content,
-        created_at=raw.created_at,
-        likes=len(raw.likes),
-        comments=len(raw.comments)
-    );
-}
 
 def render_line(line: FeedLine) -> str {
     stamp = line.created_at[:19].replace("T", " ");
@@ -47,7 +37,10 @@ async def run_feed(limit: int, query: str) -> int {
             return EXIT_OK;
         }
         for raw in rows[:limit] {
-            print(render_line(feed_line(raw)));
+            print(render_line(FeedLine(
+                author=raw.author_username, content=raw.content,
+                created_at=raw.created_at, likes=len(raw.likes), comments=len(raw.comments)
+            )));
         }
         if len(rows) > limit {
             print("... " + str(len(rows) - limit) + " more; raise --limit to see them");
@@ -68,8 +61,8 @@ async def run_post(text: str) -> int {
         made = await create_tweet(content=body);
         posted = made.reports;
         if posted {
-            line = feed_line(posted[0]);
-            print("posted as @" + (line.author or "you") + ": " + line.content);
+            tweet = posted[0];
+            print("posted as @" + (tweet.author_username or "you") + ": " + tweet.content);
         } else {
             print(
                 "posted nothing: the site found no profile for this identity "

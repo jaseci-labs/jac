@@ -6,8 +6,8 @@ Jac will retain boundary contracts across compilation and deployment, use them f
 | --- | --- | --- |
 | Implemented; integration pending | Typed Wasm exports and generated calls | Native declarations drive ordinary typed imports and generated invocation. |
 | Implemented; integration pending | Value conversions and opaque handles | Runtime adapters preserve declared values and manage native handles without application integer casts. |
-| Pending | Checked host-import interfaces | Required host signatures check implementations and drive registration. |
-| Pending | Module loading and host registration | Shared runtime owns instantiation, readiness, registration, and cleanup. |
+| Implemented; integration pending | Checked host-import interfaces | Required host signatures check implementations and drive registration. |
+| Implemented; integration pending | Module loading and host registration | Shared runtime owns instantiation, readiness, registration, and cleanup. |
 | In progress | Precise CLI and authentication boundary types | Consumers use declared records instead of dynamic field reconstruction. |
 | Implemented; integration pending | External API contracts and response validation | Declared external shapes drive clients and validate responses. |
 | In progress | Conservative effect analysis | Separate read/write dependencies and explicit unknown effects compose through calls. |
@@ -32,3 +32,7 @@ Run jaclang_org using the development compiler and exercise it with `jac browse`
 - Browser and React/mobile caches share one implementation. Effect summaries distinguish reads, writes, and unknown calls, and use qualified identities.
 - Signup now returns a declared record; GitHub endpoints use declared response shapes and strict decoding; CLI consumers use typed fields.
 - Client bundles emit a boundary audit. Integration is pending: the first running-app build exposed a Wasm client compilation failure.
+
+- Host registration now checks typed host methods against native declarations and generates method bindings; removed the old `set_na_env` API and manual WebGL ABI dictionary.
+- Service walker responses retain declared report conversions. Authentication and optional service caching also fence stale reads.
+- Debugged a bootstrap-parser stall caused by an extra closing brace introduced during integration; corrected the source before restarting the app.

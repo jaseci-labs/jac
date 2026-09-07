@@ -1,5 +1,5 @@
-import from "@jac/wasm_host" { set_na_env }
-import from "@jac/webgl" { WebGLHost, _m_ident, _init_gl, _build_env, _install_input, _remove_input }
+import from "@jac/wasm_host" { bind_na_host }
+import from "@jac/webgl" { WebGLHost, _m_ident, _init_gl, _install_input, _remove_input }
 import from .arena { init, frame, get_score, get_hp, get_deaths, shutdown }
 import type from .sim { Game }
 
@@ -120,7 +120,8 @@ def:pub run_game(
 ) -> Callable[[], None] {
     if _shim is None {
         _shim = Shim(canvas=canvas);
-        set_na_env("arena", _shim, {"env": _build_env(_shim)});
+        host: Shim = _shim;
+        bind_na_host(init, host);
     }
     sh = _shim;
     _stop(sh, sh.session);

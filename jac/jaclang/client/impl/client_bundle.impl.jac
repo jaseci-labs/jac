@@ -140,6 +140,9 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
         formatted = '\n'.join(
             str(err) for err in program.errors_had[prev_error_count:]
         );
+        if not formatted {
+            formatted = '\n'.join(str(err) for err in program.errors_had);
+        }
         raise ClientBundleError(
             f"Failed to compile '{source_path}' for client bundle:{formatted}"
         );

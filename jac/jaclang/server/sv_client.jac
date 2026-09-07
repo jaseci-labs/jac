@@ -18,7 +18,9 @@ glob BRIDGE_TOKEN_ENV: str = "JAC_BRIDGE_TOKEN",
      _bearer_token: list[str] = [],
      _consumer_app: list[str] = [],
      _read_cache: dict[tuple, any] = {},
-     _read_cache_flags: list = [];
+     _read_cache_flags: list = [],
+     _cache_epoch: list[int] = [0],
+     _active_writes: dict[str, int] = {};
 
 def headless_start_args(entry_file: str, port: int) -> list[str] {
     return ["run", "--serve", "--port", str(port), "--no-client", entry_file];
@@ -122,6 +124,7 @@ def consumer_app -> str {
 }
 
 def clear_read_cache(app: str = "") {
+    _cache_epoch[0] += 1;
     if not app {
         _read_cache.clear();
         _read_cache_flags.clear();
@@ -162,7 +165,7 @@ def _read_cache_enabled -> bool {
 
 def _read_cache_key(app: str, fn: str, kwargs: dict) -> tuple {
     import json;
-    return (app, fn, json.dumps(kwargs, sort_keys=True, `default=str));
+    return (app, fn, json.dumps(kwargs, sort_keys=True, `default=str), json.dumps(request_headers(), sort_keys=True));
 }
 
 def auth_headers -> dict[str, str] {
@@ -421,10 +424,13 @@ async def _local_spawn(app: str, walker_name: str, kwargs: dict) -> any {
 async def call(
     app: str, fn: str, kwargs: dict, effects: (list[str] | None) = None
 ) -> any {
-    if effects {
+    writer = effects is None or bool(effects);
+    if writer {
+        _active_writes[app] = _active_writes.get(app, 0) + 1;
         clear_read_cache(app);
     }
-    cacheable = not effects and _read_cache_enabled();
+    epoch = _cache_epoch[0];
+    cacheable = not writer and _active_writes.get(app, 0) == 0 and _read_cache_enabled();
     key = _read_cache_key(app, fn, kwargs) if cacheable else None;
     if cacheable and key in _read_cache {
         return _read_cache[key];
@@ -444,8 +450,13 @@ async def call(
         }
     } except Exception as e {
         raise bridge_error_from(e, app, fn);
+    } finally {
+        if writer {
+            clear_read_cache(app);
+            _active_writes[app] -= 1;
+        }
     }
-    if cacheable {
+    if cacheable and epoch == _cache_epoch[0] and _active_writes.get(app, 0) == 0 {
         _read_cache[key] = result;
     }
     return result;

@@ -310,7 +310,7 @@ impl jacSignup(
             error_data = JSON.parse(error_text);
             return SignupResult(success=False, status=response.status, error=str(error_data["error"] or "Signup failed"));
         } except Exception {
-            return {"success": False, "status": response.status, "error": error_text};
+            return SignupResult(success=False, status=response.status, error=error_text);
         }
     }
 }

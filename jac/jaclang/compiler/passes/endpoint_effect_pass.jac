@@ -36,7 +36,7 @@ walker EndpointEffectPass(UniPass) {
     }
 
     can enter_ability with Ability entry {
-        import from jaclang.compiler.endpoint_contract { endpoint_key }
+        import from jaclang.compiler.frontend.codeinfo { endpoint_key }
         if (
             not here.is_method
             and not here.in_client_context()
@@ -51,7 +51,7 @@ walker EndpointEffectPass(UniPass) {
     }
 
     can enter_archetype with Archetype entry {
-        import from jaclang.compiler.endpoint_contract { endpoint_key }
+        import from jaclang.compiler.frontend.codeinfo { endpoint_key }
         if here.arch_kind != "walker" {
             return;
         }
@@ -64,7 +64,7 @@ walker EndpointEffectPass(UniPass) {
     }
 
     def _classify(body_nodes: list, kind: str, name: str) -> dict {
-        import from jaclang.compiler.endpoint_contract { endpoint_descriptor }
+        import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
         self._is_writer = False;
         self._unknown = False;
         self._touches.clear();

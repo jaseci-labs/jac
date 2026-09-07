@@ -208,6 +208,9 @@ def:pub __endpointKey(kind: str, name: str, opts: dict | None) -> str {
     app = opts["app"] if opts and opts["app"] else "";
     module = opts["module"] if opts and opts["module"] else "";
     effects = __getEndpointEffects();
+    if opts and opts["contract"] {
+        return opts["contract"];
+    }
     matches: list[str] = [];
     for key in Object.keys(effects) {
         info = effects[key];

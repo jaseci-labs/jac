@@ -98,6 +98,7 @@ async def:pub instantiate_na_wasm(url: str, sh: any, extra_imports: any = None) 
     imports["jac_host1"] = make_jac_host(sh);
     res: any = await WebAssembly.instantiateStreaming(fetch(url), imports);
     inst: any = res.instance;
+    inst.__jac_owned_handles = 0;
     sh.exports = inst.exports;
     sh.mem = inst.exports.memory;
     if inst.exports.__heap_base {
@@ -110,10 +111,60 @@ async def:pub instantiate_na_wasm(url: str, sh: any, extra_imports: any = None) 
 }
 
 glob _na_env_cfg: dict = {},
-     _na_pending: dict = {};
+     _na_pending: dict = {},
+     _na_contracts: dict = {},
+     _na_exports: any = new(globalThis.WeakMap);
 
-def:pub set_na_env(module_stem: str, sh: any, extra_imports: any = None) {
-    _na_env_cfg[module_stem] = [sh, extra_imports];
+def _host_callback(host: any, name: str, contract: any) -> any {
+    return lambda (*args: any) -> any {
+        values: list = [];
+        for i in range(len(args)) {
+            value = args[i];
+            c = contract.params[i];
+            if c.kind == "cstring" {
+                bytes = new(Uint8Array, host.mem.buffer);
+                end = value;
+                while end < bytes.length and bytes[end] != 0 { end += 1; }
+                value = new(TextDecoder).decode(bytes.subarray(value, end));
+            } elif c.type == "bool" {
+                value = bool(value);
+            } elif c.type in ["int", "i64", "u64"] {
+                value = Number(value);
+                if not Number.isSafeInteger(value) { raise Error("Host integer exceeds exact range"); }
+            }
+            values.append(value);
+        }
+        result = host[name].apply(host, values);
+        if contract.result.type in ["int", "i64", "u64"] { return BigInt(result); }
+        if contract.result.type == "bool" { return 1 if result else 0; }
+        return result;
+    };
+}
+
+def:pub bind_na_host(native_export: any, host: any) -> None {
+    module = _na_exports.get(native_export);
+    if not module { raise Error("Host binding requires a generated native export"); }
+    if module in _na_pending { raise Error("Bind the native host before instantiation"); }
+    env: any = {};
+    required = _na_contracts[module].imports;
+    for name in Object.keys(required) {
+        if not host[name] or host[name].length != required[name].params.length {
+            raise Error("Host import signature mismatch: " + name);
+        }
+        env[name] = _host_callback(host, name, required[name]);
+    }
+    _na_env_cfg[module] = [host, {"env": env}];
+}
+
+async def:pub release_na_module(native_export: any) -> None {
+    module = _na_exports.get(native_export);
+    if not module { raise Error("Module release requires a generated native export"); }
+    if module in _na_pending {
+        inst = await _na_pending[module];
+        if inst.__jac_owned_handles != 0 { raise Error("Native module still has live owned handles"); }
+        _na_pending.pop(module, None);
+    }
+    _na_env_cfg.pop(module, None);
 }
 
 async def _na_instance(module_stem: str) -> any {
@@ -121,6 +172,9 @@ async def _na_instance(module_stem: str) -> any {
         return await _na_pending[module_stem];
     }
     cfg = _na_env_cfg.get(module_stem);
+    if not cfg and Object.keys(_na_contracts[module_stem].imports).length > 0 {
+        raise Error("Native module requires a checked host binding: " + module_stem);
+    }
     sh: any = cfg[0] if cfg else {};
     extra: any = cfg[1] if cfg else None;
     p = instantiate_na_wasm(f"/static/{module_stem}.wasm", sh, extra);
@@ -133,7 +187,7 @@ async def _na_instance(module_stem: str) -> any {
     }
 }
 
-glob _na_handles: any = new(WeakMap);
+glob _na_handles: any = new(globalThis.WeakMap);
 
 def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any {
     if contract.kind == "handle" {
@@ -156,9 +210,10 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
 def _na_result(value: any, contract: any, module_stem: str, inst: any) -> any {
     if contract.kind == "handle" {
         token: any = Object.freeze({});
+        if contract.mode == "own" { inst.__jac_owned_handles += 1; }
         _na_handles.set(token, {
             "pointer": value, "type": contract.type, "module": module_stem,
-            "instance": inst, "live": True
+            "instance": inst, "live": True, "owned": contract.mode == "own"
         });
         return token;
     }
@@ -194,7 +249,10 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
         }
         for i in range(len(args)) {
             if contract.params[i].kind == "handle" and contract.params[i].mode == "own" {
-                _na_handles.get(args[i]).live = False;
+                handle = _na_handles.get(args[i]);
+                if not handle.owned { raise Error("Cannot consume a borrowed native handle"); }
+                handle.live = False;
+                inst.__jac_owned_handles -= 1;
             }
         }
         return _na_result(fn(*values), contract.result, module_stem, inst);
@@ -203,10 +261,13 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
 }
 
 def:pub __na_bind(module_stem: str, contract_json: str) -> any {
-    contracts = JSON.parse(contract_json);
+    metadata = JSON.parse(contract_json);
+    _na_contracts[module_stem] = metadata;
+    contracts = metadata.exports;
     out: any = {};
     for name in Object.keys(contracts) {
         out[name] = _na_caller(module_stem, name, contracts[name]);
+        _na_exports.set(out[name], module_stem);
     }
     return out;
 }

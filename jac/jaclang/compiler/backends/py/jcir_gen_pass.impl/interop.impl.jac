@@ -419,10 +419,10 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
             else None
     );
     if src_mod is None or not src_mod.gen.interop_manifest {
-        return [];
+        return ['*'];
     }
-    import from jaclang.compiler.endpoint_contract { endpoint_key }
-    kind, name = key.split(":", 1);
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    (kind, name) = key.split(":", 1);
     effect = src_mod.gen.interop_manifest.endpoint_effects.get(endpoint_key(src_mod, kind, name));
     if not isinstance(effect, dict) or effect.get('unknown') {
         return ['*'];

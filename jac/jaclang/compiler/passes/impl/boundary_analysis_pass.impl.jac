@@ -384,6 +384,7 @@ impl BoundaryAnalysisPass._register_sv_import(
 }
 
 impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
+    if nd.is_typed { return; }
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import from jaclang.compiler.frontend.diagnostics { E5083, E5100 }
     if not nd.from_loc or not nd.items {
@@ -806,6 +807,15 @@ impl BoundaryAnalysisPass.enter_ability with Ability entry {
 }
 
 impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
+    if isinstance(here.target, Name) and here.target.value == "bind_na_host" {
+        import from jaclang.compiler.backends.native.wasm_contract { check_host_call }
+        import from jaclang.compiler.frontend.diagnostics { E5110 }
+        try {
+            check_host_call(here);
+        } except ValueError as e {
+            self.emit(E5110, node_override=here, details=str(e));
+        }
+    }
     if (
         isinstance(here.target, Name)
         and here.target.sym is not None

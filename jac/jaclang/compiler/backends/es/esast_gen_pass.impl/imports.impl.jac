@@ -266,6 +266,7 @@ impl EsastGenPass._generate_sv_import_stubs(
         param_names: list[str] = [];
         param_type_map: dict[str, str] = {};
         ret_type_name: str = '';
+        effect_key: str = '';
         if binding is not None {
             param_names = list(binding.param_names);
             for i in range(len(param_names)) {
@@ -278,7 +279,7 @@ impl EsastGenPass._generate_sv_import_stubs(
                 if binding.ast_node is not None
                 else None;
             if _src_mod is not None {
-                import from jaclang.compiler.endpoint_contract { endpoint_key }
+                import from jaclang.compiler.frontend.codeinfo { endpoint_key }
                 effect_key = endpoint_key(_src_mod, "func", func_name);
                 src_effect = _src_mod.gen.interop_manifest.endpoint_effects.get(effect_key);
                 if src_effect is not None {
@@ -324,9 +325,16 @@ impl EsastGenPass._generate_sv_import_stubs(
             args_obj
         ];
         provider_opts = self._sv_provider_options(nd);
-        if provider_opts is not None {
-            call_args.append(provider_opts);
+        if provider_opts is None {
+            provider_opts = es.ObjectExpression(properties=[]);
         }
+        if effect_key and isinstance(provider_opts, es.ObjectExpression) {
+            provider_opts.properties.append(es.Property(
+                key=es.Literal(value="contract"), value=es.Literal(value=effect_key),
+                kind="init", method=False, shorthand=False, computed=False
+            ));
+        }
+        call_args.append(provider_opts);
         call_expr = self.sync_loc(
             es.CallExpression(
                 callee=self.sync_loc(
@@ -370,8 +378,9 @@ impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import json;
-    import from jaclang.compiler.backends.native.wasm_contract { function_contract }
+    import from jaclang.compiler.backends.native.wasm_contract { function_contract, host_contracts }
     contracts: dict = {};
+    host_imports: dict = {};
     resolved_path = nd.from_loc.resolve_relative_path();
     stem = native_wasm_stem(resolved_path);
 
@@ -417,6 +426,7 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
             raise ValueError(f"Missing native contract for '{export_name}'");
         }
         contracts[export_name] = function_contract(binding.ast_node);
+        host_imports.update(host_contracts(binding.ast_node.find_parent_of_type(uni.Module)));
         props.append(
             self.sync_loc(
                 es.AssignmentProperty(
@@ -437,7 +447,7 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
             callee=es.Identifier(name=bind_local),
             arguments=[
                 self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
-                self.sync_loc(es.Literal(value=json.dumps(contracts)), jac_node=nd),
+                self.sync_loc(es.Literal(value=json.dumps({"exports": contracts, "imports": host_imports})), jac_node=nd),
 
             ]
         ),

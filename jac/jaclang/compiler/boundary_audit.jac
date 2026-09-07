@@ -1,4 +1,4 @@
-import from jaclang.compiler.endpoint_contract { endpoint_descriptor, endpoint_key }
+import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor, endpoint_key }
 
 def boundary_audit(program: any) -> dict {
     boundaries: dict = {};
