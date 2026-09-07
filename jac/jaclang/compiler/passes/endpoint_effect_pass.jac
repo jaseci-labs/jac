@@ -100,6 +100,7 @@ walker EndpointEffectPass(UniPass) {
     }
 
     def _scan(nd: (UniNode | None)) -> None {
+        import from jaclang.compiler.tools.unparse_pass { unparse_node }
         if nd is None {
             return;
         }
@@ -144,7 +145,7 @@ walker EndpointEffectPass(UniPass) {
                 if declared is not None {
                     self._declared_reads.update(declared["reads"]);
                     self._declared_writes.update(declared["writes"]);
-                    self._assumptions.add("Declared effects of " + nd.target.unparse());
+                    self._assumptions.add("Declared effects of " + unparse_node(nd.target));
                 } else {
                     body = self._callee_body(nd);
                     if not body {
@@ -204,6 +205,7 @@ walker EndpointEffectPass(UniPass) {
 
     def _declaration_effects(decl: Ability) -> dict | None {
         import ast;
+        import from jaclang.compiler.tools.unparse_pass { unparse_node }
         for decorator in decl.decorators or [] {
             if not isinstance(decorator, FuncCall) { continue; }
             target = ability_of_symbol(self._call_target_symbol(decorator));
@@ -215,7 +217,7 @@ walker EndpointEffectPass(UniPass) {
                 if not isinstance(pair, KWPair) or pair.key is None or pair.key.sym_name not in result {
                     raise ValueError("Effect declarations require reads= and writes= literal lists");
                 }
-                values = ast.literal_eval(pair.value.unparse());
+                values = ast.literal_eval(unparse_node(pair.value));
                 if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values) {
                     raise ValueError("Effect dependencies must be literal nonempty strings");
                 }

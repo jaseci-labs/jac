@@ -6,7 +6,8 @@ def value_contract(expr: any, ownership: OwnershipKind = OwnershipKind.NONE, hos
         ownership = expr.ownership;
         expr = expr.operand;
     }
-    name = expr.unparse().strip() if expr is not None else "None";
+    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+    name = unparse_node(expr).strip() if expr is not None else "None";
     mode = {
         OwnershipKind.NONE: "value", OwnershipKind.OWN: "own",
         OwnershipKind.BORROW: "borrow", OwnershipKind.MUT_BORROW: "borrow_mut",
