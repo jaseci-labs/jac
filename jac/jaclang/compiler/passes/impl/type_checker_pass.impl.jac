@@ -287,7 +287,7 @@ impl TypeCheckPass._check_intrinsic_call(nd: FuncCall) -> None {
             reason=f"expected {intr.arity()} argument(s), got {len(positional)}"
         );
     }
-    if intr.result_spec in ("i64", "f64") {
+    if intr.result_spec != "none" {
         if self.evaluator.na_builtins_module is not None {
             result_cls = self.evaluator._get_type_from_module(
                 self.evaluator.na_builtins_module, intr.result_spec

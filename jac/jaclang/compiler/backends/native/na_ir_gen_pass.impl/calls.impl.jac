@@ -1296,8 +1296,9 @@ impl NaIRGenPass._intrinsic_operand(
         }
         return arg_val;
     }
-    if not isinstance(arg_val.type, ir.IntType) or arg_val.type.width != 64 {
-        arg_val = self._coerce_type(arg_val, ir.IntType(64));
+    width = int(spec[1:]);
+    if not isinstance(arg_val.type, ir.IntType) or arg_val.type.width != width {
+        arg_val = self._coerce_type(arg_val, ir.IntType(width));
     }
     return arg_val;
 }
@@ -1342,8 +1343,8 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
     if addr is None {
         return None;
     }
-    i64 = ir.IntType(64);
-    slot = self.builder.inttoptr(addr, i64.as_pointer(), name="mem.p");
+    value_type = ir.IntType(int(intr.result_spec[1:]));
+    slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
     return self.builder.load(slot, name="mem.ld");
 }
 
@@ -1355,8 +1356,7 @@ impl NaIRGenPass._emit_intrinsic_mem_store(
     if addr is None or val is None {
         return None;
     }
-    i64 = ir.IntType(64);
-    slot = self.builder.inttoptr(addr, i64.as_pointer(), name="mem.p");
+    slot = self.builder.inttoptr(addr, val.type.as_pointer(), name="mem.p");
     self.builder.store(val, slot);
     return None;
 }
