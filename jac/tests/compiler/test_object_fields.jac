@@ -22,6 +22,28 @@ test "an aliased field marker preserves the declared value type" {
     assert not errors , str(errors);
 }
 
+test "field markers retain import provenance before type analysis" {
+    import from jaclang.compiler.field_semantics { is_field_marker }
+    import from jaclang.compiler.frontend.unitree { FuncCall, HasVar }
+    program = JacProgram();
+    module = program.compile(
+        file_path="early_field_marker.jac",
+        use_str="import from jaclang.runtime.object_model { field as declare }\n"
+            + "obj Example { has values: list[int] = declare(default_factory=`list); }\n"
+            + "def ordinary -> int { return 3; }\n"
+            + "obj Other { has value: int = ordinary(); }\n",
+        options=CompileOptions(symtab_ir_only=True, need_full_ast=True)
+    );
+    assert not program.errors_had;
+    markers: dict[str, bool] = {};
+    for field_var in module.get_all_sub_nodes(HasVar) {
+        call = field_var.value;
+        assert isinstance(call, FuncCall);
+        markers[field_var.name.value] = is_field_marker(call);
+    }
+    assert markers == {"values": True, "value": False};
+}
+
 test "incorrect field defaults are rejected" {
     errors = check_fields(
         "import from jaclang.runtime.object_model { field }\n"

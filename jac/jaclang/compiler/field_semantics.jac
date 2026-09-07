@@ -29,7 +29,8 @@ def is_field_marker(nd: FuncCall) -> bool {
     }
     if tgt.sym is not None
         and tgt.sym.decl is not None
-        and not isinstance(tgt.sym.decl, ModuleItem) {
+        and not isinstance(tgt.sym.decl, ModuleItem)
+        and not isinstance(tgt.sym.decl.parent, ModuleItem) {
         source = tgt.sym.decl.find_parent_of_type(Module);
         if source is not None {
             decl = tgt.sym.decl;
