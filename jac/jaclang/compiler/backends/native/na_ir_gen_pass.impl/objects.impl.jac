@@ -4085,7 +4085,7 @@ impl NaIRGenPass._codegen_field_assign(
     }
 
     _borrow_field = field_name in self.struct_field_borrow.get(type_name, set());
-    if isinstance(ftype, ir.PointerType) and not _vt_struct and not _borrow_field {
+    if self._elem_kind(ftype) != "raw" and not _vt_struct and not _borrow_field {
         self._emit_take_ref(
             value,
             op="field_set",
@@ -4094,13 +4094,14 @@ impl NaIRGenPass._codegen_field_assign(
                 else 0}"
         );
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
-        self._emit_rc_release_simple(
-            old_field_val,
-            op="field_set",
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
+        self._set_rc_ctx(
+            "field_set",
+            f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
                 if target.loc
                 else 0}"
         );
+        self._emit_elem_release(self.builder, ftype, old_field_val);
+        self._clear_rc_ctx();
     }
     _fs_opt = self._opt_payload_of(ftype);
     if _fs_opt is not None

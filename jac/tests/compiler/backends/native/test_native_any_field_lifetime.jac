@@ -23,3 +23,12 @@ test "cycle tracing follows tagged object fields" {
     collect();
     assert count() == before + 2;
 }
+
+test "tagged field replacement retains borrowed payloads before releasing old values" {
+    (engine, module) = compile_native("any_field_lifetime.jac");
+    run = get_func(engine, "borrowed_field", ctypes.c_int64);
+    count = get_func(engine, "drop_count", ctypes.c_int64);
+    before = count();
+    assert run() == 1;
+    assert count() == before + 2;
+}
