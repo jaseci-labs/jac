@@ -533,64 +533,52 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 
     func.attributes.add("optnone");
     func.attributes.add("noinline");
-    entry_bb = func.append_basic_block(name="entry");
-    body_bb = func.append_basic_block(name="test.body");
-    success_bb = func.append_basic_block(name="test.success");
-    fail_bb = func.append_basic_block(name="test.fail");
-    self._builder = ir.IRBuilder(entry_bb);
-    self.local_vars = {};
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-    saved_param_vars = self.param_vars;
-    self.param_vars = set();
-    saved_cell_vars = self.closure_cell_vars;
-    saved_cell_handles = self.closure_cell_handles;
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-    if nd.body {
-        self._scan_closure_escapes(nd, nd.body);
+    state = self._enter_function(func);
+    try {
+        body_bb = func.append_basic_block(name="test.body");
+        success_bb = func.append_basic_block(name="test.success");
+        fail_bb = func.append_basic_block(name="test.fail");
+        if nd.body {
+            self._scan_closure_escapes(nd, nd.body);
+        }
+        self._attach_di_subprogram(func, symbol, line);
+
+        exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
+        self.builder.call(self._exc_push_fn, [exc_state]);
+        env_ptr = self.builder.gep(
+            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
+        );
+        env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
+        setjmp_fn = self.extern_funcs["setjmp"];
+        setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
+        is_exception = self.builder.icmp_signed(
+            "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
+        );
+        self.builder.cbranch(is_exception, fail_bb, body_bb);
+
+        self.builder.position_at_end(body_bb);
+        self._codegen_body(nd.body);
+        if not self.builder.block.is_terminated {
+            self.builder.branch(success_bb);
+        }
+
+        self.builder.position_at_end(success_bb);
+        self.builder.call(self._exc_pop_fn, []);
+        _tc_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+        self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
+        self.builder.ret(ir.Constant(i8p, None));
+
+        self.builder.position_at_end(fail_bb);
+        self.builder.call(self._exc_pop_fn, []);
+        exc_obj_ptr = self.builder.gep(
+            exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
+        );
+        exc_msg = self.builder.load(exc_obj_ptr, name="exc.msg");
+        self.builder.ret(exc_msg);
+        self._finalize_di_locations(func, line);
+    } finally {
+        self._leave_function(state);
     }
-    self._attach_di_subprogram(func, symbol, line);
-
-    exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
-    self.builder.call(self._exc_push_fn, [exc_state]);
-    env_ptr = self.builder.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
-    );
-    env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
-    setjmp_fn = self.extern_funcs["setjmp"];
-    setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
-    is_exception = self.builder.icmp_signed(
-        "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
-    );
-    self.builder.cbranch(is_exception, fail_bb, body_bb);
-
-    self.builder.position_at_end(body_bb);
-    self._codegen_body(nd.body);
-    if not self.builder.block.is_terminated {
-        self.builder.branch(success_bb);
-    }
-
-    self.builder.position_at_end(success_bb);
-    self.builder.call(self._exc_pop_fn, []);
-    _tc_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
-    self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
-    self.builder.ret(ir.Constant(i8p, None));
-
-    self.builder.position_at_end(fail_bb);
-    self.builder.call(self._exc_pop_fn, []);
-    exc_obj_ptr = self.builder.gep(
-        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
-    );
-    exc_msg = self.builder.load(exc_obj_ptr, name="exc.msg");
-    self.builder.ret(exc_msg);
-    self._finalize_di_locations(func, line);
-    self.param_vars = saved_param_vars;
-    self.closure_cell_vars = saved_cell_vars;
-    self.closure_cell_handles = saved_cell_handles;
-    self._builder = None;
     desc = nd.description.lit_value if nd.description else "";
     self.native_tests.append((test_name, symbol, desc, line));
     self.has_native_code = True;
@@ -1188,28 +1176,29 @@ impl NaIRGenPass._emit_generator_drop_fn(name: str, slots: list[tuple]) -> ir.Fu
     fn.linkage = "private";
     fn.args[0].name = "frame";
 
-    saved_builder = self._builder;
-    bb = fn.append_basic_block("entry");
-    self._builder = ir.IRBuilder(bb);
-    for (sname, soff, stype) in slots {
-        if not isinstance(stype, ir.PointerType) {
-            continue;
+    state = self._enter_function(fn);
+    try {
+        for (sname, soff, stype) in slots {
+            if not isinstance(stype, ir.PointerType) {
+                continue;
+            }
+            if isinstance(stype.pointee, ir.FunctionType) {
+                continue;
+            }
+            s_raw = self.builder.gep(
+                fn.args[0], [ir.Constant(i64, soff)], name=f"drop.{sname}"
+            );
+            s_slot = self.builder.bitcast(
+                s_raw, stype.as_pointer(), name=f"drop.s.{sname}"
+            );
+            val = self.builder.load(s_slot, name=f"drop.v.{sname}");
+            self._emit_rc_release_typed(val, op="gen_drop", loc=name);
+            self.builder.store(ir.Constant(stype, None), s_slot);
         }
-        if isinstance(stype.pointee, ir.FunctionType) {
-            continue;
-        }
-        s_raw = self.builder.gep(
-            fn.args[0], [ir.Constant(i64, soff)], name=f"drop.{sname}"
-        );
-        s_slot = self.builder.bitcast(
-            s_raw, stype.as_pointer(), name=f"drop.s.{sname}"
-        );
-        val = self.builder.load(s_slot, name=f"drop.v.{sname}");
-        self._emit_rc_release_typed(val, op="gen_drop", loc=name);
-        self.builder.store(ir.Constant(stype, None), s_slot);
+        self.builder.ret_void();
+    } finally {
+        self._leave_function(state);
     }
-    self.builder.ret_void();
-    self._builder = saved_builder;
     return fn;
 }
 
@@ -1405,174 +1394,170 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     func = self._define_function("jac_entry", fnty);
     self.func_symtab["jac_entry"] = func;
 
-    block = func.append_basic_block(name="entry");
-    self._builder = ir.IRBuilder(block);
-    self.local_vars = {};
-    self.param_vars = set();
-    self.nogc_no_free_vars = set();
-    self.nogc_owned_str_vars = set();
-    self.region_handle_vars = set();
-    self.region_open_stack = [];
-    self.closure_cell_vars = set();
-    self.closure_cell_handles = {};
-    for _ent_scan in nodes {
-        if (_ent_scan).body {
-            self._scan_closure_escapes(_ent_scan, (_ent_scan).body);
-        }
-    }
-
-    _first = nodes[0];
-    entry_line = _first.loc.first_line if _first.loc else 0;
-    self._attach_di_subprogram(func, "jac_entry", entry_line);
-
     self._emit_glob_init_func();
-    glob_init_fn = self.func_symtab.get("__jac_glob_init");
-
-    _i8p = ir.IntType(8).as_pointer();
-    _i32 = ir.IntType(32);
-
-    if not self._nogc_headerless() {
-        _gc_is_off = self.builder.call(
-            self._emit_rc_gc_env_off_fn(), [], name="gc.is.off"
-        );
-        _gc_off = func.append_basic_block("gc_off");
-        _gc_on = func.append_basic_block("gc_on");
-        _gc_cont = func.append_basic_block("gc_cont");
-        self.builder.cbranch(_gc_is_off, _gc_off, _gc_on);
-        if self.rc_alloc_fn is None {
-            self._emit_rc_helpers();
-        }
-        b_off = ir.IRBuilder(_gc_off);
-        b_off.call(self.rc_gc_disable_fn, []);
-        b_off.branch(_gc_cont);
-        b_on = ir.IRBuilder(_gc_on);
-        if self._gc_mode() == "cycles" {
-            b_on.call(self.rc_cycles_enable_fn, []);
-        }
-        b_on.branch(_gc_cont);
-        self._builder = ir.IRBuilder(_gc_cont);
-    }
-    _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
-    _all_na_sources = _manifest.native_transitive_sources if _manifest else [];
-    _seen_init_mods: set = set();
-    for _source_mod in _all_na_sources {
-        if _source_mod is None or _source_mod in _seen_init_mods {
-            continue;
-        }
-        _seen_init_mods.add(_source_mod);
-
-        init_name = native_glob_init_name(_source_mod, _manifest);
-
-        imp_init_fn = self.func_symtab.get(init_name);
-        if imp_init_fn is None {
-            imp_init_fnty = ir.FunctionType(ir.VoidType(), []);
-            imp_init_fn = ir.Function(self.llvm_module, imp_init_fnty, name=init_name);
-            self.func_symtab[init_name] = imp_init_fn;
+    state = self._enter_function(func);
+    try {
+        for _ent_scan in nodes {
+            if (_ent_scan).body {
+                self._scan_closure_escapes(_ent_scan, (_ent_scan).body);
+            }
         }
 
-        _guard_kernel = (
-            (self._osp_kernel_inited_gv is not None)
-            and (imp_init_fn is self._osp_kernel_glob_init_fn)
-        );
-        if _guard_kernel {
-            _i8 = ir.IntType(8);
-            _gk_run = self.builder.function.append_basic_block("osp_kinit_run");
-            _gk_done = self.builder.function.append_basic_block("osp_kinit_done");
-            self.builder.cbranch(
-                self.builder.icmp_unsigned(
-                    "!=",
-                    self.builder.load(
-                        self._osp_kernel_inited_gv, name="osp.kinited.entry"
-                    ),
-                    ir.Constant(_i8, 0)
-                ),
-                _gk_done,
-                _gk_run
+        _first = nodes[0];
+        entry_line = _first.loc.first_line if _first.loc else 0;
+        self._attach_di_subprogram(func, "jac_entry", entry_line);
+
+        glob_init_fn = self.func_symtab.get("__jac_glob_init");
+
+        _i8p = ir.IntType(8).as_pointer();
+        _i32 = ir.IntType(32);
+
+        if not self._nogc_headerless() {
+            _gc_is_off = self.builder.call(
+                self._emit_rc_gc_env_off_fn(), [], name="gc.is.off"
             );
-            self.builder.position_at_end(_gk_run);
-            self.builder.store(ir.Constant(_i8, 1), self._osp_kernel_inited_gv);
+            _gc_off = func.append_basic_block("gc_off");
+            _gc_on = func.append_basic_block("gc_on");
+            _gc_cont = func.append_basic_block("gc_cont");
+            self.builder.cbranch(_gc_is_off, _gc_off, _gc_on);
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
+            }
+            b_off = ir.IRBuilder(_gc_off);
+            b_off.call(self.rc_gc_disable_fn, []);
+            b_off.branch(_gc_cont);
+            b_on = ir.IRBuilder(_gc_on);
+            if self._gc_mode() == "cycles" {
+                b_on.call(self.rc_cycles_enable_fn, []);
+            }
+            b_on.branch(_gc_cont);
+            self._builder = ir.IRBuilder(_gc_cont);
         }
-        _init_call = self.builder.call(imp_init_fn, []);
+        _manifest = self.ir_in.gen.interop_manifest if (self.ir_in?.gen) else None;
+        _all_na_sources = _manifest.native_transitive_sources if _manifest else [];
+        _seen_init_mods: set = set();
+        for _source_mod in _all_na_sources {
+            if _source_mod is None or _source_mod in _seen_init_mods {
+                continue;
+            }
+            _seen_init_mods.add(_source_mod);
 
-        if self.di_cu is not None and self._di_current_sp is not None {
-            try {
-                import os as _os_di;
+            init_name = native_glob_init_name(_source_mod, _manifest);
 
-                _mod_fn = _source_mod;
-                if not _mod_fn.endswith(".jac") {
-                    _mod_fn = _mod_fn.replace(".", "/") + ".na.jac";
-                }
-                _di_imp_file = self.llvm_module.add_debug_info(
-                    "DIFile",
-                    {
-                        "filename": _os_di.path.basename(_mod_fn),
-                        "directory": _os_di.path.dirname(_mod_fn) or "."
+            imp_init_fn = self.func_symtab.get(init_name);
+            if imp_init_fn is None {
+                imp_init_fnty = ir.FunctionType(ir.VoidType(), []);
+                imp_init_fn = ir.Function(
+                    self.llvm_module, imp_init_fnty, name=init_name
+                );
+                self.func_symtab[init_name] = imp_init_fn;
+            }
+
+            _guard_kernel = (
+                (self._osp_kernel_inited_gv is not None)
+                and (imp_init_fn is self._osp_kernel_glob_init_fn)
+            );
+            if _guard_kernel {
+                _i8 = ir.IntType(8);
+                _gk_run = self.builder.function.append_basic_block("osp_kinit_run");
+                _gk_done = self.builder.function.append_basic_block("osp_kinit_done");
+                self.builder.cbranch(
+                    self.builder.icmp_unsigned(
+                        "!=",
+                        self.builder.load(
+                            self._osp_kernel_inited_gv, name="osp.kinited.entry"
+                        ),
+                        ir.Constant(_i8, 0)
+                    ),
+                    _gk_done,
+                    _gk_run
+                );
+                self.builder.position_at_end(_gk_run);
+                self.builder.store(ir.Constant(_i8, 1), self._osp_kernel_inited_gv);
+            }
+            _init_call = self.builder.call(imp_init_fn, []);
+
+            if self.di_cu is not None and self._di_current_sp is not None {
+                try {
+                    import os as _os_di;
+
+                    _mod_fn = _source_mod;
+                    if not _mod_fn.endswith(".jac") {
+                        _mod_fn = _mod_fn.replace(".", "/") + ".na.jac";
                     }
-                );
-                _di_sub_ty = self.llvm_module.add_debug_info(
-                    "DISubroutineType", {"types": self.llvm_module.add_metadata([])}
-                );
-                _di_init_sp = self.llvm_module.add_debug_info(
-                    "DISubprogram",
-                    {
-                        "name": init_name,
-                        "file": _di_imp_file,
-                        "line": 0,
-                        "isDefinition": False,
-                        "unit": self.di_cu,
-                        "type": _di_sub_ty
-                    },
-                    is_distinct=True
-                );
-                _di_init_loc = self.llvm_module.add_debug_info(
-                    "DILocation", {"line": 1, "column": 0, "scope": _di_init_sp}
-                );
-                _init_call.set_metadata("dbg", _di_init_loc);
-            } except Exception {}
+                    _di_imp_file = self.llvm_module.add_debug_info(
+                        "DIFile",
+                        {
+                            "filename": _os_di.path.basename(_mod_fn),
+                            "directory": _os_di.path.dirname(_mod_fn) or "."
+                        }
+                    );
+                    _di_sub_ty = self.llvm_module.add_debug_info(
+                        "DISubroutineType", {"types": self.llvm_module.add_metadata([])}
+                    );
+                    _di_init_sp = self.llvm_module.add_debug_info(
+                        "DISubprogram",
+                        {
+                            "name": init_name,
+                            "file": _di_imp_file,
+                            "line": 0,
+                            "isDefinition": False,
+                            "unit": self.di_cu,
+                            "type": _di_sub_ty
+                        },
+                        is_distinct=True
+                    );
+                    _di_init_loc = self.llvm_module.add_debug_info(
+                        "DILocation", {"line": 1, "column": 0, "scope": _di_init_sp}
+                    );
+                    _init_call.set_metadata("dbg", _di_init_loc);
+                } except Exception {}
+            }
+            if _guard_kernel {
+                self.builder.branch(_gk_done);
+                self.builder.position_at_end(_gk_done);
+            }
         }
-        if _guard_kernel {
-            self.builder.branch(_gk_done);
-            self.builder.position_at_end(_gk_done);
+
+        if glob_init_fn is not None {
+            self.builder.call(glob_init_fn, []);
         }
+
+        for _ent in nodes {
+            if self.builder.block.is_terminated {
+                break;
+            }
+            if (_ent).body {
+                self._codegen_body((_ent).body);
+            }
+        }
+
+        if not self.builder.block.is_terminated {
+            i32 = ir.IntType(32);
+            i8p = ir.IntType(8).as_pointer();
+            fflush_fn = self._get_or_declare_extern("fflush", i32, [i8p]);
+            null_ptr = ir.Constant(i8p, None);
+            self.builder.call(fflush_fn, [null_ptr]);
+
+            _last = nodes[-1];
+            self._emit_scope_cleanup(
+                skip_var=None,
+                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{_last.loc.last_line
+                    if _last.loc
+                    else 0}"
+            );
+
+            if self.rc_live_head_gv is not None {
+                self._emit_rc_live_dump();
+            }
+            self.builder.ret_void();
+        }
+
+        self._finalize_di_locations(func, entry_line);
+        self.has_native_code = True;
+    } finally {
+        self._leave_function(state);
     }
-
-    if glob_init_fn is not None {
-        self.builder.call(glob_init_fn, []);
-    }
-
-    for _ent in nodes {
-        if self.builder.block.is_terminated {
-            break;
-        }
-        if (_ent).body {
-            self._codegen_body((_ent).body);
-        }
-    }
-
-    if not self.builder.block.is_terminated {
-        i32 = ir.IntType(32);
-        i8p = ir.IntType(8).as_pointer();
-        fflush_fn = self._get_or_declare_extern("fflush", i32, [i8p]);
-        null_ptr = ir.Constant(i8p, None);
-        self.builder.call(fflush_fn, [null_ptr]);
-
-        _last = nodes[-1];
-        self._emit_scope_cleanup(
-            skip_var=None,
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{_last.loc.last_line
-                if _last.loc
-                else 0}"
-        );
-
-        if self.rc_live_head_gv is not None {
-            self._emit_rc_live_dump();
-        }
-        self.builder.ret_void();
-    }
-
-    self._finalize_di_locations(func, entry_line);
-    self.has_native_code = True;
-    self._builder = None;
 }
 
 impl NaIRGenPass._emit_rc_gc_env_off_fn -> ir.Function {
