@@ -216,9 +216,9 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
         if typeof(value) != "bigint" and not Number.isSafeInteger(value) {
             raise Error("Native integer arguments must be exact integers");
         }
-        integer = globalThis.BigInt(value);
-        minimum = globalThis.BigInt(0) if contract.type == "u64" else globalThis.BigInt("-9223372036854775808");
-        maximum = globalThis.BigInt("18446744073709551615") if contract.type == "u64" else globalThis.BigInt("9223372036854775807");
+        integer: any = globalThis.BigInt(value);
+        minimum: any = globalThis.BigInt(0) if contract.type == "u64" else globalThis.BigInt("-9223372036854775808");
+        maximum: any = globalThis.BigInt("18446744073709551615") if contract.type == "u64" else globalThis.BigInt("9223372036854775807");
         if integer < minimum or integer > maximum { raise Error("Native integer argument is out of range"); }
         return integer;
     }
