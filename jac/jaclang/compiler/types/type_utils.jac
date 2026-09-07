@@ -1,4 +1,3 @@
-import from enum { Enum }
 import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import from jaclang.compiler.frontend.unitree {
     Ability,
@@ -38,12 +37,10 @@ import from .types {
     UnknownType
 }
 
-class PropertyWriteKind(Enum) {
-    with entry {
-        NOT_PROPERTY = 0;
-        READ_ONLY = 1;
-        WRITABLE = 2;
-    }
+enum PropertyWriteKind {
+    NOT_PROPERTY = 0,
+    READ_ONLY = 1,
+    WRITABLE = 2,
 }
 
 obj PropertyWriteResult {
