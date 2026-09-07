@@ -1,17 +1,3 @@
-impl TypeEvaluator._pass.getter -> (Transform | None) {
-    ref = self._pass_ref;
-    if ref is None {
-        return None;
-    }
-    held = ref();
-    return held if isinstance(held, Transform) else None;
-}
-
-impl TypeEvaluator._pass.setter(_pass: (Transform | None)) {
-    import weakref;
-    self._pass_ref = weakref.ref(_pass) if _pass is not None else None;
-}
-
 impl TypeEvaluator._walk_compr_clauses(comprs: list[InnerCompr]) -> None {
     for compr in comprs {
         self.get_type_of_expression(compr.collection);
@@ -531,7 +517,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                 }
-                if isinstance(expr.kv_pair, KVPair) {
+                if isinstance(expr.kv_pair, KVPair) and expr.kv_pair.key is not None {
                     key_type = self.get_type_of_expression(expr.kv_pair.key);
                     val_type = self.get_type_of_expression(expr.kv_pair.value);
                     if isinstance(dict_inst, ClassType)
@@ -675,7 +661,7 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
 
             if isinstance(base_type, TypeVarType) and base_type.is_self {
-                _sf_arch = expr.find_parent_of_type(Archetype);
+                _sf_arch: Archetype | Enum | None = expr.find_parent_of_type(Archetype);
                 if _sf_arch is None {
                     _sf_impl = expr.find_parent_of_type(ImplDef);
                     if _sf_impl is not None
@@ -775,7 +761,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 }
                             }
                             if len(overloaded_fns) > 1 {
-                                overloaded_ty = OverloadedType(
+                                overloaded_ty: OverloadedType | None = OverloadedType(
                                     overloads=overloaded_fns
                                 );
                                 sym.add_use(expr.right);
@@ -1663,7 +1649,21 @@ impl TypeEvaluator._get_type_of_expression_core(
             return self.get_type_of_expression(expr.value);
 
         case FuncCall():
-            return self.validate_call_args(expr);
+            result = self.validate_call_args(expr);
+            if not expr.params and expected_type is not None {
+                constructor = self.get_type_of_expression(expr.target);
+                if isinstance(constructor, ClassType)
+                    and constructor.is_instantiable_class()
+                    and constructor.is_builtin(["list", "set", "frozenset", "dict"]) {
+                    expected = self._get_expected_container_type(
+                        expected_type, constructor
+                    );
+                    if expected is not None and expected.private.type_args {
+                        return expected.clone_as_instance();
+                    }
+                }
+            }
+            return result;
 
         case AwaitExpr():
             target_type = self.get_type_of_expression(expr.target);
@@ -2697,7 +2697,10 @@ impl TypeEvaluator._get_type_of_symbol_decl(
 
                 if isinstance(collection_type, ClassType)
                     and collection_type.is_namedtuple() {
-                    has_vars = collection_type.shared.symbol_table.get_has_vars();
+                    field_scope = collection_type.shared.symbol_table;
+                    has_vars = field_scope.get_has_vars()
+                        if isinstance(field_scope, Archetype)
+                        else [];
                     if has_vars {
                         field_types: list[TypeBase] = [];
                         for field in has_vars {
@@ -3105,7 +3108,7 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     obj_type: TypeBase,
     method_name: str,
     arg_nodes: (Sequence[Expr | KWPair] | None),
-    node_for_error: Expr | None = None,
+    node_for_error: UniNode | None = None,
 ) -> TypeBase | None {
     if isinstance(obj_type, UnionType) {
         result_types: list[TypeBase] = [];
@@ -3721,9 +3724,21 @@ impl TypeEvaluator.get_type_of_expression(
     }
 
     if node_.type is not None {
+        contextual_call = False;
+        if expected_type is not None
+            and isinstance(node_, FuncCall)
+            and not node_.params {
+            constructor = node_.target.type;
+            contextual_call = isinstance(constructor, ClassType)
+                and constructor.is_instantiable_class()
+                and constructor.is_builtin(["list", "set", "frozenset", "dict"]);
+        }
         if expected_type is None
-            or not isinstance(
-                node_, (ListVal, DictVal, SetVal, TupleVal, ListCompr, LambdaExpr, )
+            or (
+                not contextual_call
+                and not isinstance(
+                    node_, (ListVal, DictVal, SetVal, TupleVal, ListCompr, LambdaExpr, )
+                )
             ) {
             if isinstance(node_.type, (UnionType, ClassType)) {
                 if narrowed
@@ -3978,31 +3993,20 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
 }
 
 impl TypeEvaluator._prefetch_types{
-    def as_class_type(t: TypeBase) -> ClassType | None {
-        if isinstance(t, ClassType) {
-            return t;
-        }
-        return None;
-    }
-
     def get_types_class(type_name: str) -> ClassType | None {
-        return as_class_type(self._get_type_from_module(self.types_module, type_name));
+        return self._get_class_from_module(self.types_module, type_name);
     }
     def get_typing_class(type_name: str) -> ClassType | None {
-        return as_class_type(self._get_type_from_module(self.typing_module, type_name));
+        return self._get_class_from_module(self.typing_module, type_name);
     }
     def get_builtin_class(type_name: str) -> ClassType | None {
-        return as_class_type(
-            self._get_type_from_module(self.builtins_module, type_name)
-        );
+        return self._get_class_from_module(self.builtins_module, type_name);
     }
     def get_enum_class(type_name: str) -> ClassType | None {
-        return as_class_type(self._get_type_from_module(self.enum_module, type_name));
+        return self._get_class_from_module(self.enum_module, type_name);
     }
     def get_jac_builtin_class(type_name: str) -> ClassType | None {
-        return as_class_type(
-            self._get_type_from_module(self.jac_builtins_module, type_name)
-        );
+        return self._get_class_from_module(self.jac_builtins_module, type_name);
     }
 
     self.prefetch.none_type_class = get_types_class("NoneType");
@@ -4252,11 +4256,11 @@ impl TypeEvaluator._init_prelude_from_catalog(catalog: any) -> list[Module] {
     }
     self.builtins_module = loaded[0];
     typing_mod = loaded[1];
-    self.prefetch.type_var_class = self._get_type_from_module(typing_mod, "TypeVar");
-    self.prefetch.param_spec_class = self._get_type_from_module(
+    self.prefetch.type_var_class = self._get_class_from_module(typing_mod, "TypeVar");
+    self.prefetch.param_spec_class = self._get_class_from_module(
         typing_mod, "ParamSpec"
     );
-    self.prefetch.type_var_tuple_class = self._get_type_from_module(
+    self.prefetch.type_var_tuple_class = self._get_class_from_module(
         typing_mod, "TypeVarTuple"
     );
     self.ambient_typing_names_by_module = catalog.ambient_typing_names();
@@ -4268,11 +4272,11 @@ impl TypeEvaluator._init_prelude_from_sources -> list[Module] {
     types_mod = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
     enum_mod = self._load_stub_module(self._ENUM_STUB_FILE_PATH);
 
-    self.prefetch.type_var_class = self._get_type_from_module(typing_mod, "TypeVar");
-    self.prefetch.param_spec_class = self._get_type_from_module(
+    self.prefetch.type_var_class = self._get_class_from_module(typing_mod, "TypeVar");
+    self.prefetch.param_spec_class = self._get_class_from_module(
         typing_mod, "ParamSpec"
     );
-    self.prefetch.type_var_tuple_class = self._get_type_from_module(
+    self.prefetch.type_var_tuple_class = self._get_class_from_module(
         typing_mod, "TypeVarTuple"
     );
     builtins_mod = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
@@ -6060,11 +6064,11 @@ impl TypeEvaluator._resolve_type_alias_rhs(value: Expr) -> TypeBase {
     if is_stub and self._pass is not None {
         pass_ref = self._pass;
         errors_before = len(pass_ref.errors_had);
-        prog_errors_before = len(pass_ref.prog.errors_had);
+        prog_errors_before = len(self.program.errors_had);
         result = self.get_type_of_expression(value);
 
         del pass_ref.errors_had[errors_before:];
-        del pass_ref.prog.errors_had[prog_errors_before:];
+        del self.program.errors_had[prog_errors_before:];
         return result;
     }
     return self.get_type_of_expression(value);

@@ -172,6 +172,7 @@ import from jaclang.compiler.types.type_utils {
     get_declared_generator_return_type,
     is_generator_family_type,
     lookup_symtab,
+    literal_string_value,
     shadowed_type_var_names,
     specialize_for_base_class,
     synthesize_self_type_var
@@ -337,7 +338,8 @@ walker TypeEvaluator {
     def _scope_is_current(scope: UniScopeNode) -> bool;
 
     has program: JacProgram,
-        _shared_intern: dict[tuple, ClassDetailsShared] = {},
+        _shared_intern:
+            dict[tuple[tuple[str, int, int, str], str], ClassDetailsShared] = {},
         _BUILTINS_STUB_FILE_PATH: str postinit,
         _TYPING_STUB_FILE_PATH: str postinit,
         _TYPES_STUB_FILE_PATH: str postinit,
@@ -353,7 +355,7 @@ walker TypeEvaluator {
         ct_eval: CtEvaluator postinit,
         ct_quiet: bool = False,
         prefetch: PrefetchedTypes postinit,
-        _pass_ref: object | None = None,
+        _pass: Transform | None = None,
         builtins_module: Module | None = None,
         _flow_node_type_cache: dict[tuple[int, int], TypeBase | None] = {},
         _flow_key_type_cache: dict[tuple[int, str], TypeBase | None] = {},
@@ -379,8 +381,6 @@ walker TypeEvaluator {
         na_builtins_module: Module postinit,
         js_globals_module: Module postinit;
 
-    has _pass: (Transform | None) { getter; setter(_pass: (Transform | None)); }
-
     def postinit -> None;
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
@@ -393,6 +393,7 @@ walker TypeEvaluator {
     def _init_prelude_from_catalog(catalog: any) -> list[Module];
     def _init_prelude_from_sources -> list[Module];
     def _get_type_from_module(module: Module, name: str) -> TypeBase;
+    def _get_class_from_module(module: Module | None, name: str) -> ClassType | None;
     def _prefetch_types;
     def get_none_type -> TypeBase;
     def emit_diag(diag: DiagnosticInfo, nd: UniNode, **kwargs: object) -> None;
@@ -541,7 +542,7 @@ walker TypeEvaluator {
         obj_type: TypeBase,
         method_name: str,
         arg_nodes: (Sequence[Expr | KWPair] | None),
-        node_for_error: Expr | None = None
+        node_for_error: UniNode | None = None
     ) -> TypeBase | None;
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
@@ -618,7 +619,7 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_iterable_element_type(
-        iterable_type: TypeBase, node_for_error: Expr | None = None
+        iterable_type: TypeBase, node_for_error: UniNode | None = None
     ) -> TypeBase | None;
 
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
@@ -629,6 +630,10 @@ walker TypeEvaluator {
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
+    def _get_expected_container_type(
+        expected_type: TypeBase | None, container_class: TypeBase
+    ) -> ClassType | None;
+
     def _get_expected_element_type(
         expected_type: TypeBase | None, container_class: TypeBase
     ) -> TypeBase | None;
@@ -659,7 +664,7 @@ walker TypeEvaluator {
 
     def match_args_to_params(
         arg_nodes: (Sequence[Expr | KWPair] | None),
-        node_for_error: Expr | None,
+        node_for_error: UniNode | None,
         func_type: FunctionType,
         checking_overload: bool = False,
         is_unbound_call: bool = False
@@ -704,7 +709,7 @@ walker TypeEvaluator {
     ) -> OverloadedType | None;
 
     def _create_object_init_method(class_type: ClassType) -> FunctionType;
-    def _scope_has_fields(tab: any) -> bool;
+    def _scope_has_fields(tab: UniScopeNode | None) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
     def _create_special_builtin_type(name: str, base_class: ClassType) -> ClassType;
     def _validate_constructor_method(

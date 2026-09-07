@@ -577,7 +577,7 @@ node NameAtom(AtomExpr, EnumBlockStmt) {
 
     def postinit -> None;
 
-    has sym: (Symbol | None) { getter; setter(sym: Symbol); }
+    has sym: (Symbol | None) { getter; setter(sym: Symbol | None); }
     has sym_name: str { getter; }
     has sym_category: SymbolType { getter; }
 

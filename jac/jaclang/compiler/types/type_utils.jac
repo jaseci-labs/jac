@@ -1,4 +1,5 @@
 import from enum { Enum }
+import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
@@ -18,6 +19,8 @@ import from jaclang.compiler.frontend.unitree {
     ModuleItem,
     Name,
     ModulePath,
+    MultiString,
+    String,
     Symbol,
     UnaryExpr,
     UniNode,
@@ -58,7 +61,9 @@ obj ClassMember {
         overloads: list[Symbol];
 }
 
-def compute_mro_linearization(cls: ClassType, _visiting: (set | None) = None) -> None;
+def compute_mro_linearization(
+    cls: ClassType, _visiting: (set[int] | None) = None
+) -> None;
 
 def primitive_type_name_of(ty: (TypeBase | None)) -> (str | None);
 
@@ -125,7 +130,7 @@ def completion_kind_from_sym(sym: Symbol) -> CompletionItemKind;
 def get_completion_items(ty: (TypeBase | UniScopeNode)) -> list[CompletionItem];
 
 def lookup_symtab(
-    symtable: UniScopeNode, name: str, builtins_to_inject: Module
+    symtable: UniScopeNode, name: str, builtins_to_inject: Module | None
 ) -> (Symbol | None);
 
 def types_equivalent(a: TypeBase, b: TypeBase, depth: int = 0) -> bool;
@@ -137,7 +142,7 @@ def collect_member_syms(
 ) -> list[Symbol];
 
 def class_implements_protocol(
-    cls: ClassType, proto: ClassType, evaluator: any = None
+    cls: ClassType, proto: ClassType, evaluator: TypeEvaluator | None = None
 ) -> bool;
 
 def get_generator_type_args(return_type: TypeBase) -> (list[TypeBase] | None);
@@ -181,3 +186,5 @@ def build_solution_from_specialized_class(
 ) -> dict[str, TypeBase];
 
 def specialize_for_base_class(src_type: ClassType, base_class: ClassType) -> ClassType;
+
+def literal_string_value(expr: UniNode) -> str | None;

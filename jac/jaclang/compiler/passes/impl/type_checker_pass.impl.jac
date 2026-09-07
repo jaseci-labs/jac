@@ -1256,23 +1256,27 @@ impl TypeCheckPass._install_client_state_setters -> None {
     }
 }
 
-impl TypeCheckPass.init(prog: JacProgram, **kwargs: any) -> None {
-    self.prog = prog;
-    UniPass.__init__(self, **kwargs);
-}
-
 impl TypeCheckPass.postinit -> None {
     self.evaluator = self.prog.get_type_evaluator();
     super.postinit();
 }
 
-impl TypeCheckPass.before_pass -> None {
-    self.evaluator = self.prog.get_type_evaluator();
+impl TypeCheckPass.transform(ir_in: Module) -> Module {
+    evaluator = self.prog.get_type_evaluator();
+    self.evaluator = evaluator;
+    previous_pass = evaluator._pass;
+    previous_quiet = evaluator.ct_quiet;
+    evaluator._pass = self;
+    evaluator.ct_quiet = bool(ir_in.ct_resolved);
+    try {
+        return super.transform(ir_in);
+    } finally {
+        evaluator._pass = previous_pass;
+        evaluator.ct_quiet = previous_quiet;
+    }
+}
 
-    self._prev_eval_pass = self.evaluator._pass;
-    self.evaluator._pass = self;
-    self._prev_ct_quiet = self.evaluator.ct_quiet;
-    self.evaluator.ct_quiet = bool(self.ir_in.ct_resolved);
+impl TypeCheckPass.before_pass -> None {
     self._insert_builtin_symbols();
     self._install_client_state_setters();
 }
@@ -1280,10 +1284,6 @@ impl TypeCheckPass.before_pass -> None {
 impl TypeCheckPass.after_pass -> None {
     self._check_unresolved_lambda_params();
     self._stamp_fixed_width();
-    self.evaluator.ct_quiet = self._prev_ct_quiet;
-    if self.evaluator._pass is self {
-        self.evaluator._pass = self._prev_eval_pass;
-    }
 }
 
 impl TypeCheckPass.exit_param_var with ParamVar exit {

@@ -64,3 +64,21 @@ test "deferred fields are not accepted as constructor arguments" {
     );
     assert errors , "An init=False field must not become a constructor parameter";
 }
+
+test "property setters can accept an optional value while getters remain precise" {
+    errors = check_fields(
+        "obj Example { has value: int { getter { return 3; } "
+            + "setter(value: int | None) {} } }\n"
+            + "def update -> int { item = Example(); item.value = None; return item.value + 1; }\n"
+    );
+    assert not errors , str(errors);
+}
+
+test "property writes use the setter parameter rather than the getter result" {
+    errors = check_fields(
+        "obj Example { has value: int | str { getter { return 3; } "
+            + "setter(value: int) {} } }\n"
+            + "def update { item = Example(); item.value = 'wrong'; }\n"
+    );
+    assert any("Cannot assign" in error for error in errors) , str(errors);
+}

@@ -166,12 +166,12 @@ node ClassDetailsShared {
 
     has symbol_table: SymbolTable { getter; setter(symbol_table: SymbolTable); }
     has mro: list[ClassType] { getter; setter(mro: list[ClassType]); }
-    has type_params: (list[TypeVarType] | None) {
+    has type_params: list[TypeVarType] {
         getter;
         setter(type_params: (list[TypeVarType] | None));
     }
 
-    has base_classes: (list[TypeBase] | None) {
+    has base_classes: list[TypeBase] {
         getter;
         setter(base_classes: (list[TypeBase] | None));
     }
@@ -225,7 +225,7 @@ node ClassDetailsPrivate {
         _targs_cache: (list[TypeBase] | None) = None,
         _acc_cache: (dict[str, any] | None) = None;
 
-    has type_args: (list[TypeBase] | None) {
+    has type_args: list[TypeBase] {
         getter;
         setter(type_args: (list[TypeBase] | None));
     }
@@ -351,7 +351,7 @@ node FunctionType(TypeBase) {
         setter(parameters: (list[Parameter] | None));
     }
 
-    has type_params: (list[TypeVarType] | None) {
+    has type_params: list[TypeVarType] {
         getter;
         setter(type_params: (list[TypeVarType] | None));
     }

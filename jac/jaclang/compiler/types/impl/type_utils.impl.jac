@@ -90,9 +90,9 @@ impl is_generator_family_type(return_type: TypeBase) -> bool {
 }
 
 
-glob _proto_checks_in_progress: set = set();
+glob _proto_checks_in_progress: set[tuple[int, int]] = set();
 
-def _method_entry_of(sym: Symbol) -> any {
+def _method_entry_of(sym: Symbol) -> Symbol | Ability | None {
     if sym.provider is not None {
         import from jaclang.compiler.frontend.constant { SymbolType }
         if sym.sym_type
@@ -101,13 +101,17 @@ def _method_entry_of(sym: Symbol) -> any {
         }
         return None;
     }
-    if sym.decl and isinstance(sym.decl.name_of, Ability) {
-        return sym.decl.name_of;
+    decl = sym.decl;
+    if decl is not None {
+        owner = decl.name_of;
+        if isinstance(owner, Ability) {
+            return owner;
+        }
     }
     return None;
 }
 
-def _method_entry_type(evaluator: any, member: any) -> TypeBase {
+def _method_entry_type(evaluator: TypeEvaluator, member: Symbol | Ability) -> TypeBase {
     if isinstance(member, Symbol) {
         return evaluator.get_type_of_symbol(member);
     }
@@ -115,9 +119,9 @@ def _method_entry_type(evaluator: any, member: any) -> TypeBase {
 }
 
 impl class_implements_protocol(
-    cls: ClassType, proto: ClassType, evaluator: any = None
+    cls: ClassType, proto: ClassType, evaluator: TypeEvaluator | None = None
 ) -> bool {
-    proto_methods: dict[str, any] = {};
+    proto_methods: dict[str, Symbol | Ability] = {};
     proto_symtab = proto.shared.symbol_table;
     if isinstance(proto_symtab, UniScopeNode) {
         for (name, sym) in proto_symtab.names_in_scope.items() {
@@ -132,7 +136,7 @@ impl class_implements_protocol(
         return True;
     }
 
-    cls_methods: dict[str, any] = {};
+    cls_methods: dict[str, Symbol | Ability] = {};
     for mro_cls in cls.shared.mro {
         mro_symtab = mro_cls.shared.symbol_table;
         if isinstance(mro_symtab, UniScopeNode) {
@@ -175,7 +179,7 @@ impl class_implements_protocol(
 }
 
 impl lookup_symtab(
-    symtable: UniScopeNode, name: str, builtins_to_inject: Module
+    symtable: UniScopeNode, name: str, builtins_to_inject: Module | None
 ) -> (Symbol | None) {
     mod: (Module | None) = None;
     if isinstance(symtable, Module) {
@@ -602,7 +606,9 @@ impl ParamAssignmentTracker.postinit -> None {
     }
 }
 
-impl compute_mro_linearization(cls: ClassType, _visiting: (set | None) = None) -> None {
+impl compute_mro_linearization(
+    cls: ClassType, _visiting: (set[int] | None) = None
+) -> None {
     if cls.shared.mro {
         return;
     }
@@ -1062,4 +1068,14 @@ def _apply_to_function(
     }
 
     return clone;
+}
+
+impl literal_string_value(expr: UniNode) -> str | None {
+    if isinstance(expr, (String, MultiString)) {
+        value = expr.lit_value;
+        if isinstance(value, str) {
+            return value;
+        }
+    }
+    return None;
 }

@@ -100,7 +100,11 @@ impl TypeEvaluator._build_field_params(
             self._merge_catalog_field_params(cat_tab, param_map, skip_deferred);
             continue;
         }
-        for has_var in cls.shared.symbol_table.get_has_vars() {
+        scope = cls.shared.symbol_table;
+        if not isinstance(scope, Archetype) {
+            continue;
+        }
+        for has_var in scope.get_has_vars() {
             if skip_deferred and has_var.defer {
                 param_map.pop(has_var.name.value, None);
                 continue;
@@ -211,7 +215,11 @@ impl TypeEvaluator._build_typeddict_fields(
         if cls.shared.class_name == "TypedDict" {
             continue;
         }
-        for has_var in cls.shared.symbol_table.get_has_vars() {
+        scope = cls.shared.symbol_table;
+        if not isinstance(scope, Archetype) {
+            continue;
+        }
+        for has_var in scope.get_has_vars() {
             if has_var.accessors {
                 continue;
             }
@@ -349,27 +357,20 @@ impl TypeEvaluator._typeddict_as_dict(base_type: ClassType) -> ClassType | None 
     dict_type = self.prefetch.dict_class.specialize_generics(
         [str_inst, self._typeddict_value_union(base_type)]
     );
-    return self._convert_to_instance(dict_type);
+    return dict_type.clone_as_instance();
 }
 
-impl TypeEvaluator._scope_has_fields(tab: any) -> bool {
-    if tab is None {
-        return False;
-    }
-    if isinstance(tab, Archetype) and tab.get_has_vars() {
-        return True;
-    }
-    if not hasattr(tab, "cat_kind") {
-        return False;
-    }
+impl TypeEvaluator._scope_has_fields(tab: UniScopeNode | None) -> bool {
+    import from jaclang.compiler.types.stubcat.reader { CatScope }
     import from jaclang.compiler.frontend.constant { SymbolType }
-    for sym in (getattr(tab, "names_in_scope", {}) or {}).values() {
-        try {
+    if isinstance(tab, Archetype) {
+        return bool(tab.get_has_vars());
+    }
+    if isinstance(tab, CatScope) {
+        for sym in tab.names_in_scope.values() {
             if sym.sym_type == SymbolType.HAS_VAR {
                 return True;
             }
-        } except Exception {
-            continue;
         }
     }
     return False;
@@ -624,9 +625,7 @@ impl TypeEvaluator._synthesize_enum_metaclass_attr(
         member_inst = enum_type.clone_as_instance();
         val_type = self._resolve_enum_value_type(enum_type);
         key_type = (
-            self._convert_to_instance(val_type)
-                if val_type is not None
-                else types.AnyType()
+            self._convert_to_instance(val_type) if val_type is not None else AnyType()
         );
         dict_type = self.prefetch.dict_class.specialize_generics(
             [key_type, member_inst]
@@ -731,20 +730,37 @@ impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -
     }
 }
 
+impl TypeEvaluator._get_expected_container_type(
+    expected_type: TypeBase | None, container_class: TypeBase
+) -> ClassType | None {
+    if not isinstance(container_class, ClassType) {
+        return None;
+    }
+    candidates: list[TypeBase] = [];
+    if isinstance(expected_type, UnionType) {
+        candidates = expected_type.types or [];
+    } elif expected_type is not None {
+        candidates = [expected_type];
+    }
+    found: ClassType | None = None;
+    for candidate in candidates {
+        if isinstance(candidate, ClassType)
+            and candidate.shared == container_class.shared {
+            if found is not None {
+                return None;
+            }
+            found = candidate;
+        }
+    }
+    return found;
+}
+
 impl TypeEvaluator._get_expected_element_type(
     expected_type: TypeBase | None, container_class: TypeBase
 ) -> TypeBase | None {
-    if expected_type is None {
-        return None;
-    }
-    if (
-        isinstance(expected_type, ClassType)
-        and isinstance(container_class, ClassType)
-        and expected_type.shared == container_class.shared
-        and expected_type.private.type_args
-        and len(expected_type.private.type_args) >= 1
-    ) {
-        return self._convert_to_instance(expected_type.private.type_args[0]);
+    expected = self._get_expected_container_type(expected_type, container_class);
+    if expected is not None and expected.private.type_args {
+        return self._convert_to_instance(expected.private.type_args[0]);
     }
     return None;
 }
@@ -752,19 +768,13 @@ impl TypeEvaluator._get_expected_element_type(
 impl TypeEvaluator._get_expected_kv_types(
     expected_type: TypeBase | None, dict_class: TypeBase
 ) -> tuple[TypeBase, TypeBase] | None {
-    if expected_type is None {
-        return None;
-    }
-    if (
-        isinstance(expected_type, ClassType)
-        and isinstance(dict_class, ClassType)
-        and expected_type.shared == dict_class.shared
-        and expected_type.private.type_args
-        and len(expected_type.private.type_args) >= 2
-    ) {
+    expected = self._get_expected_container_type(expected_type, dict_class);
+    if expected is not None
+        and expected.private.type_args
+        and len(expected.private.type_args) >= 2 {
         return (
-            self._convert_to_instance(expected_type.private.type_args[0]),
-            self._convert_to_instance(expected_type.private.type_args[1])
+            self._convert_to_instance(expected.private.type_args[0]),
+            self._convert_to_instance(expected.private.type_args[1])
         );
     }
     return None;
@@ -1478,6 +1488,23 @@ impl TypeEvaluator.get_property_write_type(symbol: Symbol) -> PropertyWriteResul
     if isinstance(node_decl, HasVar) and node_decl.accessors {
         if kind == PropertyWriteKind.READ_ONLY {
             return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
+        }
+        for accessor in node_decl.accessors {
+            if accessor.accessor_kind != "setter" {
+                continue;
+            }
+            signature = accessor.signature;
+            if isinstance(signature, FuncSignature) {
+                parameters = signature.get_parameters();
+                if parameters and parameters[-1].type_tag is not None {
+                    write_type = self._convert_to_instance(
+                        self.get_type_of_expression(parameters[-1].type_tag.tag)
+                    );
+                    return PropertyWriteResult(
+                        kind=PropertyWriteKind.WRITABLE, write_type=write_type
+                    );
+                }
+            }
         }
         if node_decl.type_tag {
             decl_ty = self._convert_to_instance(

@@ -117,7 +117,9 @@ impl TypeEvaluator._validate_jsx_props(
 impl TypeEvaluator._validate_component_jsx_props(
     expr: JsxElement, component_name: str, func_type: FunctionType | None = None
 ) -> None {
-    func_type = func_type or self._resolve_jsx_component_type(expr.name);
+    if func_type is None and expr.name is not None {
+        func_type = self._resolve_jsx_component_type(expr.name);
+    }
     if not func_type or not func_type.parameters {
         return;
     }

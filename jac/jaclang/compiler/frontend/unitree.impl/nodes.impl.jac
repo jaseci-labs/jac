@@ -4027,7 +4027,7 @@ impl NameAtom.sym.getter -> (Symbol | None) {
     return found[0] if found else None;
 }
 
-impl NameAtom.sym.setter(sym: Symbol) {
+impl NameAtom.sym.setter(sym: Symbol | None) {
     del [edge self->:SymOf:->];
     if sym is not None {
         self +>:SymOf:+> sym;

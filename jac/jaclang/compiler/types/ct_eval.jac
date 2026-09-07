@@ -213,7 +213,7 @@ obj CtEvaluator {
         last_error: (str | None) = None,
         demand: bool = False,
         _failed: set[int] = set(),
-        _active: set[any] = set(),
+        _active: set[tuple[str, int]] = set(),
         _enum_cache: dict[int, list] = {},
         _ret: any = None,
         _ct_root: (Module | None) = None,
@@ -330,7 +330,7 @@ obj CtEvaluator {
 
     def try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
         self.last_error = None;
-        key = id(nd);
+        key = ("node", id(nd));
         if key in self._active {
             return None;
         }
@@ -1134,7 +1134,7 @@ obj CtEvaluator {
             self._stamp_home(cv.v, asn);
             return cv.v;
         }
-        key = id(asn);
+        key = ("node", id(asn));
         if key in self._active {
             raise CtError("comptime binding depends on itself");
         }

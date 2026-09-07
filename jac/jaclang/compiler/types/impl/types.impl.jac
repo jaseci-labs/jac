@@ -124,12 +124,12 @@ impl ClassDetailsShared.mro.setter(mro: list[ClassType]) -> None {
     self._mro_cache = `list(mro or []);
 }
 
-impl ClassDetailsShared.type_params.getter -> (list[TypeVarType] | None) {
+impl ClassDetailsShared.type_params.getter -> list[TypeVarType] {
     c = self._acc_cache;
     if (c is not None) and ("type_params" in c) {
         return c["type_params"];
     }
-    val = [self->:TypeParamOf:->];
+    val = [self->:TypeParamOf:->][?:TypeVarType];
     if c is None {
         c = {};
         self._acc_cache = c;
@@ -153,12 +153,12 @@ impl ClassDetailsShared.type_params.setter(
     c["type_params"] = `list(type_params or []);
 }
 
-impl ClassDetailsShared.base_classes.getter -> (list[TypeBase] | None) {
+impl ClassDetailsShared.base_classes.getter -> list[TypeBase] {
     c = self._acc_cache;
     if (c is not None) and ("base_classes" in c) {
         return c["base_classes"];
     }
-    val = [self->:BaseOf:->];
+    val = [self->:BaseOf:->][?:TypeBase];
     if c is None {
         c = {};
         self._acc_cache = c;
@@ -302,9 +302,9 @@ impl ClassDetailsPrivate.init(
     self.type_args = type_args;
 }
 
-impl ClassDetailsPrivate.type_args.getter -> (list[TypeBase] | None) {
+impl ClassDetailsPrivate.type_args.getter -> list[TypeBase] {
     if self._targs_cache is None {
-        self._targs_cache = [self->:TypeArgOf:->];
+        self._targs_cache = [self->:TypeArgOf:->][?:TypeBase];
     }
     return self._targs_cache;
 }
@@ -564,12 +564,12 @@ impl FunctionType.parameters.setter(parameters: (list[Parameter] | None)) -> Non
     self._params_cache = `list(parameters or []);
 }
 
-impl FunctionType.type_params.getter -> (list[TypeVarType] | None) {
+impl FunctionType.type_params.getter -> list[TypeVarType] {
     c = self._acc_cache;
     if (c is not None) and ("type_params" in c) {
         return c["type_params"];
     }
-    val = [self->:TypeParamOf:->];
+    val = [self->:TypeParamOf:->][?:TypeVarType];
     if c is None {
         c = {};
         self._acc_cache = c;
