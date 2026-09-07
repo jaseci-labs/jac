@@ -128,6 +128,7 @@ walker RcFactsPass(Transform) {
     def _enclosing_fn_scope(
         nd: UniNode, stop_at_comprehension: bool = False
     ) -> UniNode | None;
+
     def _is_param_sym(sym: Symbol) -> bool;
     def _last_use_tracked(sym: Symbol) -> bool;
     def _stamp_last_use(ir_in: Module) -> None;

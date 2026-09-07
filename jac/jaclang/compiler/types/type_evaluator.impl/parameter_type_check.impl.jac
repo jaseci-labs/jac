@@ -1088,8 +1088,6 @@ impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> TypeBase | None {
     }
     recv = expr.target.target.type;
     if isinstance(recv, UnionType) {
-        # A bound call on an instance union retains every possible receiver
-        # when substituting Self in the method's result.
         if recv.types
             and all(
                 isinstance(member, ClassType) and member.is_instance()

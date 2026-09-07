@@ -21,8 +21,7 @@ impl RcFactsPass._enclosing_fn_scope(
         if isinstance(cur, (Ability, ImplDef, LambdaExpr, Test, ModuleCode)) {
             return cur;
         }
-        if stop_at_comprehension
-            and isinstance(cur, (ListCompr, DictCompr)) {
+        if stop_at_comprehension and isinstance(cur, (ListCompr, DictCompr)) {
             return cur;
         }
         cur = cur.parent;

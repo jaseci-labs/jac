@@ -703,8 +703,6 @@ def _apply_debug_reloc(
 }
 
 
-# An unresolved weak reference is optional. Preserve its binding through the
-# dynamic symbol table; a strong declaration of the same name takes precedence.
 impl ElfLinker._undefined_bindings -> dict[str, int] {
     bindings: dict[str, int] = {};
     for sym in self.symbols {
@@ -886,8 +884,7 @@ impl ElfLinker.build_executable -> bytes {
     got_plt_size = got_plt_entries * 8;
 
     dyn_entries: list[tuple[int, int]] = [];
-    # Function address guards must observe zero for an absent weak import,
-    # rather than the lazy resolver trampoline initially stored in its GOT slot.
+
     if any(undefined_bindings[nm] == STB_WEAK for nm in extern_func_syms) {
         dyn_entries.append((DT_BIND_NOW, 0));
     }
@@ -1878,8 +1875,7 @@ impl ElfLinker.build_shared_object -> bytes {
     dynamic_foff = cur_offset;
 
     dyn_entries: list[tuple[int, int]] = [];
-    # Function address guards must observe zero for an absent weak import,
-    # rather than the lazy resolver trampoline initially stored in its GOT slot.
+
     if any(undefined_bindings[nm] == STB_WEAK for nm in extern_func_syms) {
         dyn_entries.append((DT_BIND_NOW, 0));
     }

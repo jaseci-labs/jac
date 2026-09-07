@@ -117,7 +117,9 @@ def _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
     }
 }
 
-def _open_region(exe: str, offset: int, length: int, pkg_dir: str) -> StubCatalog | None {
+def _open_region(
+    exe: str, offset: int, length: int, pkg_dir: str
+) -> StubCatalog | None {
     import from jaclang.compiler.types.stubcat.reader { open_catalog_region }
     try {
         return open_catalog_region(exe, offset, length, pkg_dir);

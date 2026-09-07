@@ -28,7 +28,6 @@ import from jaclang.compiler.frontend.constant {
 }
 
 obj ModuleFacts {
-    """Read a module's literal export declaration from the shared syntax tree."""
     static def literal_exports(module: Module) -> set[str] | None {
         assignments: list[Assignment] = [];
         for stmt in module.body {
@@ -66,7 +65,6 @@ obj ModuleFacts {
         return None;
     }
 
-    """Group explicitly exported from-import bindings by their source module."""
     static def exported_import_names(module: Module) -> dict[str, set[str]] {
         allowed = ModuleFacts.literal_exports(module);
         groups: dict[str, set[str]] = {};
