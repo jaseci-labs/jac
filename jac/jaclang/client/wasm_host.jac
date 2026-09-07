@@ -99,6 +99,7 @@ async def:pub instantiate_na_wasm(url: str, sh: any, extra_imports: any = None) 
     res: any = await WebAssembly.instantiateStreaming(fetch(url), imports);
     inst: any = res.instance;
     inst.__jac_owned_handles = 0;
+    inst.__jac_live = True;
     sh.exports = inst.exports;
     sh.mem = inst.exports.memory;
     if inst.exports.__heap_base {
@@ -162,6 +163,7 @@ async def:pub release_na_module(native_export: any) -> None {
     if module in _na_pending {
         inst = await _na_pending[module];
         if inst.__jac_owned_handles != 0 { raise Error("Native module still has live owned handles"); }
+        inst.__jac_live = False;
         _na_pending.pop(module, None);
     }
     _na_env_cfg.pop(module, None);
@@ -189,10 +191,18 @@ async def _na_instance(module_stem: str) -> any {
 
 glob _na_handles: any = new(globalThis.WeakMap);
 
+def _handle_live(handle: any) -> bool {
+    if not handle or not handle.live or not handle.instance.__jac_live { return False; }
+    for parent in handle.parents {
+        if not _handle_live(parent) { return False; }
+    }
+    return True;
+}
+
 def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any {
     if contract.kind == "handle" {
         handle = _na_handles.get(value);
-        if not handle or not handle.live or handle.module != module_stem
+        if not _handle_live(handle) or handle.module != module_stem
             or handle.instance != inst or handle.type != contract.type {
             raise Error("Invalid, consumed, or foreign native handle for " + contract.type);
         }
@@ -207,13 +217,14 @@ def _na_argument(value: any, contract: any, module_stem: str, inst: any) -> any 
     return value;
 }
 
-def _na_result(value: any, contract: any, module_stem: str, inst: any) -> any {
+def _na_result(value: any, contract: any, module_stem: str, inst: any, parents: list) -> any {
     if contract.kind == "handle" {
         token: any = Object.freeze({});
         if contract.mode == "own" { inst.__jac_owned_handles += 1; }
         _na_handles.set(token, {
             "pointer": value, "type": contract.type, "module": module_stem,
-            "instance": inst, "live": True, "owned": contract.mode == "own"
+            "instance": inst, "live": True, "owned": contract.mode == "own",
+            "parents": [] if contract.mode == "own" else parents
         });
         return token;
     }
@@ -269,7 +280,7 @@ def _na_caller(module_stem: str, fn_name: str, contract: any) -> any {
                 inst.__jac_owned_handles -= 1;
             }
         }
-        return _na_result(fn(*values), contract.result, module_stem, inst);
+        return _na_result(fn(*values), contract.result, module_stem, inst, [h.handle for h in handles]);
     }
     return _call;
 }

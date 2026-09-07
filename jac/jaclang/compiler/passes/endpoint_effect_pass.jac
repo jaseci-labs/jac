@@ -54,7 +54,7 @@ walker EndpointEffectPass(UniPass) {
         ) {
             self.ir_in.gen.interop_manifest.endpoint_effects[
                 endpoint_key(self.ir_in, "func", here.name_ref.sym_name)
-            ] = self._classify(self._resolved_body(here), "func", here.name_ref.sym_name);
+            ] = self._classify(self._resolved_body(here), "func", here.name_ref.sym_name, here);
         }
     }
 
@@ -71,7 +71,7 @@ walker EndpointEffectPass(UniPass) {
         ] = self._classify(self._resolved_body(here), "walker", here.name.sym_name);
     }
 
-    def _classify(body_nodes: list, kind: str, name: str) -> dict {
+    def _classify(body_nodes: list, kind: str, name: str, declaration: Ability | None = None) -> dict {
         import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
         self._is_writer = False;
         self._unknown = False;
@@ -80,11 +80,18 @@ walker EndpointEffectPass(UniPass) {
         self._assumptions.clear();
         self._touches.clear();
         self._visited.clear();
-        for nd in body_nodes {
-            self._scan(nd);
+        declared = self._declaration_effects(declaration) if declaration is not None else None;
+        if declared is not None {
+            self._declared_reads.update(declared["reads"]);
+            self._declared_writes.update(declared["writes"]);
+            self._assumptions.add("Declared effects of " + name);
+        } else {
+            for nd in body_nodes {
+                self._scan(nd);
+            }
         }
         result = endpoint_descriptor(self.ir_in, kind, name);
-        result["reads"] = ["*"];
+        result["reads"] = sorted(list(self._declared_reads)) if declared is not None else ["*"];
         result["writes"] = ["*"] if self._is_writer or self._unknown else sorted(list(self._declared_writes));
         result["assumptions"] = sorted(list(self._assumptions));
         result["unknown"] = self._unknown;
@@ -118,14 +125,6 @@ walker EndpointEffectPass(UniPass) {
         if isinstance(nd, Assignment) and nd.target {
             for tgt in nd.target {
                 if isinstance(tgt, AtomTrailer) and tgt.is_attr {
-                    root_expr = tgt.target;
-                    while isinstance(root_expr, AtomTrailer) {
-                        root_expr = root_expr.target;
-                    }
-                    is_self = (
-                        isinstance(root_expr, SpecialVarRef)
-                        and root_expr.sym_name == 'self'
-                    );
                     self._is_writer = True;
                 }
             }
@@ -199,9 +198,12 @@ walker EndpointEffectPass(UniPass) {
     }
 
     def _declared_effects(call: FuncCall) -> dict | None {
-        import ast;
         decl = ability_of_symbol(self._call_target_symbol(call));
-        if decl is None { return None; }
+        return self._declaration_effects(decl) if decl is not None else None;
+    }
+
+    def _declaration_effects(decl: Ability) -> dict | None {
+        import ast;
         for decorator in decl.decorators or [] {
             if not isinstance(decorator, FuncCall) { continue; }
             target = ability_of_symbol(self._call_target_symbol(decorator));
