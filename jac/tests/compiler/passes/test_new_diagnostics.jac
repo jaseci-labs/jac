@@ -418,6 +418,27 @@ test "E0063: glob inside a function produces no runnable bytecode" {
     assert not mod.gen.py_bytecode;
 }
 
+test "E0063: the hint names the rebinding idiom, not a global statement" {
+    # Jac has no `global` statement; a function rebinds a module glob by
+    # plain assignment, so a hint that says "global" sends the user to a
+    # parse error (#8612).
+    prog = JacProgram();
+    prog.compile(
+        file_path="/tmp/test_e0063_hint.jac",
+        use_str="def foo() -> int { glob a = 1; return a; }"
+    );
+    alerts = [
+        a
+        for a in prog.errors_had
+        if a.code is not None and a.code.code == "E0063"
+    ];
+    assert alerts;
+    assert "global" not in alerts[0].msg;
+    assert alerts[0].help_text is not None;
+    assert "assignment" in alerts[0].help_text;
+    assert "no global statement" in alerts[0].help_text;
+}
+
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 4: TYPE SYSTEM DIAGNOSTICS (E/W 1100-1183)
 #  Infrastructure: INFRA-3 (exhaustiveness), INFRA-4 (null safety),

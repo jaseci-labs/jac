@@ -281,8 +281,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0063 = _err(
          "E0063",
          Category.SYNTAX,
-         "'glob' is only valid at module level, perhaps you mean global",
-         help="Move the glob declaration to the top of the file, outside any function or code block.",
+         "'glob' is only valid at module level",
+         help="Declare it at module level, outside any function or code block; a function rebinds a module glob by plain assignment, Jac has no global statement.",
          blocks_codegen=True
      ),
      E0064 = _err(
