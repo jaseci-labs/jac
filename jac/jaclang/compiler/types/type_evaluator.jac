@@ -1,5 +1,6 @@
 import os;
 import from pathlib { Path }
+import type from jaclang.compiler.types.stubcat.reader { CatScope }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
 import from jaclang.compiler.types.ct_value { CtValue }
@@ -689,7 +690,7 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _merge_catalog_field_params(
-        tab: any, param_map: dict[str, Parameter], skip_deferred: bool
+        tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
     ) -> None;
 
     def _build_field_params(

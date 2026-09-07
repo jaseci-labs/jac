@@ -67,34 +67,26 @@ impl TypeEvaluator._type_from_union_annotation_arg(val: Expr) -> TypeBase {
 }
 
 impl TypeEvaluator._merge_catalog_field_params(
-    tab: any, param_map: dict[str, Parameter], skip_deferred: bool
+    tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
 ) -> None {
     import from jaclang.compiler.frontend.constant { SymbolType }
     import from jaclang.compiler.types.stubcat.format { SYMF_DEFER, SYMF_HAS_DEFAULT }
-    names: dict[str, Symbol] = dict(getattr(tab, "names_in_scope", {}) or {});
+    import from jaclang.compiler.types.stubcat.reader { CatProvider }
+    names = tab.names_in_scope.copy();
     for (name, sym) in names.items() {
-        try {
-            if sym.sym_type != SymbolType.HAS_VAR {
-                continue;
-            }
-        } except Exception {
+        if sym.sym_type != SymbolType.HAS_VAR {
             continue;
         }
-        prov: any = sym.provider;
-        bits: int = int(getattr(prov, "symbits", 0) or 0);
+        prov = sym.provider;
+        bits = prov.symbits if isinstance(prov, CatProvider) else 0;
         if skip_deferred and (bits & SYMF_DEFER) != 0 {
             param_map.pop(name, None);
             continue;
         }
-        if int(getattr(prov, "prop_kind", 0) or 0) != 0 {
+        if prov is not None and prov.property_kind() != 0 {
             continue;
         }
-        param_type: (TypeBase | None) = None;
-        try {
-            param_type = self.get_type_of_symbol(sym);
-        } except Exception {
-            param_type = None;
-        }
+        param_type = self.get_type_of_symbol(sym);
         param_map[name] = Parameter(
             name=name,
             category=ParameterCategory.Positional,
@@ -111,10 +103,11 @@ impl TypeEvaluator._build_field_params(
     class_type: ClassType, skip_deferred: bool = True
 ) -> dict[str, Parameter] {
     import from jaclang.compiler.symbol_utils { is_field_marker, field_marker_argument }
+    import from jaclang.compiler.types.stubcat.reader { CatScope }
     param_map: dict[str, Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
         cat_tab = cls.shared.symbol_table;
-        if hasattr(cat_tab, "cat_kind") {
+        if isinstance(cat_tab, CatScope) {
             self._merge_catalog_field_params(cat_tab, param_map, skip_deferred);
             continue;
         }
