@@ -115,7 +115,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         The one-line installer downloads the self-contained native `jac` binary -- it does not install anything into a Python environment, so `pip show` and `pip list` have nothing to find. Use `jac --version` to confirm the installed version.
 
     ??? question "`jac clean --all` says 'No jac.toml found'."
-        `jac clean --all` (and the project-level cleanup flags it implies) needs a Jac project -- a directory with a `jac.toml`. Plain `jac clean` (no flags) only clears the local `.jac/data/` directory, but `--all`, `--cache`, and `--packages` operate on project artifacts and require the project root. If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac create <name>`.
+        `jac clean --all` (and the project-level cleanup flags it implies) needs a Jac project -- a directory with a `jac.toml`. Plain `jac clean` (no flags) only clears the local `.jac/data/` directory, but `--all`, `--cache`, and `--packages` operate on project artifacts and require the project root. These commands remove project directories; they do not reset an external or embedded Postgres database. For an invalid reference, inspect the selected store with `jac db status` and follow `jac guide jac-debugging` before deleting data. To create a project, run `jac create <name>`.
 
     ??? question "I see 'Address already in use' when running `jac run`."
         Another process is using the port (default 8000). Either stop the other process or use a different port: `jac run --port 3000`.

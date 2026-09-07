@@ -2,7 +2,27 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.37.7 (Latest Release)
+## jaclang 0.37.8 (Latest Release)
+
+### Breaking Changes
+
+- **Breaking: `[scale.monitoring] namespace` is now sanitized, so metric names can change** (#8688): a configured namespace was passed to Prometheus untouched and normalized by the client instead, so `namespace = "jac--shop"` exported `jac__shop_http_requests_total` while the same value derived from `[scale.kubernetes]` exported `jac_shop_http_requests_total`. Both paths now produce the sanitized form, and a warning names the old and new prefix at startup. If your namespace contains anything other than letters, digits and underscores, the exported metric names change once, so update dashboards and alert rules that reference the old prefix. The admin traffic panel builds its queries from the same value, so it now matches what is actually exported instead of coming up empty.
+
+### New Features
+
+- **Managed native build toolchains**: Jac now provisions Android JDK/SDK/Node tools, Apple Ruby/CocoaPods tools, and Linux desktop dependencies through shared verified downloads with progress, atomic installation, locks, and cache reuse. `jac setup --toolchain` supports pre-provisioning; desktop builds no longer write into the installed package, and PostgreSQL/deployment downloads reuse the same installer.
+
+### Bug Fixes
+
+- **Fix: JSX children are checked as part of the component contract**: the client codegen destructures only a component's declared parameter names out of `props`, so children handed to a component that never declares `children` were dropped silently -- a blank render behind a clean `jac check`. `W1053` now reports them at the call site, the client build refuses a `pages/` project whose exported `app` would discard the entire route tree, and `E1109` rejects a `props` bundle declared alongside another parameter, which the codegen emits as either invalid JavaScript or a signature the renderer never calls that way. Both read one predicate shared with the codegen, so `JsxPage`, `JsxLayout` and unions are covered exactly as `JsxElement` is.
+- **Fix: JSX props are checked at call sites that pass no attribute**: prop validation used to require both an attribute at the call site and a parameter on the component, so `<Card/>` against `def Card(title: str)` checked clean and a zero-parameter component accepted every attribute handed to it. Both shapes are now validated like any other, which can surface `E1102` and `E1101` on code that previously passed `jac check`. Nested children also count toward a `children` parameter now: `<Card title="t">body</Card>` against `def Card(title: str, children: any)` no longer reports `children` as missing, so the `= None` default is a convenience rather than a workaround.
+- **Fix: a Solid `element=` parent route hands its matched child to the element**: `Route` wrapped the node in a props-ignoring lambda, so the matched nested route never reached it and a parent-route guard rendered nothing. The wrapper now provides the matched child through the outlet context, and `AuthGuard` falls back to `<Outlet />` only when it is given no children.
+- **Change: `W1052` covers every component return type**: the untyped-props-bag warning keyed on `JsxElement` alone; it now reads the same predicate as the other JSX contract checks, so `props: any` on a component returning `JsxPage`, `JsxLayout` or a union is reported too.
+- **Fix: comparing a dict to `undefined` no longer throws in the client runtime**: `_jac.dict.eq` called `Object.keys` on both operands unconditionally; it now returns `false` for a null or non-object operand.
+- **Client: Fix development runtime imports**: Remove annotation-only imports that break development startup, preserve JSX and embedded JavaScript references, and validate remaining runtime imports consistently. Exercise bare `jac run` in packaged smoke tests and clean up Vite on server shutdown without changing CLI behavior.
+- **Fix: the `glob`-inside-a-function error no longer suggests a `global` statement** (#8612): `E0063` told the user "perhaps you mean global", but Jac has no `global` statement, so following the hint produced a parse error. The message now states the rule and the help names the real idiom: declare the glob at module level and rebind it inside a function by plain assignment.
+
+## jaclang 0.37.7
 
 ### Breaking Changes
 

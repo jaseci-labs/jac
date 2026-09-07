@@ -119,6 +119,7 @@ impl ClientArtifact.to_bytes -> bytes {
     import pickle;
     return pickle.dumps(
         (
+            2,
             self.js,
             self.manifest,
             list(self.native_import_sources),
@@ -133,13 +134,21 @@ impl ClientArtifact.to_bytes -> bytes {
 impl ClientArtifact.from_bytes(raw: bytes) -> (ClientArtifact | None) {
     import pickle;
     try {
-        (js, manifest, native_import_sources, source_map, dep_digests, framework) = (
-            pickle.loads(raw)
-        );
+        (
+            version,
+            js,
+            manifest,
+            native_import_sources,
+            source_map,
+            dep_digests,
+            framework
+        ) = pickle.loads(raw);
     } except Exception {
         return None;
     }
-    if not isinstance(js, str) or not isinstance(manifest, ClientManifest) {
+    if version != 2
+        or not isinstance(js, str)
+        or not isinstance(manifest, ClientManifest) {
         return None;
     }
     return ClientArtifact(

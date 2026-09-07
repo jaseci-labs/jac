@@ -1,6 +1,6 @@
 ---
 name: jac-config
-description: The jac.toml control plane - every section ([project], [apps.<name>] workspace tables with per-app overlays, [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], capability tables ([byllm], [scale] incl. [scale.gateway], [client] incl. app_meta_data, [desktop]), [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/install/remove/update/x). Load before editing jac.toml or wiring project settings, apps, dependencies, scripts, or environment profiles.
+description: Edit jac.toml project, app, dependency, build, and runtime settings. Use when selecting configuration keys or resolving configuration errors.
 ---
 
 `jac.toml` is the single config file (think `pyproject.toml` + `package.json`). Commands find it by walking up from cwd. Generate it with `jac create`, then edit sections directly or via `jac config set` / `jac install <pkg>` - hand-editing is normal and expected.

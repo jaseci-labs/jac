@@ -156,3 +156,59 @@ test "jac build inside a sealed host builds the nested project's bundle" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "sealed static endpoints use the image even with an unrelated runtime base" {
+    import from types { SimpleNamespace }
+    import from unittest.mock { MagicMock, patch }
+    import from jaclang.server.endpoints.pages { register_page_endpoints }
+    import from jaclang.server.server { JacAPIServer, ModuleIntrospector }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        img_root = _sealed_root(tmp);
+        dist = Path(img_root) / ".jac" / "client" / "dist";
+        wasm = bytes.fromhex("0061736d01000000");
+        html = '<html><head><link rel="stylesheet" href="/static/client.HOSTHASH.css"></head><body>sealed app</body></html>';
+        (dist / "index.html").write_text(html);
+        (dist / "client.HOSTHASH.css").write_text(
+            ".uppercase{text-transform:uppercase}"
+        );
+        (dist / "arena.wasm").write_bytes(wasm);
+        (dist / "arena.wasm.imports.json").write_text('{"imports":{}}');
+        unrelated = Path(tmp) / "elsewhere";
+        unrelated.mkdir();
+        server: any = MagicMock(spec=JacAPIServer);
+        server.introspector = MagicMock(spec=ModuleIntrospector);
+        server.module = SimpleNamespace(__file__=str(Path(img_root) / "main.jac"));
+        server.introspector.resolve_root_app.return_value = "app";
+        server.resolved_settings.return_value = SimpleNamespace(client_dist="");
+        with patch("jaclang.server.endpoints.pages.get_config", return_value=None), patch(
+            "jaclang.server.endpoints.pages._static_base", return_value=str(unrelated)
+        ) {
+            register_page_endpoints(server);
+            routes = {
+                call.args[0].path: call.args[0].callback
+                for call in server.add_endpoint.call_args_list
+            };
+            request = SimpleNamespace(method="GET", headers={});
+            for (route, args) in [("/", []), ("/{file_path:path}", ["wait-wuuut"])] {
+                response = routes[route](request, *args);
+                assert response.status_code == 200;
+                assert response.body.decode() == html;
+            }
+            response = routes["/static/{file_path:path}"](
+                request, "client.HOSTHASH.css"
+            );
+            assert response.status_code == 200;
+            assert b"text-transform:uppercase" in response.body;
+            response = routes["/static/{file_path:path}"](request, "arena.wasm");
+            assert response.status_code == 200;
+            assert response.body == wasm;
+            assert response.content_type_header() == "application/wasm";
+            response = routes["/static/{file_path:path}"](
+                request, "arena.wasm.imports.json"
+            );
+            assert response.status_code == 200;
+            assert json.loads(response.body) == {"imports": {}};
+        }
+    }
+}

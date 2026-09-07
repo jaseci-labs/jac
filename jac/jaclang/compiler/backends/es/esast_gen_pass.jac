@@ -233,6 +233,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _ct_only_names: (set[str] | None) = None,
         child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
+        module_import_paths: dict[str, str] = {},
         exports: list[es.ExportNamedDeclaration] = [],
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
@@ -402,6 +403,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.MemberExpression;
 
     can exit_module with uni.Module exit;
+    def _finalize_runtime_imports(program: es.Program) -> None;
     def _audit_free_identifiers(nd: uni.Module, program: es.Program) -> None;
     def _free_ident_site(
         names: list[uni.Name], free: FreeIdentifier

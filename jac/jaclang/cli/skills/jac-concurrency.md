@@ -1,6 +1,6 @@
 ---
 name: jac-concurrency
-description: Running Jac code in parallel - flow/wait concurrent expressions (thread pool), async def/await, async walkers, and when to use which. Load for any parallel, background, threaded, or async work.
+description: Choose and implement async calls, walkers, flow/wait tasks, and lent loops. Use for concurrent work and backend-specific execution constraints.
 ---
 
 Jac has two concurrency models. `flow expr()` launches the call on a **thread pool** and returns a future immediately; `wait future` blocks for the result. `async def`/`await` is Python asyncio - cooperative, single-threaded, for I/O waits. Don't reach for `import threading` - `flow`/`wait` is the idiomatic form.

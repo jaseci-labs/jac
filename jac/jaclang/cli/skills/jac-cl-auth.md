@@ -1,6 +1,6 @@
 ---
 name: jac-cl-auth
-description: Client-side authentication - signing up, logging in, logging out, AuthGuard for protected routes, and SSO login. Load when adding any auth UI or guarding pages from unauthenticated users. Pair with `jac-sv-auth` (server side of the auth loop), `jac-cl-routing` (post-login navigation).
+description: Build login, signup, logout, SSO, and protected client routes. Use when adding authentication UI or handling client sessions.
 ---
 
 Client auth uses four helpers from `@jac/runtime`. **Return types differ - get them wrong and the file fails `jac check` with E1001:**

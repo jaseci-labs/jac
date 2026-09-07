@@ -1,6 +1,6 @@
 ---
 name: jac-sv-auth
-description: The server-side auth model - JWT, register/login REST endpoints, tokens, roles, and which endpoints need login versus anonymous access. Canonical statement of def:pub / def:priv / plain-def semantics. Load when deciding which server functions need login or whose data they should see. Pair with `jac-sv-endpoints` (endpoint shapes), `jac-cl-auth` (client side), `jac-sv-multi-user` (cross-user sharing).
+description: Configure server endpoint authentication and caller identity. Use when selecting visibility, handling tokens, or defining access requirements.
 ---
 
 Jac's server auth is built on **per-user data isolation**: every registered user gets their own root, and authenticated endpoints run against the caller's root. There is no user-id parameter to check - identity is implicit in which `root` the endpoint sees.

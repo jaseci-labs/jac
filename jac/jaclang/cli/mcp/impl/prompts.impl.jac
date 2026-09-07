@@ -296,7 +296,7 @@ def _prompt_write_ability(args: dict[str, str]) -> dict[str, any] {
     signature = args.get("signature", "");
     purpose = args.get("purpose", "");
 
-    system = build_system_prompt(["jac://guide/jac-core-cheatsheet"]);
+    system = build_system_prompt(["jac://guide/jac-essentials"]);
     user_msg = f"Generate an ability named '{name}' with signature '{signature}' that {purpose}.";
     user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 

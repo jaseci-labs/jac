@@ -370,11 +370,11 @@ test "category1 named imports generate correct js" {
         "import { helper } from \"./utils.js\";",
         "import { formatter as format } from \"../lib.js\";",
         "import { settings } from \"../../config.js\";",
-        "import { renderJsxTree, jacLogin, jacLogout } from \"@jac/runtime\";",
+        "import { jacLogin } from \"@jac/runtime\";",
 
     ];
     for pattern in imports {
-        assert pattern in js_code;
+        assert pattern in js_code , f"Missing {pattern}: {js_code}";
     }
 
     assert "function example_usage()" in js_code;

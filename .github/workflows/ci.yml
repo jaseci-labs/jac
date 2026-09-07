@@ -249,13 +249,15 @@ jobs:
       # saved ~7 MB and restored nothing. There is no digest-agnostic
       # fallback key: a generation directory from another compiler digest
       # is dead weight to restore.
+      # Retries must be able to rule out a stale analysis/runtime cache.
       - name: Restore JIR analysis cache
+        if: github.run_attempt == 1
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
+            jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -376,11 +378,11 @@ jobs:
           jac check . --ignore $IGNORE_ARGS --nowarn
 
       - name: Save JIR analysis cache
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
@@ -1056,14 +1058,14 @@ jobs:
       # test in-process (jaclang.cli.guide_store), so the docs journey stop is
       # hermetic with no extra setup.
       # The site is a workspace whose service apps colocate in the served
-      # app's process by default, so `jac run --serve web` is the single
+      # app's process by default. Exercise the exact quickstart, `jac run`, in the single
       # process serving stack. The fleet topology (`--fleet`: one local
       # process per service app behind the gateway) gets its own pass over
       # the same journey below.
-      - name: Start site server in background
+      - name: Start the quickstart with bare jac run
         working-directory: site
         run: |
-          timeout 1200 jac run --serve web > /tmp/site-server.log 2>&1 &
+          timeout 1200 jac run > /tmp/site-server.log 2>&1 &
           SERVER_PID=$!
           echo "SITE_PID=$SERVER_PID" >> $GITHUB_ENV
           echo "site server starting with PID $SERVER_PID..."
@@ -1099,7 +1101,7 @@ jobs:
         run: |
           HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
           echo "site root endpoint: HTTP $HTTP_CODE"
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          if [ "$HTTP_CODE" -eq 200 ]; then
             echo "site server responding correctly"
           else
             echo "Unexpected HTTP $HTTP_CODE"
@@ -1138,11 +1140,19 @@ jobs:
           SITE_JOURNEY_ARTIFACTS: /tmp
         run: bash scripts/site-browse-journey.sh http://localhost:8000
 
+      - name: Verify development mode and no dependency scan errors
+        run: |
+          grep -q 'Development (with HMR)' /tmp/site-server.log
+          if grep -E 'Failed to scan for dependencies|No matching export|Could not start Vite dev server' /tmp/site-server.log; then
+            echo "::error::the quickstart client failed despite a live server process"
+            exit 1
+          fi
+
       - name: Dump server thread stacks on failure
         if: failure()
         run: |
           pip install py-spy >/dev/null 2>&1 || true
-          for p in $(pgrep -f "jac run --serve"); do
+          for p in $(pgrep -f "jac run"); do
             echo "=== py-spy dump pid $p ==="
             sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
           done
@@ -1168,9 +1178,52 @@ jobs:
           jac browse close 2>/dev/null || true
           if [ -n "${{ env.SITE_PID }}" ]; then
             kill ${{ env.SITE_PID }} 2>/dev/null || true
-            sleep 3
+            for i in $(seq 1 30); do
+              kill -0 ${{ env.SITE_PID }} 2>/dev/null || break
+              sleep 1
+            done
             kill -9 ${{ env.SITE_PID }} 2>/dev/null || true
           fi
+
+      - name: Build the production artifact
+        working-directory: site
+        run: jac build --output dist
+
+      - name: Serve the production artifact outside the source project
+        working-directory: ${{ runner.temp }}
+        run: |
+          timeout 1200 jac run --port 8000 "${{ github.workspace }}/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
+          echo "ARTIFACT_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for the production artifact
+        run: |
+          for i in $(seq 1 60); do
+            if ! kill -0 "${{ env.ARTIFACT_PID }}" 2>/dev/null; then
+              cat /tmp/site-artifact.log
+              exit 1
+            fi
+            if curl -sf --max-time 10 http://localhost:8000/ -o /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          cat /tmp/site-artifact.log
+          exit 1
+
+      - name: Browse the production artifact (same journey)
+        timeout-minutes: 15
+        run: bash scripts/site-browse-journey.sh http://localhost:8000
+
+      - name: Stop the production artifact
+        if: always()
+        run: |
+          jac browse close 2>/dev/null || true
+          if [ -n "${{ env.ARTIFACT_PID }}" ]; then
+            kill "${{ env.ARTIFACT_PID }}" 2>/dev/null || true
+            sleep 3
+            kill -9 "${{ env.ARTIFACT_PID }}" 2>/dev/null || true
+          fi
+          cat /tmp/site-artifact.log 2>/dev/null || true
 
       # The other topology for the same site: `jac run --fleet` puts the
       # gateway in front of one local process per service app, with the
@@ -1224,7 +1277,7 @@ jobs:
         if: failure()
         run: |
           pip install py-spy >/dev/null 2>&1 || true
-          for p in $(pgrep -f "jac run --serve"); do
+          for p in $(pgrep -f "jac run"); do
             echo "=== py-spy dump pid $p ==="
             sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
           done

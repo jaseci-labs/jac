@@ -1,6 +1,6 @@
 ---
 name: jac-mobile-app
-description: Shipping a Jac mobile app to Android/iOS - a `kind = "mobile"` app (`[apps.<name>]` in a workspace) rendered through React Native, `jac setup <app>` (Expo scaffold), the `jac run --dev <app>` Metro loop, `jac build <app> --platform android|ios|web`, `[client.react_native]` config (builders, release, EAS Build / EAS Update), `[dependencies.npm.native]`, on-device debugging. Load when targeting phones or tablets; the `@jac/mobui` UI vocabulary itself is in `jac-mobui`.
+description: Configure, run, and package mobile apps for Android, iOS, and web. Use for mobile platforms, SDK setup, and service connections.
 ---
 
 A mobile app is an app of kind `mobile`: its `cl` UI compiles to platform-native views through [React Native](https://reactnative.dev/) (Expo/Metro/Hermes), written in the `@jac/mobui` vocabulary (see `jac-mobui`). The same source also builds for a browser through `react-native-web` (`--platform web`). **Architecture first: the mobile app is FRONTEND ONLY.** Every walker/`def:pub` call bridges over HTTP to a Jac server you deploy separately (see `jac-sv-deploy`) - in a workspace, the `web-app` or `service` app that owns the walkers. There is no embedded backend - plan the server deployment before shipping the app.

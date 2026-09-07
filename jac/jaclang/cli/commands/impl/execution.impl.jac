@@ -1493,31 +1493,34 @@ impl serve(
         return 1;
     } except KeyboardInterrupt {
         console.print('\nShutting down');
-        if hot_reloader is not None {
-            hot_reloader.stop();
-        }
-        for started_vite in vite_holder {
-            started_vite.terminate();
-            started_vite.`wait(timeout=5);
-        }
-        mach.close();
         return 0;
     } except Exception as e {
         import from jaclang.runtime.traceback_render { dump_traceback }
         import from jaclang.server.net { PortInUseError }
-        if hot_reloader is not None {
-            hot_reloader.stop();
-        }
-        for started_vite in vite_holder {
-            started_vite.terminate();
-        }
-        mach.close();
         if isinstance(e, PortInUseError) {
             raise;
         }
         console.error(f"Server error: {e}");
         console.error(dump_traceback(e));
         return 1;
+    } finally {
+        try {
+            if hot_reloader is not None {
+                hot_reloader.stop();
+            }
+        } finally {
+            import subprocess;
+            for started_vite in vite_holder {
+                started_vite.terminate();
+                try {
+                    started_vite.`wait(timeout=5);
+                } except subprocess.TimeoutExpired {
+                    started_vite.kill();
+                    started_vite.`wait();
+                }
+            }
+            mach.close();
+        }
     }
 }
 

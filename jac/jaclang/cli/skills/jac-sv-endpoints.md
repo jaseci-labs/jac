@@ -1,6 +1,6 @@
 ---
 name: jac-sv-endpoints
-description: Server endpoints - REST API endpoints (/walker/<name>, /function/<name>), walker:pub, choosing walker vs function shape (no visit = def:pub), the response envelope, @restspec custom routes/methods, file uploads, typed responses. For any REST consumer, not just the jac client. Pair with `jac-sv-persistence` (graph queries), `jac-sv-auth` (auth semantics), `jac-sv-streaming` (SSE).
+description: Expose functions and walkers as typed HTTP endpoints. Use for routes, response envelopes, uploads, and endpoint shape decisions.
 ---
 
 A Jac server exposes two endpoint shapes. **Functions** (`def:pub` / `def:priv` / plain `def`) are the natural fit for full-stack RPC - the jac client calls them like local functions and the return type is the wire format. **Walkers** (`walker:pub`) are the docs' primary pattern for pure API services consumed over raw REST: `has` fields are the request body, `report` values are the response. Both live in `main.jac` or any plain `.jac` server module (server is the default placement). Streaming endpoints (`-> Generator`, SSE): `jac-sv-streaming`.
@@ -137,6 +137,6 @@ S3 backends and `get_url` presigning: `jac-sv-deploy`.
 - Walker spawns take **keyword** arguments mapped to `has` fields (`{"title": ...}` in the body); function calls take the declared parameters. Don't pass nodes by reference across the wire - pass `jid(node)` strings.
 - **404/405 on a new endpoint = its name is not in the entry module's import.** Client-side import self-registration is unreliable per-name (jac#7695): adding a `def:pub` to a module `main.jac` already imports still 405s until the new name is added there too. Name every endpoint in the entry import. Full rule: `jac-fullstack-patterns`.
 - `jac run` needs a `jac.toml` in the cwd (`Error: No jac.toml found`); boolean flags are hyphenated: `--no-client`, not `--no_client`.
-- A `{"detail": "Invalid anchor id ..."}` 500 after editing node schemas = stale persisted anchors. Fix: stop the server, `rm -rf .jac/data/`, restart. Full schema-evolution story: `jac-sv-persistence`.
+- **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.
 
 Deep dives bundled with the CLI: `jac guide reference/persistence` (full persistence + HTTP surface), `jac guide reference/diagnostics` (every E/W code).

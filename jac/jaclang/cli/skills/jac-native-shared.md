@@ -1,6 +1,6 @@
 ---
 name: jac-native-shared
-description: Building C-ABI shared libraries from Jac with `jac build --native --lib` - the `:pub` export surface, opaque object handles with jac_retain/jac_release, automatic init on load, and consuming the .so/.dylib/.dll from ctypes or gcc. Load when exposing Jac code to C, C++, Rust, Go, or Python-ctypes hosts, or cross-building a .dylib/.dll. Pair with `jac-native` (the native subset itself).
+description: Export C-ABI shared libraries from Jac. Use for public native functions, library builds, or foreign callers.
 ---
 
 `jac build --native --lib` packages a native Jac module as a **C-ABI shared library** any FFI-capable host can `dlopen` or link. Jac's own linker emits the file - no gcc/ld/lld, even for cross-targets:

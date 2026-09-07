@@ -27,6 +27,7 @@ obj ClientManifest {
         globals_values: dict[(str, any)] = field(default_factory=`dict),
         has_client: bool = False,
         imports: dict[(str, str)] = field(default_factory=`dict),
+        runtime_imports: dict[str, list[str]] = field(default_factory=`dict),
         endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
         tests: list[dict[(str, str)]] = field(default_factory=`list),
         server_imports: list[str] = field(default_factory=`list),

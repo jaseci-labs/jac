@@ -254,6 +254,29 @@ impl JacClientCompiler.compile_dependencies_recursively(
     artifact = self.jac_compiler.compile_module(module_path);
     self._collect_na_modules(artifact);
     manifest = artifact.manifest;
+    for (dependency, names) in manifest.runtime_imports.items() {
+        if not names {
+            continue;
+        }
+        dependency_path = Path(dependency).resolve();
+        if native {
+            dependency_path = self._native_variant(dependency_path);
+        }
+        dependency_manifest = self.jac_compiler.compile_module(
+            dependency_path
+        ).manifest;
+        exported = set(dependency_manifest.exports + dependency_manifest.globals);
+        missing = sorted(set(names) - exported);
+        if missing {
+            raise ClientBundleError(
+                f"{module_path}: runtime import(s) {', '.join(
+                    missing
+                )} are not exported "
+                f"by {dependency_path}. Use :pub for runtime values; annotation-only "
+                "references must not produce runtime imports."
+            );
+        }
+    }
     exports_list = self.jac_compiler.extract_exports(manifest);
     collected_exports.update(exports_list);
     non_root_globals: dict[(str, any)] = {};
@@ -466,7 +489,8 @@ impl JacClientCompiler.compile_runtime_utils(
     import importlib;
 
     for _m in re.finditer(
-        r'from\s+[\'"]((?:\./)?[^\'"]*html_tag_map\.js)[\'"]', runtimeutils_js
+        r'(?:from|import)\s+[\'"]((?:\./)?[^\'"]*html_tag_map\.js)[\'"]',
+        runtimeutils_js
     ) {
         rel = _m.group(1);
         if rel.startswith('./') {

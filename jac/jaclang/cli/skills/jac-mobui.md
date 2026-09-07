@@ -1,6 +1,6 @@
 ---
 name: jac-mobui
-description: Building a cross-platform mobile + web app with MobUI - a `kind = "mobile"` app (`[apps.<name>]` in a workspace), the `@jac/mobui` primitives (View/Text/Pressable/TextInput/ScrollView), the no-HTML rule (E1105), RN props/events, StyleSheet styling, typed theme tokens, cross-platform icons via `.native.jac` variants (E5105), and the `jac run <app>` / `jac build <app>` flow. Load when the user wants a mobile / iOS / Android / React Native app, or when editing any `kind = "mobile"` app. The toolchain side (Expo scaffold, builders, EAS, devices) is in `jac-mobile-app`.
+description: Write mobile components using native views and mobUI. Use for mobile rendering, navigation, styling, or E1105 host-tag diagnostics.
 ---
 
 MobUI is Jac's cross-platform UI model: **one source compiles to both native React Native (Expo/Metro) and web (react-native-web)**. Every `kind = "mobile"` app is a MobUI app: the kind on the app's `[apps.<name>]` table in `jac.toml` (or `[project] kind` in a single-app project) turns on a compiler guard that bans HTML in that app's modules (and nowhere else - a web app in the same workspace keeps its HTML). You author entirely in `@jac/mobui` primitives - **no `<div>`, no `className`, no CSS**.
