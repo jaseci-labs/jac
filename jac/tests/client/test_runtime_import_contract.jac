@@ -125,3 +125,53 @@ test "client artifact caches preserve the runtime import contract" {
     legacy = pickle.dumps(("", manifest, [], [], {}, ""));
     assert ClientArtifact.from_bytes(legacy) is None;
 }
+
+test "jsx references and shadowed names retain their runtime imports" {
+    with TemporaryDirectory() as tmp {
+        set_config(None);
+        project = Path(tmp);
+        compiler = _compiler(project);
+        (project / "provider.jac").write_text(
+            'def:pub Button -> any { return <button>ok</button>; }\n'
+            'def:pub value -> int { return 1; }\n'
+        );
+        (project / "main.jac").write_text(
+            'import from .provider { Button, value }\n'
+            'def shadow(value: int) -> int { return value; }\n'
+            'def:pub app -> any { assert value() == 1; return <Button />; }\n'
+        );
+        try {
+            compiler.compile_dependencies_recursively(
+                project / "main.jac", source_root=project
+            );
+            js = (project / "compiled" / "main.js").read_text();
+            imports = "\n".join(
+                line
+                for line in js.splitlines()
+                if line.startswith("import ")
+            );
+            assert "Button" in imports and "value" in imports , imports;
+        } finally {
+            set_config(None);
+        }
+    }
+}
+
+test "native runtime emits dependencies for bare imports" {
+    with TemporaryDirectory() as tmp {
+        set_config(None);
+        project = Path(tmp);
+        compiler = _compiler(project);
+        try {
+            (js, exports) = compiler.compile_runtime_utils(
+                compiler.NATIVE_RUNTIME_FILE
+            );
+            assert "html_tag_map.js" in js;
+            assert (
+                project / "compiled" / "targets" / "react_native" / "html_tag_map.js"
+            ).is_file();
+        } finally {
+            set_config(None);
+        }
+    }
+}

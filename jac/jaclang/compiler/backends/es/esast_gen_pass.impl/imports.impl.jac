@@ -506,7 +506,26 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
             if not isinstance(stmt, es.ImportDeclaration)
         ]
     );
-    referenced = {ref.name for ref in free_identifiers(value_body, set())};
+
+    import re;
+    referenced: set[str] = set();
+    pending: list[any] = [value_body];
+    while pending {
+        value = pending.pop();
+        if isinstance(value, (es.Identifier, es.JsxIdentifier)) {
+            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.name));
+        } elif isinstance(value, es.RawCode) {
+            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.code));
+        } elif isinstance(value, es.Node) {
+            pending.extend(
+                child
+                for (key, child) in vars(value).items()
+                if key not in ("loc", "type")
+            );
+        } elif isinstance(value, (list, tuple)) {
+            pending.extend(value);
+        }
+    }
     for stmt in program.body {
         if not isinstance(stmt, es.ImportDeclaration) {
             continue;

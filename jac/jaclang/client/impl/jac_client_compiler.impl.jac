@@ -488,7 +488,8 @@ impl JacClientCompiler.compile_runtime_utils(
     import importlib;
 
     for _m in re.finditer(
-        r'from\s+[\'"]((?:\./)?[^\'"]*html_tag_map\.js)[\'"]', runtimeutils_js
+        r'(?:from|import)\s+[\'"]((?:\./)?[^\'"]*html_tag_map\.js)[\'"]',
+        runtimeutils_js
     ) {
         rel = _m.group(1);
         if rel.startswith('./') {
