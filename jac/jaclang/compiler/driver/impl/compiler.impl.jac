@@ -578,13 +578,18 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
             'param_types': binding.param_types,
             'param_names': binding.param_names,
             'source_module': binding.source_module,
-            'kind': binding.kind
+            'kind': binding.kind,
+            'provider_app': binding.provider_app,
+            'native_contract': binding.native_contract
         };
     }
 
     interop_data['func_access'] = dict(manifest.func_access);
     interop_data['walker_access'] = dict(manifest.walker_access);
     interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
+    interop_data['native_host_imports'] = dict(manifest.native_host_imports);
+    interop_data['app_edges'] = list(manifest.app_edges);
+    interop_data['provider_routes'] = dict(manifest.provider_routes);
     return interop_data;
 }
 
@@ -607,13 +612,18 @@ impl JacCompiler._deserialize_interop_table(
             param_types=data.get('param_types', []),
             param_names=data.get('param_names', []),
             source_module=data.get('source_module'),
-            kind=data.get('kind', 'function')
+            kind=data.get('kind', 'function'),
+            provider_app=data['provider_app'],
+            native_contract=data['native_contract']
         );
         manifest.bindings[name] = binding;
     }
     manifest.func_access.update(cached_interop.get('func_access', {}));
     manifest.walker_access.update(cached_interop.get('walker_access', {}));
     manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
+    manifest.native_host_imports.update(cached_interop['native_host_imports']);
+    manifest.app_edges.extend(cached_interop['app_edges']);
+    manifest.provider_routes.update(cached_interop['provider_routes']);
     return manifest;
 }
 

@@ -378,7 +378,6 @@ impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import json;
-    import from jaclang.compiler.backends.native.wasm_contract { function_contract, host_contracts }
     contracts: dict = {};
     host_imports: dict = {};
     resolved_path = nd.from_loc.resolve_relative_path();
@@ -422,11 +421,11 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
         export_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else export_name;
         binding = self.ir_in.gen.interop_manifest.bindings.get(local_name);
-        if binding is None or binding.ast_node is None {
+        if binding is None or not binding.native_contract {
             raise ValueError(f"Missing native contract for '{export_name}'");
         }
-        contracts[export_name] = function_contract(binding.ast_node);
-        host_imports.update(host_contracts(binding.ast_node.find_parent_of_type(uni.Module)));
+        contracts[export_name] = binding.native_contract;
+        host_imports = self.ir_in.gen.interop_manifest.native_host_imports[stem];
         props.append(
             self.sync_loc(
                 es.AssignmentProperty(

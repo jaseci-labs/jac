@@ -102,6 +102,7 @@ impl __doWalkerFetch(
         url = f"{base_url}/walker/{`walker}/{nodeId}";
     }
     headers = {"Content-Type": "application/json", "Accept": "application/json"};
+    if opts and opts["contract"] { headers["X-Jac-Endpoint"] = opts["contract"]; }
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }
@@ -135,6 +136,7 @@ impl __doFuncFetch(function_name: str, args: dict, opts: (dict | None) = None) -
     token = __getLocalStorage("jac_token");
     base_url = __bridgeApiBase(opts);
     headers = {"Content-Type": "application/json"};
+    if opts and opts["contract"] { headers["X-Jac-Endpoint"] = opts["contract"]; }
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }

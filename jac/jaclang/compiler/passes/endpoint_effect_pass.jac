@@ -12,6 +12,8 @@ import from jaclang.compiler.frontend.unitree {
     DisconnectOp,
     EventSignature,
     FuncCall,
+    KWPair,
+    ability_of_symbol,
     ImplDef,
     Name,
     SpecialVarRef,
@@ -25,12 +27,18 @@ import from jaclang.compiler.passes.uni_pass { UniPass }
 walker EndpointEffectPass(UniPass) {
     has _is_writer: bool = False,
         _unknown: bool = False,
+        _declared_reads: set[str] = field(default_factory=set),
+        _declared_writes: set[str] = field(default_factory=set),
+        _assumptions: set[str] = field(default_factory=set),
         _touches: set[str] = field(default_factory=`set),
         _visited: set[int] = field(default_factory=set);
 
     def before_pass {
         self._is_writer = False;
         self._unknown = False;
+        self._declared_reads.clear();
+        self._declared_writes.clear();
+        self._assumptions.clear();
         self._touches.clear();
         self._visited.clear();
     }
@@ -67,6 +75,9 @@ walker EndpointEffectPass(UniPass) {
         import from jaclang.compiler.frontend.codeinfo { endpoint_descriptor }
         self._is_writer = False;
         self._unknown = False;
+        self._declared_reads.clear();
+        self._declared_writes.clear();
+        self._assumptions.clear();
         self._touches.clear();
         self._visited.clear();
         for nd in body_nodes {
@@ -74,7 +85,8 @@ walker EndpointEffectPass(UniPass) {
         }
         result = endpoint_descriptor(self.ir_in, kind, name);
         result["reads"] = ["*"];
-        result["writes"] = ["*"] if self._is_writer or self._unknown else [];
+        result["writes"] = ["*"] if self._is_writer or self._unknown else sorted(list(self._declared_writes));
+        result["assumptions"] = sorted(list(self._assumptions));
         result["unknown"] = self._unknown;
         result["observed_tags"] = sorted(list(self._touches));
         return result;
@@ -129,12 +141,19 @@ walker EndpointEffectPass(UniPass) {
 
             if id(nd) not in self._visited {
                 self._visited.add(id(nd));
-                body = self._callee_body(nd);
-                if not body {
-                    self._unknown = True;
-                }
-                for stmt in body {
-                    self._scan(stmt);
+                declared = self._declared_effects(nd);
+                if declared is not None {
+                    self._declared_reads.update(declared["reads"]);
+                    self._declared_writes.update(declared["writes"]);
+                    self._assumptions.add("Declared effects of " + nd.target.unparse());
+                } else {
+                    body = self._callee_body(nd);
+                    if not body {
+                        self._unknown = True;
+                    }
+                    for stmt in body {
+                        self._scan(stmt);
+                    }
                 }
             }
         }
@@ -175,6 +194,32 @@ walker EndpointEffectPass(UniPass) {
                     return last.sym;
                 }
             }
+        }
+        return None;
+    }
+
+    def _declared_effects(call: FuncCall) -> dict | None {
+        import ast;
+        decl = ability_of_symbol(self._call_target_symbol(call));
+        if decl is None { return None; }
+        for decorator in decl.decorators or [] {
+            if not isinstance(decorator, FuncCall) { continue; }
+            target = ability_of_symbol(self._call_target_symbol(decorator));
+            if target is None or not target.loc.mod_path.replace("\\", "/").endswith("/jaclang/lib/effects.jac") {
+                continue;
+            }
+            result: dict = {"reads": [], "writes": []};
+            for pair in decorator.params or [] {
+                if not isinstance(pair, KWPair) or pair.key is None or pair.key.sym_name not in result {
+                    raise ValueError("Effect declarations require reads= and writes= literal lists");
+                }
+                values = ast.literal_eval(pair.value.unparse());
+                if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values) {
+                    raise ValueError("Effect dependencies must be literal nonempty strings");
+                }
+                result[pair.key.sym_name] = values;
+            }
+            return result;
         }
         return None;
     }

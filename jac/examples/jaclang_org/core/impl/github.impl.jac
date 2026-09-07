@@ -1,7 +1,6 @@
 import re;
 import io;
 import os;
-import json;
 import tarfile;
 import time;
 import urllib.error;

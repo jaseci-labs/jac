@@ -18,6 +18,7 @@ def boundary_audit(program: any) -> dict {
                 item["callers"] = sorted([c.value for c in binding.callers]);
                 item["parameters"] = dict(zip(binding.param_names, binding.param_types));
                 item["result"] = binding.ret_type;
+                item["native_contract"] = binding.native_contract;
                 item["unchecked"] = ["dynamic value shape"]
                     if "any" in binding.param_types or binding.ret_type == "any" else [];
                 boundaries[identity] = item;
