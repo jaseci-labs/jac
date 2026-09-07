@@ -112,11 +112,10 @@ def host_contracts(module: any) -> dict {
 }
 
 def _host_type(name: str) -> str {
-    if name in ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"] {
-        return "int";
-    }
-    if name in ["f32", "f64"] {
-        return "float";
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    shape = JAC_TYPE_REGISTRY.shape_of(name);
+    if shape is not None and shape.sized {
+        return "float" if shape.is_float else "int";
     }
     return name;
 }

@@ -388,7 +388,7 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
         return;
     }
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
-    import from jaclang.compiler.backends.native.wasm_contract {
+    import from jaclang.compiler.passes.wasm_contract {
         function_contract,
         host_contracts
     }
@@ -822,7 +822,7 @@ impl BoundaryAnalysisPass.enter_ability with Ability entry {
 
 impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
     if isinstance(here.target, Name) and here.target.value == "bind_na_host" {
-        import from jaclang.compiler.backends.native.wasm_contract { check_host_call }
+        import from jaclang.compiler.passes.wasm_contract { check_host_call }
         import from jaclang.compiler.frontend.diagnostics { E5110 }
         try {
             check_host_call(here);
