@@ -1,5 +1,7 @@
-impl TypeEvaluator._try_resolve_forward_ref(expr: String) -> TypeBase | None {
-    name = expr.lit_value;
+impl TypeEvaluator._try_resolve_forward_ref(
+    expr: String | MultiString
+) -> TypeBase | None {
+    name = literal_string_value(expr);
     if not isinstance(name, str) or not name {
         return None;
     }
@@ -1357,7 +1359,7 @@ impl TypeEvaluator._collect_typevars_from_base(
 impl TypeEvaluator.emit_diag(
     diag: DiagnosticInfo, nd: UniNode, **kwargs: object
 ) -> None {
-    if self._pass is not None {
+    if self._pass is not None and self._diagnostic_suppression_depth == 0 {
         self._pass.emit(diag, node_override=nd, **kwargs);
     }
 }

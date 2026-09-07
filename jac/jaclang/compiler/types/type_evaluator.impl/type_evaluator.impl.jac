@@ -4036,26 +4036,7 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
         return mod;
     }
 
-    use_str: (str | None) = None;
-    if path.endswith("builtins.pyi") {
-        file_content = read_file_with_encoding(path);
-        if "def chunks(" not in file_content {
-            _ck_anchor = "    def copy(self) -> list[_T]: ...";
-            if _ck_anchor in file_content {
-                file_content = file_content.replace(
-                    _ck_anchor,
-                    _ck_anchor
-                        + "\n    # Jac extension: chunked iteration views"
-                        + " (`for c in &xs.chunks(n)`).\n"
-                        + "    def chunks(self, n: int, /) -> list[list[_T]]: ...",
-                    1
-                );
-            }
-        }
-        use_str = file_content;
-    }
-
-    mod = self.program.load_dependency_module(path, use_str=use_str);
+    mod = self.program.load_dependency_module(path);
     if mod.parent_scope is None and mod is not self.builtins_module {
         mod.parent_scope = self.builtins_module;
     }
@@ -4114,6 +4095,7 @@ impl TypeEvaluator.postinit -> None {
     self.na_builtins_module = prelude[5];
     self.js_globals_module = prelude[6];
     self._prefetch_types();
+    install_builtin_extensions(self.prefetch.list_class, self.prefetch.int_class);
 }
 
 impl TypeEvaluator._init_prelude_from_catalog(catalog: StubCatalog) -> list[Module] {
@@ -5918,34 +5900,18 @@ impl TypeEvaluator._distinct_brand_mismatch(
 }
 
 impl TypeEvaluator._resolve_type_alias_rhs(value: Expr) -> TypeBase {
-    if isinstance(value, String) and isinstance(value.lit_value, str) {
+    if isinstance(value, (String, MultiString)) {
+        type_str = literal_string_value(value);
+        if type_str is None {
+            return UnknownType();
+        }
         resolved = self._try_resolve_forward_ref(value);
         if resolved is not None {
             return resolved;
         }
-
         scope = value.find_parent_of_type(UniScopeNode);
         if scope {
-            parsed = self._resolve_string_type_expr(value.lit_value, scope);
-            if parsed is not None {
-                return parsed;
-            }
-        }
-        return UnknownType();
-    }
-    if (
-        isinstance(value, MultiString)
-        and value.strings
-        and isinstance(value.strings[0], String)
-        and isinstance(value.strings[0].lit_value, str)
-    ) {
-        resolved = self._try_resolve_forward_ref(value.strings[0]);
-        if resolved is not None {
-            return resolved;
-        }
-        scope = value.find_parent_of_type(UniScopeNode);
-        if scope {
-            parsed = self._resolve_string_type_expr(value.strings[0].lit_value, scope);
+            parsed = self._resolve_string_type_expr(type_str, scope);
             if parsed is not None {
                 return parsed;
             }
@@ -5955,15 +5921,13 @@ impl TypeEvaluator._resolve_type_alias_rhs(value: Expr) -> TypeBase {
 
     mod = value.find_parent_of_type(Module);
     is_stub = mod is not None and mod.is_raised_from_py;
-    if is_stub and self._pass is not None {
-        pass_ref = self._pass;
-        errors_before = len(pass_ref.errors_had);
-        prog_errors_before = len(self.program.errors_had);
-        result = self.get_type_of_expression(value);
-
-        del pass_ref.errors_had[errors_before:];
-        del self.program.errors_had[prog_errors_before:];
-        return result;
+    if is_stub {
+        self._diagnostic_suppression_depth += 1;
+        try {
+            return self.get_type_of_expression(value);
+        } finally {
+            self._diagnostic_suppression_depth -= 1;
+        }
     }
     return self.get_type_of_expression(value);
 }
@@ -5971,132 +5935,26 @@ impl TypeEvaluator._resolve_type_alias_rhs(value: Expr) -> TypeBase {
 impl TypeEvaluator._resolve_string_type_expr(
     type_str: str, scope: UniScopeNode
 ) -> TypeBase | None {
-    import from ast { parse as _parse }
+    import from jaclang.compiler.frontend.parser.parser { parse_expression }
+    (expression, had_error, _parser_diags, _lex_diags) = parse_expression(
+        type_str, scope.loc.mod_path
+    );
+
+    owned_nodes = expression.flatten();
+    self._diagnostic_suppression_depth += 1;
     try {
-        tree = _parse(type_str, mode='eval');
-    } except Exception {
-        return None;
-    }
-    try {
-        return self._resolve_py_ast_type_node(tree.body, scope);
-    } except Exception {
-        return None;
-    }
-}
-
-impl TypeEvaluator._resolve_py_ast_type_node(
-    ast_node: object, scope: UniScopeNode
-) -> TypeBase | None {
-    import from ast { Name as _N }
-    import from ast { Constant as _C }
-    import from ast { BinOp as _BO }
-    import from ast { BitOr as _BOR }
-    import from ast { Subscript as _SS }
-    import from ast { Tuple as _TU }
-    import from ast { List as _LI }
-    import from ast { Attribute as _AT }
-
-    if isinstance(ast_node, _N) {
-        sym = lookup_symtab(scope, ast_node.id, self.builtins_module);
-        if not sym {
+        if had_error {
             return None;
         }
-        sym = self.resolve_imported_symbols(sym);
-        return self.get_type_of_symbol(sym);
+        expression.set_parent(scope);
+        result = self._type_from_union_annotation_arg(expression);
+        return None if isinstance(result, UnknownType) else result;
+    } finally {
+        self._diagnostic_suppression_depth -= 1;
+        for owned in owned_nodes {
+            del [edge owned<-->];
+        }
     }
-
-    if isinstance(ast_node, _C) and ast_node.value is None {
-        if self.prefetch and self.prefetch.none_type_class {
-            return self.prefetch.none_type_class;
-        }
-        return None;
-    }
-
-    if isinstance(ast_node, _BO) and isinstance(ast_node.op, _BOR) {
-        left = self._resolve_py_ast_type_node(ast_node.left, scope);
-        right = self._resolve_py_ast_type_node(ast_node.right, scope);
-        if left is None or right is None {
-            return None;
-        }
-        left_types = left.types if isinstance(left, UnionType) else [left];
-        right_types = right.types if isinstance(right, UnionType) else [right];
-        return UnionType(types=left_types + right_types);
-    }
-
-    if isinstance(ast_node, _SS) {
-        base = self._resolve_py_ast_type_node(ast_node.value, scope);
-        if base is None {
-            return None;
-        }
-
-        if isinstance(ast_node.value, _N) and ast_node.value.id == "Callable" {
-            if isinstance(ast_node.slice, _TU) and len(ast_node.slice.elts) == 2 {
-                params_ast = ast_node.slice.elts[0];
-                ret_ast = ast_node.slice.elts[1];
-                param_types: list[TypeBase] = [];
-                if isinstance(params_ast, _LI) {
-                    for p in params_ast.elts {
-                        pt = self._resolve_py_ast_type_node(p, scope);
-                        if pt is None {
-                            return None;
-                        }
-                        param_types.append(self._convert_to_instance(pt));
-                    }
-                }
-                ret_type = self._resolve_py_ast_type_node(ret_ast, scope);
-                if ret_type is None {
-                    return None;
-                }
-                return create_callable_type(
-                    param_types, self._convert_to_instance(ret_type)
-                );
-            }
-        }
-
-        type_args: list[TypeBase] = [];
-        slice_ast = ast_node.slice;
-        if isinstance(slice_ast, _TU) {
-            for elt in slice_ast.elts {
-                arg = self._resolve_py_ast_type_node(elt, scope);
-                if arg is None {
-                    return None;
-                }
-                type_args.append(arg);
-            }
-        } else {
-            arg = self._resolve_py_ast_type_node(slice_ast, scope);
-            if arg is None {
-                return None;
-            }
-            type_args.append(arg);
-        }
-        if isinstance(base, ClassType) {
-            result = base.clone_as_instance();
-            result.private.type_args = type_args;
-            return result;
-        }
-        return base;
-    }
-
-    if isinstance(ast_node, _AT) {
-        base = self._resolve_py_ast_type_node(ast_node.value, scope);
-        if (
-            base is not None
-            and isinstance(base, ModuleType)
-            and base.symbol_table is not None
-        ) {
-            member = base.symbol_table.lookup(ast_node.attr);
-            if member is None
-                and (inner := collect_member_syms(base.symbol_table, ast_node.attr)) {
-                member = inner[0];
-            }
-            if member {
-                return self.get_type_of_symbol(member);
-            }
-        }
-        return None;
-    }
-    return None;
 }
 
 impl TypeEvaluator._enum_member_attr_type(

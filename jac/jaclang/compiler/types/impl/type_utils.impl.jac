@@ -894,7 +894,7 @@ impl build_solution_from_specialized_class(
 impl specialize_for_base_class(
     src_type: ClassType, base_class: ClassType
 ) -> ClassType {
-    if src_type.shared == base_class.shared {
+    if src_type.shared.same_class(base_class.shared) {
         return src_type;
     }
 
@@ -908,7 +908,7 @@ impl specialize_for_base_class(
 def _specialize_for_base_recursive(
     src_type: ClassType, target_base: ClassType
 ) -> ClassType {
-    if src_type.shared == target_base.shared {
+    if src_type.shared.same_class(target_base.shared) {
         return src_type;
     }
 
@@ -920,13 +920,13 @@ def _specialize_for_base_recursive(
                 continue;
             }
 
-            if base.shared == target_base.shared {
+            if base.shared.same_class(target_base.shared) {
                 return _apply_solution_to_class(base, solution);
             }
 
             target_in_mro = False;
             for mro_cls in base.shared.mro {
-                if mro_cls.shared == target_base.shared {
+                if mro_cls.shared.same_class(target_base.shared) {
                     target_in_mro = True;
                     break;
                 }

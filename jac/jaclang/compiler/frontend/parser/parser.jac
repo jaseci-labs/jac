@@ -613,3 +613,21 @@ def parse_program(
         lex_error_count
     );
 }
+
+
+def parse_expression(
+    source: str, file_path: str = "<input>"
+) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]] {
+    (tokens, _comments, lex_diags, lex_errors) = tokenize_full(source, file_path);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    expression = parser.parse_expression();
+    if not parser.at_end() {
+        parser.error("Unexpected token after expression");
+    }
+    return (
+        expression,
+        lex_errors > 0 or parser.error_count > 0,
+        parser.diags,
+        lex_diags
+    );
+}

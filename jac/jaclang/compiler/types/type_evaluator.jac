@@ -1,3 +1,4 @@
+import from jaclang.compiler.types.builtin_extensions { install_builtin_extensions }
 import os;
 import from pathlib { Path }
 import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
@@ -361,6 +362,7 @@ walker TypeEvaluator {
         ct_quiet: bool = False,
         prefetch: PrefetchedTypes postinit,
         _pass: Transform | None = None,
+        _diagnostic_suppression_depth: int = 0,
         builtins_module: Module | None = None,
         _flow_node_type_cache: dict[tuple[int, int], TypeBase | None] = {},
         _flow_key_type_cache: dict[tuple[int, str], TypeBase | None] = {},
@@ -475,7 +477,7 @@ walker TypeEvaluator {
     def _emit_untyped_external(name_node: Name, name: str, module: str) -> None;
     def _untyped_external_is_error(node_: UniNode) -> bool;
     def _is_fstring_all_literal(fstring: FString) -> bool;
-    def _try_resolve_forward_ref(expr: String) -> TypeBase | None;
+    def _try_resolve_forward_ref(expr: String | MultiString) -> TypeBase | None;
     def _annotation_args(expr: Expr | None) -> list[Expr];
     def _type_from_union_annotation_arg(val: Expr) -> TypeBase;
     def get_type_of_module(node_: ModulePath) -> TypeBase;
@@ -866,9 +868,5 @@ walker TypeEvaluator {
     def _distinct_brand_mismatch(src_type: TypeBase, dest_type: TypeBase) -> bool;
     def _resolve_string_type_expr(
         type_str: str, scope: UniScopeNode
-    ) -> TypeBase | None;
-
-    def _resolve_py_ast_type_node(
-        ast_node: object, scope: UniScopeNode
     ) -> TypeBase | None;
 }

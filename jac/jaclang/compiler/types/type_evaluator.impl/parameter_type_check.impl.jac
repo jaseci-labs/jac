@@ -566,8 +566,8 @@ impl TypeEvaluator.match_args_to_params(
                 } elif "already matched" in err_msg {
                     pname = err_msg.split("'")[1] if "'" in err_msg else "";
                     self.emit_diag(E1057, arg, name=pname);
-                } elif self._pass is not None {
-                    self._pass.emit(E1051, node_override=arg);
+                } else {
+                    self.emit_diag(E1051, arg);
                 }
             }
             argument_errors = True;
