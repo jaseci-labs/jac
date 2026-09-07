@@ -44,7 +44,7 @@ def _builder -> ManifestBuilder {
 }
 
 
-test "k8s_safe_name only ever yields an RFC 1123 name" {
+test "k8s_safe_name yields an RFC 1123 name or refuses, naming the input" {
     import re;
     rfc1123 = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$");
     for raw in [
@@ -60,36 +60,24 @@ test "k8s_safe_name only ever yields an RFC 1123 name" {
         assert rfc1123.`match(safe) , f"{raw!r} produced non-RFC-1123 name {safe!r}";
         assert len(safe) <= 253 , f"{raw!r} produced a {len(safe)}-char name";
     }
-}
-
-
-test "k8s_safe_name refuses an unresolved env placeholder" {
-    raised = False;
-    try {
-        k8s_safe_name("${SHARED_DATA_PVC}");
-    } except ValueError as e {
-        raised = True;
-        assert "SHARED_DATA_PVC" in str(e);
-        assert "placeholder" in str(e);
-    }
-    assert raised , "expected an unresolved placeholder to raise";
-}
-
-
-test "k8s_safe_name rejects a name with nothing usable left" {
-    raised = False;
-    try {
-        k8s_safe_name("!!!");
-    } except ValueError as e {
-        raised = True;
-        assert "!!!" in str(e);
-    }
-    assert raised , "expected a name with no usable characters to raise";
-}
-
-
-test "the gateway keeps its reserved short name" {
     assert k8s_safe_name(GATEWAY_NAME) == "gateway";
+    # (input, text the ValueError must carry)
+    for row in [
+        ("${SHARED_DATA_PVC}", ["SHARED_DATA_PVC", "placeholder"]),
+        ("!!!", ["!!!"])
+    ] {
+        (raw, fragments) = row;
+        raised = "";
+        try {
+            k8s_safe_name(raw);
+        } except ValueError as e {
+            raised = str(e);
+        }
+        assert raised , f"{raw!r} was accepted instead of refused";
+        for fragment in fragments {
+            assert fragment in raised , f"{raw!r}: {raised}";
+        }
+    }
 }
 
 

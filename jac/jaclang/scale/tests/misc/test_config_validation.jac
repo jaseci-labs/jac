@@ -42,61 +42,74 @@ def _collect_default_mismatches(
     }
 }
 
-test "unknown section is flagged with a suggestion" {
-    msgs = validate_scale_config({"gatway": {"colocate": True}});
-    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
-    assert "gatway" in msgs[0] , msgs[0];
-    assert "did you mean 'gateway'" in msgs[0] , msgs[0];
-}
-
-test "unknown nested key is flagged with a suggestion" {
-    msgs = validate_scale_config({"kubernetes": {"cpu_limits": "1000m"}});
-    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
-    assert "scale.kubernetes" in msgs[0] , msgs[0];
-    assert "did you mean 'cpu_limit'" in msgs[0] , msgs[0];
-}
-
-test "gateway nested unknown key is flagged" {
-    msgs = validate_scale_config({"gateway": {"gateway_prot": 8001}});
-    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
-    assert "scale.gateway" in msgs[0] , msgs[0];
-    assert "did you mean 'gateway_port'" in msgs[0] , msgs[0];
-}
-
-test "open dict sections accept arbitrary keys" {
-    cfg = {
-        "secrets": {"MY_API_KEY": "${MY_API_KEY}"},
-        "kubernetes": {"labels": {"team": "core"}},
-        "gateway": {
-            "env": {"LOG_LEVEL": "DEBUG"},
-            "deployment_overlay": {"spec": {"replicas": 2}},
-            "hpa": {"behavior": {"scaleDown": {"stabilizationWindowSeconds": 600}}}
+test "an unknown key is reported once, at its path, with a suggestion" {
+    # (config, text the single finding must carry)
+    cases = [
+        ({"gatway": {"colocate": True}}, ["gatway", "did you mean 'gateway'"]),
+        (
+            {"kubernetes": {"cpu_limits": "1000m"}},
+            ["scale.kubernetes", "did you mean 'cpu_limit'"]
+        ),
+        (
+            {"gateway": {"gateway_prot": 8001}},
+            ["scale.gateway", "did you mean 'gateway_port'"]
+        ),
+        (
+            {"deploy": {"target": "kuberntes"}},
+            ["kuberntes", "did you mean 'kubernetes'"]
+        ),
+        ({"microservices": {"routes": {}}}, ["microservices"]),
+        ({"sso": "not-a-table", "bogus": 1}, ["bogus"])
+    ];
+    for row in cases {
+        (cfg, fragments) = row;
+        msgs = validate_scale_config(cfg);
+        assert len(msgs) == 1 , f"{cfg!r}: expected 1 finding, got {msgs}";
+        for fragment in fragments {
+            assert fragment in msgs[0] , f"{cfg!r}: {msgs[0]}";
         }
-    };
-    msgs = validate_scale_config(cfg);
-    assert msgs == [] , f"expected no findings, got {msgs}";
+    }
 }
 
-test "valid config produces no findings" {
-    cfg = {
-        "sso": {"host": "http://localhost:8000"},
-        "server": {"structured_logs": False},
-        "kubernetes": {"namespace": "prod", "cpu_limit": "1000m"},
-        "fat_bundle": True,
-        "seal_timeout": 120
-    };
-    assert validate_scale_config(cfg) == [];
-}
-
-test "non-dict section values do not crash the validator" {
-    msgs = validate_scale_config({"sso": "not-a-table", "bogus": 1});
-    assert len(msgs) == 1 , f"expected only the bogus finding, got {msgs}";
-    assert "bogus" in msgs[0] , msgs[0];
-}
-
-test "empty or missing config is fine" {
-    assert validate_scale_config({}) == [];
-    assert validate_scale_config(None) == [];
+test "declared, open-dict, and platform-injected keys produce no findings" {
+    for cfg in [
+        {},
+        None,
+        {
+            "sso": {"host": "http://localhost:8000"},
+            "server": {"structured_logs": False},
+            "kubernetes": {"namespace": "prod", "cpu_limit": "1000m"},
+            "fat_bundle": True,
+            "seal_timeout": 120
+        },
+        {
+            "secrets": {"MY_API_KEY": "${MY_API_KEY}"},
+            "kubernetes": {"labels": {"team": "core"}},
+            "gateway": {
+                "env": {"LOG_LEVEL": "DEBUG"},
+                "deployment_overlay": {"spec": {"replicas": 2}},
+                "hpa": {"behavior": {"scaleDown": {"stabilizationWindowSeconds": 600}}}
+            }
+        },
+        {
+            "storage": {"backend": "postgres", "type": "sv"},
+            "deploy": {"target": "kubernetes"},
+            "tracing": {"enabled": True},
+            "scheduler": {"enabled": True}
+        },
+        {
+            "gateway": {
+                "colocate": False,
+                "boot_health_timeout": 60.0,
+                "boot_max_wait": 120,
+                "health_monitor_interval": 10.0,
+                "route_refresh_seconds": 5.0
+            }
+        }
+    ] {
+        msgs = validate_scale_config(cfg);
+        assert msgs == [] , f"{cfg!r}: expected no findings, got {msgs}";
+    }
 }
 
 test "every default config key is declared in the schema" {
@@ -186,46 +199,25 @@ test "the [scale.kubernetes] schema agrees with the declaration it documents" {
 }
 
 
-test "reporting does not raise outside strict mode" {
+test "strict mode raises on findings only while its env name is set and non-empty" {
+    import from jaclang.project.config_schema { schema_strict_enabled }
+    findings = validate_scale_config({"gatway": {}});
     os.environ.pop(STRICT_ENV, None);
-    report_schema_findings(validate_scale_config({"gatway": {}}), "scale", STRICT_ENV);
-}
-
-test "strict env raises on unknown keys" {
+    report_schema_findings(findings, "scale", STRICT_ENV);
     os.environ[STRICT_ENV] = "1";
     try {
-        raised = False;
+        raised = "";
         try {
-            report_schema_findings(
-                validate_scale_config({"gatway": {}}), "scale", STRICT_ENV
-            );
+            report_schema_findings(findings, "scale", STRICT_ENV);
         } except ValueError as e {
-            raised = True;
-            assert "gatway" in str(e) , str(e);
+            raised = str(e);
         }
-        assert raised , "expected ValueError in strict mode";
-    } finally {
-        os.environ.pop(STRICT_ENV, None);
-    }
-}
-
-test "strict env ignores a clean config" {
-    os.environ[STRICT_ENV] = "1";
-    try {
+        assert "gatway" in raised , f"strict mode did not raise on an unknown key: {raised!r}";
         report_schema_findings(
             validate_scale_config({"server": {"structured_logs": False}}),
             "scale",
             STRICT_ENV
         );
-    } finally {
-        os.environ.pop(STRICT_ENV, None);
-    }
-}
-
-test "an empty strict-env name never escalates" {
-    import from jaclang.project.config_schema { schema_strict_enabled }
-    os.environ[STRICT_ENV] = "1";
-    try {
         assert not schema_strict_enabled("");
         report_schema_findings(["some finding"], "byllm", "");
     } finally {
@@ -358,42 +350,20 @@ test "shipped jac.toml files validate clean" {
     assert checked > 0 , f"sweep found no [scale] tables under {repo}";
 }
 
-test "platform-injected and capability-intent keys are recognized" {
-    cfg = {
-        "storage": {"backend": "postgres", "type": "sv"},
-        "deploy": {"target": "kubernetes"},
-        "tracing": {"enabled": True},
-        "scheduler": {"enabled": True}
-    };
-    msgs = validate_scale_config(cfg);
-    assert msgs == [] , f"expected no findings, got {msgs}";
-}
-
-test "documented gateway boot keys are recognized" {
-    cfg = {
-        "gateway": {
-            "colocate": False,
-            "boot_health_timeout": 60.0,
-            "boot_max_wait": 120,
-            "health_monitor_interval": 10.0,
-            "route_refresh_seconds": 5.0
-        }
-    };
-    msgs = validate_scale_config(cfg);
-    assert msgs == [] , f"expected no findings, got {msgs}";
-}
-
-test "every known deploy target owns a config section" {
+test "a deploy target owns its config section exactly when the factory can build it" {
+    import from jaclang.scale.deploy.target.factory {
+        BUILTIN_TARGET_TYPES,
+        DeploymentTargetFactory
+    }
+    for name in BUILTIN_TARGET_TYPES {
+        assert name in known_deploy_targets() , name;
+    }
     for name in known_deploy_targets() {
         msgs = validate_scale_config(
             {"deploy": {"target": name}, name: {"namespace": "prod"}}
         );
         assert msgs == [] , f"target '{name}' section flagged: {msgs}";
     }
-}
-
-test "a registered plugin target owns its section" {
-    import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
     assert "fly" not in known_deploy_targets();
     before = validate_scale_config({"fly": {"app_name": "demo"}});
     assert len(before) == 1 , f"expected 1 finding, got {before}";
@@ -408,20 +378,6 @@ test "a registered plugin target owns its section" {
         assert after == [] , f"registered target section flagged: {after}";
     } finally {
         DeploymentTargetFactory._registry.pop("fly", None);
-    }
-}
-
-test "a misspelled deploy target is reported instead of silencing its section" {
-    msgs = validate_scale_config({"deploy": {"target": "kuberntes"}});
-    assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
-    assert "kuberntes" in msgs[0] , msgs[0];
-    assert "did you mean 'kubernetes'" in msgs[0] , msgs[0];
-}
-
-test "known targets are exactly the ones the factory can build" {
-    import from jaclang.scale.deploy.target.factory { BUILTIN_TARGET_TYPES }
-    for name in BUILTIN_TARGET_TYPES {
-        assert name in known_deploy_targets() , name;
     }
 }
 
