@@ -393,6 +393,11 @@ def _project_env_fingerprint(source_path: str) -> str {
     h.update(app_fact_digest(app_for_path(source_path)).encode());
     _ws = workspace_for_path(source_path);
     h.update((_ws.digest if _ws is not None else '').encode());
+    if _ws is not None and _ws.explicit {
+        import from jaclang.compiler.placement.ownership { consumer_graph }
+        (_, ownership_digest) = consumer_graph(_ws);
+        h.update(ownership_digest.encode());
+    }
     h.update(_analysis_fingerprint_for(source_path).encode());
     return h.hexdigest();
 }

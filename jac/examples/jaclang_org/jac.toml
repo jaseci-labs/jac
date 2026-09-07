@@ -128,22 +128,7 @@ expo-font = "~14.0.0"
 lucide-react-native = "^0.469.0"
 react-native-svg = "^15.13.0"
 
-# identity.jac is pure client helpers over the social graph's wire shapes;
-# without JSX of its own the solver cannot see that, so pin it. The [client.*]
-# tables below are workspace-wide: the web app and the desktop app share one
-# UI (core/site) and so one client configuration.
-[placement.pins]
-"core.jacyac.format" = "client"
-"core.jacyac.scores" = "client"
-"core.jacyac.github.auth" = "server"
-"core.jacyac.github.repos" = "server"
-"core.jacyac.github.login" = "client"
-"core.jacyac.identity" = "client"
-"core.jacyac.session" = "client"
-"core.jacyac.state" = "client"
-"core.brand.theme" = "client"
-"core.brand.styles" = "server"
-
+# Client configuration is workspace-wide; web and desktop share core/site.
 [client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
@@ -171,6 +156,3 @@ og_site_name = "jaclang.org"
 og_image = "https://jaclang.org/static/assets/og-card.png"
 twitter_card = "summary_large_image"
 twitter_image = "https://jaclang.org/static/assets/og-card.png"
-
-[apps.social_graph.placement.pins]
-"core.leaderboard.board" = "server"

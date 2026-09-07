@@ -79,6 +79,12 @@ impl WorkspaceSpec.owner_app_for_path(abs_path: str) -> tuple[(AppSpec | None), 
     if len(serving) == 1 {
         return (serving[0], False);
     }
+    import from jaclang.compiler.placement.ownership { consumer_graph }
+    (consumers, _) = consumer_graph(self);
+    users = consumers.get(_real(abs_path), set());
+    if len(users) == 1 {
+        return (self.apps[next(iter(users))], False);
+    }
     default_app = self.apps.get(self.default_app) if self.default_app else None;
     if default_app is not None and default_app.has_server {
         return (default_app, False);

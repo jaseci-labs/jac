@@ -2280,8 +2280,12 @@ impl JacCompiler.get_client_artifact(
         }
         return built;
     }
-    held = actual_program.hub.client_artifacts.get(full_target);
-    if held is None {
+
+    has_live_tree = actual_program.find_module(full_target) is not None;
+    held = actual_program.hub.client_artifacts.get(full_target)
+        if not has_live_tree
+        else None;
+    if held is None and not has_live_tree {
         held = self._cached_client_artifact(full_target);
     }
     if held is not None {
