@@ -1264,7 +1264,7 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
                     "postinit": "__post_init__",
                     "init_subclass": "__init_subclass__",
                 }
-                if mname in dunder_map:
+                if not tokens[i + 2].backtick and mname in dunder_map:
                     out.append(tokens[i + 1])  # DOT
                     out.append(
                         Token(
@@ -1365,7 +1365,7 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
             continue
 
         # === .init → .__init__  (general dunder method name conversion) ===
-        if tok.type == TT.NAME and out and out[-1].type == TT.DOT:
+        if tok.type == TT.NAME and not tok.backtick and out and out[-1].type == TT.DOT:
             dunder_map = {
                 "init": "__init__",
                 "postinit": "__post_init__",
