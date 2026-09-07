@@ -713,7 +713,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             }
             continue;
         }
-        _bg_aot = bool(self.prog.options and self.prog.options.aot_mode);
+        _bg_aot = _link_opts.aot_mode;
         _bg_msg = native_verdict_blast_guard(self.prog, _lk_composed, _bg_aot);
         if _bg_msg {
             self.emit(E5029, path=str(source_mod_path), detail=_bg_msg);
@@ -1044,7 +1044,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             } except Exception {}
         }
 
-        if not self.prog.options.aot_mode {
+        if not _link_opts.aot_mode {
             for dep_lib_path in meta.clib_paths {
                 try {
                     self._jit_load_clib(dep_lib_path);
