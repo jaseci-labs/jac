@@ -1078,7 +1078,7 @@ impl TypeEvaluator._find_overload_by_arg_count(
     return None;
 }
 
-impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> ClassType | None {
+impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> TypeBase | None {
     if not (
         isinstance(expr.target, AtomTrailer)
         and isinstance(expr.target.target, Expr)
@@ -1087,6 +1087,18 @@ impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> ClassType | None {
         return None;
     }
     recv = expr.target.target.type;
+    if isinstance(recv, UnionType) {
+        # A bound call on an instance union retains every possible receiver
+        # when substituting Self in the method's result.
+        if recv.types
+            and all(
+                isinstance(member, ClassType) and member.is_instance()
+                for member in recv.types
+            ) {
+            return recv;
+        }
+        return None;
+    }
     if not (
         isinstance(recv, ClassType)
         and recv._shared is not None

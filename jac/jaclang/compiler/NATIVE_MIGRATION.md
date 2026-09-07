@@ -51,6 +51,11 @@ probe. The probe skipped engine construction: full linking and execution
 remain unproven. A separate native generator source audit reported 212 errors
 and 890 warnings. Counts depend on the selected scope and source revision.
 
+The next generator/LLVM contract batch passed 57 generator, closure,
+comparison, and optional-payload tests. Its source audit reduced the native
+generator diagnostics to 114 errors and 765 warnings. This is progress on
+compiling the backend itself, not a successful full native checker build.
+
 ## Remaining work
 
 | Area | Required work in Jac |

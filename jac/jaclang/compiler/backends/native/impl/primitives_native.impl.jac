@@ -2712,7 +2712,7 @@ impl NativeListEmitter.emit_extend(
             }
         }
     }
-    elem = b.call(src_helpers["get"], [src, idx], name="ext.elem");
+    elem: ir.Value = b.call(src_helpers["get"], [src, idx], name="ext.elem");
     if elem.type != helpers["elem_type"] {
         elem = p._coerce_type(elem, helpers["elem_type"]);
     }
@@ -3367,7 +3367,7 @@ impl NativeDictEmitter.emit_get(
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
-    val = b.call(helpers["get"], [target, key], name="dget.val");
+    val: ir.Value = b.call(helpers["get"], [target, key], name="dget.val");
     if wrap_optional {
         _tagged = b.insert_value(
             ir.Constant(result_type, None),
@@ -3447,7 +3447,7 @@ impl NativeDictEmitter.emit_keys(
     at_end = b.icmp_unsigned(">=", idx, dict_len, name="dkeys.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    key = b.call(helpers["get_key"], [target, idx], name="dkeys.key");
+    key: ir.Value = b.call(helpers["get_key"], [target, idx], name="dkeys.key");
     key = p._cast_to_list_elem(b, key, lhelpers["elem_type"], "dkeys.key");
     b.call(lhelpers["append"], [new_list, key]);
     next_idx = b.add(idx, ir.Constant(i64, 1), name="dkeys.next");
@@ -3501,7 +3501,7 @@ impl NativeDictEmitter.emit_values(
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     key = b.call(helpers["get_key"], [target, idx], name="dvals.key");
-    val = b.call(helpers["get"], [target, key], name="dvals.val");
+    val: ir.Value = b.call(helpers["get"], [target, key], name="dvals.val");
     val = p._cast_to_list_elem(b, val, lhelpers["elem_type"], "dvals.val");
     b.call(lhelpers["append"], [new_list, val]);
     next_idx = b.add(idx, ir.Constant(i64, 1), name="dvals.next");
@@ -3669,7 +3669,7 @@ impl NativeDictEmitter.emit_popitem(
     last_idx = b.sub(dict_len, ir.Constant(i64, 1), name="dpi.last");
     last_key = b.call(helpers["get_key"], [target, last_idx], name="dpi.key");
 
-    last_key_out = last_key;
+    last_key_out: ir.Value = last_key;
     if isinstance(key_type, ir.PointerType) {
         _i8p_pi = ir.IntType(8).as_pointer();
         if p._nogc_headerless() {
@@ -3983,7 +3983,7 @@ impl NativeSetEmitter.emit_pop(
     b = get_builder(p);
     last_idx = b.sub(set_len, ir.Constant(i64, 1), name="spop.last");
     last_val = b.call(helpers["get"], [target, last_idx], name="spop.val");
-    out_val = last_val;
+    out_val: ir.Value = last_val;
     if isinstance(elem_type, ir.PointerType) {
         if p._nogc_headerless() {
             if isinstance(elem_type.pointee, ir.IntType)
@@ -5415,6 +5415,9 @@ impl NativeBuiltinEmitter.emit_list(
         }
         list_type = p._lower_list_for_elem(elem_type);
         spec = p._spec_from_container_ptr(list_type);
+        if spec is None {
+            return None;
+        }
         helpers = p.list_helpers.get(spec);
         if helpers is None {
             return None;
@@ -5433,7 +5436,9 @@ impl NativeBuiltinEmitter.emit_list(
         available = p._emit_iter_advance(b, val, slot);
         b.cbranch(available, body, done);
         b.position_at_end(body);
-        element = p._coerce_type(b.load(slot), helpers["elem_type"]);
+        stored_type = helpers["elem_type"];
+        assert isinstance(stored_type, ir.Type);
+        element = p._coerce_type(b.load(slot), stored_type);
         b.call(helpers["append"], [result, element]);
         b.branch(condition);
         b.position_at_end(done);
@@ -5576,7 +5581,7 @@ impl NativeBuiltinEmitter.emit_set(
             at_end = b.icmp_unsigned(">=", idx, list_len, name="l2s.end");
             b.cbranch(at_end, done_bb, body_bb);
             b.position_at_start(body_bb);
-            elem = b.call(lhelpers["get"], [val, idx], name="l2s.elem");
+            elem: ir.Value = b.call(lhelpers["get"], [val, idx], name="l2s.elem");
             elem = p._cast_to_list_elem(b, elem, elem_type, "l2s.key");
             b.call(shelpers["add"], [new_set, elem]);
             nidx = b.add(idx, ir.Constant(i64, 1), name="l2s.nidx");

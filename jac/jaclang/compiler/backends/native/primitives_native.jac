@@ -15,7 +15,7 @@ import from jaclang.compiler.backends.common.primitives {
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.diagnostics { E5092 }
-import from jaclang.compiler.frontend.unitree { UniNode }
+import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
@@ -1889,9 +1889,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             and isinstance(args[2].type, ir.IntType) {
             return self.emit_pow_mod(ctx, base, exp, args[2]);
         }
-        exp_node = None;
+        exp_node: Expr | None = None;
         if len(ctx.arg_nodes) >= 2 {
-            exp_node = ctx.arg_nodes[1];
+            exponent = ctx.arg_nodes[1];
+            if isinstance(exponent, Expr) {
+                exp_node = exponent;
+            }
         }
         return p._codegen_pow(base, exp, exp_node);
     }
