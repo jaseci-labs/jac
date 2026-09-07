@@ -1,4 +1,5 @@
 import os;
+import from _directory_native { directory_names }
 
 def _root_of(p: str) -> str {
     if p.startswith("//") and not p.startswith("///") {
@@ -90,6 +91,14 @@ obj:pub Path {
 
     def is_dir -> bool {
         return os.path.isdir(self._p);
+    }
+
+    def iterdir -> Iterator[Path] {
+        children: list[Path] = [];
+        for name in directory_names(self._p) {
+            children.append(self / name);
+        }
+        return iter(children);
     }
 
     def resolve -> Path {
