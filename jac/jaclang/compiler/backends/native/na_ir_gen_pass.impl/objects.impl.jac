@@ -1856,7 +1856,7 @@ impl NaIRGenPass._codegen_instantiation(
         and not self._struct_has_ref_fields(type_name)
         and not self._arch_has_vtable(type_name)
         and not self._arch_is_osp_name(type_name)
-        and f"{type_name}.drop" not in self.func_symtab
+        and self._drop_hook_for(type_name) is None
         and not self.struct_field_inline.get(type_name, None)
         and self._pyb_base_of(type_name) is None
     );
@@ -3316,6 +3316,7 @@ impl NaIRGenPass._codegen_union_member(
     obj_val: ir.Value, field_name: str, nd: uni.AtomTrailer, parts: list[str]
 ) -> (ir.Value | None) {
     """Read each union member through its own field layout or accessor.""";
+    source_receiver = obj_val;
     result_type = self._lower_type(nd.type);
     if result_type is None {
         return None;
@@ -3381,6 +3382,7 @@ impl NaIRGenPass._codegen_union_member(
     for (value, block) in incoming {
         result.add_incoming(value, block);
     }
+    self._release_owned_args([source_receiver], op="call_arg");
     return self._own_accessor_result(result);
 }
 

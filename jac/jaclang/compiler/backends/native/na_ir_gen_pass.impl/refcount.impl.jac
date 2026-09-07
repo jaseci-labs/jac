@@ -1562,7 +1562,7 @@ impl NaIRGenPass._emit_nogc_field_drops(
     i8p = ir.IntType(8).as_pointer();
     _hook = self._drop_hook_for(type_name);
     if _hook is not None {
-        b.call(_hook, [_dobj]);
+        b.call(_hook, [b.bitcast(_dobj, _hook.args[0].type)]);
     }
     field_types = self.struct_field_types.get(type_name, {});
     field_indices = self.struct_field_indices.get(type_name, {});
@@ -1621,30 +1621,31 @@ impl NaIRGenPass._emit_nogc_field_drops(
 }
 
 impl NaIRGenPass._drop_hook_for(type_name: str) -> (ir.Function | None) {
-    _hook = self.struct_drop_hooks.get(type_name)
-        or self.func_symtab.get(f"{type_name}.drop");
-    if _hook is not None {
-        self.struct_drop_hooks[type_name] = _hook;
-        return _hook;
+    cached = self.struct_drop_hooks.get(type_name);
+    if cached is not None {
+        return cached;
     }
-    _arch = self.arch_ast_map.get(type_name);
-    if _arch is None or _arch.body is None {
-        return None;
-    }
-    for _ab in _arch.get_all_sub_nodes(uni.Ability) {
-        if _ab.find_parent_of_type(uni.Archetype) is not _arch
-            or _ab.name_ref is None {
-            continue;
+    for owner in self._mro_of(type_name) {
+        hook = self.func_symtab.get(f"{owner}.drop");
+        if hook is None {
+            arch = self.arch_ast_map.get(owner);
+            if arch is not None and arch.body is not None {
+                for ability in arch.get_all_sub_nodes(uni.Ability) {
+                    if ability.find_parent_of_type(uni.Archetype) is not arch
+                        or ability.name_ref is None
+                        or ability.name_ref.sym_name != "drop" {
+                        continue;
+                    }
+                    self._forward_declare_method(owner, ability);
+                    hook = self.func_symtab.get(f"{owner}.drop");
+                    break;
+                }
+            }
         }
-        if _ab.name_ref.sym_name != "drop" {
-            continue;
+        if hook is not None {
+            self.struct_drop_hooks[type_name] = hook;
+            return hook;
         }
-        self._forward_declare_method(type_name, _ab);
-        _hook = self.func_symtab.get(f"{type_name}.drop");
-        if _hook is not None {
-            self.struct_drop_hooks[type_name] = _hook;
-        }
-        return _hook;
     }
     return None;
 }
@@ -2447,7 +2448,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
 
     _hook = self._drop_hook_for(arch_name);
     if _hook is not None {
-        b.call(_hook, [release_fn.args[0]]);
+        b.call(_hook, [b.bitcast(release_fn.args[0], _hook.args[0].type)]);
     }
 
     if self._pyb_base_of(arch_name) is not None {

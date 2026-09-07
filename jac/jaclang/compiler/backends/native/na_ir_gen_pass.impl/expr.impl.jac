@@ -2079,8 +2079,14 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     }
                 }
             }
+        }
 
+        if right_name is not None {
             _property_parts = self._receiver_union_parts(nd);
+            obj_val = self._codegen_expr(nd.target);
+            if obj_val is None {
+                return None;
+            }
             if _property_parts is not None
                 and any(
                     self._accessor_slot_of(part, right_name, "property") is not None
@@ -2091,12 +2097,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         or right_name in self.struct_field_indices.get(part, {})
                     for part in _property_parts
                 ) {
-                _property_receiver = self._codegen_expr(nd.target);
-                if _property_receiver is not None {
-                    return self._codegen_union_member(
-                        _property_receiver, right_name, nd, _property_parts
-                    );
-                }
+                return self._codegen_union_member(
+                    obj_val, right_name, nd, _property_parts
+                );
             }
             _fa_type_name = self._struct_name_of(nd.target);
             if _fa_type_name is not None {
@@ -2108,34 +2111,15 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                     and (_fa_idx is None or right_name not in _fa_idx)
                     and self._pyb_base_of(type_name) is not None
                 ) {
-                    obj_val = self._codegen_expr(nd.target);
-                    if obj_val is not None {
-                        return self._codegen_pyb_field_load(
-                            nd, self._opt_unwrap_attr(obj_val), right_name
-                        );
-                    }
-                }
-                obj_val = self._codegen_expr(nd.target);
-                if obj_val is not None {
-                    return self._read_field_or_refuse(
-                        nd, obj_val, right_name, type_name
+                    return self._codegen_pyb_field_load(
+                        nd, self._opt_unwrap_attr(obj_val), right_name
                     );
                 }
+            } else {
+                type_name = self._infer_type_name(obj_val);
             }
-        }
-
-        if right_name is not None {
-            obj_val = self._codegen_expr(nd.target);
-            if obj_val is not None {
-                type_name = self._struct_name_of(nd.target);
-                if type_name is None {
-                    type_name = self._infer_type_name(obj_val);
-                }
-                if type_name is not None {
-                    return self._read_field_or_refuse(
-                        nd, obj_val, right_name, type_name
-                    );
-                }
+            if type_name is not None {
+                return self._read_field_or_refuse(nd, obj_val, right_name, type_name);
             }
         }
     }

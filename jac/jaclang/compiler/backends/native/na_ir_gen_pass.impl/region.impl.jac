@@ -304,7 +304,7 @@ impl NaIRGenPass._emit_struct_drop_fields_fn(type_name: str) -> (ir.Function | N
     }
     if _hook is not None {
         self.struct_drop_hooks[type_name] = _hook;
-        b.call(_hook, [_dobj]);
+        b.call(_hook, [b.bitcast(_dobj, _hook.args[0].type)]);
     }
     for (fname, ftype) in _ptr_fields {
         idx = field_indices.get(fname, -1);
