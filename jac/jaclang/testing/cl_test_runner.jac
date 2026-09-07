@@ -69,7 +69,7 @@ obj ClTestResult {
 
 def compile_cl_module(filepath: str) -> tuple[str, list, dict, list];
 
-def _compile_runtime_js -> str;
+def _compile_runtime -> tuple[str, str];
 
 
 def _point_at_staged_runtime(js: str) -> str;

@@ -26,7 +26,7 @@ impl compile_cl_module(filepath: str) -> tuple[str, list, dict, list] {
     return (mod.gen.js, tests, imports, server_imports);
 }
 
-impl _compile_runtime_js -> str {
+impl _compile_runtime -> tuple[str, str] {
     import from jaclang.compiler.driver.modresolver { resolve_jac_virtual_module_path }
 
     runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
@@ -34,7 +34,7 @@ impl _compile_runtime_js -> str {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
     (js, _tests, _imports, _server_imports) = compile_cl_module(runtime_src);
-    return js;
+    return (runtime_src, js);
 }
 
 impl _point_at_staged_runtime(js: str) -> str {
@@ -449,7 +449,7 @@ impl _run_harness(
                 dep_files[dep_name] = _point_at_staged_runtime(dep_files[dep_name]);
             }
 
-            runtime_js = _compile_runtime_js();
+            (runtime_src, runtime_js) = _compile_runtime();
             core_match = re.search(
                 r"[\"'](\.[^\"']*client_runtime_core\.js)[\"']", runtime_js
             );
@@ -458,10 +458,6 @@ impl _run_harness(
                     core_match.group(1), "./client_runtime_core.js"
                 );
             }
-            import from jaclang.compiler.driver.modresolver {
-                resolve_jac_virtual_module_path
-            }
-            runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
             (support, support_imports) = _collect_local_imports(
                 runtime_js,
                 str(Path(runtime_src).parent),
