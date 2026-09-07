@@ -242,7 +242,8 @@ impl native_build(
     lib: bool = False,
     target: str = "",
     debug: bool = False,
-    memory: str = ""
+    memory: str = "",
+    no_ir_cache: bool = False
 ) -> int {
     import from jaclang.jac0core.ext_registry {
         is_jac,
@@ -345,7 +346,7 @@ impl native_build(
                 memory_profile=memory,
                 native_target=(_triple or None),
                 native_debug=(True if debug else None),
-                no_ir_cache=debug
+                no_ir_cache=debug or no_ir_cache
             );
             ir_module = prog.compile(
                 file_path=os.path.abspath(filename), options=options

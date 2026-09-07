@@ -147,3 +147,16 @@ test "a platform with a binary is never told to go find another release" {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }
 }
+
+test "an early asset match survives a release larger than the pipe buffer" {
+    assets = ["jac-0.37.1-macos-aarch64"];
+    assets.extend([f"extra-asset-{i}" for i in range(16384)]);
+    fx = scaffold("arm64", assets);
+    try {
+        res = run_installer(fx);
+        out = res.stdout + res.stderr;
+        assert "Downloading jac-0.37.1-macos-aarch64" in out , out;
+    } finally {
+        shutil.rmtree(fx["base"], ignore_errors=True);
+    }
+}
