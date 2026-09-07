@@ -167,6 +167,11 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
         img_root = _sealed_root(tmp);
         dist = Path(img_root) / ".jac" / "client" / "dist";
         wasm = bytes.fromhex("0061736d01000000");
+        html = '<html><head><link rel="stylesheet" href="/static/client.HOSTHASH.css"></head><body>sealed app</body></html>';
+        (dist / "index.html").write_text(html);
+        (dist / "client.HOSTHASH.css").write_text(
+            ".uppercase{text-transform:uppercase}"
+        );
         (dist / "arena.wasm").write_bytes(wasm);
         (dist / "arena.wasm.imports.json").write_text('{"imports":{}}');
         unrelated = Path(tmp) / "elsewhere";
@@ -185,6 +190,16 @@ test "sealed static endpoints use the image even with an unrelated runtime base"
                 for call in server.add_endpoint.call_args_list
             };
             request = SimpleNamespace(method="GET", headers={});
+            for (route, args) in [("/", []), ("/{file_path:path}", ["wait-wuuut"])] {
+                response = routes[route](request, *args);
+                assert response.status_code == 200;
+                assert response.body.decode() == html;
+            }
+            response = routes["/static/{file_path:path}"](
+                request, "client.HOSTHASH.css"
+            );
+            assert response.status_code == 200;
+            assert b"text-transform:uppercase" in response.body;
             response = routes["/static/{file_path:path}"](request, "arena.wasm");
             assert response.status_code == 200;
             assert response.body == wasm;

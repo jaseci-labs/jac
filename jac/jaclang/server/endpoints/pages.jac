@@ -155,7 +155,7 @@ def register_page_endpoints(server: JacAPIServer) {
     }
 
     def root_index(request: Request, **kwargs: JsonValue) -> Response {
-        index = client_dist_index(settings.client_dist);
+        index = client_dist_index(asset_dist);
         if index is not None {
             return file_response(request, str(index), cache_control='no-cache');
         }
@@ -266,7 +266,7 @@ def register_page_endpoints(server: JacAPIServer) {
                 request, str(candidate), cache_control=ASSET_CACHE_CONTROL
             );
         }
-        index = client_dist_index(settings.client_dist);
+        index = client_dist_index(asset_dist);
         if index is not None and not Path(file_path).suffix {
             return file_response(request, str(index), cache_control='no-cache');
         }
