@@ -696,7 +696,7 @@ impl NaIRGenPass._release_owned_args(
             and _arg.type == self.jacval_type
             and self._is_owned(_arg)
         ) {
-            self.builder.call(self._emit_jacval_release_fn(), [_arg]);
+            self._emit_elem_release(self.builder, _arg.type, _arg);
         } elif isinstance(_arg.type, ir.LiteralStructType)
             and self._gc_mode() != "none" {
             owned = _arg.na_tuple_owned;
@@ -2468,11 +2468,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         );
     }
 
-    _has_ref_fields = any(
-        (isinstance(_ft, ir.PointerType) or self._opt_ptr_payload_of(_ft) is not None)
-            and _fn not in foreign_fields
-            and field_indices.get(_fn, -1) >= 0 for (_fn, _ft) in field_types.items()
-    );
+    _has_ref_fields = self._struct_has_ref_fields(arch_name);
     if _has_ref_fields {
         _cycles_on = self._gc_mode() == "cycles";
         if _cycles_on and self.rc_collecting_gv is None {
@@ -2501,17 +2497,14 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
             if idx < 0 {
                 continue;
             }
-            if isinstance(ftype, ir.PointerType) {
+            if self._elem_kind(ftype) != "raw" {
                 field_ptr = b.gep(
                     release_fn.args[0],
                     [ir.Constant(i32, 0), ir.Constant(i32, idx)],
                     name=f"field.{fname}.ptr"
                 );
                 field_val = b.load(field_ptr, name=f"field.{fname}.val");
-                b.call(
-                    self.rc_release_simple_fn,
-                    [b.bitcast(field_val, i8_ptr, name=f"field.{fname}.cast")]
-                );
+                self._emit_elem_release(b, ftype, field_val);
             } elif self._opt_ptr_payload_of(ftype) is not None {
                 field_ptr = b.gep(
                     release_fn.args[0],

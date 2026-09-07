@@ -3421,7 +3421,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if elem_type_name == "ptr" {
         inner_type = self._list_elem_llvm_of(nd.collection);
         if inner_type is None {
-            inner_type = self._iterable_elem_llvm_of(nd.collection);
+            inner_type = self._elem_storage_llvm(
+                self._flow_narrowed_type_of(nd.target)
+            );
         }
         if inner_type is not None and not isinstance(inner_type, ir.PointerType) {
             inner_type = None;

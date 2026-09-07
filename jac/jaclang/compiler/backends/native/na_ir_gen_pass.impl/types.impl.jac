@@ -513,15 +513,6 @@ impl NaIRGenPass._struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.
     return self.builder.gep(ptr, [_wide_idx], name="ptr.elem.ptr");
 }
 
-impl NaIRGenPass._iterable_elem_llvm_of(expr: uni.UniNode | None) -> ir.Type | None {
-    source_type = self._flow_narrowed_type_of(expr);
-    if source_type is None {
-        return None;
-    }
-    elem_type = self.prog.get_type_evaluator()._get_iterable_element_type(source_type);
-    return self._elem_storage_llvm(elem_type);
-}
-
 impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
     return self._typed_elem_llvm_of(expr, "list[");
 }

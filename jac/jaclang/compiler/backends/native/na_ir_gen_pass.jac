@@ -811,6 +811,10 @@ walker NaIRGenPass(Transform) {
 
     def _emit_elem_retain(b: ir.IRBuilder, elem_type: ir.Type, val: ir.Value) -> None;
     def _emit_elem_release(b: ir.IRBuilder, elem_type: ir.Type, val: ir.Value) -> None;
+    def _emit_elem_trace(
+        b: ir.IRBuilder, val: ir.Value, visitor: ir.Value
+    ) -> ir.IRBuilder;
+
     def _container_layout_dense(data_types: list) -> dict;
     def _container_layout_hash(key_type: ir.Type, val_type: (ir.Type | None)) -> dict;
     def _container_struct_fields(layout: dict) -> list;
@@ -2074,7 +2078,6 @@ walker NaIRGenPass(Transform) {
     def _ptr_box_kind(rt: any) -> int;
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
-    def _iterable_elem_llvm_of(expr: uni.UniNode | None) -> ir.Type | None;
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _typed_elem_llvm_of(

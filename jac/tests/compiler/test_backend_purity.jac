@@ -158,7 +158,9 @@ glob FORBIDDEN: dict[str, str] = {
              "stamped Expr.ct_value"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             3,
+             5,
+             "imported_module_name reads the stamped ModuleType and import "
+             "declaration to preserve aliased module identity. "
              "resolved_callee consumes the resolved call declaration for "
              "ownership transfer and raises-effect lowering. "
              "classify_call as the shadowing-aware builtin test for the "
@@ -181,8 +183,16 @@ glob FORBIDDEN: dict[str, str] = {
              "backend stopped reaching into the analysis module for it rather "
              "than merely renaming the reach"
          ),
-         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
+         ("native/na_ir_gen_pass.impl/expr.impl.jac", "symbol_utils"): (
              1,
+             "imported_module_name consumes the stamped ModuleType and "
+             "resolved import declaration for native module attributes"
+         ),
+         ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
+             3,
+             "resolve_expr_symbol reads the expression attached symbol; "
+             "imported_module_name reads its stamped ModuleType and import "
+             "declaration. Neither asks the evaluator to resolve a type. "
              "collect_method_names as the central ancestor-method walk over "
              "an already-resolved archetype symbol - a symbol-FACT reader, "
              "not a re-run of member resolution"
