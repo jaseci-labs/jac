@@ -1040,12 +1040,9 @@ impl NaIRGenPass._codegen_method(
         self._self_owned = _self_param is not None
             and self._nogc_owned_param(_self_param);
         if not _is_static {
-            self_alloca = self.builder.alloca(func.args[0].type, name="self");
-            self.builder.store(func.args[0], self_alloca);
-            self.local_vars["self"] = self_alloca;
-            if not self._self_owned {
-                self.param_vars.add("self");
-            }
+            self._bind_function_parameter(
+                "self", func.args[0], borrowed=not self._self_owned
+            );
             _base = 1;
         }
         if (
@@ -1069,24 +1066,7 @@ impl NaIRGenPass._codegen_method(
         }
         for (i, (param_name, _p_rebound)) in enumerate(_bound_params) {
             arg_val = func.args[i + _base];
-            if param_name in self.closure_cell_vars {
-                slot = self._emit_closure_cell(param_name, arg_val.type);
-                self.builder.store(arg_val, slot);
-                self.local_vars[param_name] = slot;
-                if isinstance(arg_val.type, ir.PointerType) {
-                    self._emit_rc_retain(arg_val, op="param_cell", loc=full_name);
-                }
-                continue;
-            }
-            alloca = self.builder.alloca(arg_val.type, name=param_name);
-            self.builder.store(arg_val, alloca);
-            self.local_vars[param_name] = alloca;
-
-            if isinstance(arg_val.type, ir.PointerType) and _p_rebound {
-                self._emit_rc_retain(arg_val, op="param_promote", loc=full_name);
-            } else {
-                self.param_vars.add(param_name);
-            }
+            self._bind_function_parameter(param_name, arg_val, rebound=_p_rebound);
         }
 
         _is_virtual = method_name in self.vtable_method_indices.get(arch_name, {});
@@ -1330,10 +1310,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
             self._scan_closure_escapes(_scan_owner, _scan_body);
         }
 
-        self_alloca = self.builder.alloca(func.args[0].type, name="self");
-        self.builder.store(func.args[0], self_alloca);
-        self.local_vars["self"] = self_alloca;
-        self.param_vars.add("self");
+        self._bind_function_parameter("self", func.args[0]);
 
         body = ModuleFacts.unwrap_body(method);
         if body is not None {
@@ -1650,17 +1627,11 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
                 else method;
             self._scan_closure_escapes(_scan_owner, _scan_body);
         }
-        self_alloca = self.builder.alloca(func.args[0].type, name="self");
-        self.builder.store(func.args[0], self_alloca);
-        self.local_vars["self"] = self_alloca;
-        self.param_vars.add("self");
+        self._bind_function_parameter("self", func.args[0]);
 
         loc_name = "here" if sig.from_walker else "visitor";
         loc_arg = func.args[1];
-        loc_alloca = self.builder.alloca(loc_arg.type, name=loc_name);
-        self.builder.store(loc_arg, loc_alloca);
-        self.local_vars[loc_name] = loc_alloca;
-        self.param_vars.add(loc_name);
+        self._bind_function_parameter(loc_name, loc_arg);
         _grow_anchor = loc_arg if sig.from_walker else func.args[0];
         self._region_enter(self._region_of_value(_grow_anchor));
         self.region_open_stack.append(len(self.loop_stack));

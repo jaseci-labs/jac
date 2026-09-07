@@ -66,6 +66,78 @@ test "closure: nested def reads an enclosing param" {
     assert f(0, 9) == 0;
 }
 
+test "closure: nested method helpers retain the receiver and outer parameters" {
+    (prog, module) = compile_na_inline_ir(
+        "method_receiver",
+        """
+obj Counter {
+    has value: int = 10;
+    def add(amount: int = 1) -> int {
+        return self.value + amount;
+    }
+    def compute(label: str) -> int {
+        def invoke(amount: int) -> int {
+            if label == "double" {
+                return self.add(amount) * 2;
+            }
+            return self.value;
+        }
+        return invoke(3);
+    }
+}
+obj Derived(Counter) {
+    def inherited -> int {
+        def invoke -> int {
+            return super.add(4);
+        }
+        return invoke();
+    }
+}
+def probe -> int {
+    item = Counter();
+    derived = Derived();
+    return item.compute("double") + item.compute("single") + derived.inherited();
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    assert call() == 50;
+}
+
+test "closure: an escaped receiver stays alive until the closure is released" {
+    (prog, module) = compile_na_inline_ir(
+        "receiver_escape",
+        """
+glob dropped: int = 0;
+obj Owner {
+    has value: int = 21;
+    def callback -> Callable[[], int] {
+        def read -> int { return self.value; }
+        return read;
+    }
+    def drop { dropped += 1; }
+}
+def make -> Callable[[], int] { return Owner().callback(); }
+def probe -> int {
+    read = make();
+    return read();
+}
+def drops -> int { return dropped; }
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    drops = get_func(module.gen.native_engine, "drops", ctypes.c_int64);
+    before = drops();
+    assert call() == 21;
+    assert drops() - before == 1;
+}
+
 test "closure: read captures are late-bound (py backend parity)" {
     (eng, _) = compile_native("closures.jac");
     f = get_func(eng, "late_bound", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);

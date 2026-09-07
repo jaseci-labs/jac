@@ -88,6 +88,9 @@ obj NativeErrorHandler {
 
 obj NativeFunctionState {
     has _builder: ir.IRBuilder | None,
+        func_symtab: dict[str, ir.Function],
+        nested_captures: dict[str, tuple[ir.Function, list[tuple[str, str]]]],
+        lambda_captures: dict[str, list[tuple[str, ir.Value]]],
         local_vars: dict[str, ir.Value],
         param_vars: set[str],
         nogc_no_free_vars: set[str],
@@ -331,9 +334,9 @@ walker NaIRGenPass(Transform) {
         _linked_fn_decls: dict[int, tuple] = {},
         _pyb_base_memo: dict[str, tuple | None] = {},
         _pyb_helper_fns: dict[str, ir.Function] = {},
-        lambda_captures: dict[str, list[tuple]] = {},
+        lambda_captures: dict[str, list[tuple[str, ir.Value]]] = {},
         _pending_lambda_captures: (list[tuple] | None) = None,
-        nested_captures: dict[str, tuple] = {},
+        nested_captures: dict[str, tuple[ir.Function, list[tuple[str, str]]]] = {},
         _nested_predecl: dict = {},
         _bytearray_fns: dict = {},
         generator_fns: dict[str, uni.Ability] = {},
@@ -478,6 +481,9 @@ walker NaIRGenPass(Transform) {
     def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
     def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
     def _enter_function(func: ir.Function) -> NativeFunctionState;
+    def _bind_function_parameter(
+        name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False
+    ) -> None;
     def _leave_function(state: NativeFunctionState) -> None;
     def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;

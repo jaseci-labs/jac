@@ -431,7 +431,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
 
     _local_mark = len(self.errors_had);
     state = self._enter_function(func);
-    saved_symtab = dict(self.func_symtab);
     try {
         self._attach_di_subprogram(
             func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -447,25 +446,14 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         for (i, p) in enumerate(sig.get_parameters()) {
             param_name = p.name.value if p.name else f"arg{i}";
             arg_val = func.args[i];
-            if param_name in self.closure_cell_vars {
-                slot = self._emit_closure_cell(param_name, arg_val.type);
-                self.builder.store(arg_val, slot);
-                self.local_vars[param_name] = slot;
-                if isinstance(arg_val.type, ir.PointerType) {
-                    self._emit_rc_retain(arg_val, op="param_cell", loc=name);
-                }
-                continue;
-            }
-            alloca = self.builder.alloca(arg_val.type, name=param_name);
-            self.builder.store(arg_val, alloca);
-            self.local_vars[param_name] = alloca;
-
-            if isinstance(arg_val.type, ir.PointerType)
-                and bool(p.name?.sym?.param_rebound) {
-                self._emit_rc_retain(arg_val, op="param_promote", loc=name);
-            } elif not self._nogc_owned_param(p) {
-                self.param_vars.add(param_name);
-            } elif param_name == "self" {
+            borrowed = not self._nogc_owned_param(p);
+            self._bind_function_parameter(
+                param_name,
+                arg_val,
+                borrowed=borrowed,
+                rebound=bool(p.name?.sym?.param_rebound)
+            );
+            if param_name == "self" and not borrowed {
                 self._self_owned = True;
             }
         }
@@ -509,7 +497,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         );
     } finally {
         self._leave_function(state);
-        self.func_symtab = saved_symtab;
     }
     if self._demote_method_if_unlowerable(name, func, _local_mark) {
         self._rename_demoted_symbol(name, func);
@@ -724,19 +711,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
-                if param_names[i] in self.closure_cell_vars {
-                    slot = self._emit_closure_cell(param_names[i], arg.type);
-                    self.builder.store(arg, slot);
-                    self.local_vars[param_names[i]] = slot;
-                    if isinstance(arg.type, ir.PointerType) {
-                        self._emit_rc_retain(arg, op="param_cell", loc=name);
-                    }
-                    continue;
-                }
-                alloca = self._entry_alloca(arg.type, param_names[i]);
-                self.builder.store(arg, alloca);
-                self.local_vars[param_names[i]] = alloca;
-                self.param_vars.add(param_names[i]);
+                self._bind_function_parameter(param_names[i], arg);
                 continue;
             }
             (cap_name, cap_mode, _cap_type) = captures[i - len(param_names)];
@@ -1035,7 +1010,6 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
     resume_fn.args[1].name = "out";
 
     state = self._enter_function(resume_fn);
-    saved_symtab = dict(self.func_symtab);
     entry_bb = self.builder.block;
     try {
         gc: dict = {
@@ -1119,7 +1093,6 @@ impl NaIRGenPass._codegen_generator(nd: uni.Ability, func: ir.Function) -> None 
         cell_inits = list(gc["cell_inits"]);
     } finally {
         self._leave_function(state);
-        self.func_symtab = saved_symtab;
     }
 
     drop_fn = self._emit_generator_drop_fn(_sym_base, frame_slots);
@@ -1256,6 +1229,7 @@ impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Functi
 impl NaIRGenPass._emit_glob_init_func -> None {
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = self._define_function("__jac_glob_init", fnty);
+    self.func_symtab["__jac_glob_init"] = func;
     state = self._enter_function(func);
     try {
         if self?._global_init_nodes and self._global_init_nodes {
@@ -1331,7 +1305,6 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         self.builder.ret_void();
 
         self._finalize_di_locations(func, 0);
-        self.func_symtab["__jac_glob_init"] = func;
     } finally {
         self._leave_function(state);
     }

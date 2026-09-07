@@ -1681,7 +1681,9 @@ impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
 
 impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
     out: list[Symbol] = [];
-    for name in self.get_all_sub_nodes(Name) {
+    names: list[Name] = self.get_all_sub_nodes(Name);
+    names.extend(self.get_all_sub_nodes(SpecialVarRef));
+    for name in names {
         if is_identifier_slot(name) {
             continue;
         }
@@ -1690,6 +1692,13 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
             continue;
         }
         tab = sym.parent_tab;
+        if name.value == "super" and tab is not None {
+            receiver = tab.names_in_scope.get("self");
+            if receiver is not None {
+                sym = receiver;
+                tab = sym.parent_tab;
+            }
+        }
         if (
             (tab is None)
             or (tab is self)

@@ -1,6 +1,9 @@
 impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
     state = NativeFunctionState(
         _builder=self._builder,
+        func_symtab=self.func_symtab,
+        nested_captures=self.nested_captures,
+        lambda_captures=self.lambda_captures,
         local_vars=self.local_vars,
         param_vars=self.param_vars,
         nogc_no_free_vars=self.nogc_no_free_vars,
@@ -21,6 +24,9 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
         _caught_error_stack=self._caught_error_stack
     );
     self._builder = ir.IRBuilder(func.append_basic_block("entry"));
+    self.func_symtab = self.func_symtab.copy();
+    self.nested_captures = self.nested_captures.copy();
+    self.lambda_captures = self.lambda_captures.copy();
     self.local_vars = {};
     self.param_vars = set();
     self.nogc_no_free_vars = set();
@@ -41,8 +47,33 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
     return state;
 }
 
+impl NaIRGenPass._bind_function_parameter(
+    name: str, value: ir.Value, borrowed: bool = True, rebound: bool = False
+) -> None {
+    if name in self.closure_cell_vars {
+        slot = self._emit_closure_cell(name, value.type);
+        self.builder.store(value, slot);
+        self.local_vars[name] = slot;
+        if borrowed and isinstance(value.type, ir.PointerType) {
+            self._emit_rc_retain(value, op="param_cell", loc=name);
+        }
+        return;
+    }
+    slot = self._entry_alloca(value.type, name);
+    self.builder.store(value, slot);
+    self.local_vars[name] = slot;
+    if rebound and isinstance(value.type, ir.PointerType) {
+        self._emit_rc_retain(value, op="param_promote", loc=name);
+    } elif borrowed {
+        self.param_vars.add(name);
+    }
+}
+
 impl NaIRGenPass._leave_function(state: NativeFunctionState) -> None {
     self._builder = state._builder;
+    self.func_symtab = state.func_symtab;
+    self.nested_captures = state.nested_captures;
+    self.lambda_captures = state.lambda_captures;
     self.local_vars = state.local_vars;
     self.param_vars = state.param_vars;
     self.nogc_no_free_vars = state.nogc_no_free_vars;

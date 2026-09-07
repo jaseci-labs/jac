@@ -392,7 +392,6 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     }
 
-    saved_func_symtab = dict(self.func_symtab);
     state = self._enter_function(anon_fn);
     try {
         for (i, arg) in enumerate(anon_fn.args) {
@@ -455,7 +454,6 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         }
     } finally {
         self._leave_function(state);
-        self.func_symtab = saved_func_symtab;
     }
 
     if captures {
