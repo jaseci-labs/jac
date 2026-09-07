@@ -1267,7 +1267,8 @@ impl TypeCheckPass.transform(ir_in: Module) -> Module {
     previous_pass = evaluator._pass;
     previous_quiet = evaluator.ct_quiet;
     evaluator._pass = self;
-    evaluator.ct_quiet = bool(ir_in.ct_resolved);
+
+    evaluator.ct_quiet = False;
     try {
         return super.transform(ir_in);
     } finally {
