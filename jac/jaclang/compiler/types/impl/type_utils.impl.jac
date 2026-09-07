@@ -855,6 +855,19 @@ impl build_solution_from_specialized_class(
 ) -> dict[str, TypeBase] {
     solution: dict[str, TypeBase] = {};
 
+    if class_type.is_builtin("tuple")
+        and len(class_type.shared.type_params) == 1
+        and len(class_type.private.type_args) > 1
+        and not any(
+            isinstance(arg, UnknownType) for arg in class_type.private.type_args
+        ) {
+        parameter = class_type.shared.type_params[0];
+        if parameter.name {
+            solution[parameter.name] = UnionType(types=class_type.private.type_args);
+            return solution;
+        }
+    }
+
     if class_type.shared.type_params and class_type.private.type_args {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {

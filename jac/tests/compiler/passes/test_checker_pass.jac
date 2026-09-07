@@ -3232,6 +3232,16 @@ test "generic_call_inference" {
     assert "Cannot assign Item to int" in errors_str;
 }
 
+test "tuple iterable inference includes every position" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_tuple_iterable_inference.jac");
+    program.compile(path, options=NO_TC);
+    errors = "\n".join(error.pretty_print() for error in program.errors_had);
+    assert len(program.errors_had) == 2 , errors;
+    assert "bad_forward" in errors , errors;
+    assert "bad_reverse" in errors , errors;
+}
+
 """Test bidirectional type inference for container literals and type[X] covariance."""
 test "bidirectional_container_inference" {
     program = JacProgram();
