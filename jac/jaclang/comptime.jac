@@ -283,7 +283,6 @@ glob _SPECIALIZED: dict = {};
 
 def specialize(cls: type, **ct: any) -> type {
     import copy as _copy;
-    import functools as _functools;
     key = (cls, tuple(sorted(ct.items(), key=_ct_sort_key)), );
     hit = _SPECIALIZED.get(key);
     if hit is not None {
@@ -294,9 +293,10 @@ def specialize(cls: type, **ct: any) -> type {
     for (k, v) in ct.items() {
         annotations[k] = `type(v);
         if isinstance(v, (list, dict, set)) {
-            ns[k] = _object_field(
-                default_factory=_functools.partial(_copy.copy, v), kw_only=True
-            );
+            def copy_default(value: object = v) -> object {
+                return _copy.copy(value);
+            }
+            ns[k] = _object_field(default_factory=copy_default, kw_only=True);
         } else {
             ns[k] = _object_field(`default=v, kw_only=True);
         }

@@ -70,8 +70,7 @@ Prelude export lists and ambient import groups now come from `ModuleFacts`
 over the already loaded Unitree. This removes two direct Python AST parsing
 paths from the evaluator and shares literal-string extraction with other
 type operations. Five metadata tests, a source-prelude integration probe,
-and all 81 bootstrap seed modules passed. Python stub loading and quoted
-type-expression parsing remain separate migration work.
+and all 81 bootstrap seed modules passed. Python stub loading remains separate migration work.
 
 The ELF linker now preserves optional weak imports and requires strong imports
 regardless of object merge order. It emits dynamic imports only for referenced
@@ -86,6 +85,29 @@ were marked opaque and materialized as `None`. `FieldInfo.semantic_type` now
 provides the typed declaration contract used by materialization, including
 inherited fields. A focused native layout regression confirms string fields
 remain strings while foreign fields remain opaque.
+
+Quoted type expressions now use the Jac expression parser and annotation
+evaluator. Temporary syntax releases its graph edges after lookup, and
+speculative diagnostics use a scoped suppression counter. Jac builtin
+extensions install typed symbols without editing Python stub text. Generic
+base specialization compares canonical class identity across source and
+catalog graphs. All 19 focused quoted-expression, builtin-extension, generic
+identity, and distinct-type tests passed. These checks do not establish that
+the full checker links or executes natively.
+
+Canonical identity also governs class assignment, enum ancestry, and enum
+underlying-value recognition across independently loaded graphs. Field markers
+retain import provenance before full type analysis. Jac object validation uses
+an optional Pydantic core-schema adapter over the same Jac field metadata;
+constructor defaults and recursive schemas have executable coverage.
+
+Native object and container destruction share element release and tracing,
+including tagged reference fields and cycle collection. Loop lowering consumes
+inferred types, tuple pop preserves its producer's storage layout, and nested
+calls preserve lexical binding. Focused tests pass for these contracts,
+heterogeneous containers across memory modes, walker reclamation, region
+partitioning, and LLVM ownership attributes. Structural tests request emitted
+IR before optimization; runtime tests continue to exercise executable output.
 
 ## Remaining work
 
