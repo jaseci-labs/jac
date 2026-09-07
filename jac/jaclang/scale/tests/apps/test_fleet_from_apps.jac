@@ -360,8 +360,7 @@ def _bridge_workspace -> str {
     (Path(d) / "web" / "main.jac").write_text("with entry {}\n", encoding="utf-8");
     (Path(d) / "core").mkdir();
     (Path(d) / "core" / "cart.jac").write_text(
-        'def:pub view_cart -> dict {\n    return {"items": []};\n}\n',
-        encoding="utf-8"
+        'def:pub view_cart -> dict {\n    return {"items": []};\n}\n', encoding="utf-8"
     );
     (Path(d) / "core" / "orders.jac").write_text(
         'import from cart { view_cart }\n'
