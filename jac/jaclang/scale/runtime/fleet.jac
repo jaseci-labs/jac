@@ -308,8 +308,26 @@ def _compiled_app_edges(
         );
     }
     edges: list[tuple[str, str]] = [];
-    for hub in prog._search_hubs() {
-        for mod in hub.values() {
+    seen: set[str] = set();
+    # Boundary analysis registers the modules it reaches into the same hubs
+    # this walks, so the hubs are re-read to a fixed point rather than
+    # iterated live: a mutation mid-iteration raised out of the for and cost
+    # the caller the whole edge set, and a plain snapshot would instead drop
+    # the newly registered modules and their edges without saying so.
+    while True {
+        fresh: list[tuple[str, any]] = [];
+        for hub in list(prog._search_hubs()) {
+            for (key, mod) in list(hub.items()) {
+                if key not in seen {
+                    fresh.append((key, mod));
+                }
+            }
+        }
+        if not fresh {
+            break;
+        }
+        for (key, mod) in fresh {
+            seen.add(key);
             if not (mod and mod.gen) {
                 continue;
             }
@@ -322,6 +340,9 @@ def _compiled_app_edges(
                     prog.run_schedule(mod, get_boundary_analysis_sched());
                     man = mod.gen.interop_manifest;
                 } except Exception {
+                    continue;
+                }
+                if man is None {
                     continue;
                 }
             }

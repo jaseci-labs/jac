@@ -13,6 +13,7 @@ import from jaclang.scale.runtime.fleet {
     FLEET_ENV,
     FleetSpec,
     ROOT_PREFIX,
+    consumer_provider_edges,
     fleet_from_config,
     fleet_from_env,
     fleet_of,
@@ -330,6 +331,61 @@ test "an app that does not compile stops the fleet loudly" {
         assert "line" in caught , f"the first error must be named: {caught}";
     } finally {
         sv_client.clear_consumer_providers();
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+glob _BRIDGE_TOML: str = '[project]\n'
+     'name = "bridged"\n'
+     'default-app = "web"\n'
+     '\n'
+     '[apps.web]\n'
+     'kind = "web-app"\n'
+     'path = "web"\n'
+     '\n'
+     '[apps.orders]\n'
+     'kind = "service"\n'
+     'entry-point = "core/orders.jac"\n'
+     '\n'
+     '[apps.cart]\n'
+     'kind = "service"\n'
+     'entry-point = "core/cart.jac"\n';
+
+
+def _bridge_workspace -> str {
+    d = tempfile.mkdtemp(prefix="jac-fleet-bridge-");
+    (Path(d) / "jac.toml").write_text(_BRIDGE_TOML, encoding="utf-8");
+    (Path(d) / "web").mkdir();
+    (Path(d) / "web" / "main.jac").write_text("with entry {}\n", encoding="utf-8");
+    (Path(d) / "core").mkdir();
+    (Path(d) / "core" / "cart.jac").write_text(
+        'def:pub view_cart -> dict {\n    return {"items": []};\n}\n',
+        encoding="utf-8"
+    );
+    (Path(d) / "core" / "orders.jac").write_text(
+        'import from cart { view_cart }\n'
+        '\n'
+        'async def:pub place_order -> dict {\n'
+        '    return await view_cart();\n'
+        '}\n',
+        encoding="utf-8"
+    );
+    return d;
+}
+
+
+test "a cross-app import is reported as an edge, not swallowed by the walk" {
+    d = _bridge_workspace();
+    try {
+        cfg = _config(d);
+        apps = [cfg.app("web"), cfg.app("orders"), cfg.app("cart")];
+        edges = consumer_provider_edges(cfg, d, apps);
+        assert ("orders", "cart") in edges , (
+            "boundary analysis registers modules into the hubs the edge walk "
+            f"reads, and the edge went missing instead of being reported: {edges!r}"
+        );
+    } finally {
         shutil.rmtree(d, ignore_errors=True);
     }
 }
