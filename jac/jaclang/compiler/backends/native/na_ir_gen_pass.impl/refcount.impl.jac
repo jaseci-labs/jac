@@ -1773,13 +1773,13 @@ impl NaIRGenPass._nogc_elem_drop_slot_ty -> ir.Type {
     return ir.FunctionType(ir.VoidType(), [ir.IntType(8).as_pointer()]).as_pointer();
 }
 
-impl NaIRGenPass._nogc_type_arg_mangles_of_str(m: str) -> list {
+impl NaIRGenPass._nogc_type_arg_mangles_of_str(m: str) -> list[str] {
     _open = m.find("[");
     if _open < 0 or not m.endswith("]") {
         return [];
     }
     _inner = m[_open + 1:-1];
-    _args: list = [];
+    _args: list[str] = [];
     _depth = 0;
     _cur = "";
     for _ch in _inner {
@@ -1801,38 +1801,11 @@ impl NaIRGenPass._nogc_type_arg_mangles_of_str(m: str) -> list {
     return _args;
 }
 
-impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list {
-    _m = "";
-    try {
-        _m = expr.type.mangle() if (expr is not None and expr.type is not None) else "";
-    } except Exception {
+impl NaIRGenPass._nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str] {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
         return [];
     }
-    _open = _m.find("[");
-    if _open < 0 or not _m.endswith("]") {
-        return [];
-    }
-    _inner = _m[_open + 1:-1];
-    _args: list = [];
-    _depth = 0;
-    _cur = "";
-    for _ch in _inner {
-        if _ch == "[" {
-            _depth += 1;
-        } elif _ch == "]" {
-            _depth -= 1;
-        }
-        if _ch == "," and _depth == 0 {
-            _args.append(_cur.strip());
-            _cur = "";
-        } else {
-            _cur += _ch;
-        }
-    }
-    if _cur.strip() {
-        _args.append(_cur.strip());
-    }
-    return _args;
+    return self._nogc_type_arg_mangles_of_str(expr.type.mangle());
 }
 
 impl NaIRGenPass._drop_spec_for_mangle(mangle: str) -> (tuple | None) {
@@ -1905,14 +1878,19 @@ impl NaIRGenPass._nogc_stamp_elem_drops(
     }
     i32 = ir.IntType(32);
     _slot_ty = self._nogc_elem_drop_slot_ty();
-    _cont_struct = cont.type?.pointee;
-    _cont_name = getattr(_cont_struct, "name", "") or "";
-    _layout = self.container_layouts.get(_cont_name);
+    if not isinstance(cont.type, ir.PointerType) {
+        return;
+    }
+    _cont_struct = cont.pointee_type;
+    if not isinstance(_cont_struct, ir.IdentifiedStructType) {
+        return;
+    }
+    _layout = self.container_layouts.get(_cont_struct.name);
     if _layout is None {
         return;
     }
     _base = _layout["drop_base"];
-    _cont_elems = cont.type.pointee?.elements;
+    _cont_elems = _cont_struct.elements;
     if _cont_elems is not None
         and _base + len(_layout["data_fields"]) > len(_cont_elems) {
         return;
@@ -2051,7 +2029,9 @@ impl NaIRGenPass._nogc_consume_local(expr: uni.UniNode | None) -> bool {
     if not self._nogc_owned_world() {
         return False;
     }
-    if not self._nogc_headerless() or not self._is_move_site(expr) {
+    if not isinstance(expr, uni.Name)
+        or not self._nogc_headerless()
+        or not self._is_move_site(expr) {
         return False;
     }
     _slot = self.local_vars.get(expr.sym_name);

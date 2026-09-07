@@ -221,7 +221,7 @@ impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
         return None;
     }
     tk = self._mangled_of(expr.type);
-    if not tk.startswith("tuple[") {
+    if tk is None or not tk.startswith("tuple[") {
         return None;
     }
     lowered = self._lower_type(expr.type);
@@ -254,13 +254,13 @@ impl NaIRGenPass._spec_of(
     }
     _t = expr.type;
     tk = self._mangled_of(_t);
-    matched = self._spec_name_match(tk, names);
+    matched = self._spec_name_match(tk or "", names);
     if not matched {
         _sole = self._opt_sole_member(_t);
         if _sole is not None {
             _t = _sole;
             tk = self._mangled_of(_t);
-            matched = self._spec_name_match(tk, names);
+            matched = self._spec_name_match(tk or "", names);
         }
     }
     if not matched {
@@ -352,7 +352,7 @@ impl NaIRGenPass._spec_union_agreement(t: any, names: tuple) -> (any | None) {
     }
     _low: any = None;
     for m in _members {
-        if not self._spec_name_match(self._mangled_of(m), names) {
+        if not self._spec_name_match(self._mangled_of(m) or "", names) {
             return None;
         }
         _ml = self._lower_type(m);
@@ -855,13 +855,17 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     return None;
 }
 
-impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
-    raw = self._lower_function_type_raw(t);
-    (_sig_name, sig_st, _fnty_env) = self._closure_sig_struct(raw.pointee);
+impl NaIRGenPass._lower_function_type(t: SemanticFunctionType) -> ir.PointerType {
+    signature = self._lower_function_signature(t);
+    (_sig_name, sig_st, _fnty_env) = self._closure_sig_struct(signature);
     return sig_st.as_pointer();
 }
 
-impl NaIRGenPass._lower_function_type_raw(t: any) -> ir.Type {
+impl NaIRGenPass._lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType {
+    return self._lower_function_signature(t).as_pointer();
+}
+
+impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.FunctionType {
     ret_type: ir.Type = ir.VoidType();
     if t.return_type is not None {
         _r = self._lower_type(t.return_type);
@@ -878,7 +882,7 @@ impl NaIRGenPass._lower_function_type_raw(t: any) -> ir.Type {
             param_types.append(_p);
         }
     }
-    return ir.FunctionType(ret_type, param_types).as_pointer();
+    return ir.FunctionType(ret_type, param_types);
 }
 
 impl NaIRGenPass._aos_elem_of(type_expr: (uni.UniNode | None)) -> (str | None) {
@@ -1138,7 +1142,7 @@ impl NaIRGenPass._widened_tuple_decl_type(
     return self._infer_global_init_type(value);
 }
 
-impl NaIRGenPass._tuple_struct_of(elem_types: list) -> ir.Type {
+impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType {
     tuple_key = f"Tuple.{len(elem_types)}." + ".".join([str(x) for x in elem_types]);
     if tuple_key not in self.tuple_types {
         self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
@@ -1410,12 +1414,12 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
         return ir.IntType(8).as_pointer();
     }
 
-    try {
-        import from jaclang.compiler.types.types { FunctionType as _ClibSigFnType }
-        if isinstance(type_expr?.type, _ClibSigFnType) {
-            return self._lower_function_type_raw(type_expr.type);
+    if isinstance(type_expr, uni.Expr) {
+        signature = type_expr.type;
+        if isinstance(signature, SemanticFunctionType) {
+            return self._lower_function_type_raw(signature);
         }
-    } except ImportError {}
+    }
 
     return self._resolve_jac_type(type_expr);
 }

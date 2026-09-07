@@ -70,7 +70,9 @@ impl NaIRGenPass._scan_closure_escapes(
     }
 }
 
-impl NaIRGenPass._closure_sig_struct(fnty: ir.FunctionType) -> tuple {
+impl NaIRGenPass._closure_sig_struct(
+    fnty: ir.FunctionType
+) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType] {
     key = str(fnty);
     _existing = self._closure_sig_keys.get(key);
     if _existing is not None {

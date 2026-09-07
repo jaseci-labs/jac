@@ -58,7 +58,10 @@ import from jaclang.compiler.passes.layout_pass {
 }
 import from jaclang.compiler.type_registry { JacTypeEntry }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.types.types { ClassType }
+import from jaclang.compiler.types.types {
+    ClassType,
+    FunctionType as SemanticFunctionType
+}
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.runtime.osp_model { stable_osp_tag }
 import type from jaclang.compiler.driver.program { JacProgram }
@@ -363,7 +366,8 @@ walker NaIRGenPass(Transform) {
         decorated_fns: dict[str, tuple] = {},
         closure_cell_vars: set[str] = set(),
         closure_cell_handles: dict[str, ir.Value] = {},
-        closure_sig_registry: dict[str, tuple] = {},
+        closure_sig_registry:
+            dict[str, tuple[ir.IdentifiedStructType, ir.FunctionType]] = {},
         _closure_sig_keys: dict[str, str] = {},
         _closure_cell_structs: dict[str, str] = {},
         closure_thunks: dict[str, ir.Function] = {},
@@ -671,7 +675,9 @@ walker NaIRGenPass(Transform) {
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
     def _clib_fnptr_ret(arch_name: str, fname: str, result: ir.Value) -> ir.Value;
     def _scan_closure_escapes(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
-    def _closure_sig_struct(fnty: ir.FunctionType) -> tuple;
+    def _closure_sig_struct(
+        fnty: ir.FunctionType
+    ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _closure_cell_struct(slot_type: ir.Type) -> str;
     def _emit_closure_cell(var_name: str, slot_type: ir.Type) -> ir.Value;
@@ -1641,7 +1647,7 @@ walker NaIRGenPass(Transform) {
     def _emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | None);
     def _drop_fn_for(mangle: str) -> (ir.Function | None);
     def _drop_spec_for_mangle(mangle: str) -> (tuple | None);
-    def _nogc_type_arg_mangles_of_str(m: str) -> list;
+    def _nogc_type_arg_mangles_of_str(m: str) -> list[str];
     def _gc_mode -> str;
     def _emit_rc_helpers -> None;
     def _emit_str_len_helpers -> None;
@@ -1706,7 +1712,7 @@ walker NaIRGenPass(Transform) {
         expr: uni.UniNode | None, val: ir.Value | None
     ) -> (ir.Value | None);
 
-    def _nogc_type_arg_mangles(expr: uni.UniNode | None) -> list;
+    def _nogc_type_arg_mangles(expr: uni.UniNode | None) -> list[str];
     def _nogc_emit_drop(val: ir.Value, op: str = "", loc: str = "") -> bool;
     def _nogc_str_free_owned(val: ir.Value) -> None;
     def _nogc_free_scratch(val: ir.Value, op: str) -> None;
@@ -1980,7 +1986,8 @@ walker NaIRGenPass(Transform) {
 
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
-    def _lower_function_type_raw(t: any) -> ir.Type;
+    def _lower_function_signature(t: SemanticFunctionType) -> ir.FunctionType;
+    def _lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType;
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _abi_sizeof(t: ir.Type) -> int;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
@@ -1995,7 +2002,7 @@ walker NaIRGenPass(Transform) {
         type_expr: (uni.UniNode | None), value: (uni.UniNode | None)
     ) -> (ir.Type | None);
 
-    def _tuple_struct_of(elem_types: list) -> ir.Type;
+    def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
     def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _resolve_field_type(var: uni.UniNode) -> ir.Type;
     def _foreign_optional_field(tb: any) -> bool;
@@ -2007,7 +2014,7 @@ walker NaIRGenPass(Transform) {
     def _lower_type(t: any) -> (ir.Type | None);
     def _unify_repr_lowering(reprs: list) -> (ir.Type | None);
     def _lower_class_type(t: any) -> (ir.Type | None);
-    def _lower_function_type(t: any) -> ir.Type;
+    def _lower_function_type(t: SemanticFunctionType) -> ir.PointerType;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);

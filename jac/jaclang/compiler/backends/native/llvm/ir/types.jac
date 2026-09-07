@@ -111,7 +111,7 @@ class PointerType(Type) {
 }
 
 class _TypedPointerType(PointerType) {
-    def init(self: _TypedPointerType, pointee: any, addrspace: any = 0) -> object {
+    def init(self: _TypedPointerType, pointee: Type, addrspace: any = 0) -> object {
         super.init(None, addrspace);
         assert ((pointee is not None) and (`type(pointee) is not PointerType));
         assert not isinstance(pointee, VoidType);

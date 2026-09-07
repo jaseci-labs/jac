@@ -38,6 +38,7 @@ import from tests.support {
     JAC_ROOT,
     TESTS_DIR,
     compile_native,
+    compile_native_ir,
     get_func,
     native_force_opts
 }
@@ -3249,12 +3250,7 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
 }
 
 test "clib struct value-type coercion" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_struct_coerce.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    ir = compile_native_ir("clib_struct_coerce.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
     # --- Large struct (Vec2: 128-bit, float fields) ---
@@ -3294,11 +3290,7 @@ test "clib System V AMD64 ABI lowering" {
     if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
         return;
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_sysv_abi.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    ir = compile_native_ir("clib_sysv_abi.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     s = str(ir.gen.llvm_ir);
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
@@ -3387,11 +3379,7 @@ test "clib AArch64 AAPCS ABI lowering" {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     _saved = push_native_target("aarch64-unknown-linux-gnu");
     try {
-        prog = JacProgram();
-        ir = prog.compile(
-            str(os.path.join(FIXTURES, "clib_sysv_abi.jac")), options=CompileOptions()
-        );
-        assert not prog.errors_had , f"Errors: {prog.errors_had}";
+        ir = compile_native_ir("clib_sysv_abi.jac");
         assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
         s = str(ir.gen.llvm_ir);
         assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
