@@ -134,13 +134,15 @@ def:pub ExploreTab(
                             src={avatar_of(avatars, u.username)}
                             alt={handle_of(u.username)}
                         />
-                        <AvatarFallback>{initial_of(name_of(u))}</AvatarFallback>
+                        <AvatarFallback>
+                            {initial_of(name_of(u.username, u.display_name))}
+                        </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                         <div
                             className="font-display font-bold text-foreground truncate"
                         >
-                            {name_of(u)}
+                            {name_of(u.username, u.display_name)}
                         </div>
                         <div className="text-sm text-muted-foreground truncate">
                             {"@" + handle_of(u.username)}

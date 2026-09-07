@@ -64,7 +64,9 @@ def:pub ExploreScreen(
                 <View style={styles.personRow} key={jid(u)}>
                     <Avatar avatars={avatars} username={u.username} size={44}/>
                     <View style={styles.personBody}>
-                        <Text style={styles.name} numberOfLines={1}>{name_of(u)}</Text>
+                        <Text style={styles.name} numberOfLines={1}>
+                            {name_of(u.username, u.display_name)}
+                        </Text>
                         <Text style={styles.handle} numberOfLines={1}>
                             {"@" + handle_of(u.username)}
                         </Text>
