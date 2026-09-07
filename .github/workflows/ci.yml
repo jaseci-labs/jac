@@ -253,9 +253,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
+            jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -380,7 +380,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
