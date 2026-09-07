@@ -5,10 +5,8 @@ import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 import from jaclang.testing.test { parametrize }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"),
@@ -4143,23 +4141,70 @@ test "jsx_step2_handler_aliases" {
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+def _jsx_msgs(program: JacProgram, code: str) -> list {
+    return sorted(
+        [
+            d.msg
+            for d in program.errors_had + program.warnings_had
+            if d.code and d.code.code == code
+        ]
+    );
+}
+
 test "jsx_step3_jsx_prop_check" {
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_step3_jsx_prop_check.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
+    all_diags = "\n---\n".join(
+        d.pretty_print() for d in program.errors_had + program.warnings_had
+    );
 
-    e1100_errors = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code == "E1100"
-    ];
-    assert len(e1100_errors) >= 1 , f"Expected E1100 for JSX prop type mismatch, got {len(
-        e1100_errors
-    )} E1100 errors. All errors:\n"
-        + "\n---\n".join(
-            f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
-            for err in program.errors_had
-        );
+    assert len(_jsx_msgs(program, "E1100")) >= 1 , f"Expected E1100 for the onClick type mismatch:\n{all_diags}";
+
+    # A call site passing no attribute and a zero-parameter component are
+    # checked like any other; nested content counts as `children`, a comment
+    # does not.
+    e1102 = _jsx_msgs(program, "E1102");
+    assert len(e1102) == 3 , f"Expected 3 E1102 (Plain 'title', Card 'children' twice):\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in e1102
+            if "prop 'title'" in m
+        ]
+    )
+        == 1 , f"Expected one E1102 naming 'title':\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in e1102
+            if "prop 'children'" in m
+        ]
+    )
+        == 2 , f"Expected two E1102 naming 'children':\n{all_diags}";
+    e1101 = _jsx_msgs(program, "E1101");
+    assert len(e1101) == 1 and "bogus" in e1101[0] , f"Expected exactly 1 E1101 (Zero 'bogus'):\n{all_diags}";
+
+    # Children handed to a component that declares none are dropped by the
+    # codegen, so the call site is warned.
+    w1053 = _jsx_msgs(program, "W1053");
+    assert len(w1053) == 2 , f"Expected 2 W1053 (Plain, Zero):\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in w1053
+            if "Component 'Plain'" in m
+        ]
+    )
+        == 1 , f"Expected W1053 on 'Plain':\n{all_diags}";
+    assert len(
+        [
+            m
+            for m in w1053
+            if "Component 'Zero'" in m
+        ]
+    )
+        == 1 , f"Expected W1053 on 'Zero':\n{all_diags}";
 }
 
 test "jsx_step4_lambda_inference" {
@@ -4300,6 +4345,16 @@ test "jsx_props_bag_untyped_and_typed" {
     assert "UntypedComp" in w1052[0].pretty_print() , f"Expected W1052 for 'UntypedComp', got: {w1052[
         0
     ].pretty_print()}";
+
+    # A `props` bundle beside another parameter has no valid lowering: E1109
+    # fires once, on MixedComp.
+    e1109 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1109"
+    ];
+    assert len(e1109) == 1 and "MixedComp" in e1109[0].pretty_print() , f"Expected exactly 1 E1109 (MixedComp), got:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "jsx_intrinsic_tag_names_do_not_emit_w1051" {

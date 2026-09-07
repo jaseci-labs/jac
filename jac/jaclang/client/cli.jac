@@ -16,6 +16,16 @@ comptime SPEC_SETUP: CommandSpec = CommandSpec(
                  kind=ArgKind.POSITIONAL,
                  `default="",
                  help="App name from [apps]; omit to set up the default app"
+             ),
+             Arg.create(
+                 "toolchain",
+                 `default="",
+                 help="Provision build tools without a project: android, ios, desktop, cef"
+             ),
+             Arg.create(
+                 "platform",
+                 `default="",
+                 help="Also provision the app build platform: android or ios"
              )
          ],
          examples=[
@@ -29,9 +39,19 @@ comptime SPEC_SETUP: CommandSpec = CommandSpec(
          handler_name=ct_name(setup)
      );
 
-def setup(target: str = "") -> int {
+def setup(target: str = "", toolchain: str = "", platform: str = "") -> int {
     import from jaclang.cli.console { console }
 
+    if toolchain {
+        import from jaclang.toolchains.manager { setup_toolchain }
+        return setup_toolchain(toolchain);
+    }
+    if platform {
+        import from jaclang.toolchains.manager { setup_toolchain }
+        if setup_toolchain(platform) != 0 {
+            return 1;
+        }
+    }
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");

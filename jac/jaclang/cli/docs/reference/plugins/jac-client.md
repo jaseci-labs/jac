@@ -1890,8 +1890,8 @@ A mobile app is a **mobUI** app: one source tree that compiles to both native (A
 **Prerequisites:**
 
 - Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
-- **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
-- **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
+- **Android**: JDK 21 and Android SDK are provisioned automatically; SDK license acceptance is required
+- **iOS** (macOS only): Xcode and its Command Line Tools; Jac provisions Ruby and CocoaPods
 
 **Declaring the app:** `jac create --app mobile --kind mobile` writes an `[apps.mobile]` table; `jac create myapp --kind mobile` writes the single-app form:
 
@@ -2342,7 +2342,7 @@ def:pub Footer() -> JsxElement {
 
 ### Prerequisites
 
-jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary and is the only JS runtime jac invokes -- no Node.js/npm install is needed or consulted. Set `JAC_BUN` to substitute a specific bun binary.
+jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary for package management and bundling. Native build subprocesses use managed Node.js 22 for Expo/React Native compatibility; no manual Node.js/npm installation is needed. Set `JAC_BUN` to substitute a specific bun binary.
 
 ### Start Server
 

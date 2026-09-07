@@ -10,8 +10,8 @@ If what you want is a home-screen install of an existing web app rather than nat
 >
 > - Completed: [Project Setup](setup.md) -- you have a working `jac run` web app
 > - Node.js is **not** required -- all JS tooling runs on the Bun runtime bundled with `jac`
-> - **Android**: Java/JDK 21+, Android SDK (via [Android Studio](https://developer.android.com/studio))
-> - **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
+> - **Android**: JDK 21 and Android SDK are provisioned automatically; SDK license acceptance is required
+> - **iOS** (macOS only): Xcode and its Command Line Tools; Jac provisions Ruby and CocoaPods
 > - Time: ~15 minutes for setup, longer on first build
 
 ---

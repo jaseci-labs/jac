@@ -375,16 +375,6 @@ def write_expo_scaffold(
     return any_written;
 }
 
-def ensure_native_deps_installed(rn_dir: Path) -> None {
-    expo_dir = rn_dir / "node_modules" / "expo";
-    if expo_dir.exists() {
-        console.print("  ✔ Expo dependencies already installed", style="muted");
-        return;
-    }
-
-    console.print(
-        "  Installing native deps (this can take a while on first setup)...",
-        style="muted"
-    );
+def ensure_native_deps_installed(rn_dir: Path) {
     run_manifest_install(rn_dir);
 }

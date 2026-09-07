@@ -210,6 +210,64 @@ test "get_scale_config raises on a different project_dir instead of silently reu
 }
 
 
+"""Load a jac.toml with the given [scale] body; return the monitoring namespace and what was logged."""
+def _load_monitoring_namespace(scale_body: str) -> tuple[str, str] {
+    import io;
+    import logging;
+    reset_scale_config();
+    stream = io.StringIO();
+    handler = logging.StreamHandler(stream);
+    root_logger = logging.getLogger();
+    previous_level = root_logger.level;
+    root_logger.addHandler(handler);
+    root_logger.setLevel(logging.WARNING);
+    project_dir = tempfile.mkdtemp(prefix="jac-cfg-ns-");
+    try {
+        (Path(project_dir) / "jac.toml").write_text(
+            f'[project]\nname = "repro"\n\n{scale_body}'
+        );
+        namespace = get_scale_config(
+            project_dir=Path(project_dir)
+        ).get_monitoring_config()["namespace"];
+    } finally {
+        root_logger.removeHandler(handler);
+        root_logger.setLevel(previous_level);
+        reset_scale_config();
+        shutil.rmtree(project_dir, ignore_errors=True);
+    }
+    return (namespace, stream.getvalue());
+}
+
+
+test "the monitoring namespace is sanitized on every path, and only a rewrite warns" {
+    # (scale body, expected namespace, rewritten value the warning must name)
+    cases = [
+        ('[scale.monitoring]\nnamespace = "jac--shop"\n', "jac_shop", "jac--shop"),
+        ('[scale.monitoring]\nnamespace = "myapp_prod"\n', "myapp_prod", ""),
+        ('[scale.monitoring]\nnamespace = "---"\n', "jaclang_scale", "---"),
+        ('[scale.monitoring]\nnamespace = 2024\n', "_2024", "2024"),
+        (
+            '[scale.kubernetes]\nnamespace = "jac-shop-prod"\n\n[scale.monitoring]\nnamespace = ""\n',
+            "jac_shop_prod",
+            ""
+        )
+    ];
+    for row in cases {
+        (body, expected, rewritten) = row;
+        (namespace, logged) = _load_monitoring_namespace(body);
+        assert namespace == expected , f"{body!r} -> {namespace!r}, expected {expected!r}";
+        if not rewritten {
+            assert logged == "" , f"a value that was not rewritten must not warn:\n{logged}";
+            continue;
+        }
+        # Every project loads fresh, so each rewritten value must warn about itself.
+        assert rewritten in logged and expected in logged and "dashboards" in logged , (
+            f"no usable rewrite warning for {rewritten!r}:\n{logged}"
+        );
+    }
+}
+
+
 # KubernetesConfig's has-declaration is the only place a [scale.kubernetes]
 # default lives, so these drive a real jac.toml through the real loader rather
 # than asserting against a second copy of the defaults.

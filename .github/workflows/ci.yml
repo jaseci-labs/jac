@@ -132,6 +132,7 @@ jobs:
           WORK="$(mktemp -d)"
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import os, ssl; assert os.path.isfile(os.environ["SSL_CERT_FILE"]); assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
           echo "$out" | grep -q 49
 
@@ -1332,6 +1333,38 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
     uses: ./.github/workflows/_macos-native.yml
 
+  test-managed-android:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+      JAC_ACCEPT_ANDROID_LICENSES: "1"
+      JAC_TOOLCHAIN_USE_SYSTEM: "0"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      - name: Build a release APK with a fresh managed Android SDK
+        run: |
+          set -euo pipefail
+          export JAC_TOOLCHAIN_DIR="$RUNNER_TEMP/toolchains"
+          export ANDROID_HOME="$JAC_TOOLCHAIN_DIR/android-sdk/linux-x64"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          cp -r jac/tests/client/fixtures/react_native_multiscreen "$RUNNER_TEMP/mobile-app"
+          printf '\n[client.react_native]\nrelease = true\n' >> "$RUNNER_TEMP/mobile-app/jac.toml"
+          jac setup --toolchain android
+          cd "$RUNNER_TEMP/mobile-app"
+          jac build --platform android main.jac
+          test -n "$(find .jac/mobile-rn/android/app/build/outputs/apk -name '*.apk' -print -quit)"
+      - name: Upload the generated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: managed-android-apk
+          path: ${{ runner.temp }}/mobile-app/.jac/mobile-rn/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
   # Aggregate gate: branch protection requires only this context. A NEW job
   # must be added to needs below by hand; always() so failures upstream fail
   # the gate instead of skipping it (skipped required checks count as passing).
@@ -1348,6 +1381,7 @@ jobs:
       - test-runtime
       - test-in-package-sealed
       - test-client
+      - test-managed-android
       - test-packages-and-docs
       - test-scale
       - test-scale-k8s

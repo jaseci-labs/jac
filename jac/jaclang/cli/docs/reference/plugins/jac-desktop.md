@@ -29,17 +29,10 @@ The desktop target ships with `jaclang` core -- there is nothing extra to instal
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-Building a desktop app links a small native webview wrapper (`libwebview.so`),
-which is compiled on first use, so the build machine needs the OS web engine plus
-a C toolchain. On Debian/Ubuntu:
-
-```bash
-sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-```
-
-(`jaclang` ships a helper,
-`jaclang/client/targets/desktop/native/webview/install_webkit_deps.sh`,
-that installs these.)
+Jac provisions the native webview wrapper and its build dependencies automatically.
+Use `jac setup --toolchain desktop` to prepare them ahead of time. Linux system
+libraries require administrator access; downloads and generated native libraries
+live in the managed toolchain cache.
 
 ---
 

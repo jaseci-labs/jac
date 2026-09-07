@@ -1,3 +1,5 @@
+import from jaclang.compiler.symbol_utils { return_type_is_jsx }
+
 impl EsastGenPass._ability_is_generator(nd: uni.Ability) -> bool {
     for y in nd.get_all_sub_nodes(uni.YieldExpr) {
         if y.find_parent_of_type(uni.Ability) is nd {
@@ -86,7 +88,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             if (
                 isinstance(here.signature, uni.FuncSignature)
                 and here.signature.return_type is not None
-                and self._return_type_includes_jsx_element(here.signature.return_type)
+                and return_type_is_jsx(here.signature.return_type)
             ) {
                 self.component_export_names.add(name);
             }

@@ -669,13 +669,14 @@ def compute_precompile_module_key(source_path: str, compiler_digest: str = "") -
 }
 
 def precompiled_jir_matches_source(
-    jir_data: bytes, source_path: str, compiler_digest: str = ""
+    jir_data: bytes, source_path: str, compiler_digest: str = "", package_root: str = ""
 ) -> bool {
     stored = read_modkey(jir_data);
     if stored is None {
         return False;
     }
-    return stored == compute_precompile_module_key(source_path, compiler_digest);
+    return stored == compute_precompile_module_key(source_path, compiler_digest)
+        and ct_deps_fresh(jir_data, package_root);
 }
 
 def jir_cacheable_source_path(source_path: str) -> bool {

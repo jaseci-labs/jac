@@ -406,7 +406,7 @@ test "removed placement-marker blocks raise the migration error" {
     }
 }
 
-test "E0063: glob inside a function produces no runnable bytecode" {
+test "E0063: glob inside a function blocks codegen and points at the rebinding idiom" {
     # Detected by ASTValidationPass (not the parser), and the structural
     # error must block codegen so the invalid module cannot silently execute.
     prog = JacProgram();
@@ -416,6 +416,16 @@ test "E0063: glob inside a function produces no runnable bytecode" {
     );
     assert has_diagnostic_code(prog, "E0063");
     assert not mod.gen.py_bytecode;
+    # Jac has no `global` statement; a function rebinds a module glob by
+    # plain assignment, so a hint that says "global" leads to a parse error (#8612).
+    alert = [
+        a
+        for a in prog.errors_had
+        if a.code is not None and a.code.code == "E0063"
+    ][0];
+    assert "global" not in alert.msg;
+    assert alert.help_text is not None;
+    assert "assignment" in alert.help_text and "no global statement" in alert.help_text;
 }
 
 # ══════════════════════════════════════════════════════════════════

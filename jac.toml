@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.37.6"
+version = "0.37.7"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"

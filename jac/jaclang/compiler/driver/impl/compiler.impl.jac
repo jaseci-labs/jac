@@ -502,8 +502,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
         PRECOMPILE_SENTINEL,
         SEC_CTDEPS,
         absolutize_ct_deps_section,
-        cache_mode,
-        ct_deps_fresh
+        cache_mode
     }
     import from jaclang.jac0core { sealed as _sealed }
     (rebuild_flag, no_precompile) = cache_mode();
@@ -534,8 +533,9 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                     trusted = (
                         sealed_img is not None
                         or (
-                            precompiled_jir_matches_source(jir_data, norm_file)
-                            and ct_deps_fresh(jir_data, norm_root)
+                            precompiled_jir_matches_source(
+                                jir_data, norm_file, package_root=norm_root
+                            )
                         )
                     );
                     if trusted {

@@ -306,6 +306,23 @@ Emitted by `JsxIntrinsicGuardPass` when a module of a `mobile` app (see [Mobile]
 !!! tip "Fixing `E1105`"
     `E1105` fires only in the modules of a `mobile` app (`kind = "mobile"` on its `[apps.<name>]` table in `jac.toml`, or `[project] kind` in a single-app project). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Apps of every other kind are unaffected -- HTML tags remain valid there.
 
+### JSX Children
+
+Both apply to every **component** -- any ability whose return annotation names `JsxElement`, `JsxPage` or `JsxLayout`, including a union with one of them (`JsxPage` and `JsxLayout` are what a `pages/` route or layout module returns). That is the same predicate the client codegen uses to pick a component's call ABI, so a declaration these reject is exactly a declaration it would mis-lower. The runtime's own `__jac`-prefixed helpers are called directly rather than through the props protocol, and are not components.
+
+A component receives JSX children only if it declares a parameter literally named `children`. The codegen destructures a component's declared parameter names out of `props` with no rest element, so children handed to a component that never declares them are discarded with no runtime signal -- the failure mode is a blank render with a clean `jac check`. A component whose single parameter is named `props` receives the object whole, so children arrive as `props.children` and are never dropped.
+
+| Code | Message |
+|------|---------|
+| `W1053` | Component '{component}' declares no 'children' parameter, so the children passed here are discarded |
+| `E1109` | Component '{name}' declares a 'props' bundle alongside other parameters; the bundle must be the only parameter |
+
+!!! tip "Fixing `W1053`"
+    Declare `children: any = None` on the component and render it (`<>{children}</>`, or nest it inside a wrapper element). If a component is not meant to take children, remove them from the call site instead. The one call site the checker cannot see is the generated `pages/` entry, which renders `app` with the route tree as its children (`createElement(app, null, <routes/>)`); the client build refuses an `app` that has no `children` parameter (a lone `props` also receives them) with the same explanation.
+
+!!! tip "Fixing `E1109`"
+    A parameter named `props` means the component is handed the whole call-site object, so it cannot coexist with another parameter. Written positionally the codegen emits `const {props, tone} = props`, which is not valid JavaScript and fails the bundle; written keyword-only it emits a positional signature the renderer never calls that way, so every other parameter silently keeps its default. Pick one convention: name the props you take (`def Card(title: str, tone: str)`), or take the bundle alone (`def Card(props: CardProps)`) and read the rest off it. Because `props` is now exclusive, a component that declares it always receives children as `props.children`, which is why `W1053` never fires on one.
+
 ### Ownership / Borrow Errors
 
 Emitted by `OwnershipCheckPass` for `own`/`lin`/`imm`/`&`/`&mut` bindings and derived views and `in <handle> { }` region opens. See [Ownership & Borrowing](language/ownership-borrowing.md). On the native pathway the checker is one of the required analyses: it always runs there, and error-severity findings block native codegen -- a clean check is what makes the annotations trustworthy facts for lowering (see the [Ownership Fact Schema](../internals/ownership-checker-spec.md)). Whether diagnostics are *displayed* never changes generated code; builds with and without display are bit-identical.
@@ -367,6 +384,7 @@ Emitted by `OwnershipCheckPass` only in **nogc-enforced** native modules (`jac b
 | `W1050` | Unknown intrinsic JSX element '<{tag}>' |
 | `W1051` | Expression type could not be resolved (Unknown) |
 | `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+| `W1053` | Component '{component}' declares no 'children' parameter, so the children passed here are discarded |
 | `W1310` | Region open on '{name}' has an empty body |
 | `W1312` | Owned value '{name}' silently seals into managed storage |
 

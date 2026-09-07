@@ -68,7 +68,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         f"\n📱 Setting up React Native target (Expo) at {rn_dir}", style="bold"
     );
 
-    wrote_new = write_expo_scaffold(
+    write_expo_scaffold(
         rn_dir,
         project_dir,
         app_name=DEFAULT_APP_NAME,
@@ -76,21 +76,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         app_id=DEFAULT_APP_ID
     );
 
-    if wrote_new {
-        try {
-            ensure_native_deps_installed(rn_dir);
-        } except Exception as e {
-            console.warning(
-                f"  npm install failed: {e}\n"
-                "  Run `npm install` (or `bun install`) inside "
-                f"{rn_dir} manually before running `jac build`."
-            );
-        }
-    } else {
-        console.print(
-            "  ✔ Scaffold already current; skipping npm install", style="muted"
-        );
-    }
+    ensure_native_deps_installed(rn_dir);
 
     console.success("Mobile (React Native) setup complete.");
     console.print("\nNext steps:", style="bold");
@@ -166,6 +152,7 @@ impl MobileTarget.build(
         self.setup(project_dir);
     }
 
+    ensure_native_deps_installed(rn_dir);
     (_, compiled_dir) = self._compile_native_jac_modules(entry_file);
 
     js_sources = read_user_js_sources(compiled_dir);

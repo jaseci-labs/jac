@@ -1,4 +1,5 @@
 import from jaclang.compiler.tools.unparse_pass { unparse_node }
+import from jaclang.compiler.symbol_utils { return_type_is_jsx }
 
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
     import from jaclang.compiler.symbol_utils { resolve_import_source_module }
@@ -103,21 +104,6 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     return None;
 }
 
-impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
-    if (
-        isinstance(rt, uni.BinaryExpr)
-        and isinstance(rt.op, uni.Token)
-        and rt.op.name == Tok.BW_OR
-    ) {
-        return (
-            self._return_type_includes_jsx_element(rt.left)
-            or self._return_type_includes_jsx_element(rt.right)
-        );
-    }
-    return isinstance(rt, uni.Name)
-        and rt.value in ('JsxElement', 'JsxPage', 'JsxLayout');
-}
-
 impl EsastGenPass._return_type_route_role(rt: uni.Expr) -> (str | None) {
     if (
         isinstance(rt, uni.BinaryExpr)
@@ -146,7 +132,7 @@ impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
         return None;
     }
     rt = nd.signature.return_type;
-    if rt is None or not self._return_type_includes_jsx_element(rt) {
+    if not return_type_is_jsx(rt) {
         return None;
     }
     name = nd.name_ref.sym_name;
@@ -172,7 +158,7 @@ impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
         if sig.get_parameters() {
             rt = sig.return_type;
 
-            if rt is not None and self._return_type_includes_jsx_element(rt) {
+            if return_type_is_jsx(rt) {
                 if (
                     ability_node.name_ref
                     and ability_node.name_ref.sym_name

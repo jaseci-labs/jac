@@ -498,19 +498,13 @@ impl PgRuntime._download_zonky(major: int) -> (str | None) {
         return bin_dir;
     }
 
-    import fcntl;
-    os.makedirs(dist_cache_dir(), exist_ok=True);
-    lock_path = os.path.join(dist_cache_dir(), f".{slug}-{version}.lock");
-    lock_f = open(lock_path, 'w');
-    fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX);
-    try {
+    import from jaclang.toolchains.store { InstallLock }
+    lock_path = Path(dist_cache_dir()) / f".{slug}-{version}.lock";
+    with InstallLock(lock_path) {
         if os.path.isfile(os.path.join(bin_dir, 'postgres')) {
             return bin_dir;
         }
         return self._fetch_dist(slug, version, dist_dir, bin_dir);
-    } finally {
-        fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN);
-        lock_f.close();
     }
 }
 
@@ -524,29 +518,14 @@ impl PgRuntime._fetch_dist(
     tmp = dist_dir + '.part';
     shutil.rmtree(tmp, ignore_errors=True);
     os.makedirs(tmp, exist_ok=True);
-    jar_path = os.path.join(tmp, 'dist.jar');
+    import from jaclang.toolchains.store { Artifact, fetch, extract }
     try {
-        resp = urllib.request.urlopen(jar_url, timeout=300);
-        try {
-            with open(jar_path, 'wb') as f {
-                shutil.copyfileobj(resp, f);
-            }
-        } finally {
-            resp.close();
+        with urllib.request.urlopen(jar_url + '.sha1', timeout=30) as response {
+            want_sha = response.read().decode().strip().split()[0];
         }
-        resp = urllib.request.urlopen(jar_url + '.sha1', timeout=30);
-        try {
-            want_sha = resp.read().decode().strip().split()[0];
-        } finally {
-            resp.close();
-        }
-        have = hashlib.sha1();
-        with open(jar_path, 'rb') as f {
-            while (blk := f.read(1 << 20)) {
-                have.update(blk);
-            }
-        }
-        assert have.hexdigest() == want_sha , (f"checksum mismatch for {jar_url}");
+        jar_path = fetch(
+            Artifact("postgres", version, slug, jar_url, want_sha, "sha1")
+        );
         with zipfile.ZipFile(jar_path) as zf {
             txz: (str | None) = None;
             for n in zf.namelist() {
@@ -557,12 +536,9 @@ impl PgRuntime._fetch_dist(
             }
             assert txz is not None , f"no .txz payload in {jar_url}";
             txz_name: str = txz;
-            zf.extract(txz_name, tmp);
+            extract(jar_path, Path(tmp));
         }
-        with tarfile.open(os.path.join(tmp, txz_name)) as tf {
-            tf.extractall(tmp, filter='data');
-        }
-        os.remove(jar_path);
+        extract(Path(tmp) / txz_name, Path(tmp));
         os.remove(os.path.join(tmp, txz_name));
         os.replace(tmp, dist_dir);
     } except Exception as e {

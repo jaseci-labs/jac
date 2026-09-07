@@ -12,8 +12,8 @@ In a workspace it is an `[apps.<name>]` table beside the web app (`jac create --
 | Platform | Needs |
 |---|---|
 | both | Nothing extra for JS tooling: installs, Expo/Metro and Vite run on the Bun runtime bundled with `jac` (`JAC_BUN` overrides which bun is used) |
-| Android | Java/JDK 21+, Android SDK (via Android Studio), `adb` on PATH for install/launch |
-| iOS (macOS only) | Xcode + Command Line Tools, CocoaPods; other hosts build iOS through EAS Build |
+| Android | Managed JDK 21 and Android SDK; accept SDK licenses during setup |
+| iOS (macOS only) | Xcode + Command Line Tools; Jac provisions Ruby/CocoaPods; other hosts need a hosted macOS builder |
 
 ## One-time scaffold
 

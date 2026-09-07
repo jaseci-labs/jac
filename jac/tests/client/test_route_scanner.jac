@@ -19,7 +19,12 @@ import re;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
-import from jaclang.client.route_scanner { RouteScanner, describe_pages_without_routes }
+import from jaclang.client.route_scanner {
+    RouteScanner,
+    describe_pages_without_routes,
+    entry_drops_route_children
+}
+import from jaclang.compiler.frontend.codeinfo { ClientManifest }
 
 
 """Write `body` to `base/rel`, creating parent directories."""
@@ -320,4 +325,18 @@ test "dynamic directory segment translates to a path parameter" {
             f"dynamic directory must emit ':id', not a literal '[id]'; got {paths}"
         );
     }
+}
+
+test "pages entry that ignores children drops every route" {
+    # The generated entry renders `app` with the route tree as its children,
+    # so the bundle refuses an `app` that could not receive them. The verdict
+    # comes from the compiled manifest, which a warm build already has.
+    def manifest(params: list) -> ClientManifest {
+        return ClientManifest(exports=["app"], params={"app": params});
+    }
+    assert entry_drops_route_children(manifest([])) , "a no-parameter app drops the routes";
+    assert entry_drops_route_children(manifest(["theme"])) , "parameters without children drop the routes";
+    assert not entry_drops_route_children(manifest(["children"])) , "a children parameter receives them";
+    assert not entry_drops_route_children(manifest(["props"])) , "a lone props bundle receives them";
+    assert not entry_drops_route_children(ClientManifest()) , "no client app export, nothing to judge";
 }

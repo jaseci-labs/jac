@@ -60,7 +60,9 @@ def:pub BookCard(bookId: str, title: str, onDelete: Callable[[str], None]) -> Js
 
 Call site: `<BookCard bookId={b["id"]} title={b["title"]} onDelete={remove} />`. For an optional callback, type it `Callable[[str], None] | None` and guard the call: `if onDelete { onDelete(bookId); }`.
 
-**`children` needs a default.** A component that accepts nested JSX declares `children: any = None`. Nested content does NOT count as a passed attribute, so a `children` param **without a default is a required prop** - every call site that passes any other attribute fails `E1102: Component 'Card' requires prop 'children'`. (`any` is the honest type: children can be an element, string, number, or list.)
+**`children` is a declared prop, not an ambient one.** A component receives nested JSX only if it declares a parameter literally named `children`; the codegen destructures the declared names out of `props` with no rest element, so anything else is dropped. Passing children to a component that does not declare them is `W1053` at the call site - without it the failure is a blank render with a clean `jac check`.
+
+**`children` needs a default.** A component that accepts nested JSX declares `children: any = None`. (`any` is the honest type: children can be an element, string, number, or list.) The default matters because `children` is otherwise a required prop, and call sites that pass no nested content fail `E1102: Component 'Card' requires prop 'children'`.
 
 ```jac
 def:pub Card(title: str, children: any = None) -> JsxElement {
@@ -68,9 +70,9 @@ def:pub Card(title: str, children: any = None) -> JsxElement {
 }
 ```
 
-**Props bundle (`props: dict`):** a single parameter literally named `props` receives the whole call-site object un-destructured - for HOCs/wrappers that just `<Inner {**props} />`. The cost: per-attribute call-site validation is impossible, so the compiler emits **W5015** on the definition; suppress with `# jac:ignore[W5015]` only when forwarding is intentional. Default to named params.
+**Props bundle (`props: dict`):** a single parameter literally named `props` receives the whole call-site object un-destructured - for HOCs/wrappers that just `<Inner {**props} />`. It must be the **only** parameter: `props` alongside anything else is `E1109`, because no lowering satisfies both. The cost: per-attribute call-site validation is impossible, so the compiler emits **W5015** on the definition; suppress with `# jac:ignore[W5015]` only when forwarding is intentional. Default to named params.
 
-**`children` parameter:** always declare it `children: any = None` with `= None` default. Omitting the default makes `children` a required prop - every call site that passes no nested content fails with `error[E1102]`. Use `{children}` in the JSX body to render it.
+**`children` parameter:** always declare it `children: any = None` with `= None` default. Omitting the default makes `children` a required prop - every call site that passes no nested content fails with `error[E1102]`. Use `{children}` in the JSX body to render it. Omitting the parameter entirely earns `W1053` at every call site that nests content in the component.
 
 **`props: any` bundle:** `def:pub Comp(props: any)` is allowed but emits `W5015` and disables per-prop type checking. Prefer named typed parameters. Use lowercase `any` - capital `Any` is not a real Jac type; it resolves to Unknown and any attribute access on it (`props.title`) fails with a hard `error[E1032]`.
 
@@ -250,7 +252,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **Client placement is inferred - there is no wrapper or prefix.** A declaration carrying JSX or an npm import compiles client on its own (see `jac-codespaces`). In mixed files (**`main.jac`**, **`pages/*.jac`**) a JSX-bearing `def:pub` is placed client automatically; overrides live in `jac.toml` (`[placement.pins]`), not in the source.
-- **Top-level component name is `def:pub app`** - lowercase. Runtime mounts the literal name. Its signature is set by the routing system: `app()` for manual/single-page, `app(children: any)` that renders `children` for file-based routing. Getting this wrong drops every route with no error - see `jac-cl-routing`.
+- **Top-level component name is `def:pub app`** - lowercase. Runtime mounts the literal name. Its signature is set by the routing system: `app()` for manual/single-page, `app(children: any)` that renders `children` for file-based routing. Getting this wrong drops every route; in a `pages/` project the client build refuses it - see `jac-cl-routing`.
 - **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX. `{}` (empty slot) is also a parse error - use `{#* note *#}` for a no-op placeholder. A `#` outside an expression slot is treated as **literal HTML text**, not a comment.
 - **Module `glob`s can hold rich data - including JSX.** `glob _BUILDS: list[dict] = [{"name": "CLI", "icon": <Terminal size={15}/>}];` is a fine home for render-constant tables; iterate them in slots or comprehensions. `glob` is NOT reactive - anything that changes belongs in `has`.
 - **`jac fmt` can drop significant JSX whitespace** when reflowing mixed text + inline elements. Keep spacing that matters as explicit string children - `{" "}` between an element and text, `{" · "}` separators - those survive reformatting.

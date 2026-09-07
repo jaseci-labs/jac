@@ -26,6 +26,7 @@
             { "title": "Backend APIs & services", "page": "build/backend-apis.md" },
             { "title": "Full-stack web apps", "page": "build/fullstack-web.md" },
             { "title": "Desktop & mobile apps", "page": "build/desktop-mobile.md" },
+            { "title": "Managed build toolchains", "page": "build/toolchains.md" },
             { "title": "AI agents & LLM apps", "page": "build/ai-agents.md" },
             { "title": "Reusable libraries & packages", "page": "build/libraries.md" }
           ]

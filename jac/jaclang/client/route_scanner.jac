@@ -90,5 +90,6 @@ obj RouteScanner {
 }
 
 def resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | None))];
+def entry_drops_route_children(manifest: any) -> bool;
 
 def _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))];

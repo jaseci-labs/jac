@@ -260,6 +260,7 @@ import { JSDOM } from "jsdom";
 
 const startUrl = process.argv[2] || "/";
 const loggedIn = process.argv[3] === "loggedIn";
+const entryModule = process.argv[4] || "./entry.js";
 
 const dom = new JSDOM(
   '<!DOCTYPE html><html><body><div id="__jac_root"></div></body></html>',
@@ -295,7 +296,7 @@ const check = (label, ok, detail) => {
 };
 
 try {
-  await import("./entry.js");
+  await import(entryModule);
 } catch (e) {
   check("entry.js imports + mounts via solid-js/web", false, String((e && e.stack) || e));
   console.log("\\nFAILED: entry import error");
@@ -334,6 +335,22 @@ if (startUrl === "/dashboard" && !loggedIn) {
 if (startUrl === "/dashboard" && loggedIn) {
   check("auth route renders the protected page when logged in",
     present("dashboard"), `html=${root.innerHTML}`);
+}
+
+// Manual-routing shapes (`manual_routing_app.jac`). A parent route written as
+// `element=` must hand its matched child route to the guard; `Route` used to
+// wrap the element in a lambda that ignored it, so nothing rendered.
+if (startUrl === "/nested") {
+  check("element= parent route delivers the matched child to AuthGuard",
+    loggedIn ? present("nested") : !present("nested"), `html=${root.innerHTML}`);
+}
+if (startUrl === "/layout-guarded") {
+  check("guard wrapping <Outlet/> renders the matched child when logged in",
+    present("dashboard"), `html=${root.innerHTML}`);
+}
+if (startUrl === "/bare") {
+  check("guard with neither children nor child routes renders nothing and does not throw",
+    !present("dashboard") && !present("nested"), `html=${root.innerHTML}`);
 }
 
 console.log(`\\n${tag} ${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
@@ -955,7 +972,9 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
     # generated entry's `<Router root={Layout}>` shell, `component`-based routes,
     # `<Link>`-driven navigation swapping the `<Outlet>`, and the pathless
     # `AuthGuard` route that blocks a protected page when logged out and renders it
-    # when a `jac_token` is present. Same opt-in + toolchain as the counter test.
+    # when a `jac_token` is present. The manual-routing entry covers the guard
+    # shapes the generated entry never writes: an `element=` parent route and a
+    # layout wrapping `<Outlet/>`. Same opt-in + toolchain as the counter test.
     _require_client_integration();
     bun = get_bun();
     if bun is None {
@@ -968,6 +987,7 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
     about_js = _compile_page(os.path.join(rdir, "about_page.jac"), backend);
     dash_js = _compile_page(os.path.join(rdir, "dashboard_page.jac"), backend);
     layout_js = _compile_page(os.path.join(rdir, "root_layout.jac"), backend);
+    manual_js = _compile_page(os.path.join(rdir, "manual_routing_app.jac"), backend);
 
     runtime_path = resolve_client_runtime_cl_path("solid");
     runtime_js = _rewrite_core_specifier(_compile_solid(runtime_path));
@@ -978,6 +998,14 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
     # only its `@jac/runtime` specifier is rewired to the flat sibling.
     entry_js = _wire_jac_runtime(
         build_pages_solid_entry_script("main", "/login", False)
+    );
+    manual_entry_js = "\n".join(
+        [
+            'import { render } from "solid-js/web";',
+            'import { app } from "./manual_routing_app.js";',
+            'render(() => app(), document.getElementById("__jac_root"));',
+            ''
+        ]
     );
     # Framework-neutral `_routes.js` manifest (the same shape compiler.impl emits).
     manifest = "\n".join(
@@ -1008,6 +1036,8 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
         (work / "root_layout.src.jsx").write_text(layout_js, encoding="utf-8");
         (work / "_routes.src.jsx").write_text(manifest, encoding="utf-8");
         (work / "entry.src.jsx").write_text(entry_js, encoding="utf-8");
+        (work / "manual_routing_app.src.jsx").write_text(manual_js, encoding="utf-8");
+        (work / "manual_entry.src.jsx").write_text(manual_entry_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
         (work / "harness.mjs").write_text(_ROUTING_HARNESS, encoding="utf-8");
@@ -1033,9 +1063,13 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
         # Each scenario is a fresh process so `entry.js` (and its one-time render)
         # re-runs at the scenario's start URL / auth state.
         scenarios = [
-            ["/", "loggedOut"],
-            ["/dashboard", "loggedOut"],
-            ["/dashboard", "loggedIn"]
+            ["/", "loggedOut", "./entry.js"],
+            ["/dashboard", "loggedOut", "./entry.js"],
+            ["/dashboard", "loggedIn", "./entry.js"],
+            ["/nested", "loggedIn", "./manual_entry.js"],
+            ["/nested", "loggedOut", "./manual_entry.js"],
+            ["/layout-guarded", "loggedIn", "./manual_entry.js"],
+            ["/bare", "loggedIn", "./manual_entry.js"]
         ];
         for sc in scenarios {
             if node_bin {
@@ -1044,7 +1078,8 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
                     "--conditions=browser",
                     str(work / "harness.mjs"),
                     sc[0],
-                    sc[1]
+                    sc[1],
+                    sc[2]
                 ];
             } else {
                 cmd = [
@@ -1053,7 +1088,8 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
                     "run",
                     str(work / "harness.mjs"),
                     sc[0],
-                    sc[1]
+                    sc[1],
+                    sc[2]
                 ];
             }
             run = subprocess.run(

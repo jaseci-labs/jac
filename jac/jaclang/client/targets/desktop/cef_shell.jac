@@ -3,6 +3,7 @@ import shutil;
 import json;
 import subprocess;
 import stat;
+import from jaclang.toolchains.cef { ensure_cef }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.client.targets.desktop.desktop_build {
@@ -15,7 +16,6 @@ import from jaclang.client.targets.desktop.desktop_build {
     _bundle_runtime,
     build_cef_dispatch,
     build_cef_subprocess,
-    fetch_cef_dist,
 }
 import from jaclang.client.targets.desktop._host_bootstrap {
     _host_boot_py,
@@ -24,28 +24,6 @@ import from jaclang.client.targets.desktop._host_bootstrap {
 import from jaclang.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
     desktop_app_runtime_env
-}
-
-def _ensure_cef_dist(cef_dir: Path) -> Path {
-    dist = cef_dir / "cef_dist";
-    headers = cef_dir / "cef_headers" / "include" / "capi" / "cef_app_capi.h";
-    if (dist / "libcef.so").exists() and headers.exists() {
-        return dist;
-    }
-    console.print("  Fetching CEF binary distribution (one-time)...", style="muted");
-    fetch_cef_dist(cef_dir);
-    if not (dist / "libcef.so").exists() {
-        raise RuntimeError(
-            "Failed to fetch CEF binary distribution. "
-            "See targets/desktop/native/cef/README.md for prerequisites."
-        );
-    }
-    if not headers.exists() {
-        raise RuntimeError(
-            "CEF SDK headers missing after fetch (re-run the cef build)."
-        );
-    }
-    return dist;
 }
 
 def _is_stale(output: Path, inputs: list[Path]) -> bool {
@@ -232,7 +210,7 @@ def cef_build(
     if fonts_conf.exists() {
         shutil.copy2(fonts_conf, out_dir / "minimal-fonts.conf");
     }
-    cef_dist = _ensure_cef_dist(cef_dir);
+    cef_dist = ensure_cef(cef_dir);
     libcef_dispatch = _ensure_libcef_dispatch(cef_dir);
     cef_subprocess = _ensure_cef_subprocess(cef_dir);
     shutil.copy2(libcef_dispatch, out_dir / "libcef_dispatch.so");

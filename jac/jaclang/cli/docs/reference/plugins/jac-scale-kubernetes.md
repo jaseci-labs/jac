@@ -891,7 +891,7 @@ histogram_buckets = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0,
 |--------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable Prometheus metrics collection and `/metrics` endpoint |
 | `endpoint` | string | `"/metrics"` | Path for the Prometheus scrape endpoint |
-| `namespace` | string | `"jaclang_scale"` | Metrics namespace prefix |
+| `namespace` | string | `"jaclang_scale"` | Metrics namespace prefix. Anything outside `[a-zA-Z0-9_]` is rewritten to `_`, runs of `_` collapse, and a leading digit gets a `_` prefix; a rewrite logs a warning at startup |
 | `walker_metrics` | bool | `false` | Enable walker execution timing metrics |
 | `histogram_buckets` | list | `[0.005, ..., 10.0]` | Histogram bucket boundaries in seconds |
 

@@ -17,13 +17,10 @@ jac run --dev studio       # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 
 There is **no `jac setup desktop` step** - the native host is generated at build time. Run the built binary directly with `(cd .jac/client/desktop && ./<app>)`.
 
-Build machine needs the OS web engine + a C toolchain (a small `libwebview.so` wrapper is compiled on first use). Debian/Ubuntu:
-
-```bash
-sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
-```
-
-(`jaclang` ships a helper: `jaclang/client/targets/desktop/native/webview/install_webkit_deps.sh`.)
+Jac provisions the native webview wrapper and its build dependencies automatically.
+Use `jac setup --toolchain desktop` to prepare them ahead of time. Linux system
+libraries require administrator access; downloads and generated native libraries
+live in the managed toolchain cache.
 
 ## Configuration - `[desktop]` in `jac.toml`
 

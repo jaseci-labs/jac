@@ -141,7 +141,7 @@ def:pub AppShell() -> JsxElement {
 
 **Guarding one page - wrap it.** `<Route path="/dashboard" element={<AuthGuard redirect="/login"><Dashboard /></AuthGuard>} />`. Reserve the inline `jacIsLoggedIn()` guard for one-off cases.
 
-> **Version note.** The wrapper form renders its children only on runtimes carrying the `AuthGuard` children fix. On older jaclang the guard ignored children and rendered `<Outlet />` unconditionally, which resolves to nothing in a flat route - a **blank page with no error anywhere**. The parent-route and layout forms above are correct on every version, so prefer them if you need to support both.
+> **Version note.** The wrapper form renders its children only on runtimes carrying the `AuthGuard` children fix. On older jaclang the guard ignored children and rendered `<Outlet />` unconditionally, which resolves to nothing in a flat route - a **blank page with no error anywhere**. On Solid the reverse held: the wrapper form worked and the parent-route form rendered nothing, because `Route` wrapped an `element=` route in a props-ignoring lambda and the matched child never reached the guard. Both are fixed; if you need to support older runtimes, the layout form (`<AuthGuard><Outlet /></AuthGuard>`) is the one that has always worked everywhere.
 
 The redirect target for the `(auth)/` codegen comes from `jac.toml`; `AuthGuard`'s own `redirect` defaults to `/login`:
 

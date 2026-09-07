@@ -24,7 +24,7 @@ hot-reloads just like `jac run --dev` does for web. Walker/function calls
 still go through the embedded in-process runtime, so RPC works identically
 to the packaged build.
 
-Window title, size and the renderer are configured under `[desktop]` in `jac.toml`: `engine = "native"` (the default, the OS webview) or `engine = "cef"` for a bundled Chromium (CEF has no HMR, so `jac run --dev` needs the native engine). On Linux you need the WebKitGTK system libraries (a bundled helper script installs them).
+Window title, size and the renderer are configured under `[desktop]` in `jac.toml`: `engine = "native"` (the default, the OS webview) or `engine = "cef"` for a bundled Chromium (CEF has no HMR, so `jac run --dev` needs the native engine). On Linux you need the WebKitGTK system libraries (Jac provisions them through the system package manager).
 
 ## Ship to Android & iOS {#mobile}
 
@@ -39,7 +39,7 @@ path = "mobile"
 The mobUI guard covers only this app's modules -- your HTML-based `web` app next door is untouched. Then:
 
 ```bash
-# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
+# Android tools are provisioned automatically; iOS requires macOS + Xcode.
 jac create --app mobile --kind mobile             # writes the table above
 jac setup mobile                                 # one-time Expo scaffold (.jac/mobile-rn/)
 jac run --dev mobile                             # Metro Fast Refresh on device/emulator
@@ -65,3 +65,5 @@ The flagship workspace's [`mobile/`](https://github.com/jaseci-labs/jaseci/tree/
 
 - Add AI features → [AI agents & LLM apps](ai-agents.md)
 - Scale the backend your app talks to → [Backend APIs & services](backend-apis.md)
+
+See [Managed build toolchains](toolchains.md) for automatic setup, download progress, caches, licenses, and offline builds.

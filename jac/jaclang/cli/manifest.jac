@@ -156,7 +156,7 @@ with entry {
         r.name
         for r in ROUTES
         if len({a.dest or a.name for a in r.args}) != len(r.args)
-    ] , "a command declares two arguments that bind the same name. This block is also load-bearing for #8880: ROUTES is a comptime fold of the command specs and its cached artifact does not re-key on them, so a spec that gains an argument without this file's bytes moving ships a kit whose parser rejects the new flag. Delete this only once that fold keys on its producers.";
+    ] , "a command declares two arguments that bind the same name.";
 }
 
 def get_command_meta(name: str) -> CommandSpec | None;

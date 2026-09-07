@@ -90,6 +90,7 @@ class JacClientCompiler {
     def copy_root_assets(self: JacClientCompiler) -> None;
     def _scan_and_compile_pages(
         self: JacClientCompiler,
+        entry_manifest: any = None,
         visited: (set[Path] | None) = None,
         collected_exports: (set[str] | None) = None,
         collected_globals: (dict[(str, any)] | None) = None,
@@ -97,6 +98,10 @@ class JacClientCompiler {
     ) -> bool;
 
     def rescan_pages(self: JacClientCompiler) -> bool;
+    def _check_entry_renders_routes(
+        self: JacClientCompiler, entry_manifest: any
+    ) -> None;
+
     def _warn_pages_without_routes(
         self: JacClientCompiler, scanner: RouteScanner
     ) -> None;
