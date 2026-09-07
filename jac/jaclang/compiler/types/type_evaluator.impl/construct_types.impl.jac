@@ -108,6 +108,20 @@ impl TypeEvaluator._extract_tuple_element_type(
             is_diagnosed=tuple_type.is_diagnosed, is_incomplete=tuple_type.is_incomplete
         );
     }
+    if isinstance(tuple_type, UnionType) {
+        elements: list[TypeBase] = [];
+        for member in tuple_type.types {
+            element = self._extract_tuple_element_type(member, idx);
+            if element is None {
+                return None;
+            }
+            self._collect_unique_types(element, elements);
+        }
+        if not elements {
+            return None;
+        }
+        return elements[0] if len(elements) == 1 else UnionType(types=elements);
+    }
     if not isinstance(tuple_type, ClassType) {
         return None;
     }
@@ -221,6 +235,10 @@ impl TypeEvaluator._get_iterable_element_type(
                 }
             }
         } elif iterable_type.is_builtin("tuple") {
+            if iterable_type.private.type_args
+                and self._tuple_has_variadic_arg(iterable_type) {
+                return self._extract_tuple_element_type(iterable_type, 0);
+            }
             members = [
                 self._convert_to_instance(arg)
                 for arg in iterable_type.private.type_args
