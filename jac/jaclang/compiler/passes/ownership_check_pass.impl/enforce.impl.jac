@@ -89,8 +89,6 @@ impl OwnershipCheckPass._nogc_setup -> None {
 }
 
 impl OwnershipCheckPass._nogc_stamp_frozen_owners -> None {
-    # No-GC aliases borrow their frozen owner. Physical ownership participates
-    # in ordinary move checking; imm_decl still prohibits writes and reopening.
     import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
     for (sid, name) in self.imm_decl.items() {
         symbol = name.sym;

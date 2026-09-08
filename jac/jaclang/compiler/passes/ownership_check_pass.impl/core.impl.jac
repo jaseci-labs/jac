@@ -652,12 +652,12 @@ impl _stdlib_attr_call_root(call: FuncCall) -> (str | None) {
 
 impl OwnershipCheckPass._call_consumes_args(call: FuncCall) -> bool {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    if classify_call(call) == CallKind.BUILTIN
-        and isinstance(call.target, Name)
+    if isinstance(call.target, Name)
         and (
             call.target.sym_name in _MOVE_EXEMPT_CALLS
             or JAC_TYPE_REGISTRY.is_non_retaining_builtin(call.target.sym_name)
-        ) {
+        )
+        and classify_call(call) == CallKind.BUILTIN {
         return False;
     }
     if isinstance(call.target, AtomTrailer) {
@@ -1003,10 +1003,7 @@ impl OwnershipCheckPass._borrow_assign_kill_gen(
             borrow_id = self._name_sym_id(target);
             kill.add(borrow_id);
             if self._borrow_source_owner(nd) is not None
-                or (
-                    borrow_id in self.arch_view_syms
-                    and self.borrow_created_at.get(borrow_id) is nd
-                ) {
+                or self.borrow_created_at.get(borrow_id) is nd {
                 gen.add(borrow_id);
             }
         }
