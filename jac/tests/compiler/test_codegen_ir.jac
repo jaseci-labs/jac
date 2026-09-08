@@ -8,6 +8,7 @@ producer side, which is the seat the sealed native emitter sits in.
 """
 
 import ast as pyast;
+import __future__ as pyfuture;
 import from builtins { exec as pyexec }
 import from jaclang.compiler.backends.py.codegen_ir {
     CIR_FORMAT_VERSION,
@@ -114,6 +115,13 @@ test "codegen ir round trips a real program" {
     assert ns["__doc__"] == "Round trip fixture.";
     assert ns["greet"]("jac") == "hello jac";
     assert ns["greet"].__code__.co_firstlineno == 2;
+}
+
+test "compiled modules do not inherit future flags from the shim" {
+    result = compile_ir(fixture_blob());
+    assert len(result.diags) == 0;
+    assert (result.modules[0].code_obj.co_flags & pyfuture.annotations.compiler_flag)
+        == 0;
 }
 
 test "transcribed tree matches the source ast exactly" {
