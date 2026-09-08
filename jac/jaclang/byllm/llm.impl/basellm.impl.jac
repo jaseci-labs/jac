@@ -923,8 +923,8 @@ impl BaseLLM._invoke_react_loop_streaming(
 
 impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object {
     if len(mt_run.tools) == 0
-        and mt_run.resp_type is not None
-        and mt_run.resp_type is not str {
+    and mt_run.resp_type is not None
+    and mt_run.resp_type is not str {
         accumulated = "";
         _seen_resets = mt_run._stream_reset_count;
         try {
