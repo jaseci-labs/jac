@@ -32,14 +32,29 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
 
      );
 
-glob _SCOPE_SUFFIX_CACHE: list = [],
-     _SCOPE_ACTIVE: list = [];
+obj ActiveNativeScope {
+    has compiler_roots: set[str];
+}
 
-def activate_scope_lowering -> None {
+glob _SCOPE_SUFFIX_CACHE: list[str] = [],
+     _SCOPE_ACTIVE: list[ActiveNativeScope] = [];
+
+def activate_scope_lowering(source_path: str | None = None) -> None {
     if _SCOPE_ACTIVE {
         return;
     }
-    _SCOPE_ACTIVE.append(1);
+    roots = {os.path.dirname(os.path.realpath(__file__)) + os.sep};
+    if source_path is not None {
+        source = os.path.realpath(source_path);
+        for suffix in native_scope_path_suffixes() {
+            if source.endswith(suffix) {
+                checkout = source[:-len(suffix)];
+                roots.add(os.path.join(checkout, "jaclang", "compiler") + os.sep);
+                break;
+            }
+        }
+    }
+    _SCOPE_ACTIVE.append(ActiveNativeScope(compiler_roots=roots));
     try {
         import from jaclang.runtime.runtime { JacRuntime }
         sh = JacRuntime.get_selfhost();
@@ -57,6 +72,19 @@ def activate_scope_lowering -> None {
 
 def scope_lowering_active -> bool {
     return len(_SCOPE_ACTIVE) > 0;
+}
+
+def scope_allows_inferred_path(mod_path: str) -> bool {
+    if not scope_lowering_active() {
+        return True;
+    }
+    candidate = os.path.realpath(mod_path);
+    for compiler_root in _SCOPE_ACTIVE[-1].compiler_roots {
+        if candidate.startswith(compiler_root) {
+            return in_native_scope_path(candidate);
+        }
+    }
+    return True;
 }
 
 def deactivate_scope_lowering {

@@ -201,3 +201,9 @@ test "a user archetype named Region shadows the builtin cleanly" {
     result = shadowed();
     assert result == 7 , f"shadowed() == {result}, expected 7";
 }
+
+test "nested functions preserve an event's active region" {
+    (eng, _) = compile_native("region_nested_event.jac");
+    scenario = get_func(eng, "scenario", ctypes.c_int64);
+    assert scenario() == 12;
+}

@@ -1,10 +1,13 @@
+import from jaclang.compiler.types.builtin_extensions { install_builtin_extensions }
 import os;
 import from pathlib { Path }
+import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
 import from typing { cast }
 import from jaclang.compiler.types.ct_eval { CtEvaluator }
 import from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
 import from jaclang.compiler.frontend.unitree {
+    literal_string_value,
     Ability,
     Archetype,
     AssertStmt,
@@ -207,6 +210,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E1033,
     E1034,
     E1035,
+    E1038,
     E1040,
     E1041,
     E1043,
@@ -340,7 +344,8 @@ walker TypeEvaluator {
     def _scope_is_current(scope: UniScopeNode) -> bool;
 
     has program: JacProgram,
-        _shared_intern: dict[tuple, ClassDetailsShared] = {},
+        _shared_intern:
+            dict[tuple[tuple[str, int, int, str], str], ClassDetailsShared] = {},
         _BUILTINS_STUB_FILE_PATH: str postinit,
         _TYPING_STUB_FILE_PATH: str postinit,
         _TYPES_STUB_FILE_PATH: str postinit,
@@ -356,7 +361,8 @@ walker TypeEvaluator {
         ct_eval: CtEvaluator postinit,
         ct_quiet: bool = False,
         prefetch: PrefetchedTypes postinit,
-        _pass_ref: object | None = None,
+        _pass: Transform | None = None,
+        _diagnostic_suppression_depth: int = 0,
         builtins_module: Module | None = None,
         _flow_node_type_cache: dict[tuple[int, int], TypeBase | None] = {},
         _flow_key_type_cache: dict[tuple[int, str], TypeBase | None] = {},
@@ -382,20 +388,17 @@ walker TypeEvaluator {
         na_builtins_module: Module postinit,
         js_globals_module: Module postinit;
 
-    has _pass: (Transform | None) { getter; setter(_pass: (Transform | None)); }
-
     def postinit -> None;
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True
     ) -> bool;
 
-    def _read_dunder_all(path: str) -> (set[str] | None);
-    def _read_ambient_imports_by_module(path: str) -> dict[str, set[str]];
     def _load_stub_module(path: str) -> Module;
-    def _init_prelude_from_catalog(catalog: any) -> list[Module];
+    def _init_prelude_from_catalog(catalog: StubCatalog) -> list[Module];
     def _init_prelude_from_sources -> list[Module];
     def _get_type_from_module(module: Module, name: str) -> TypeBase;
+    def _get_class_from_module(module: Module | None, name: str) -> ClassType | None;
     def _prefetch_types;
     def get_none_type -> TypeBase;
     def emit_diag(diag: DiagnosticInfo, nd: UniNode, **kwargs: object) -> None;
@@ -474,7 +477,8 @@ walker TypeEvaluator {
     def _emit_untyped_external(name_node: Name, name: str, module: str) -> None;
     def _untyped_external_is_error(node_: UniNode) -> bool;
     def _is_fstring_all_literal(fstring: FString) -> bool;
-    def _try_resolve_forward_ref(expr: String) -> TypeBase | None;
+    def _try_resolve_forward_ref(expr: String | MultiString) -> TypeBase | None;
+    def _annotation_args(expr: Expr | None) -> list[Expr];
     def _type_from_union_annotation_arg(val: Expr) -> TypeBase;
     def get_type_of_module(node_: ModulePath) -> TypeBase;
     def get_type_of_module_item(node_: ModuleItem) -> TypeBase;
@@ -491,7 +495,7 @@ walker TypeEvaluator {
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
-    ) -> (tuple | None);
+    ) -> (tuple[dict[str, any], set[int]] | None);
 
     def _is_class_scoped_type_param(node_: TypeParam) -> bool;
     def _collect_typevars_from_base(
@@ -544,7 +548,7 @@ walker TypeEvaluator {
         obj_type: TypeBase,
         method_name: str,
         arg_nodes: (Sequence[Expr | KWPair] | None),
-        node_for_error: Expr | None = None
+        node_for_error: UniNode | None = None
     ) -> TypeBase | None;
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
@@ -590,24 +594,27 @@ walker TypeEvaluator {
 
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
-    def _set_symbol_to_expr(expr: Expr, sym: Symbol) -> TypeBase;
+    def _set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase;
     def _resolution_scope_for(expr: UniNode) -> UniScopeNode | None;
     def _is_expr_self(expr: Expr) -> bool;
     def _is_expr_super(expr: Expr) -> bool;
     def _get_enclosing_function(nd: UniNode) -> Ability | None;
     def _get_enclosing_return_scope(nd: UniNode) -> Ability | LambdaExpr | None;
     def _get_declared_return_type(scope: Ability | LambdaExpr) -> TypeBase | None;
-    def _infer_lambda_block_return_type(body: list[CodeBlockStmt]) -> TypeBase;
-    def _collect_return_types(stmts: list[CodeBlockStmt], out: list[TypeBase]) -> bool;
+    def _infer_lambda_block_return_type(body: Sequence[CodeBlockStmt]) -> TypeBase;
+    def _collect_return_types(
+        stmts: Sequence[CodeBlockStmt], out: list[TypeBase]
+    ) -> bool;
+
     def _collect_if_else_returns(
         else_body: ElseIf | ElseStmt | None, out: list[TypeBase]
     ) -> bool;
 
     def _get_enclosing_method(nd: UniNode) -> Ability | None;
     def _get_enclosing_class(nd: UniNode) -> Archetype | None;
-    def _get_type_of_self(node_: SpecialVarRef) -> TypeBase;
-    def _get_type_of_super(node_: SpecialVarRef) -> TypeBase;
-    def _super_owner_for(node_: SpecialVarRef, rest: list[ClassType]) -> ClassType;
+    def _get_type_of_self(node_: Name) -> TypeBase;
+    def _get_type_of_super(node_: Name) -> TypeBase;
+    def _super_owner_for(node_: Name, rest: list[ClassType]) -> ClassType;
     def _get_type_of_root(node_: SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
@@ -621,7 +628,7 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_iterable_element_type(
-        iterable_type: TypeBase, node_for_error: Expr | None = None
+        iterable_type: TypeBase, node_for_error: UniNode | None = None
     ) -> TypeBase | None;
 
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
@@ -632,6 +639,10 @@ walker TypeEvaluator {
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
+    def _get_expected_container_type(
+        expected_type: TypeBase | None, container_class: TypeBase
+    ) -> ClassType | None;
+
     def _get_expected_element_type(
         expected_type: TypeBase | None, container_class: TypeBase
     ) -> TypeBase | None;
@@ -648,7 +659,7 @@ walker TypeEvaluator {
     ) -> FunctionType;
 
     def _lookup_class_member(base_type: ClassType, member: str) -> ClassMember | None;
-    def _lookup_object_member(base_type: ClassType, member: str) -> ClassMember | None;
+    def _lookup_object_member(base_type: TypeBase, member: str) -> ClassMember | None;
     def _bind_filter_compare(cmp: Expr, filter_type: ClassType) -> None;
     def _bind_filter_member(target: Name, filter_type: ClassType) -> None;
     def _filter_order_name(expr: Expr) -> (Name | None);
@@ -662,7 +673,7 @@ walker TypeEvaluator {
 
     def match_args_to_params(
         arg_nodes: (Sequence[Expr | KWPair] | None),
-        node_for_error: Expr | None,
+        node_for_error: UniNode | None,
         func_type: FunctionType,
         checking_overload: bool = False,
         is_unbound_call: bool = False
@@ -682,7 +693,7 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _merge_catalog_field_params(
-        tab: any, param_map: dict[str, Parameter], skip_deferred: bool
+        tab: CatScope, param_map: dict[str, Parameter], skip_deferred: bool
     ) -> None;
 
     def _build_field_params(
@@ -706,8 +717,8 @@ walker TypeEvaluator {
         base_type: ClassType, method: str
     ) -> OverloadedType | None;
 
-    def _create_dataclass_init_method(class_type: ClassType) -> FunctionType;
-    def _scope_has_fields(tab: any) -> bool;
+    def _create_object_init_method(class_type: ClassType) -> FunctionType;
+    def _scope_has_fields(tab: UniScopeNode | None) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
     def _create_special_builtin_type(name: str, base_class: ClassType) -> ClassType;
     def _validate_constructor_method(
@@ -752,7 +763,7 @@ walker TypeEvaluator {
         is_constructor_call: bool = False
     ) -> dict[str, TypeBase];
 
-    def _call_receiver_type(expr: FuncCall) -> ClassType | None;
+    def _call_receiver_type(expr: FuncCall) -> TypeBase | None;
     def _overload_accepts_receiver(
         overload: FunctionType, receiver: TypeBase | None
     ) -> bool;
@@ -823,7 +834,7 @@ walker TypeEvaluator {
     ) -> TypeBase;
 
     def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
-    def _union_narrowed_types(types_list: list) -> TypeBase;
+    def _union_narrowed_types(types_list: list[TypeBase]) -> TypeBase;
     def _if_exit_type(
         target: NarrowingTarget,
         stmt: IfStmt,
@@ -849,7 +860,7 @@ walker TypeEvaluator {
 
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
-    def _is_ellipsis_only_body(body: list[CodeBlockStmt]) -> bool;
+    def _is_ellipsis_only_body(body: Sequence[CodeBlockStmt]) -> bool;
     def _is_type_alias_annotation(annotation_type: TypeBase, tag_expr: Expr) -> bool;
     def _type_alias_tag_ident(tag_expr: Expr) -> (str | None);
     def _resolve_type_alias_rhs(value: Expr) -> TypeBase;
@@ -857,9 +868,5 @@ walker TypeEvaluator {
     def _distinct_brand_mismatch(src_type: TypeBase, dest_type: TypeBase) -> bool;
     def _resolve_string_type_expr(
         type_str: str, scope: UniScopeNode
-    ) -> TypeBase | None;
-
-    def _resolve_py_ast_type_node(
-        ast_node: object, scope: UniScopeNode
     ) -> TypeBase | None;
 }

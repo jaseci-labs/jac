@@ -30,7 +30,11 @@ def _compile_ir(gc_mode: str, enforce: bool) -> str {
         ir = prog.compile(
             file_path=FIXTURE,
             options=CompileOptions(
-                aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
+                aot_mode=True,
+                na_gc_mode=gc_mode,
+                nogc_enforce_all=enforce,
+                no_ir_cache=True,
+                skip_native_engine=True
             )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];

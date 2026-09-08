@@ -61,7 +61,7 @@ class Module(object) {
         A MDValue instance is returned, it can then be associated to
         e.g. an instruction.
         """
-    def add_metadata(self: Module, operands: any) -> object {
+    def add_metadata(self: Module, operands: any) -> values.MDValue {
         if not isinstance(operands, (`list, `tuple)) {
             raise TypeError(
                 (
@@ -93,7 +93,7 @@ class Module(object) {
         """
     def add_debug_info(
         self: Module, kind: any, operands: any, is_distinct: any = False
-    ) -> object {
+    ) -> values.DIValue {
         operands = `tuple(sorted(self._fix_di_operands(operands.items())));
         str_op_key = `tuple(sorted(self.str_ditok_operands(operands)));
         key = (kind, str_op_key, is_distinct);
@@ -118,7 +118,9 @@ class Module(object) {
         Example::
             module.add_named_metadata("llvm.ident", ["jaclang.compiler.backends.native.llvm/1.0"])
         """
-    def add_named_metadata(self: Module, name: any, element: any = None) -> object {
+    def add_named_metadata(
+        self: Module, name: str, element: any = None
+    ) -> values.NamedMetaData {
         if (name in self.namedmetadata) {
             nmd = self.namedmetadata[name];
         } else {
@@ -142,7 +144,7 @@ class Module(object) {
         A list of functions declared or defined in this module.
         """
     @property
-    def functions(self: Module) -> object {
+    def functions(self: Module) -> list[values.Function] {
         return [
             v
             for v in self.globals.values()

@@ -429,7 +429,7 @@ manifest records the target as NATIVE with a CLIENT caller
 discovery signal (the client build compiles the target module to
 `/static/<stem>.wasm`; the module never has to be imported anywhere else),
 and it binds each name to a generated stub: `exit_import` in `EsastGenPass`
-emits `const { init, frame } = __na_bind("arena", ["init", "frame"])`, where
+emits a `__na_bind` call carrying the serialized export and host contracts, where
 `__na_bind` (in `@jac/wasm_host`) lazily instantiates the module on first
 call and dispatches to its exports. Calls to the bound names type-check as
 async in client code (the same coroutine-wrapping that client calls to
@@ -439,7 +439,7 @@ executes the native module under CPython, which is what distinguishes it
 from a server-consumed import of the same native module (row 7's ctypes
 crossing). A module that declares app FFI
 registers its host implementations before the first call with
-`set_na_env("<stem>", shim, {"env": {...}})`; an FFI-free module needs no
+`bind_na_host(native_export, typed_host)`; an FFI-free module needs no
 setup at all.
 
 Underneath, the interop model is the standard wasm import/export contract:

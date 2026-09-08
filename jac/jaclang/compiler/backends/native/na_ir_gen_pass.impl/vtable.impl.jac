@@ -18,7 +18,7 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
     i8_ptr = ir.IntType(8).as_pointer();
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
-    entries: list[ir.Constant] = [self._emit_class_name_const(arch_name)];
+    entries: list[ir.Value] = [self._emit_class_name_const(arch_name)];
     for method_name in layout {
         func = self._resolve_method(arch_name, method_name);
         if func is not None {
@@ -283,7 +283,7 @@ impl NaIRGenPass._codegen_virtual_call(
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
 
-    _vd_variants: list[tuple] = [];
+    _vd_variants: list[tuple[str, ir.GlobalVariable, ir.Function]] = [];
     _vd_uniform = True;
     import from jaclang.compiler.passes.layout_pass { get_layout_registry as _vd_glr }
     _vd_reg = _vd_glr(self.ir_in, self.prog);
@@ -316,7 +316,7 @@ impl NaIRGenPass._codegen_virtual_call(
         _vd_vtp = self.builder.load(vtable_ptr_ptr, name="vt.id");
         _vd_fnc = self.builder.function;
         _vd_done = _vd_fnc.append_basic_block(name=f"vd.{method_name}.done");
-        _vd_incoming: list[tuple] = [];
+        _vd_incoming: list[tuple[ir.Value, ir.Block]] = [];
         for (_vc, _vt, _vf) in _vd_variants {
             _vd_hit = _vd_fnc.append_basic_block(name=f"vd.{method_name}.{_vc}");
             _vd_next = _vd_fnc.append_basic_block(name=f"vd.{method_name}.n.{_vc}");
@@ -338,7 +338,7 @@ impl NaIRGenPass._codegen_virtual_call(
                     _vd_args.append(_av);
                 }
             }
-            _vd_r = self.builder.call(_vf, _vd_args, name=f"vd.call.{_vc}");
+            _vd_r: ir.Value = self.builder.call(_vf, _vd_args, name=f"vd.call.{_vc}");
             _vd_ret_t = fn_type.return_type;
             if not isinstance(_vd_ret_t, ir.VoidType) and _vd_r.type != _vd_ret_t {
                 _vd_r = self._coerce_type(_vd_r, _vd_ret_t);
@@ -384,7 +384,7 @@ impl NaIRGenPass._codegen_virtual_call(
     return _vt_res;
 }
 
-impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Value {
+impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
     cached = self._class_name_consts.get(arch_name);
     if cached is not None {
         return cached;
@@ -980,7 +980,7 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                     continue;
                 }
 
-                impl_func = None;
+                impl_func: ir.Function | None = None;
                 impl_class: (str | None) = None;
                 for mro_class in mro[1:] {
                     parent_full = f"{mro_class}.{method_name}";
@@ -990,20 +990,18 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                         break;
                     }
                 }
-                if impl_func is None {
+                if impl_func is None or impl_class is None {
                     continue;
                 }
 
                 orig_fn_type = impl_func.function_type;
 
-                _has_self = False;
-                if len(orig_fn_type.args) > 0
-                    and isinstance(orig_fn_type.args[0], ir.PointerType) {
-                    _p0_nm = getattr(orig_fn_type.args[0].pointee, "name", "") or "";
-                    if _p0_nm == impl_class {
-                        _has_self = True;
-                    }
-                }
+                receiver_type = orig_fn_type.args[0] if orig_fn_type.args else None;
+                _has_self = (
+                    isinstance(receiver_type, ir.PointerType)
+                    and isinstance(receiver_type.pointee, ir.IdentifiedStructType)
+                    and receiver_type.pointee.name == impl_class
+                );
                 if not _has_self {
                     self.method_funcs[child_full] = impl_func;
                     self.func_symtab[child_full] = impl_func;
@@ -1030,13 +1028,14 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                 builder = ir.IRBuilder(entry_block);
 
                 impl_struct = self.struct_types.get(impl_class);
+                args: list[ir.Value] = [];
                 if impl_struct is None {
-                    args: list[ir.Value] = list(wrapper_fn.args);
+                    args = list(wrapper_fn.args);
                 } else {
                     parent_self = builder.bitcast(
                         wrapper_fn.args[0], impl_struct.as_pointer(), name="parent.self"
                     );
-                    args: list[ir.Value] = [parent_self];
+                    args = [parent_self];
                     for i in range(1, len(wrapper_fn.args)) {
                         args.append(wrapper_fn.args[i]);
                     }

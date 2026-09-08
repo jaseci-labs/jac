@@ -1,6 +1,6 @@
 """Multi-statement lambda used as a `has` field default on an obj archetype.
 
-Obj/node `has` defaults lower through ``field(factory=...)``. The multi-statement
+Obj/node `has` defaults lower through ``field(default_factory=...)``. The multi-statement
 lambda helper hoists to the enclosing function-or-module scope (never the class
 body, which would trip Python private-name mangling), and the field uses a plain
 factory so the default is rebuilt per instance.

@@ -8,7 +8,7 @@ impl JacCompiler.selfhost.getter -> SelfHostCache {
     return cache;
 }
 
-impl JacCompiler.stub_catalog -> any {
+impl JacCompiler.stub_catalog -> StubCatalog | None {
     if self.stub_catalog_disabled or self._stub_trees_served {
         return None;
     }
@@ -35,7 +35,7 @@ impl JacCompiler.note_stub_tree_served(path: str, program: JacProgram) -> None {
     }
 }
 
-impl JacCompiler.ensure_stub_catalog -> any {
+impl JacCompiler.ensure_stub_catalog -> StubCatalog | None {
     if self.stub_catalog_disabled or self._stub_trees_served {
         return None;
     }
@@ -83,15 +83,15 @@ impl JacCompiler.get_native_interop_setup(
 
 impl JacCompiler.get_native_layout(
     full_target: str, target_program: JacProgram
-) -> (object | None) {
+) -> (NativeModuleLayout | None) {
     actual_program = self.selfhost.resolve(full_target, target_program);
-    _layout: any = None;
+    _layout: NativeModuleLayout | None = None;
     if (full_target in actual_program.hub.artifacts) {
         gen = actual_program.hub.artifacts[full_target];
-        _layout = gen?.native_layout;
+        _layout = gen.native_layout;
     } elif (full_target in actual_program.mod.hub) {
         mod = actual_program.mod.hub[full_target];
-        _layout = mod.gen?.native_layout;
+        _layout = mod.gen.native_layout;
     }
     if _layout is not None {
         JacCompiler._check_native_abi(_layout, full_target);
@@ -99,9 +99,11 @@ impl JacCompiler.get_native_layout(
     return _layout;
 }
 
-impl JacCompiler._check_native_abi(layout: any, full_target: str) -> None {
+impl JacCompiler._check_native_abi(
+    layout: NativeModuleLayout, full_target: str
+) -> None {
     import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
-    stamped = layout?.abi_version;
+    stamped = layout.abi_version;
     if stamped is not None and stamped != NATIVE_ABI_VERSION {
         import logging as _abi_log;
         _abi_log.getLogger(__name__).warning(
@@ -572,19 +574,26 @@ impl JacCompiler._build_interop_dict(result: uni.Module) -> dict {
     interop_data: dict = {'bindings': {}};
     for (name, binding) in manifest.bindings.items() {
         interop_data['bindings'][name] = {
+            'name': binding.name,
             'source_context': binding.source_context.value,
             'callers': [c.value for c in binding.callers],
             'ret_type': binding.ret_type,
             'param_types': binding.param_types,
             'param_names': binding.param_names,
             'source_module': binding.source_module,
-            'kind': binding.kind
+            'kind': binding.kind,
+            'provider_app': binding.provider_app,
+            'native_contract': binding.native_contract,
+            'endpoint_id': binding.endpoint_id
         };
     }
 
     interop_data['func_access'] = dict(manifest.func_access);
     interop_data['walker_access'] = dict(manifest.walker_access);
     interop_data['endpoint_effects'] = dict(manifest.endpoint_effects);
+    interop_data['native_host_imports'] = dict(manifest.native_host_imports);
+    interop_data['app_edges'] = list(manifest.app_edges);
+    interop_data['provider_routes'] = dict(manifest.provider_routes);
     return interop_data;
 }
 
@@ -600,20 +609,26 @@ impl JacCompiler._deserialize_interop_table(
     cached_bindings: dict[str, dict[str, any]] = cached_interop.get('bindings', {});
     for (name, data) in cached_bindings.items() {
         binding = InteropBinding(
-            name=name,
+            name=data['name'],
             source_context=InteropContext(data['source_context']),
             callers={InteropContext(c) for c in data.get('callers', [])},
             ret_type=data.get('ret_type', 'int'),
             param_types=data.get('param_types', []),
             param_names=data.get('param_names', []),
             source_module=data.get('source_module'),
-            kind=data.get('kind', 'function')
+            kind=data.get('kind', 'function'),
+            provider_app=data['provider_app'],
+            native_contract=data['native_contract'],
+            endpoint_id=data['endpoint_id']
         );
         manifest.bindings[name] = binding;
     }
     manifest.func_access.update(cached_interop.get('func_access', {}));
     manifest.walker_access.update(cached_interop.get('walker_access', {}));
     manifest.endpoint_effects.update(cached_interop.get('endpoint_effects', {}));
+    manifest.native_host_imports.update(cached_interop['native_host_imports']);
+    manifest.app_edges.extend(cached_interop['app_edges']);
+    manifest.provider_routes.update(cached_interop['provider_routes']);
     return manifest;
 }
 
@@ -739,6 +754,8 @@ impl JacCompiler.parse_str(
         } elif (codespace == 'native') {
             _coerce_native_module(mod);
             na_coverage_record(mod.loc.mod_path, 'native');
+        } elif codespace == 'server' {
+            mod.set_code_context(CodeContext.SERVER);
         } else {
             run_codespace_infer = True;
         }
@@ -1244,7 +1261,7 @@ impl JacCompiler.compile(
             and in_native_scope_path(str(file_path))
             and not scope_lowering_active()
         ) {
-            activate_scope_lowering();
+            activate_scope_lowering(str(file_path));
             _scope_armed = True;
         }
         if self._reentrant_depth == 0 and not self.stub_catalog_disabled {
@@ -2215,6 +2232,7 @@ impl JacCompiler.client_artifact_of(mod: uni.Module) -> (ClientArtifact | None) 
         native_import_sources=native_sources,
         source_map=segments,
         dep_digests=digests,
+        boundary_contracts=self._build_interop_dict(mod),
         framework=resolve_active_backend().name()
     );
 }

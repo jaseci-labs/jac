@@ -9,11 +9,13 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.testing.test { parametrize }
 
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures"),
-     CHECKER_FIXTURES = os.path.join(
+glob FIXTURES: str = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "fixtures"
+     ),
+     CHECKER_FIXTURES: str = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
      ),
-     LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+     LANG_FIXTURES: str = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      NO_TC = CompileOptions(default_codespace='server');
 
 def assert_error_pretty_found(needle: str, haystack: str) {
@@ -3228,6 +3230,16 @@ test "generic_call_inference" {
     errors_str = "\n".join(e.pretty_print() for e in program.errors_had);
     assert "Cannot assign Item to str" in errors_str;
     assert "Cannot assign Item to int" in errors_str;
+}
+
+test "tuple iterable inference includes every position" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_tuple_iterable_inference.jac");
+    program.compile(path, options=NO_TC);
+    errors = "\n".join(error.pretty_print() for error in program.errors_had);
+    assert len(program.errors_had) == 2 , errors;
+    assert "bad_forward" in errors , errors;
+    assert "bad_reverse" in errors , errors;
 }
 
 """Test bidirectional type inference for container literals and type[X] covariance."""

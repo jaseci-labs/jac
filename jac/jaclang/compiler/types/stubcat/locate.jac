@@ -1,3 +1,4 @@
+import type from jaclang.compiler.types.stubcat.reader { StubCatalog }
 import hashlib;
 import os;
 import sys;
@@ -19,8 +20,8 @@ glob ENV_FILE: str = "JAC_STUBCAT_FILE",
          "vendor/typeshed/PIN"
      ),
      DIGEST_SUFFIXES: tuple[str, ...] = (".jac", ".pyi", ".py", "PIN"),
-     _DIGEST_CACHE: list = [],
-     _CATALOG_CACHE: list = [];
+     _DIGEST_CACHE: list[str] = [],
+     _CATALOG_CACHE: list[StubCatalog] = [];
 
 def jaclang_pkg_dir -> str {
     import jaclang;
@@ -106,7 +107,7 @@ def dev_catalog_path(pkg_dir: str) -> str {
     );
 }
 
-def _open_file(path: str, pkg_dir: str) -> any {
+def _open_file(path: str, pkg_dir: str) -> StubCatalog | None {
     import from jaclang.compiler.types.stubcat.reader { open_catalog_file }
     try {
         return open_catalog_file(path, pkg_dir);
@@ -116,7 +117,9 @@ def _open_file(path: str, pkg_dir: str) -> any {
     }
 }
 
-def _open_region(exe: str, offset: int, length: int, pkg_dir: str) -> any {
+def _open_region(
+    exe: str, offset: int, length: int, pkg_dir: str
+) -> StubCatalog | None {
     import from jaclang.compiler.types.stubcat.reader { open_catalog_region }
     try {
         return open_catalog_region(exe, offset, length, pkg_dir);
@@ -142,7 +145,7 @@ def _build_dev_catalog(path: str, pkg_dir: str) {
     }
 }
 
-def _current_for_source(cat: any, pkg: str) -> bool {
+def _current_for_source(cat: StubCatalog, pkg: str) -> bool {
     if not os.environ.get("JAC_DEV_SOURCE") {
         return True;
     }
@@ -153,7 +156,7 @@ def _current_for_source(cat: any, pkg: str) -> bool {
     }
 }
 
-def _find_catalog -> any {
+def _find_catalog -> StubCatalog | None {
     pkg = jaclang_pkg_dir();
     explicit = os.environ.get(ENV_FILE, "");
     if explicit {
@@ -182,7 +185,7 @@ def _find_catalog -> any {
     return None;
 }
 
-def _publish(cat: any) -> any {
+def _publish(cat: StubCatalog | None) -> StubCatalog | None {
     import from jaclang.jac0core.stubcat_hook { set_active }
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
@@ -191,7 +194,7 @@ def _publish(cat: any) -> any {
     return cat;
 }
 
-def open_catalog -> any {
+def open_catalog -> StubCatalog | None {
     if os.environ.get(ENV_BUILDING) {
         return None;
     }
@@ -201,7 +204,7 @@ def open_catalog -> any {
     return _publish(_find_catalog());
 }
 
-def ensure_catalog -> any {
+def ensure_catalog -> StubCatalog | None {
     cat = open_catalog();
     if cat is not None or os.environ.get(ENV_BUILDING) {
         return cat;

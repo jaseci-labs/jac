@@ -99,7 +99,9 @@ def:pub RightSidebar(
                                         alt={handle_of(u.username)}
                                     />
                                     <AvatarFallback>
-                                        {initial_of(name_of(u))}
+                                        {initial_of(
+                                            name_of(u.display_name, u.username)
+                                        )}
                                     </AvatarFallback>
                                 </Avatar>
                             </button>
@@ -113,7 +115,7 @@ def:pub RightSidebar(
                                                 u.username
                                             ); }}
                                         >
-                                            {name_of(u)}
+                                            {name_of(u.display_name, u.username)}
                                         </button>
                                     </HoverCardTrigger>
                                     <HoverCardContent className="w-64">
@@ -124,14 +126,20 @@ def:pub RightSidebar(
                                                     alt={handle_of(u.username)}
                                                 />
                                                 <AvatarFallback>
-                                                    {initial_of(name_of(u))}
+                                                    {initial_of(
+                                                        name_of(
+                                                            u.display_name, u.username
+                                                        )
+                                                    )}
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div className="min-w-0">
                                                 <div
                                                     className="truncate font-semibold text-foreground"
                                                 >
-                                                    {name_of(u)}
+                                                    {name_of(
+                                                        u.display_name, u.username
+                                                    )}
                                                 </div>
                                                 <div
                                                     className="truncate text-xs text-muted-foreground"

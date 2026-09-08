@@ -510,7 +510,10 @@ obj OspGraph {
         if row.src == origin {
             return row.tgt;
         }
-        return row.src;
+        if row.tgt == origin {
+            return row.src;
+        }
+        return -1;
     }
 
     def _unlink(rid: int) {

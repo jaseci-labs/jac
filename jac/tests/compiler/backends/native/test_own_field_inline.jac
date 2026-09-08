@@ -36,7 +36,12 @@ def _compile_ir_headerless -> str {
         prog = JacProgram();
         ir = prog.compile(
             file_path=FIXTURE,
-            options=CompileOptions(aot_mode=True, memory_profile="nogc")
+            options=CompileOptions(
+                aot_mode=True,
+                memory_profile="nogc",
+                no_ir_cache=True,
+                skip_native_engine=True
+            )
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         assert ir is not None and ir.gen.llvm_ir is not None;

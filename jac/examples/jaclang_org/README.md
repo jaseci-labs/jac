@@ -251,25 +251,24 @@ and the browser host reaches it with a plain import:
 import from .arena { init }
 ```
 
-That one line in `core/site/game/webgl_host.jac` is the whole wiring. Because the host
-is client code and the target is native-anchored, the import IS the cl→na
-edge: the client build compiles the module to `/static/arena.wasm`, binds
-`init` to a generated stub that lazily instantiates the wasm on first call
-(via `@jac/wasm_host`), and compiles to nothing on the server -- the same
-import in a pure server module would still mean the ctypes crossing. Because arena declares app FFI, the host registers its WebGL
-implementations first with `set_na_env("arena", sh, {"env": ...})`; an
-FFI-free native module would need no ceremony at all.
+The compiler generates typed Wasm calls from the native declarations, including
+scalar conversions and opaque ownership handles. The application imports `init`,
+`frame`, the score/health accessors, and `shutdown` normally. It supplies Jac's
+reusable `@jac/webgl` host with `bind_na_host(init, host)`; host methods are checked
+against the native import declarations. Module instantiation and host-import
+registration belong to `@jac/wasm_host`.
 
-Its memory story is the point: `[gc] default = "none"` builds it headerless --
-no reference counting, no collector, static drops only -- and the build audits
-the emitted IR for `__rc_*` machinery, so a wasm that re-entered the RC world
-fails to build rather than shipping. The ownership checker's source-level
-zero-RC contract (`[memory]`, E140x hard errors) ships disarmed until a
-release carries jaseci-labs/jac#7732 -- the 0.34.x checker misfires E1401 on
-arena's raylib extern decls; jac.toml says exactly when and how to re-arm
-it. Entity pools are index arenas (parallel
-scalar lists, the `own_rbtree` idiom) inside one `own Game` the browser holds
-as an opaque handle; every update pass borrows it `&mut` down the call tree.
+Production client bundles include `/static/boundaries.json`. This audit records
+qualified endpoint identities, placements, callers, value shapes, native ownership
+contracts, host requirements, and effect assumptions. The compiler retains these
+records in cached client artifacts so they survive release of its syntax trees.
+Unknown effects disable endpoint caching; explicit effect declarations are
+reported as assumptions, not inferred guarantees.
+
+The game's `[memory]` enforcement remains declared in `jac.toml`. Entity pools
+are index arenas inside an owned `Game`; update passes borrow it mutably, and
+`shutdown` consumes its browser handle.
+
 The same source also builds headlessly:
 
 ```bash

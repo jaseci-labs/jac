@@ -12,6 +12,8 @@ impl JcirGenPass.postinit -> None {
     _sized: set[str] = set();
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
+    self._runtime_aliases = {};
+    self._reserved_names = {nd.sym_name for nd in self.ir_in.get_all_sub_nodes(Name)};
     self.builtin_imports = _builtins;
     self.sized_imports = _sized;
     self.typing_imports = _typing;
@@ -276,8 +278,17 @@ impl JcirGenPass._with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode {
 }
 
 impl JcirGenPass.jaclib_obj(obj_name: str) -> CgNode {
-    self.jaclib_imports.add(obj_name);
-    return self.name_load(obj_name);
+    cached = self._runtime_aliases.get(obj_name);
+    if cached is not None {
+        return self.name_load(cached);
+    }
+    alias = "_jac_runtime_" + obj_name;
+    while alias in self._reserved_names {
+        alias += "_";
+    }
+    self._reserved_names.add(alias);
+    self._runtime_aliases[obj_name] = alias;
+    return self.name_load(alias);
 }
 
 impl JcirGenPass.builtin_name(name: str) -> CgNode {

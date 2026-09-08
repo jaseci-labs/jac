@@ -1,4 +1,4 @@
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 
 glob _config_probe: dict = {"active": False};
 

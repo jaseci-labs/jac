@@ -902,7 +902,23 @@ impl NativeStrEmitter.emit_rindex(
 impl NativeStrEmitter.emit_startswith(
     self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    if not args {
+    return self._emit_affix(ctx, target, args, suffix=False);
+}
+
+impl NativeStrEmitter.emit_endswith(
+    self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+) -> (ir.Value | None) {
+    return self._emit_affix(ctx, target, args, suffix=True);
+}
+
+impl NativeStrEmitter._emit_affix(
+    self: NativeStrEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    args: list[ir.Value],
+    suffix: bool
+) -> (ir.Value | None) {
+    if not args or len(args) > 3 {
         return None;
     }
     p = ctx.pass_ref;
@@ -910,32 +926,67 @@ impl NativeStrEmitter.emit_startswith(
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    strncmp_fn = p._get_or_declare_extern("strncmp", i32, [i8p, i8p, i64]);
-    prefix_len = p._call_str_len(b, args[0], name="sw.pfx.len");
-    cmp = b.call(strncmp_fn, [target, args[0], prefix_len], name="sw.cmp");
-    is_zero = b.icmp_signed("==", cmp, ir.Constant(i32, 0), name="sw.eq");
-    return b.zext(is_zero, i64, name="sw.result");
-}
-
-impl NativeStrEmitter.emit_endswith(
-    self: NativeStrEmitter, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
+    zero = ir.Constant(i64, 0);
+    candidates: list[ir.Value] = [];
+    if isinstance(args[0].type, ir.LiteralStructType) {
+        for (index, typ) in enumerate(args[0].type.elements) {
+            if typ != i8p {
+                return None;
+            }
+            candidates.append(b.extract_value(args[0], index, name="affix.item"));
+        }
+    } elif args[0].type == i8p {
+        candidates.append(args[0]);
+    } else {
         return None;
     }
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    target_len = p._call_str_len(b, target, name="ew.tgt.len");
-    suffix_len = p._call_str_len(b, args[0], name="ew.sfx.len");
-    too_long = b.icmp_unsigned(">", suffix_len, target_len, name="ew.toolong");
-    offset = b.sub(target_len, suffix_len, name="ew.offset");
-    end_ptr = b.gep(target, [offset], name="ew.end.ptr");
-    cmp = p._call_str_cmp(b, end_ptr, args[0], name="ew.cmp");
-    is_match = b.icmp_signed("==", cmp, ir.Constant(i32, 0), name="ew.match");
-    match_i64 = b.zext(is_match, i64, name="ew.match.i64");
-    return b.select(too_long, ir.Constant(i64, 0), match_i64, name="ew.result");
+    for bound in args[1:] {
+        if not isinstance(bound.type, ir.IntType) {
+            return None;
+        }
+    }
+    length = p._call_str_len(b, target, name="affix.length");
+    start = p._coerce_type(args[1], i64) if len(args) > 1 else zero;
+    end = p._coerce_type(args[2], i64) if len(args) > 2 else length;
+    start = b.select(b.icmp_signed("<", start, zero), b.add(start, length), start);
+    start = b.select(b.icmp_signed("<", start, zero), zero, start);
+    end = b.select(b.icmp_signed("<", end, zero), b.add(end, length), end);
+    end = b.select(b.icmp_signed("<", end, zero), zero, end);
+    end = b.select(b.icmp_signed(">", end, length), length, end);
+    available = b.sub(end, start);
+    bounds_ok = b.and_(
+        b.icmp_signed("<=", start, end), b.icmp_signed("<=", start, length)
+    );
+    fn = b.basic_block.function;
+    match_bb = fn.append_basic_block("affix.match");
+    miss = fn.append_basic_block("affix.miss");
+    done = fn.append_basic_block("affix.done");
+    memcmp = p._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
+    for candidate in candidates {
+        size = p._call_str_len(b, candidate, name="affix.size");
+        compare = fn.append_basic_block("affix.compare");
+        next_candidate = fn.append_basic_block("affix.next");
+        fits = b.and_(bounds_ok, b.icmp_signed("<=", size, available));
+        b.cbranch(fits, compare, next_candidate);
+        b.position_at_end(compare);
+        offset = b.sub(end, size) if suffix else start;
+        data = b.gep(target, [offset], name="affix.data");
+        compared = b.call(memcmp, [data, candidate, size]);
+        b.cbranch(
+            b.icmp_signed("==", compared, ir.Constant(i32, 0)), match_bb, next_candidate
+        );
+        b.position_at_end(next_candidate);
+    }
+    b.branch(miss);
+    b.position_at_end(match_bb);
+    b.branch(done);
+    b.position_at_end(miss);
+    b.branch(done);
+    b.position_at_end(done);
+    result = b.phi(i64, name="affix.result");
+    result.add_incoming(ir.Constant(i64, 1), match_bb);
+    result.add_incoming(zero, miss);
+    return result;
 }
 
 impl NativeStrEmitter.emit_replace(
@@ -2661,7 +2712,7 @@ impl NativeListEmitter.emit_extend(
             }
         }
     }
-    elem = b.call(src_helpers["get"], [src, idx], name="ext.elem");
+    elem: ir.Value = b.call(src_helpers["get"], [src, idx], name="ext.elem");
     if elem.type != helpers["elem_type"] {
         elem = p._coerce_type(elem, helpers["elem_type"]);
     }
@@ -3302,7 +3353,7 @@ impl NativeDictEmitter.emit_get(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     found_i1 = b.call(helpers["contains"], [target, key], name="dget.found");
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dget.yes");
@@ -3316,7 +3367,7 @@ impl NativeDictEmitter.emit_get(
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
-    val = b.call(helpers["get"], [target, key], name="dget.val");
+    val: ir.Value = b.call(helpers["get"], [target, key], name="dget.val");
     if wrap_optional {
         _tagged = b.insert_value(
             ir.Constant(result_type, None),
@@ -3349,6 +3400,7 @@ impl NativeDictEmitter.emit_get(
         _res_cast = b.bitcast(result, ir.IntType(8).as_pointer(), name="dget.ret.cast");
         b.call(p.rc_retain_fn, [_res_cast]);
     }
+    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
@@ -3395,7 +3447,7 @@ impl NativeDictEmitter.emit_keys(
     at_end = b.icmp_unsigned(">=", idx, dict_len, name="dkeys.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    key = b.call(helpers["get_key"], [target, idx], name="dkeys.key");
+    key: ir.Value = b.call(helpers["get_key"], [target, idx], name="dkeys.key");
     key = p._cast_to_list_elem(b, key, lhelpers["elem_type"], "dkeys.key");
     b.call(lhelpers["append"], [new_list, key]);
     next_idx = b.add(idx, ir.Constant(i64, 1), name="dkeys.next");
@@ -3449,7 +3501,7 @@ impl NativeDictEmitter.emit_values(
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
     key = b.call(helpers["get_key"], [target, idx], name="dvals.key");
-    val = b.call(helpers["get"], [target, key], name="dvals.val");
+    val: ir.Value = b.call(helpers["get"], [target, key], name="dvals.val");
     val = p._cast_to_list_elem(b, val, lhelpers["elem_type"], "dvals.val");
     b.call(lhelpers["append"], [new_list, val]);
     next_idx = b.add(idx, ir.Constant(i64, 1), name="dvals.next");
@@ -3476,17 +3528,6 @@ impl NativeDictEmitter.emit_items(
 
     tuple_type = ir.LiteralStructType([key_type, val_type]);
 
-    kt_str = "i8p"
-        if isinstance(key_type, ir.PointerType)
-        else ("f64" if isinstance(key_type, ir.DoubleType) else "i64");
-    vt_str = "i8p"
-        if isinstance(val_type, ir.PointerType)
-        else ("f64" if isinstance(val_type, ir.DoubleType) else "i64");
-    tkey = f"{kt_str}.{vt_str}";
-    if tkey not in p.tuple_types {
-        p.tuple_types[tkey] = tuple_type;
-    }
-
     p._emit_list_helpers("ptr", i8p);
     lhelpers = p.list_helpers.get("ptr");
     if lhelpers is None {
@@ -3498,10 +3539,6 @@ impl NativeDictEmitter.emit_items(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.len.ptr"
     );
     dict_len = b.load(len_ptr, name="ditems.len");
-
-    null_ptr = ir.Constant(tuple_type.as_pointer(), None);
-    size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="ditems.sizeof.gep");
-    tup_size = b.ptrtoint(size_gep, i64, name="ditems.sizeof");
 
     func = b.basic_block.function;
     entry_bb = b.basic_block;
@@ -3519,21 +3556,15 @@ impl NativeDictEmitter.emit_items(
     key = b.call(helpers["get_key"], [target, idx], name="ditems.key");
     val = b.call(helpers["get"], [target, key], name="ditems.val");
 
-    raw = b.call(p.rc_alloc_fn, [tup_size], name="ditems.alloc");
-    tup_ptr = b.bitcast(raw, tuple_type.as_pointer(), name="ditems.tup");
-    k_ptr = b.gep(
-        tup_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ditems.k.ptr"
-    );
-    v_ptr = b.gep(
-        tup_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="ditems.v.ptr"
-    );
-    b.store(key, k_ptr);
-    b.store(val, v_ptr);
-
-    tup_i8p = b.bitcast(tup_ptr, i8p, name="ditems.i8p");
+    pair: ir.Value = ir.Constant(tuple_type, ir.Undefined);
+    pair = b.insert_value(pair, key, 0, name="ditems.key.field");
+    pair = b.insert_value(pair, val, 1, name="ditems.val.field");
+    boxed = p._box_value_tuple(pair);
+    tup_i8p = b.bitcast(boxed, i8p, name="ditems.i8p");
     b.call(lhelpers["append"], [new_list, tup_i8p]);
+    p._emit_rc_release_simple(boxed, op="dict_items", loc="");
     next_idx = b.add(idx, ir.Constant(i64, 1), name="ditems.next");
-    idx.add_incoming(next_idx, body_bb);
+    idx.add_incoming(next_idx, b.basic_block);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
     return new_list;
@@ -3551,7 +3582,7 @@ impl NativeDictEmitter.emit_pop(
         return None;
     }
     b = get_builder(p);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
     has_default = len(args) >= 2;
 
@@ -3588,6 +3619,7 @@ impl NativeDictEmitter.emit_pop(
     result = b.phi(val_type, name="dpop.result");
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
+    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
@@ -3603,11 +3635,12 @@ impl NativeDictEmitter.emit_remove(
         return None;
     }
     b = get_builder(p);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     found_i1 = b.call(helpers["contains"], [target, key], name="drem.has");
     _not_found = b.not_(found_i1, name="drem.miss");
     p._emit_runtime_raise(_not_found, "KeyError", "key not found");
     b.call(helpers["remove"], [target, key]);
+    p._release_owned_args([key], op="dict_method_key");
     return None;
 }
 
@@ -3636,7 +3669,7 @@ impl NativeDictEmitter.emit_popitem(
     last_idx = b.sub(dict_len, ir.Constant(i64, 1), name="dpi.last");
     last_key = b.call(helpers["get_key"], [target, last_idx], name="dpi.key");
 
-    last_key_out = last_key;
+    last_key_out: ir.Value = last_key;
     if isinstance(key_type, ir.PointerType) {
         _i8p_pi = ir.IntType(8).as_pointer();
         if p._nogc_headerless() {
@@ -3699,10 +3732,10 @@ impl NativeDictEmitter.emit_setdefault(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    key = args[0];
+    key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
     if len(args) >= 2 {
-        default_val = args[1];
+        default_val = p._coerce_type(args[1], val_type);
     } elif p._elem_kind(val_type) != "raw" {
         default_val = ir.Constant(val_type, None);
     } else {
@@ -3728,6 +3761,7 @@ impl NativeDictEmitter.emit_setdefault(
     result = b.phi(val_type, name="sdef.result");
     result.add_incoming(existing, found_bb);
     result.add_incoming(default_val, notfound_bb);
+    p._release_owned_args([key], op="dict_method_key");
     return result;
 }
 
@@ -3949,7 +3983,7 @@ impl NativeSetEmitter.emit_pop(
     b = get_builder(p);
     last_idx = b.sub(set_len, ir.Constant(i64, 1), name="spop.last");
     last_val = b.call(helpers["get"], [target, last_idx], name="spop.val");
-    out_val = last_val;
+    out_val: ir.Value = last_val;
     if isinstance(elem_type, ir.PointerType) {
         if p._nogc_headerless() {
             if isinstance(elem_type.pointee, ir.IntType)
@@ -5353,6 +5387,64 @@ impl NativeBuiltinEmitter.emit_list(
         val = b.extract_value(val, 1, name="l.opt.payload");
     }
 
+    source = ctx.arg_nodes[0] if ctx.arg_nodes else None;
+    if p._tuple_iter_shape(source, val) {
+        sequence = p._tuple_iter_seq(
+            source,
+            val,
+            consume_source=False,
+            element_type=p._list_elem_llvm_of(ctx.call_node),
+            own_elements=True
+        );
+        if sequence is None {
+            return None;
+        }
+        result = sequence[0];
+        if ctx.call_node is not None and not p._container_is_view(ctx.call_node) {
+            p._nogc_stamp_elem_drops(result, p._nogc_type_arg_mangles(ctx.call_node));
+        }
+        return result;
+    }
+
+    if p._jac_iter_type is not None
+        and val.type == p._jac_iter_type.as_pointer()
+        and ctx.arg_nodes {
+        elem_type = p._iter_elem_llvm_of(ctx.arg_nodes[0]);
+        if elem_type is None {
+            return None;
+        }
+        list_type = p._lower_list_for_elem(elem_type);
+        spec = p._spec_from_container_ptr(list_type);
+        if spec is None {
+            return None;
+        }
+        helpers = p.list_helpers.get(spec);
+        if helpers is None {
+            return None;
+        }
+        slot_type = ir.IntType(8).as_pointer()
+            if elem_type == p._str_desc_ty
+            else elem_type;
+        slot = p._entry_alloca(slot_type, "list.iter.element");
+        result = b.call(helpers["new"], [], name="list.iter.result");
+        func = b.basic_block.function;
+        condition = func.append_basic_block("list.iter.next");
+        body = func.append_basic_block("list.iter.append");
+        done = func.append_basic_block("list.iter.done");
+        b.branch(condition);
+        b.position_at_end(condition);
+        available = p._emit_iter_advance(b, val, slot);
+        b.cbranch(available, body, done);
+        b.position_at_end(body);
+        stored_type = helpers["elem_type"];
+        assert isinstance(stored_type, ir.Type);
+        element = p._coerce_type(b.load(slot), stored_type);
+        b.call(helpers["append"], [result, element]);
+        b.branch(condition);
+        b.position_at_end(done);
+        return result;
+    }
+
     for (sk, shelpers) in p.set_helpers.items() {
         stype = p.set_types.get(sk);
         if stype is not None and val.type == stype.as_pointer() {
@@ -5457,8 +5549,21 @@ impl NativeBuiltinEmitter.emit_set(
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
-            p._emit_set_helpers(lk, lhelpers["elem_type"]);
-            shelpers = p.set_helpers.get(lk);
+            elem_type = p._list_elem_llvm_of(ctx.arg_nodes[0])
+                if ctx.arg_nodes
+                else None;
+            if elem_type is None {
+                elem_type = lhelpers["elem_type"];
+            }
+            if p._str_desc_ty is not None and elem_type == p._str_desc_ty {
+                elem_type = ir.IntType(8).as_pointer();
+            }
+            if p.jacval_type is not None and elem_type == p.jacval_type {
+                return None;
+            }
+            (key_spec, key_size) = p._hash_key_spec(elem_type);
+            p._emit_set_helpers(key_spec, elem_type, key_size);
+            shelpers = p.set_helpers.get(key_spec);
             if shelpers is None {
                 return None;
             }
@@ -5476,7 +5581,8 @@ impl NativeBuiltinEmitter.emit_set(
             at_end = b.icmp_unsigned(">=", idx, list_len, name="l2s.end");
             b.cbranch(at_end, done_bb, body_bb);
             b.position_at_start(body_bb);
-            elem = b.call(lhelpers["get"], [val, idx], name="l2s.elem");
+            elem: ir.Value = b.call(lhelpers["get"], [val, idx], name="l2s.elem");
+            elem = p._cast_to_list_elem(b, elem, elem_type, "l2s.key");
             b.call(shelpers["add"], [new_set, elem]);
             nidx = b.add(idx, ir.Constant(i64, 1), name="l2s.nidx");
             idx.add_incoming(nidx, body_bb);

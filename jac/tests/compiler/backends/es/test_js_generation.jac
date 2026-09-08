@@ -857,10 +857,11 @@ test "separated files" {
     # `input` is destructured from useState (external React typings) so its
     # static type is unknown — `.strip()` routes through the polymorphic
     # runtime dispatcher instead of leaking the Python method name.
-    # The walker lives in the `separated` service app, so the spawn also
-    # carries the provider's app and route after the fields object.
+    # This module is consumed only by `separated`, so shared ownership
+    # keeps the spawn within that app while retaining its boundary contract.
     assert (
-        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")},"
+        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.call(input, \"strip\")}, "
+            + "{\"contract\": \"[\\\"separated\\\",\\\"separated.jac\\\",\\\"walker\\\",\\\"create_todo\\\"]\"});"
         in js_code
     );
 }
@@ -909,7 +910,7 @@ test "bridged call kwargs preserve names in jac call function" {
     js_code = compile_fixture_to_js(fixture, FIXTURES);
 
     # Pure-kwargs single arg: ``greet(name=input_text)``
-    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val},' in js_code , (
         "Single-kwarg call must propagate the name into the args object;\n"
         + "got:\n"
         + js_code
@@ -918,8 +919,8 @@ test "bridged call kwargs preserve names in jac call function" {
     # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)`` — both keys must be
     # present in the args object regardless of source order.
     assert (
-        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
-        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1},' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2},' in js_code
     ) , (
         "Kwargs-only call must include all kwarg keys in the args object;\n"
         + "got:\n"
@@ -928,7 +929,7 @@ test "bridged call kwargs preserve names in jac call function" {
 
     # Mixed positional + kwarg: ``add_pair(1, b=2)`` — first param mapped
     # by position to its server-side name, second carried by kwarg key.
-    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2},' in js_code , (
         "Mixed positional/kwarg call must merge both into the args object;\n"
         + "got:\n"
         + js_code
@@ -936,7 +937,7 @@ test "bridged call kwargs preserve names in jac call function" {
 
     # ``**dict`` spread against a known signature can lower to declared
     # parameter-key reads, avoiding the old single-object positional shape.
-    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]})' in js_code , (
+    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]},' in js_code , (
         "**dict spread against known signature must compile to keyed parameter reads;\n"
         + "got:\n"
         + js_code
@@ -944,10 +945,10 @@ test "bridged call kwargs preserve names in jac call function" {
 
     # Sanity: the obvious bug-shape — empty args object — must not appear
     # for any of these named calls.
-    assert '__jacCallFunction("greet", {})' not in js_code , (
+    assert '__jacCallFunction("greet", {},' not in js_code , (
         "Bug regression: kwargs were dropped, emitting empty args object."
     );
-    assert '__jacCallFunction("add_pair", {})' not in js_code , (
+    assert '__jacCallFunction("add_pair", {},' not in js_code , (
         "Bug regression: kwargs were dropped, emitting empty args object."
     );
 
@@ -958,7 +959,7 @@ test "bridged call kwargs preserve names in production jac2js path" {
     fixture = "svc_kwargs/sv_import_kwargs_client.jac";
     js_code = compile_fixture_to_js_production(fixture, FIXTURES);
 
-    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": __jacS_input_text.val},' in js_code , (
         "Production jac2js path must lower bridged-call kwargs directly into the RPC args object;\n"
         + "got:\n"
         + js_code
@@ -968,7 +969,7 @@ test "bridged call kwargs preserve names in production jac2js path" {
         + "got:\n"
         + js_code
     );
-    assert '__jacCallFunction("greet", {})' not in js_code , (
+    assert '__jacCallFunction("greet", {},' not in js_code , (
         "Production jac2js path must not emit an empty RPC args object for kwargs calls."
     );
 }

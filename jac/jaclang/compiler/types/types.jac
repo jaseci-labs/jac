@@ -128,7 +128,7 @@ node TypeVarType(TypeBase) {
 
     static has CATEGORY: TypeCategory = TypeCategory.TypeVar;
     has bound: (TypeBase | None) { getter; setter(bound: (TypeBase | None)); }
-    has constraints: (list[TypeBase] | None) {
+    has constraints: list[TypeBase] {
         getter;
         setter(constraints: (list[TypeBase] | None));
     }
@@ -166,17 +166,17 @@ node ClassDetailsShared {
 
     has symbol_table: SymbolTable { getter; setter(symbol_table: SymbolTable); }
     has mro: list[ClassType] { getter; setter(mro: list[ClassType]); }
-    has type_params: (list[TypeVarType] | None) {
+    has type_params: list[TypeVarType] {
         getter;
         setter(type_params: (list[TypeVarType] | None));
     }
 
-    has base_classes: (list[TypeBase] | None) {
+    has base_classes: list[TypeBase] {
         getter;
         setter(base_classes: (list[TypeBase] | None));
     }
 
-    has typeddict_fields: (dict[str, TypeBase] | None) {
+    has typeddict_fields: dict[str, TypeBase] {
         getter;
         setter(typeddict_fields: (dict[str, TypeBase] | None));
     }
@@ -186,7 +186,7 @@ node ClassDetailsShared {
         setter(enum_value_type: (TypeBase | None));
     }
 
-    has enum_members: (dict[str, EnumMemberInfo] | None) {
+    has enum_members: dict[str, EnumMemberInfo] {
         getter;
         setter(enum_members: (dict[str, EnumMemberInfo] | None));
     }
@@ -225,7 +225,7 @@ node ClassDetailsPrivate {
         _targs_cache: (list[TypeBase] | None) = None,
         _acc_cache: (dict[str, any] | None) = None;
 
-    has type_args: (list[TypeBase] | None) {
+    has type_args: list[TypeBase] {
         getter;
         setter(type_args: (list[TypeBase] | None));
     }
@@ -351,7 +351,7 @@ node FunctionType(TypeBase) {
         setter(parameters: (list[Parameter] | None));
     }
 
-    has type_params: (list[TypeVarType] | None) {
+    has type_params: list[TypeVarType] {
         getter;
         setter(type_params: (list[TypeVarType] | None));
     }
@@ -414,7 +414,7 @@ def create_callable_type(
 
 node OverloadedType(TypeBase) {
     static has CATEGORY: TypeCategory = TypeCategory.Overload;
-    has overloads: (list[FunctionType] | None) {
+    has overloads: list[FunctionType] {
         getter;
         setter(overloads: (list[FunctionType] | None));
     }
@@ -430,10 +430,7 @@ node OverloadedType(TypeBase) {
 
 node UnionType(TypeBase) {
     static has CATEGORY: TypeCategory = TypeCategory.Union;
-    has types: (list[TypeBase] | None) {
-        getter;
-        setter(types: (list[TypeBase] | None));
-    }
+    has types: list[TypeBase] { getter; setter(types: (list[TypeBase] | None)); }
 
     def init(
         *, types: (list[TypeBase] | None) = None, flags: TypeFlags = TypeFlags.Null

@@ -1,6 +1,6 @@
 import inspect;
 import typing;
-import from dataclasses { is_dataclass }
+import from jaclang.runtime.object_interop { is_record }
 import from enum { EnumMeta }
 import from types { UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }
@@ -68,10 +68,11 @@ def _construct_object(value: any, target: any) -> any {
     } except Exception {
         hints = {};
     }
-    sig = inspect.signature(init_fn);
+    sig = inspect.signature(target);
     kwargs: dict[str, any] = {};
     for (pname, param) in sig.parameters.items() {
-        if pname in ('self', 'args', 'kwargs') {
+        if param.kind
+            in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) {
             continue;
         }
         if pname in value {
@@ -162,7 +163,7 @@ def coerce_value(value: any, target: any = None) -> any {
         and not issubclass(
             target, (str, int, float, bool, bytes, list, dict, tuple, set)
         )
-        and (is_dataclass(target) or hasattr(target, '__init__')) {
+        and (is_record(target) or hasattr(target, '__init__')) {
         return _construct_object(value, target);
     }
     return value;

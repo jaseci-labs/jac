@@ -1,5 +1,5 @@
 import jaclang.runtime.osp_graph as _graph;
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.runtime.archetype {
     Anchor,
     EdgeAnchor,

@@ -161,10 +161,11 @@ class NativeCompiler {
     }
 
     def _field_annotations(self: NativeCompiler, cls: any) -> dict {
-        import dataclasses;
+        import from jaclang.runtime.object_interop { fields }
+        import from jaclang.runtime.object_model { MISSING }
         out = {};
         try {
-            for f in dataclasses.fields(cls) {
+            for f in fields(cls) {
                 out[f.name] = str(f.`type);
             }
         } except TypeError {}
@@ -277,14 +278,15 @@ class NativeCompiler {
     }
 
     def _register_defaults(self: NativeCompiler, cls: any, tag: int) {
-        import dataclasses;
+        import from jaclang.runtime.object_interop { fields }
+        import from jaclang.runtime.object_model { MISSING }
         try {
-            dc_fields = dataclasses.fields(cls);
+            dc_fields = fields(cls);
         } except TypeError {
             return;
         }
         for f in dc_fields {
-            if f.`default is not dataclasses.MISSING {
+            if f.`default is not MISSING {
                 continue;
             }
             descr = getattr(cls, f.name, None);
@@ -292,7 +294,7 @@ class NativeCompiler {
                 continue;
             }
             kind = -1;
-            if f.default_factory is not dataclasses.MISSING {
+            if f.default_factory is not None {
                 if f.default_factory is `list {
                     kind = 1;
                 } elif f.default_factory is `dict {

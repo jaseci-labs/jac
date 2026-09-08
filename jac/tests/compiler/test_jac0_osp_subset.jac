@@ -63,3 +63,14 @@ test "jac0 refuses object-spatial forms outside the seed subset" {
         assert failed , src;
     }
 }
+
+test "jac0 type filters preserve order and avoid capturing a type name" {
+    src = "def select(items: list, _jac_seed_filter_item: type) -> list {\n"
+        + "    return items[?:_jac_seed_filter_item];\n}\n"
+        + "def chained(items: list) -> list { return items[?:int][?:int]; }\n";
+    generated = compile_jac(src, "seed_type_filter.jac");
+    namespace: dict[str, any] = {};
+    exec(compile(generated, "seed_type_filter.jac", "exec"), namespace);
+    assert namespace["select"]([1, "x", 2, "y"], str) == ["x", "y"];
+    assert namespace["chained"]([1, "x", 2]) == [1, 2];
+}

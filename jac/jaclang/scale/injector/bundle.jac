@@ -858,6 +858,112 @@ def _vendor_stage(stage: Path, seal_binary: bytes, platform_tag: str = "") {
 }
 
 
+def _resolved_python_specs(stage: Path) -> list[str] {
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.project.providers { get_python_provider, resolve_plan }
+    config = JacConfig.load(stage / "jac.toml");
+    deps = resolve_plan(config).for_ecosystem("python");
+    return get_python_provider().specs_for(deps);
+}
+
+
+def _strip_external_record_lines(site: Path) {
+    for record in sorted(site.`glob("*.dist-info/RECORD")) {
+        lines = record.read_text(encoding="utf-8").splitlines(keepends=True);
+        kept = [
+            line
+            for line in lines
+            if not line.startswith("../")
+        ];
+        if len(kept) != len(lines) {
+            record.write_text("".join(kept), encoding="utf-8");
+        }
+    }
+}
+
+
+def staged_venv_files(stage: Path) -> list[Path] {
+    import from jaclang.project.providers { VENV_DEPS_MARKER }
+    import from jaclang.project.pyvenv { get_venv_site_packages }
+    venv = stage / ".jac" / "venv";
+    marker = venv / VENV_DEPS_MARKER;
+    if not marker.is_file() {
+        return [];
+    }
+    site = get_venv_site_packages(venv);
+    if not site.is_dir() {
+        return [];
+    }
+    files = [marker];
+    for path in sorted(site.rglob("*")) {
+        if (
+            path.is_file() and path.suffix != ".pyc" and "__pycache__" not in path.parts
+        ) {
+            files.append(path);
+        }
+    }
+    return files;
+}
+
+
+def _prune_seed_pip(site: Path, specs: list[str]) {
+    import re;
+    for spec in specs {
+        if re.split(r"[<>=!~\[ ;@]", spec.strip())[0].lower() == "pip" {
+            return;
+        }
+    }
+    for item in sorted(site.iterdir()) {
+        if item.name == "pip"
+            or (item.name.startswith("pip-") and item.name.endswith(".dist-info")) {
+            shutil.rmtree(str(item), ignore_errors=True);
+        }
+    }
+}
+
+
+def _venv_stage(stage: Path, seal_binary: bytes, timeout_s: int) {
+    jac_path = stage.parent / ".seal-jac";
+    jac_path.write_bytes(seal_binary);
+    jac_path.chmod(0o755);
+    env = seal_step_env();
+
+    env["PIP_NO_INDEX"] = "1";
+    env["PIP_FIND_LINKS"] = str(stage / "_vendor" / "wheels");
+    env["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
+    try {
+        result = subprocess.run(
+            [str(jac_path), "install"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            env=env,
+            cwd=str(stage)
+        );
+    } finally {
+        jac_path.unlink(missing_ok=True);
+    }
+    if result.returncode != 0 {
+        raise RuntimeError(
+            f"seal-time venv build failed (host cannot install the "
+            f"pod-platform wheels?): "
+            f"{(result.stderr or result.stdout).strip()[-300:]}"
+        );
+    }
+    venv = stage / ".jac" / "venv";
+    import from jaclang.project.pyvenv { get_venv_site_packages }
+    site = get_venv_site_packages(venv);
+    if not site.is_dir() {
+        raise RuntimeError(f"seal-time venv build left no site-packages under {venv}");
+    }
+    specs = _resolved_python_specs(stage);
+    _prune_seed_pip(site, specs);
+    _strip_external_record_lines(site);
+    import from jaclang.project.providers { write_venv_deps_marker }
+    write_venv_deps_marker(venv, specs);
+}
+
+
 def pack_jab(
     project_dir: str, seal_binary: bytes, pod_arch: str = "", fleet: any = None
 ) -> bytes {
@@ -909,6 +1015,20 @@ def pack_jab(
                 );
             }
         }
+        if (
+            not os.environ.get("JAC_SEAL_SKIP_VENV")
+            and (staged / "_vendor" / "wheels").is_dir()
+        ) {
+            try {
+                _venv_stage(staged, seal_binary, seal_timeout_setting(project_dir));
+            } except Exception as exc {
+                shutil.rmtree(str(staged / ".jac"), ignore_errors=True);
+                logger.warning(
+                    f"Seal-time venv staging failed; pods will build the venv "
+                    f"at boot instead. {exc}"
+                );
+            }
+        }
         buf = io.BytesIO();
         (tar, gz) = open_det_tar(buf);
         try {
@@ -941,6 +1061,18 @@ def pack_jab(
                     logger.info(
                         f"Fat bundle: vendored {wheel_count} wheel(s) into the "
                         f".jab; pods install python deps offline."
+                    );
+                }
+                venv_files = staged_venv_files(staged);
+                for path in venv_files {
+                    rel = path.relative_to(staged);
+                    tar.add(str(path), arcname=str(rel), filter=det_tar_member);
+                }
+                if venv_files {
+                    logger.info(
+                        f"Sealed a prebuilt venv ({len(venv_files)} files) "
+                        f"into the .jab; pods skip the boot-time dependency "
+                        f"install."
                     );
                 }
                 if sanitized is not None {

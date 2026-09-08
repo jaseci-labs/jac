@@ -37,7 +37,7 @@ def as_class(flags: int) -> int {
 
 
 def level_of(v: int) -> int {
-    return int(Level(v));
+    return Level(v).value;
 }
 
 

@@ -1,5 +1,5 @@
 import from contextvars { ContextVar }
-import from dataclasses { MISSING }
+import from jaclang.runtime.object_model { MISSING }
 import from logging { getLogger }
 import from queue { Queue }
 import from typing { cast }

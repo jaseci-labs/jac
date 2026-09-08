@@ -1,10 +1,11 @@
 """Measure uncached AOT builds with a warm compiler.
 
-    JAC_COMPILER_LIB=/path/to/kernel.so jac scripts/native_compile_bench.jac \
+    JAC_COMPILER_LIB=/path/to/kernel.so jac run scripts/native_compile_bench.jac \
         jac/examples/chess/chess.jac --rounds 5
 
 Run each kernel in a fresh process. Compiler startup and warmup are excluded;
 each measured build reparses the application and emits and links an executable.
+Runtime-unit IR is rebuilt as part of each measured build.
 """
 
 import argparse;
@@ -29,7 +30,7 @@ def main -> None {
         parser.error("rounds and warmups must be positive");
     }
 
-    import from jaclang.cli.commands.nacompile { nacompile }
+    import from jaclang.cli.commands.native_build { native_build }
     import from jaclang.compiler.native_compiler { ensure_loaded }
 
     kernel = ensure_loaded();
@@ -43,8 +44,8 @@ def main -> None {
         for round_number in range(-args.warmups, args.rounds) {
             gc.collect();
             start = time.perf_counter();
-            result = nacompile(
-                str(args.source.resolve()), output=str(output), scrub=True
+            result = native_build(
+                str(args.source.resolve()), output=str(output), no_ir_cache=True
             );
             elapsed = time.perf_counter() - start;
             if result {

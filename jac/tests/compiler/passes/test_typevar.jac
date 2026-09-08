@@ -6,6 +6,7 @@ import jaclang;
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
@@ -13,6 +14,19 @@ glob CHECKER_FIXTURES = os.path.join(
      TYPEVAR_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker", "typevar"
      );
+
+test "false variance flags remain invariant and adjacent name literals concatenate" {
+    program = JacProgram();
+    program.compile(
+        file_path="typevar_literal_contract.jac",
+        use_str="with entry { T = TypeVar(\"\" \"T\", covariant=False, contravariant=False); }\n"
+            + "class Box(Generic[T]) { def identity(self: Box, value: T) -> T { return value; } }\n",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
 
 """Test TypeVar validation errors (Pyright: createTypeVarType, assignTypeToExpression)."""
 test "typevar1_validation_errors" {

@@ -1,6 +1,5 @@
 import os;
 import math as _pymath;
-import operator as pyop;
 import platform as _platform;
 import sys;
 import from jaclang.compiler.frontend.unitree {
@@ -213,7 +212,7 @@ obj CtEvaluator {
         last_error: (str | None) = None,
         demand: bool = False,
         _failed: set[int] = set(),
-        _active: set[any] = set(),
+        _active: set[tuple[str, int]] = set(),
         _enum_cache: dict[int, list] = {},
         _ret: any = None,
         _ct_root: (Module | None) = None,
@@ -330,7 +329,7 @@ obj CtEvaluator {
 
     def try_eval(nd: Expr, demand: bool = False) -> (CtValue | None) {
         self.last_error = None;
-        key = id(nd);
+        key = ("node", id(nd));
         if key in self._active {
             return None;
         }
@@ -741,44 +740,8 @@ obj CtEvaluator {
         opn = self._tok_name(nd.op);
         l = self.eval(nd.left);
         r = self.eval(nd.right);
-        if opn == Tok.PLUS.value {
-            return l + r;
-        }
-        if opn == Tok.MINUS.value {
-            return l - r;
-        }
-        if opn == Tok.STAR_MUL.value {
-            return l * r;
-        }
-        if opn == Tok.DIV.value {
-            return l / r;
-        }
-        if opn == Tok.FLOOR_DIV.value {
-            return l // r;
-        }
-        if opn == Tok.MOD.value {
-            return l % r;
-        }
-        if opn == Tok.STAR_POW.value {
-            return l ** r;
-        }
-        if opn == Tok.BW_OR.value {
-            return l | r;
-        }
-        if opn == Tok.BW_AND.value {
-            return l & r;
-        }
-        if opn == Tok.BW_XOR.value {
-            return l ^ r;
-        }
-        if opn == Tok.LSHIFT.value {
-            return l << r;
-        }
-        if opn == Tok.RSHIFT.value {
-            return l >> r;
-        }
-        op_text = getattr(nd.op, "value", opn);
-        raise CtError(f"operator '{op_text}' is not supported in comptime code");
+        op_text = nd.op.value if isinstance(nd.op, Token) else opn;
+        return self._binop_by_name(opn, l, r, display_name=op_text);
     }
 
     def _cmp(opn: str, l: any, r: any) -> bool {
@@ -789,22 +752,22 @@ obj CtEvaluator {
             return l != r;
         }
         if opn == Tok.LT.value {
-            return pyop.lt(l, r);
+            return l < r;
         }
         if opn == Tok.LTE.value {
-            return pyop.le(l, r);
+            return l <= r;
         }
         if opn == Tok.GT.value {
-            return pyop.gt(l, r);
+            return l > r;
         }
         if opn == Tok.GTE.value {
-            return pyop.ge(l, r);
+            return l >= r;
         }
         if opn == Tok.KW_IN.value {
-            return pyop.contains(r, l);
+            return l in r;
         }
         if opn == Tok.KW_NIN.value {
-            return not pyop.contains(r, l);
+            return l not in r;
         }
         if opn == Tok.KW_IS.value {
             if isinstance(l, (CtType, CtEnumMember, CtFunc)) {
@@ -1134,7 +1097,7 @@ obj CtEvaluator {
             self._stamp_home(cv.v, asn);
             return cv.v;
         }
-        key = id(asn);
+        key = ("node", id(asn));
         if key in self._active {
             raise CtError("comptime binding depends on itself");
         }
@@ -2319,7 +2282,9 @@ obj CtEvaluator {
         return 0;
     }
 
-    def _binop_by_name(opn: str, l: any, r: any) -> any {
+    def _binop_by_name(
+        opn: str, l: any, r: any, display_name: str | None = None
+    ) -> any {
         if opn == Tok.PLUS.value {
             return l + r;
         }
@@ -2353,7 +2318,14 @@ obj CtEvaluator {
         if opn == Tok.LSHIFT.value {
             return l << r;
         }
-        return l >> r;
+        if opn == Tok.RSHIFT.value {
+            return l >> r;
+        }
+        raise CtError(
+            f"operator '{display_name
+                if display_name is not None
+                else opn}' is not supported in comptime code"
+        );
     }
 
     def _exc_matches(handler_type: any, exc: Exception) -> bool {

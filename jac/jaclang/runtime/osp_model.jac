@@ -1,4 +1,4 @@
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext, Tokens as Tok }
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }

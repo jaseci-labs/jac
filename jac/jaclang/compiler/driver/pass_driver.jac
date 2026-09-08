@@ -1,9 +1,9 @@
 import atexit;
 import os;
 import sys;
-import from collections.abc { Callable, Iterator }
+import from collections.abc { Callable, Iterator, Sequence }
 import from contextlib { contextmanager }
-import from jaclang.compiler.passes.transform { DiagnosticPolicy }
+import from jaclang.compiler.passes.transform { Alert, DiagnosticPolicy }
 import from jaclang.compiler.driver.program { JacProgram }
 
 def diagnostic_policy_for(
@@ -92,8 +92,8 @@ def _alert_in_internal_stub(loc_path: str) -> bool {
 }
 
 def deliver_alerts(
-    errors: list,
-    warnings: list,
+    errors: Sequence[Alert],
+    warnings: Sequence[Alert],
     prog: JacProgram,
     policy: (DiagnosticPolicy | None) = None
 ) {

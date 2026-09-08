@@ -27,7 +27,7 @@ impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
     for (fname, ftype) in field_types.items() {
         if (
-            isinstance(ftype, ir.PointerType)
+            self._elem_kind(ftype) != "raw"
             or self._opt_ptr_payload_of(ftype) is not None
         )
             and fname not in foreign_fields
@@ -66,7 +66,7 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
         if idx < 0 {
             continue;
         }
-        if isinstance(ftype, ir.PointerType) {
+        if self._elem_kind(ftype) != "raw" {
             ptr_fields.append((fname, idx, False));
         } elif self._opt_ptr_payload_of(ftype) is not None {
             ptr_fields.append((fname, idx, True));
@@ -114,8 +114,7 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
             );
         }
         _fval = b.load(_fptr, name=f"fval.{fname}");
-        _fi8 = b.bitcast(_fval, i8_ptr, name=f"fi8.{fname}");
-        b.call(_vis, [_fi8]);
+        b = self._emit_elem_trace(b, _fval, _vis);
     }
     b.branch(done_bb);
 

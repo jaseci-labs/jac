@@ -260,7 +260,7 @@ impl JacProgram._get_compiler(self: JacProgram) -> JacCompiler {
     return self._compiler;
 }
 
-impl JacProgram.stub_catalog(self: JacProgram) -> any {
+impl JacProgram.stub_catalog(self: JacProgram) -> StubCatalog | None {
     return self._get_compiler().stub_catalog();
 }
 

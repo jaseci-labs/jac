@@ -4,6 +4,7 @@ import from jaclang.compiler.frontend.unitree {
     Archetype,
     Assignment,
     AstSymbolNode,
+    AstTypedVarNode,
     AtomTrailer,
     BinaryExpr,
     BuiltinType,
@@ -17,10 +18,12 @@ import from jaclang.compiler.frontend.unitree {
     ModuleItem,
     Name,
     TupleVal,
+    TypeParam,
     UnaryExpr,
     UniNode
 }
 import from jaclang.compiler.passes.transform { Transform }
+import type from jaclang.compiler.types.types { TypeBase }
 import from jaclang.compiler.frontend.const_fold { fold_const }
 import from jaclang.compiler.frontend.constant { OwnershipKind, Tokens as Tok }
 import from jaclang.compiler.frontend.diagnostics { E5030, W5031, W5032 }
@@ -46,7 +49,9 @@ obj FieldInfo {
         default_expr: (UniNode | None) = None,
         owner: str = "",
         is_func_ptr: bool = False,
-        decl_node: (UniNode | None) = None;
+        decl_node: (HasVar | TypeParam | None) = None;
+
+    has semantic_type: TypeBase | None { getter; }
 }
 
 obj MethodSlot {

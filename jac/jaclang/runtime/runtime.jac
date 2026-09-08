@@ -9,8 +9,7 @@ import from collections { OrderedDict, deque }
 import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import dataclasses;
-import from dataclasses { dataclass, field }
+import from jaclang.runtime.object_model { field, make_object }
 import from inspect { getfile }
 import from logging { getLogger }
 import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }
@@ -371,10 +370,6 @@ class JacWalker {
 
 class JacArchetype {
     static def make_archetype(cls: type[Archetype]) -> type[Archetype];
-    static def field(
-        factory: (Callable[([], T)] | None) = None, `init: bool = True
-    ) -> T;
-
     static def on_entry(func: Callable) -> Callable;
     static def on_exit(func: Callable) -> Callable;
     static def set_trigger(

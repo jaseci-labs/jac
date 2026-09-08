@@ -133,9 +133,9 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
             return UnknownType();
         }
         if caller_type.bound {
-            bound_type = caller_type.bound;
-            if isinstance(bound_type, ClassType) {
-                call_member = self._lookup_class_member(bound_type, "__call__");
+            callable_bound = caller_type.bound;
+            if isinstance(callable_bound, ClassType) {
+                call_member = self._lookup_class_member(callable_bound, "__call__");
                 if call_member {
                     call_type = self.get_type_of_symbol(call_member.symbol);
                     if isinstance(call_type, FunctionType) {
@@ -149,7 +149,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                     }
 
                     call_ret = self.get_type_of_magic_method_call(
-                        bound_type, "__call__", expr.params, expr
+                        callable_bound, "__call__", expr.params, expr
                     );
                     if call_ret {
                         return call_ret;
@@ -157,13 +157,13 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                     return UnknownType();
                 }
 
-                self.emit_diag(E1023, expr, type=str(bound_type));
+                self.emit_diag(E1023, expr, type=str(callable_bound));
                 return UnknownType();
             }
         }
 
         if caller_type.is_self {
-            _self_arch = expr.find_parent_of_type(Archetype);
+            _self_arch: Archetype | Enum | None = expr.find_parent_of_type(Archetype);
             if _self_arch is None {
                 _self_impl = expr.find_parent_of_type(ImplDef);
                 if _self_impl is not None
@@ -308,17 +308,6 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
         first_constraint_arg: Expr | None = None;
         constraint_count = 0;
 
-        def _get_string_lit_value(arg: Expr) -> str | None {
-            if isinstance(arg, String) {
-                return arg.lit_value;
-            } elif isinstance(arg, MultiString) and arg.strings {
-                if isinstance(arg.strings[0], String) {
-                    return arg.strings[0].lit_value;
-                }
-            }
-            return None;
-        }
-
         is_covariant = False;
         is_contravariant = False;
         bound_type: TypeBase | None = None;
@@ -326,7 +315,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
 
         if expr.params and len(expr.params) > 0 {
             first_arg = expr.params[0];
-            type_var_name = _get_string_lit_value(first_arg) or "";
+            type_var_name = literal_string_value(first_arg) or "";
             if not type_var_name {
                 self.emit_diag(E1063, first_arg);
             }
@@ -337,10 +326,10 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                     if isinstance(arg.key, Name) {
                         if arg.key.value == "covariant"
                             and isinstance(arg.value, Bool) {
-                            is_covariant = arg.value.value;
+                            is_covariant = arg.value.lit_value;
                         } elif arg.key.value == "contravariant"
                             and isinstance(arg.value, Bool) {
-                            is_contravariant = arg.value.value;
+                            is_contravariant = arg.value.lit_value;
                         } elif arg.key.value == "bound" {
                             bound_type = self.get_type_of_expression(arg.value);
                             if isinstance(bound_type, ClassType)
@@ -384,19 +373,8 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
         is_contravariant = False;
         bound_type: TypeBase | None = None;
 
-        def _get_str_lit(arg: Expr) -> str | None {
-            if isinstance(arg, String) {
-                return arg.lit_value;
-            } elif isinstance(arg, MultiString) and arg.strings {
-                if isinstance(arg.strings[0], String) {
-                    return arg.strings[0].lit_value;
-                }
-            }
-            return None;
-        }
-
         if expr.params and len(expr.params) > 0 {
-            param_spec_name = _get_str_lit(expr.params[0]) or "";
+            param_spec_name = literal_string_value(expr.params[0]) or "";
             if not param_spec_name {
                 self.emit_diag(E1063, expr.params[0]);
             }
@@ -404,10 +382,10 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                 arg = expr.params[i];
                 if isinstance(arg, KWPair) and isinstance(arg.key, Name) {
                     if arg.key.value == "covariant" and isinstance(arg.value, Bool) {
-                        is_covariant = arg.value.value;
+                        is_covariant = arg.value.lit_value;
                     } elif arg.key.value == "contravariant"
                         and isinstance(arg.value, Bool) {
-                        is_contravariant = arg.value.value;
+                        is_contravariant = arg.value.lit_value;
                     } elif arg.key.value == "bound" {
                         bound_type = self.get_type_of_expression(arg.value);
                         if isinstance(bound_type, ClassType)
@@ -431,15 +409,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
     if self.is_type_var_tuple_class(caller_type) {
         tvt_name = "";
         if expr.params and len(expr.params) > 0 {
-            if isinstance(expr.params[0], String) {
-                tvt_name = expr.params[0].lit_value;
-            } elif (
-                isinstance(expr.params[0], MultiString)
-                and expr.params[0].strings
-                and isinstance(expr.params[0].strings[0], String)
-            ) {
-                tvt_name = expr.params[0].strings[0].lit_value;
-            }
+            tvt_name = literal_string_value(expr.params[0]) or "";
             if not tvt_name {
                 self.emit_diag(E1063, expr.params[0]);
             }
@@ -476,7 +446,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
 
         if matched_method is None {
             init_method = self._lookup_class_member(caller_type, "init");
-            is_from_object = init_method
+            is_from_object = init_method is not None
                 and init_method.class_type.shared.class_name == "object";
 
             if init_method and not is_from_object {
@@ -490,7 +460,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                 }
             } elif caller_type.is_data_class() {
                 self._validate_constructor_method(
-                    expr, self._create_dataclass_init_method(caller_type)
+                    expr, self._create_object_init_method(caller_type)
                 );
             }
         }
@@ -503,8 +473,8 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
                 not isinstance(ta, UnknownType) for ta in inferred_type_args
             );
             if has_inferred {
-                specialized = caller_type.specialize_generics(inferred_type_args);
-                inst = specialized.clone_as_instance();
+                specialized_class = caller_type.specialize_generics(inferred_type_args);
+                inst = specialized_class.clone_as_instance();
                 return self._make_coroutine_type(inst) if sv_async_ctor else inst;
             }
         }
@@ -527,7 +497,7 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
 
 impl TypeEvaluator.match_args_to_params(
     arg_nodes: (Sequence[Expr | KWPair] | None),
-    node_for_error: Expr | None,
+    node_for_error: UniNode | None,
     func_type: FunctionType,
     checking_overload: bool = False,
     is_unbound_call: bool = False
@@ -535,7 +505,7 @@ impl TypeEvaluator.match_args_to_params(
     arg_params: dict[Expr | KWPair, Parameter | None] = {};
     argument_errors = False;
     if func_type.is_gradual_callable_form() {
-        for arg_node in arg_nodes {
+        for arg_node in (arg_nodes or []) {
             arg_params[arg_node] = None;
         }
         return MatchArgsToParamsResult(arg_params=arg_params, argument_errors=False);
@@ -586,7 +556,9 @@ impl TypeEvaluator.match_args_to_params(
                     self.emit_diag(
                         E1052,
                         arg,
-                        name=arg.key.sym_name if isinstance(arg, KWPair) else ""
+                        name=arg.key.sym_name
+                            if isinstance(arg, KWPair) and arg.key is not None
+                            else ""
                     );
                 } elif "Positional only parameter" in err_msg {
                     pname = err_msg.split("'")[1] if "'" in err_msg else "";
@@ -594,8 +566,8 @@ impl TypeEvaluator.match_args_to_params(
                 } elif "already matched" in err_msg {
                     pname = err_msg.split("'")[1] if "'" in err_msg else "";
                     self.emit_diag(E1057, arg, name=pname);
-                } elif self._pass is not None {
-                    self._pass.emit(E1051, node_override=arg);
+                } else {
+                    self.emit_diag(E1051, arg);
                 }
             }
             argument_errors = True;
@@ -645,7 +617,8 @@ impl TypeEvaluator._validate_constructor_method(
             ) {
             has_params = len(method_type.parameters) > 1;
         }
-        if has_params {
+        if has_params
+            or method_type.function_flags & FunctionTypeFlags.SynthesizedMethod {
             ctor_type = self._strip_implicit_self_cls(method_type);
             arg_param_match = self.match_args_to_params(expr.params, expr, ctor_type);
             if not arg_param_match.argument_errors {
@@ -703,9 +676,10 @@ impl TypeEvaluator._get_method_with_overloads(
 ) -> TypeBase {
     method_ty = self.get_type_of_symbol(method_member.symbol);
 
-    if isinstance(method_ty, FunctionType) {
-        method_ty = method_ty.specialize(caller_type);
+    if not isinstance(method_ty, FunctionType) {
+        return method_ty;
     }
+    method_ty = method_ty.specialize(caller_type);
     overloaded_fns: list[FunctionType] = [method_ty];
     for overload in method_member.overloads {
         overload_member_ty = self.get_type_of_symbol(overload);
@@ -1024,7 +998,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
     );
 
     if caller_type.is_data_class() and keyword_arg_names {
-        dc_init = self._create_dataclass_init_method(caller_type);
+        dc_init = self._create_object_init_method(caller_type);
         if dc_init {
             param_names = {
                 p.name
@@ -1064,7 +1038,7 @@ impl TypeEvaluator._find_matching_raw_constructor(
     }
 
     if caller_type.is_data_class() {
-        return self._create_dataclass_init_method(caller_type);
+        return self._create_object_init_method(caller_type);
     }
 
     return None;
@@ -1104,7 +1078,7 @@ impl TypeEvaluator._find_overload_by_arg_count(
     return None;
 }
 
-impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> ClassType | None {
+impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> TypeBase | None {
     if not (
         isinstance(expr.target, AtomTrailer)
         and isinstance(expr.target.target, Expr)
@@ -1113,6 +1087,16 @@ impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> ClassType | None {
         return None;
     }
     recv = expr.target.target.type;
+    if isinstance(recv, UnionType) {
+        if recv.types
+            and all(
+                isinstance(member, ClassType) and member.is_instance()
+                for member in recv.types
+            ) {
+            return recv;
+        }
+        return None;
+    }
     if not (
         isinstance(recv, ClassType)
         and recv._shared is not None
@@ -1124,7 +1108,7 @@ impl TypeEvaluator._call_receiver_type(expr: FuncCall) -> ClassType | None {
         inner = recv.private.type_args[0];
         if isinstance(inner, ClassType)
             and not self._member_is_metaclass_only(inner.clone_as_class(), expr) {
-            return self._convert_to_instance(inner);
+            return inner.clone_as_instance();
         }
         return recv;
     }

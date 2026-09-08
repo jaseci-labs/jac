@@ -24,13 +24,6 @@ test "jac0 fullbody with impl does not duplicate" {
     assert "self.x + 100" not in result , "Fullbody clone should not be replaced by impl version";
 }
 
-"""jac0 parses `static has` (class-level constants) without falling back to jac2py.
-
-Regression: `static has` was routed to _parse_funcdef, which expected `static def`,
-causing a ParseError on the type-annotation colon. The fix dispatches `static has`
-to _parse_has. This matters for desktop plugin transpilation: jac2py fallback
-emits `from jaclang...` imports that the embedded stdlib-only CPython can't load.
-"""
 test "jac0 parses static has as class-level constants" {
     src = '''
 obj ErrorCode {
@@ -43,8 +36,15 @@ obj ErrorCode {
     assert "INVALID_ARGS" in result , "static has field INVALID_ARGS missing";
     assert "FORBIDDEN" in result , "static has field FORBIDDEN missing";
     assert "NOT_FOUND" in result , "static has field NOT_FOUND missing";
-    assert "from jaclang" not in result , "jac0 output must not import jaclang";
-    assert "import jaclang" not in result , "jac0 output must not import jaclang";
+    assert "from jaclang.runtime.object_model import" in result;
+    assert "dataclasses" not in result;
+    namespace: dict = {};
+    exec(result, namespace);
+    error_code = namespace["ErrorCode"];
+    assert error_code.INVALID_ARGS == "INVALID_ARGS";
+    assert error_code.FORBIDDEN == "FORBIDDEN";
+    assert error_code.NOT_FOUND == "NOT_FOUND";
+    assert not error_code.__jac_fields__;
 }
 
 """jac0 still parses `static def` (static methods) after the dispatch fix."""
@@ -61,4 +61,19 @@ obj Calculator {
     assert "@staticmethod" in result , "static def must emit @staticmethod";
     assert "def circle_area" in result , "static def circle_area missing";
     assert "PI" in result , "static has PI missing";
+}
+
+
+test "jac0 preserves escaped field names that resemble constructor methods" {
+    source = "class Record { has `init: bool, `postinit: int; "
+        + "def init { self.`init = True; self.`postinit = 7; } "
+        + "def read -> bool { return self.`init; } }";
+    result = compile_jac(source, "escaped_fields.jac");
+    namespace: dict = {};
+    exec(result, namespace);
+    record = namespace["Record"]();
+    assert getattr(record, "init") is True;
+    assert getattr(record, "postinit") == 7;
+    assert callable(record.__init__);
+    assert record.read();
 }

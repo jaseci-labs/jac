@@ -16,7 +16,7 @@ import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
 import from jaclang.scale.sso.sso_auth { SSOAuth }
 import from jaclang.scale.sso.provider { OAuth2CodeProvider }
 import from jaclang.scale.sso.oauth_session { OAuthSession }
-import from dataclasses { asdict }
+import from jaclang.runtime.object_model { asdict }
 import from jaclang.scale.webhook.webhook { ApiKeyManager }
 
 

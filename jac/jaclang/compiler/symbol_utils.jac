@@ -1,4 +1,7 @@
 import from pathlib { Path }
+import type from jaclang.compiler.driver.program { JacProgram }
+import type from jaclang.compiler.passes.transform { Transform }
+import type from jaclang.compiler.frontend.diagnostics { DiagnosticInfo }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
@@ -61,7 +64,9 @@ enum CallKind {
     INTRINSIC = "intrinsic"
 }
 
-def erased_import_binds(nd: UniNode, name: str) -> bool {
+def erased_import_binds(
+    nd: UniNode, name: str, imported_name: str | None = None
+) -> bool {
     import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_IMPORTS }
     mod = nd.find_parent_of_type(Module);
     if mod is None {
@@ -72,7 +77,7 @@ def erased_import_binds(nd: UniNode, name: str) -> bool {
             continue;
         }
         allowed = NATIVE_ERASED_IMPORTS.get(imp.from_loc.dot_path_str.lstrip('.'));
-        if allowed is None or name not in allowed {
+        if allowed is None {
             continue;
         }
         for item in imp.items {
@@ -80,7 +85,10 @@ def erased_import_binds(nd: UniNode, name: str) -> bool {
                 continue;
             }
             bound = item.alias if item.alias is not None else item.name;
-            if isinstance(bound, Name) and bound.value == name {
+            if isinstance(bound, Name)
+                and bound.value == name
+                and item.name.value in allowed
+                and (imported_name is None or item.name.value == imported_name) {
                 return True;
             }
         }
@@ -106,31 +114,6 @@ def erased_identity_call_arg(nd: FuncCall) -> (Expr | None) {
     return params[1];
 }
 
-def is_erased_field_marker(nd: FuncCall) -> bool {
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_FIELD_MARKERS }
-    owner = nd.parent;
-    if not isinstance(owner, HasVar) or owner.value is not nd {
-        return False;
-    }
-    tgt = nd.target;
-    if not isinstance(tgt, Name) or tgt.sym_name not in NATIVE_ERASED_FIELD_MARKERS {
-        return False;
-    }
-    return erased_import_binds(nd, tgt.sym_name);
-}
-
-def erased_field_marker_default(nd: FuncCall) -> (Expr | None) {
-    for arg in (nd.params or []) {
-        if not isinstance(arg, KWPair) or not isinstance(arg.key, Name) {
-            continue;
-        }
-        if arg.key.sym_name == 'default' and isinstance(arg.value, Expr) {
-            return arg.value;
-        }
-    }
-    return None;
-}
-
 def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol | None) {
     if isinstance(expr, AstSymbolNode) and expr.sym {
         return expr.sym;
@@ -148,6 +131,42 @@ def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol |
 
     if module is not None and isinstance(expr, Name) {
         return module.lookup(expr.sym_name);
+    }
+    return None;
+}
+
+
+def imported_module_name(expr: Expr) -> str | None {
+    import from jaclang.compiler.types.types { ModuleType }
+    if not isinstance(expr.type, ModuleType) {
+        return None;
+    }
+    if isinstance(expr, Name) {
+        sym = resolve_expr_symbol(expr);
+        if sym is None {
+            return None;
+        }
+        decl = sym.decl;
+        if decl is None {
+            return None;
+        }
+        owner = decl.parent;
+        if not isinstance(owner, ModulePath) or owner.is_import_from {
+            return None;
+        }
+        if owner.alias is decl {
+            return owner.dot_path_str;
+        }
+        if owner.path and owner.path[0] is decl {
+            return decl.sym_name;
+        }
+    } elif isinstance(expr, AtomTrailer)
+        and expr.is_attr
+        and isinstance(expr.right, Name) {
+        prefix = imported_module_name(expr.target);
+        if prefix is not None {
+            return prefix + "." + expr.right.sym_name;
+        }
     }
     return None;
 }
@@ -349,10 +368,12 @@ def decl_has_access(source_mod: Module, item: ModuleItem) -> bool {
     return owner?.access is not None;
 }
 
-def _already_reported(reporter: any, diag: any, nd: UniNode) -> bool {
+def _already_reported(
+    program: JacProgram, reporter: Transform, diag: DiagnosticInfo, nd: UniNode
+) -> bool {
     for pool in (
-        reporter.prog.errors_had,
-        reporter.prog.warnings_had,
+        program.errors_had,
+        program.warnings_had,
         reporter.errors_had,
         reporter.warnings_had
     ) {
@@ -381,7 +402,7 @@ def report_dead_client_import(reporter: any, nd: Import, item: ModuleItem) -> No
     name = item.name.sym_name if isinstance(item.name, Name) else str(item.name.value);
     module_name = nd.from_loc.dot_path_str if nd.from_loc is not None else '';
     note_unbound_client_name(reporter, name);
-    if _already_reported(reporter, E5082, item) {
+    if _already_reported(reporter.prog, reporter, E5082, item) {
         return;
     }
     reporter.emit(E5082, node_override=item, name=name, module=module_name);
@@ -504,7 +525,7 @@ def _report_client_bare_import_uses(reporter: any, mod: Module, stmt: UniNode) {
             else str(item.name.value);
         note_unbound_client_name(reporter, item_name);
         note_unbound_client_name(reporter, nm.sym_name);
-        already = _already_reported(reporter, E5084, item);
+        already = _already_reported(reporter.prog, reporter, E5084, item);
         if not already {
             reporter.emit(
                 E5084, node_override=item, name=item_name, module=module_name
@@ -534,7 +555,7 @@ def report_placement_warnings(reporter: any, mod: Module) {
         ) {
             es = ps.elements[idx] if idx < len(ps.elements) else None;
             gname = es.name if es is not None else 'glob';
-            if not _already_reported(reporter, W6006, stmt) {
+            if not _already_reported(reporter.prog, reporter, W6006, stmt) {
                 reporter.emit(W6006, node_override=stmt, name=gname);
             }
         }
@@ -546,7 +567,7 @@ def report_placement_warnings(reporter: any, mod: Module) {
         if not isinstance(top, Ability) or client_bridged_endpoint(mod, top) {
             continue;
         }
-        if not _already_reported(reporter, W6007, nm) {
+        if not _already_reported(reporter.prog, reporter, W6007, nm) {
             reporter.emit(W6007, node_override=nm, name=element_display_name(top));
         }
     }
@@ -759,7 +780,7 @@ def report_serverless_kind_errors(reporter: any, mod: Module) {
     }
     kind = project_kind_name(mod) or 'client-only';
     for (name, reason, stmt) in evidence {
-        already = _already_reported(reporter, E5087, stmt);
+        already = _already_reported(reporter.prog, reporter, E5087, stmt);
         if not already {
             reporter.emit(
                 E5087, node_override=stmt, kind=kind, name=name, reason=reason

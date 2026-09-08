@@ -1,7 +1,6 @@
 import re;
 import io;
 import os;
-import json;
 import tarfile;
 import time;
 import urllib.error;
@@ -57,56 +56,45 @@ impl parse_repo_url(url: str) -> tuple[str, str] | None {
     return (m.group(1) as str, m.group(2) as str);
 }
 
-impl repo_meta(repo: str, agent: str) -> RepoMeta | None {
-    data = fetch(API_ROOT + repo, agent, accept_json=True);
+def _api_bytes(url: str, agent: str) -> bytes {
+    data = fetch(url, agent, accept_json=True);
     if data is None {
-        return None;
+        raise RuntimeError("GitHub is unavailable or rate limited");
     }
-    try {
-        raw = json.loads(data);
-    } except Exception {
+    return data;
+}
+
+impl repo_meta(repo: str, agent: str) -> RepoMeta | None {
+    raw = JsonEndpoint[GithubRepository](GithubRepository, API_ROOT + repo).read(
+        lambda (url: str) -> bytes { return _api_bytes(url, agent); }
+    );
+    if raw.private {
         return None;
-    }
-    if not isinstance(raw, dict)
-        or raw.get("full_name") is None
-        or raw.get("private", False) {
-        return None;
-    }
-    login = "";
-    avatar = "";
-    owner = raw.get("owner");
-    if isinstance(owner, dict) {
-        login = str(owner.get("login") or "");
-        avatar = str(owner.get("avatar_url") or "");
     }
     return RepoMeta(
-        full_name=str(raw.get("full_name") or ""),
-        owner=login,
-        name=str(raw.get("name") or ""),
-        description=str(raw.get("description") or "")[:220],
-        avatar_url=avatar,
-        html_url=str(raw.get("html_url") or ""),
-        default_branch=str(raw.get("default_branch") or "main"),
-        stars=int(raw.get("stargazers_count") or 0),
-        forks=int(raw.get("forks_count") or 0),
-        size_kb=int(raw.get("size") or 1),
-        topics=[str(t) for t in (raw.get("topics") or [])][:6],
-        pushed_at=str(raw.get("pushed_at") or ""),
-        created_at=str(raw.get("created_at") or "")
+        full_name=raw.full_name,
+        owner=raw.owner.login,
+        name=raw.name,
+        description=(raw.description or "")[:220],
+        avatar_url=raw.owner.avatar_url,
+        html_url=raw.html_url,
+        default_branch=raw.default_branch,
+        stars=raw.stargazers_count,
+        forks=raw.forks_count,
+        size_kb=raw.size,
+        topics=raw.topics[:6],
+        pushed_at=raw.pushed_at or "",
+        created_at=raw.created_at
     );
 }
 
 impl head_sha(repo: str, ref: str, agent: str) -> str {
-    data = fetch(API_ROOT + repo + "/commits/" + ref, agent, accept_json=True);
-    if data is None {
-        return "";
-    }
-    try {
-        raw = json.loads(data);
-    } except Exception {
-        return "";
-    }
-    return str(raw.get("sha") or "") if isinstance(raw, dict) else "";
+    result = JsonEndpoint[GithubCommit](
+        GithubCommit, API_ROOT + repo + "/commits/" + ref
+    ).read(
+        lambda (url: str) -> bytes { return _api_bytes(url, agent); }
+    );
+    return result.sha;
 }
 
 impl download_tarball(

@@ -146,16 +146,14 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
 walker TypeCheckPass(UniPass) {
     has prog: JacProgram,
         evaluator: TypeEvaluator postinit,
-        _lambda_depth: int = 0,
-        _prev_eval_pass: any = None,
-        _prev_ct_quiet: bool = False;
+        _lambda_depth: int = 0;
 
     def postinit -> None;
 
     static has PROVIDES: tuple = ('TypeOf', ),
         HOST_PASS: bool = True;
 
-    def init(prog: JacProgram, **kwargs: any) -> None;
+    def transform(ir_in: Module) -> Module;
     def before_pass -> None;
     def after_pass -> None;
     def _stamp_fixed_width -> None;

@@ -1,5 +1,4 @@
 import from core.jacyac.format { handle_of }
-import from core.social_graph { Profile }
 
 glob PROJECT_ERRORS: dict[str, str] = {
          "bad_url": "That is not a GitHub repository. Paste a github.com/owner/repo link.",
@@ -13,8 +12,8 @@ glob PROJECT_ERRORS: dict[str, str] = {
      };
 
 
-def:pub name_of(profile: Profile) -> str {
-    return profile.display_name or handle_of(profile.username);
+def:pub name_of(display_name: str, username: str) -> str {
+    return display_name or handle_of(username);
 }
 
 def:pub avatar_of(avatars: dict[str, str], username: str) -> str {

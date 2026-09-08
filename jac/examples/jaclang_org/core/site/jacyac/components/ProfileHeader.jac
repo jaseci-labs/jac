@@ -29,7 +29,7 @@ def:pub ProfileHeader(
 
     profile = bundle.profile;
     handle = handle_of(profile.username);
-    shown_name = name_of(profile);
+    shown_name = name_of(profile.display_name, profile.username);
     avatar = avatar_of(avatars, profile.username);
     followingCount = len(bundle.following) if bundle.following else 0;
     followerCount = len(bundle.followers) if bundle.followers else 0;

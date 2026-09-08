@@ -10,7 +10,7 @@ impl jacSignup(
     identities_or_username: (str | list),
     credential_or_password: (str | dict),
     profile: (dict | None) = None
-) -> dict {
+) -> SignupResult {
     return await _jacSignup(identities_or_username, credential_or_password, profile);
 }
 

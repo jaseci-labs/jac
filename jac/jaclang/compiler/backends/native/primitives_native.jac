@@ -15,12 +15,14 @@ import from jaclang.compiler.backends.common.primitives {
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.diagnostics { E5092 }
+import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
         call_kwargs: dict = {},
-        arg_nodes: list = [];
+        arg_nodes: list[UniNode] = [],
+        call_node: UniNode | None = None;
 }
 
 
@@ -293,6 +295,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         ctx: NativeEmitCtx,
         target: ir.Value,
         args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def _emit_affix(
+        self: NativeStrEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        suffix: bool
     ) -> (ir.Value | None);
 
     def emit_startswith(
@@ -1879,9 +1889,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             and isinstance(args[2].type, ir.IntType) {
             return self.emit_pow_mod(ctx, base, exp, args[2]);
         }
-        exp_node = None;
+        exp_node: Expr | None = None;
         if len(ctx.arg_nodes) >= 2 {
-            exp_node = ctx.arg_nodes[1];
+            exponent = ctx.arg_nodes[1];
+            if isinstance(exponent, Expr) {
+                exp_node = exponent;
+            }
         }
         return p._codegen_pow(base, exp, exp_node);
     }

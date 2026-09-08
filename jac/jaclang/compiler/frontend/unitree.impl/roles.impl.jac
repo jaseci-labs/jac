@@ -259,8 +259,8 @@ impl TypeAlias.name.getter -> Name {
     return [self->:NameRole:->][0];
 }
 
-impl TypeAlias.type_params.getter -> (Sequence[TypeParam] | None) {
-    return [self->:TypeParamsRole:->];
+impl TypeAlias.type_params.getter -> list[TypeParam] {
+    return [self->:TypeParamsRole:->][?:TypeParam];
 }
 
 impl TypeAlias.value.getter -> Expr {
@@ -377,16 +377,16 @@ impl Archetype.arch_type.getter -> Token {
     return [self->:ArchTypeRole:->][0];
 }
 
-impl Archetype.base_classes.getter -> (Sequence[Expr] | None) {
-    return [self->:BaseClassesRole:->];
+impl Archetype.base_classes.getter -> list[Expr] {
+    return [self->:BaseClassesRole:->][?:Expr];
 }
 
 impl Archetype.keywords.getter -> (Sequence[KWPair] | None) {
     return [self->:KeywordsRole:->];
 }
 
-impl Archetype.type_params.getter -> (Sequence[TypeParam] | None) {
-    return [self->:TypeParamsRole:->];
+impl Archetype.type_params.getter -> list[TypeParam] {
+    return [self->:TypeParamsRole:->][?:TypeParam];
 }
 
 impl Archetype.src_endpoint.getter -> (Expr | None) {
@@ -449,8 +449,8 @@ impl Enum.value_type.getter -> (Expr | None) {
     return found[0] if found else None;
 }
 
-impl Enum.base_classes.getter -> (Sequence[Expr] | None) {
-    return [self->:BaseClassesRole:->];
+impl Enum.base_classes.getter -> list[Expr] {
+    return [self->:BaseClassesRole:->][?:Expr];
 }
 
 impl Enum.__repr__ -> str {
@@ -471,8 +471,8 @@ impl Ability.decorators.getter -> (Sequence[Expr] | None) {
     return [self->:DecoratorsRole:->];
 }
 
-impl Ability.type_params.getter -> (Sequence[TypeParam] | None) {
-    return [self->:TypeParamsRole:->];
+impl Ability.type_params.getter -> list[TypeParam] {
+    return [self->:TypeParamsRole:->][?:TypeParam];
 }
 
 impl Ability.__repr__ -> str {
@@ -1743,7 +1743,7 @@ impl ProgramModule.init(
 }
 
 impl ProgramModule.main_mod.getter -> (Module | None) {
-    found = [self->:MainRole:->];
+    found = [self->:MainRole:->][?:Module];
     if not found {
         return None;
     }

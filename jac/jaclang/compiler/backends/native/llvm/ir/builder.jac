@@ -593,7 +593,9 @@ class IRBuilder(object) {
         Switch on *value*, jumping to *default_bb* unless a case added via
         `add_case` matches.
         """
-    def `switch(self: IRBuilder, value: any, default_bb: any) -> object {
+    def `switch(
+        self: IRBuilder, value: values.Value, default_bb: values.Block
+    ) -> instructions.SwitchInstr {
         swt = instructions.SwitchInstr(self.block, "switch", value, default_bb);
         self._set_terminator(swt);
         return swt;
@@ -636,7 +638,7 @@ class IRBuilder(object) {
         fastmath: any = (),
         attrs: any = (),
         arg_attrs: any = None
-    ) -> values.Value {
+    ) -> instructions.CallInstr {
         inst = instructions.CallInstr(
             self.block,
             fn,

@@ -2,7 +2,7 @@
 
 import ctypes;
 import os;
-import from tests.support { JAC_ROOT, compile_native }
+import from tests.support { JAC_ROOT, compile_native, get_func }
 import from jaclang.compiler.backends.common.kernel_units { kernel_unit_owner }
 
 test "runtime unit identity is independent of the compiler installation" {
@@ -25,4 +25,11 @@ test "an imported walker operation acts on the active kernel" {
     assert address != 0;
     probe = ctypes.CFUNCTYPE(ctypes.c_int64)(address);
     assert probe() == 1;
+}
+
+test "native edge peers require a live edge incident to the origin" {
+    (engine, _) = compile_native("osp_edge_peer.jac");
+    probe = get_func(engine, "probe", ctypes.c_bool);
+    assert probe();
+    assert probe();
 }

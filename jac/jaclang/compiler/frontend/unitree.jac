@@ -20,6 +20,7 @@ import from jaclang.compiler.frontend.constant { JacSemTokenType as SemTokType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { ParamKind }
 import type from jaclang.compiler.types.types { TypeBase }
+import type from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.roles {
     Role,
     Kid,
@@ -253,6 +254,14 @@ node UniNode {
     def __repr__ -> str;
 }
 
+obj SymbolProvider {
+    def resolve_type(symbol: Symbol) -> TypeBase abst;
+    def definition -> Symbol | None abst;
+    def property_kind -> int abst;
+    def property_write_kind -> int abst;
+    def property_write_type -> TypeBase | None abst;
+}
+
 node Symbol {
     has name: str postinit,
         access: SymbolAccess postinit,
@@ -267,7 +276,7 @@ node Symbol {
         na_stack_ok: bool = False,
         _in_stub_scope: (bool | None) = None,
         _binding_kind: (BindingKind | None) = None,
-        provider: any = None;
+        provider: SymbolProvider | None = None;
 
     def init(
         defn: NameAtom,
@@ -499,7 +508,7 @@ node Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) postinit,
         _type_cache: (TypeBase | None) postinit,
         _type_cache_ok: bool postinit,
-        ct_value: any postinit,
+        ct_value: CtValue | None postinit,
         coerce_to: (str | None) postinit,
         fw: (str | None) postinit,
         fw_safe: bool postinit,
@@ -577,7 +586,7 @@ node NameAtom(AtomExpr, EnumBlockStmt) {
 
     def postinit -> None;
 
-    has sym: (Symbol | None) { getter; setter(sym: Symbol); }
+    has sym: (Symbol | None) { getter; setter(sym: Symbol | None); }
     has sym_name: str { getter; }
     has sym_category: SymbolType { getter; }
 
@@ -739,7 +748,7 @@ node TypeParam(AstSymbolNode, UniNode) {
 node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
     has is_distinct: bool = False;
     has name: Name { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
     has value: Expr { getter; }
 
     def init(
@@ -940,9 +949,9 @@ node ModuleItem(UniNode) {
 node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     has name: Name { getter; }
     has arch_type: Token { getter; }
-    has base_classes: (Sequence[Expr] | None) { getter; }
+    has base_classes: list[Expr] { getter; }
     has keywords: (Sequence[KWPair] | None) { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
     has src_endpoint: (Expr | None) { getter; }
     has tgt_endpoint: (Expr | None) { getter; }
 
@@ -1018,7 +1027,7 @@ node SemDef(ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
 node Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
     has name: Name { getter; }
     has value_type: (Expr | None) { getter; }
-    has base_classes: (Sequence[Expr] | None) { getter; }
+    has base_classes: list[Expr] { getter; }
 
     def init(
         *,
@@ -1054,7 +1063,7 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     has name_ref: (NameAtom | None) { getter; }
     has signature: FuncSignature | EventSignature | None { getter; }
     has decorators: (Sequence[Expr] | None) { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
 
     def init(
         *,
@@ -2700,6 +2709,16 @@ def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
     return bytes(out);
 }
 
+def literal_string_value(expr: UniNode) -> str | None {
+    if isinstance(expr, (String, MultiString)) {
+        value = expr.lit_value;
+        if isinstance(value, str) {
+            return value;
+        }
+    }
+    return None;
+}
+
 def decode_string_literal(text: str) -> str | bytes {
     start = _lit_prefix_len(text);
     if (start < 0) {
@@ -2721,6 +2740,8 @@ def decode_string_literal(text: str) -> str | bytes {
 def is_identifier_slot(nd: UniNode) -> bool;
 
 def find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None);
+
+def same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool;
 
 def find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode;
 

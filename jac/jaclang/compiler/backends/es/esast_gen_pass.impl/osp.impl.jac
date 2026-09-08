@@ -929,12 +929,31 @@ impl EsastGenPass._build_spawn_runtime_call(
     if item is None {
         item = self._import_item_named(parts.`walker.walker_name);
     }
-    if item is not None {
-        provider_opts = self._sv_provider_options(item.from_parent);
-        if provider_opts is not None {
-            spawn_args.append(provider_opts);
-        }
+    provider_opts = self._sv_provider_options(item.from_parent)
+        if item is not None
+        else None;
+    if provider_opts is None {
+        provider_opts = es.ObjectExpression(properties=[]);
     }
+    import from jaclang.compiler.symbol_utils { symbol_owner_archetype }
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    owner = symbol_owner_archetype(walker_sym) if walker_sym is not None else None;
+    if owner is not None and isinstance(provider_opts, es.ObjectExpression) {
+        key = endpoint_key(
+            owner.find_parent_of_type(uni.Module), "walker", owner.sym_name
+        );
+        provider_opts.properties.append(
+            es.Property(
+                key=es.Literal(value="contract"),
+                value=es.Literal(value=key),
+                kind="init",
+                method=False,
+                shorthand=False,
+                computed=False
+            )
+        );
+    }
+    spawn_args.append(provider_opts);
     spawn_call = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacSpawn'), jac_node=nd),

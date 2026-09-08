@@ -816,7 +816,8 @@ walker get_channels {
 }
 
 walker create_tweet {
-    has content: str;
+    has content: str,
+        reports: list[Tweet] = [];
 
     can run with Root entry {
         if not valid_post(self.content) {

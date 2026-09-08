@@ -116,7 +116,9 @@ impl TypeEvaluator._validate_jsx_props(
 impl TypeEvaluator._validate_component_jsx_props(
     expr: JsxElement, component_name: str, func_type: FunctionType | None = None
 ) -> None {
-    func_type = func_type or self._resolve_jsx_component_type(expr.name);
+    if func_type is None and expr.name is not None {
+        func_type = self._resolve_jsx_component_type(expr.name);
+    }
     if not func_type {
         return;
     }
@@ -232,7 +234,7 @@ impl TypeEvaluator._validate_component_jsx_props(
                 if (
                     self.prefetch
                     and self.prefetch.dict_class
-                    and spread_type.shared == self.prefetch.dict_class.shared
+                    and spread_type.shared.same_class(self.prefetch.dict_class.shared)
                 ) {
                     for pname in param_map {
                         matched_params.add(pname);
@@ -323,7 +325,7 @@ impl TypeEvaluator._validate_intrinsic_jsx_props(
                 and isinstance(spread_type, ClassType)
                 and self.prefetch
                 and self.prefetch.dict_class
-                and spread_type.shared != self.prefetch.dict_class.shared
+                and not spread_type.shared.same_class(self.prefetch.dict_class.shared)
             ) {
                 self.emit_diag(
                     E1104, attr, actual=str(spread_type), component=tag_name

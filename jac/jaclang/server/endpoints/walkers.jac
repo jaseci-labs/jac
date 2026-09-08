@@ -1,3 +1,4 @@
+import from jaclang.server.endpoint_contract { check_endpoint_contract }
 import json;
 import logging;
 import from inspect { isgenerator }
@@ -169,6 +170,17 @@ def walker_callback(
         if nd {
             kwargs['_jac_spawn_node'] = nd;
         }
+        import from jaclang.server.sv_client { consumer_app }
+        mismatch = check_endpoint_contract(
+            request,
+            server.get_walkers()[walker_name],
+            "walker",
+            walker_name,
+            consumer_app()
+        );
+        if mismatch is not None {
+            return mismatch;
+        }
         caller = username or Con.GUEST.value;
         idem = idempotency_key(request, caller, server.module_name, walker_name);
         replay = replay_cached(idem);
@@ -300,6 +312,13 @@ def function_callback(
         username = request_caller(server, request);
         if requires_auth and not username {
             return _unauthorized();
+        }
+        import from jaclang.server.sv_client { consumer_app }
+        mismatch = check_endpoint_contract(
+            request, func_obj, "func", func_name, consumer_app()
+        );
+        if mismatch is not None {
+            return mismatch;
         }
         caller = username or Con.GUEST.value;
         idem = idempotency_key(request, caller, server.module_name, func_name);

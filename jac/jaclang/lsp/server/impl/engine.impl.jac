@@ -903,28 +903,7 @@ impl JacLangServer.rename_module(old_path: str, new_path: str) -> None {
 impl JacLangServer.get_completion_items_of(
     ty: TypeBase | uni.UniScopeNode
 ) -> lspt.CompletionList {
-    items: list[lspt.CompletionItem] = [];
-    for item in get_completion_items(ty) {
-        detail: lspt.CompletionItemLabelDetails | None = None;
-        if item.detail {
-            detail = lspt.CompletionItemLabelDetails(detail=item.detail);
-        }
-        documentation: lspt.MarkupContent | None = None;
-        if item.documentation {
-            documentation = lspt.MarkupContent(
-                kind=lspt.MarkupKind.PlainText, value=item.documentation
-            );
-        }
-        items.append(
-            lspt.CompletionItem(
-                label=item.label,
-                kind=lspt.CompletionItemKind(item.kind.value),
-                label_details=detail,
-                documentation=documentation,
-            )
-        );
-    }
-    return lspt.CompletionList(is_incomplete=False, items=items,);
+    return lspt.CompletionList(is_incomplete=False, items=get_completion_items(ty));
 }
 
 impl JacLangServer.get_scope_completion(

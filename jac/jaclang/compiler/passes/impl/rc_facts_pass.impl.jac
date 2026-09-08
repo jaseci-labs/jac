@@ -13,10 +13,15 @@ impl RcFactsPass._run_impl(ir_in: Module) -> Module {
     return ir_in;
 }
 
-impl RcFactsPass._enclosing_fn_scope(nd: UniNode) -> (UniNode | None) {
+impl RcFactsPass._enclosing_fn_scope(
+    nd: UniNode, stop_at_comprehension: bool = False
+) -> UniNode | None {
     cur = nd.parent;
     while cur is not None {
-        if isinstance(cur, (Ability, LambdaExpr, Test, ModuleCode)) {
+        if isinstance(cur, (Ability, ImplDef, LambdaExpr, Test, ModuleCode)) {
+            return cur;
+        }
+        if stop_at_comprehension and isinstance(cur, (ListCompr, DictCompr)) {
             return cur;
         }
         cur = cur.parent;
@@ -251,7 +256,14 @@ impl RcFactsPass._collect_last_use(
                 or not self._last_use_tracked(sym) {
                 continue;
             }
-            if self._enclosing_fn_scope(nm) is not owner {
+            if not same_lexical_scope(self._enclosing_fn_scope(nm), owner) {
+                continue;
+            }
+            decl = sym.decl;
+            if decl is None
+                or not same_lexical_scope(
+                    self._enclosing_fn_scope(decl, stop_at_comprehension=True), owner
+                ) {
                 continue;
             }
             sym_last[id(sym)] = (idx, nm.sym_name);

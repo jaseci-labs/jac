@@ -341,6 +341,8 @@ walker JcirGenPass(BaseAstGenPass[CgItem]) {
     has already_added: list[str] = [],
         _ct_only_names: (set[str] | None) = None,
         jaclib_imports: set[str] postinit,
+        _runtime_aliases: dict[str, str] postinit,
+        _reserved_names: set[str] postinit,
         builtin_imports: set[str] postinit,
         sized_imports: set[str] postinit,
         typing_imports: set[str] postinit,

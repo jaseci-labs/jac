@@ -3,6 +3,9 @@ impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
         return "jacval";
     }
     if isinstance(elem_type, ir.PointerType) {
+        if isinstance(elem_type.pointee, ir.FunctionType) {
+            return "raw";
+        }
         return "rc_ptr";
     }
     return "raw";
@@ -139,6 +142,35 @@ impl NaIRGenPass._emit_elem_release(
         self.rc_release_simple_fn,
         [b.bitcast(val, ir.IntType(8).as_pointer(), name="elem.release.cast")]
     );
+}
+
+impl NaIRGenPass._emit_elem_trace(
+    b: ir.IRBuilder, val: ir.Value, visitor: ir.Value
+) -> ir.IRBuilder {
+    kind = self._elem_kind(val.type);
+    i8p = ir.IntType(8).as_pointer();
+    if kind == "jacval" {
+        i8 = ir.IntType(8);
+        i64 = ir.IntType(64);
+        tag = b.extract_value(val, 0, name="trace.tag");
+        payload = b.extract_value(val, 1, name="trace.payload");
+        heap = b.and_(
+            b.icmp_unsigned(">=", tag, ir.Constant(i8, 2)),
+            b.icmp_unsigned("<=", tag, ir.Constant(i8, 6))
+        );
+        nonnull = b.icmp_unsigned("!=", payload, ir.Constant(i64, 0));
+        visit_bb = b.function.append_basic_block("trace.visit");
+        done_bb = b.function.append_basic_block("trace.next");
+        b.cbranch(b.and_(heap, nonnull), visit_bb, done_bb);
+        visit_builder = ir.IRBuilder(visit_bb);
+        visit_builder.call(visitor, [visit_builder.inttoptr(payload, i8p)]);
+        visit_builder.branch(done_bb);
+        return ir.IRBuilder(done_bb);
+    }
+    if kind == "rc_ptr" {
+        b.call(visitor, [b.bitcast(val, i8p)]);
+    }
+    return b;
 }
 
 impl NaIRGenPass._emit_elem_slot_drop(
@@ -322,7 +354,9 @@ impl NaIRGenPass._emit_spread_copy(
     );
 
     self._builder = ir.IRBuilder(_body_bb);
-    _elem = self.builder.call(src_helpers["get"], [src, _idx], name="spread.elem");
+    _elem: ir.Value = self.builder.call(
+        src_helpers["get"], [src, _idx], name="spread.elem"
+    );
     _dest_elem = dest_helpers["elem_type"];
     if isinstance(_elem.type, ir.PointerType) and _dest_elem == i8p {
         _elem = self.builder.bitcast(_elem, i8p, name="spread.elem.cast");
@@ -582,38 +616,10 @@ impl NaIRGenPass._emit_container_trace_fn(
     _cont = b.bitcast(trace_fn.args[0], container_ptr_type, name="cont.typed");
     _managed = self._container_managed_fields(layout);
     _fields = [(fi, dt) for (fi, dt, _k) in _managed];
-    _kinds = [_k for (fi, dt, _k) in _managed];
 
     def _visit_slot(bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list) -> ir.IRBuilder {
-        i8 = ir.IntType(8);
-        i64 = ir.IntType(64);
-        for (_j, _ep) in enumerate(elem_ptrs) {
-            _elem = bl.load(_ep, name="elem.val");
-            if _kinds[_j] == "jacval" {
-                _tag = bl.extract_value(_elem, 0, name="elem.jv.tag");
-                _pl = bl.extract_value(_elem, 1, name="elem.jv.payload");
-                _heap = bl.and_(
-                    bl.icmp_unsigned(
-                        ">=", _tag, ir.Constant(i8, 2), name="elem.jv.ge2"
-                    ),
-                    bl.icmp_unsigned(
-                        "<=", _tag, ir.Constant(i8, 6), name="elem.jv.le6"
-                    ),
-                    name="elem.jv.heap"
-                );
-                _nn = bl.icmp_unsigned(
-                    "!=", _pl, ir.Constant(i64, 0), name="elem.jv.nn"
-                );
-                _vis_bb = trace_fn.append_basic_block("trace.jv.vis");
-                _skip_bb = trace_fn.append_basic_block("trace.jv.skip");
-                bl.cbranch(bl.and_(_heap, _nn, name="elem.jv.live"), _vis_bb, _skip_bb);
-                bv = ir.IRBuilder(_vis_bb);
-                bv.call(_vis, [bv.inttoptr(_pl, i8_ptr, name="elem.jv.i8")]);
-                bv.branch(_skip_bb);
-                bl = ir.IRBuilder(_skip_bb);
-            } else {
-                bl.call(_vis, [bl.bitcast(_elem, i8_ptr, name="elem.i8")]);
-            }
+        for ep in elem_ptrs {
+            bl = self._emit_elem_trace(bl, bl.load(ep, name="elem.val"), _vis);
         }
         return bl;
     }
@@ -671,7 +677,6 @@ impl NaIRGenPass._emit_container_release_fn(
     cont_arg = release_fn.args[0];
     _managed = self._container_managed_fields(layout);
     _fields = [(fi, dt) for (fi, dt, _k) in _managed];
-    _kinds = [_k for (fi, dt, _k) in _managed];
     if _managed {
         _cycles_on = self._gc_mode() == "cycles";
         if _cycles_on and self.rc_collecting_gv is None {
@@ -696,16 +701,9 @@ impl NaIRGenPass._emit_container_release_fn(
         def _release_slot(
             bl: ir.IRBuilder, i: ir.Value, elem_ptrs: list
         ) -> ir.IRBuilder {
-            for (_j, _ep) in enumerate(elem_ptrs) {
+            for _ep in elem_ptrs {
                 _ev = bl.load(_ep, name="elem.val.rel");
-                if _kinds[_j] == "jacval" {
-                    bl.call(self._emit_jacval_release_fn(), [_ev]);
-                } else {
-                    bl.call(
-                        self.rc_release_simple_fn,
-                        [bl.bitcast(_ev, i8_ptr, name="elem.cast.rel")]
-                    );
-                }
+                self._emit_elem_release(bl, _ev.type, _ev);
             }
             return bl;
         }
@@ -867,11 +865,13 @@ impl NaIRGenPass._emit_key_comparison(
             "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
         );
     } elif (
-        isinstance(key_type, ir.PointerType)
-        and key_size > 0
+        (
+            isinstance(key_type, ir.PointerType)
+            or isinstance(key_type, ir.LiteralStructType)
+        )
         and self._tuple_key_fields(key_type) is not None
     ) {
-        _eq: any = None;
+        _eq: ir.Value = ir.Constant(ir.IntType(1), 1);
         for (_fi, _fk) in self._tuple_key_fields(key_type) {
             _sv = self._tuple_key_field_val(b, stored_val, _fi, _fk);
             _qv = self._tuple_key_field_val(b, search_val, _fi, _fk);
@@ -882,12 +882,14 @@ impl NaIRGenPass._emit_key_comparison(
                 );
             } elif _fk == "f64" {
                 _e = b.fcmp_ordered("==", _sv, _qv, name=f"tk.feq{_fi}");
+            } elif _fk == "tuple" {
+                _e = self._emit_key_comparison(b, _sv.type, _sv, _qv);
             } elif _fk == "ptr" {
                 _e = b.icmp_unsigned("==", _sv, _qv, name=f"tk.peq{_fi}");
             } else {
                 _e = b.icmp_signed("==", _sv, _qv, name=f"tk.ieq{_fi}");
             }
-            _eq = _e if _eq is None else b.and_(_eq, _e, name=f"tk.eq{_fi}");
+            _eq = b.and_(_eq, _e, name=f"tk.eq{_fi}");
         }
         return _eq;
     } elif isinstance(key_type, ir.PointerType) and key_size > 0 {

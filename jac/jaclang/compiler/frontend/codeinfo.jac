@@ -1,7 +1,7 @@
 import hashlib;
 import from collections.abc { Sequence }
 import from contextvars { ContextVar }
-import from dataclasses { field }
+import from jaclang.runtime.object_model { field }
 import from jaclang.compiler.frontend.constant {
     NATIVE_ERASED_ANNOTATIONS,
     NATIVE_ERASED_TYPE_MARKERS,
@@ -14,6 +14,7 @@ import type from jaclang.compiler.frontend.unitree { CommentToken }
 import type from jaclang.compiler.tools.doc_ir { Doc }
 import type from jaclang.compiler.frontend.unitree { Source, Token }
 import type from jaclang.runtime.osp_model { OspModel }
+import type from jaclang.compiler.backends.native.llvm.ir { Module as IRModule }
 import type from jaclang.compiler.backends.native.llvm.binding {
     ModuleRef,
     ExecutionEngine
@@ -43,6 +44,7 @@ obj ClientArtifact {
         native_import_sources: list[str] = field(default_factory=`list),
         source_map: list[tuple[int, int, int, int, str]] = field(default_factory=`list),
         dep_digests: dict[str, str] = field(default_factory=`dict),
+        boundary_contracts: dict = field(default_factory=`dict),
         framework: str = "";
 
     def to_bytes -> bytes;
@@ -160,6 +162,21 @@ def native_safe_sym(src: str) -> str {
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }
 
+def native_library_function_symbol(mod_path: str, name: str) -> str {
+    import os;
+    library_root = native_stdlib_root();
+    if library_root is None {
+        return name;
+    }
+    source = os.path.realpath(mod_path);
+    root_path = os.path.realpath(library_root) + os.sep;
+    if not source.startswith(root_path) {
+        return name;
+    }
+    module_name = source[len(root_path):].replace(os.sep, "/");
+    return f"__jac_lib_{native_safe_sym(module_name)}_{name}";
+}
+
 def module_dotted_name(mod_path: str, mod_name: str = "") -> str {
     import os;
     path = mod_path.replace("\\", "/");
@@ -260,7 +277,7 @@ glob NATIVE_ERASED_FIELD_MARKERS: frozenset = frozenset({"field"});
 
 glob NATIVE_ERASED_IMPORTS: dict[str, frozenset] = {
          "abc": NATIVE_ERASED_ABC_BASES,
-         "dataclasses": NATIVE_ERASED_FIELD_MARKERS,
+         "jaclang.runtime.object_model": NATIVE_ERASED_FIELD_MARKERS,
          "typing": TYPE_PARAM_CONSTRUCTORS
              | NATIVE_ERASED_IDENTITY_CALLS
              | NATIVE_ERASED_TYPE_MARKERS
@@ -387,6 +404,9 @@ glob CLIENT_RUNTIME_SOURCE_PATHS: list[str] = [
          "client/solid_runtime.jac",
          "client/pwa_runtime.jac",
          "client/wasm_host.jac",
+         "client/webgl.jac",
+         "client/endpoint_cache.jac",
+         "client/auth_contract.jac",
          "client/client_mobui.jac",
          "client/client_react_core.jac",
          "client/client_runtime_native.jac",
@@ -477,6 +497,10 @@ def _native_variant_path(base_no_ext: str) -> (str | None) {
 
 def _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if candidate is None {
+        return None;
+    }
+    import from jaclang.compiler.native_scope { scope_allows_inferred_path }
+    if not scope_allows_inferred_path(candidate) {
         return None;
     }
     import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
@@ -662,13 +686,16 @@ obj InteropBinding {
         ast_node: any = None,
         source_module: (str | None) = None,
         kind: str = 'function',
-        provider_app: str = '';
+        provider_app: str = '',
+        native_contract: dict = field(default_factory=`dict),
+        endpoint_id: str = '';
 
     has is_cross_module: bool { getter; }
 }
 
 obj InteropManifest {
-    has bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
+    has native_host_imports: dict[str, dict] = field(default_factory=`dict),
+        bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
         boundary_types: dict[(str, BoundaryTypeInfo)] = field(default_factory=`dict),
         endpoint_effects: dict[(str, dict)] = field(default_factory=`dict),
         func_access: dict[(str, bool)] = field(default_factory=`dict),
@@ -684,6 +711,7 @@ obj InteropManifest {
     has native_imports: list[InteropBinding] { getter; }
     has native_exports: list[InteropBinding] { getter; }
     has native_cross_module_imports: list[InteropBinding] { getter; }
+    has native_dependency_sources: list[str] { getter; }
     has client_native_imports: list[InteropBinding] { getter; }
     has server_exports_to_client: list[InteropBinding] { getter; }
     has server_exports_to_server: list[InteropBinding] { getter; }
@@ -707,7 +735,7 @@ obj CodeGenTarget {
         py_bytecode: (bytes | None) = None,
         jcir: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
-        llvm_ir: (ModuleRef | None) = None,
+        llvm_ir: (ModuleRef | IRModule | None) = None,
         native_engine: (ExecutionEngine | None) = None,
         native_bitcode: (bytes | None) = None,
         native_linked_ir: (str | None) = None,
@@ -729,4 +757,26 @@ obj CodeGenTarget {
     has doc_ir: Doc { getter; setter(value: Doc); }
     has client_manifest: ClientManifest { getter; setter(value: ClientManifest); }
     has interop_manifest: InteropManifest { getter; setter(value: InteropManifest); }
+}
+
+def endpoint_descriptor(module: any, kind: str, name: str) -> dict {
+    import os;
+    import from jaclang.compiler.driver.boundary_classify { owner_app_name_for_path }
+    import from jaclang.compiler.placement.workspace { workspace_for_path }
+    path = module.loc.mod_path;
+    workspace = workspace_for_path(path);
+    app = owner_app_name_for_path(path) or module.owner_app or "";
+    source = os.path.relpath(path, workspace.project_root)
+        if workspace
+        else module.name;
+    source = source.replace(os.sep, "/");
+    return {"app": app, "module": source, "kind": kind, "name": name};
+}
+
+def endpoint_key(module: any, kind: str, name: str) -> str {
+    import json;
+    d = endpoint_descriptor(module, kind, name);
+    return "["
+        + ",".join([json.dumps(part) for part in [d["app"], d["module"], kind, name]])
+        + "]";
 }

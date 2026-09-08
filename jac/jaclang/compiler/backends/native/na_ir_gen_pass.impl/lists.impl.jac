@@ -242,7 +242,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
             if _tn is not None {
                 _slot = self.local_vars.get(_tn);
                 if _slot is not None and isinstance(_slot.type, ir.PointerType) {
-                    _spec = self._spec_from_list_slot_type(_slot.type.pointee);
+                    _spec = self._spec_from_list_slot_type(_slot.pointee_type);
                     if _spec is not None {
                         return _spec;
                     }
@@ -367,7 +367,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     _first_src_info: (dict | None) = None;
     if _first_spread is not None {
         _first_src_info = self._container_src_info(
-            self._str_norm(self._codegen_expr(_first_spread))
+            self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
             self.emit(
@@ -380,7 +380,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             return None;
         }
     } else {
-        first_val = self._str_norm(self._codegen_expr(nd.values[0]));
+        first_val = self._str_norm_optional(self._codegen_expr(nd.values[0]));
         if first_val is None {
             return None;
         }
@@ -495,7 +495,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         _spread_op = self._spread_operand(nd.values[i]);
         if _spread_op is not None {
             _src_info = self._container_src_info(
-                self._str_norm(self._codegen_expr(_spread_op))
+                self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
                 self.emit(
@@ -525,7 +525,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             );
             continue;
         }
-        val = self._str_norm(self._codegen_expr(nd.values[i]));
+        val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
             self.emit(
                 E5092,
@@ -662,9 +662,6 @@ impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
     _normed = self._str_norm(value);
-    if _normed is None {
-        return;
-    }
     value = _normed;
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {

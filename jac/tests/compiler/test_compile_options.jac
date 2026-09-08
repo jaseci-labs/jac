@@ -38,6 +38,26 @@ test "identical codegen options produce an identical fingerprint" {
     assert _pinned_opts().codegen_fingerprint() == _pinned_opts().codegen_fingerprint();
 }
 
+test "forced server compilation retains Python standard-library imports" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    program = JacProgram();
+    module = program.compile(
+        file_path="forced_server_socket.jac",
+        use_str="import socket;\n"
+            + "def bind_local { sock = socket.socket(); "
+            + "sock.bind(('127.0.0.1', 0)); sock.close(); }\n",
+        options=CompileOptions(
+            default_codespace="native",
+            force_codespace="server",
+            force_target_program=True,
+            need_full_ast=True
+        )
+    );
+    assert not program.errors_had , str(program.errors_had);
+    assert not module.in_native_context();
+    assert module.gen.py_bytecode is not None;
+}
+
 test "every codegen option flip changes the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
     flips: list = [

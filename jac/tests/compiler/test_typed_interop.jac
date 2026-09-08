@@ -18,6 +18,7 @@ import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.codeinfo { endpoint_key }
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
@@ -188,14 +189,14 @@ test "endpoint effects classify readers and writers" {
     code = '"""Test."""\n\nnode Item { has name: str; }\n\nwalker read_items {\n    can visit_root with Root entry { report [-->]; }\n}\n\nwalker add_item {\n    has name: str;\n    can do_add with Root entry { here ++> Item(name=self.name); }\n}\n\ndef:pub get_count() -> int { return 0; }\n\ndef:pub delete_all() -> None { items = []; del items; }\n\ndef:pub app() -> Any {\n    root spawn read_items();\n    root spawn add_item(name="x");\n    c = await get_count();\n    await delete_all();\n    return <div>{c}</div>;\n}\n';
     mod = compile_inline(code);
     effects = mod.gen.client_manifest.endpoint_effects;
-    assert "walker:read_items" in effects;
-    assert not effects["walker:read_items"]["is_writer"];
-    assert "walker:add_item" in effects;
-    assert effects["walker:add_item"]["is_writer"];
-    assert "func:get_count" in effects;
-    assert not effects["func:get_count"]["is_writer"];
-    assert "func:delete_all" in effects;
-    assert effects["func:delete_all"]["is_writer"];
+    assert endpoint_key(mod, "walker", "read_items") in effects;
+    assert not effects[endpoint_key(mod, "walker", "read_items")]["writes"];
+    assert endpoint_key(mod, "walker", "add_item") in effects;
+    assert effects[endpoint_key(mod, "walker", "add_item")]["writes"];
+    assert endpoint_key(mod, "func", "get_count") in effects;
+    assert not effects[endpoint_key(mod, "func", "get_count")]["writes"];
+    assert endpoint_key(mod, "func", "delete_all") in effects;
+    assert effects[endpoint_key(mod, "func", "delete_all")]["writes"];
 }
 
 # Client manifest tracks exports from typed return fixture

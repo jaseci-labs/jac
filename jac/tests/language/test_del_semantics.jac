@@ -255,11 +255,13 @@ test "a subscript del peeks once and keeps the Python del verbatim" {
         cwd=JAC_ROOT
     );
     assert result.returncode == 0 , result.stderr;
-    assert "destroy(peek_item(cache, key))" in result.stdout , result.stdout;
+    assert "_jac_runtime_destroy(_jac_runtime_peek_item(cache, key))"
+        in result.stdout , result.stdout;
     assert "del cache[key]" in result.stdout , result.stdout;
-    assert "destroy(peek_item(items, 0))" in result.stdout , result.stdout;
+    assert "_jac_runtime_destroy(_jac_runtime_peek_item(items, 0))" in result.stdout , result.stdout;
     assert "del items[0]" in result.stdout , result.stdout;
-    assert "destroy(peek_item(items, slice(1, 3, None)))" in result.stdout , result.stdout;
+    assert "_jac_runtime_destroy(_jac_runtime_peek_item(items, slice(1, 3, None)))"
+        in result.stdout , result.stdout;
     assert "del items[1:3]" in result.stdout , result.stdout;
     assert "strict" not in result.stdout , result.stdout;
 }

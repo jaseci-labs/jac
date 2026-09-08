@@ -373,7 +373,7 @@ impl TypeEvaluator._ts_synth_class_types(
         }
         for (mname, group) in kept_by_name.items() {
             if len(group) > 1 {
-                member_type = AnyType(is_foreign=True);
+                member_type: TypeBase = AnyType(is_foreign=True);
             } else {
                 m = group[0];
                 member_type = self._map_ts_type(m.ty, decls, None, shells);

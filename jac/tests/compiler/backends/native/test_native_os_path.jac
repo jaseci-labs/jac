@@ -20,7 +20,11 @@ def _nacompile_run(fixture: str) -> str {
     assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-800:]
         if comp.stderr
         else '(empty)'}";
-    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=60);
+    env = os.environ.copy();
+    env["JAC_NATIVE_OS_PATH_TEST"] = "environment text";
+    proc = subprocess.run(
+        [out_bin], capture_output=True, text=True, timeout=60, env=env
+    );
     assert proc.returncode == 0 , f"binary failed: {proc.stderr[-400:]
         if proc.stderr
         else '(empty)'}";
@@ -29,7 +33,20 @@ def _nacompile_run(fixture: str) -> str {
 
 test "os path isfile and isdir report real file kinds natively" {
     out = _nacompile_run("os_path_probe.jac").strip().split("\n");
-    assert out == ["True", "False", "True", "False", "True", "False", "5", "-1"] , f"os.path probe mismatch: {out}";
+    assert out
+        == [
+            "True",
+            "False",
+            "True",
+            "False",
+            "True",
+            "False",
+            "5",
+            "-1",
+            "True",
+            "jac_ospath_probe.txt",
+            "environment text"
+        ] , f"os.path probe mismatch: {out}";
 }
 
 test "unsupported os path members fail the native compile loudly" {

@@ -12,6 +12,7 @@ import from jaclang.compiler.frontend.unitree {
     FString,
     FuncCall,
     FuncSignature,
+    ImplDef,
     IfElseExpr,
     IfStmt,
     InForStmt,
@@ -28,6 +29,7 @@ import from jaclang.compiler.frontend.unitree {
     ParamVar,
     ReturnStmt,
     SetVal,
+    same_lexical_scope,
     String,
     Symbol,
     Test,
@@ -123,7 +125,10 @@ walker RcFactsPass(Transform) {
     def _stamp_region_handles(ir_in: Module) -> None;
     def _asn_makes_region_handle(nd: Assignment) -> bool;
     def _use_ok_for_stack(nm: NameAtom) -> bool;
-    def _enclosing_fn_scope(nd: UniNode) -> (UniNode | None);
+    def _enclosing_fn_scope(
+        nd: UniNode, stop_at_comprehension: bool = False
+    ) -> UniNode | None;
+
     def _is_param_sym(sym: Symbol) -> bool;
     def _last_use_tracked(sym: Symbol) -> bool;
     def _stamp_last_use(ir_in: Module) -> None;

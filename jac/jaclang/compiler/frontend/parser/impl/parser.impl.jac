@@ -56,6 +56,7 @@ impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
 
 impl Parser.postinit{
     self.source = Source(self.source_code, self.file_path);
+    self._tokens_len = len(self.tokens);
 }
 
 impl Parser.match_tok(kind: TokenKind) -> LexToken | None {

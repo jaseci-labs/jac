@@ -39,13 +39,13 @@ import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
 
 """Compile a source string, then re-emit it: (pipeline tree, fresh tree, bytes)."""
-def dual_compile(src: str, path: str) -> tuple {
+def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple {
     prog = JacProgram();
     mod = prog.compile(
         use_str=src,
         file_path=path,
         options=CompileOptions(
-            force_codespace="server",
+            force_codespace=codespace,
             skip_native_engine=True,
             no_ir_cache=True,
             suppress_codes=["E5092"]
@@ -640,7 +640,9 @@ test "doubles correctly" {
     assert double(2) == 4;
 }
 """;
-    (ref_tree, got_tree, blob) = dual_compile(src, "testblock_fixture.jac");
+    (ref_tree, got_tree, blob) = dual_compile(
+        src, "testblock_fixture.jac", codespace="native"
+    );
     assert_dump_equal(ref_tree, got_tree);
     result = compile_ir(blob);
     assert len(result.diags) == 0;

@@ -32,6 +32,7 @@ import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
+import from tests.runtimelib.react_jsdom_harness { write_runtime_support }
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
 import from jaclang.client.bun_installer { get_bun }
 import from jaclang.client.solid_entry { build_pages_solid_entry_script }
@@ -863,6 +864,7 @@ test "solid counter mounts and reacts in jsdom" {
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        write_runtime_support(work, runtime_path);
         (work / "harness.mjs").write_text(_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -932,6 +934,7 @@ test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        write_runtime_support(work, runtime_path);
         (work / "harness.mjs").write_text(_CONTROL_FLOW_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -1040,6 +1043,7 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
         (work / "manual_entry.src.jsx").write_text(manual_entry_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        write_runtime_support(work, runtime_path);
         (work / "harness.mjs").write_text(_ROUTING_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -1137,6 +1141,7 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
         (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        write_runtime_support(work, runtime_path);
         (work / "harness.mjs").write_text(_FORM_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -1218,6 +1223,7 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
         (work / "callback.src.jsx").write_text(callback_js, encoding="utf-8");
         (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
         (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        write_runtime_support(work, runtime_path);
         (work / "harness.mjs").write_text(_P2_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(

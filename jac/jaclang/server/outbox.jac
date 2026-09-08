@@ -15,6 +15,12 @@ import from jaclang.data.store {
 }
 import from jaclang.server.bridge { BridgeRejected }
 
+obj DeliveryReceipt {
+    static def _from_wire(payload: dict) -> DeliveryReceipt {
+        return DeliveryReceipt();
+    }
+}
+
 glob logger = logging.getLogger(__name__),
      STATUS_PENDING = "pending",
      STATUS_DELIVERING = "delivering",

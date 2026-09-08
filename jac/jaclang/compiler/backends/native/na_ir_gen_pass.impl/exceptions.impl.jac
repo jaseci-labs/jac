@@ -301,7 +301,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
         exc_msg = self._make_global_string(exc_type_name, name_prefix=".exc.msg");
     }
     exc_msg = self._str_norm(exc_msg);
-    exc_payload = self._str_norm(exc_payload);
+    exc_payload = self._str_norm_optional(exc_payload);
     if exc_msg is None {
         return;
     }
@@ -364,7 +364,7 @@ impl NaIRGenPass._codegen_try_unwind(
     exc_state_ptr = exc_state_type.as_pointer();
     func = self.builder.function;
     _gc = self._gen_ctx;
-    _in_gen = _gc is not None and func is _gc["resume_fn"];
+    _in_gen = _gc is not None and func is _gc.resume_fn;
 
     func.attributes.add("optnone");
     func.attributes.add("noinline");
@@ -383,7 +383,9 @@ impl NaIRGenPass._codegen_try_unwind(
 
     self.builder.position_at_end(body_bb);
     if _in_gen {
-        self._gen_try_stack.append({"state": exc_state, "dispatch": dispatch_bb});
+        self._gen_try_stack.append(
+            NativeGeneratorHandler(state=exc_state, dispatch=dispatch_bb)
+        );
     }
     frame = NativeFinalizer(
         body=nd.finally_body if emit_finally else None,

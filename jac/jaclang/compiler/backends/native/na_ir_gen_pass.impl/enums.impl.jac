@@ -1,24 +1,44 @@
-impl NaIRGenPass._class_form_enum_self_type(arch_name: str) -> (ir.Type | None) {
-    _arch = self.arch_ast_map.get(arch_name);
-    if _arch is None or not (_arch?.name) {
-        return None;
+impl NaIRGenPass._enum_methods(nd: uni.Enum) -> list[uni.Ability] {
+    methods: list[uni.Ability] = [];
+    for stmt in ModuleFacts.unwrap_body(nd) or [] {
+        if isinstance(stmt, uni.Ability) {
+            methods.append(stmt);
+        } elif isinstance(stmt, uni.ModuleCode) {
+            for member in stmt.body {
+                if isinstance(member, uni.Ability) {
+                    methods.append(member);
+                }
+            }
+        }
     }
-    return self._ensure_enum_lowered(_arch.name.type);
+    return methods;
 }
 
-impl NaIRGenPass._codegen_class_form_enum_member(
-    nd: uni.AtomTrailer
-) -> (ir.Value | None) {
+impl NaIRGenPass._register_enum_methods(module: uni.Module, declare: bool) -> None {
+    for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
+        if isinstance(stmt, uni.Enum) {
+            for method in self._enum_methods(stmt) {
+                if declare {
+                    self._forward_declare_method(stmt.name.value, method);
+                } else {
+                    self._codegen_method(stmt.name.value, method);
+                }
+            }
+        }
+    }
+}
+
+impl NaIRGenPass._codegen_class_form_enum_member(nd: uni.Expr) -> (ir.Value | None) {
     import from jaclang.compiler.passes.layout_pass { class_form_enum_member }
-    _member = class_form_enum_member(nd.type if isinstance(nd, uni.Expr) else None);
+    _member = class_form_enum_member(nd.type);
     if _member is None {
         return None;
     }
     (_scalar, _lit, _name) = _member;
-    if _scalar == "int" {
-        return ir.Constant(ir.IntType(64), _lit);
+    if isinstance(_lit, str) {
+        return self._make_global_string(_lit, name_prefix=".cfenum");
     }
-    return self._make_global_string(_lit, name_prefix=".cfenum");
+    return ir.Constant(ir.IntType(64), _lit);
 }
 
 impl NaIRGenPass._ensure_enum_lowered(t: any) -> (ir.Type | None) {
@@ -65,7 +85,7 @@ impl NaIRGenPass._codegen_enum_layout(
     }
 
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    candidates: list = [];
+    candidates: list[uni.Module] = [];
     if owner is not None {
         candidates.append(owner);
     }
@@ -73,7 +93,7 @@ impl NaIRGenPass._codegen_enum_layout(
     for _fm in (self?._foreign_modules or []) {
         candidates.append(_fm);
     }
-    lay = None;
+    lay: EnumLayout | None = None;
     for _cand in candidates {
         lay = get_layout_registry(_cand, self.prog).get_enum_layout(enum_name);
         if lay is not None and lay.members {
@@ -92,7 +112,7 @@ impl NaIRGenPass._codegen_enum_layout(
 
     i64 = ir.IntType(64);
     if lay.is_string_enum {
-        entries: list = [];
+        entries: list[tuple[str, str, int]] = [];
         for m in lay.members {
             full_name = f"{enum_name}.{m.name}";
             self.enum_values[full_name] = ir.Constant(i64, m.ordinal);
@@ -102,8 +122,8 @@ impl NaIRGenPass._codegen_enum_layout(
         self.enum_string_values[enum_name] = entries;
         self._build_enum_string_table(enum_name, entries);
     } else {
-        name_entries: list = [];
-        int_entries: list = [];
+        name_entries: list[tuple[str, str, int]] = [];
+        int_entries: list[tuple[int, int]] = [];
         for m in lay.members {
             full_name = f"{enum_name}.{m.name}";
             self.enum_values[full_name] = ir.Constant(i64, m.int_value);
@@ -278,9 +298,9 @@ impl NaIRGenPass._codegen_enum_attr_runtime(
     return self._codegen_enum_value_lookup(enum_name, _ord, use_name=use_name);
 }
 
-impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (any | None) {
+impl NaIRGenPass._enum_ctor_layout(enum_name: str) -> (EnumLayout | None) {
     import from jaclang.compiler.passes.layout_pass { get_layout_registry }
-    candidates: list = [];
+    candidates: list[uni.Module] = [];
     _arch = self.arch_ast_map.get(enum_name);
     if _arch is not None {
         _own = _arch.find_parent_of_type(uni.Module);
@@ -375,9 +395,6 @@ impl NaIRGenPass._codegen_enum_ctor(
             return None;
         }
         value = self._str_norm(_arg);
-        if value is None {
-            return None;
-        }
         i64 = ir.IntType(64);
         ordinal: ir.Value = ir.Constant(i64, -1);
 

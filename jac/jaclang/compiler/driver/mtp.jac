@@ -84,8 +84,8 @@ def type_to_str(t: object) -> str {
         return t;
     }
     try {
-        import from dataclasses { is_dataclass }
-        if (is_dataclass(t) and t?.name) {
+        import from jaclang.runtime.object_interop { is_record }
+        if (is_record(t) and t?.name) {
             tname = t?.name;
             if isinstance(tname, str) {
                 return tname;
