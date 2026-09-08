@@ -1672,10 +1672,10 @@ impl UniScopeNode.insert(
     if (force_overwrite or (nd.sym_name not in current)) {
         prev = current.get(nd.sym_name);
         if prev is not None {
-            self._drop_primary(prev);
+            self._drop_primary(nd.sym_name);
         }
         primary = self.primary_scope;
-        primary +>:ScopePrimary:+> symbol;
+        primary +>:ScopePrimary(name=nd.sym_name):+> symbol;
         primary._names_index[nd.sym_name] = symbol;
     } else {
         current[nd.sym_name].add_defn(nd.name_spec);
@@ -1747,7 +1747,7 @@ impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
     primary = self.primary_scope;
     del [edge primary->:ScopePrimary:->];
     for (key, sym) in syms.items() {
-        primary +>:ScopePrimary:+> sym;
+        primary +>:ScopePrimary(name=key):+> sym;
     }
     primary._names_index = dict(syms);
 }
@@ -1757,20 +1757,17 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
     key = alias or sym.name;
     prev = primary._names_index.get(key);
     if prev is not None {
-        self._drop_primary(prev);
+        self._drop_primary(key);
     }
-    primary +>:ScopePrimary:+> sym;
+    primary +>:ScopePrimary(name=key):+> sym;
     primary._names_index[key] = sym;
 }
 
-impl UniScopeNode._drop_primary(sym: Symbol) -> None {
+impl UniScopeNode._drop_primary(name: str) -> None {
     primary = self.primary_scope;
     edges = [edge primary->:ScopePrimary:->];
-    targets = [primary->:ScopePrimary:->];
-    for i in range(len(targets)) {
-        target: Symbol = targets[i];
-        if target is sym {
-            edge_to_drop = edges[i];
+    for edge_to_drop in edges {
+        if edge_to_drop.name == name {
             del edge_to_drop;
             break;
         }

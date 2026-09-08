@@ -349,7 +349,7 @@ node UniScopeNode(UniNode) {
     def find_scope(name: str) -> (UniScopeNode | None);
     def set_primary_names(syms: dict[(str, Symbol)]) -> None;
     def adopt_primary(sym: Symbol, alias: str = "") -> None;
-    def _drop_primary(sym: Symbol) -> None;
+    def _drop_primary(name: str) -> None;
     def get_enclosing_captures -> list[Symbol];
     def link_kid_scope(key_node: UniScopeNode) -> UniScopeNode;
     def def_insert(

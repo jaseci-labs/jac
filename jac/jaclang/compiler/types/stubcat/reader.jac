@@ -577,11 +577,10 @@ obj StubCatalog {
     }
 
     def _populate(scope: UniScopeNode, rec: ScopeRec) {
-        index = scope._names_index;
         for (name, sym_id) in rec.members {
             sym = self.symbol_of(sym_id);
             if sym is not None {
-                index[name] = sym;
+                scope.adopt_primary(sym, alias=name);
             }
         }
         if rec.overloads {

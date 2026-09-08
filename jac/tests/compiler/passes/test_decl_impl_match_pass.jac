@@ -121,6 +121,19 @@ test "linked implementation uses one primary name owner" {
     assert local is not None;
     implementation.adopt_primary(local, alias="alias");
     assert declaration.sym_tab.lookup("alias", deep=False) is local;
+    parameter = implementation.lookup("x", deep=False);
+    assert parameter is not None;
+    implementation.adopt_primary(parameter, alias="alias");
+    owner = implementation.primary_scope;
+    edges = [edge owner->:ScopePrimary:->];
+    targets = [owner->:ScopePrimary:->];
+    bindings = {
+        binding_edge.name: target
+        for (binding_edge, target) in zip(edges, targets)
+    };
+    assert bindings["local"] is local;
+    assert bindings["alias"] is parameter;
+    assert bindings == owner.names_in_scope;
     declaration.sym_tab.set_primary_names({});
     assert implementation.names_in_scope is declaration.sym_tab.names_in_scope;
     assert not implementation.names_in_scope;

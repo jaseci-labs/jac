@@ -14,7 +14,9 @@ edge Uses: Symbol --> NameAtom {}
 
 edge InScope: UniScopeNode --> Symbol {}
 
-edge ScopePrimary: UniScopeNode --> Symbol {}
+edge ScopePrimary: UniScopeNode --> Symbol {
+    has name: str;
+}
 
 edge ScopeOverload: UniScopeNode --> Symbol {}
 
