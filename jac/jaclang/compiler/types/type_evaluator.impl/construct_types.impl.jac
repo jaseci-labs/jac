@@ -340,22 +340,23 @@ impl TypeEvaluator.get_type_of_int(nd: Int) -> TypeBase {
 }
 
 impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
     func_type_params: list[TypeVarType] | None = None;
     if node_.type_params {
         func_type_params = [
-            TypeVarType(
-                name=tp.sym_name,
-                bound=self._convert_to_instance(self.get_type_of_expression(tp.bound))
-                    if tp.bound
-                    else None
-            ) for tp in node_.type_params
+            self._type_var_from_param(tp)
+            for tp in node_.type_params
+            if not tp.is_comptime
         ];
     }
     if not isinstance(node_.signature, FuncSignature) {
         flags = FunctionTypeFlags.Null;
+        if ModuleFacts.ability_is_generator(node_) {
+            flags = flags | FunctionTypeFlags.Generator;
+        }
         if node_.is_static {
             flags = flags | FunctionTypeFlags.StaticMethod;
         }
@@ -492,6 +493,9 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
     }
 
     flags = FunctionTypeFlags.Null;
+    if ModuleFacts.ability_is_generator(node_) {
+        flags = flags | FunctionTypeFlags.Generator;
+    }
     if self._is_ability_staticmethod(node_) {
         flags = flags | FunctionTypeFlags.StaticMethod;
     }
@@ -586,6 +590,12 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
             and not (is_builtin_class and node_.name_spec.sym_name == "Node")
         ) {
             base_classes.append(self.prefetch.node_class);
+        } elif (
+            node_.sym_category == SymbolType.EDGE_ARCH
+            and self.prefetch.edge_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Edge")
+        ) {
+            base_classes.append(self.prefetch.edge_class);
         }
     }
 

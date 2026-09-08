@@ -66,6 +66,8 @@
 "osp_field_access.first_portal_cx_na" = "native"
 "osp_filter_pred.filter_pred_cl" = "client"
 "osp_filter_pred.filter_pred_na" = "native"
+"osp_graph_fragment.fragment_cl" = "client"
+"osp_graph_fragment.fragment_na" = "native"
 "osp_interop.interop_cl" = "client"
 "osp_interop.interop_na" = "native"
 "osp_multi_hop.multi_hop_cl" = "client"

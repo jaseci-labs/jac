@@ -79,6 +79,7 @@ walker NormalizePass(UniPass) {
     can enter_dict_compr with uni.DictCompr entry;
     can enter_atom_trailer with uni.AtomTrailer entry;
     can enter_atom_unit with uni.AtomUnit entry;
+    can enter_graph_expr with uni.GraphExpr entry;
     can enter_yield_expr with uni.YieldExpr entry;
     can enter_func_call with uni.FuncCall entry;
     can enter_index_slice with uni.IndexSlice entry;

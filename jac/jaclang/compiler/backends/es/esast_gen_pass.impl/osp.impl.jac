@@ -846,7 +846,8 @@ impl EsastGenPass._build_osp_graph_call(
                 tgt,
                 make_edge,
                 self.sync_loc(es.Literal(value=undirected), jac_node=nd),
-                self.sync_loc(es.Literal(value=edge_tag), jac_node=nd)
+                self.sync_loc(es.Literal(value=edge_tag), jac_node=nd),
+                self.sync_loc(es.Literal(value=co.capture_edges), jac_node=nd)
             ]
         ),
         jac_node=nd

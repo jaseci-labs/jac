@@ -296,6 +296,7 @@ enum FunctionTypeFlags(IntEnum) {
     StaticMethod = 1 << 1,
     ClassMethod = 1 << 2,
     SynthesizedMethod = 1 << 3,
+    Generator = 1 << 4,
 }
 
 node Parameter {
@@ -375,6 +376,7 @@ node FunctionType(TypeBase) {
     ) -> None;
 
     def __str__ -> str;
+    def clone -> FunctionType;
     def specialize(class_type: ClassType) -> FunctionType;
     def specialize_func_type_vars(solution: dict[(str, TypeBase)]) -> FunctionType;
     def is_gradual_callable_form -> bool;

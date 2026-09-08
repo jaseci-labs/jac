@@ -209,3 +209,117 @@ test "module_dunders_no_errors" {
 
     assert len(program.errors_had) == 0 , f"Expected no errors for module dunder variables, got:\n{all_errors}";
 }
+
+test "isinstance narrows a class or variadic tuple of generic classes" {
+    program = JacProgram();
+    program.compile(
+        file_path="generic_class_guard.jac",
+        use_str="def select[T: object](value: object, kinds: type[T] | tuple[type[T], ...]) -> list[T] { result: list[T] = []; if isinstance(value, kinds) { result.append(value); } return result; }",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "bounded generic union branches accept containers and None" {
+    program = JacProgram();
+    program.compile(
+        file_path="generic_optional_branch.jac",
+        use_str="node Part {} def consume[T: Node](value: T | list[T] | None) -> None {} with entry { consume(Part()); consume([Part()]); consume(None); }",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "opaque iterable alternatives preserve gradual generic arguments" {
+    program = JacProgram();
+    program.compile(
+        file_path="generic_opaque_iterable.jac",
+        use_str="def consume(values: list[str]) -> None {} def forward(value: any) -> None { consume(list(value or [])); }",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "generic method specialization preserves asynchronous call results" {
+    program = JacProgram();
+    program.compile(
+        file_path="generic_async_method.jac",
+        use_str="import asyncio; obj Service[T] { async def fetch(value: T) -> T { return value; } } def schedule(service: Service[int]) -> None { asyncio.ensure_future(service.fetch(1)); }",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "async generator methods retain their iterator result after specialization" {
+    program = JacProgram();
+    program.compile(
+        file_path="generic_async_generator.jac",
+        use_str="""
+import from typing { AsyncIterator }
+obj Source[T] {
+    async def values(value: T) -> AsyncIterator[T];
+    async def opaque(value: T) -> any { yield value; }
+    async def factory(value: T) -> AsyncIterator[T] { return self.values(value); }
+}
+impl Source.values(value: T) -> AsyncIterator[T] { yield value; }
+async def consume(source: Source[int]) -> None {
+    async for value in source.values(1) { result: int = value; }
+    async for value in source.opaque(2) { result: int = value; }
+    async for value in await source.factory(3) { result: int = value; }
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}
+
+test "an async function returning an iterator still requires awaiting" {
+    program = JacProgram();
+    program.compile(
+        file_path="async_iterator_factory.jac",
+        use_str="""
+import from typing { AsyncIterator }
+async def values -> AsyncIterator[int] { yield 1; }
+async def factory -> AsyncIterator[int] { return values(); }
+async def wrong -> None { async for value in factory() { print(value); } }
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert any(error.code?.code == "E1022" for error in program.errors_had);
+}
+
+test "runtime class guards refine class objects and callable instances" {
+    program = JacProgram();
+    program.compile(
+        file_path="runtime_class_guards.jac",
+        use_str="""
+import from enum { Enum }
+import from types { MethodType }
+def names(ty: object) -> list[str] {
+    if isinstance(ty, type) and issubclass(ty, Enum) {
+        return list(ty.__members__);
+    }
+    return [];
+}
+def receiver(caller: Callable) -> object {
+    value: object = caller;
+    if isinstance(value, MethodType) { return value.__self__; }
+    return None;
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+}

@@ -1088,6 +1088,15 @@ impl JacGraph.connect(
     left = [left] if isinstance(left, NodeArchetype) else left;
     right_is_node = isinstance(right, NodeArchetype);
     right = [right] if isinstance(right, NodeArchetype) else right;
+    for operands in (left, right) {
+        for operand in operands {
+            if not isinstance(operand, NodeArchetype) {
+                raise TypeError(
+                    "connect operands must be nodes or flat collections of nodes"
+                );
+            }
+        }
+    }
     edges = [];
     for i in left {
         _left = i.__jac__;

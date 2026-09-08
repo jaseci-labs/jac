@@ -1879,6 +1879,14 @@ node AtomUnit(Expr) {
     def __repr__ -> str;
 }
 
+node GraphExpr(Expr) {
+    has exprs: Sequence[Expr] { getter; }
+
+    def init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> None;
+    def postinit -> None;
+    def __repr__ -> str;
+}
+
 node YieldExpr(Expr) {
     has with_from: bool;
     has expr: (Expr | None) { getter; }
@@ -1989,7 +1997,9 @@ node DisconnectOp(WalkerStmtOnlyNode) {
 }
 
 node ConnectOp(UniNode) {
-    has edge_dir: EdgeDir;
+    has edge_dir: EdgeDir,
+        capture_edges: bool = False;
+
     has conn_type: (Expr | None) { getter; }
     has conn_assign: (AssignCompr | None) { getter; }
 

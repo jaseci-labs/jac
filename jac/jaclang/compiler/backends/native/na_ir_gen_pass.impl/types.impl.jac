@@ -21,6 +21,12 @@ impl NaIRGenPass._lower_type(t: any) -> (ir.Type | None) {
         if _sol is not None and t.name in _sol {
             return self._lower_type(_sol[t.name]);
         }
+        if t.bound is not None {
+            bound = self._lower_type(t.bound);
+            if isinstance(bound, ir.PointerType) {
+                return ir.IntType(8).as_pointer();
+            }
+        }
         return None;
     }
     key = self._mangled_of(t);
@@ -722,6 +728,9 @@ impl NaIRGenPass._lower_view_container(t: any) -> (ir.Type | None) {
 
 impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     cname = t.shared.class_name;
+    if t.is_builtin("Node") or t.is_builtin("Edge") or t.is_builtin("Walker") {
+        return ir.IntType(8).as_pointer();
+    }
     if cname in self.type_map {
         return self.type_map[cname];
     }
@@ -1171,6 +1180,10 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
         }
         if self._typevar_optional_field(_ptb) {
             return ir.IntType(8).as_pointer();
+        }
+        sequence = self._erased_seq_type(_ptb);
+        if sequence is not None {
+            return sequence;
         }
         try {
             import from jaclang.compiler.types.types { TypeVarType as _RfTypeVarType }

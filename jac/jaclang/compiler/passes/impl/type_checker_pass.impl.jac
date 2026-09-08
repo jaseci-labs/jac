@@ -94,7 +94,8 @@ impl TypeCheckPass.exit_return_stmt with ReturnStmt exit {
         return;
     }
 
-    if isinstance(scope, Ability) and scope.get_all_sub_nodes(YieldExpr) {
+    import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+    if isinstance(scope, Ability) and ModuleFacts.ability_is_generator(scope) {
         gen_return = get_declared_generator_return_type(return_type);
         if gen_return is not None {
             return_type = self.evaluator._convert_to_instance(gen_return);
@@ -142,14 +143,20 @@ impl TypeCheckPass.exit_filter_compr with FilterCompr exit {
     self.evaluator.get_type_of_expression(here);
 }
 
+def _lambda_needs_context(nd: LambdaExpr) -> bool {
+    return nd.signature is not None
+        and any(param.type_tag is None for param in nd.signature.get_parameters())
+        and (isinstance(nd.body, Expr) or nd.tail_return_expr() is not None);
+}
+
 impl TypeCheckPass.enter_lambda_expr with LambdaExpr entry {
-    if (isinstance(here.body, Expr) or here.tail_return_expr() is not None) {
+    if _lambda_needs_context(here) {
         self._lambda_depth += 1;
     }
 }
 
 impl TypeCheckPass.exit_lambda_expr with LambdaExpr exit {
-    if (isinstance(here.body, Expr) or here.tail_return_expr() is not None) {
+    if _lambda_needs_context(here) {
         self._lambda_depth -= 1;
     }
 }
@@ -893,7 +900,8 @@ impl TypeCheckPass.exit_ability with Ability exit {
             }
         }
 
-        is_generator = len(here.get_all_sub_nodes(YieldExpr)) > 0;
+        import from jaclang.compiler.frontend.module_facts { ModuleFacts }
+        is_generator = ModuleFacts.ability_is_generator(here);
 
         body_stmts: list[CodeBlockStmt] = [
             stmt

@@ -334,6 +334,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot delete {what}",
          help="`del` takes either a location to unbind -- a name, an attribute, or a subscript -- or an expression yielding graph objects to destroy. This target is neither."
      ),
+     E0084 = _err(
+         "E0084",
+         Category.SYNTAX,
+         "Graph construction requires outward directed connections",
+         help="Use `++>` or `+>:Edge:+>` inside `graph { ... }`. Incoming and undirected mutation remain available outside construction expressions."
+     ),
+     E0085 = _err(
+         "E0085",
+         Category.SYNTAX,
+         "Graph construction cannot suspend execution",
+         help="Resolve awaited values and asynchronous iterables before entering `graph { ... }`. Construction expressions are synchronous."
+     ),
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,

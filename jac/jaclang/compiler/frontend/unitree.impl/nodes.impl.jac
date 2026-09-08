@@ -1949,7 +1949,8 @@ impl ContextAwareNode.code_context.getter -> CodeContext {
         target: Codespace = found[0];
         return CodeContext(target.kind);
     }
-    return CodeContext.SERVER;
+    enclosing = self.find_parent_of_type(ContextAwareNode);
+    return enclosing.code_context if enclosing is not None else CodeContext.SERVER;
 }
 
 impl ContextAwareNode.code_context.setter(code_context: CodeContext) {
@@ -3446,6 +3447,11 @@ impl AtomTrailer.as_attr_list.getter -> list[AstSymbolNode] {
 }
 
 impl AtomUnit.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
+impl GraphExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
 }

@@ -537,6 +537,10 @@ walker NaIRGenPass(Transform) {
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_callable_value(
+        nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
+    ) -> (ir.Value | None);
+
     def _codegen_synthetic_call(
         target: uni.Expr,
         params: list[uni.Expr | uni.KWPair],

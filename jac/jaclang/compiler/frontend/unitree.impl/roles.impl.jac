@@ -2639,6 +2639,19 @@ impl AtomUnit.init(
     self.postinit();
 }
 
+impl GraphExpr.init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> None {
+    self._link(kid, {ExprsRole: exprs});
+    self.postinit();
+}
+
+impl GraphExpr.exprs.getter -> Sequence[Expr] {
+    return [self->:ExprsRole:->];
+}
+
+impl GraphExpr.__repr__ -> str {
+    return f"GraphExpr(exprs={self.exprs!r})";
+}
+
 impl YieldExpr.init(
     *, expr: (Expr | None), with_from: bool, kid: Sequence[UniNode] = []
 ) -> None {

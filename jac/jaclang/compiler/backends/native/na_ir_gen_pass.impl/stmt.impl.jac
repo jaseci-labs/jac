@@ -219,7 +219,8 @@ impl NaIRGenPass._codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -
         }
         return;
     }
-    if self._struct_name_of(target) is None {
+    if self._struct_name_of(target) is None
+        and not self._del_target_holds_graph(target) {
         self.emit(E5092, node_override=nd, kind="statement", name="DeleteStmt");
         return;
     }
@@ -233,6 +234,34 @@ impl NaIRGenPass._codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -
 }
 
 impl NaIRGenPass._del_target_holds_graph(target: uni.Expr) -> bool {
+    import from jaclang.compiler.types.types {
+        ClassType,
+        TypeBase,
+        TypeVarType,
+        UnionType
+    }
+
+    def holds_graph(t: TypeBase | None) -> bool {
+        if isinstance(t, TypeVarType) {
+            return holds_graph(t.bound);
+        }
+        if isinstance(t, UnionType) {
+            return any(holds_graph(member) for member in t.types);
+        }
+        if isinstance(t, ClassType) {
+            if t.is_node_type() or t.is_edge_type() {
+                return True;
+            }
+            if t.is_builtin("list") {
+                return any(holds_graph(item) for item in (t.private.type_args or []));
+            }
+        }
+        return False;
+    }
+
+    if holds_graph(target.type) {
+        return True;
+    }
     _model = self.ir_in.gen.osp_model;
     _type_key = self._type_key_of(target);
     if (_model is None) or (_type_key is None) {

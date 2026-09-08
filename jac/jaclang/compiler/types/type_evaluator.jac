@@ -285,6 +285,7 @@ obj PrefetchedTypes {
         literal_string_class: ClassType | None = None,
         root_class: ClassType | None = None,
         node_class: ClassType | None = None,
+        edge_class: ClassType | None = None,
         walker_class: ClassType | None = None,
         path_class: ClassType | None = None,
         jsx_element_class: ClassType | None = None,
@@ -492,6 +493,7 @@ walker TypeEvaluator {
 
     def _metaclass_of(cls_type: ClassType) -> (ClassType | None);
     def _extract_type_params(node_: Archetype) -> list[TypeVarType];
+    def _type_var_from_param(node_: TypeParam) -> TypeVarType;
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
@@ -846,7 +848,7 @@ walker TypeEvaluator {
     def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase] | None;
-    def _isinstance_tuple_alternatives(arg_type: TypeBase) -> list[TypeBase] | None;
+    def _isinstance_class_alternatives(arg_type: TypeBase) -> list[TypeBase] | None;
     def _extract_type_guard_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _create_type_guard_type(name: str, guarded: TypeBase | None) -> TypeBase;
     def _type_guard_form_of(ty: TypeBase) -> str | None;
