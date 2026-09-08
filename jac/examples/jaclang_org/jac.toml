@@ -88,6 +88,10 @@ components_dir = "core/site/ui"
 utils_path = "core/utils.jac"
 
 [dependencies]
+
+[byllm.model]
+default_model = "anthropic/claude-sonnet-5"
+
 [dependencies.npm]
 react-native-web = "^0.19.13"
 embla-carousel-react = "*"

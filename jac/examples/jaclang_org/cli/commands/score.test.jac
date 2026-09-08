@@ -1,4 +1,19 @@
 import json;
+import from core.ai { CodeReview, CodeInsight, NextStep }
+
+test "AI review appears in text and JSON without changing score" {
+    res = sample_result();
+    total = res.breakdown.total;
+    res.breakdown.ai_review = CodeReview(
+        summary="A typed task graph.",
+        strength=CodeInsight(observation="Typed state.", evidence="app.jac: Task"),
+        opportunity=NextStep(action="Test traversal.", reason="Protect behavior.")
+    );
+    assert "A typed task graph." in render(res);
+    assert as_dict(res)["ai_review"]["strength"]["evidence"] == "app.jac: Task";
+    assert as_dict(res)["total"] == total;
+}
+
 import from core.github { RepoMeta }
 import from core.leaderboard.scoring { analyze, score }
 import from core.timefmt { now_iso }

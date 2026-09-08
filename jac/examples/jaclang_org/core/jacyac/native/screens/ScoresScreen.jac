@@ -214,6 +214,28 @@ def:pub ScoresScreen(model: JacYacState) -> JsxElement {
                             }}
                         </View>
                     }}
+                    {if project.breakdown and project.breakdown.ai_review {
+                        <View>
+                            <Text style={styles.switchLink}>
+                                AI code review · sampled files
+                            </Text>
+                            <Text style={styles.footnote}>
+                                {project.breakdown.ai_review.summary}
+                            </Text>
+                            <Text style={styles.footnote}>
+                                {project.breakdown.ai_review.strength.observation}
+                            </Text>
+                            <Text style={styles.footnote}>
+                                {project.breakdown.ai_review.strength.evidence}
+                            </Text>
+                            <Text style={styles.footnote}>
+                                {project.breakdown.ai_review.opportunity.action}
+                            </Text>
+                            <Text style={styles.footnote}>
+                                {project.breakdown.ai_review.opportunity.reason}
+                            </Text>
+                        </View>
+                    }}
                     {if model.myProfile
                         and project.owner_username
                             == model.myProfile.profile.username {

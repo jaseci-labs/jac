@@ -152,6 +152,28 @@ def:pub ProjectCard(
                     }}
                 </details>
             }}
+            {if scored and project.breakdown and project.breakdown.ai_review {
+                <details className="my-2 text-sm">
+                    <summary className="cursor-pointer text-muted-foreground">
+                        AI code review · sampled files
+                    </summary>
+                    <p>{project.breakdown.ai_review.summary}</p>
+                    <p>
+                        <strong>Strength: </strong>
+                        {project.breakdown.ai_review.strength.observation}
+                    </p>
+                    <p className="text-muted-foreground">
+                        {project.breakdown.ai_review.strength.evidence}
+                    </p>
+                    <p>
+                        <strong>Next step: </strong>
+                        {project.breakdown.ai_review.opportunity.action}
+                    </p>
+                    <p className="text-muted-foreground">
+                        {project.breakdown.ai_review.opportunity.reason}
+                    </p>
+                </details>
+            }}
             {if showOwner {
                 <button
                     type="button"
