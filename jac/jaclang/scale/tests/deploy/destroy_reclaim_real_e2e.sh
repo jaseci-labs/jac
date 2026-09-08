@@ -21,10 +21,15 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
 DRIVER="${REPO_ROOT}/jac/jaclang/scale/tests/deploy/sdk_deploy_driver.jac"
-if [ ! -f "${DRIVER}" ]; then
-    echo "FAIL: driver not found" >&2
+APP_SRC="${REPO_ROOT}/jac/examples/todo_app"
+if [ ! -f "${DRIVER}" ] || [ ! -f "${APP_SRC}/main.jac" ]; then
+    echo "FAIL: driver or todo_app fixture not found" >&2
     exit 1
 fi
+
+# On this line the fixture only boots on a pod base image that carries the
+# client runtime, so point E2E_POD_BASE_IMAGE at the official image before
+# running this; on python:3.12-slim the app container crash-loops.
 
 OWNER_LABEL="jac-scale.jaseci.org/owned-by"
 OWNED_NS="${OWNED_NS:-jac-destroy-owned}"
@@ -92,29 +97,27 @@ source "${REPO_ROOT}/jac/jaclang/scale/scripts/e2e_lib.sh"
 e2e_timing_init
 
 _t "prep start"
-# 0.34.x adaptation: main stages jac/examples/todo_app, but that is a client
-# app and this line cannot boot one inside the node-less python:3.12-slim
-# pods the failure-path leg uses. The scenarios only need an app that deploys
-# and goes ready, so stage a walker-only server app instead.
-echo "=== stage a server-only fixture app ==="
+echo "=== stage a sanitized copy of jac/examples/todo_app ==="
 APP_DIR="$(mktemp -d)/todo_app"
 mkdir -p "${APP_DIR}"
-cat > "${APP_DIR}/main.jac" <<'JACEOF'
-walker:pub ping {
-    can go with Root entry {
-        report "ok";
-    }
-}
-JACEOF
-cat > "${APP_DIR}/jac.toml" <<'TOMLEOF'
-[project]
-name = "todo-app"
-version = "0.1.0"
-description = "destroy reclamation e2e fixture"
-entry-point = "main.jac"
+cp "${APP_SRC}"/*.jac "${APP_DIR}/"
+python3 - "${APP_SRC}/jac.toml" "${APP_DIR}/jac.toml" <<'PYEOF'
+import sys
 
-[serve]
-TOMLEOF
+drop_sections = ("dev", "desktop")
+out, skipping = [], False
+with open(sys.argv[1]) as f:
+    for line in f:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            section = stripped.strip("[]").split(".")[0]
+            skipping = section in drop_sections
+        if skipping or stripped.startswith("kind ="):
+            continue
+        out.append(line)
+with open(sys.argv[2], "w") as f:
+    f.writelines(out)
+PYEOF
 
 export SDK_DEPLOY_SOURCE="${APP_DIR}"
 export SDK_DEPLOY_STORAGE_CLASS="${STORAGE_CLASS}"
