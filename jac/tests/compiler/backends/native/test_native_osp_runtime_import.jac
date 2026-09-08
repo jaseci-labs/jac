@@ -33,3 +33,19 @@ test "native edge peers require a live edge incident to the origin" {
     assert probe();
     assert probe();
 }
+
+test "typed graph queries preserve object identity through union returns" {
+    (engine, _) = compile_native("osp_query_union.jac");
+    probe = get_func(engine, "probe", ctypes.c_bool);
+    assert probe();
+    assert probe();
+    retained = get_func(engine, "retained", ctypes.c_bool);
+    assert retained();
+    assert retained();
+    regional = get_func(engine, "regional_references", ctypes.c_bool);
+    read_drops = get_func(engine, "read_drops", ctypes.c_int64);
+    for _ in range(3) {
+        assert regional();
+        assert read_drops() == 1;
+    }
+}

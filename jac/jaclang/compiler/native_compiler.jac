@@ -426,12 +426,17 @@ class NativeCompiler {
         import from jaclang.compiler.passes.transform { PassResult }
         import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
         import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+        import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
         out: dict[str, PassResult] = {};
         if not self.supports_early {
             return out;
         }
         completed = self.lib.jc_completed();
-        passes: list[tuple[int, type]] = [(1, ASTValidationPass), (2, SymTabBuildPass)];
+        passes: list[tuple[int, type]] = [
+            (1, ASTValidationPass),
+            (2, SymTabBuildPass),
+            (4, DeclImplMatchPass)
+        ];
         for (pass_id, pass_cls) in passes {
             if not (completed & pass_id) {
                 continue;

@@ -4,16 +4,21 @@ enum IntrinsicDispatch {
     BITS_FLOAT = "bits_float",
     MEM_LOAD = "mem_load",
     MEM_STORE = "mem_store",
+    MEM_ALLOC = "mem_alloc",
+    MEM_COPY = "mem_copy",
     ATOMIC_XCHG = "atomic_xchg",
     CALL_DTOR = "call_dtor"
 }
+
+enum IntrinsicStorage { VALUE = "value", POINTER = "pointer" }
 
 obj IntrinsicEntry {
     has name: str,
         param_specs: list[str],
         result_spec: str,
         dispatch: IntrinsicDispatch,
-        gc_mode_gate: str | None = None;
+        gc_mode_gate: str | None = None,
+        storage: IntrinsicStorage = IntrinsicStorage.VALUE;
 
     def arity -> int {
         return len(self.param_specs);
@@ -108,6 +113,32 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i64", "i64"],
                  result_spec="none",
                  dispatch=IntrinsicDispatch.MEM_STORE
+             ),
+             "__mem_load_ptr": IntrinsicEntry(
+                 name="__mem_load_ptr",
+                 param_specs=["i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_LOAD,
+                 storage=IntrinsicStorage.POINTER
+             ),
+             "__mem_alloc": IntrinsicEntry(
+                 name="__mem_alloc",
+                 param_specs=["i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_ALLOC
+             ),
+             "__mem_copy": IntrinsicEntry(
+                 name="__mem_copy",
+                 param_specs=["i64", "i64", "i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.MEM_COPY
+             ),
+             "__mem_store_ptr": IntrinsicEntry(
+                 name="__mem_store_ptr",
+                 param_specs=["i64", "i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.MEM_STORE,
+                 storage=IntrinsicStorage.POINTER
              ),
              "__atomic_xchg_i64": IntrinsicEntry(
                  name="__atomic_xchg_i64",

@@ -3,7 +3,7 @@ node Item {
         weight: int = 0;
 }
 
-edge Part {
+edge Part: Item --> Item {
     has idx: int = 0;
 }
 

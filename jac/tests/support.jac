@@ -29,9 +29,16 @@ compile a fixture and expect a JIT engine now state the mandate explicitly.
 Forced placement keeps lowering failures loud (no server demotion), exactly
 like the old suffix.
 """
-def native_force_opts -> CompileOptions {
+def native_force_opts(
+    gc_mode: str | None = None, opt_level: int | None = None
+) -> CompileOptions {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
-    return CompileOptions(force_codespace='native', force_target_program=True);
+    return CompileOptions(
+        force_codespace='native',
+        force_target_program=True,
+        na_gc_mode=gc_mode,
+        opt_level=opt_level
+    );
 }
 
 
@@ -158,9 +165,14 @@ first test's writes reach the second. Tests that want a fixture compiled once
 should assert against it once, in a single test.
 """
 def compile_native(
-    fixture: str, fixture_dir: str = ""
+    fixture: str,
+    fixture_dir: str = "",
+    gc_mode: str | None = None,
+    opt_level: int | None = None
 ) -> tuple[ExecutionEngine, Module] {
-    ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
+    ir = _compile_native_fixture(
+        fixture, fixture_dir, native_force_opts(gc_mode, opt_level)
+    );
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);

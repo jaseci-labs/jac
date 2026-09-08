@@ -576,6 +576,14 @@ walker NaIRGenPass(Transform) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list
     ) -> (ir.Value | None);
 
+    def _emit_intrinsic_mem_alloc(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_mem_copy(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    ) -> (ir.Value | None);
+
     def _emit_intrinsic_mem_store(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list
     ) -> (ir.Value | None);
@@ -838,8 +846,7 @@ walker NaIRGenPass(Transform) {
         arr_ptr: ir.Value,
         elem_type: ir.Type,
         cur_len: ir.Value,
-        cap_ptr: ir.Value,
-        cur_cap: ir.Value
+        cap_ptr: ir.Value
     ) -> ir.Value;
 
     def _emit_rc_destructor_preamble(

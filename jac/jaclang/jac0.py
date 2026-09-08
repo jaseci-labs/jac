@@ -1779,6 +1779,22 @@ class Parser:
         if self._match(TT.LPAREN):
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
+        if arch_kind == "edge" and self._match(TT.COLON):
+            # Endpoint annotations are checked by the full compiler, like
+            # other type annotations. They do not change the seed runtime's
+            # edge representation or connection operations.
+            source = self._collect_tokens_until(TT.ARROW)
+            if (
+                len(source) < 2
+                or source[-1].type != TT.OP
+                or source[-1].value != "-"
+            ):
+                raise ParseError(
+                    f"{self.filename}: expected edge endpoints 'Source --> Target'"
+                )
+            self._expect(TT.ARROW)
+            if not self._collect_tokens_until(TT.LBRACE):
+                raise ParseError(f"{self.filename}: expected edge target type")
         self._expect(TT.LBRACE)
         body = self._parse_body()
         self._expect(TT.RBRACE)

@@ -7,6 +7,7 @@ import from jaclang.compiler.frontend.unitree { Module, UniScopeNode }
 import from jaclang.compiler.native_compiler { ensure_loaded }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
 
 test "native validation preserves client code context" {
     kernel = ensure_loaded();
@@ -105,6 +106,7 @@ test "native early passes preserve the store parser's symbol graph" {
         before = scope_profile(nat_mod);
         run_pass(ASTValidationPass, nat_mod, native);
         run_pass(SymTabBuildPass, nat_mod, native);
+        run_pass(DeclImplMatchPass, nat_mod, native);
         assert id(nat_mod) not in native.analysis.early_passes;
         assert native.analysis.pass_runs["SymTabBuildPass"] == 1;
         assert scope_profile(nat_mod) == before;
@@ -114,6 +116,7 @@ test "native early passes preserve the store parser's symbol graph" {
         assert not store_failed;
         run_pass(ASTValidationPass, store_mod, store);
         run_pass(SymTabBuildPass, store_mod, store);
+        run_pass(DeclImplMatchPass, store_mod, store);
         assert scope_profile(nat_mod) == scope_profile(store_mod);
         assert not native.errors_had;
         assert not store.errors_had;
@@ -142,6 +145,97 @@ test "native validation diagnostics retain inline suppression" {
                 assert errors[0].from_pass is ASTValidationPass;
                 assert errors[0].loc.mod_path == "early_diagnostic.jac";
                 assert errors[0].loc.first_line == 1;
+            }
+        }
+    }
+}
+
+
+test "native binding matches annex implementations exactly once" {
+    kernel = ensure_loaded();
+    if kernel is not None {
+        source = "obj Counter { def value -> int; }";
+        implementation = "impl Counter.value -> int { return 42; }";
+        prog = JacProgram();
+        (mod, failed) = parse_woven(
+            source,
+            "binding.jac",
+            prog,
+            [(implementation, "binding.impl.jac")],
+            early_context="server"
+        );
+        assert not failed;
+        assert "DeclImplMatchPass" in prog.analysis.early_passes[id(mod)].results;
+        run_pass(ASTValidationPass, mod, prog);
+        run_pass(SymTabBuildPass, mod, prog);
+        run_pass(DeclImplMatchPass, mod, prog);
+        assert not prog.errors_had;
+        assert prog.analysis.pass_runs["DeclImplMatchPass"] == 1;
+        assert id(mod) not in prog.analysis.early_passes;
+        import from jaclang.compiler.frontend.unitree { Ability, ImplDef }
+        declarations = [
+            a
+            for a in mod.get_all_sub_nodes(Ability)
+            if a.sym_name == "value"
+        ];
+        assert len(declarations) == 1;
+        assert isinstance(declarations[0].body, ImplDef);
+    }
+}
+
+test "native binding preserves annex diagnostics across repeated requests" {
+    kernel = ensure_loaded();
+    if kernel is not None {
+        cases: list[tuple[str, str]] = [
+            (
+                "obj Counter { def value(x: int) -> int; }",
+                "impl Counter.value -> int { return 42; }"
+            ),
+            (
+                "obj Counter { def value(x: int) -> int; }",
+                "impl Counter.value(y: int) -> int { return y; }"
+            ),
+            (
+                "obj Counter { def value -> int; }",
+                "impl Counter.value -> int { return 42; } "
+                    + "impl Counter.value -> int { return 43; }"
+            )
+        ];
+        for _ in range(2) {
+            for (source, implementation) in cases {
+                profiles: list[list[tuple[str, str, str, int]]] = [];
+                for context in ("server", "") {
+                    prog = JacProgram();
+                    (mod, failed) = parse_woven(
+                        source,
+                        "binding.jac",
+                        prog,
+                        [(implementation, "binding.impl.jac")],
+                        early_context=context
+                    );
+                    assert not failed;
+                    if context {
+                        assert "DeclImplMatchPass"
+                            in prog.analysis.early_passes[id(mod)].results;
+                    }
+                    run_pass(ASTValidationPass, mod, prog);
+                    run_pass(SymTabBuildPass, mod, prog);
+                    run_pass(DeclImplMatchPass, mod, prog);
+                    assert prog.analysis.pass_runs["DeclImplMatchPass"] == 1;
+                    assert id(mod) not in prog.analysis.early_passes;
+                    profiles.append(
+                        [
+                            (
+                                alert.code.code if alert.code is not None else "",
+                                alert.msg,
+                                alert.loc.mod_path,
+                                alert.loc.first_line
+                            ) for alert in prog.errors_had + prog.warnings_had
+                        ]
+                    );
+                }
+                assert profiles[0] == profiles[1];
+                assert profiles[0];
             }
         }
     }

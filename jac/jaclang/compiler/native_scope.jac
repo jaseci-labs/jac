@@ -6,6 +6,7 @@ obj NativeScopeEntry {
 }
 
 glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
+         NativeScopeEntry(module="jaclang.runtime.osp_tag", strict=True),
          NativeScopeEntry(module="jaclang.compiler.frontend.constant", strict=True),
          NativeScopeEntry(module="jaclang.compiler.frontend.srcloc", strict=True),
          NativeScopeEntry(module="jaclang.compiler.frontend.roles", strict=True),
@@ -28,6 +29,9 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          ),
          NativeScopeEntry(
              module="jaclang.compiler.passes.sym_tab_build_pass", strict=True
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.passes.decl_impl_match_pass", strict=True
          ),
 
      );

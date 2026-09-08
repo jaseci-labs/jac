@@ -939,11 +939,26 @@ impl NaIRGenPass._emit_rc_alloc_container(
     cap_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr"
     );
-    b.store(ir.Constant(i64, initial_cap), cap_p);
+    # An empty dense container has no backing storage. Its first append and
+    # every subsequent allocation go through the shared Jac storage kernel.
+    # Hash tables retain their existing control-array initialization.
+    capacity = 0 if layout["kind"] == "dense" else initial_cap;
+    b.store(ir.Constant(i64, capacity), cap_p);
 
     data_ptrs = [];
     for (i, fpair) in enumerate(layout["data_fields"]) {
         (field_idx, dtype) = fpair;
+        data_p = b.gep(
+            container_ptr,
+            [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
+            name=f"data{i}.ptr"
+        );
+        if layout["kind"] == "dense" {
+            data = ir.Constant(dtype.as_pointer(), None);
+            b.store(data, data_p);
+            data_ptrs.append(data);
+            continue;
+        }
         elem_null = ir.Constant(dtype.as_pointer(), None);
         elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name=f"elem{i}.sizeof");
         elem_size = b.ptrtoint(elem_gep, i64, name=f"elem{i}.size");
@@ -952,11 +967,6 @@ impl NaIRGenPass._emit_rc_alloc_container(
         );
         data_raw = b.call(malloc_fn, [data_bytes], name=f"data{i}.raw");
         data = b.bitcast(data_raw, dtype.as_pointer(), name=f"data{i}");
-        data_p = b.gep(
-            container_ptr,
-            [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
-            name=f"data{i}.ptr"
-        );
         b.store(data, data_p);
         data_ptrs.append(data);
     }
@@ -1001,39 +1011,37 @@ impl NaIRGenPass._emit_grow_array(
     arr_ptr: ir.Value,
     elem_type: ir.Type,
     cur_len: ir.Value,
-    cap_ptr: ir.Value,
-    cur_cap: ir.Value
+    cap_ptr: ir.Value
 ) -> ir.Value {
     i64 = ir.IntType(64);
-    i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
-    memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
-    new_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="new.cap");
-    b.store(new_cap, cap_ptr);
-    elem_null = ir.Constant(elem_type.as_pointer(), None);
-    elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_sz = b.ptrtoint(elem_gep, i64, name="elem.size");
-    new_bytes = b.mul(new_cap, elem_sz, name="new.bytes");
-    new_data_raw = b.call(malloc_fn, [new_bytes], name="new.data.raw");
-    new_data = b.bitcast(new_data_raw, elem_type.as_pointer(), name="new.data");
-    old_data = b.load(arr_ptr, name="old.data");
-    old_bytes = b.mul(cur_len, elem_sz, name="old.bytes");
-    old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
-    new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
-    b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    if self._nogc_headerless() {
-        _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
-        b.call(_free_fn, [old_i8]);
-    } else {
+    release = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+    if not self._nogc_headerless() {
         if self.rc_safe_free_fn is None {
             self._emit_rc_helpers();
         }
-        b.call(self.rc_safe_free_fn, [old_i8]);
+        release = self.rc_safe_free_fn;
     }
-    b.store(new_data, arr_ptr);
-    return new_data;
+    grow = self._get_or_declare_extern(
+        "__jac_array_grow", i64, [i64, i64, i64, i64, i64]
+    );
+    stride = b.ptrtoint(
+        b.gep(ir.Constant(elem_type.as_pointer(), None), [ir.Constant(i64, 1)]),
+        i64,
+        name="elem.size"
+    );
+    data = b.call(
+        grow,
+        [
+            b.ptrtoint(arr_ptr, i64),
+            b.ptrtoint(cap_ptr, i64),
+            cur_len,
+            stride,
+            b.ptrtoint(release, i64)
+        ],
+        name="grown.storage"
+    );
+    return b.inttoptr(data, elem_type.as_pointer(), name="new.data");
 }
 
 impl NaIRGenPass._emit_rc_destructor_preamble(

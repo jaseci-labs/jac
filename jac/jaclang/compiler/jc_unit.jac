@@ -19,7 +19,15 @@ import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.frontend.unitree { Import }
 import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
 import from jaclang.compiler.passes.transform { Alert }
+
+obj JcPassResult {
+    has pass_id: int,
+        errors_h: int = 0,
+        warnings_h: int = 0,
+        time_taken: float = 0.0;
+}
 
 obj JcState {
     has p_errs: int = 0,
@@ -30,12 +38,11 @@ obj JcState {
         comments_h: int = 0,
         early_context: int = 0,
         completed: int = 0,
-        validation_errors_h: int = 0,
-        validation_warnings_h: int = 0,
-        symbols_errors_h: int = 0,
-        symbols_warnings_h: int = 0,
-        validation_time: float = 0.0,
-        symbols_time: float = 0.0;
+        passes: list[JcPassResult] = [
+            JcPassResult(pass_id=1),
+            JcPassResult(pass_id=2),
+            JcPassResult(pass_id=4)
+        ];
 }
 
 glob _JC: JcState = JcState(),
@@ -57,17 +64,14 @@ def _clear_results {
     _drop_h(_JC.diags_h);
     _drop_h(_JC.lexdiags_h);
     _drop_h(_JC.comments_h);
-    _drop_h(_JC.validation_errors_h);
-    _drop_h(_JC.validation_warnings_h);
-    _drop_h(_JC.symbols_errors_h);
-    _drop_h(_JC.symbols_warnings_h);
-    _JC.validation_errors_h = 0;
-    _JC.validation_warnings_h = 0;
-    _JC.symbols_errors_h = 0;
-    _JC.symbols_warnings_h = 0;
+    for result in _JC.passes {
+        _drop_h(result.errors_h);
+        _drop_h(result.warnings_h);
+        result.errors_h = 0;
+        result.warnings_h = 0;
+        result.time_taken = 0.0;
+    }
     _JC.completed = 0;
-    _JC.validation_time = 0.0;
-    _JC.symbols_time = 0.0;
     _JC.mod_h = 0;
     _JC.diags_h = 0;
     _JC.lexdiags_h = 0;
@@ -86,29 +90,43 @@ def:pub jc_completed -> int {
 }
 
 def:pub jc_pass_time(pass_id: int) -> float {
-    return _JC.validation_time if pass_id == 1 else _JC.symbols_time;
+    for result in _JC.passes {
+        if result.pass_id == pass_id {
+            return result.time_taken;
+        }
+    }
+    return 0.0;
 }
 
 def:pub jc_take_pass_alerts(pass_id: int, warnings: int) -> int {
-    h = 0;
-    if pass_id == 1 {
-        if warnings != 0 {
-            h = _JC.validation_warnings_h;
-            _JC.validation_warnings_h = 0;
-        } else {
-            h = _JC.validation_errors_h;
-            _JC.validation_errors_h = 0;
-        }
-    } else {
-        if warnings != 0 {
-            h = _JC.symbols_warnings_h;
-            _JC.symbols_warnings_h = 0;
-        } else {
-            h = _JC.symbols_errors_h;
-            _JC.symbols_errors_h = 0;
+    for result in _JC.passes {
+        if result.pass_id == pass_id {
+            if warnings != 0 {
+                h = result.warnings_h;
+                result.warnings_h = 0;
+                return h;
+            }
+            h = result.errors_h;
+            result.errors_h = 0;
+            return h;
         }
     }
-    return h;
+    return 0;
+}
+
+def _record_pass(
+    pass_id: int, errors: list[Alert], warnings: list[Alert], elapsed: float
+) {
+    for result in _JC.passes {
+        if result.pass_id == pass_id {
+            result.errors_h = _mz_list(errors, _alert_tag());
+            result.warnings_h = _mz_list(warnings, _alert_tag());
+            result.time_taken = elapsed;
+            _JC.completed = _JC.completed | pass_id;
+            return;
+        }
+    }
+    raise ValueError("Unknown native early pass");
 }
 
 def _clear_annexes {
@@ -173,6 +191,7 @@ def _finish_unit(
 ) -> int {
     validation: (ASTValidationPass | None) = None;
     symbols: (SymTabBuildPass | None) = None;
+    binding: (DeclImplMatchPass | None) = None;
     if _JC.early_context != 0 and _JC.p_errs == 0 and _JC.lex_errs == 0 {
         if _JC.early_context == 2 {
             mod.set_code_context(CodeContext.CLIENT);
@@ -180,7 +199,6 @@ def _finish_unit(
             mod.set_code_context(CodeContext.NATIVE);
         }
         validation = ASTValidationPass(ir_in=mod);
-        _JC.completed = 1;
         has_absorb = False;
         for imp in mod.get_all_sub_nodes(Import) {
             if imp.is_absorb {
@@ -191,7 +209,9 @@ def _finish_unit(
 
         if not has_absorb {
             symbols = SymTabBuildPass(ir_in=mod);
-            _JC.completed = 3;
+            if not validation.errors_had and not symbols.errors_had {
+                binding = DeclImplMatchPass(ir_in=mod);
+            }
         }
     }
     status = _materialize(r, mod, p_diags, comments, lex_diags);
@@ -199,14 +219,15 @@ def _finish_unit(
         return status;
     }
     if validation is not None {
-        _JC.validation_time = validation.time_taken;
-        _JC.validation_errors_h = _mz_list(validation.errors_had, _alert_tag());
-        _JC.validation_warnings_h = _mz_list(validation.warnings_had, _alert_tag());
+        _record_pass(
+            1, validation.errors_had, validation.warnings_had, validation.time_taken
+        );
     }
     if symbols is not None {
-        _JC.symbols_time = symbols.time_taken;
-        _JC.symbols_errors_h = _mz_list(symbols.errors_had, _alert_tag());
-        _JC.symbols_warnings_h = _mz_list(symbols.warnings_had, _alert_tag());
+        _record_pass(2, symbols.errors_had, symbols.warnings_had, symbols.time_taken);
+    }
+    if binding is not None {
+        _record_pass(4, binding.errors_had, binding.warnings_had, binding.time_taken);
     }
     jc_mz_dispose();
     return 0;

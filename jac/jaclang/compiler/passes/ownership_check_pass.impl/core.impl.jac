@@ -427,6 +427,9 @@ impl OwnershipCheckPass._spawn_move_gen(nd: UniCFGNode) -> set[SymId] {
     gen: set[SymId] = set();
     operands: list[Expr] = [];
     for bx in nd.get_all_sub_nodes(BinaryExpr) {
+        if self._cfg_owner(bx) is not nd {
+            continue;
+        }
         if isinstance(bx.op, ConnectOp) {
             _seal_h = self._seal_connect_handle(bx);
             if _seal_h is not None {
@@ -438,6 +441,9 @@ impl OwnershipCheckPass._spawn_move_gen(nd: UniCFGNode) -> set[SymId] {
         }
     }
     for ux in nd.get_all_sub_nodes(UnaryExpr) {
+        if self._cfg_owner(ux) is not nd {
+            continue;
+        }
         if ux.op?.name == Tok.KW_SPAWN {
             operands.append(ux.operand);
         }

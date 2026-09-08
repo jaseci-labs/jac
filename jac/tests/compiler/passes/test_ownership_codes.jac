@@ -19,6 +19,18 @@ import from tests.ownership_helpers { compile_fixture, expect_ownership_codes }
 
 # (group, case name, fixture, expected E13xx codes, [enforce nogc])
 glob OWNERSHIP_CASES: list[tuple] = [
+         (
+             "freeze",
+             "conditional freeze preserves the other branch",
+             "freeze_branch_ok.jac",
+             []
+         ),
+         (
+             "freeze",
+             "conditional freeze consumes at the join",
+             "freeze_branch_moved.jac",
+             ["E1301"]
+         ),
          ("places", "take needs optional storage", "take_nonoptional.jac", ["E1319"]),
          (
              "places",

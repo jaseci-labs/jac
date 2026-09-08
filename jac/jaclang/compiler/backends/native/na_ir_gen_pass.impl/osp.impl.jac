@@ -1137,6 +1137,40 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
+    element = self._elem_arch_name_of(nd);
+    if element is not None and element in self.struct_types {
+        # Kernel handles are i64 on every target. Language references have
+        # pointer-sized slots and retain their elements. Convert through the
+        # ordinary list operations so the result owns the correct destructor
+        # as well as the correct layout (including on 32-bit targets).
+        pointer = ir.IntType(8).as_pointer();
+        self._emit_list_helpers("ptr", pointer);
+        self._emit_list_helpers("i64", i64);
+        handles = self.list_helpers["i64"];
+        objects = self.list_helpers["ptr"];
+        result = self.builder.call(objects["new"], [], name="osp.refs.objects");
+        count = self.builder.call(handles["len"], [_cur]);
+        entry_block = self.builder.block;
+        condition = self.builder.function.append_basic_block("osp.refs.convert");
+        body = self.builder.function.append_basic_block("osp.refs.element");
+        done = self.builder.function.append_basic_block("osp.refs.done");
+        self.builder.branch(condition);
+        self.builder.position_at_end(condition);
+        index = self.builder.phi(i64, name="osp.refs.index");
+        index.add_incoming(ir.Constant(i64, 0), entry_block);
+        self.builder.cbranch(self.builder.icmp_signed("<", index, count), body, done);
+        self.builder.position_at_end(body);
+        handle = self.builder.call(handles["get"], [_cur, index]);
+        self.builder.call(
+            objects["append"], [result, self.builder.inttoptr(handle, pointer)]
+        );
+        next_index = self.builder.add(index, ir.Constant(i64, 1));
+        index.add_incoming(next_index, self.builder.block);
+        self.builder.branch(condition);
+        self.builder.position_at_end(done);
+        self._emit_rc_release_simple(_cur, op="osp_refs_convert", loc="");
+        return self._mark_owned(result);
+    }
     return _cur;
 }
 

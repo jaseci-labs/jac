@@ -52,6 +52,9 @@ test "jac0 refuses object-spatial forms outside the seed subset" {
     for src in [
         "def f(a: any, b: any, c: any) { a ++> b ++> c; }",
         "def f(a: any) -> list { return [a ->:T:-> (?x == 1)]; }",
+        "edge Link: Source -> Target {}",
+        "edge Link: --> Target {}",
+        "edge Link: Source --> {}",
 
     ] {
         failed = False;

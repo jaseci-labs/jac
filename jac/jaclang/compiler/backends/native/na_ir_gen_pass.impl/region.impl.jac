@@ -199,11 +199,20 @@ impl NaIRGenPass._register_region_handle_var(
         return;
     }
     self.region_handle_vars.add(var_name);
-    if isinstance(nd.value, uni.Name)
-        and nd.value.sym is not None
-        and nd.value.sym.na_region_handle
-        and nd.value.sym_name != var_name {
-        self.region_handle_vars.discard(nd.value.sym_name);
+    import from jaclang.compiler.expr_keys { transferred_local }
+    source = transferred_local(nd.value);
+    if source is not None
+        and source.sym is not None
+        and source.sym.na_region_handle
+        and source.sym_name != var_name {
+        # Keep both locals in the cleanup plan. Only the path that performs
+        # the move relinquishes the source; another branch may still own it.
+        source_slot = self.local_vars.get(source.sym_name);
+        if source_slot is not None {
+            slot_type = source_slot.type;
+            assert isinstance(slot_type, ir.PointerType);
+            self.builder.store(ir.Constant(slot_type.pointee, None), source_slot);
+        }
     }
 }
 

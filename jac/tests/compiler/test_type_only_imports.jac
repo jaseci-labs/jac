@@ -128,6 +128,26 @@ def compile_module(path: Path) -> tuple[JacProgram, any] {
     return (prog, mod);
 }
 
+test "edge endpoints accept type-only imports but edge bodies require values" {
+    with TemporaryDirectory() as tmp {
+        root_dir = Path(tmp);
+        (root_dir / "nodes.jac").write_text("node Source {} node Target {}\n");
+        app = root_dir / "app.jac";
+        app.write_text(
+            "import type from nodes { Source, Target }\n"
+            "edge Link: Source --> Target {}\n"
+        );
+        (program, _) = compile_module(app);
+        assert not program.errors_had , pretty_checker_errors(program);
+        app.write_text(
+            "import type from nodes { Source, Target }\n"
+            "edge Link: Source --> Target { def invalid { Source(); } }\n"
+        );
+        (invalid, _) = compile_module(app);
+        assert "E1132" in codes_of(invalid.errors_had);
+    }
+}
+
 
 # ---------------------------------------------------------------------------
 # 1. npm `.d.ts`: only the type-only kinds are refused

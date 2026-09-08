@@ -88,5 +88,6 @@ walker NativeCompilePass(Transform) {
     def _references_undefined_fmt_kernel(main_mod: ModuleRef) -> bool;
     def _link_region_kernel(main_mod: ModuleRef) -> None;
     def _references_undefined_region_kernel(main_mod: ModuleRef) -> bool;
+    def _link_collection_kernel(main_mod: ModuleRef) -> bool;
     def _module_defines(main_mod: ModuleRef, name: str) -> bool;
 }

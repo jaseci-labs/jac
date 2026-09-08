@@ -448,6 +448,9 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             self._link_region_kernel(mod);
             _kernel_linked = True;
         }
+        if not _is_kernel_unit and self._link_collection_kernel(mod) {
+            _kernel_linked = True;
+        }
         module.gen.native_linked_ir = str(mod) if _kernel_linked else None;
 
         import os as _os;
@@ -1204,7 +1207,8 @@ impl NativeCompilePass._compile_and_link_native_imports(
 }
 
 glob _OSP_KERNEL_IR_CACHE: dict[str, str] = {},
-     _REGION_KERNEL_IR_CACHE: dict[str, str] = {};
+     _REGION_KERNEL_IR_CACHE: dict[str, str] = {},
+     _COLLECTION_KERNEL_IR_CACHE: dict[str, str] = {};
 
 def _kernel_unit_opts(
     gc_mode: str, enforce: bool, no_ir_cache: bool = False
@@ -1265,7 +1269,10 @@ def _compile_kernel_unit_ir(
     try {
         prog = JacProgram();
         m = prog.compile(unit, options=kernel_opts);
-        if (m is not None) and m?.gen and (m.gen.llvm_ir is not None) {
+        if not prog.errors_had
+            and (m is not None)
+            and m?.gen
+            and (m.gen.llvm_ir is not None) {
             ir_str = str(m.gen.llvm_ir);
         }
     } except Exception {
@@ -1310,6 +1317,45 @@ def _rename_kernel_glob_init(ir_str: str, suffix: str) -> str {
     return ir_str.replace(
         'name: "__jac_glob_init"', f'name: "__jac_glob_init_{suffix}"'
     );
+}
+
+impl NativeCompilePass._link_collection_kernel(main_mod: ModuleRef) -> bool {
+    if not any(
+        fn.is_declaration and fn.name in ("__jac_array_grow", "__jac_array_append")
+        for fn in _mod_functions(main_mod)
+    ) {
+        return False;
+    }
+    import from jaclang.compiler.backends.common.kernel_units {
+        collection_kernel_unit_path
+    }
+    opts = self.prog.options;
+    gc_mode = opts.na_gc_mode or "cycles";
+    enforce = (opts.nogc_enforce_all or self.ir_in.gen.nogc_enforced)
+        and gc_mode == "none";
+    variant = f"na_{gc_mode}_enf" if enforce else f"na_{gc_mode}";
+    source = _compile_kernel_unit_ir(
+        collection_kernel_unit_path(variant),
+        _COLLECTION_KERNEL_IR_CACHE,
+        _kernel_unit_opts(gc_mode, enforce, opts.no_ir_cache)
+    );
+    if source is None {
+        self.emit(
+            E5025,
+            path="collection kernel unit",
+            error="contiguous storage failed to compile to LLVM IR"
+        );
+        return False;
+    }
+    try {
+        kernel = llvm.parse_assembly(_rename_kernel_glob_init(source, "collections"));
+        kernel.verify();
+        main_mod.link_in(kernel);
+    } except Exception as error {
+        self.emit(E5025, path="collection kernel unit", error=str(error));
+        return False;
+    }
+    return True;
 }
 
 impl NativeCompilePass._module_defines(main_mod: ModuleRef, name: str) -> bool {

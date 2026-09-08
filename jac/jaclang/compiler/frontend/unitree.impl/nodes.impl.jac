@@ -4317,6 +4317,10 @@ impl in_type_position(nd: UniNode) -> bool {
         if isinstance(parent, FuncSignature) and parent.return_type is cur {
             return True;
         }
+        if isinstance(parent, Archetype)
+            and (parent.src_endpoint is cur or parent.tgt_endpoint is cur) {
+            return True;
+        }
         cur = parent;
         parent = cur.parent;
     }

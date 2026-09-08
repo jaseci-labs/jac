@@ -1244,6 +1244,8 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.BITS_FLOAT: self._emit_intrinsic_bits_float,
         IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
+        IntrinsicDispatch.MEM_ALLOC: self._emit_intrinsic_mem_alloc,
+        IntrinsicDispatch.MEM_COPY: self._emit_intrinsic_mem_copy,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
         IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
     };
@@ -1348,9 +1350,53 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
     if addr is None {
         return None;
     }
-    value_type = ir.IntType(int(intr.result_spec[1:]));
+    import from jaclang.compiler.intrinsic_registry { IntrinsicStorage }
+    value_type = ir.IntType(8).as_pointer()
+        if intr.storage == IntrinsicStorage.POINTER
+        else ir.IntType(int(intr.result_spec[1:]));
     slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
-    return self.builder.load(slot, name="mem.ld");
+    value = self.builder.load(slot, name="mem.ld");
+    return self.builder.ptrtoint(value, ir.IntType(64), name="mem.addr")
+        if intr.storage == IntrinsicStorage.POINTER
+        else value;
+}
+
+impl NaIRGenPass._emit_intrinsic_mem_alloc(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+) -> (ir.Value | None) {
+    size = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    if size is None {
+        return None;
+    }
+    allocate = self._get_or_declare_extern(
+        "malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+    );
+    pointer = self.builder.call(allocate, [size], name="mem.allocated");
+    return self.builder.ptrtoint(pointer, ir.IntType(64), name="mem.address");
+}
+
+impl NaIRGenPass._emit_intrinsic_mem_copy(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+) -> (ir.Value | None) {
+    destination = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
+    source = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+    size = self._intrinsic_operand(nd, intr, args[2], intr.param_specs[2]);
+    if destination is None or source is None or size is None {
+        return None;
+    }
+    pointer = ir.IntType(8).as_pointer();
+    copy = self._get_or_declare_extern(
+        "memcpy", pointer, [pointer, pointer, ir.IntType(64)]
+    );
+    self.builder.call(
+        copy,
+        [
+            self.builder.inttoptr(destination, pointer),
+            self.builder.inttoptr(source, pointer),
+            size
+        ]
+    );
+    return None;
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_store(
@@ -1360,6 +1406,10 @@ impl NaIRGenPass._emit_intrinsic_mem_store(
     val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
     if addr is None or val is None {
         return None;
+    }
+    import from jaclang.compiler.intrinsic_registry { IntrinsicStorage }
+    if intr.storage == IntrinsicStorage.POINTER {
+        val = self.builder.inttoptr(val, ir.IntType(8).as_pointer(), name="mem.value");
     }
     slot = self.builder.inttoptr(addr, val.type.as_pointer(), name="mem.p");
     self.builder.store(val, slot);
