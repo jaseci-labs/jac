@@ -692,7 +692,6 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
     _region_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
-    _i8p = ir.IntType(8).as_pointer();
     _hdl = self._codegen_expr(nd.target);
     if _hdl is None {
         if isinstance(nd.body, (list, tuple)) {
@@ -704,7 +703,7 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
     _synth: (str | None) = None;
     if not isinstance(nd.target, uni.Name) {
         _synth = f".region.{id(nd)}";
-        _slot = self._entry_alloca(_i8p, _synth);
+        _slot = self._entry_alloca(_hdl.type, _synth);
         self.builder.store(_hdl, _slot);
         self.local_vars[_synth] = _slot;
         self.region_handle_vars.add(_synth);
