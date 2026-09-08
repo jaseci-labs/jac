@@ -335,9 +335,8 @@ test "dispatch_streaming_with_tools forwards the stream's logging_obj and attrib
     }
 
     out: list = [];
-    with unittest.mock.patch.object(
-        llm, "model_call_with_stream", lambda (params: dict) { return stream_resp; }
-    ), unittest.mock.patch.object(
+    _fake_stream = lambda (params: dict) { return stream_resp; };
+    with unittest.mock.patch.object(llm, "model_call_with_stream", _fake_stream), unittest.mock.patch.object(
         _byllm_llm_mod.litellm, "stream_chunk_builder", _rebuild
     ) {
         list(llm.dispatch_streaming_with_tools(mt, out));
@@ -470,11 +469,8 @@ test "streaming records attribute the actual serving model and carry finish_reas
     usage_chunk = types.SimpleNamespace(
         model="actual-served-model", usage=litellm.Usage(**TOKENS), choices=[]
     );
-    with unittest.mock.patch.object(
-        llm,
-        "model_call_with_stream",
-        lambda (params: dict) { return [content_chunk, usage_chunk]; }
-    ) {
+    _fake_chunks = lambda (params: dict) { return [content_chunk, usage_chunk]; };
+    with unittest.mock.patch.object(llm, "model_call_with_stream", _fake_chunks) {
         list(llm.dispatch_streaming(mt));
     }
 

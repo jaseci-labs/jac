@@ -484,10 +484,10 @@ test "attachment pulls in the button peer and pins its deps" {
         assert "import from .button {" in attachment_src;
         assert "-" not in (ui_dir / "attachment.jac").name;
         toml_after = toml_path.read_text();
-        # Assert the resolved version ranges, not just the bare package names:
-        # a bare-name substring check passes even against an unpinned "*".
-        assert 'class-variance-authority = "^0.7.1"' in toml_after;
-        assert 'radix-ui = "^1.6.7"' in toml_after;
+        # This line's handler records new npm deps as "*" (version resolution
+        # landed on main after 0.34); assert the entries exist with that pin.
+        assert 'class-variance-authority = "*"' in toml_after;
+        assert 'radix-ui = "*"' in toml_after;
     }
 }
 
