@@ -1715,16 +1715,15 @@ obj KubernetesTarget(KubernetesTargetBase) {
         }
     }
 
-    def _postgres_pvc_name(app_name: str) -> str {
-        """Name the PVC the postgres volumeClaimTemplates entry creates.""";
-        pg_name: str = f"{app_name}-postgres";
-        return f"{pg_name}-data-{pg_name}-0";
+    def _mongodb_pvc_name(app_name: str) -> str {
+        """Name the PVC the mongodb volumeClaimTemplates entry creates.""";
+        return f"{app_name}-mongo-data-{app_name}-mongodb-0";
     }
 
     def _app_pvc_names(app_name: str) -> list[str] {
         return [
             bundle_pvc_name(k8s_safe_name(app_name)),
-            self._postgres_pvc_name(app_name)
+            self._mongodb_pvc_name(app_name)
         ];
     }
 
@@ -1808,7 +1807,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         """Name the jac-scale resources in this namespace another app owns.""";
         owner: str = k8s_safe_name(app_name);
         our_bundle: str = bundle_pvc_name(owner);
-        our_postgres: str = f"{app_name}-postgres";
+        our_mongodb: str = f"{app_name}-mongodb";
         managed: str = "managed=jac-scale";
         found: list[str] = [];
         for pvc in self._list_managed(
@@ -1830,7 +1829,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
         for sts in self._list_managed(
             apps_v1.list_namespaced_stateful_set, namespace, managed
         ) {
-            if sts.metadata.name != our_postgres {
+            if sts.metadata.name != our_mongodb {
                 found.append(f"StatefulSet/{sts.metadata.name}");
             }
         }
@@ -1929,24 +1928,8 @@ obj KubernetesTarget(KubernetesTargetBase) {
     def _destroy_app_database(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
-        pg_name: str = f"{app_name}-postgres";
-        delete_if_exists(
-            apps_v1.delete_namespaced_stateful_set, pg_name, namespace, 'StatefulSet'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service,
-            f"{pg_name}-service",
-            namespace,
-            'Service'
-        );
-        delete_k8s_secret(core_v1, namespace, f"{pg_name}-secret");
-        delete_k8s_secret(core_v1, namespace, f"{app_name}-external-db");
-        delete_if_exists(
-            core_v1.delete_namespaced_service_account,
-            f"{pg_name}-sa",
-            namespace,
-            'ServiceAccount'
-        );
+        self._destroy_database(app_name, namespace, apps_v1, core_v1);
+        self._destroy_cache(app_name, namespace, apps_v1, core_v1);
     }
 
     def _destroy_in_shared_namespace(
@@ -2061,7 +2044,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             );
         } elif component == 'database' {
             self._destroy_app_database(app_name, namespace, apps_v1, core_v1);
-            self._destroy_pvcs([self._postgres_pvc_name(app_name)], namespace, core_v1);
+            self._destroy_pvcs([self._mongodb_pvc_name(app_name)], namespace, core_v1);
         } elif component == 'monitoring' {
             self._destroy_monitoring(
                 app_name, namespace, apps_v1, core_v1, strict=True
