@@ -367,7 +367,7 @@ walker NaIRGenPass(Transform) {
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _clib_symbol_lib: dict[str, str] = {},
-        _lowered_type_cache: dict[str, ir.Type] = {},
+        _lowered_type_cache: dict[tuple[TypeBase, str], ir.Type] = {},
         di_file: object = None,
         di_cu: object = None,
         _di_current_sp: object = None,
