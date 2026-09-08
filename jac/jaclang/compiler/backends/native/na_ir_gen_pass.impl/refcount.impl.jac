@@ -1664,6 +1664,9 @@ impl NaIRGenPass._nogc_drop_fn_for(
     ptr_ty: ir.PointerType, self_type: str = ""
 ) -> (ir.Function | None) {
     _pname = getattr(ptr_ty.pointee, "name", "") or "";
+    if _pname == "__jac_region_handle" {
+        return self._region_drop_fn();
+    }
     if _pname in self.struct_types or (_pname and _pname == self_type) {
         return self._emit_struct_drop_fn(_pname);
     }

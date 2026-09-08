@@ -425,6 +425,8 @@ walker NaIRGenPass(Transform) {
     def _region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value;
     def _region_ptr(val: ir.Value, name: str = "rgn.p") -> ir.Value;
     def _region_new_handle -> ir.Value;
+    def _region_release(hdl: ir.Value) -> None;
+    def _region_drop_fn -> ir.Function;
     def _region_current -> ir.Value;
     def _region_of_value(val: ir.Value) -> ir.Value;
     def _region_enter(hdl: ir.Value) -> None;
@@ -577,6 +579,10 @@ walker NaIRGenPass(Transform) {
     ) -> (ir.Value | None);
 
     def _emit_intrinsic_mem_alloc(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_mem_rc_enabled(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list
     ) -> (ir.Value | None);
 

@@ -5,6 +5,7 @@ enum IntrinsicDispatch {
     MEM_LOAD = "mem_load",
     MEM_STORE = "mem_store",
     MEM_ALLOC = "mem_alloc",
+    MEM_RC_ENABLED = "mem_rc_enabled",
     MEM_COPY = "mem_copy",
     ATOMIC_XCHG = "atomic_xchg",
     CALL_DTOR = "call_dtor"
@@ -12,13 +13,16 @@ enum IntrinsicDispatch {
 
 enum IntrinsicStorage { VALUE = "value", POINTER = "pointer" }
 
+enum IntrinsicAllocation { RAW = "raw", MANAGED = "managed" }
+
 obj IntrinsicEntry {
     has name: str,
         param_specs: list[str],
         result_spec: str,
         dispatch: IntrinsicDispatch,
         gc_mode_gate: str | None = None,
-        storage: IntrinsicStorage = IntrinsicStorage.VALUE;
+        storage: IntrinsicStorage = IntrinsicStorage.VALUE,
+        allocation: IntrinsicAllocation = IntrinsicAllocation.RAW;
 
     def arity -> int {
         return len(self.param_specs);
@@ -132,6 +136,19 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i64", "i64", "i64"],
                  result_spec="none",
                  dispatch=IntrinsicDispatch.MEM_COPY
+             ),
+             "__mem_alloc_managed": IntrinsicEntry(
+                 name="__mem_alloc_managed",
+                 param_specs=["i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_ALLOC,
+                 allocation=IntrinsicAllocation.MANAGED
+             ),
+             "__mem_rc_enabled": IntrinsicEntry(
+                 name="__mem_rc_enabled",
+                 param_specs=[],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_RC_ENABLED
              ),
              "__mem_store_ptr": IntrinsicEntry(
                  name="__mem_store_ptr",

@@ -47,8 +47,6 @@ test "arena: every droppable construction consults the current region" {
     assert n_cur == 3 , f"expected 3 current-region reads in dtor_order, found {n_cur}";
     n_arena = calls_to(body, "__jac_region_alloc");
     assert n_arena == 3 , f"expected 3 region-alloc arms in dtor_order, found {n_arena}";
-    n_drop = calls_to(body, "__jac_region_drop");
-    assert n_drop >= 1 , f"expected a region drop at the close, found {n_drop}";
 }
 
 test "dynamic extent: a helper called under an open allocates in the region" {
@@ -106,8 +104,6 @@ test "arena: freezing transfers teardown to the published handle" {
         assert freeze_region() == 0;
         assert read_drops() == 1;
     }
-    assert calls_to(fn_ir(ir, "make_frozen"), "__jac_region_drop") == 0;
-    assert calls_to(fn_ir(ir, "returned_region"), "__jac_region_drop") == 1;
     returned_region = get_func(eng, "returned_region", ctypes.c_int64);
     for _ in range(20) {
         assert returned_region() == 0;
@@ -117,6 +113,22 @@ test "arena: freezing transfers teardown to the published handle" {
     for publish in [False, True, False, True] {
         conditional(publish);
         assert read_drops() == 1;
+    }
+}
+
+test "arena: owned and frozen fields keep their region alive across return" {
+    for mode in ["cycles", "rc", "none"] {
+        (eng, ir) = compile_native(
+            "region_owner_field.jac", gc_mode=mode, nogc_enforce=mode == "none"
+        );
+        read_drops = get_func(eng, "read_drops", ctypes.c_int64);
+        for name in ["observe", "observe_published"] {
+            observe = get_func(eng, name, ctypes.c_int64);
+            for _ in range(20) {
+                assert observe() == 0;
+                assert read_drops() == 1;
+            }
+        }
     }
 }
 

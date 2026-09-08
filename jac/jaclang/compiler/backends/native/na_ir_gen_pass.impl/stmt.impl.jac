@@ -75,7 +75,7 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         slot_ty = allocation_type.pointee;
-        _lu_ptr = isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee;
+        _lu_ptr = isinstance(slot_ty, ir.PointerType) and (slot_ty?.pointee is not None);
         if not _lu_ptr
             and (
                 self._opt_ptr_payload_of(slot_ty) is None
@@ -2402,10 +2402,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 and not is_inplace_set_op {
                 if var_name in self.region_handle_vars {
                     _old_hdl = self.builder.load(alloca, name=f"{var_name}.old");
-                    self.builder.call(
-                        self._region_kernel_fn("__jac_region_drop"),
-                        [self._region_i64(_old_hdl, name=f"{var_name}.old.i64")]
-                    );
+                    self._region_release(_old_hdl);
                 } elif _is_raw_int_ptr {
                     self.param_vars.add(var_name);
                 } else {
@@ -2523,10 +2520,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             } elif var_name in self.region_handle_vars
                 and self._opt_ptr_payload_of(alloca.pointee_type) is not None {
                 _old_opt_hdl = self.builder.load(alloca, name=f"{var_name}.old");
-                self.builder.call(
-                    self._region_kernel_fn("__jac_region_drop"),
-                    [self._region_i64(_old_opt_hdl, name=f"{var_name}.old.i64")]
-                );
+                self._region_release(_old_opt_hdl);
             } elif self._opt_ptr_payload_of(alloca.pointee_type) is not None
                 and not self._nogc_headerless()
                 and not is_inplace_set_op

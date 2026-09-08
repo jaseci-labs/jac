@@ -195,13 +195,23 @@ def _registry_holds(ptr: int) -> int {
     return found;
 }
 
+def _release_managed_region(region: Region) -> None {
+    __jac_region_drop(id(region));
+}
+
 def __jac_region_new -> int {
-    raw = malloc(HDR_TOTAL + RGN_CTRL_SIZE);
-    hdl = raw + HDR_TOTAL;
-    __mem_store_i64(hdl + HDR_ALLOC_ID_OFF, HDR_MAGIC_SHIFT_BASE);
-    __mem_store_i64(hdl + HDR_TAG_OFF, 0);
-    __mem_store_i64(hdl + HDR_RC_OFF, RC_SENTINEL);
-    __mem_store_i64(hdl + HDR_DTOR_OFF, 0);
+    hdl = 0;
+    if __mem_rc_enabled() != 0 {
+        hdl = __mem_alloc_managed(RGN_CTRL_SIZE);
+        __mem_store_i64(hdl + HDR_DTOR_OFF, id(_release_managed_region));
+    } else {
+        raw = malloc(HDR_TOTAL + RGN_CTRL_SIZE);
+        hdl = raw + HDR_TOTAL;
+        __mem_store_i64(hdl + HDR_ALLOC_ID_OFF, HDR_MAGIC_SHIFT_BASE);
+        __mem_store_i64(hdl + HDR_TAG_OFF, 0);
+        __mem_store_i64(hdl + HDR_RC_OFF, RC_SENTINEL);
+        __mem_store_i64(hdl + HDR_DTOR_OFF, 0);
+    }
     i = 0;
     while i < RGN_CTRL_SIZE {
         __mem_store_i64(hdl + i, 0);

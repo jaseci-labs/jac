@@ -69,7 +69,9 @@ impl NaIRGenPass.postinit -> None {
             else self._str_desc_type()
     );
     self.type_map["LiteralString"] = self.type_map["str"];
-    self.type_map["Region"] = _byte_ptr;
+    self.type_map["Region"] = self.llvm_module.context.get_identified_type(
+        "__jac_region_handle"
+    ).as_pointer();
 
     self.type_map["type"] = _byte_ptr;
 
@@ -268,7 +270,7 @@ impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
         return "void";
     }
     if isinstance(ty, ir.PointerType) {
-        if ty?.pointee {
+        if (ty?.pointee is not None) {
             if isinstance(ty.pointee, ir.IntType) and ty.pointee.width == 8 {
                 return "i8*";
             }

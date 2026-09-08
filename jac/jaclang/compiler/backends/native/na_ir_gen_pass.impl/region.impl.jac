@@ -59,7 +59,9 @@ impl NaIRGenPass._region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value {
 }
 
 impl NaIRGenPass._region_ptr(val: ir.Value, name: str = "rgn.p") -> ir.Value {
-    i8p = ir.IntType(8).as_pointer();
+    i8p = self.llvm_module.context.get_identified_type(
+        "__jac_region_handle"
+    ).as_pointer();
     if self._opt_ptr_payload_of(val.type) is not None {
         val = self.builder.extract_value(val, 1, name=f"{name}.opt");
     }
@@ -139,7 +141,7 @@ impl NaIRGenPass._region_alloc_object(
         ],
         name="region.alloc"
     );
-    o_ptr = self._region_ptr(raw, name="region.o_ptr");
+    o_ptr = self.builder.inttoptr(raw, ir.IntType(8).as_pointer(), name="region.o_ptr");
     self.rc_region_allocs += 1;
     if type_name is None {
         return o_ptr;
@@ -180,13 +182,41 @@ impl NaIRGenPass._region_owns(ptr: ir.Value) -> ir.Value {
 
 impl NaIRGenPass._emit_region_handle_drop(alloca: ir.Value, var_name: str) -> None {
     hdl = self.builder.load(alloca, name=f"region.drop.{var_name}");
-    self.builder.call(
-        self._region_kernel_fn("__jac_region_drop"),
-        [self._region_i64(hdl, name=f"region.drop.{var_name}.i64")]
-    );
+    self._region_release(hdl);
     slot_ty = alloca.type;
     assert isinstance(slot_ty, ir.PointerType) , "a region handle slot is always a pointer";
     self.builder.store(ir.Constant(slot_ty.pointee, None), alloca);
+}
+
+impl NaIRGenPass._region_release(hdl: ir.Value) -> None {
+    if self._gc_mode() == "none" {
+        self.builder.call(
+            self._region_kernel_fn("__jac_region_drop"),
+            [self._region_i64(hdl)]
+        );
+    } else {
+        pointer = self._region_ptr(hdl);
+        self._emit_rc_release_simple(pointer, op="region_drop", loc="");
+    }
+}
+
+impl NaIRGenPass._region_drop_fn -> ir.Function {
+    existing = self.llvm_module.globals.get("__jac_drop_region_handle");
+    if isinstance(existing, ir.Function) {
+        return existing;
+    }
+    pointer = ir.IntType(8).as_pointer();
+    fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [pointer]),
+        name="__jac_drop_region_handle"
+    );
+    fn.linkage = "private";
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    address = b.ptrtoint(fn.args[0], ir.IntType(64));
+    b.call(self._region_kernel_fn("__jac_region_drop"), [address]);
+    b.ret_void();
+    return fn;
 }
 
 impl NaIRGenPass._register_region_handle_var(
@@ -207,6 +237,13 @@ impl NaIRGenPass._register_region_handle_var(
         and source.sym_name != var_name {
         source_slot = self.local_vars.get(source.sym_name);
         if source_slot is not None {
+            import from jaclang.compiler.frontend.constant { OwnershipKind }
+            if self._gc_mode() != "none" and source.sym.ownership != OwnershipKind.OWN {
+                self._emit_rc_retain(
+                    self.builder.load(source_slot), op="region_copy", loc=""
+                );
+                return;
+            }
             slot_type = source_slot.type;
             assert isinstance(slot_type, ir.PointerType);
             self.builder.store(ir.Constant(slot_type.pointee, None), source_slot);

@@ -247,7 +247,7 @@ impl NaIRGenPass._box_to_jacval(
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        ptr_tag = 6 if object_reference else 2;
+        ptr_tag = 6 if object_reference or value.type == self.type_map.get("Region") else 2;
         for (_, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 ptr_tag = 3;

@@ -1245,6 +1245,7 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.MEM_LOAD: self._emit_intrinsic_mem_load,
         IntrinsicDispatch.MEM_STORE: self._emit_intrinsic_mem_store,
         IntrinsicDispatch.MEM_ALLOC: self._emit_intrinsic_mem_alloc,
+        IntrinsicDispatch.MEM_RC_ENABLED: self._emit_intrinsic_mem_rc_enabled,
         IntrinsicDispatch.MEM_COPY: self._emit_intrinsic_mem_copy,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
         IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
@@ -1368,11 +1369,24 @@ impl NaIRGenPass._emit_intrinsic_mem_alloc(
     if size is None {
         return None;
     }
-    allocate = self._get_or_declare_extern(
-        "malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
-    );
+    import from jaclang.compiler.intrinsic_registry { IntrinsicAllocation }
+    if intr.allocation == IntrinsicAllocation.MANAGED {
+        self._emit_rc_helpers();
+        allocate = self.rc_alloc_fn;
+    } else {
+        allocate = self._get_or_declare_extern(
+            "malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
+        );
+    }
+    assert allocate is not None;
     pointer = self.builder.call(allocate, [size], name="mem.allocated");
     return self.builder.ptrtoint(pointer, ir.IntType(64), name="mem.address");
+}
+
+impl NaIRGenPass._emit_intrinsic_mem_rc_enabled(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list
+) -> (ir.Value | None) {
+    return ir.Constant(ir.IntType(64), 0 if self._gc_mode() == "none" else 1);
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_copy(
