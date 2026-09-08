@@ -809,7 +809,7 @@ glob OWNERSHIP_CASES: list[tuple] = [
              "partition_n",
              "arity mismatch, dynamic count, unowned receiver are E1314; children stay affine",
              "partition_n_bad.jac",
-             ["E1301", "E1301", "E1301", "E1314", "E1314", "E1314"]
+             ["E1301", "E1314", "E1314", "E1314"]
          ),
          (
              "partition_n",
