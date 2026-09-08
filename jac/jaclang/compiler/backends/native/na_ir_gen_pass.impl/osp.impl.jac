@@ -892,10 +892,10 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             ],
             name="osp.disc.many"
         );
-        if _srcs is not left {
+        if not _left_is_list or self._is_owned(_srcs) {
             self._emit_rc_release_simple(_srcs, op="osp_disc_many", loc="");
         }
-        if _tgts is not right {
+        if not _right_is_list or self._is_owned(_tgts) {
             self._emit_rc_release_simple(_tgts, op="osp_disc_many", loc="");
         }
     } else {
