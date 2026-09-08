@@ -1248,7 +1248,7 @@ impl NaIRGenPass._codegen_intrinsic(
         IntrinsicDispatch.MEM_RC_ENABLED: self._emit_intrinsic_mem_rc_enabled,
         IntrinsicDispatch.MEM_COPY: self._emit_intrinsic_mem_copy,
         IntrinsicDispatch.ATOMIC_XCHG: self._emit_intrinsic_atomic_xchg,
-        IntrinsicDispatch.CALL_DTOR: self._emit_intrinsic_call_dtor
+        IntrinsicDispatch.MEM_CALL: self._emit_intrinsic_mem_call
     };
     handler = _emitters.get(intr.dispatch);
     if handler is None {
@@ -1370,16 +1370,22 @@ impl NaIRGenPass._emit_intrinsic_mem_alloc(
         return None;
     }
     import from jaclang.compiler.intrinsic_registry { IntrinsicAllocation }
+    operands = [size];
     if intr.allocation == IntrinsicAllocation.MANAGED {
         self._emit_rc_helpers();
         allocate = self.rc_alloc_fn;
+    } elif intr.allocation == IntrinsicAllocation.ZEROED {
+        allocate = self._get_or_declare_extern(
+            "calloc", ir.IntType(8).as_pointer(), [ir.IntType(64), ir.IntType(64)]
+        );
+        operands.append(ir.Constant(ir.IntType(64), 1));
     } else {
         allocate = self._get_or_declare_extern(
             "malloc", ir.IntType(8).as_pointer(), [ir.IntType(64)]
         );
     }
     assert allocate is not None;
-    pointer = self.builder.call(allocate, [size], name="mem.allocated");
+    pointer = self.builder.call(allocate, operands, name="mem.allocated");
     return self.builder.ptrtoint(pointer, ir.IntType(64), name="mem.address");
 }
 
@@ -1445,7 +1451,7 @@ impl NaIRGenPass._emit_intrinsic_atomic_xchg(
     );
 }
 
-impl NaIRGenPass._emit_intrinsic_call_dtor(
+impl NaIRGenPass._emit_intrinsic_mem_call(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list
 ) -> (ir.Value | None) {
     fn_val = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
@@ -1454,11 +1460,14 @@ impl NaIRGenPass._emit_intrinsic_call_dtor(
         return None;
     }
     i8p = ir.IntType(8).as_pointer();
-    dtor_ty = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
-    fn_ptr = self.builder.inttoptr(fn_val, dtor_ty, name="dtor.fn");
-    obj_ptr = self.builder.inttoptr(obj_val, i8p, name="dtor.obj");
-    self.builder.call(fn_ptr, [obj_ptr]);
-    return None;
+    result_type = ir.VoidType()
+        if intr.result_spec == "none"
+        else ir.IntType(int(intr.result_spec[1:]));
+    signature = ir.FunctionType(result_type, [i8p]).as_pointer();
+    fn_ptr = self.builder.inttoptr(fn_val, signature, name="mem.callback");
+    obj_ptr = self.builder.inttoptr(obj_val, i8p, name="mem.argument");
+    result = self.builder.call(fn_ptr, [obj_ptr]);
+    return None if intr.result_spec == "none" else result;
 }
 
 impl NaIRGenPass._codegen_synthetic_call(

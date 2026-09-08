@@ -1256,30 +1256,37 @@ def _compile_kernel_unit_ir(
         store_unit_artifact
     }
     import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
     fp = native_compiler_fingerprint(kernel_opts);
     cache_key = f"{unit}|{fp}";
-    if not kernel_opts.no_ir_cache and cache_key in cache {
-        return cache[cache_key];
+    ir_str = None if kernel_opts.no_ir_cache else cache.get(cache_key);
+    if ir_str is None and not kernel_opts.no_ir_cache {
+        ir_str = load_unit_artifact(unit, "ll", fp);
     }
-    ir_str = None if kernel_opts.no_ir_cache else load_unit_artifact(unit, "ll", fp);
-    if ir_str is not None {
-        cache[cache_key] = ir_str;
-        return ir_str;
-    }
-    try {
-        prog = JacProgram();
-        m = prog.compile(unit, options=kernel_opts);
-        if not prog.errors_had
-            and (m is not None)
-            and m?.gen
-            and (m.gen.llvm_ir is not None) {
-            ir_str = str(m.gen.llvm_ir);
+    compiled = False;
+    if ir_str is None {
+        try {
+            prog = JacProgram();
+            m = prog.compile(unit, options=kernel_opts);
+            if not prog.errors_had
+                and (m is not None)
+                and m?.gen
+                and (m.gen.llvm_ir is not None) {
+                ir_str = str(m.gen.llvm_ir);
+                compiled = True;
+            }
+        } except Exception {
+            ir_str = None;
         }
-    } except Exception {
-        ir_str = None;
     }
-    if ir_str is not None {
-        cache[cache_key] = ir_str;
+
+    if ir_str is None
+        or native_lowering_issues(ir_str)
+        or native_demoted_ir_symbols(ir_str) {
+        return None;
+    }
+    cache[cache_key] = ir_str;
+    if compiled {
         store_unit_artifact(unit, "ll", fp, ir_str);
     }
     return ir_str;
@@ -1321,7 +1328,9 @@ def _rename_kernel_glob_init(ir_str: str, suffix: str) -> str {
 
 impl NativeCompilePass._link_collection_kernel(main_mod: ModuleRef) -> bool {
     if not any(
-        fn.is_declaration and fn.name in ("__jac_array_grow", "__jac_array_append")
+        fn.is_declaration
+            and fn.name
+                in ("__jac_array_grow", "__jac_array_append", "__jac_hash_rehash")
         for fn in _mod_functions(main_mod)
     ) {
         return False;

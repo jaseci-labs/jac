@@ -556,7 +556,6 @@ impl NaIRGenPass._codegen_dict_set(
     if self._reject_ptr_into_raw_slot(None, value, val_type, "dict value assignment") {
         return;
     }
-    _orig_key = key_val;
     _orig_value = value;
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
@@ -570,22 +569,5 @@ impl NaIRGenPass._codegen_dict_set(
     }
     self._rc_call_with_ctx(_set_fn, _set_args, op="dict_set", loc=_dset_ctx_loc);
 
-    if (
-        isinstance(_orig_key.type, ir.PointerType)
-        and isinstance(key_type, ir.PointerType)
-        and self._is_owned(_orig_key)
-    ) {
-        self._emit_rc_release_simple(_orig_key, op="dict_set", loc=_dset_ctx_loc);
-    }
-
-    if (
-        isinstance(_orig_value.type, ir.PointerType)
-        and self._elem_kind(val_type) != "raw"
-        and self._is_owned(_orig_value)
-    ) {
-        _dset_loc = getattr(
-            _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
-        );
-        self._emit_rc_release_simple(_orig_value, op="dict_set", loc=_dset_loc);
-    }
+    self._release_owned_args([key_val, value], op="dict_set");
 }

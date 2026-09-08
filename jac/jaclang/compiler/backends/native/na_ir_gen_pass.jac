@@ -598,7 +598,7 @@ walker NaIRGenPass(Transform) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list
     ) -> (ir.Value | None);
 
-    def _emit_intrinsic_call_dtor(
+    def _emit_intrinsic_mem_call(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list
     ) -> (ir.Value | None);
 

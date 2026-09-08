@@ -52,3 +52,82 @@ def __jac_array_append(
     }
     __mem_store_i64(length_slot, length + 1);
 }
+
+def __jac_hash_rehash(
+    capacity_slot: int,
+    keys_slot: int,
+    values_slot: int,
+    control_slot: int,
+    order_slot: int,
+    used_slot: int,
+    length: int,
+    key_stride: int,
+    value_stride: int,
+    hash_key: int,
+    release_storage: int
+) {
+    capacity = __mem_load_i64(capacity_slot);
+    if capacity <= 0
+        or (capacity & (capacity - 1)) != 0
+        or length < 0
+        or length > capacity
+        or key_stride < 0
+        or value_stride < 0 {
+        raise ValueError("Invalid ordered hash storage layout");
+    }
+    limit = 9223372036854775807 // max(8, key_stride, value_stride);
+    if capacity > limit // 2 {
+        raise MemoryError("Hash capacity exceeds the addressable size");
+    }
+    next_capacity = capacity * 2;
+    mask = next_capacity - 1;
+    keys = __mem_alloc(max(1, next_capacity * key_stride));
+    has_values = values_slot != 0;
+    values = __mem_alloc(max(1, next_capacity * value_stride)) if has_values else 0;
+    control = __mem_alloc_zeroed(next_capacity);
+    order = __mem_alloc(next_capacity * 8);
+    if keys == 0 or control == 0 or order == 0 or (has_values and values == 0) {
+        __mem_call_dtor(release_storage, keys);
+        __mem_call_dtor(release_storage, values);
+        __mem_call_dtor(release_storage, control);
+        __mem_call_dtor(release_storage, order);
+        raise MemoryError("Cannot grow hash storage");
+    }
+    old_keys = __mem_load_ptr(keys_slot);
+    old_values = __mem_load_ptr(values_slot) if has_values else 0;
+    old_control = __mem_load_ptr(control_slot);
+    old_order = __mem_load_ptr(order_slot);
+    index = 0;
+    while index < length {
+        old_slot = __mem_load_i64(old_order + index * 8);
+        key = old_keys + old_slot * key_stride;
+        hashed = __mem_call_i64(hash_key, key);
+        slot = hashed & mask;
+        while __mem_load_u8(control + slot) != 0 {
+            slot = (slot + 1) & mask;
+        }
+        __mem_copy(keys + slot * key_stride, key, key_stride);
+        if has_values {
+            __mem_copy(
+                values + slot * value_stride,
+                old_values + old_slot * value_stride,
+                value_stride
+            );
+        }
+        __mem_store_u8(control + slot, u8(((hashed >> 57) & 127) | 128));
+        __mem_store_i64(order + index * 8, slot);
+        index += 1;
+    }
+    __mem_store_ptr(keys_slot, keys);
+    if has_values {
+        __mem_store_ptr(values_slot, values);
+    }
+    __mem_store_ptr(control_slot, control);
+    __mem_store_ptr(order_slot, order);
+    __mem_store_i64(capacity_slot, next_capacity);
+    __mem_store_i64(used_slot, length);
+    __mem_call_dtor(release_storage, old_keys);
+    __mem_call_dtor(release_storage, old_values);
+    __mem_call_dtor(release_storage, old_control);
+    __mem_call_dtor(release_storage, old_order);
+}

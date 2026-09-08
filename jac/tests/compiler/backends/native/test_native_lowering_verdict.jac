@@ -65,3 +65,55 @@ test "invalid lowering metadata cannot silently pass coverage" {
     }
     assert failed;
 }
+
+test "runtime unit caches cannot admit partial native lowering" {
+    import os;
+    import tempfile;
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        _compile_kernel_unit_ir,
+        _kernel_unit_opts,
+        native_compiler_fingerprint
+    }
+    import from jaclang.compiler.backends.common.kernel_units {
+        store_unit_artifact,
+        unit_artifact_path
+    }
+    opts = _kernel_unit_opts("cycles", False);
+    fingerprint = native_compiler_fingerprint(opts);
+    with tempfile.TemporaryDirectory() as directory {
+        unit = os.path.join(directory, os.path.basename(directory) + ".jac");
+        with open(unit, "w") as stream {
+            stream.write("def probe -> int { return 1; }\n");
+        }
+        artifact = unit_artifact_path(unit, "ll", fingerprint);
+        key = f"{unit}|{fingerprint}";
+        try {
+            for kind in [NativeLoweringKind.FIELD, NativeLoweringKind.CALLABLE] {
+                partial = ir.Module(name="partial");
+                NativeLoweringIssue(
+                    symbol="Runtime.operation",
+                    kind=kind,
+                    source=unit,
+                    code="E5092",
+                    detail="unsupported runtime operation"
+                ).record(
+                    partial
+                );
+                text = str(partial);
+                assert _compile_kernel_unit_ir(unit, {key: text}, opts) is None;
+                store_unit_artifact(unit, "ll", fingerprint, text);
+                assert _compile_kernel_unit_ir(unit, {}, opts) is None;
+            }
+            legacy = 'define void @"lost.__jac_demoted"() { ret void }\n';
+            assert _compile_kernel_unit_ir(unit, {key: legacy}, opts) is None;
+            store_unit_artifact(unit, "ll", fingerprint, legacy);
+            assert _compile_kernel_unit_ir(unit, {}, opts) is None;
+            valid = str(ir.Module(name="complete"));
+            assert _compile_kernel_unit_ir(unit, {key: valid}, opts) == valid;
+        } finally {
+            if os.path.exists(artifact) {
+                os.remove(artifact);
+            }
+        }
+    }
+}

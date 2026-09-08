@@ -239,158 +239,55 @@ impl NaIRGenPass._emit_hash_core_helpers(
     bnx.store(nslm, slot_a);
     bnx.branch(probe_bb);
 
-    rehash_fnty = ir.FunctionType(ir.VoidType(), [cont_ptr_type]);
-    rehash_fn: any = ir.Function(
-        self.llvm_module, rehash_fnty, name=f"{_pre}_rehash_{_safe}"
+    hash_slot = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [i8p]), name=f"{_pre}_hash_slot_{_safe}"
+    );
+    hash_slot.linkage = "private";
+    bh = ir.IRBuilder(hash_slot.append_basic_block("entry"));
+    key_slot = bh.bitcast(hash_slot.args[0], key_type.as_pointer());
+    bh.ret(bh.call(hash_fn, [bh.load(key_slot)]));
+
+    rehash_fn = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(ir.VoidType(), [cont_ptr_type]),
+        name=f"{_pre}_rehash_{_safe}"
     );
     rehash_fn.linkage = "private";
-    rehash_fn.args[0].name = "cont";
     brh = ir.IRBuilder(rehash_fn.append_basic_block("entry"));
-    d_rh = rehash_fn.args[0];
-
-    ok_a = brh.alloca(key_type, name="ok");
-    ov_a = brh.alloca(val_type, name="ov") if has_vals else None;
-    nh2_a = brh.alloca(i8, name="nh2");
-    rslot_a = brh.alloca(i64, name="rsl");
-    si_a = brh.alloca(i64, name="si");
-
-    cap_prh = brh.gep(d_rh, [ir.Constant(i32, 0), ir.Constant(i32, CAP_F)], name="cp");
-    keys_prh = brh.gep(
-        d_rh, [ir.Constant(i32, 0), ir.Constant(i32, KEYS_F)], name="kp"
-    );
-    vals_prh = brh.gep(d_rh, [ir.Constant(i32, 0), ir.Constant(i32, VALS_F)], name="vp")
-        if has_vals
-        else None;
-    ctrl_prh = brh.gep(
-        d_rh, [ir.Constant(i32, 0), ir.Constant(i32, CTRL_F)], name="ctp"
-    );
-    len_prh = brh.gep(d_rh, [ir.Constant(i32, 0), ir.Constant(i32, LEN_F)], name="lp");
-    used_prh = brh.gep(
-        d_rh, [ir.Constant(i32, 0), ir.Constant(i32, USED_F)], name="up"
-    );
-    ord_prh = brh.gep(
-        d_rh, [ir.Constant(i32, 0), ir.Constant(i32, ORDER_F)], name="orp"
-    );
-    old_cap = brh.load(cap_prh, name="ocap");
-    old_len = brh.load(len_prh, name="olen");
-    old_keys = brh.load(keys_prh, name="okeys");
-    old_vals = brh.load(vals_prh, name="ovals") if has_vals else None;
-    old_ctrl = brh.load(ctrl_prh, name="octrl");
-    old_order = brh.load(ord_prh, name="oorder");
-    new_cap = brh.mul(old_cap, ir.Constant(i64, 2), name="ncap");
-    new_mask = brh.sub(new_cap, ir.Constant(i64, 1), name="nmask");
-
-    kgnr = brh.gep(
-        ir.Constant(key_type.as_pointer(), None), [ir.Constant(i32, 1)], name="ksz"
-    );
-    kszr = brh.ptrtoint(kgnr, i64, name="ksz");
-    kbrh = brh.mul(new_cap, kszr, name="kb");
-    nkr = brh.call(malloc_fn, [kbrh], name="nkr");
-    new_keys = brh.bitcast(nkr, key_type.as_pointer(), name="nk");
-    new_vals = None;
-    if has_vals {
-        vgnr = brh.gep(
-            ir.Constant(_vt.as_pointer(), None), [ir.Constant(i32, 1)], name="vsz"
+    storage = rehash_fn.args[0];
+    fields = [CAP_F, KEYS_F, VALS_F, CTRL_F, ORDER_F, USED_F];
+    arguments: list[ir.Value] = [];
+    for field in fields {
+        arguments.append(
+            brh.ptrtoint(
+                brh.gep(storage, [ir.Constant(i32, 0), ir.Constant(i32, field)]), i64
+            )
+                if field >= 0
+                else ir.Constant(i64, 0)
         );
-        vszr = brh.ptrtoint(vgnr, i64, name="vsz");
-        vbrh = brh.mul(new_cap, vszr, name="vb");
-        nvr = brh.call(malloc_fn, [vbrh], name="nvr");
-        new_vals = brh.bitcast(nvr, _vt.as_pointer(), name="nv");
     }
-    ncr = brh.call(calloc_fn, [new_cap, ir.Constant(i64, 1)], name="ncr");
-
-    _nord_bytes = brh.mul(new_cap, ir.Constant(i64, 8), name="nordb");
-    nordr = brh.call(malloc_fn, [_nord_bytes], name="nordr");
-    new_order = brh.bitcast(nordr, i64.as_pointer(), name="norder");
-
-    brh.store(new_cap, cap_prh);
-    brh.store(new_keys, keys_prh);
-    if has_vals {
-        brh.store(new_vals, vals_prh);
+    arguments.append(
+        brh.load(brh.gep(storage, [ir.Constant(i32, 0), ir.Constant(i32, LEN_F)]))
+    );
+    for element_type in [key_type, _vt] {
+        arguments.append(
+            brh.ptrtoint(
+                brh.gep(
+                    ir.Constant(element_type.as_pointer(), None), [ir.Constant(i64, 1)]
+                ),
+                i64
+            )
+        );
     }
-    brh.store(ncr, ctrl_prh);
-    brh.store(new_order, ord_prh);
-    brh.store(ir.Constant(i64, 0), len_prh);
-    brh.store(ir.Constant(i64, 0), used_prh);
-    brh.store(ir.Constant(i64, 0), si_a);
-
-    rl_bb = rehash_fn.append_basic_block("rl");
-    ri_bb = rehash_fn.append_basic_block("ri");
-    rp_bb = rehash_fn.append_basic_block("rp");
-    ra_bb = rehash_fn.append_basic_block("ra");
-    rd_bb = rehash_fn.append_basic_block("rd");
-    rf_bb = rehash_fn.append_basic_block("rf");
-    brh.branch(rl_bb);
-
-    brl = ir.IRBuilder(rl_bb);
-    si_rh = brl.load(si_a, name="j");
-    rend = brl.icmp_unsigned(">=", si_rh, old_len, name="rend");
-    brl.cbranch(rend, rf_bb, ri_bb);
-
-    bri = ir.IRBuilder(ri_bb);
-    _osl = bri.load(bri.gep(old_order, [si_rh], name="osl.p"), name="osl");
-    ok_v = bri.load(bri.gep(old_keys, [_osl], name="okp"), name="ok");
-    bri.store(ok_v, ok_a);
-    if has_vals {
-        ov_v = bri.load(bri.gep(old_vals, [_osl], name="ovp"), name="ov");
-        bri.store(ov_v, ov_a);
-    }
-    nhr = bri.call(hash_fn, [ok_v], name="nh");
-    nh2r0 = bri.lshr(nhr, ir.Constant(i64, 57), name="nh2r");
-    nh2r7 = bri.and_(nh2r0, ir.Constant(i64, 0x7F), name="nh27");
-    nh2ro = bri.or_(nh2r7, ir.Constant(i64, 0x80), name="nh2o");
-    nh2 = bri.trunc(nh2ro, i8, name="nh2");
-    bri.store(nh2, nh2_a);
-    bri.store(bri.and_(nhr, new_mask, name="rs0"), rslot_a);
-    bri.branch(rp_bb);
-
-    brp = ir.IRBuilder(rp_bb);
-    rsl = brp.load(rslot_a, name="rsl");
-    ncp = brp.gep(ncr, [rsl], name="ncp");
-    nc = brp.load(ncp, name="nc");
-    rse = brp.icmp_unsigned("==", nc, ir.Constant(i8, HASH_CTRL_EMPTY), name="rse");
-    brp.cbranch(rse, rd_bb, ra_bb);
-
-    bra = ir.IRBuilder(ra_bb);
-    nrsl = bra.add(rsl, ir.Constant(i64, 1), name="nrsl");
-    bra.store(bra.and_(nrsl, new_mask, name="nrslm"), rslot_a);
-    bra.branch(rp_bb);
-
-    brd = ir.IRBuilder(rd_bb);
-    ok_d = brd.load(ok_a, name="ok");
-    nh2_d = brd.load(nh2_a, name="nh2");
-    brd.store(ok_d, brd.gep(new_keys, [rsl], name="nkp"));
-    if has_vals {
-        ov_d = brd.load(ov_a, name="ov");
-        brd.store(ov_d, brd.gep(new_vals, [rsl], name="nvp"));
-    }
-    brd.store(nh2_d, brd.gep(ncr, [rsl], name="ncp2"));
-    cl_d = brd.load(len_prh, name="cl");
-
-    brd.store(rsl, brd.gep(new_order, [cl_d], name="nordp"));
-    brd.store(brd.add(cl_d, ir.Constant(i64, 1), name="nl"), len_prh);
-    cu_d = brd.load(used_prh, name="cu");
-    brd.store(brd.add(cu_d, ir.Constant(i64, 1), name="nu"), used_prh);
-    brd.store(brd.add(brd.load(si_a, name="j2"), ir.Constant(i64, 1), name="nj"), si_a);
-    brd.branch(rl_bb);
-
-    brf = ir.IRBuilder(rf_bb);
-    if _hl {
-        brf.call(_free_hl, [brf.bitcast(old_keys, i8p, name="oki8")]);
-        if has_vals {
-            brf.call(_free_hl, [brf.bitcast(old_vals, i8p, name="ovi8")]);
-        }
-        brf.call(_free_hl, [old_ctrl]);
-        brf.call(_free_hl, [brf.bitcast(old_order, i8p, name="ordi8")]);
-    } else {
-        brf.call(self.rc_safe_free_fn, [brf.bitcast(old_keys, i8p, name="oki8")]);
-        if has_vals {
-            brf.call(self.rc_safe_free_fn, [brf.bitcast(old_vals, i8p, name="ovi8")]);
-        }
-        brf.call(self.rc_safe_free_fn, [old_ctrl]);
-        brf.call(self.rc_safe_free_fn, [brf.bitcast(old_order, i8p, name="ordi8")]);
-    }
-    brf.ret_void();
+    release = _free_hl if _hl else self.rc_safe_free_fn;
+    assert release is not None;
+    arguments.append(brh.ptrtoint(hash_slot, i64));
+    arguments.append(brh.ptrtoint(release, i64));
+    rehash = self._get_or_declare_extern(
+        "__jac_hash_rehash", ir.VoidType(), [i64] * 11
+    );
+    brh.call(rehash, arguments);
+    brh.ret_void();
 
     _ins_op = "set" if has_vals else "add";
     _ins_args = [cont_ptr_type, key_type, val_type, i64]
