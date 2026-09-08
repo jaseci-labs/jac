@@ -7,3 +7,9 @@ description = "Test fixture for jac-scale serve tests"
 X-Custom-Test-Header = "test-value"
 Cross-Origin-Opener-Policy = "same-origin"
 Cross-Origin-Embedder-Policy = "require-corp"
+
+# GitHub-scheme webhook walkers (GithubEvent in test_api.jac) verify against
+# this secret; the body cap is small so the oversize test stays cheap.
+[scale.webhook]
+github_secret = "test-github-webhook-secret"
+max_body_bytes = 65536

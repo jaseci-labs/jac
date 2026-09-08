@@ -696,6 +696,8 @@ secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
+github_secret = "${GITHUB_APP_WEBHOOK_SECRET}"   # scheme="github" walkers verify X-Hub-Signature-256 against it
+github_signature_header = "X-Hub-Signature-256"
 ```
 
 **Gateway and fleet topology (scale):**

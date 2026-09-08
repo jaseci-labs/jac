@@ -1392,6 +1392,8 @@ api_key_expiry_days = 365
 | `signature_header` | string | `"X-Webhook-Signature"` | HTTP header name containing the HMAC signature. |
 | `verify_signature` | boolean | `true` | Whether to verify HMAC signatures on incoming requests. |
 | `api_key_expiry_days` | integer | `365` | Default expiry period for API keys in days. Set to `0` for permanent keys. |
+| `github_secret` | string | `""` | Secret that `scheme="github"` walkers verify `X-Hub-Signature-256` against (the GitHub App's webhook secret). Boot fails if a github-scheme walker exists and this is empty. |
+| `github_signature_header` | string | `"X-Hub-Signature-256"` | Header carrying the GitHub-style signature for `scheme="github"` walkers. |
 
 **Environment Variables:**
 
@@ -1500,6 +1502,31 @@ curl -X POST "http://localhost:8000/webhook/PaymentReceived" \
     -H "X-Webhook-Signature: $SIGNATURE" \
     -d "$PAYLOAD"
 ```
+
+#### GitHub-Signed Webhooks (`scheme="github"`)
+
+Providers such as GitHub sign the raw body with a shared secret and cannot send an API key. Declare the scheme on the walker and the endpoint switches verification:
+
+```jac
+@restspec(protocol=APIProtocol.WEBHOOK, scheme="github")
+walker GithubEvent {
+    has event: str = "",      # copied from X-GitHub-Event
+        delivery: str = "",   # copied from X-GitHub-Delivery
+        action: str = "",
+        installation: dict[str, any] = {};
+
+    can handle with Root entry {
+        report {"event": self.event, "action": self.action};
+    }
+}
+```
+
+- No `X-API-Key`. The runtime verifies `X-Hub-Signature-256` (`sha256=` plus HMAC-SHA256 of the raw body, keyed by `[scale.webhook].github_secret`; the prefix is optional).
+- No timestamp window: GitHub sends none. Dedupe on `X-GitHub-Delivery` inside the walker.
+- The walker runs as the system identity and resolves its own tenant from the payload.
+- `X-GitHub-Event` and `X-GitHub-Delivery` are copied into `event` and `delivery` when the walker declares them, and win over same-named body keys.
+- The body size cap and the per-minute rate limit apply; the rate limit is keyed by walker name.
+- The default scheme (`scheme` omitted or `"jac"`) is unchanged, and both kinds of walker can coexist in one app.
 
 ### Webhook vs Regular Walkers
 

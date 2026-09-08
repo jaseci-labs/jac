@@ -8,6 +8,7 @@ import os;
 import time;
 import uuid;
 import from logging.handlers { MemoryHandler }
+import glob;
 import from pathlib { Path }
 import from typing { cast }
 import from jaclang.scale.tests.scale_test_client {
@@ -580,4 +581,301 @@ test "webhook - api key rejected as user session token" {
     } finally {
         client.close();
     }
+}
+
+
+# =========================================================================
+# GitHub scheme: no api key, X-Hub-Signature-256 over the raw body
+# =========================================================================
+import shutil;
+import tempfile;
+import from jaclang.runtime.builtin { restspec, APIProtocol }
+import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
+
+glob gh_secret: str = "test-github-webhook-secret";
+
+"""Headers GitHub would send for `payload`, signed with `secret`."""
+def _github_headers(
+    payload: bytes,
+    secret: str = gh_secret,
+    event: str = "issues",
+    delivery: str = "delivery-1",
+    prefixed: bool = True
+) -> dict[str, str] {
+    sig = _generate_webhook_signature(payload, secret);
+    return {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": ("sha256=" + sig) if prefixed else sig,
+        "X-GitHub-Event": event,
+        "X-GitHub-Delivery": delivery
+    };
+}
+
+walker SchemeProbe {
+    can go with Root entry {
+        report 1;
+    }
+}
+
+"""Boot the github fixture app. The scale config singleton is bound to the
+copied fixture directory first, because `register` reads the secret through
+it and the harness never points it at a fixture on its own."""
+def _github_client(with_secret: bool = True) -> ScaleTestClient {
+    tmp = tempfile.mkdtemp();
+    for f in `glob.`glob(str(wh_fixtures_dir / "*")) {
+        if Path(f).is_file() {
+            shutil.copy2(f, Path(tmp) / Path(f).name);
+        }
+    }
+    toml_path = Path(tmp) / "jac.toml";
+    toml = toml_path.read_text();
+    assert "[scale.webhook]" in toml , "fixture jac.toml lost its webhook block";
+    if not with_secret {
+        toml_path.write_text(toml.split("[scale.webhook]")[0]);
+    }
+    reset_scale_config();
+    get_scale_config(project_dir=Path(tmp));
+    client = ScaleTestClient.from_file(
+        str(wh_fixtures_dir / "github_webhook.jac"), base_path=tmp
+    );
+    client._tmp_dir = tmp;
+    return client;
+}
+
+def _close_github(client: ScaleTestClient) {
+    client.close();
+    reset_scale_config();
+}
+
+test "github scheme - signed delivery accepted without an api key" {
+    client = _github_client();
+    try {
+        payload = json.dumps({"action": "closed", "installation": {"id": 151191459}});
+        body = payload.encode("utf-8");
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers=_github_headers(body, event="issues", delivery="uuid-1")
+        );
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        rpt = extract_data(response.json())["reports"][0];
+        assert rpt["status"] == "received";
+        assert rpt["transport"] == "webhook-github";
+        assert rpt["action"] == "closed";
+        assert rpt["installation"]["id"] == 151191459;
+        assert rpt["event"] == "issues" , f"event header not mapped: {rpt}";
+        assert rpt["delivery"] == "uuid-1" , f"delivery header not mapped: {rpt}";
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - bare hex signature accepted" {
+    client = _github_client();
+    try {
+        payload = json.dumps({"action": "opened"});
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers=_github_headers(payload.encode("utf-8"), prefixed=False)
+        );
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - wrong secret rejected" {
+    client = _github_client();
+    try {
+        payload = json.dumps({"action": "opened"});
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers=_github_headers(payload.encode("utf-8"), secret="not-the-secret")
+        );
+        assert response.status_code == 401 , (
+            f"Expected 401, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - missing signature header rejected" {
+    client = _github_client();
+    try {
+        payload = json.dumps({"action": "opened"});
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers={"Content-Type": "application/json", "X-GitHub-Event": "issues"}
+        );
+        # The header is declared required, so the framework may answer 422
+        # before the callback runs; either way nothing is spawned.
+        assert response.status_code in (401, 422) , (
+            f"Expected 401 or 422, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - api-key headers do not substitute for the signature" {
+    client = _github_client();
+    try {
+        username = f"github_scheme_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(username, "password123");
+        token = client.login_user(username, "password123");
+        api_key_response = client.post(
+            "/api-key/create",
+            json={"name": "not_for_github", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert api_key_response.status_code == 201;
+        api_key_data = extract_data(api_key_response.json());
+        payload = json.dumps({"action": "opened"});
+        ts = str(int(time.time()));
+        jac_sig = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload.encode("utf-8"),
+            api_key_data["signing_secret"]
+        );
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key_data["api_key"],
+                "X-Webhook-Signature": jac_sig,
+                "X-Webhook-Timestamp": ts
+            }
+        );
+        assert response.status_code in (401, 422) , (
+            f"Expected 401 or 422, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - oversize body rejected before any signature work" {
+    client = _github_client();
+    try {
+        # The fixture caps bodies at 64 KiB; the signature is deliberately
+        # wrong so a 413 proves the size check ran first.
+        payload = json.dumps({"action": "opened", "pad": "x" * 70000});
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers=_github_headers(payload.encode("utf-8"), secret="wrong")
+        );
+        assert response.status_code == 413 , (
+            f"Expected 413, got {response.status_code}: {response.text[:200]}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - provider headers win over same-named body keys" {
+    client = _github_client();
+    try {
+        payload = json.dumps(
+            {"action": "opened", "event": "spoofed", "delivery": "spoofed"}
+        );
+        response = client.post(
+            "/webhook/GithubEvent",
+            content=payload,
+            headers=_github_headers(
+                payload.encode("utf-8"), event="pull_request", delivery="uuid-2"
+            )
+        );
+        assert response.status_code == 200 , (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        );
+        rpt = extract_data(response.json())["reports"][0];
+        assert rpt["event"] == "pull_request" , f"body key overrode the header: {rpt}";
+        assert rpt["delivery"] == "uuid-2" , f"body key overrode the header: {rpt}";
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - not reachable via the walker endpoint" {
+    client = _github_client();
+    try {
+        username = f"github_path_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(username, "password123");
+        token = client.login_user(username, "password123");
+        response = client.post(
+            "/walker/GithubEvent",
+            json={"action": "opened"},
+            headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code in (400, 404, 405) , (
+            f"Expected 400/404/405, got {response.status_code}: {response.text}"
+        );
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "github scheme - openapi documents the GitHub headers, not the api key" {
+    client = _github_client();
+    try {
+        srv = client._server;
+        assert srv is not None , "server must be running";
+        paths = srv.app.openapi().get("paths", {});
+        gh_params = [
+            p.get("name")
+            for p in paths["/webhook/GithubEvent"]["post"].get("parameters", [])
+        ];
+        assert "x_hub_signature_256" in gh_params , f"missing signature header: {gh_params}";
+        assert "x_github_event" in gh_params , f"missing event header: {gh_params}";
+        assert "x_api_key" not in gh_params , f"api key documented on a github walker: {gh_params}";
+        key_params = [
+            p.get("name")
+            for p in paths["/webhook/KeyedEvent"]["post"].get("parameters", [])
+        ];
+        assert "x_api_key" in key_params , f"api-key walker lost its header: {key_params}";
+        assert "x_hub_signature_256" not in key_params;
+    } finally {
+        _close_github(client);
+    }
+}
+
+test "restspec - unknown scheme rejected at decoration" {
+    try {
+        restspec(protocol=APIProtocol.WEBHOOK, scheme="stripe");
+        assert False , "scheme='stripe' should have raised";
+    } except ValueError as e {
+        assert "scheme" in str(e) , f"unexpected message: {e}";
+    }
+}
+
+test "restspec - scheme requires the webhook protocol" {
+    try {
+        restspec(scheme="github")(SchemeProbe);
+        assert False , "scheme on an HTTP walker should have raised";
+    } except ValueError as e {
+        assert "protocol=WEBHOOK" in str(e) , f"unexpected message: {e}";
+    }
+}
+
+test "github scheme - boot fails without a secret" {
+    booted = False;
+    try {
+        client = _github_client(with_secret=False);
+        booted = True;
+        client.close();
+    } except ValueError as e {
+        assert "github_secret" in str(e) , f"unexpected boot error: {e}";
+    } finally {
+        reset_scale_config();
+    }
+    assert not booted , "a github-scheme walker booted with an empty secret";
 }
