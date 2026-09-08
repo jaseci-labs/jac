@@ -23,9 +23,6 @@ impl EsastGenPass._field_constructor_args(
         ) {
         return None;
     }
-    if not args {
-        return self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
-    }
     source = arch.find_parent_of_type(uni.Module);
     assert source is not None;
     layout = get_layout_registry(source, self.prog).get_layout(arch.sym_name);
@@ -36,6 +33,12 @@ impl EsastGenPass._field_constructor_args(
         if isinstance(declaration, uni.HasVar) {
             fields.append(declaration);
         }
+    }
+    if not fields and "__post_init__" not in layout.method_index {
+        return None;
+    }
+    if not args {
+        return self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
     }
     names = positional_field_names(fields);
     if len(args) <= len(names)

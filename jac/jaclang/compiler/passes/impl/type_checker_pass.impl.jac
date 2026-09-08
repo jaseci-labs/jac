@@ -1513,12 +1513,13 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         }
     }
 
+    iter_method = "__aiter__" if here.is_async else "__iter__";
     if isinstance(collection_type, TypeVarType) {
         if collection_type.constraints {
             for constraint_type in collection_type.constraints {
                 if isinstance(constraint_type, ClassType) {
                     iter_result = self.evaluator.get_type_of_magic_method_call(
-                        constraint_type, "__iter__", [], None
+                        constraint_type, iter_method, [], None
                     );
                     if iter_result is None {
                         self.emit(E1021, node_override=here, type=str(constraint_type));
@@ -1527,7 +1528,7 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
             }
         } elif collection_type.bound and isinstance(collection_type.bound, ClassType) {
             iter_result = self.evaluator.get_type_of_magic_method_call(
-                collection_type.bound, "__iter__", [], here.collection
+                collection_type.bound, iter_method, [], here.collection
             );
             if iter_result is None {
                 self.emit(E1021, node_override=here, type=str(collection_type.bound));
@@ -1542,10 +1543,15 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
         );
         if not is_enum {
             iter_result = self.evaluator.get_type_of_magic_method_call(
-                collection_type, "__iter__", [], here.collection
+                collection_type, iter_method, [], here.collection
             );
             if iter_result is None {
-                self.emit(E1022, node_override=here, type=str(collection_type));
+                self.emit(
+                    E1022,
+                    node_override=here,
+                    type=str(collection_type),
+                    method=iter_method
+                );
             }
         }
     }

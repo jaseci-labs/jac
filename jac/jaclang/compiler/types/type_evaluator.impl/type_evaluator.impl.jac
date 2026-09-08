@@ -2530,7 +2530,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                         unpack_assignment.collection
                     );
                     elem_type = self._get_iterable_element_type(
-                        collection_type, unpack_assignment
+                        collection_type,
+                        unpack_assignment,
+                        is_async=unpack_assignment.is_async
                     );
                     if elem_type is not None {
                         unpack_path: list[int] = [];
@@ -2692,7 +2694,7 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 }
 
                 element_type = self._get_iterable_element_type(
-                    collection_type, node_.parent
+                    collection_type, node_.parent, is_async=node_.parent.is_async
                 );
                 if element_type is not None {
                     node_.type = element_type;
@@ -3093,7 +3095,7 @@ impl TypeEvaluator.get_type_of_magic_method_call(
                         arg_nodes, node_for_error, fn, checking_overload=True
                     );
                     if not arg_param_match.argument_errors {
-                        solved: dict[str, TypeBase] = {};
+                        solved = self._receiver_type_var_bindings(fn, obj_type);
                         if self.validate_arg_types(
                             arg_param_match,
                             checking_overload=True,
@@ -5589,6 +5591,9 @@ impl TypeEvaluator._extract_isinstance_info(
 impl TypeEvaluator._isinstance_class_alternatives(
     arg_type: TypeBase
 ) -> list[TypeBase] | None {
+    if isinstance(arg_type, (AnyType, UnknownType)) {
+        return [arg_type];
+    }
     if isinstance(arg_type, UnionType) {
         alternatives: list[TypeBase] = [];
         for member in arg_type.types {

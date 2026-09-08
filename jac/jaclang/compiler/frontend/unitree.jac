@@ -1483,6 +1483,7 @@ node DeleteStmt(CodeBlockStmt) {
     def leaf_targets -> list[Expr];
     static def unwrap_target(target: Expr) -> Expr;
     static def is_location(target: Expr) -> bool;
+    static def type_has_graph_member(t: (TypeBase | None)) -> bool;
     static def type_may_hold_graph(t: (TypeBase | None)) -> bool;
     static def target_may_hold_graph(target: Expr) -> bool;
 }

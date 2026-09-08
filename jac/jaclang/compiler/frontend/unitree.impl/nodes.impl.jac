@@ -3138,8 +3138,36 @@ impl DeleteStmt.is_location(target: Expr) -> bool {
 }
 
 
+impl DeleteStmt.type_has_graph_member(t: (TypeBase | None)) -> bool {
+    import from jaclang.compiler.types.types { ClassType, TypeVarType, UnionType }
+    if isinstance(t, TypeVarType) {
+        return DeleteStmt.type_has_graph_member(t.bound);
+    }
+    if isinstance(t, UnionType) {
+        return any(DeleteStmt.type_has_graph_member(member) for member in t.types);
+    }
+    if isinstance(t, ClassType) {
+        if t.is_node_type() or t.is_edge_type() or t.is_walker_type() {
+            return True;
+        }
+        if t.is_builtin(["list", "tuple", "set", "frozenset"]) {
+            return any(
+                DeleteStmt.type_has_graph_member(item)
+                for item in (t.private.type_args or [])
+            );
+        }
+        if t.is_builtin("dict") and len(t.private.type_args or []) == 2 {
+            return DeleteStmt.type_has_graph_member(t.private.type_args[1]);
+        }
+    }
+    return False;
+}
+
 impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
     import from jaclang.compiler.types.types { ClassType, UnionType }
+    if DeleteStmt.type_has_graph_member(t) {
+        return True;
+    }
 
     def never_graph(ty: any) -> bool {
         if isinstance(ty, UnionType) {
@@ -3148,11 +3176,7 @@ impl DeleteStmt.type_may_hold_graph(t: (TypeBase | None)) -> bool {
         if not isinstance(ty, ClassType) {
             return False;
         }
-        if ty.is_any_type()
-            or ty.is_node_type()
-            or ty.is_edge_type()
-            or ty.is_walker_type()
-            or not ty.is_builtin() {
+        if ty.is_any_type() or not ty.is_builtin() {
             return False;
         }
         class_name = ty.shared.class_name;

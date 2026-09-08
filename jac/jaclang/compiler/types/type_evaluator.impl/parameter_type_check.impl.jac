@@ -1214,16 +1214,33 @@ impl TypeEvaluator._overload_accepts_receiver(
 }
 
 
+impl TypeEvaluator._receiver_type_var_bindings(
+    method: FunctionType, receiver: TypeBase | None
+) -> dict[str, TypeBase] {
+    if receiver is None {
+        return {};
+    }
+    bindings: dict[str, TypeBase] = {"Self": receiver};
+    if method.parameters {
+        first = method.parameters[0];
+        if (first.is_self or first.is_cls) and first.param_type is not None {
+            self.assign_type_to_type_var(first.param_type, receiver, bindings);
+        }
+    }
+    return bindings;
+}
+
 impl TypeEvaluator._collect_type_var_bindings(
     method: FunctionType,
     expr: FuncCall,
     is_unbound_call: bool = False,
     is_constructor_call: bool = False
 ) -> dict[str, TypeBase] {
-    bindings: dict[str, TypeBase] = {};
-
     receiver = self._call_receiver_type(expr);
-    if receiver is not None {
+    bindings = self._receiver_type_var_bindings(method, receiver)
+        if not is_unbound_call
+        else {};
+    if is_unbound_call and receiver is not None {
         bindings["Self"] = receiver;
     }
 

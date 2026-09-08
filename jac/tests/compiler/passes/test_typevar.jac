@@ -263,7 +263,6 @@ test "async generator methods retain their iterator result after specialization"
     program.compile(
         file_path="generic_async_generator.jac",
         use_str="""
-import from typing { AsyncIterator }
 obj Source[T] {
     async def values(value: T) -> AsyncIterator[T];
     async def opaque(value: T) -> any { yield value; }
@@ -288,7 +287,6 @@ test "an async function returning an iterator still requires awaiting" {
     program.compile(
         file_path="async_iterator_factory.jac",
         use_str="""
-import from typing { AsyncIterator }
 async def values -> AsyncIterator[int] { yield 1; }
 async def factory -> AsyncIterator[int] { return values(); }
 async def wrong -> None { async for value in factory() { print(value); } }
@@ -307,13 +305,17 @@ import from enum { Enum }
 import from types { MethodType }
 def names(ty: object) -> list[str] {
     if isinstance(ty, type) and issubclass(ty, Enum) {
-        return list(ty.__members__);
+        return [member.name for member in ty];
     }
     return [];
 }
 def receiver(caller: Callable) -> object {
     value: object = caller;
     if isinstance(value, MethodType) { return value.__self__; }
+    return None;
+}
+def dynamic(value: object, kind: any) -> any {
+    if isinstance(value, kind) { return value.payload; }
     return None;
 }
 """,

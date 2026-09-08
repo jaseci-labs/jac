@@ -422,7 +422,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1020 = _err("E1020", Category.TYPE, "Cannot unpack non-iterable {type}"),
      E1021 = _err("E1021", Category.TYPE, "Type \"{type}\" is not iterable"),
      E1022 = _err(
-         "E1022", Category.TYPE, "Type {type} is not iterable (no __iter__ method)"
+         "E1022", Category.TYPE, "Type {type} is not iterable (no {method} method)"
      ),
      E1023 = _err("E1023", Category.TYPE, "Type \"{type}\" is not callable"),
      E1030 = _err(

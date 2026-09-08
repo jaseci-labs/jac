@@ -630,7 +630,9 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_iterable_element_type(
-        iterable_type: TypeBase, node_for_error: UniNode | None = None
+        iterable_type: TypeBase,
+        node_for_error: UniNode | None = None,
+        is_async: bool = False
     ) -> TypeBase | None;
 
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
@@ -766,6 +768,10 @@ walker TypeEvaluator {
     ) -> dict[str, TypeBase];
 
     def _call_receiver_type(expr: FuncCall) -> TypeBase | None;
+    def _receiver_type_var_bindings(
+        method: FunctionType, receiver: TypeBase | None
+    ) -> dict[str, TypeBase];
+
     def _overload_accepts_receiver(
         overload: FunctionType, receiver: TypeBase | None
     ) -> bool;

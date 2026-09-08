@@ -204,7 +204,9 @@ impl TypeEvaluator._tuple_literal_index_type(
 }
 
 impl TypeEvaluator._get_iterable_element_type(
-    iterable_type: TypeBase, node_for_error: UniNode | None = None
+    iterable_type: TypeBase,
+    node_for_error: UniNode | None = None,
+    is_async: bool = False
 ) -> TypeBase | None {
     if iterable_type.is_any_instance() {
         return iterable_type;
@@ -219,7 +221,7 @@ impl TypeEvaluator._get_iterable_element_type(
             is_incomplete=iterable_type.is_incomplete
         );
     }
-    if isinstance(iterable_type, ClassType) {
+    if isinstance(iterable_type, ClassType) and not is_async {
         members: list[TypeBase] = [];
         if iterable_type.is_namedtuple() {
             scope = iterable_type.shared.symbol_table;
@@ -249,14 +251,17 @@ impl TypeEvaluator._get_iterable_element_type(
         }
     }
     iter_type = self.get_type_of_magic_method_call(
-        iterable_type, "__iter__", [], node_for_error
+        iterable_type, "__aiter__" if is_async else "__iter__", [], node_for_error
     );
     if not isinstance(iter_type, ClassType) {
         return None;
     }
     next_type = self.get_type_of_magic_method_call(
-        iter_type, "__next__", [], node_for_error
+        iter_type, "__anext__" if is_async else "__next__", [], node_for_error
     );
+    if is_async and next_type is not None and node_for_error is not None {
+        next_type = self._unwrap_awaitable_type(next_type, node_for_error);
+    }
     if next_type and not isinstance(next_type, UnknownType) {
         return self._convert_to_instance(next_type);
     }
