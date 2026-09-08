@@ -54,7 +54,8 @@ obj Adj {
     has rows_out: list[int],
         rows_in: list[int],
         out: dict[int, list[int]],
-        inn: dict[int, list[int]];
+        inn: dict[int, list[int]],
+        region: int = 0;
 }
 
 obj OspGraph {
@@ -63,7 +64,7 @@ obj OspGraph {
         free_rows: list[int],
         row_of: dict[int, int],
         dead: dict[int, int],
-        regions: dict[int, list[int]],
+        regions: dict[int, set[int]],
         next_ordinal: int = 1;
 
     def adj_of(h: int) -> Adj {
@@ -270,11 +271,29 @@ obj OspGraph {
     }
 
     def region_reg(h: int, rgn: int) {
+        adjacency = self.adj_of(h);
+        if adjacency.region == rgn {
+            return;
+        }
+        self.region_unreg(h, adjacency.region);
+        adjacency.region = rgn;
         if rgn in self.regions {
-            members: list[int] = self.regions[rgn];
-            members.append(h);
+            members: set[int] = self.regions[rgn];
+            members.add(h);
         } else {
-            self.regions[rgn] = [h];
+            self.regions[rgn] = {h};
+        }
+    }
+
+    def region_unreg(h: int, rgn: int) {
+        if rgn in self.regions {
+            members: set[int] = self.regions[rgn];
+            if h in members {
+                members.remove(h);
+            }
+            if not members {
+                del self.regions[rgn];
+            }
         }
     }
 
@@ -759,6 +778,8 @@ obj OspGraph {
     def drop_node(h: int) -> int {
         n = self.node_destroy(h);
         if h in self.adj {
+            adjacency = self.adj[h];
+            self.region_unreg(h, adjacency.region);
             self.adj.pop(h);
         }
         if h in self.dead {
@@ -771,7 +792,7 @@ obj OspGraph {
         if rgn not in self.regions {
             return 0;
         }
-        members: list[int] = self.regions[rgn];
+        members: set[int] = self.regions[rgn];
         del self.regions[rgn];
         stash: list[Adj] = [];
         for h in members {
@@ -823,7 +844,6 @@ def _new_graph -> OspGraph {
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
 
 def osp_adj_entries(origin: int, dir: int) -> list[int] {
-    """ABI adjacency records: tag, peer, edge handle (zero for light), undirected, ordinal.""";
     out: list[int] = [];
     if origin in DEFAULT_GRAPH.adj {
         a: Adj = DEFAULT_GRAPH.adj[origin];

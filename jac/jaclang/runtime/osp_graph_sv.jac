@@ -1,4 +1,5 @@
 import jaclang.runtime.osp_graph as _graph;
+import weakref;
 import from jaclang.runtime.object_model { field }
 import from jaclang.runtime.archetype {
     Anchor,
@@ -14,7 +15,7 @@ obj _SvStore {
         region: int = 0;
 }
 
-glob _obj_of_h: list[(Anchor | None)] = [None],
+glob _obj_of_h: list[(weakref.ReferenceType[Anchor] | None)] = [None],
      _h_free: list[int] = [],
      _next_region: list[int] = [1],
      _tag_of_cls: dict[(type, int)] = {},
@@ -56,6 +57,30 @@ def _handle_of(st: _SvStore, anchor: Anchor) -> int {
     return h if h != 0 else st.h_of_key.get(id(anchor), 0);
 }
 
+def _release_handle(
+    st: _SvStore, key: any, h: int, reference: weakref.ReferenceType[Anchor]
+) {
+    if h >= len(_obj_of_h) or _obj_of_h[h] is not reference {
+        return;
+    }
+    if st.h_of_key.get(key) == h {
+        del st.h_of_key[key];
+    }
+    st.forgotten.discard(h);
+    _graph.osp_disconnect(h);
+    _graph.osp_drop_node(h);
+    _obj_of_h[h] = None;
+    _h_free.append(h);
+}
+
+def _anchor_ref(
+    st: _SvStore, key: any, h: int, anchor: Anchor
+) -> weakref.ReferenceType[Anchor] {
+    return weakref.ref(
+        anchor, lambda (reference: any) { _release_handle(st, key, h, reference); }
+    );
+}
+
 def _mint(st: _SvStore, anchor: Anchor) -> int {
     aid = anchor.id;
     key: any = id(anchor) if aid is None else aid;
@@ -67,17 +92,17 @@ def _mint(st: _SvStore, anchor: Anchor) -> int {
         if h == 0 {
             if _h_free {
                 h = _h_free.pop();
-                _obj_of_h[h] = anchor;
+                _obj_of_h[h] = _anchor_ref(st, key, h, anchor);
             } else {
-                _obj_of_h.append(anchor);
-                h = len(_obj_of_h) - 1;
+                h = len(_obj_of_h);
+                _obj_of_h.append(_anchor_ref(st, key, h, anchor));
             }
         }
         st.h_of_key[key] = h;
         return h;
     }
-    if anchor.is_populated() or _obj_of_h[h] is None {
-        _obj_of_h[h] = anchor;
+    if anchor.is_populated() or obj_of(h) is None {
+        _obj_of_h[h] = _anchor_ref(st, key, h, anchor);
     }
     return h;
 }
@@ -90,7 +115,8 @@ def obj_of(h: int) -> (Anchor | None) {
     if h <= 0 or h >= len(_obj_of_h) {
         return None;
     }
-    return _obj_of_h[h];
+    reference = _obj_of_h[h];
+    return reference() if reference is not None else None;
 }
 
 def tag_of_cls(cls: type) -> int {
@@ -293,11 +319,13 @@ def sv_store_closed(mem: any) -> int {
     if st.region != 0 {
         n = _graph.osp_region_died(st.region);
     }
-    for h in st.h_of_key.values() {
-        if h > 0 and h < len(_obj_of_h) {
+    for h in set(st.h_of_key.values()) {
+        if h > 0 and h < len(_obj_of_h) and _obj_of_h[h] is not None {
             _obj_of_h[h] = None;
             _h_free.append(h);
         }
     }
+    st.h_of_key.clear();
+    st.forgotten.clear();
     return n;
 }

@@ -73,3 +73,10 @@ test "typed graph queries preserve object identity through union returns" {
         assert read_drops() == 1;
     }
 }
+
+test "native node retirement removes stale region membership before handle reuse" {
+    (engine, _) = compile_native("osp_region_reuse.jac");
+    probe = get_func(engine, "probe", ctypes.c_bool);
+    assert probe();
+    assert probe();
+}
