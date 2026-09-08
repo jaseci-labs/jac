@@ -124,7 +124,11 @@ def:pub AuthForm(
                             disabled={loading or not username.strip() or not password}
                         >
                             {(
-                                "Processing..."
+                                (
+                                    "Verifying and creating account..."
+                                        if isSignup
+                                        else "Processing..."
+                                )
                                     if loading
                                     else ("Sign Up" if isSignup else "Log In")
                             )}

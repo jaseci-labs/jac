@@ -1178,7 +1178,12 @@ impl _parse_toml_data(
                 secret=str(auth_data.get("secret", "")),
                 algorithm=str(auth_data.get("algorithm", "HS256")),
                 token_ttl_days=int(auth_data.get("token_ttl_days", 7)),
-                password_hash_cost=int(auth_data.get("password_hash_cost", 14))
+                password_hash_cost=int(auth_data.get("password_hash_cost", 14)),
+                registration_challenge=bool(
+                    auth_data.get("registration_challenge", False)
+                ),
+                registration_attempts_per_hour=max(0, int(auth_data.get("registration_attempts_per_hour", 0))),
+                registration_challenges_per_10_minutes=max(0, int(auth_data.get("registration_challenges_per_10_minutes", 0)))
             )
         );
     }

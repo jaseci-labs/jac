@@ -48,6 +48,11 @@ jaclang_source = "../.."
 [precommit]
 typecheck = true
 
+[serve.auth]
+registration_challenge = true
+registration_attempts_per_hour = 5
+registration_challenges_per_10_minutes = 20
+
 [test]
 directories = ["core", "web", "mobile", "cli"]
 
@@ -93,6 +98,7 @@ utils_path = "core/utils.jac"
 default_model = "anthropic/claude-sonnet-5"
 
 [dependencies.npm]
+"@noble/hashes" = "^2.0.1"
 react-native-web = "^0.19.13"
 embla-carousel-react = "*"
 "@hugeicons/core-free-icons" = "*"

@@ -55,6 +55,22 @@ Requests never trigger a sync -- they only read whatever the job last
 committed. Which docs the site shows is decided by which jac binary serves
 it. `GITHUB_TOKEN` only matters to Ninja Scores repository analysis.
 
+## Registration verification
+
+Password registration uses a built-in SHA-256 proof-of-work challenge. The
+client solves it locally before submitting the form; no third-party service
+or API key is involved. Challenges expire after five minutes and are consumed
+once, before account creation. Verification is enforced on `/user/register`,
+including direct API requests. A failed or expired challenge requires a fresh
+attempt. Verified GitHub OAuth account creation is exempt; a client cannot
+claim an SSO exemption through the password registration endpoint.
+
+This workspace enables the check with `[serve.auth] registration_challenge = true`.
+Other Jac projects retain their existing registration behavior by default.
+The existing shared authentication token store provides replay protection
+across workers. The signup button performs the check automatically on web,
+desktop, and mobile.
+
 ## Optional AI
 
 Set `ANTHROPIC_API_KEY` in the server environment to enable the Sonnet 5
@@ -378,3 +394,21 @@ a short-lived, single-use result with a separate random polling secret; no
 custom deep-link scheme is required. Use a device-reachable `SSO_HOST` and
 backend address for native testing (a phone's loopback address is not your
 computer). Production callback addresses must use HTTPS.
+
+Registration throttling is configured in `[serve.auth]`: password registration
+allows 5 attempts per IP per hour (`registration_attempts_per_hour`), and
+challenge issuance allows 20 requests per IP per 10 minutes
+(`registration_challenges_per_10_minutes`). Rejections return HTTP 429 with
+`Retry-After`. The server uses its resolved client IP; configure trusted proxies
+when deploying behind a reverse proxy. Verified GitHub SSO bypasses these
+password-registration checks.
+
+Posts, comments, and channel posts share an account quota: 1 per 10 seconds and
+50 per 24-hour window starting with the first accepted submission. Server
+environment variables `JACYAC_POSTS_PER_WINDOW`, `JACYAC_POST_WINDOW_SECONDS`,
+and `JACYAC_POSTS_PER_DAY` override these defaults. The 280-character maximum
+still applies. GitHub users have the same posting quota; scheduled Genius posts
+are exempt. Rejected submissions show the remaining wait and keep the draft.
+Counters use atomic updates in the existing database and persist across workers
+and restarts. If that database is unavailable, limited actions are temporarily
+rejected. No external CAPTCHA or rate-limiting service is needed.
