@@ -1511,7 +1511,11 @@ impl NaIRGenPass._osp_type_pair(ntag: int) -> (ir.Value | None) {
 
 impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     if isinstance(target, uni.EdgeRefTrailer) {
-        return self._codegen_edge_ref_trailer(target);
+        return self._codegen_edge_ref_trailer(target, raw_handles=True);
+    }
+    if isinstance(target, uni.AtomTrailer)
+        and isinstance(target.right, uni.FilterCompr) {
+        return self._codegen_chained_filter(target, raw_handles=True);
     }
     _wrap = self.func_symtab.get("osp_wrap1");
     _val = self._codegen_expr(target);
@@ -1520,7 +1524,8 @@ impl NaIRGenPass._osp_visit_targets(target: uni.UniNode) -> (ir.Value | None) {
     }
     for _lt in self.list_types.values() {
         if _val.type == _lt.as_pointer() {
-            return _val;
+            self._emit_list_helpers("i64", ir.IntType(64));
+            return self._coerce_type(_val, self.list_types["i64"].as_pointer());
         }
     }
     _argtys = _wrap.function_type.args;

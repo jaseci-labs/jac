@@ -13,6 +13,33 @@ node Child(Base) {
 edge Link: Base --> Child {}
 edge UntypedLink {}
 
+walker InspectReferences {
+    has total: int = 0,
+        stored: bool = False;
+
+    can follow with Base entry {
+        if self.stored {
+            targets = [here->:Link:->];
+            visit targets;
+        } else {
+            visit [here->:Link:->][?:Child];
+        }
+    }
+
+    can read with Child entry {
+        self.total += here.value;
+    }
+}
+
+def visited_references(stored: bool) -> int {
+    source = Base();
+    destination = Child();
+    source +>:Link:+> destination;
+    visitor = InspectReferences(stored=stored);
+    source spawn visitor;
+    return visitor.total;
+}
+
 def erased_references -> list[any] {
     source = Base();
     destination = Child();

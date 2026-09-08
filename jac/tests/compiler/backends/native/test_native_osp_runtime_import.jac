@@ -45,6 +45,9 @@ test "typed graph queries preserve object identity through union returns" {
     filtered = get_func(engine, "filtered_identity", ctypes.c_bool);
     assert filtered();
     assert filtered();
+    visited = get_func(engine, "visited_references", ctypes.c_int64, ctypes.c_bool);
+    assert visited(False) == 73;
+    assert visited(True) == 73;
     retained = get_func(engine, "retained", ctypes.c_bool);
     assert retained();
     assert retained();
