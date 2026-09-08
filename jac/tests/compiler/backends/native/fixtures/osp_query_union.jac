@@ -28,6 +28,19 @@ def erased_identity -> bool {
     return valid and isinstance(value, Child);
 }
 
+def filtered_identity -> bool {
+    source = Base();
+    destination = Child();
+    source +>:UntypedLink:+> destination;
+    values = [source->:UntypedLink:->][?:Child][?:Child];
+    stored = erased_references();
+    filtered = stored[?:Child];
+    return len(values) == 1
+        and values[0] is destination
+        and len(filtered) == 1
+        and filtered[0].value == 73;
+}
+
 def first(source: Base) -> Base | list[Base] | None {
     found = [source->:Link:->];
     if found {

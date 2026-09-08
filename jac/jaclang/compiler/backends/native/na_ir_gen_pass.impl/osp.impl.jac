@@ -915,7 +915,7 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._codegen_edge_ref_trailer(
-    nd: uni.EdgeRefTrailer
+    nd: uni.EdgeRefTrailer, raw_handles: bool = False
 ) -> (ir.Value | None) {
     osp_refs_fn = self.func_symtab.get("osp_refs");
     if (osp_refs_fn is None) or (not nd.chain) {
@@ -1137,6 +1137,18 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
         return None;
     }
+    return _cur if raw_handles else self._osp_refs_result(nd, _cur);
+}
+
+impl NaIRGenPass._osp_refs_result(nd: uni.Expr, handles: ir.Value) -> ir.Value {
+    """Convert the final kernel query result to its language representation.
+
+    Chained kernel filters keep handles internally and publish references once,
+    after all filtering. The returned list owns its elements through the normal
+    collection lifetime hooks.
+    """;
+    i64 = ir.IntType(64);
+    _cur = handles;
     element = self._elem_arch_name_of(nd);
     boxed = self._list_spec_of(nd) == "jacval";
     if boxed or (element is not None and element in self.struct_types) {
@@ -1149,10 +1161,10 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         spec = "jacval" if boxed else "ptr";
         self._emit_list_helpers(spec, storage);
         self._emit_list_helpers("i64", i64);
-        handles = self.list_helpers["i64"];
+        handle_ops = self.list_helpers["i64"];
         objects = self.list_helpers[spec];
         result = self.builder.call(objects["new"], [], name="osp.refs.objects");
-        count = self.builder.call(handles["len"], [_cur]);
+        count = self.builder.call(handle_ops["len"], [_cur]);
         entry_block = self.builder.block;
         condition = self.builder.function.append_basic_block("osp.refs.convert");
         body = self.builder.function.append_basic_block("osp.refs.element");
@@ -1163,7 +1175,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         index.add_incoming(ir.Constant(i64, 0), entry_block);
         self.builder.cbranch(self.builder.icmp_signed("<", index, count), body, done);
         self.builder.position_at_end(body);
-        handle = self.builder.call(handles["get"], [_cur, index]);
+        handle = self.builder.call(handle_ops["get"], [_cur, index]);
         reference = self.builder.inttoptr(handle, pointer);
         value = self._box_to_jacval(reference, object_reference=True)
             if boxed
@@ -1179,7 +1191,9 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     return _cur;
 }
 
-impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_chained_filter(
+    nd: uni.AtomTrailer, raw_handles: bool = False
+) -> (ir.Value | None) {
     i64 = ir.IntType(64);
     _f = nd.right;
     if not isinstance(_f, uni.FilterCompr) {
@@ -1199,12 +1213,24 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
         );
         return None;
     }
-    target_val = self._codegen_expr(nd.target);
+    if isinstance(nd.target, uni.EdgeRefTrailer) {
+        target_val = self._codegen_edge_ref_trailer(nd.target, raw_handles=True);
+    } elif isinstance(nd.target, uni.AtomTrailer)
+        and isinstance(nd.target.right, uni.FilterCompr) {
+        target_val = self._codegen_chained_filter(nd.target, raw_handles=True);
+    } else {
+        target_val = self._codegen_expr(nd.target);
+    }
     if target_val is None {
         return None;
     }
-    _result = target_val;
     _filter_fn = self.func_symtab.get("osp_filter");
+    if _filter_fn is not None {
+        # Conversion can emit a loop and consume an owned source. Complete it
+        # before selecting the call's builder, and track the resulting owner.
+        target_val = self._coerce_type(target_val, _filter_fn.function_type.args[0]);
+    }
+    _result = target_val;
     if _f.f_type is not None {
         _model = self.ir_in.gen.osp_model;
         _tags = _model.tags if _model is not None else {};
@@ -1271,7 +1297,7 @@ impl NaIRGenPass._codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | Non
         _result = _pred;
     }
     self._mark_owned(_result);
-    return _result;
+    return _result if raw_handles else self._osp_refs_result(nd, _result);
 }
 
 impl NaIRGenPass._elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None) {

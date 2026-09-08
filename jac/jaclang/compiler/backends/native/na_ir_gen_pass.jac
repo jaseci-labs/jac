@@ -1607,7 +1607,11 @@ walker NaIRGenPass(Transform) {
     def _emit_os_const(name: str) -> (ir.Value | None);
     def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
-    def _codegen_chained_filter(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _codegen_chained_filter(
+        nd: uni.AtomTrailer, raw_handles: bool = False
+    ) -> (ir.Value | None);
+
+    def _osp_refs_result(nd: uni.Expr, handles: ir.Value) -> ir.Value;
     def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
     def _osp_active -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
@@ -1635,7 +1639,10 @@ walker NaIRGenPass(Transform) {
     def _codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _osp_disc_list_operand(expr: (uni.UniNode | None)) -> bool;
-    def _codegen_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> (ir.Value | None);
+    def _codegen_edge_ref_trailer(
+        nd: uni.EdgeRefTrailer, raw_handles: bool = False
+    ) -> (ir.Value | None);
+
     def _elem_arch_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _osp_visit_targets(target: uni.UniNode) -> (ir.Value | None);
     def _osp_generic_edge -> (ir.Value | None);
