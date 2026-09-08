@@ -214,6 +214,22 @@ test "a user archetype named Region shadows the builtin cleanly" {
     assert result == 7 , f"shadowed() == {result}, expected 7";
 }
 
+test "frozen aliases preserve their owner and reclaim exactly once" {
+    for mode in ["cycles", "rc", "none"] {
+        (eng, _) = compile_native(
+            "region_frozen_alias.jac", gc_mode=mode, nogc_enforce=mode == "none"
+        );
+        observe = get_func(eng, "observe_alias", ctypes.c_bool);
+        drops = get_func(eng, "read_drops", ctypes.c_int64);
+        literal = get_func(eng, "static_alias", ctypes.c_char_p);
+        for _ in range(20) {
+            assert observe() , f"{mode}: alias consumed the frozen owner";
+            assert drops() == 1 , f"{mode}: region must retire exactly once";
+            assert literal() == b"stable";
+        }
+    }
+}
+
 test "nested functions preserve an event's active region" {
     (eng, _) = compile_native("region_nested_event.jac");
     scenario = get_func(eng, "scenario", ctypes.c_int64);

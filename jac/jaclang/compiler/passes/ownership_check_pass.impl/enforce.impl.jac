@@ -84,6 +84,24 @@ impl OwnershipCheckPass._nogc_setup -> None {
     if self.nogc_prov is not None {
         self._nogc_infer_locals();
         self._stamp_view_borrows();
+        self._nogc_stamp_frozen_owners();
+    }
+}
+
+impl OwnershipCheckPass._nogc_stamp_frozen_owners -> None {
+    # No-GC aliases borrow their frozen owner. Physical ownership participates
+    # in ordinary move checking; imm_decl still prohibits writes and reopening.
+    import from jaclang.compiler.passes.rc_facts_pass { result_ownership, Ownership }
+    for (sid, name) in self.imm_decl.items() {
+        symbol = name.sym;
+        if symbol is None
+            or symbol.storage == SymbolStorage.PARAM
+            or sid in self.borrow_meta
+            or result_ownership(name) == Ownership.STATIC {
+            continue;
+        }
+        symbol.ownership = OwnershipKind.OWN;
+        self.owned_decl[sid] = name;
     }
 }
 
@@ -206,6 +224,26 @@ impl OwnershipCheckPass._nogc_infer_locals -> None {
             self._nogc_bind_inferred(_first, _decl[_sid], _kind, _roots);
         }
     }
+    for nd in self.idx_assignments {
+        if len(nd.target) != 1
+            or nd.aug_op is not None
+            or not isinstance(nd.target[0], Name)
+            or not isinstance(nd.value, Name) {
+            continue;
+        }
+        target = nd.target[0];
+        source = nd.value;
+        if target.sym is None
+            or source.sym is None
+            or target.sym.ownership != OwnershipKind.IMM
+            or self._name_sym_id(source) not in self.imm_decl {
+            continue;
+        }
+        (kind, roots) = self._nogc_infer_state(source);
+        if is_borrow_kind(kind) {
+            self._nogc_bind_inferred(nd, target, OwnershipKind.BORROW, roots);
+        }
+    }
 }
 
 impl OwnershipCheckPass._nogc_infer_state(
@@ -265,8 +303,11 @@ impl OwnershipCheckPass._nogc_infer_state(
         if _s is None {
             return (OwnershipKind.NONE, _none);
         }
-        if _s.ownership == OwnershipKind.OWN or _s.ownership == OwnershipKind.IMM {
+        if _s.ownership == OwnershipKind.OWN {
             return (_s.ownership, _none);
+        }
+        if _s.ownership == OwnershipKind.IMM {
+            return (OwnershipKind.BORROW, [expr]);
         }
         if is_borrow_kind(_s.ownership) {
             return (_s.ownership, [expr]);
@@ -353,6 +394,11 @@ impl OwnershipCheckPass._nogc_bind_inferred(
     }
     self.borrow_meta[_sid] = _bm;
     self.borrow_created_at[_sid] = nd;
+    if any(self._name_sym_id(origin) in self.imm_decl for origin in roots) {
+        self.imm_decl[_sid] = tgt;
+        self.view_syms.add(_sid);
+        _ts.is_view = True;
+    }
 }
 
 impl OwnershipCheckPass._nogc_type_is_str(expr: Expr | None) -> bool {
@@ -1200,17 +1246,8 @@ impl OwnershipCheckPass._view_base_place(expr: Expr | None) -> (Name | None) {
 }
 
 impl OwnershipCheckPass._view_root_owner(sym_id: SymId) -> SymId {
-    _cur = sym_id;
-    _hops = 0;
-    while _cur in self.borrow_meta and _hops < 32 {
-        _own = self.borrow_meta[_cur].owner;
-        if _own is None {
-            break;
-        }
-        _cur = _own;
-        _hops += 1;
-    }
-    return _cur;
+    owner = self._borrow_owner_of(sym_id);
+    return owner if owner is not None else sym_id;
 }
 
 impl OwnershipCheckPass._sym_is_param(sym_id: SymId) -> bool {
@@ -1597,7 +1634,8 @@ impl OwnershipCheckPass._stamp_view_call_results(
         if len(nd.target) != 1 or nd.aug_op is not None {
             continue;
         }
-        if nd.type_tag is not None and nd.type_tag.ownership != OwnershipKind.NONE {
+        if nd.type_tag is not None
+            and nd.type_tag.ownership not in (OwnershipKind.NONE, OwnershipKind.IMM) {
             continue;
         }
         _tgt = nd.target[0];

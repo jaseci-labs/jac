@@ -48,8 +48,7 @@ def make_published -> own PublishedSnapshot {
         resource = Resource();
     }
     frozen = imm region;
-    retained = frozen;
-    return PublishedSnapshot(region=retained);
+    return PublishedSnapshot(region=frozen);
 }
 
 def observe_published -> int {

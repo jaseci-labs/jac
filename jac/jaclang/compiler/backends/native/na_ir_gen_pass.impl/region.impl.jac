@@ -227,6 +227,10 @@ impl NaIRGenPass._register_region_handle_var(
     if _tgt is None or _tgt.sym is None or not _tgt.sym.na_region_handle {
         return;
     }
+    if self._nogc_borrow_local_assign(nd) {
+        self.nogc_no_free_vars.add(var_name);
+        return;
+    }
     self.region_handle_vars.add(var_name);
     import from jaclang.compiler.expr_keys { transferred_local }
     source = transferred_local(nd.value);

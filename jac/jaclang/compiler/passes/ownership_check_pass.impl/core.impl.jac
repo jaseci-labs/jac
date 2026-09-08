@@ -616,9 +616,11 @@ impl OwnershipCheckPass._assign_kill_gen(
         }
     }
 
-    val_owned = self._owned_sym_of(nd.value);
-    if val_owned is not None {
-        gen.add(val_owned);
+    if self._borrow_target(nd) is None {
+        val_owned = self._owned_sym_of(nd.value);
+        if val_owned is not None {
+            gen.add(val_owned);
+        }
     }
     return (kill, gen);
 }
@@ -649,7 +651,13 @@ impl _stdlib_attr_call_root(call: FuncCall) -> (str | None) {
 }
 
 impl OwnershipCheckPass._call_consumes_args(call: FuncCall) -> bool {
-    if isinstance(call.target, Name) and call.target.sym_name in _MOVE_EXEMPT_CALLS {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if classify_call(call) == CallKind.BUILTIN
+        and isinstance(call.target, Name)
+        and (
+            call.target.sym_name in _MOVE_EXEMPT_CALLS
+            or JAC_TYPE_REGISTRY.is_non_retaining_builtin(call.target.sym_name)
+        ) {
         return False;
     }
     if isinstance(call.target, AtomTrailer) {
@@ -1712,24 +1720,36 @@ impl OwnershipCheckPass._borrow_owners_of(borrow_id: SymId) -> list[SymId] {
     if meta is None {
         return [];
     }
-    out: list[SymId] = [];
+    pending: list[SymId] = list(meta.extra_owners);
     if meta.owner is not None {
-        out.append(meta.owner);
+        pending.insert(0, meta.owner);
     }
-    for extra in meta.extra_owners {
-        if extra not in out {
-            out.append(extra);
+    out: list[SymId] = [];
+    seen: set[SymId] = {borrow_id};
+    cursor = 0;
+    while cursor < len(pending) {
+        origin = pending[cursor];
+        cursor += 1;
+        if origin in seen {
+            continue;
         }
+        seen.add(origin);
+        parent = self.borrow_meta.get(origin);
+        if parent is None or (parent.owner is None and not parent.extra_owners) {
+            out.append(origin);
+            continue;
+        }
+        if parent.owner is not None {
+            pending.append(parent.owner);
+        }
+        pending.extend(parent.extra_owners);
     }
     return out;
 }
 
 impl OwnershipCheckPass._borrow_owner_of(borrow_id: SymId) -> (SymId | None) {
-    meta = self.borrow_meta.get(borrow_id);
-    if meta is not None {
-        return meta.owner;
-    }
-    return None;
+    owners = self._borrow_owners_of(borrow_id);
+    return owners[0] if owners else None;
 }
 
 impl OwnershipCheckPass._borrow_is_mut_of(borrow_id: SymId) -> bool {

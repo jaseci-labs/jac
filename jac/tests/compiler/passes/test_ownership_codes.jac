@@ -305,6 +305,20 @@ glob OWNERSHIP_CASES: list[tuple] = [
          # -- frozen_regions --------------------------------------------------
          (
              "frozen_regions",
+             "a frozen alias cannot escape its owner",
+             "frozen_region_alias_escape.jac",
+             ["E1306"],
+             True
+         ),
+         (
+             "frozen_regions",
+             "a chained frozen alias prevents moving its owner",
+             "frozen_region_owner_move.jac",
+             ["E1304"],
+             True
+         ),
+         (
+             "frozen_regions",
              "frozen handle crosses flow freely",
              "frozen_region_ok.jac",
              []
