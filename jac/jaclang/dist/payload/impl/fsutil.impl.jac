@@ -246,8 +246,13 @@ impl run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) ->
         die(f"spawn {argv[0]} failed: {type(e).__name__}: {e}");
     }
     ok = rc == 0;
-    if not ok and not allow_fail {
-        die(f"command failed: {argv[0]}");
+    if not ok {
+        reason = f"signal {-rc}" if rc < 0 else f"exit status {rc}";
+        message = f"command failed ({reason}): {argv[0]}";
+        if not allow_fail {
+            die(message);
+        }
+        log(message);
     }
     return ok;
 }
