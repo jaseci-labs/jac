@@ -8,7 +8,9 @@ async def:pub register_with_challenge(username: str, password: str) -> str {
     response = await fetch(base + "/user/register/challenge", {"method": "POST"});
     if not response.ok {
         details: any = await response.json();
-        return str(details.error.message) if details.error?.message else "Verification is unavailable. Please try again.";
+        return str(details.error.message)
+            if details.error?.message
+            else "Verification is unavailable. Please try again.";
     }
     envelope: any = await response.json();
     data = envelope.data;

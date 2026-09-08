@@ -281,6 +281,9 @@ check '(async () => {
   throw new Error("like count never reached 1");
 })()'
 
+# Posts, comments, and channel posts share the default 10-second account quota.
+# Keep this happy-path journey within the same limits as real users.
+sleep 10
 step "JacYac: comment on the tweet"
 check '(() => {
   const reply = [...document.querySelectorAll("main article button")]
@@ -329,6 +332,7 @@ check "(() => {
   return 'channel opened';
 })()"
 jac browse wait 'textarea' || fail "channel composer never appeared"
+sleep 10
 jac browse fill 'textarea' "$CHANNEL_POST" || fail "could not fill channel post"
 check '(() => {
   const ta = document.querySelector("textarea");

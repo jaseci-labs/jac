@@ -1182,8 +1182,12 @@ impl _parse_toml_data(
                 registration_challenge=bool(
                     auth_data.get("registration_challenge", False)
                 ),
-                registration_attempts_per_hour=max(0, int(auth_data.get("registration_attempts_per_hour", 0))),
-                registration_challenges_per_10_minutes=max(0, int(auth_data.get("registration_challenges_per_10_minutes", 0)))
+                registration_attempts_per_hour=max(
+                    0, int(auth_data.get("registration_attempts_per_hour", 0))
+                ),
+                registration_challenges_per_10_minutes=max(
+                    0, int(auth_data.get("registration_challenges_per_10_minutes", 0))
+                )
             )
         );
     }

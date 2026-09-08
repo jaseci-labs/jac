@@ -3,8 +3,6 @@ import math;
 import logging;
 import from jaclang.server.shared_store { shared_store }
 
-# Atomic database counters survive worker changes and process restarts.
-# Return zero when allowed, positive retry seconds when exhausted, -1 on failure.
 def consume_limit(scope: str, actor: str, limit: int, seconds: int) -> int {
     if limit <= 0 {
         return 0;

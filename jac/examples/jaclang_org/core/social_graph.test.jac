@@ -145,7 +145,6 @@ test "create tweet shows up in the feed" {
 }
 
 test "like and comment on a tweet" {
-    # These behavior tests seed multiple posts without waiting for the quota.
     with patch(posting_limit.__module__ + ".consume_limit", return_value=0) {
         client = make_client();
         login_as(client, "alice", "secret123");
@@ -196,7 +195,6 @@ test "delete a tweet removes it from the feed" {
 }
 
 test "search filters the feed by content" {
-    # These behavior tests seed multiple posts without waiting for the quota.
     with patch(posting_limit.__module__ + ".consume_limit", return_value=0) {
         client = make_client();
         login_as(client, "alice", "secret123");
@@ -213,7 +211,6 @@ test "search filters the feed by content" {
 }
 
 test "trending surfaces hashtags" {
-    # These behavior tests seed multiple posts without waiting for the quota.
     with patch(posting_limit.__module__ + ".consume_limit", return_value=0) {
         client = make_client();
         login_as(client, "alice", "secret123");
