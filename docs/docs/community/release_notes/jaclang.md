@@ -2,7 +2,23 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.34.18 (Latest Release)
+## jaclang 0.34.19 (Latest Release)
+
+### New Features
+
+- **byLLM: per-call usage during streaming tool-calling loops**: a new `usage_step` `StreamEvent` reports usage after each LLM call instead of only at the end, so a caller can enforce a budget mid-turn.
+- **CLI: jac-shadcn registry synced with upstream shadcn/ui v4**: five new primitives are available via `jac install --shadcn <name>`: `message`, `bubble`, `marker`, `attachment` (chat and timeline UI), and `direction` (RTL/LTR scope). No new npm dependencies.
+- **CLI: three new jac-shadcn style presets**: `luma`, `rhea`, and `sera` join the existing five. Every `style-*.css` token set is refreshed to the current upstream and is byte-identical to it. Where upstream relocated layout utilities from a token into its component, `drawer` and `sheet` were re-ported so they keep their positioning and open/close animations under every style.
+- **CLI: jac-shadcn style parser hardened**: `parse_style_css` now strips CSS comments before matching and stops each `@apply` value at its own closing brace, so a stray comment or a missing trailing semicolon in a style file can no longer silently drop a token.
+
+### Bug Fixes
+
+- **byLLM: usage and cost now reported for every `by llm()` shape**: previously only `stream=True, logging=True` surfaced them; every other shape computed the same numbers and discarded them.
+- **byLLM: minimum litellm version raised to 1.75.2**: needed for native cost on streaming calls.
+- **Fix: Destroying a scale app reclaims its namespace and storage**: `destroy` now removes the app's database and its credentials, persistent volumes and the namespace it created, instead of leaving them running and billing, and keeps any namespace it did not create or still shares with another app, naming that app when the teardown also removed its workloads. Destroying a single component now takes only that component's storage, and reports failure instead of success when that component could not be removed.
+- **Fix: scale-to-zero pods no longer rebuild their venv on every wake**: `jac scale deploy` now builds the app's Python environment once at seal time, from the same vendored wheels pods already ship, and seals it into the `.jab` bundle. A woken pod unpacks it with the rest of the bundle and `jac install` verifies a dependency marker instead of reinstalling, cutting the measured 21s per-wake install (issue #8695) to about a second. Seal hosts that cannot install the pod-platform wheels (cross-arch deploys, thin bundles) fall back to the previous boot-time install automatically; `JAC_SEAL_SKIP_VENV=1` opts out explicitly.
+
+## jaclang 0.34.18
 
 ### Bug Fixes
 
