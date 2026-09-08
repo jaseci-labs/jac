@@ -482,6 +482,9 @@ jobs:
           - chunk: passes-main
             paths: tests/compiler/passes tests/compiler/backends/es
             sealed: "1"
+            # Keep headroom for compiler workers and ES subprocesses on the
+            # 16 GB runner; auto-sized concurrency repeatedly lost the runner.
+            jobs: "2"
           - chunk: toplevel
             paths: tests/compiler/test_*.jac
             sealed: "1"
