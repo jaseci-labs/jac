@@ -610,7 +610,7 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
     _cur = self._region_current();
     self.builder.cbranch(
         self.builder.icmp_unsigned(
-            "==", _cur, ir.Constant(i8p, None), name="gedge.nocur"
+            "==", _cur, ir.Constant(_cur.type, None), name="gedge.nocur"
         ),
         heap_bb,
         rgn_bb
@@ -620,7 +620,7 @@ impl NaIRGenPass._osp_generic_edge -> (ir.Value | None) {
         self.rc_alloc_fn, [ir.Constant(i64, 8)], op="osp", loc="", name="osp.gedge"
     );
     self._osp_make_immortal(_raw);
-    _raw = self._region_ptr(_raw, name="osp.gedge.i8");
+    _raw = self._coerce_type(_raw, i8p);
     heap_end = self.builder.block;
     self.builder.branch(merge_bb);
     self.builder.position_at_end(rgn_bb);

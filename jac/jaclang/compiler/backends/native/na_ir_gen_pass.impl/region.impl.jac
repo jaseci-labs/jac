@@ -274,7 +274,6 @@ impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
     if _recv is None {
         return False;
     }
-    _i8p = ir.IntType(8).as_pointer();
     for tgt in nd.target[0].values {
         if not isinstance(tgt, uni.Name) {
             continue;
@@ -282,7 +281,7 @@ impl NaIRGenPass._lower_partition_unpack(nd: uni.Assignment) -> bool {
         _child = self._region_partition(_recv);
         _slot = self.local_vars.get(tgt.sym_name);
         if _slot is None {
-            _slot = self._entry_alloca(_i8p, tgt.sym_name);
+            _slot = self._entry_alloca(_child.type, tgt.sym_name);
             self.local_vars[tgt.sym_name] = _slot;
         }
         self.builder.store(_child, _slot);
