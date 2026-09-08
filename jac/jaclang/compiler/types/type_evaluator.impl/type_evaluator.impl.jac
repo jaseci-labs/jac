@@ -1129,9 +1129,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                             member = self._lookup_class_member(lookup_type, expr.right.value);
                             if member is None and lookup_type.is_instantiable_class()
                                 and self.prefetch is not None {
-                                meta_cls = self._metaclass_of(lookup_type) or self.prefetch.type_class;
-                                if meta_cls is not None {
-                                    lookup_type = meta_cls.clone_as_instance();
+                                union_meta_cls = self._metaclass_of(lookup_type) or self.prefetch.type_class;
+                                if union_meta_cls is not None {
+                                    lookup_type = union_meta_cls.clone_as_instance();
                                     member = self._lookup_object_member(lookup_type, expr.right.value);
                                 }
                             }
