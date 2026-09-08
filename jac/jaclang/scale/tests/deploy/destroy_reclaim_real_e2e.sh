@@ -21,9 +21,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
 DRIVER="${REPO_ROOT}/jac/jaclang/scale/tests/deploy/sdk_deploy_driver.jac"
-APP_SRC="${REPO_ROOT}/jac/examples/todo_app"
-if [ ! -f "${DRIVER}" ] || [ ! -f "${APP_SRC}/main.jac" ]; then
-    echo "FAIL: driver or todo_app fixture not found" >&2
+if [ ! -f "${DRIVER}" ]; then
+    echo "FAIL: driver not found" >&2
     exit 1
 fi
 
@@ -75,6 +74,11 @@ trap 'cleanup "$?"' EXIT
 dump_state() {
     kubectl get all,pvc -n "$1" -o wide || true
     kubectl get events -n "$1" --sort-by=.lastTimestamp | tail -30 || true
+    for pod in $(kubectl get pods -n "$1" -o name 2>/dev/null); do
+        echo "--- logs ${pod}"
+        kubectl logs -n "$1" "${pod}" --all-containers --tail=40 --prefix 2>/dev/null || true
+        kubectl logs -n "$1" "${pod}" --all-containers --tail=40 --prefix --previous 2>/dev/null || true
+    done
 }
 
 fail() {
@@ -88,27 +92,29 @@ source "${REPO_ROOT}/jac/jaclang/scale/scripts/e2e_lib.sh"
 e2e_timing_init
 
 _t "prep start"
-echo "=== stage a sanitized copy of jac/examples/todo_app ==="
+# 0.34.x adaptation: main stages jac/examples/todo_app, but that is a client
+# app and this line cannot boot one inside the node-less python:3.12-slim
+# pods the failure-path leg uses. The scenarios only need an app that deploys
+# and goes ready, so stage a walker-only server app instead.
+echo "=== stage a server-only fixture app ==="
 APP_DIR="$(mktemp -d)/todo_app"
 mkdir -p "${APP_DIR}"
-cp "${APP_SRC}"/*.jac "${APP_DIR}/"
-python3 - "${APP_SRC}/jac.toml" "${APP_DIR}/jac.toml" <<'PYEOF'
-import sys
+cat > "${APP_DIR}/main.jac" <<'JACEOF'
+walker:pub ping {
+    can go with Root entry {
+        report "ok";
+    }
+}
+JACEOF
+cat > "${APP_DIR}/jac.toml" <<'TOMLEOF'
+[project]
+name = "todo-app"
+version = "0.1.0"
+description = "destroy reclamation e2e fixture"
+entry-point = "main.jac"
 
-drop_sections = ("dev", "desktop")
-out, skipping = [], False
-with open(sys.argv[1]) as f:
-    for line in f:
-        stripped = line.strip()
-        if stripped.startswith("["):
-            section = stripped.strip("[]").split(".")[0]
-            skipping = section in drop_sections
-        if skipping or stripped.startswith("kind ="):
-            continue
-        out.append(line)
-with open(sys.argv[2], "w") as f:
-    f.writelines(out)
-PYEOF
+[serve]
+TOMLEOF
 
 export SDK_DEPLOY_SOURCE="${APP_DIR}"
 export SDK_DEPLOY_STORAGE_CLASS="${STORAGE_CLASS}"
@@ -253,14 +259,14 @@ OWNER="$(ns_owner "${OWNED_NS}")"
 [ "${OWNER}" = "${APP}" ] \
     || fail "${OWNED_NS}" "namespace owner label is '${OWNER}', expected '${APP}'. Ownership must name the app, not just jac-scale, or a co-tenant can delete it"
 
-kubectl get statefulset "${APP}-postgres" -n "${OWNED_NS}" >/dev/null 2>&1 \
-    || fail "${OWNED_NS}" "postgres was never provisioned, so this run cannot prove reclamation"
+kubectl get statefulset "${APP}-mongodb" -n "${OWNED_NS}" >/dev/null 2>&1 \
+    || fail "${OWNED_NS}" "mongodb was never provisioned, so this run cannot prove reclamation"
 seed_shared_volume_pvc "${OWNED_NS}" "${SHARED_VOL}" "${APP}"
 seed_shared_volume_pvc "${OWNED_NS}" "${LEGACY_VOL}"
 PVC_BEFORE=$(kubectl get pvc -n "${OWNED_NS}" --no-headers 2>/dev/null | wc -l | tr -d ' ')
 [ "${PVC_BEFORE}" -ge 1 ] \
     || fail "${OWNED_NS}" "no PVCs bound before destroy, so this run cannot prove reclamation"
-echo "  postgres + ${PVC_BEFORE} PVC(s) present, namespace owned by '${OWNER}'"
+echo "  mongodb + ${PVC_BEFORE} PVC(s) present, namespace owned by '${OWNER}'"
 
 _t "A deployed"
 destroy_app "${APP}" "${OWNED_NS}"
@@ -271,7 +277,7 @@ fi
 
 wait_ns_gone "${OWNED_NS}" \
     || fail "${OWNED_NS}" "namespace '${OWNED_NS}' still exists ${NS_DELETE_WAIT}s after destroy (#7968 regression)"
-echo "  namespace reclaimed, so postgres and every PVC went with it"
+echo "  namespace reclaimed, so mongodb and every PVC went with it"
 
 STRANDED=$(kubectl get pv -o json 2>/dev/null | python3 -c "
 import json, sys
@@ -304,7 +310,7 @@ kubectl apply -n "${ADOPTED_NS}" -f - >/dev/null <<YAML
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ${SIBLING}-postgres-data-${SIBLING}-postgres-0
+  name: ${SIBLING}-mongo-data-${SIBLING}-mongodb-0
   labels: { managed: jac-scale }
 spec:
   accessModes: ["ReadWriteOnce"]
@@ -325,7 +331,7 @@ kubectl get namespace "${ADOPTED_NS}" >/dev/null 2>&1 \
 require_present "${ADOPTED_NS}" configmap "${SENTINEL}"
 echo "  namespace and foreign workload intact"
 
-require_absent "${ADOPTED_NS}" statefulset "${APP}-postgres"
+require_absent "${ADOPTED_NS}" statefulset "${APP}-mongodb"
 require_absent "${ADOPTED_NS}" deployment "${APP}-deployment"
 require_absent "${ADOPTED_NS}" pvc "${APP}-bundles"
 
@@ -338,7 +344,7 @@ require_present "${ADOPTED_NS}" pvc "${LEGACY_VOL}"
 echo "  shared volumes: '${SHARED_VOL}' reclaimed, '${SIBLING_VOL}' and unlabelled '${LEGACY_VOL}' kept"
 
 # E: the sibling's PVC must survive. A prefix sweep would have deleted it.
-require_present "${ADOPTED_NS}" pvc "${SIBLING}-postgres-data-${SIBLING}-postgres-0"
+require_present "${ADOPTED_NS}" pvc "${SIBLING}-mongo-data-${SIBLING}-mongodb-0"
 echo "  sibling app PVC for '${SIBLING}' untouched"
 
 # The ops RBAC sweep must be scoped to the app, not to managed=jac-scale.
@@ -375,9 +381,9 @@ destroy_said "Another app has resources" \
 
 kubectl get namespace "${COTENANT_NS}" >/dev/null 2>&1 \
     || { echo "FAIL: destroying co-tenant '${COTENANT}' deleted namespace '${COTENANT_NS}', taking '${APP}' and its database with it" >&2; exit 1; }
-require_present "${COTENANT_NS}" statefulset "${APP}-postgres"
+require_present "${COTENANT_NS}" statefulset "${APP}-mongodb"
 require_present "${COTENANT_NS}" pvc "${APP}-bundles"
-require_absent "${COTENANT_NS}" statefulset "${COTENANT}-postgres"
+require_absent "${COTENANT_NS}" statefulset "${COTENANT}-mongodb"
 echo "  '${APP}' database and volumes survived the co-tenant's destroy"
 _t "C adopted-app destroy PASSED"
 
@@ -393,9 +399,9 @@ destroy_app "${APP}" "${COTENANT_NS}"
 
 kubectl get namespace "${COTENANT_NS}" >/dev/null 2>&1 \
     || { echo "FAIL: destroying owner '${APP}' deleted namespace '${COTENANT_NS}', taking co-tenant '${COTENANT}' and its database with it" >&2; exit 1; }
-require_present "${COTENANT_NS}" statefulset "${COTENANT}-postgres"
+require_present "${COTENANT_NS}" statefulset "${COTENANT}-mongodb"
 require_present "${COTENANT_NS}" pvc "${COTENANT}-bundles"
-require_absent "${COTENANT_NS}" statefulset "${APP}-postgres"
+require_absent "${COTENANT_NS}" statefulset "${APP}-mongodb"
 require_absent "${COTENANT_NS}" pvc "${APP}-bundles"
 echo "  '${COTENANT}' database and volumes survived the owner's destroy"
 _t "C PASSED"
