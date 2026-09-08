@@ -352,10 +352,99 @@ def guarded_classes(values: list[object]) -> list[type[Enum]] {
 def select[T](values: list[object], kinds: type[T] | tuple[type[T], ...]) -> list[T] {
     return [value for value in values if isinstance(value, kinds)];
 }
+obj Item { has value: int = 0; }
+obj DefaultItem(Item) {}
+def materialize(value: type[Item] | Item | None) -> Item {
+    kind = value or DefaultItem;
+    return kind() if isinstance(kind, type) else kind;
+}
+def construct(flag: bool) -> Item {
+    kind = Item if flag else DefaultItem;
+    return kind();
+}
+def construct_generic[T: Item](kind: type[T]) -> T { return kind(); }
+def collected_class_names(values: list[object]) -> list[str] {
+    classes = [value for value in values if isinstance(value, type) and issubclass(value, Item)];
+    ordered = sorted(classes, key=lambda (cls: type[Item]) { cls.__name__; });
+    names = [cls.__name__ for cls in ordered];
+    names += [cls.__name__ for cls in (Item, DefaultItem)];
+    names += [cls.__name__ for cls in {Item, DefaultItem}];
+    names += [cls.__name__ for cls in {"item": Item}.values()];
+    names += [cls.__name__ for cls in (kind for kind in classes)];
+    return names;
+}
 """,
         options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
     );
     assert not program.errors_had , "\n".join(
         error.pretty_print() for error in program.errors_had
     );
+}
+
+test "a union constructor call must satisfy every possible constructor" {
+    program = JacProgram();
+    program.compile(
+        file_path="union_constructor_args.jac",
+        use_str="""
+obj Number { has value: int; }
+obj Text { has value: str; }
+def wrong(flag: bool) -> None {
+    kind = Number if flag else Text;
+    kind(1);
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert any(error.code?.code == "E1053" for error in program.errors_had);
+}
+
+test "dynamic class guards keep the negative branch reachable" {
+    for annotation in ["type[Item]", "tuple[type[Item], ...]"] {
+        program = JacProgram();
+        program.compile(
+            file_path="dynamic_class_negative.jac",
+            use_str="obj Item {}\n"
+                + "def wrong(value: Item, kinds: "
+                + annotation
+                + ") -> str {\n"
+                + "    if isinstance(value, Item) and isinstance(value, kinds) { return \"matched\"; }\n"
+                + "    return value;\n}\n",
+            options=CompileOptions(
+                no_cgen=True, no_ir_cache=True, force_codespace="server"
+            )
+        );
+        assert any(error.code?.code == "E1002" for error in program.errors_had);
+    }
+}
+
+test "union members preserve inherited overloads and generic return types" {
+    imports = "import sys;\nimport from io { StringIO }\nimport from typing { TextIO }\n";
+    program = JacProgram();
+    program.compile(
+        file_path="union_text_stream.jac",
+        use_str=imports
+            + """
+def read_text(stream: TextIO | StringIO) -> str {
+    sys.stderr.write("ready");
+    stream.write("text");
+    return stream.read();
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
+    bad = JacProgram();
+    bad.compile(
+        file_path="union_text_stream_bytes.jac",
+        use_str=imports
+            + """
+def wrong(stream: TextIO | StringIO) -> None {
+    stream.write(b"bytes");
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert any(error.code?.code in ("E1049", "E1053") for error in bad.errors_had);
 }

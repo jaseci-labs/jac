@@ -409,7 +409,7 @@ obj Parser {
     def match_any(*kinds: TokenKind) -> LexToken | None;
     def expect(kind: TokenKind) -> LexToken;
     def expect_any(*kinds: TokenKind) -> LexToken;
-    def consume_uni(kind: TokenKind) -> Token;
+    def consume_uni(kind: TokenKind, value: str | None = None) -> Token;
     def expect_name(context: str = "identifier") -> LexToken;
     def error(message: str);
     def emit_diag(

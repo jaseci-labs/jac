@@ -336,7 +336,8 @@ obj ConditionInfo {
     has kind: NarrowingKind,
         key: str,
         narrow_type: (TypeBase | None) = None,
-        attr_name: str | None = None;
+        attr_name: str | None = None,
+        narrows_on_false: bool = True;
 }
 
 walker TypeEvaluator {
@@ -685,6 +686,8 @@ walker TypeEvaluator {
 
     def _is_unbound_method_call(expr: FuncCall) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;
+    def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
+    def _container_value_type(value_type: TypeBase) -> TypeBase;
     def _unannotated_lambda_arg_name(expr: FuncCall) -> str | None;
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;
@@ -853,7 +856,8 @@ walker TypeEvaluator {
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
     def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
     def _union_contains_none(union_type: TypeBase) -> bool;
-    def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase] | None;
+    def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
+    def _isinstance_classinfo_is_exact(expr: Expr) -> bool;
     def _isinstance_class_alternatives(arg_type: TypeBase) -> list[TypeBase] | None;
     def _extract_type_guard_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _create_type_guard_type(name: str, guarded: TypeBase | None) -> TypeBase;

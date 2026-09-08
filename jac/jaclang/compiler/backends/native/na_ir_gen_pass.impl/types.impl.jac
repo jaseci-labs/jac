@@ -1181,10 +1181,6 @@ impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
         if self._typevar_optional_field(_ptb) {
             return ir.IntType(8).as_pointer();
         }
-        sequence = self._erased_seq_type(_ptb);
-        if sequence is not None {
-            return sequence;
-        }
         try {
             import from jaclang.compiler.types.types { TypeVarType as _RfTypeVarType }
             if isinstance(_ptb, _RfTypeVarType) {

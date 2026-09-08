@@ -153,7 +153,8 @@ special_ref ::=
     | "enum"
 
 atom ::=
-    atom_literal
+    graph_expr
+    | atom_literal
     | multistring
     | builtin_type
     | special_ref
@@ -164,6 +165,8 @@ atom ::=
     | bracket_expr
     | brace_expr
     | jsx_element
+
+graph_expr ::= "graph" "{" (expression ";"?)* "}"
 
 tuple_item ::= "**" expression | expression
 

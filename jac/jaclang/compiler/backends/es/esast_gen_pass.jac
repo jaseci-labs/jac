@@ -368,6 +368,10 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Expression;
 
     def _build_edge_ref(nd: uni.EdgeRefTrailer) -> es.Expression;
+    def _build_osp_filter(
+        nd: uni.UniNode, target: es.Expression, filt: uni.FilterCompr
+    ) -> (es.Expression | None);
+
     def _build_osp_filter_pred(
         nd: uni.UniNode, filt: uni.FilterCompr
     ) -> (es.Expression | None);

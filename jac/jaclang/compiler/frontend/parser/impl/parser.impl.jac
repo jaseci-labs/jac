@@ -107,8 +107,11 @@ impl Parser.expect(kind: TokenKind) -> LexToken {
     return self.current();
 }
 
-impl Parser.consume_uni(kind: TokenKind) -> Token {
+impl Parser.consume_uni(kind: TokenKind, value: str | None = None) -> Token {
     tok = self.expect(kind);
+    if value is not None and tok.value != value {
+        self.emit_diag(f"Expected '{value}', got '{tok.value}'", "E0001", loc=tok.loc);
+    }
     return self.make_uni_token(tok);
 }
 
@@ -1945,7 +1948,7 @@ impl Parser.parse_atom -> Expr {
 
 impl Parser.parse_graph_expr -> GraphExpr {
     kid: list[UniNode] = [
-        self.make_uni_token(self.advance()),
+        self.consume_uni(TokenKind.NAME, "graph"),
         self.consume_uni(TokenKind.LBRACE)
     ];
     exprs: list[Expr] = [];

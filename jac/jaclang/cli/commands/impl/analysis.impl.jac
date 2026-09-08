@@ -1817,6 +1817,7 @@ impl gen_parser -> int {
 
 impl grammar(output: str = "", strict: bool = False) -> int {
     import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
     parser_path = str(
@@ -1827,7 +1828,15 @@ impl grammar(output: str = "", strict: bool = False) -> int {
             / "parser.jac"
     );
     prog = JacProgram();
-    mod = prog.compile(parser_path, no_cgen=True);
+    mod = prog.compile(
+        parser_path,
+        options=CompileOptions(
+            symtab_ir_only=True,
+            no_cgen=True,
+            need_full_ast=True,
+            force_target_program=True
+        )
+    );
     if prog.errors_had {
         console.error("Failed to compile parser module.");
         for e in prog.errors_had {

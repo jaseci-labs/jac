@@ -203,6 +203,26 @@ impl TypeEvaluator._tuple_literal_index_type(
     return self._extract_tuple_element_type(cls, real_idx);
 }
 
+impl TypeEvaluator._container_value_type(value_type: TypeBase) -> TypeBase {
+    if isinstance(value_type, UnionType) {
+        return self._union_narrowed_types(
+            [self._container_value_type(member) for member in value_type.types]
+        );
+    }
+    if isinstance(value_type, ClassType)
+        and value_type.is_instantiable_class()
+        and not value_type.is_class_instance()
+        and not value_type.is_any_instance()
+        and not self.is_any_type(value_type)
+        and self.prefetch is not None
+        and self.prefetch.type_class is not None {
+        wrapped = self.prefetch.type_class.clone_as_instance();
+        wrapped.private.type_args = [self._convert_to_instance(value_type)];
+        return wrapped;
+    }
+    return value_type;
+}
+
 impl TypeEvaluator._get_iterable_element_type(
     iterable_type: TypeBase,
     node_for_error: UniNode | None = None,

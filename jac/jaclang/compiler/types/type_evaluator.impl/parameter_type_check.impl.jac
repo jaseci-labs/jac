@@ -84,7 +84,34 @@ impl TypeEvaluator.validate_arg_types(
 }
 
 impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
-    caller_type = self.get_type_of_expression(expr.target);
+    return self._validate_call_type(expr, self.get_type_of_expression(expr.target));
+}
+
+impl TypeEvaluator._validate_call_type(
+    expr: FuncCall, caller_type: TypeBase
+) -> TypeBase {
+    if isinstance(caller_type, UnionType) {
+        return self._union_narrowed_types(
+            [self._validate_call_type(expr, member) for member in caller_type.types]
+        );
+    }
+    if isinstance(caller_type, ClassType) and self._is_type_subscript(caller_type) {
+        constructor = self._get_type_for_member_lookup(caller_type);
+        if constructor is not caller_type {
+            return self._validate_call_type(expr, constructor);
+        }
+        inner_type = caller_type.private.type_args[0];
+        if isinstance(inner_type, TypeVarType) {
+            candidates = inner_type.constraints
+                or ([inner_type.bound] if inner_type.bound is not None else []);
+            for candidate in candidates {
+                if isinstance(candidate, ClassType) {
+                    self._validate_call_type(expr, candidate.clone_as_class());
+                }
+            }
+            return inner_type;
+        }
+    }
 
     if self._is_expr_super(expr.target) {
         return caller_type;
@@ -236,8 +263,11 @@ impl TypeEvaluator.validate_call_args(expr: FuncCall) -> TypeBase {
             ret = specialized.return_type or UnknownType();
         }
 
-        if (caller_type.is_async or self._is_sv_async_call(expr))
-            and not (caller_type.function_flags & FunctionTypeFlags.Generator) {
+        if self._is_sv_async_call(expr)
+            or (
+                caller_type.is_async
+                and not (caller_type.function_flags & FunctionTypeFlags.Generator)
+            ) {
             ret = self._make_coroutine_type(ret);
         }
         return ret;
@@ -687,17 +717,19 @@ impl TypeEvaluator._strip_implicit_self_cls(method: FunctionType) -> FunctionTyp
 impl TypeEvaluator._get_method_with_overloads(
     method_member: ClassMember, caller_type: ClassType
 ) -> TypeBase {
-    method_ty = self.get_type_of_symbol(method_member.symbol);
+    method_ty = self.get_type_of_member(method_member, caller_type);
 
     if not isinstance(method_ty, FunctionType) {
         return method_ty;
     }
-    method_ty = method_ty.specialize(caller_type);
     overloaded_fns: list[FunctionType] = [method_ty];
     for overload in method_member.overloads {
-        overload_member_ty = self.get_type_of_symbol(overload);
+        overload_member_ty = self.specialize_member_type(
+            self.get_type_of_symbol(overload),
+            caller_type,
+            self.declaring_class_of(overload, caller_type)
+        );
         if isinstance(overload_member_ty, FunctionType) {
-            overload_member_ty = overload_member_ty.specialize(caller_type);
             overloaded_fns.append(overload_member_ty);
         }
     }
