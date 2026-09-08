@@ -68,6 +68,23 @@ def filtered_identity -> bool {
         and filtered[0].value == 73;
 }
 
+def disconnected_references(stored: bool) -> bool {
+    source = Base();
+    destination = Child();
+    source +>:Link:+> destination;
+    if stored {
+        targets = [source->:Link:->];
+        sources = [source];
+        sources del ->:Link:-> targets;
+        if len(targets) != 1 or targets[0] is not destination {
+            return False;
+        }
+    } else {
+        source del ->:Link:-> [source->:Link:->];
+    }
+    return len([source->:Link:->]) == 0;
+}
+
 def first(source: Base) -> Base | list[Base] | None {
     found = [source->:Link:->];
     if found {

@@ -880,11 +880,13 @@ impl NaIRGenPass._codegen_disconnect(nd: uni.BinaryExpr) -> (ir.Value | None) {
                 _wrap_fn, [self._coerce_type(right, _wargty)], name="osp.disc.tgt1"
             );
         _margs = _mfn.function_type.args;
+        _srcs = self._coerce_type(_srcs, _margs[0]);
+        _tgts = self._coerce_type(_tgts, _margs[1]);
         _res = self.builder.call(
             _mfn,
             [
-                self._coerce_type(_srcs, _margs[0]),
-                self._coerce_type(_tgts, _margs[1]),
+                _srcs,
+                _tgts,
                 self._coerce_type(ir.Constant(i64, _dir), _margs[2]),
                 self._coerce_type(ir.Constant(i64, edge_tag), _margs[3])
             ],
