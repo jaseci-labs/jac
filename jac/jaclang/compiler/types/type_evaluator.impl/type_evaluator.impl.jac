@@ -2136,15 +2136,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
 
                     if narrowed := self.get_narrowed_type(symbol, expr) {
-                        if isinstance(narrowed, UnionType) {
-                            symbol_type = UnionType(
-                                types=[
-                                    self._convert_to_instance(t) for t in narrowed.types
-                                ]
-                            );
-                        } else {
-                            symbol_type = self._convert_to_instance(narrowed);
-                        }
+                        symbol_type = narrowed;
                     }
                     if isinstance(symbol_type, FunctionType) {
                         overloaded_ty: OverloadedType | None = None;
@@ -5599,6 +5591,8 @@ impl TypeEvaluator._isinstance_class_alternatives(
         for member in arg_type.types {
             resolved = [self._convert_to_instance(member)]
                 if isinstance(member, ClassType)
+                    and not self._is_type_subscript(member)
+                    and not (member.is_builtin("tuple") and member.private.type_args)
                 else self._isinstance_class_alternatives(member);
             if resolved is None {
                 return None;

@@ -125,7 +125,7 @@ walker:pub WalkerStream {
 
 import from typing { Generator }
 # Streaming function test
-def:pub FunctionStream(count: int = 3) -> Generator {
+def:pub FunctionStream(count: int = 3) -> None {
     import time;
     def stream -> Generator {
         for i in range(count) {
@@ -366,7 +366,7 @@ def:pub ws_echo(message: str, client_id: str = "anonymous") -> dict {
 
 """Public streaming WebSocket function; yields chunk frames over the socket."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
-def:pub ws_stream(count: int = 3) -> Generator {
+def:pub ws_stream(count: int = 3) -> None {
     def stream -> Generator {
         for i in range(count) {
             yield {"index": i, "label": f"chunk-{i}"};

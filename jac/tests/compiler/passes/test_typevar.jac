@@ -296,6 +296,21 @@ async def wrong -> None { async for value in factory() { print(value); } }
     assert any(error.code?.code == "E1022" for error in program.errors_had);
 }
 
+test "a nested generator does not change the enclosing function return contract" {
+    program = JacProgram();
+    program.compile(
+        file_path="nested_generator_return.jac",
+        use_str="""
+def outer -> Generator {
+    def inner -> Generator { yield 1; }
+    report inner();
+}
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert any(error.code?.code == "E1004" for error in program.errors_had);
+}
+
 test "runtime class guards refine class objects and callable instances" {
     program = JacProgram();
     program.compile(
@@ -317,6 +332,22 @@ def receiver(caller: Callable) -> object {
 def dynamic(value: object, kind: any) -> any {
     if isinstance(value, kind) { return value.payload; }
     return None;
+}
+def guarded_class(lookup: Callable[(..., any)]) -> type[Enum] | None {
+    value = lookup();
+    if not (isinstance(value, type) and issubclass(value, Enum)) { return None; }
+    return value;
+}
+def guarded_classes(values: list[object]) -> list[type[Enum]] {
+    result: list[type[Enum]] = [];
+    for value in values {
+        if not (isinstance(value, type) and issubclass(value, Enum)) { continue; }
+        result.append(value);
+    }
+    return result;
+}
+def select[T](values: list[object], kinds: type[T] | tuple[type[T], ...]) -> list[T] {
+    return [value for value in values if isinstance(value, kinds)];
 }
 """,
         options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
