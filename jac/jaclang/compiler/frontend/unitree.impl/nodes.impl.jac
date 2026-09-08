@@ -1675,7 +1675,7 @@ impl UniScopeNode.insert(
             self._drop_primary(nd.sym_name);
         }
         primary = self.primary_scope;
-        primary +>:ScopePrimary(name=nd.sym_name):+> symbol;
+        primary +>:(ScopePrimary(name=nd.sym_name)):+> symbol;
         primary._names_index[nd.sym_name] = symbol;
     } else {
         current[nd.sym_name].add_defn(nd.name_spec);
@@ -1747,7 +1747,7 @@ impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
     primary = self.primary_scope;
     del [edge primary->:ScopePrimary:->];
     for (key, sym) in syms.items() {
-        primary +>:ScopePrimary(name=key):+> sym;
+        primary +>:(ScopePrimary(name=key)):+> sym;
     }
     primary._names_index = dict(syms);
 }
@@ -1759,7 +1759,7 @@ impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
     if prev is not None {
         self._drop_primary(key);
     }
-    primary +>:ScopePrimary(name=key):+> sym;
+    primary +>:(ScopePrimary(name=key)):+> sym;
     primary._names_index[key] = sym;
 }
 
