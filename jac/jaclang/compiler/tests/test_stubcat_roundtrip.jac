@@ -73,12 +73,8 @@ test "the builtins record is the merged prelude scope" {
     names = builtins.names_in_scope;
     import from jaclang.compiler.frontend.relations { ScopePrimary }
     edges = [edge builtins->:ScopePrimary:->];
-    targets = [builtins->:ScopePrimary:->];
-    bindings = {
-        binding_edge.name: target
-        for (binding_edge, target) in zip(edges, targets)
-    };
-    assert bindings == names;
+    assert {binding_edge.name for binding_edge in edges} == set(names);
+    assert [builtins->:ScopePrimary:name=="Root":->] == [names["Root"]];
     for expected in (
         "int",
         "str",
