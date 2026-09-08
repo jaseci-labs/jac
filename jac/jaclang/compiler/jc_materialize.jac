@@ -254,6 +254,13 @@ def _nlist_get(l: int, i: int) -> int {
     return _peek64(_peek64(l + 16) + (i * 8));
 }
 
+obj EdgeCopy {
+    has source: int,
+        target: int,
+        handle: int,
+        undirected: int;
+}
+
 obj Mz {
     has map: dict[int, int] = {},
         q: list[int] = [],
@@ -267,6 +274,7 @@ obj Mz {
         skipped: int = 0,
         containers: list[ContainerCopy] = [],
         nodes: list[int] = [],
+        edges: dict[int, EdgeCopy] = {},
         failed: bool = False;
 }
 
@@ -531,7 +539,10 @@ def _enqueue_adj(m: Mz, h: int, dir: int) {
     while i < n {
         _enqueue(m, po[i + 1], 0);
         _enqueue(m, po[i + 2], po[i]);
-        i += 4;
+        if dir == 2 and po[i + 2] != 0 {
+            m.edges[po[i + 4]] = EdgeCopy(h, po[i + 1], po[i + 2], po[i + 3]);
+        }
+        i += 5;
     }
 }
 
@@ -567,7 +578,7 @@ def _edge_dict_from_pairs(m: Mz, h: int, dir: int, weak: int) -> int {
         tg = po[i];
         t = po[i + 1];
         eh = po[i + 2];
-        i += 4;
+        i += 5;
         if eh != 0 or tg not in _EDGE {
             continue;
         }
@@ -631,7 +642,7 @@ def _new_anchor(o: int) -> int {
     return a;
 }
 
-def _edge_lists(m: Mz, h: int, o: int) -> None {
+def _edge_lists(m: Mz, h: int, o: int) {
     d_out = _edge_dict_from_pairs(m, h, 2, 0);
     d_in = _edge_dict_from_pairs(m, h, 1, 1);
     anchor = PyObject_GetAttr(o, _K.k_jac);
@@ -654,20 +665,14 @@ def _edge_lists(m: Mz, h: int, o: int) -> None {
     }
 }
 
-def _attach_edges(m: Mz, h: int) -> None {
-    entries = osp_adj_entries(h, 2);
-    i = 0;
-    while i < len(entries) {
-        peer = entries[i + 1];
-        handle = entries[i + 2];
-        undirected = entries[i + 3];
-        i += 4;
-        if handle == 0 {
-            continue;
-        }
-        source = m.map.get(h, 0);
-        target = m.map.get(peer, 0);
-        instance = m.map.get(handle, 0);
+def _attach_edges(m: Mz) -> None {
+    ordinals: list[int] = list(m.edges.keys());
+    ordinals.sort();
+    for ordinal in ordinals {
+        copy = m.edges[ordinal];
+        source = m.map.get(copy.source, 0);
+        target = m.map.get(copy.target, 0);
+        instance = m.map.get(copy.handle, 0);
         if source == 0 or target == 0 or instance == 0 {
             continue;
         }
@@ -678,7 +683,7 @@ def _attach_edges(m: Mz, h: int) -> None {
         PyTuple_SetItem(args, 1, tgt_anchor);
         Py_IncRef(instance);
         PyTuple_SetItem(args, 2, instance);
-        flag = _K.true_h if undirected != 0 else _K.false_h;
+        flag = _K.true_h if copy.undirected != 0 else _K.false_h;
         Py_IncRef(flag);
         PyTuple_SetItem(args, 3, flag);
         Py_IncRef(_K.none_h);
@@ -726,12 +731,7 @@ def _run(start_h: int, start_hint: int, do_edges: int) -> int {
         for h in m.nodes {
             _edge_lists(m, h, m.map[h]);
         }
-        for h in m.nodes {
-            _attach_edges(m, h);
-            if m.failed {
-                break;
-            }
-        }
+        _attach_edges(m);
     }
     out = 0;
     if not m.failed and start_h in m.map {

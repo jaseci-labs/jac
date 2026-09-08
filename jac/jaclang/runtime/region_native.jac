@@ -195,7 +195,7 @@ def _registry_holds(ptr: int) -> int {
     return found;
 }
 
-def _release_managed_region(region: Region) -> None {
+def _release_managed_region(region: Region) {
     __jac_region_drop(id(region));
 }
 

@@ -75,7 +75,8 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
             continue;
         }
         slot_ty = allocation_type.pointee;
-        _lu_ptr = isinstance(slot_ty, ir.PointerType) and (slot_ty?.pointee is not None);
+        _lu_ptr = isinstance(slot_ty, ir.PointerType)
+            and (slot_ty?.pointee is not None);
         if not _lu_ptr
             and (
                 self._opt_ptr_payload_of(slot_ty) is None

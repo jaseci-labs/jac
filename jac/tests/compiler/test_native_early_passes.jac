@@ -258,3 +258,28 @@ test "native binding preserves annex diagnostics across repeated requests" {
         }
     }
 }
+
+test "native graph materialization preserves nested type parent order" {
+    kernel = ensure_loaded();
+    if kernel is not None {
+        import from jaclang.compiler.frontend.unitree { AtomTrailer }
+        for context in ("", "server") {
+            prog = JacProgram();
+            (mod, failed) = parse_woven(
+                "obj Handler { has callback: Callable[[dict[(str, any)]], any]; def call -> int; }",
+                "handler.jac",
+                prog,
+                [("impl Handler.call -> int { return 1; }", "handler.impl.jac")],
+                early_context=context
+            );
+            assert not failed;
+            run_pass(ASTValidationPass, mod, prog);
+            run_pass(SymTabBuildPass, mod, prog);
+            run_pass(DeclImplMatchPass, mod, prog);
+            assert not prog.errors_had;
+            for trailer in mod.get_all_sub_nodes(AtomTrailer) {
+                assert isinstance(trailer.sym_tab, UniScopeNode);
+            }
+        }
+    }
+}

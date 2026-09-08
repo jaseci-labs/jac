@@ -191,8 +191,7 @@ impl NaIRGenPass._emit_region_handle_drop(alloca: ir.Value, var_name: str) -> No
 impl NaIRGenPass._region_release(hdl: ir.Value) -> None {
     if self._gc_mode() == "none" {
         self.builder.call(
-            self._region_kernel_fn("__jac_region_drop"),
-            [self._region_i64(hdl)]
+            self._region_kernel_fn("__jac_region_drop"), [self._region_i64(hdl)]
         );
     } else {
         pointer = self._region_ptr(hdl);
@@ -238,7 +237,8 @@ impl NaIRGenPass._register_region_handle_var(
         source_slot = self.local_vars.get(source.sym_name);
         if source_slot is not None {
             import from jaclang.compiler.frontend.constant { OwnershipKind }
-            if self._gc_mode() != "none" and source.sym.ownership != OwnershipKind.OWN {
+            if self._gc_mode() != "none"
+                and source.sym.ownership != OwnershipKind.OWN {
                 self._emit_rc_retain(
                     self.builder.load(source_slot), op="region_copy", loc=""
                 );

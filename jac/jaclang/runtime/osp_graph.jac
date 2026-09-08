@@ -45,6 +45,7 @@ obj EdgeRow {
         tgt: int,
         tag: int,
         handle: int,
+        ordinal: int = 0,
         undirected: bool = False,
         live: bool = True;
 }
@@ -62,7 +63,8 @@ obj OspGraph {
         free_rows: list[int],
         row_of: dict[int, int],
         dead: dict[int, int],
-        regions: dict[int, list[int]];
+        regions: dict[int, list[int]],
+        next_ordinal: int = 1;
 
     def adj_of(h: int) -> Adj {
         if h in self.adj {
@@ -215,6 +217,8 @@ obj OspGraph {
     }
 
     def _row_alloc(src: int, tgt: int, tag: int, eobj: int, undirected: bool) -> int {
+        ordinal = self.next_ordinal;
+        self.next_ordinal += 1;
         if self.free_rows {
             rid: int = self.free_rows.pop();
             row: EdgeRow = self.rows[rid];
@@ -222,6 +226,7 @@ obj OspGraph {
             row.tgt = tgt;
             row.tag = tag;
             row.handle = eobj;
+            row.ordinal = ordinal;
             row.undirected = undirected;
             row.live = True;
             self.row_of[eobj] = rid;
@@ -229,7 +234,14 @@ obj OspGraph {
         }
         rid = len(self.rows);
         self.rows.append(
-            EdgeRow(src=src, tgt=tgt, tag=tag, handle=eobj, undirected=undirected)
+            EdgeRow(
+                src=src,
+                tgt=tgt,
+                tag=tag,
+                handle=eobj,
+                ordinal=ordinal,
+                undirected=undirected
+            )
         );
         self.row_of[eobj] = rid;
         return rid;
@@ -811,7 +823,7 @@ def _new_graph -> OspGraph {
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
 
 def osp_adj_entries(origin: int, dir: int) -> list[int] {
-    """ABI adjacency records: tag, peer, edge handle (zero for light), undirected.""";
+    """ABI adjacency records: tag, peer, edge handle (zero for light), undirected, ordinal.""";
     out: list[int] = [];
     if origin in DEFAULT_GRAPH.adj {
         a: Adj = DEFAULT_GRAPH.adj[origin];
@@ -823,6 +835,7 @@ def osp_adj_entries(origin: int, dir: int) -> list[int] {
                     out.append(row.tgt);
                     out.append(row.handle);
                     out.append(1 if row.undirected else 0);
+                    out.append(row.ordinal);
                 }
             }
             for k in a.out {
@@ -830,6 +843,7 @@ def osp_adj_entries(origin: int, dir: int) -> list[int] {
                 for t in peers {
                     out.append(k);
                     out.append(t);
+                    out.append(0);
                     out.append(0);
                     out.append(0);
                 }
@@ -842,6 +856,7 @@ def osp_adj_entries(origin: int, dir: int) -> list[int] {
                     out.append(row.src);
                     out.append(row.handle);
                     out.append(1 if row.undirected else 0);
+                    out.append(row.ordinal);
                 }
             }
             for k in a.inn {
@@ -849,6 +864,7 @@ def osp_adj_entries(origin: int, dir: int) -> list[int] {
                 for t in srcs {
                     out.append(k);
                     out.append(t);
+                    out.append(0);
                     out.append(0);
                     out.append(0);
                 }
