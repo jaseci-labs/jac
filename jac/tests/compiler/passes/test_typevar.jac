@@ -354,6 +354,9 @@ def select[T](values: list[object], kinds: type[T] | tuple[type[T], ...]) -> lis
 }
 obj Item { has value: int = 0; }
 obj DefaultItem(Item) {}
+def annotation_tuple(value: str) -> (str, dict | None) { return (value, None); }
+def class_tuple_key(table: dict[tuple[type[Item]], str]) -> str { return table[(Item,)]; }
+def class_names -> list[str] { return [cls.__name__ for cls in (Item, DefaultItem)]; }
 def materialize(value: type[Item] | Item | None) -> Item {
     kind = value or DefaultItem;
     return kind() if isinstance(kind, type) else kind;
@@ -429,6 +432,7 @@ def read_text(stream: TextIO | StringIO) -> str {
     stream.write("text");
     return stream.read();
 }
+
 """,
         options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
     );
@@ -447,4 +451,24 @@ def wrong(stream: TextIO | StringIO) -> None {
         options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
     );
     assert any(error.code?.code in ("E1049", "E1053") for error in bad.errors_had);
+}
+
+test "class unions retain classmethod lookup" {
+    program = JacProgram();
+    program.compile(
+        file_path="union_classmethods.jac",
+        use_str="""
+obj Base {
+    @classmethod
+    def make(cls: type[Base]) -> Base { return cls(); }
+}
+obj First(Base) {}
+obj Second(Base) {}
+def build -> list[Base] { return [cls.make() for cls in (First, Second)]; }
+""",
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    );
+    assert not program.errors_had , "\n".join(
+        error.pretty_print() for error in program.errors_had
+    );
 }

@@ -203,10 +203,14 @@ impl TypeEvaluator._tuple_literal_index_type(
     return self._extract_tuple_element_type(cls, real_idx);
 }
 
-impl TypeEvaluator._container_value_type(value_type: TypeBase) -> TypeBase {
+impl TypeEvaluator._container_value_type(value_type: TypeBase, at: Expr) -> TypeBase {
+    import from jaclang.compiler.frontend.unitree { in_type_position }
+    if in_type_position(at, include_subscripts=False) {
+        return value_type;
+    }
     if isinstance(value_type, UnionType) {
         return self._union_narrowed_types(
-            [self._container_value_type(member) for member in value_type.types]
+            [self._container_value_type(member, at) for member in value_type.types]
         );
     }
     if isinstance(value_type, ClassType)

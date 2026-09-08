@@ -188,7 +188,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         );
 
                         if expected_elem is None {
-                            elem_type = self._container_value_type(elem_type);
+                            elem_type = self._container_value_type(elem_type, expr);
                         }
                         if not isinstance(elem_type, UnknownType)
                             and not self._type_in_list(elem_type, elem_types) {
@@ -242,14 +242,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                     for _kv in expr.kv_pairs {
                         if _kv.key {
                             kt = self._container_value_type(
-                                self.get_type_of_expression(_kv.key)
+                                self.get_type_of_expression(_kv.key), expr
                             );
                             if not isinstance(kt, UnknownType)
                                 and not self._type_in_list(kt, key_types) {
                                 key_types.append(kt);
                             }
                             vt = self._container_value_type(
-                                self.get_type_of_expression(_kv.value)
+                                self.get_type_of_expression(_kv.value), expr
                             );
                             if not isinstance(vt, UnknownType)
                                 and not self._type_in_list(vt, val_types) {
@@ -337,7 +337,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         et = self._container_value_type(
                             self.get_type_of_expression(
                                 _val.value if isinstance(_val, KWPair) else _val
-                            )
+                            ),
+                            expr
                         );
                         if not isinstance(et, UnknownType) {
                             elem_types_t.append(et);
@@ -393,7 +394,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     set_elem_types: list[TypeBase] = [];
                     for _val in expr.values {
                         et = self._container_value_type(
-                            self.get_type_of_expression(_val)
+                            self.get_type_of_expression(_val), expr
                         );
                         if not isinstance(et, UnknownType)
                             and not self._type_in_list(et, set_elem_types) {
@@ -441,7 +442,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
                 self._walk_compr_clauses(expr.compr);
                 elem_type = self._container_value_type(
-                    self.get_type_of_expression(expr.out_expr)
+                    self.get_type_of_expression(expr.out_expr), expr
                 );
                 if isinstance(set_inst, ClassType)
                     and not isinstance(elem_type, UnknownType) {
@@ -457,7 +458,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 gen_inst = self._convert_to_instance(self.prefetch.generator_class);
                 self._walk_compr_clauses(expr.compr);
                 elem_type = self._container_value_type(
-                    self.get_type_of_expression(expr.out_expr)
+                    self.get_type_of_expression(expr.out_expr), expr
                 );
                 none_inst = self._convert_to_instance(self.prefetch.none_type_class)
                     if self.prefetch.none_type_class
@@ -482,7 +483,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     expected_type, self.prefetch.list_class
                 );
                 elem_type = self._container_value_type(
-                    self.get_type_of_expression(expr.out_expr, expected_elem_lc)
+                    self.get_type_of_expression(expr.out_expr, expected_elem_lc), expr
                 );
                 if isinstance(list_inst, ClassType) {
                     if expected_elem_lc is not None
@@ -506,10 +507,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                 self._walk_compr_clauses(expr.compr);
                 if isinstance(expr.kv_pair, KVPair) and expr.kv_pair.key is not None {
                     key_type = self._container_value_type(
-                        self.get_type_of_expression(expr.kv_pair.key)
+                        self.get_type_of_expression(expr.kv_pair.key), expr
                     );
                     val_type = self._container_value_type(
-                        self.get_type_of_expression(expr.kv_pair.value)
+                        self.get_type_of_expression(expr.kv_pair.value), expr
                     );
                     if isinstance(dict_inst, ClassType)
                         and not isinstance(key_type, UnknownType)
@@ -1104,6 +1105,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         or UnknownType();
                 } elif isinstance(base_type, UnionType) and base_type.types {
                     member_types: list[TypeBase] = [];
+                    missing_types: list[str] = [];
                     decl_for_ide: NameAtom | None = None;
                     for union_member in base_type.types {
                         if self.is_explicit_any(union_member)
@@ -1117,40 +1119,49 @@ impl TypeEvaluator._get_type_of_expression_core(
                             );
                             if enum_member_type is not None {
                                 member_types.append(enum_member_type);
+                            } else {
+                                missing_types.append(str(union_member));
                             }
                             continue;
                         }
-                        if isinstance(union_member, ClassType)
-                            and union_member.is_class_instance() {
-                            if member
-                                := self._lookup_object_member(
-                                    union_member, expr.right.value
-                                ) {
-                                if prop_ret
-                                    := self.get_getter_type_from_property(
-                                        member.symbol
-                                    ) {
+                        if isinstance(union_member, ClassType) {
+                            lookup_type = self._get_type_for_member_lookup(union_member);
+                            member = self._lookup_class_member(lookup_type, expr.right.value);
+                            if member is None and lookup_type.is_instantiable_class()
+                                and self.prefetch is not None {
+                                meta_cls = self._metaclass_of(lookup_type) or self.prefetch.type_class;
+                                if meta_cls is not None {
+                                    lookup_type = meta_cls.clone_as_instance();
+                                    member = self._lookup_object_member(lookup_type, expr.right.value);
+                                }
+                            }
+                            if member is not None {
+                                prop_ret = self.get_getter_type_from_property(member.symbol)
+                                    if not lookup_type.is_instantiable_class() else None;
+                                if prop_ret is not None {
                                     member_types.append(
                                         self.specialize_member_type(
                                             prop_ret,
-                                            union_member,
+                                            lookup_type,
                                             self.declaring_class_of(
-                                                member.symbol, union_member
+                                                member.symbol, lookup_type
                                             )
                                         )
                                     );
                                 } else {
                                     member_types.append(
                                         self._get_method_with_overloads(
-                                            member, union_member
+                                            member, lookup_type
                                         )
                                     );
                                 }
                                 if decl_for_ide is None {
                                     decl_for_ide = member.symbol.decl;
                                 }
+                                continue;
                             }
                         }
+                        missing_types.append(str(union_member));
                     }
                     all_union_members_have_field = len(member_types)
                         == len(base_type.types);
@@ -1179,20 +1190,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                             return expr.right.type;
                         }
                         return self._null_ok_attr_type(expr, base_type);
-                    }
-                    missing_types: list[str] = [];
-                    for union_member in base_type.types {
-                        if self.is_explicit_any(union_member) {
-                            continue;
-                        }
-                        if isinstance(union_member, ClassType)
-                            and union_member.is_class_instance() {
-                            if not self._lookup_object_member(
-                                union_member, expr.right.value
-                            ) {
-                                missing_types.append(str(union_member));
-                            }
-                        }
                     }
                     self.emit_diag(
                         E1099,
@@ -5911,17 +5908,20 @@ impl TypeEvaluator._resolve_string_type_expr(
     type_str: str, scope: UniScopeNode
 ) -> TypeBase | None {
     import from jaclang.compiler.frontend.parser.parser { parse_expression }
+    import from jaclang.compiler.frontend.unitree { SubTag }
     (expression, had_error, _parser_diags, _lex_diags) = parse_expression(
         type_str, scope.loc.mod_path
     );
 
     owned_nodes = expression.flatten();
+    annotation = SubTag(tag=expression, kid=[expression]);
+    owned_nodes.append(annotation);
     self._diagnostic_suppression_depth += 1;
     try {
         if had_error {
             return None;
         }
-        expression.set_parent(scope);
+        annotation.set_parent(scope);
         result = self._type_from_union_annotation_arg(expression);
         return None if isinstance(result, UnknownType) else result;
     } finally {

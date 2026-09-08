@@ -2790,4 +2790,4 @@ def is_client_destined(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
-def in_type_position(nd: UniNode) -> bool;
+def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

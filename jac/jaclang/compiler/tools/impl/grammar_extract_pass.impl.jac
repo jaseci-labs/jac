@@ -2380,15 +2380,19 @@ impl GrammarExtractPass.get_self_method(nd: uni.Expr) -> str | None {
 }
 
 impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list {
-    if self.get_self_method(call.target) == "consume_uni" and len(call.params) == 2 {
-        literal = uni.literal_string_value(call.params[1]);
+    params = call.params;
+    if params is None {
+        return [];
+    }
+    if self.get_self_method(call.target) == "consume_uni" and len(params) == 2 {
+        literal = uni.literal_string_value(params[1]);
         if literal is not None {
             import json;
             return [json.dumps(literal)];
         }
     }
     result: list = [];
-    for param in call.params {
+    for param in params {
         if isinstance(param, uni.AtomTrailer) and param.is_attr {
             if isinstance(param.target, uni.Name) {
                 if param.target.value == "TokenKind" {

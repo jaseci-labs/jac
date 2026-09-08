@@ -4334,11 +4334,12 @@ impl type_only_import_of(nd: NameAtom) -> (ModuleItem | None) {
     return found;
 }
 
-impl in_type_position(nd: UniNode) -> bool {
+impl in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool {
     cur: UniNode = nd;
     parent = cur.parent;
     while parent is not None {
-        if isinstance(parent, (SubTag, TypeAlias, TypeParam, IndexSlice)) {
+        if isinstance(parent, (SubTag, TypeAlias, TypeParam))
+            or (include_subscripts and isinstance(parent, IndexSlice)) {
             return True;
         }
         if isinstance(parent, CastExpr) and parent.cast_type is cur {
