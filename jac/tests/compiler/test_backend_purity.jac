@@ -85,10 +85,11 @@ glob FORBIDDEN: dict[str, str] = {
              "InteropBinding recorded by BoundaryAnalysisPass"
          ),
          ("es/esast_gen_pass.impl/osp.impl.jac", "symbol_utils"): (
-             1,
+             2,
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
              "readers over an already-resolved walker symbol when building "
-             "the spawn argument object. The symbol_linked_source_module "
+             "the spawn argument object and deriving the endpoint identity from "
+             "the resolved walker declaration. The symbol_linked_source_module "
              "read (#7740) left with the esast-time pull hook (#7679): "
              "cross-module pulls now happen in the placement solver before "
              "codegen, so ES generation only consumes stamped facts"

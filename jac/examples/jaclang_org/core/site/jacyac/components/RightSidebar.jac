@@ -100,7 +100,7 @@ def:pub RightSidebar(
                                     />
                                     <AvatarFallback>
                                         {initial_of(
-                                            name_of(u.username, u.display_name)
+                                            name_of(u.display_name, u.username)
                                         )}
                                     </AvatarFallback>
                                 </Avatar>
@@ -115,7 +115,7 @@ def:pub RightSidebar(
                                                 u.username
                                             ); }}
                                         >
-                                            {name_of(u.username, u.display_name)}
+                                            {name_of(u.display_name, u.username)}
                                         </button>
                                     </HoverCardTrigger>
                                     <HoverCardContent className="w-64">
@@ -128,7 +128,7 @@ def:pub RightSidebar(
                                                 <AvatarFallback>
                                                     {initial_of(
                                                         name_of(
-                                                            u.username, u.display_name
+                                                            u.display_name, u.username
                                                         )
                                                     )}
                                                 </AvatarFallback>
@@ -138,7 +138,7 @@ def:pub RightSidebar(
                                                     className="truncate font-semibold text-foreground"
                                                 >
                                                     {name_of(
-                                                        u.username, u.display_name
+                                                        u.display_name, u.username
                                                     )}
                                                 </div>
                                                 <div

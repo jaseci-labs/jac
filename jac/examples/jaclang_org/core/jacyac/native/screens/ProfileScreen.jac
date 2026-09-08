@@ -29,7 +29,7 @@ def:pub ProfileScreen(
     C = theme.colors;
     styles = makeStyles(C);
     username = profile.profile.username if profile else "";
-    name = name_of(profile.profile.username, profile.profile.display_name)
+    name = name_of(profile.profile.display_name, profile.profile.username)
         if profile
         else "";
     bio = profile.profile.bio if profile else "";

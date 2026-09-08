@@ -384,7 +384,14 @@ impl BoundaryAnalysisPass._register_sv_import(
 }
 
 impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
+    if nd.is_typed {
+        return;
+    }
     import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
+    import from jaclang.compiler.passes.wasm_contract {
+        function_contract,
+        host_contracts
+    }
     import from jaclang.compiler.frontend.diagnostics { E5083, E5100 }
     if not nd.from_loc or not nd.items {
         return;
@@ -421,6 +428,13 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
                 continue;
             }
         }
+        if decl is None {
+            continue;
+        }
+        contract = function_contract(decl);
+        manifest.native_host_imports[stem] = host_contracts(
+            decl.find_parent_of_type(Module)
+        );
         (ret_type, param_types, param_names) = self._signature_of_decl(decl);
         manifest.bindings[local_name] = InteropBinding(
             name=sym_name,
@@ -430,7 +444,8 @@ impl BoundaryAnalysisPass._register_na_client_import(nd: Import) -> None {
             param_types=param_types,
             param_names=param_names,
             ast_node=decl,
-            source_module=resolved_path
+            source_module=resolved_path,
+            native_contract=contract
         );
     }
 }
@@ -806,6 +821,15 @@ impl BoundaryAnalysisPass.enter_ability with Ability entry {
 }
 
 impl BoundaryAnalysisPass.enter_func_call with FuncCall entry {
+    if isinstance(here.target, Name) and here.target.value == "bind_na_host" {
+        import from jaclang.compiler.passes.wasm_contract { check_host_call }
+        import from jaclang.compiler.frontend.diagnostics { E5110 }
+        try {
+            check_host_call(here);
+        } except ValueError as e {
+            self.emit(E5110, node_override=here, details=str(e));
+        }
+    }
     if (
         isinstance(here.target, Name)
         and here.target.sym is not None
@@ -1419,6 +1443,20 @@ impl BoundaryAnalysisPass.after_pass -> None {
             }
         }
     }
+
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    for binding in self.ir_in.gen.interop_manifest.bindings.values() {
+        if binding.ast_node is None {
+            continue;
+        }
+        source = binding.ast_node.find_parent_of_type(Module);
+        if source is None {
+            continue;
+        }
+        kind = "func" if binding.kind == "function" else binding.kind;
+        binding.endpoint_id = endpoint_key(source, kind, binding.name);
+    }
+
     self._record_access_levels(manifest);
 }
 
@@ -1437,5 +1475,21 @@ impl BoundaryAnalysisPass._record_access_levels(manifest: any) -> None {
                 manifest.walker_access[item.sym_name] = not is_pub;
             }
         }
+    }
+}
+
+
+impl BoundaryAnalysisPass.enter_atom_trailer with AtomTrailer entry {
+    if not here.is_attr or self._get_context(here) != InteropContext.CLIENT {
+        return;
+    }
+    import from jaclang.compiler.types.types { ClassType }
+    target_type = here.target.narrowed_type or here.target.type;
+    scope = target_type.shared.symbol_table
+        if isinstance(target_type, ClassType)
+        else None;
+    if isinstance(scope, Archetype) and scope.in_native_context() {
+        import from jaclang.compiler.frontend.diagnostics { E5112 }
+        self.emit(E5112, node_override=here, name=scope.sym_name);
     }
 }

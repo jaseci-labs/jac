@@ -1,7 +1,7 @@
 import from core.docs.graph { DocsStatus, docs_status }
 import from core.docs.sync { docs_sync_tick }
 import from jaclang.server.bridge { BridgeError }
-import from .common { EXIT_OK, explain_bridge_error, int_field, str_field }
+import from .common { EXIT_OK, explain_bridge_error }
 
 def render_status(st: DocsStatus) -> str {
     if not st.ready {
@@ -13,13 +13,13 @@ def render_status(st: DocsStatus) -> str {
     for v in st.versions {
         lines.append(
             "  "
-                + str_field(v, "label")
+                + v.label
                 + "  jac "
-                + str_field(v, "jac_version")
+                + v.jac_version
                 + "  "
-                + str(int_field(v, "pages"))
+                + str(v.pages)
                 + " pages  fetched "
-                + str_field(v, "fetched_at")
+                + v.fetched_at
         );
     }
     return "\n".join(lines);

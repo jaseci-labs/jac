@@ -598,7 +598,7 @@ impl guide_sections(g: Guide) -> list[GuideSection] {
         base = re.sub(r"[\s-]+", "-", base).strip("-") or "section";
         ordinal = counts.get(base, 0) + 1;
         slug = base if ordinal == 1 else f"{base}-{ordinal}";
-        # A literal heading can collide with a generated duplicate suffix.
+
         while slug in [h[3] for h in headings] {
             ordinal += 1;
             slug = f"{base}-{ordinal}";

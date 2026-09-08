@@ -33,32 +33,33 @@ const canvas = new Target();
 canvas.getContext = () => gl;
 canvas.focus = () => { document.activeElement = canvas; };
 canvas.requestPointerLock = () => { document.pointerLockElement = canvas; };
-const settle = async () => { await Promise.resolve(); await Promise.resolve(); };
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const boot = async () => { state.pending.shift()(); await settle(); };
-const frame = () => {
+const frame = async () => {
   const [id, callback] = frames.entries().next().value;
   frames.delete(id);
   callback(1000 + id * 16);
+  await settle();
 };
 const key = () => ({code: 'Space', preventDefault() {}});
 const hud = [];
 const stop = run_game(canvas, (...values) => hud.push(values));
 await boot();
-frame();
-assert.deepEqual(hud[0], [12, 95, 3, 63]); // i64 exports become JS scalar numbers.
+await frame();
+assert.deepEqual(hud[0], [12, 95, 3, 63]); // The typed Wasm boundary exposes JavaScript scalar values.
 window.emit('keydown', key());
-assert.equal(state.env.IsKeyPressed(32), 1);
-frame();
+assert.equal(state.env.IsKeyPressed(32), true);
+await frame();
 window.emit('keydown', key());
-assert.equal(state.env.IsKeyPressed(32), 0); // Repeated keydown is not a new jump.
-assert.equal(state.env.IsMouseButtonPressed(0), 0);
+assert.equal(state.env.IsKeyPressed(32), false); // Repeated keydown is not a new jump.
+assert.equal(state.env.IsMouseButtonPressed(0), false);
 canvas.emit('mousedown', {button: 2});
-assert.equal(state.env.IsMouseButtonPressed(0), 0);
+assert.equal(state.env.IsMouseButtonPressed(0), false);
 canvas.emit('mousedown', {button: 0});
-assert.equal(state.env.IsMouseButtonPressed(0), 1);
+assert.equal(state.env.IsMouseButtonPressed(0), true);
 window.emit('blur', {});
-assert.equal(state.env.IsKeyDown(32), 0);
-assert.equal(state.env.IsMouseButtonPressed(0), 0);
+assert.equal(state.env.IsKeyDown(32), false);
+assert.equal(state.env.IsMouseButtonPressed(0), false);
 const replacement = run_game(canvas);
 stop();
 await boot();
@@ -85,7 +86,7 @@ const errors = [];
 const logError = console.error;
 try {
   console.error = (...args) => errors.push(args);
-  frame();
+  await frame();
 } finally {
   console.error = logError;
 }

@@ -95,7 +95,7 @@ def:pub JacYac(initialTab: str = "feed") -> JsxElement {
 
     profileUsername = model.myProfile.profile.username if model.myProfile else "";
     displayUsername = name_of(
-        model.myProfile.profile.username, model.myProfile.profile.display_name
+        model.myProfile.profile.display_name, model.myProfile.profile.username
     )
         if model.myProfile
         else "";
@@ -115,7 +115,7 @@ def:pub JacYac(initialTab: str = "feed") -> JsxElement {
         if jid(u) not in followingIds and jid(u) != myProfileId
     ];
     viewedName = name_of(
-        model.viewedProfile.profile.username, model.viewedProfile.profile.display_name
+        model.viewedProfile.profile.display_name, model.viewedProfile.profile.username
     )
         if model.viewedProfile
         else "Profile";

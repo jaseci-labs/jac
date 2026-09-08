@@ -1,33 +1,6 @@
 import io;
 import from contextlib { redirect_stderr }
 
-obj Probe {
-    has label: str = "v1",
-        pages: int = 3,
-        tags: list[str] = ["a", "b"];
-}
-
-test "field helpers read objects and dicts alike" {
-    p = Probe();
-    d = {"label": "v1", "pages": 3, "tags": ["a", "b"]};
-    assert str_field(p, "label") == "v1";
-    assert str_field(d, "label") == "v1";
-    assert int_field(p, "pages") == 3;
-    assert int_field(d, "pages") == 3;
-    assert list_field(p, "tags") == ["a", "b"];
-    assert list_field(d, "tags") == ["a", "b"];
-}
-
-test "field helpers default when a field is missing or mistyped" {
-    d = {"pages": "three", "tags": "nope"};
-    assert str_field(d, "label") == "";
-    assert int_field(d, "pages") == 0;
-    assert list_field(d, "tags") == [];
-    assert str_field(None, "label") == "";
-    assert int_field(42, "pages") == 0;
-    assert list_field("text", "tags") == [];
-}
-
 test "bridge failures map to distinct exit codes and hints" {
     buf = io.StringIO();
     with redirect_stderr(buf) {

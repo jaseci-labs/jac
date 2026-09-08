@@ -456,7 +456,6 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     self._walkers = self._collect_walkers();
 
     self._collect_cross_boundary_endpoints();
-    self._fill_endpoint_effect_defaults();
     self._invalidate_bundle();
 }
 
@@ -857,27 +856,6 @@ impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
 }
 
 
-impl ModuleIntrospector._fill_endpoint_effect_defaults -> None {
-    if not self._client_manifest {
-        self._client_manifest = {};
-    }
-    effects = self._client_manifest.get('endpoint_effects', {});
-    for name in self._walkers.keys() {
-        key = f"walker:{name}";
-        if key not in effects {
-            effects[key] = {"is_writer": True, "touches": ["*"]};
-        }
-    }
-    for name in self._functions.keys() {
-        key = f"func:{name}";
-        if key not in effects {
-            effects[key] = {"is_writer": False, "touches": ["*"]};
-        }
-    }
-    self._client_manifest['endpoint_effects'] = effects;
-}
-
-
 impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., any)]] {
     if not self._module {
         return {};
@@ -938,7 +916,6 @@ impl ModuleIntrospector._check_module_freshness -> None {
         self._functions = self._collect_functions();
         self._walkers = self._collect_walkers();
         self._collect_cross_boundary_endpoints();
-        self._fill_endpoint_effect_defaults();
         self._invalidate_bundle();
         return;
     }

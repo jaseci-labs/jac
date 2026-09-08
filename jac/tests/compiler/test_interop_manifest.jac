@@ -125,12 +125,13 @@ test "endpoint effects are recorded by the dedicated effect pass" {
     prog = JacProgram();
     mod = prog.compile(os.path.join(tmp, "main.jac"));
     effects = mod.gen.interop_manifest.endpoint_effects;
-    writer = effects.get("func:add_note");
-    reader = effects.get("func:read_only");
-    assert writer is not None and writer["is_writer"] , (
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    writer = effects.get(endpoint_key(mod, "func", "add_note"));
+    reader = effects.get(endpoint_key(mod, "func", "read_only"));
+    assert writer is not None and writer["writes"] , (
         f"add_note connects a node and must classify as writer; got {effects}"
     );
-    assert reader is not None and not reader["is_writer"] , (
+    assert reader is not None and not reader["writes"] , (
         f"read_only must classify as non-writer; got {effects}"
     );
 }

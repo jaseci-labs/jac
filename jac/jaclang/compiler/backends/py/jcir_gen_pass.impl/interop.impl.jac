@@ -279,6 +279,8 @@ impl JcirGenPass._gen_py_sv_func_stub(
         + args_dict
         + ", effects="
         + repr(effects)
+        + ", contract="
+        + repr(binding.endpoint_id)
         + ")"
     );
     if (ret_type in boundary_types and boundary_types[ret_type].kind != "enum") {
@@ -419,13 +421,17 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
             else None
     );
     if src_mod is None or not src_mod.gen.interop_manifest {
-        return [];
+        return ['*'];
     }
-    effect = src_mod.gen.interop_manifest.endpoint_effects.get(key);
-    if not isinstance(effect, dict) or not effect.get('is_writer') {
-        return [];
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    (kind, name) = key.split(":", 1);
+    effect = src_mod.gen.interop_manifest.endpoint_effects.get(
+        endpoint_key(src_mod, kind, name)
+    );
+    if not isinstance(effect, dict) or effect.get('unknown') {
+        return ['*'];
     }
-    return [str(t) for t in (effect.get('touches') or ['*'])];
+    return [str(t) for t in effect['writes']];
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {

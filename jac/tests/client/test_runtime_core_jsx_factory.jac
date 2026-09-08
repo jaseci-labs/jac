@@ -8,6 +8,7 @@ looks fine and every app still renders, but the error boundary dies with
 `__jacJsx is not defined` the moment anything throws.
 """
 
+import re;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
@@ -36,7 +37,11 @@ test "compiled runtime core can resolve the jsx factory it calls" {
         js = _compile_runtime_core_js(Path(tmp));
         assert "__jacJsx(" in js , "runtime core should emit JSX factory calls";
         defines = "function __jacJsx(" in js;
-        imports = "__jacJsx" in js.split("\n")[0] and "import" in js.split("\n")[0];
+        imports = re.search(
+            r"(?m)^import\s+\{[^}]*\b__jacJsx\b[^}]*\}\s+from\s+[\"']@jac/runtime[\"']",
+            js
+        )
+            is not None;
         assert defines or imports , "runtime core calls __jacJsx but neither defines nor imports it -- "
         "the error boundary will crash with '__jacJsx is not defined'";
     }

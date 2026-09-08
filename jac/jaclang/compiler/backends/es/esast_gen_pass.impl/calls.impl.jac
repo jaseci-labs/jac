@@ -767,12 +767,27 @@ impl EsastGenPass._try_lower_server_rpc_call(
         args_obj = self._wrap_with_kwargs_temp(args_obj, spread_arg, nd);
     }
 
+    import from jaclang.compiler.frontend.codeinfo { endpoint_key }
+    source_module = ability_node.find_parent_of_type(uni.Module);
+    contract_id = endpoint_key(source_module, "func", ability_node.sym_name);
     result_expr: es.Expression = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacCallFunction'), jac_node=nd),
             arguments=[
                 self.sync_loc(es.Literal(value=func_name), jac_node=nd),
-                args_obj
+                args_obj,
+                es.ObjectExpression(
+                    properties=[
+                        es.Property(
+                            key=es.Literal(value="contract"),
+                            value=es.Literal(value=contract_id),
+                            kind="init",
+                            method=False,
+                            shorthand=False,
+                            computed=False
+                        )
+                    ]
+                )
             ]
         ),
         jac_node=nd

@@ -7,14 +7,14 @@ Client auth uses four helpers from `@jac/runtime`. **Return types differ - get t
 
 | Helper | Async? | Returns | Pre-declare as |
 |---|---|---|---|
-| `jacSignup(email, password)` | yes | `dict` - `{"success": bool, ...}` | `result: dict \| None = None` |
+| `jacSignup(email, password)` | yes | `SignupResult` - `success`, `user_id`, `error` fields | `result: SignupResult \| None = None` |
 | `jacLogin(email, password)` | yes | `bool` | `ok: bool = False` |
 | `jacLogout()` | no | `None` | - (call it, no assign) |
 | `jacIsLoggedIn()` | no | `bool` | - (use inline) |
 
 These patterns apply in any client code - plain `.jac` components inferred client (the `@jac/runtime` import itself is a string-path npm import, which is client-only syntax - see `jac-codespaces`).
 
-The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`dict`** shaped `{"success": bool, "user_id" | "error": ...}`, and it is *always* a non-empty (truthy) dict - so `if not signup_result` can **never** catch a failed signup. Check the `success` key instead: `if not signup_result["success"] { ... }`. (Typing a `jacSignup` result as `bool` also fails `jac check` with `E1001: Cannot assign dict to bool`.)
+The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`SignupResult`** record. Check `signup_result.success` and read `signup_result.error` for a failure message; the record itself is truthy even when signup fails.
 
 ## ⚠ Read first - signup + first `def:priv` call must be 3 awaited steps
 
@@ -29,13 +29,13 @@ When the same form that signs a user up also calls a `def:priv` endpoint (saving
 async def handle_register(name: str, email: str, password: str) -> str {
     # Pre-declare every var that holds an `await` result. `let` scoping in the
     # generated JS can otherwise leave them undefined at the if-check.
-    # Note the per-helper types: jacSignup -> dict, jacLogin -> bool.
-    signup_result: dict | None = None;
+    # Note the per-helper types: jacSignup -> SignupResult, jacLogin -> bool.
+    signup_result: SignupResult | None = None;
     login_ok: bool = False;
     profile_result: any = None;
 
     signup_result = await jacSignup(email, password);
-    if not signup_result["success"] { return "registration failed"; }
+    if not signup_result.success { return "registration failed"; }
 
     login_ok = await jacLogin(email, password);
     if not login_ok { return "login after signup failed"; }
@@ -55,7 +55,7 @@ async def handle_register(name: str, email: str, password: str) -> str {
 ---
 
 ```jac
-import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn, Navigate }
+import from "@jac/runtime" { SignupResult, jacLogin, jacSignup, jacLogout, jacIsLoggedIn, Navigate }
 
 # Login attempt - call from a submit handler or effect. Returns a status string.
 # Pre-declare `ok` at the top - see "Why pre-declare" above.
@@ -74,11 +74,11 @@ async def try_login(email: str, password: str) -> str {
 
 # Signup is usually followed by a login to establish the session.
 async def try_signup(email: str, password: str) -> str {
-    signup_result: dict | None = None;       # jacSignup returns dict
+    signup_result: SignupResult | None = None;       # jacSignup returns SignupResult
     login_ok: bool = False;                  # jacLogin returns bool
     try {
         signup_result = await jacSignup(email, password);
-        if not signup_result["success"] {
+        if not signup_result.success {
             return "signup failed (email may be in use)";
         }
         login_ok = await jacLogin(email, password);
