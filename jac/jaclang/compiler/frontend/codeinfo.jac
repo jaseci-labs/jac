@@ -519,7 +519,7 @@ def resolve_native_module(
             _native_variant_path(os.path.join(base_dir, clean))
         );
         if local is not None {
-            return (f"{clean}.jac", local);
+            return (str(os.path.relpath(local, os.path.abspath(base_dir))), local);
         }
         if path_name != clean {
             search = os.path.abspath(base_dir);
