@@ -3,7 +3,7 @@ import sys;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.sealed { python_tag }
-import from jaclang.project.config { JacConfig, get_config_for_path }
+import from jaclang.project.config { JacConfig }
 import from jaclang.project.providers { get_python_provider, resolve_plan }
 import from jaclang.runtimelib.jab_vendor {
     download_wheels,
@@ -64,7 +64,12 @@ def main {
         sys.exit(2);
     }
     app_dir = Path(args[0]).resolve();
-    config = get_config_for_path(app_dir);
+    # Loaded from the staged jac.toml directly, never via config discovery:
+    # `jac run` roots the explicit project config at THIS script's own tree,
+    # so discovery would resolve the jac checkout's closure instead of the
+    # app's whenever the script runs from a source tree.
+    toml_path = app_dir / "jac.toml";
+    config = JacConfig.load(toml_path) if toml_path.is_file() else None;
     if config is None {
         console.error(f"No jac.toml under {app_dir}; nothing to vendor.");
         sys.exit(1);
