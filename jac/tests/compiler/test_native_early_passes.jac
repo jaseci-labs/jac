@@ -188,6 +188,13 @@ test "native binding matches annex implementations exactly once" {
         assert not implementation._names_index;
         import from jaclang.compiler.frontend.relations { ScopePrimary }
         assert not [implementation->:ScopePrimary:->];
+        edges = [edge declaration->:ScopePrimary:->];
+        targets = [declaration->:ScopePrimary:->];
+        bindings = {
+            binding_edge.name: target
+            for (binding_edge, target) in zip(edges, targets)
+        };
+        assert bindings == declaration.names_in_scope;
     }
 }
 

@@ -71,6 +71,14 @@ test "the builtins record is the merged prelude scope" {
     builtins = cat.module("builtins");
     assert builtins is not None;
     names = builtins.names_in_scope;
+    import from jaclang.compiler.frontend.relations { ScopePrimary }
+    edges = [edge builtins->:ScopePrimary:->];
+    targets = [builtins->:ScopePrimary:->];
+    bindings = {
+        binding_edge.name: target
+        for (binding_edge, target) in zip(edges, targets)
+    };
+    assert bindings == names;
     for expected in (
         "int",
         "str",
