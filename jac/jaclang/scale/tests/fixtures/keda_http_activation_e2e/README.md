@@ -1,39 +1,41 @@
 # KEDA HTTP Add-on activation e2e fixture
 
-Zero-replica `echo` Deployment (`hashicorp/http-echo`) plus its Service,
-applied as a raw manifest so the e2e script can drive a real KEDA HTTP
-Add-on scale-from-zero cycle against it.
+A minimal Jac app (`app.jac`) deployed via `jac scale deploy`, with
+`[scale.kubernetes.http_activation]` enabled in `jac.toml` so the deploy
+wires up the KEDA HTTP Add-on's `InterceptorRoute` + `ScaledObject` for real
+scale-to-zero activation (#7475).
 
 ```
 keda_http_activation_e2e/
-  fixture.yaml   Namespace + Deployment (replicas: 0) + Service
+  app.jac    A single public walker (`echo`) reporting a JSON message.
+  jac.toml   [scale.kubernetes.http_activation] config; deploys as app "echo".
 ```
 
-There is no `jac.toml` here: this fixture is not a Jac app, just the
-Kubernetes objects the KEDA HTTP Add-on scales, so nothing builds or
-runs a client for it.
+This fixture is a real Jac app deployed through the normal CLI path, not a
+raw manifest -- `jac scale deploy` builds the Deployment/Service and, from
+the `http_activation` config, the `InterceptorRoute`/`ScaledObject` too. See
+`../http_activation_toml_e2e/` for the sibling fixture this one follows the
+same pattern as.
 
 ## What the e2e covers
 
 [`../deploy/keda_http_activation_real_e2e.sh`](../deploy/keda_http_activation_real_e2e.sh)
-drives [`../deploy/keda_http_activation_verify.jac`](../deploy/keda_http_activation_verify.jac),
-which calls `KEDAAutoscaler.apply_http_activation` / `destroy_http_activation`
-directly against whatever cluster the current kubeconfig points at. No
-mocking. The flow:
+drives the deploy against whatever cluster the current kubeconfig points at.
+No mocking. The flow:
 
-1. Apply this fixture; confirm `echo` starts at 0 replicas.
-2. Call `apply_http_activation` twice: once to create the
-   `InterceptorRoute` + `ScaledObject`, once more to exercise the
-   get-then-patch branch against a real API server.
-3. Poll both resources' `status.conditions[type=Ready]` until each
-   reports Ready, so a reconciliation problem fails here with a clear
-   message instead of surfacing later as an opaque interceptor timeout.
-4. Port-forward the HTTP Add-on interceptor and send a request through
-   it; this should block on the cold start, then return 200 once the
-   target is Ready.
+1. Deploy via `jac scale deploy app.jac` from this directory.
+2. Redeploy once more, to confirm the `InterceptorRoute`/`ScaledObject`
+   reconcile is idempotent (get-then-patch, not create-or-duplicate) against
+   a real API server.
+3. Poll both resources' `status.conditions[type=Ready]` until each reports
+   Ready, so a reconciliation problem fails here with a clear message
+   instead of surfacing later as an opaque interceptor timeout.
+4. Port-forward the HTTP Add-on interceptor and `POST /walker/echo` through
+   it; this should block on the cold start, then return 200 once the target
+   is Ready.
 5. Wait for `echo` to scale 0 to 1 and become Available.
-6. Stop traffic and wait for the cooldown period to elapse, then
-   confirm `echo` scales back down to 0.
+6. Stop traffic and wait for the cooldown period to elapse, then confirm
+   `echo` scales back down to 0.
 
 ## Prerequisites
 
@@ -77,6 +79,44 @@ components in a Running state.
 The script also preflight-checks for the `interceptorroutes.http.keda.sh`
 CRD and fails immediately with the commands above if it is missing.
 
+`jac.toml`'s `[dev] jaclang_source` points at this checkout's own `jac/`
+source, so the deploy runs your in-tree code, not a published release.
+
+On `kind`, the cluster has no RWX-capable default `StorageClass` for the
+bundle PVC (its built-in `standard` class is `ReadWriteOnce`), so you need
+to provision one first:
+
+```bash
+kubectl apply -f - <<YAML
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: jac-http-e2e-rwx
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jac-http-e2e-rwx-bundle-pv
+  labels:
+    managed: jac-scale-e2e
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: jac-http-e2e-rwx
+  hostPath:
+    path: /var/jac-http-e2e-rwx-bundle
+    type: DirectoryOrCreate
+YAML
+```
+
+`jac.toml` already sets `bundle_storage_class = "jac-http-e2e-rwx"` under
+`[scale.kubernetes]` to match. Clusters with a working default
+`StorageClass` (microk8s, minikube, EKS, ...) need no such override.
+
 ## Run
 
 ```bash
@@ -91,35 +131,21 @@ directory when omitted.
 Useful overrides (all optional, defaults shown):
 
 ```bash
-KEDA_HTTP_E2E_NAMESPACE=jac-http-e2e \
-KEDA_HTTP_E2E_DEPLOYMENT=echo \
-KEDA_HTTP_E2E_SERVICE=echo-svc \
-KEDA_HTTP_E2E_ROUTE_HOST=echo.jac-http-e2e.local \
-KEDA_HTTP_E2E_POLLING_INTERVAL=10 \
-KEDA_HTTP_E2E_COOLDOWN_PERIOD=60 \
+E2E_KEEP_NS_ON_FAIL=1 \
+READY_TIMEOUT=90 \
+DELETE_TIMEOUT=120 \
 bash jac/jaclang/scale/tests/deploy/keda_http_activation_real_e2e.sh
 ```
 
+Namespace, route host, and the KEDA polling interval / cooldown period are
+no longer shell-configurable -- they live in `jac.toml` as the single source
+of truth (same model as `http_activation_toml_e2e`); edit that file to
+change them.
+
 Expected runtime: around a minute and a half with default settings
 (observed ~100s on a local microk8s cluster), most of it spent waiting
-out `KEDA_HTTP_E2E_COOLDOWN_PERIOD` for the scale-down check. The script
-ends with `=== KEDA HTTP activation REAL e2e PASSED ===` on success.
-
-### Testing the apply/destroy driver directly
-
-The driver can also be invoked on its own against a live cluster,
-without the surrounding e2e script:
-
-```bash
-cd jac
-jac run jaclang/scale/tests/deploy/keda_http_activation_verify.jac apply
-jac run jaclang/scale/tests/deploy/keda_http_activation_verify.jac destroy
-```
-
-`apply` prints the resolved `InterceptorRoute` and `ScaledObject` names;
-`destroy` removes both. Both read their target namespace/name/host from
-the same `KEDA_HTTP_E2E_*` env vars as the shell script, defaulting to
-the values baked into `fixture.yaml`.
+out the `cooldown_period` for the scale-down check. The script ends with
+`=== KEDA HTTP activation REAL e2e PASSED ===` on success.
 
 ### Diagnostics on failure
 
@@ -130,7 +156,8 @@ the `keda` namespace before exiting.
 
 ## Cleanup
 
-Cleanup runs unconditionally (trap on EXIT): it runs the driver's
-`destroy` action, then deletes the `jac-http-e2e` namespace. If the run
-failed, the namespace is kept for inspection by default; set
-`E2E_KEEP_NS_ON_FAIL=0` to force cleanup even on failure.
+Cleanup runs unconditionally (trap on EXIT): it deletes the `jac-http-e2e`
+namespace, which sweeps the Deployment/Service and the namespaced
+`InterceptorRoute`/`ScaledObject` together. If the run failed, the namespace
+is kept for inspection by default; set `E2E_KEEP_NS_ON_FAIL=0` to force
+cleanup even on failure.
