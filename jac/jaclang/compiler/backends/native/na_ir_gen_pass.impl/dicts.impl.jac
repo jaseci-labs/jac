@@ -210,7 +210,9 @@ impl NaIRGenPass._emit_dict_helpers(
     };
 }
 
-impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
+impl NaIRGenPass._box_to_jacval(
+    value: ir.Value, object_reference: bool = False
+) -> ir.Value {
     value = self._str_norm(value);
     b = self.builder;
     i8 = ir.IntType(8);
@@ -245,7 +247,9 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        ptr_tag = 2;
+        # Graph handles cross the kernel ABI as erased pointers. Their
+        # semantic object identity cannot be inferred from an i8* layout.
+        ptr_tag = 6 if object_reference else 2;
         for (_, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 ptr_tag = 3;

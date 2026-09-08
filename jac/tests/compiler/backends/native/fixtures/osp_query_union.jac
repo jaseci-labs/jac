@@ -11,6 +11,22 @@ node Child(Base) {
 }
 
 edge Link: Base --> Child {}
+edge UntypedLink {}
+
+def erased_references -> list[any] {
+    source = Base();
+    destination = Child();
+    source +>:UntypedLink:+> destination;
+    return [source->:UntypedLink:->];
+}
+
+def erased_identity -> bool {
+    values = erased_references();
+    value = values[0];
+    valid = len(values) == 1 and isinstance(value, Child);
+    values.clear();
+    return valid and isinstance(value, Child);
+}
 
 def first(source: Base) -> Base | list[Base] | None {
     found = [source->:Link:->];

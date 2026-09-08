@@ -1037,7 +1037,7 @@ walker NaIRGenPass(Transform) {
         scan_bb: ir.Block
     ) -> ir.Block;
 
-    def _box_to_jacval(value: ir.Value) -> ir.Value;
+    def _box_to_jacval(value: ir.Value, object_reference: bool = False) -> ir.Value;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(

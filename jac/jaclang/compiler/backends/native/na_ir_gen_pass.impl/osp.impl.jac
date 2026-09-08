@@ -1138,16 +1138,19 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         return None;
     }
     element = self._elem_arch_name_of(nd);
-    if element is not None and element in self.struct_types {
+    boxed = self._list_spec_of(nd) == "jacval";
+    if boxed or (element is not None and element in self.struct_types) {
         # Kernel handles are i64 on every target. Language references have
         # pointer-sized slots and retain their elements. Convert through the
         # ordinary list operations so the result owns the correct destructor
         # as well as the correct layout (including on 32-bit targets).
         pointer = ir.IntType(8).as_pointer();
-        self._emit_list_helpers("ptr", pointer);
+        storage = self.jacval_type if boxed else pointer;
+        spec = "jacval" if boxed else "ptr";
+        self._emit_list_helpers(spec, storage);
         self._emit_list_helpers("i64", i64);
         handles = self.list_helpers["i64"];
-        objects = self.list_helpers["ptr"];
+        objects = self.list_helpers[spec];
         result = self.builder.call(objects["new"], [], name="osp.refs.objects");
         count = self.builder.call(handles["len"], [_cur]);
         entry_block = self.builder.block;
@@ -1161,9 +1164,11 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
         self.builder.cbranch(self.builder.icmp_signed("<", index, count), body, done);
         self.builder.position_at_end(body);
         handle = self.builder.call(handles["get"], [_cur, index]);
-        self.builder.call(
-            objects["append"], [result, self.builder.inttoptr(handle, pointer)]
-        );
+        reference = self.builder.inttoptr(handle, pointer);
+        value = self._box_to_jacval(reference, object_reference=True)
+            if boxed
+            else reference;
+        self.builder.call(objects["append"], [result, value]);
         next_index = self.builder.add(index, ir.Constant(i64, 1));
         index.add_incoming(next_index, self.builder.block);
         self.builder.branch(condition);

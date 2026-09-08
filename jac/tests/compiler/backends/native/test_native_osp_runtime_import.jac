@@ -39,6 +39,9 @@ test "typed graph queries preserve object identity through union returns" {
     probe = get_func(engine, "probe", ctypes.c_bool);
     assert probe();
     assert probe();
+    erased = get_func(engine, "erased_identity", ctypes.c_bool);
+    assert erased();
+    assert erased();
     retained = get_func(engine, "retained", ctypes.c_bool);
     assert retained();
     assert retained();
