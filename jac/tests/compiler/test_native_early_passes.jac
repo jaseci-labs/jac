@@ -28,7 +28,7 @@ test "native early symbols wait for construction lowering" {
         assert not prog.errors_had;
         imports = [
             name
-            for scope in mod._in_mod_nodes
+            for scope in mod.flatten()
             if isinstance(scope, UniScopeNode)
             for (name, symbol) in scope.names_in_scope.items()
             if symbol.imported

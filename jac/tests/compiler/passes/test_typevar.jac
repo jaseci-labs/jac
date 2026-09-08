@@ -301,6 +301,7 @@ test "a nested generator does not change the enclosing function return contract"
     program.compile(
         file_path="nested_generator_return.jac",
         use_str="""
+import from typing { Generator }
 def outer -> Generator {
     def inner -> Generator { yield 1; }
     report inner();
@@ -308,7 +309,9 @@ def outer -> Generator {
 """,
         options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
     );
-    assert any(error.code?.code == "E1004" for error in program.errors_had);
+    assert any(error.code?.code == "E1004" for error in program.errors_had) , [
+        str(error) for error in program.errors_had
+    ];
 }
 
 test "runtime class guards refine class objects and callable instances" {
