@@ -970,3 +970,74 @@ test "retention days come from [database] retention_days, off by default" {
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+# ---------------------------------------------------------------------------
+# CREATE DATABASE races between parallel workers
+# ---------------------------------------------------------------------------
+# `_ensure_database` checks pg_database and then creates, so a pool of workers
+# provisioning the same database can have two of them both see no row and both
+# issue CREATE DATABASE. The precompile step forks exactly such a pool, and the
+# loser used to fail the whole seal. This reproduces the shape of that pool
+# against a real cluster rather than asserting on an error message.
+
+"""Have `workers` runtimes provision `database` at once; return what was raised.
+
+Each worker opens its own admin connection inside `_ensure_database`, and the
+barrier lines them all up on the check so the window between the SELECT and the
+CREATE is actually contended.
+"""
+def _race_ensure(cluster: Cluster, database: str, workers: int) -> list {
+    import threading;
+    import from jaclang.data.pgembed { DbKind }
+    barrier = threading.Barrier(workers);
+    failures: list = [];
+    lock = threading.Lock();
+
+    def _worker {
+        rt = PgRuntime(
+            data_dir=cluster.data_dir,
+            database=database,
+            kind=DbKind.SCRATCH,
+            owner_path=cluster.workspace
+        );
+        try {
+            barrier.`wait();
+            rt._ensure_database();
+        } except Exception as e {
+            with lock {
+                failures.append(e);
+            }
+        }
+    }
+    threads = [threading.Thread(target=_worker) for _ in range(workers)];
+    for t in threads {
+        t.start();
+    }
+    for t in threads {
+        t.join();
+    }
+    return failures;
+}
+
+
+test "a pool of workers can provision the same database at once" {
+    cluster = _start_cluster();
+    try {
+        # Several rounds on fresh names: one round can get lucky and serialise,
+        # so a single green round would not prove much.
+        for round in range(4) {
+            database = f"jac_race_probe_{round}";
+            failures = _race_ensure(cluster, database, 6);
+            assert failures == [] , f"round {round} raised {[
+                str(f) for f in failures
+            ]}";
+            rows = _query(
+                cluster, f"SELECT 1 FROM pg_database WHERE datname = '{database}'"
+            );
+            assert rows , f"round {round} left no database behind";
+        }
+    } finally {
+        _stop_cluster(cluster);
+    }
+}

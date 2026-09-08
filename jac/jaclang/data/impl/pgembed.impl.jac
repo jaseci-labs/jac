@@ -665,6 +665,7 @@ impl PgRuntime._ensure_database -> None {
     import from jaclang.data.dbcatalog {
         connect_admin,
         record_database,
+        sqlstate_of,
         start_heartbeat
     }
     conn: any = connect_admin(self.conninfo());
@@ -674,7 +675,14 @@ impl PgRuntime._ensure_database -> None {
         );
         created = not rows;
         if created {
-            conn.run(f'CREATE DATABASE "{self.database}"');
+            try {
+                conn.run(f'CREATE DATABASE "{self.database}"');
+            } except Exception as e {
+                if sqlstate_of(e) not in ('42P04', '23505') {
+                    raise;
+                }
+                created = False;
+            }
         }
         record_database(conn, self.database, self.kind, self.owner_path);
         if self.kind == DbKind.SCRATCH {
