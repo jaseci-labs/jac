@@ -991,6 +991,7 @@ node ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSym
     has spec: (Sequence[Expr] | FuncSignature | EventSignature | None) { getter; }
     has body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr { getter; }
     has decl_link: (UniNode | None) { getter; }
+    has primary_scope: UniScopeNode { getter; }
 
     def init(
         *,

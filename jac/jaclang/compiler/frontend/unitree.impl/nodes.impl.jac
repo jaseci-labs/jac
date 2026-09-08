@@ -1578,12 +1578,6 @@ impl UniScopeNode.kid_scope.getter -> list[UniScopeNode] {
 }
 
 impl UniScopeNode.primary_scope.getter -> UniScopeNode {
-    if isinstance(self, ImplDef) {
-        declaration = self.decl_link;
-        if declaration is not None {
-            return declaration.sym_tab;
-        }
-    }
     return self;
 }
 
@@ -2669,6 +2663,11 @@ impl Archetype.get_methods -> list[Ability] {
         }
     }
     return methods;
+}
+
+impl ImplDef.primary_scope.getter -> UniScopeNode {
+    declaration = self.decl_link;
+    return declaration.sym_tab if declaration is not None else self;
 }
 
 impl ImplDef.postinit -> None {
