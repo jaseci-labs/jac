@@ -1071,6 +1071,14 @@ impl UniNode._role_set(role: type[Role], value: any) -> None {
 }
 
 impl UniNode.link_impl(impl_node: UniNode) -> None {
+    source = impl_node.sym_tab;
+    target = self.sym_tab;
+    if source is not target {
+        merged = dict(source.names_in_scope);
+        merged.update(target.names_in_scope);
+        source.set_primary_names({});
+        target.set_primary_names(merged);
+    }
     self +>:ImplOf:+> impl_node;
 }
 
@@ -1569,8 +1577,19 @@ impl UniScopeNode.kid_scope.getter -> list[UniScopeNode] {
     return [self->:ScopeChild:->];
 }
 
+impl UniScopeNode.primary_scope.getter -> UniScopeNode {
+    if isinstance(self, ImplDef) {
+        declaration = self.decl_link;
+        if declaration is not None {
+            return declaration.sym_tab;
+        }
+    }
+    return self;
+}
+
 impl UniScopeNode.names_in_scope.getter -> dict[(str, Symbol)] {
-    return self?._names_index or {};
+    index = self.primary_scope?._names_index;
+    return index if index is not None else {};
 }
 
 impl UniScopeNode.names_in_scope_overload.getter -> dict[(str, list[Symbol])] {
@@ -1655,8 +1674,9 @@ impl UniScopeNode.insert(
         if prev is not None {
             self._drop_primary(prev);
         }
-        self +>:ScopePrimary:+> symbol;
-        self._names_index[nd.sym_name] = symbol;
+        primary = self.primary_scope;
+        primary +>:ScopePrimary:+> symbol;
+        primary._names_index[nd.sym_name] = symbol;
     } else {
         current[nd.sym_name].add_defn(nd.name_spec);
     }
@@ -1724,26 +1744,29 @@ impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
 }
 
 impl UniScopeNode.set_primary_names(syms: dict[(str, Symbol)]) -> None {
-    del [edge self->:ScopePrimary:->];
+    primary = self.primary_scope;
+    del [edge primary->:ScopePrimary:->];
     for (key, sym) in syms.items() {
-        self +>:ScopePrimary:+> sym;
+        primary +>:ScopePrimary:+> sym;
     }
-    self._names_index = dict(syms);
+    primary._names_index = dict(syms);
 }
 
 impl UniScopeNode.adopt_primary(sym: Symbol, alias: str = "") -> None {
+    primary = self.primary_scope;
     key = alias or sym.name;
-    prev = self._names_index.get(key);
+    prev = primary._names_index.get(key);
     if prev is not None {
         self._drop_primary(prev);
     }
-    self +>:ScopePrimary:+> sym;
-    self._names_index[key] = sym;
+    primary +>:ScopePrimary:+> sym;
+    primary._names_index[key] = sym;
 }
 
 impl UniScopeNode._drop_primary(sym: Symbol) -> None {
-    edges = [edge self->:ScopePrimary:->];
-    targets = [self->:ScopePrimary:->];
+    primary = self.primary_scope;
+    edges = [edge primary->:ScopePrimary:->];
+    targets = [primary->:ScopePrimary:->];
     for i in range(len(targets)) {
         target: Symbol = targets[i];
         if target is sym {

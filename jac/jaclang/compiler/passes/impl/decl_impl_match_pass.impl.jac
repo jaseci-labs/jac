@@ -162,7 +162,6 @@ impl DeclImplMatchPass._connect_one_impl(
             }
         }
     }
-    self._share_scope_names(impl_node, valid_decl);
 
     for assignment in impl_node.get_all_sub_nodes(Assignment) {
         if assignment.type_tag is not None {
@@ -187,17 +186,6 @@ impl DeclImplMatchPass._connect_one_impl(
     ) {
         self._populate_self_member_symbols(impl_node, name_of_links[0].name_of);
     }
-
-    self._share_scope_names(impl_node, valid_decl);
-}
-
-impl DeclImplMatchPass._share_scope_names(
-    impl_node: ImplDef, valid_decl: AstImplNeedingNode
-) -> None {
-    merged = dict(impl_node.sym_tab.names_in_scope);
-    merged.update(valid_decl.sym_tab.names_in_scope);
-    impl_node.sym_tab.set_primary_names(merged);
-    valid_decl.sym_tab.set_primary_names(merged);
 }
 
 impl DeclImplMatchPass._report_bare_redecls(sym_tab: UniScopeNode) -> None {

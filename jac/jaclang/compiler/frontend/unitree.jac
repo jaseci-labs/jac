@@ -322,6 +322,7 @@ node UniScopeNode(UniNode) {
     }
 
     has kid_scope: list[UniScopeNode] { getter; }
+    has primary_scope: UniScopeNode { getter; }
     has names_in_scope: dict[(str, Symbol)] { getter; }
     has names_in_scope_overload: dict[(str, list[Symbol])] { getter; }
 

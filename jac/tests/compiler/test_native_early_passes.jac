@@ -180,6 +180,14 @@ test "native binding matches annex implementations exactly once" {
         ];
         assert len(declarations) == 1;
         assert isinstance(declarations[0].body, ImplDef);
+        declaration = declarations[0];
+        implementation = declaration.body;
+        assert isinstance(implementation, ImplDef);
+        assert implementation.primary_scope is declaration;
+        assert implementation.names_in_scope is declaration.names_in_scope;
+        assert not implementation._names_index;
+        import from jaclang.compiler.frontend.relations { ScopePrimary }
+        assert not [implementation->:ScopePrimary:->];
     }
 }
 

@@ -89,6 +89,45 @@ test "ability connected to decl" {
     assert isinstance(init_node, uni.ImplDef) and init_node.body is not None;
 }
 
+test "linked implementation uses one primary name owner" {
+    import from jaclang.compiler.frontend.parser.frontend { parse }
+    import from jaclang.compiler.driver.pass_driver { run_pass }
+    import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
+    import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+    import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
+    import from jaclang.compiler.frontend.relations { ScopePrimary }
+    prog = JacProgram();
+    (mod, failed) = parse(
+        "obj Counter { def value(x: int) -> int; } "
+            + "impl Counter.value(x: int) -> int { local = x; return local; }",
+        "primary_owner.jac",
+        prog
+    );
+    assert not failed;
+    run_pass(ASTValidationPass, mod, prog);
+    run_pass(SymTabBuildPass, mod, prog);
+    run_pass(DeclImplMatchPass, mod, prog);
+    assert not prog.errors_had;
+    implementations = mod.get_all_sub_nodes(uni.ImplDef);
+    assert len(implementations) == 1;
+    implementation = implementations[0];
+    declaration = implementation.decl_link;
+    assert declaration is not None;
+    assert implementation.primary_scope is declaration;
+    assert implementation.names_in_scope is declaration.sym_tab.names_in_scope;
+    assert not implementation._names_index;
+    assert not [implementation->:ScopePrimary:->];
+    local = implementation.lookup("local", deep=False);
+    assert local is not None;
+    implementation.adopt_primary(local, alias="alias");
+    assert declaration.sym_tab.lookup("alias", deep=False) is local;
+    declaration.sym_tab.set_primary_names({});
+    assert implementation.names_in_scope is declaration.sym_tab.names_in_scope;
+    assert not implementation.names_in_scope;
+    implementation.adopt_primary(local);
+    assert declaration.sym_tab.lookup("local", deep=False) is local;
+}
+
 test "ability connected to decl post" {
     state = (out := JacProgram()).compile(os.path.join(FIXTURES, "base2.jac"));
     assert not out.errors_had;
