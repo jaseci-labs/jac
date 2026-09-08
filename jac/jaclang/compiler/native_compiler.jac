@@ -111,6 +111,8 @@ class NativeCompiler {
         L.jc_reg_field.restype = c_int64;
         L.jc_reg_default.argtypes = [c_int64] * 3;
         L.jc_reg_default.restype = c_int64;
+        L.jc_reg_edge_builder.argtypes = [c_int64];
+        L.jc_reg_edge_builder.restype = c_int64;
         L.jc_reg_edge.argtypes = [c_int64] * 2;
         L.jc_reg_edge.restype = c_int64;
         L.jc_reg_hint_tags.argtypes = [c_int64] * 2;
@@ -385,6 +387,8 @@ class NativeCompiler {
         self.lib.jc_reg_class(1, self._hold(NodeAnchor), 0, 0, 0);
         self._register_defaults(NodeAnchor, 1);
         self._register_edges();
+        import from jaclang.runtime.runtime { JacGraph }
+        self.lib.jc_reg_edge_builder(self._hold(JacGraph.heavy_edge));
         self.lib.jc_reg_hint_tags(
             stable_osp_tag("SrcDiag"), stable_osp_tag("CommentData")
         );

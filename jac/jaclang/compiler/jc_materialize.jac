@@ -1,5 +1,8 @@
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
-import from c { def osp_adj_pairs(origin: int, dir: int) -> list[int];  }
+import from c { def osp_adj_entries(origin: int, dir: int) -> list[int];  }
+import from c { def PyTuple_New(n: int) -> int;  }
+import from c { def PyTuple_SetItem(t: int, i: int, v: int) -> int;  }
+import from c { def PyObject_CallObject(f: int, args: int) -> int;  }
 import from c { def PyType_GenericAlloc(t: int, n: int) -> int;  }
 import from c { def PyObject_SetAttr(o: int, k: int, v: int) -> int;  }
 import from c { def PyObject_GetAttr(o: int, k: int) -> int;  }
@@ -83,7 +86,8 @@ obj ClassRow {
 }
 
 obj MzConsts {
-    has none_h: int = 0,
+    has edge_builder: int = 0,
+        none_h: int = 0,
         true_h: int = 0,
         false_h: int = 0,
         empty_h: int = 0,
@@ -181,6 +185,11 @@ def:pub jc_reg_default(tag: int, key_h: int, kind: int) -> int {
     return 0;
 }
 
+def:pub jc_reg_edge_builder(builder: int) -> int {
+    _K.edge_builder = builder;
+    return 0;
+}
+
 def:pub jc_reg_edge(tag: int, cls_h: int) -> int {
     _EDGE[tag] = cls_h;
     return 0;
@@ -256,7 +265,9 @@ obj Mz {
         lst_i: list[int] = [],
         lst_t: list[int] = [],
         skipped: int = 0,
-        containers: list[ContainerCopy] = [];
+        containers: list[ContainerCopy] = [],
+        nodes: list[int] = [],
+        failed: bool = False;
 }
 
 glob _LAST: list[Mz] = [];
@@ -503,18 +514,24 @@ def _visit(m: Mz, h: int, hint: int) -> None {
     _fill_defaults(row, o);
     _copy_fields(m, row, h, o);
     if row.is_node != 0 {
+        m.nodes.append(h);
+        anchor = _new_anchor(o);
+        if anchor != 0 {
+            Py_DecRef(anchor);
+        }
         _enqueue_adj(m, h, 2);
         _enqueue_adj(m, h, 1);
     }
 }
 
 def _enqueue_adj(m: Mz, h: int, dir: int) {
-    po = osp_adj_pairs(h, dir);
+    po = osp_adj_entries(h, dir);
     n = len(po);
     i = 0;
     while i < n {
         _enqueue(m, po[i + 1], 0);
-        i += 2;
+        _enqueue(m, po[i + 2], po[i]);
+        i += 4;
     }
 }
 
@@ -540,7 +557,7 @@ def _patch_refs(m: Mz) {
 }
 
 def _edge_dict_from_pairs(m: Mz, h: int, dir: int, weak: int) -> int {
-    po = osp_adj_pairs(h, dir);
+    po = osp_adj_entries(h, dir);
     n = len(po);
     d = 0;
     cur_tag = 0;
@@ -549,8 +566,9 @@ def _edge_dict_from_pairs(m: Mz, h: int, dir: int, weak: int) -> int {
     while i < n {
         tg = po[i];
         t = po[i + 1];
-        i += 2;
-        if tg not in _EDGE {
+        eh = po[i + 2];
+        i += 4;
+        if eh != 0 or tg not in _EDGE {
             continue;
         }
         val = m.map.get(t, 0);
@@ -616,10 +634,7 @@ def _new_anchor(o: int) -> int {
 def _edge_lists(m: Mz, h: int, o: int) -> None {
     d_out = _edge_dict_from_pairs(m, h, 2, 0);
     d_in = _edge_dict_from_pairs(m, h, 1, 1);
-    if d_out == 0 and d_in == 0 {
-        return;
-    }
-    anchor = _new_anchor(o);
+    anchor = PyObject_GetAttr(o, _K.k_jac);
     if anchor != 0 {
         if d_out != 0 {
             PyObject_SetAttr(anchor, _K.k_out, d_out);
@@ -636,6 +651,46 @@ def _edge_lists(m: Mz, h: int, o: int) -> None {
     }
     if d_in != 0 {
         Py_DecRef(d_in);
+    }
+}
+
+def _attach_edges(m: Mz, h: int) -> None {
+    entries = osp_adj_entries(h, 2);
+    i = 0;
+    while i < len(entries) {
+        peer = entries[i + 1];
+        handle = entries[i + 2];
+        undirected = entries[i + 3];
+        i += 4;
+        if handle == 0 {
+            continue;
+        }
+        source = m.map.get(h, 0);
+        target = m.map.get(peer, 0);
+        instance = m.map.get(handle, 0);
+        if source == 0 or target == 0 or instance == 0 {
+            continue;
+        }
+        src_anchor = PyObject_GetAttr(source, _K.k_jac);
+        tgt_anchor = PyObject_GetAttr(target, _K.k_jac);
+        args = PyTuple_New(5);
+        PyTuple_SetItem(args, 0, src_anchor);
+        PyTuple_SetItem(args, 1, tgt_anchor);
+        Py_IncRef(instance);
+        PyTuple_SetItem(args, 2, instance);
+        flag = _K.true_h if undirected != 0 else _K.false_h;
+        Py_IncRef(flag);
+        PyTuple_SetItem(args, 3, flag);
+        Py_IncRef(_K.none_h);
+        PyTuple_SetItem(args, 4, _K.none_h);
+        attached = PyObject_CallObject(_K.edge_builder, args);
+        Py_DecRef(args);
+        if attached != 0 {
+            Py_DecRef(attached);
+        } else {
+            m.failed = True;
+            return;
+        }
     }
 }
 
@@ -668,14 +723,18 @@ def _run(start_h: int, start_hint: int, do_edges: int) -> int {
         _set_fresh(copy.owner, copy.key, _copy_value(m, copy.value, copy.layout));
     }
     if do_edges != 0 {
-        for h in m.map {
-            if m.map[h] != 0 {
-                _edge_lists(m, h, m.map[h]);
+        for h in m.nodes {
+            _edge_lists(m, h, m.map[h]);
+        }
+        for h in m.nodes {
+            _attach_edges(m, h);
+            if m.failed {
+                break;
             }
         }
     }
     out = 0;
-    if start_h in m.map {
+    if not m.failed and start_h in m.map {
         out = m.map[start_h];
     }
     if out != 0 {

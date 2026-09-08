@@ -191,6 +191,13 @@ test "native binding matches annex implementations exactly once" {
         edges = [edge declaration->:ScopePrimary:->];
         assert {binding_edge.name for binding_edge in edges}
             == set(declaration.names_in_scope);
+        for binding_edge in edges {
+            assert binding_edge.__jac__.source.archetype is declaration;
+            symbol = declaration.names_in_scope[binding_edge.name];
+            assert binding_edge.__jac__.target.archetype is symbol;
+            incoming = [edge symbol<-:ScopePrimary:<-];
+            assert any(candidate is binding_edge for candidate in incoming);
+        }
     }
 }
 

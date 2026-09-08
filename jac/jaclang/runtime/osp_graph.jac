@@ -810,7 +810,8 @@ def _new_graph -> OspGraph {
 
 glob DEFAULT_GRAPH: OspGraph = _new_graph();
 
-def osp_adj_pairs(origin: int, dir: int) -> list[int] {
+def osp_adj_entries(origin: int, dir: int) -> list[int] {
+    """ABI adjacency records: tag, peer, edge handle (zero for light), undirected.""";
     out: list[int] = [];
     if origin in DEFAULT_GRAPH.adj {
         a: Adj = DEFAULT_GRAPH.adj[origin];
@@ -820,6 +821,8 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
                 if row.live {
                     out.append(row.tag);
                     out.append(row.tgt);
+                    out.append(row.handle);
+                    out.append(1 if row.undirected else 0);
                 }
             }
             for k in a.out {
@@ -827,6 +830,8 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
                 for t in peers {
                     out.append(k);
                     out.append(t);
+                    out.append(0);
+                    out.append(0);
                 }
             }
         } else {
@@ -835,6 +840,8 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
                 if row.live {
                     out.append(row.tag);
                     out.append(row.src);
+                    out.append(row.handle);
+                    out.append(1 if row.undirected else 0);
                 }
             }
             for k in a.inn {
@@ -842,6 +849,8 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
                 for t in srcs {
                     out.append(k);
                     out.append(t);
+                    out.append(0);
+                    out.append(0);
                 }
             }
         }
