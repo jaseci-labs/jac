@@ -1152,10 +1152,6 @@ impl NaIRGenPass._osp_refs_result(nd: uni.Expr, handles: ir.Value) -> ir.Value {
     element = self._elem_arch_name_of(nd);
     boxed = self._list_spec_of(nd) == "jacval";
     if boxed or (element is not None and element in self.struct_types) {
-        # Kernel handles are i64 on every target. Language references have
-        # pointer-sized slots and retain their elements. Convert through the
-        # ordinary list operations so the result owns the correct destructor
-        # as well as the correct layout (including on 32-bit targets).
         pointer = ir.IntType(8).as_pointer();
         storage = self.jacval_type if boxed else pointer;
         spec = "jacval" if boxed else "ptr";
@@ -1226,8 +1222,6 @@ impl NaIRGenPass._codegen_chained_filter(
     }
     _filter_fn = self.func_symtab.get("osp_filter");
     if _filter_fn is not None {
-        # Conversion can emit a loop and consume an owned source. Complete it
-        # before selecting the call's builder, and track the resulting owner.
         target_val = self._coerce_type(target_val, _filter_fn.function_type.args[0]);
     }
     _result = target_val;

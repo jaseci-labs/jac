@@ -1,11 +1,3 @@
-"""Native contiguous storage primitives shared by collection implementations.
-
-The ABI receives addresses of storage slots and the element stride from the
-target layout. It has no knowledge of a list, dictionary, or object header.
-Relocation moves initialized bytes without retaining or destroying elements;
-the caller supplies the storage-release operation for its memory profile.
-"""
-
 def __jac_array_grow(
     data_slot: int, capacity_slot: int, length: int, stride: int, release_storage: int
 ) -> int {

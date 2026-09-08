@@ -57,8 +57,6 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     b.store(append_fn.args[1], value_slot);
     retain_address = ir.Constant(i64, 0);
     if self._elem_kind(elem_type) != "raw" and not self._nogc_headerless() {
-        # This adapter describes one element's lifetime; the append algorithm
-        # itself is shared Jac runtime code, independent of the element ABI.
         retain = ir.Function(
             self.llvm_module,
             ir.FunctionType(ir.VoidType(), [ir.IntType(8).as_pointer()]),

@@ -939,9 +939,7 @@ impl NaIRGenPass._emit_rc_alloc_container(
     cap_p = b.gep(
         container_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr"
     );
-    # An empty dense container has no backing storage. Its first append and
-    # every subsequent allocation go through the shared Jac storage kernel.
-    # Hash tables retain their existing control-array initialization.
+
     capacity = 0 if layout["kind"] == "dense" else initial_cap;
     b.store(ir.Constant(i64, capacity), cap_p);
 

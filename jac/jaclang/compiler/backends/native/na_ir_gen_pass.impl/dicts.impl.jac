@@ -247,8 +247,6 @@ impl NaIRGenPass._box_to_jacval(
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        # Graph handles cross the kernel ABI as erased pointers. Their
-        # semantic object identity cannot be inferred from an i8* layout.
         ptr_tag = 6 if object_reference else 2;
         for (_, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {

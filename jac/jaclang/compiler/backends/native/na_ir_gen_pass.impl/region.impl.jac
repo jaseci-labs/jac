@@ -205,8 +205,6 @@ impl NaIRGenPass._register_region_handle_var(
         and source.sym is not None
         and source.sym.na_region_handle
         and source.sym_name != var_name {
-        # Keep both locals in the cleanup plan. Only the path that performs
-        # the move relinquishes the source; another branch may still own it.
         source_slot = self.local_vars.get(source.sym_name);
         if source_slot is not None {
             slot_type = source_slot.type;
