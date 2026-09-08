@@ -132,6 +132,7 @@ min_width = 900
 min_height = 600
 
 [apps.mobile.dependencies.npm.native]
+"@noble/hashes" = "^2.0.1"
 expo-web-browser = "~15.0.0"
 expo-crypto = "~15.0.0"
 expo-font = "~14.0.0"
