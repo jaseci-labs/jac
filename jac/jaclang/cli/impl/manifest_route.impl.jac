@@ -14,26 +14,33 @@ def _read_version_from_toml(toml_path: Path) -> (str | None) {
     return None;
 }
 
+# jac.toml resolves to the nearest ancestor (walk-up, nearest wins), so the
+# version must too: dev_source points at the dir containing jaclang/, while
+# the manifest usually lives at the repo root above it.
+def _nearest_toml_version(start: Path) -> (str | None) {
+    for candidate in [start] + list(start.parents) {
+        toml_path = candidate / 'jac.toml';
+        if toml_path.exists() {
+            return _read_version_from_toml(toml_path);
+        }
+    }
+    return None;
+}
+
 impl resolve_cli_version -> str {
     dev_source = os.environ.get('JAC_DEV_SOURCE');
     if dev_source {
-        toml_path = Path(dev_source) / 'jac.toml';
-        if toml_path.exists() {
-            ver = _read_version_from_toml(toml_path);
-            if ver {
-                return ver;
-            }
+        ver = _nearest_toml_version(Path(dev_source).resolve());
+        if ver {
+            return ver;
         }
     }
 
     jac_file = jaclang.__file__;
     if jac_file {
-        source_toml = Path(jac_file).parent.parent / 'jac.toml';
-        if source_toml.exists() {
-            ver = _read_version_from_toml(source_toml);
-            if ver {
-                return ver;
-            }
+        ver = _nearest_toml_version(Path(jac_file).resolve().parent.parent);
+        if ver {
+            return ver;
         }
     }
 
