@@ -3988,6 +3988,7 @@ impl TypeEvaluator._prefetch_types{
     }
     self.prefetch.final_class = get_jac_builtin_class("Final");
     self.prefetch.node_class = get_jac_builtin_class("Node");
+    self.prefetch.edge_class = get_jac_builtin_class("Edge");
     self.prefetch.walker_class = get_jac_builtin_class("Walker");
     self.prefetch.path_class = get_jac_builtin_class("GraphQuery");
     self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");

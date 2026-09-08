@@ -586,6 +586,12 @@ impl TypeEvaluator.get_type_of_class(node_: Archetype) -> ClassType {
             and not (is_builtin_class and node_.name_spec.sym_name == "Node")
         ) {
             base_classes.append(self.prefetch.node_class);
+        } elif (
+            node_.sym_category == SymbolType.EDGE_ARCH
+            and self.prefetch.edge_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Edge")
+        ) {
+            base_classes.append(self.prefetch.edge_class);
         }
     }
 

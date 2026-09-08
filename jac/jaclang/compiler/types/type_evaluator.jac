@@ -285,6 +285,7 @@ obj PrefetchedTypes {
         literal_string_class: ClassType | None = None,
         root_class: ClassType | None = None,
         node_class: ClassType | None = None,
+        edge_class: ClassType | None = None,
         walker_class: ClassType | None = None,
         path_class: ClassType | None = None,
         jsx_element_class: ClassType | None = None,
