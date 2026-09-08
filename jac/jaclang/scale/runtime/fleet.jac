@@ -309,11 +309,6 @@ def _compiled_app_edges(
     }
     edges: list[tuple[str, str]] = [];
     seen: set[str] = set();
-    # Boundary analysis registers the modules it reaches into the same hubs
-    # this walks, so the hubs are re-read to a fixed point rather than
-    # iterated live: a mutation mid-iteration raised out of the for and cost
-    # the caller the whole edge set, and a plain snapshot would instead drop
-    # the newly registered modules and their edges without saying so.
     while True {
         fresh: list[tuple[str, any]] = [];
         for hub in list(prog._search_hubs()) {
