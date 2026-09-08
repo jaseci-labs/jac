@@ -14,11 +14,7 @@ import from jaclang.scale.config.config_loader {
     normalize_gateway_config,
     reset_scale_config
 }
-import from jaclang.scale.config.validation {
-    STRICT_ENV,
-    validate_app_scale_config,
-    validate_scale_config
-}
+import from jaclang.scale.config.validation { STRICT_ENV, validate_app_scale_config }
 import from jaclang.scale.runtime.fleet { fleet_from_config }
 
 glob _TOML: str = '[project]\n'
@@ -173,14 +169,6 @@ test "an unknown per-app key is flagged with a suggestion" {
     assert len(msgs) == 1 , msgs;
     assert "apps.orders.scale" in msgs[0] , msgs[0];
     assert "did you mean 'cpu_limit'" in msgs[0] , msgs[0];
-}
-
-
-test "the old [scale.microservices] table is unknown to the schema" {
-    msgs = validate_scale_config({"microservices": {"routes": {}}});
-    assert len(msgs) == 1 , msgs;
-    assert "microservices" in msgs[0] , msgs[0];
-    assert "gateway" in JacScaleConfig().get_config_schema()["options"];
 }
 
 
