@@ -8,7 +8,12 @@ glob _logger = logging.getLogger(__name__),
          "transfer-encoding",
          "connection",
          "keep-alive",
-         "content-length"
+         "content-length",
+         "te",
+         "trailer",
+         "upgrade",
+         "proxy-authenticate",
+         "proxy-authorization"
      };
 
 

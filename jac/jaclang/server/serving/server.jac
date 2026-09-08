@@ -11,6 +11,7 @@ import from urllib.parse { unquote, urlsplit }
 import from jaclang.server.net { PORT_RETRY_LIMIT, bind_listener }
 import from jaclang.server.serving.accesslog { AccessRecord, emit as emit_access }
 import from jaclang.server.serving.app { ServingApp }
+import from jaclang.server.serving.client { close_connection_pool }
 import from jaclang.server.serving.compression { CompressionPolicy }
 import from jaclang.server.serving.datatypes {
     Headers,
@@ -180,6 +181,7 @@ obj ServingServer {
                 );
             } except asyncio.TimeoutError {}
             await self.app.shutdown();
+            close_connection_pool();
             if pulse is not None {
                 pulse.cancel();
             }
