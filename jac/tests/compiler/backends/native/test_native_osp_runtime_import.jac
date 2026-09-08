@@ -34,6 +34,13 @@ test "native edge peers require a live edge incident to the origin" {
     assert probe();
 }
 
+test "constructed edge expressions retain their native graph type" {
+    (engine, _) = compile_native("osp_edge_instance.jac");
+    probe = get_func(engine, "probe", ctypes.c_int64);
+    assert probe() == 1;
+    assert probe() == 1;
+}
+
 test "typed graph queries preserve object identity through union returns" {
     (engine, _) = compile_native("osp_query_union.jac");
     probe = get_func(engine, "probe", ctypes.c_bool);

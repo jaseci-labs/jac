@@ -786,6 +786,9 @@ impl NaIRGenPass._codegen_kernel_spawn(
 }
 
 impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
+    while isinstance(nd, (uni.AtomUnit, uni.CfgExpr)) {
+        nd = nd.value if isinstance(nd, uni.AtomUnit) else nd.expr;
+    }
     if isinstance(nd, uni.FuncCall) {
         return self._get_name(nd.target);
     }
