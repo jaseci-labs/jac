@@ -1504,6 +1504,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "ability, or lambda body.",
          help="Add ';' to discard the expression's value, or use an explicit `return` if the value should leave the enclosing function from this position."
      ),
+     E2085 = _err(
+         "E2085",
+         Category.SEMANTIC,
+         "'await' is only valid inside an 'async' function or ability",
+         help="Mark the enclosing function or ability 'async' (e.g. `async def` or `async can`) so it compiles to a coroutine capable of `await`; otherwise remove the `await` and call it synchronously."
+     ),
      W3001 = _warn(
          "W3001",
          Category.LINT,

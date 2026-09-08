@@ -343,7 +343,7 @@ import from core.social_graph { create_tweet, load_feed }
 
 # awaited: the result comes back, failures raise
 walker:pub post_and_show {
-    can run with Root entry {
+    async can run with Root entry {
         posted = await create_tweet(content=self.text);   # runs on social_graph
         feed = await load_feed(limit=10);
         report feed.reports;
