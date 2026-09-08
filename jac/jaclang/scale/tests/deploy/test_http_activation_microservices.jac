@@ -1389,3 +1389,63 @@ test "discover_capabilities caches per (cluster, service-address, client-identit
     }
     assert not raised , "preflight must report a 403 as a warning, not an unhandled exception";
 }
+
+
+test "an HTTP-activated service gets no PDB even with pdb.min_available set" {
+    import from jaclang.scale.config.app_config { AppConfig }
+    import tempfile;
+    import from pathlib { Path }
+    services = {
+        "billing_ops": {
+            "replicas": 1,
+            "pdb": {"min_available": 1},
+            "http_activation": {
+                "enabled": True,
+                "target_port": 8080,
+                "concurrency_target": 10,
+                "rules": [{"hosts": ["*"]}]
+            }
+        }
+    };
+    with tempfile.TemporaryDirectory() as project {
+        for name in list(services.keys()) + ["main"] {
+            (Path(project) / f"{name}.jac").write_text("");
+        }
+        b = ManifestBuilder(
+            k8s_config=KubernetesConfig(
+                app_name="t", namespace="t-ns", bundle_storage_class="standard"
+            ),
+            microservices_config={
+                "routes": {name: f"/{name}" for name in services},
+                "services": services
+            },
+            dry_run=True
+        );
+        bundle = b.generate_manifests(AppConfig(code_folder=project, app_name="t"), "");
+        assert bundle.get("pdbs", {}).get("billing_ops") is None;
+    }
+}
+
+
+test "the plan validator skips the HPA and PDB checks for an HTTP_ACTIVATION service" {
+    import from jaclang.scale.runtime.cli.diagnostics { PlanValidator }
+    validator = PlanValidator(
+        bundle={
+            "deployments": {"billing_ops": {"spec": {"replicas": 1}}},
+            "scaling": {"billing_ops": {"mode": ScalingMode.HTTP_ACTIVATION}}
+        },
+        ms_cfg={"routes": {"billing_ops": "/billing-ops"}},
+        svc_configs={
+            "billing_ops": {"hpa": {"min": 5, "max": 1}, "pdb": {"max_unavailable": 1}}
+        }
+    );
+    messages = [
+        d.message
+        for d in validator.run()
+        if d.service == "billing_ops"
+    ];
+    assert not any("HPA" in m for m in messages) , messages;
+    assert not any(
+        "PodDisruptionBudget" in m or "pdb." in m for m in messages
+    ) , messages;
+}
