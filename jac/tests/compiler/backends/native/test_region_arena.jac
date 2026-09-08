@@ -122,11 +122,15 @@ test "arena: owned and frozen fields keep their region alive across return" {
             "region_owner_field.jac", gc_mode=mode, nogc_enforce=mode == "none"
         );
         read_drops = get_func(eng, "read_drops", ctypes.c_int64);
-        for name in ["observe", "observe_published"] {
+        for (name, expected) in [
+            ("observe", 1),
+            ("observe_published", 1),
+            ("observe_partition", 2)
+        ] {
             observe = get_func(eng, name, ctypes.c_int64);
             for _ in range(20) {
                 assert observe() == 0;
-                assert read_drops() == 1;
+                assert read_drops() == expected;
             }
         }
     }

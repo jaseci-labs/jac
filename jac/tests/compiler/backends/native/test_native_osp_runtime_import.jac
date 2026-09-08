@@ -39,6 +39,9 @@ test "constructed edge expressions retain their native graph type" {
     probe = get_func(engine, "probe", ctypes.c_int64);
     assert probe() == 1;
     assert probe() == 1;
+    generic_edge = get_func(engine, "generic_edge", ctypes.c_int64);
+    assert generic_edge() == 1;
+    assert generic_edge() == 1;
 }
 
 test "typed graph queries preserve object identity through union returns" {

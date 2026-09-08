@@ -57,3 +57,16 @@ def observe_published -> int {
     snapshot = make_published();
     return snapshot.observed_drops();
 }
+
+def observe_partition -> int {
+    drops = 0;
+    parent: own Region = Region();
+    (left, right) = parent.partition(2);
+    in left {
+        resource = Resource();
+    }
+    in right {
+        resource = Resource();
+    }
+    return drops;
+}

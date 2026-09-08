@@ -16,3 +16,13 @@ def probe -> int {
         return len(found);
     }
 }
+
+def generic_edge -> int {
+    region: own Region = Region();
+    in region {
+        a = N();
+        b = N();
+        a ++> b;
+        return len([a-->]);
+    }
+}
