@@ -1125,19 +1125,30 @@ impl TypeEvaluator._get_type_of_expression_core(
                             continue;
                         }
                         if isinstance(union_member, ClassType) {
-                            lookup_type = self._get_type_for_member_lookup(union_member);
-                            member = self._lookup_class_member(lookup_type, expr.right.value);
-                            if member is None and lookup_type.is_instantiable_class()
+                            lookup_type = self._get_type_for_member_lookup(
+                                union_member
+                            );
+                            member = self._lookup_class_member(
+                                lookup_type, expr.right.value
+                            );
+                            if member is None
+                                and lookup_type.is_instantiable_class()
                                 and self.prefetch is not None {
-                                union_meta_cls = self._metaclass_of(lookup_type) or self.prefetch.type_class;
+                                union_meta_cls = self._metaclass_of(lookup_type)
+                                    or self.prefetch.type_class;
                                 if union_meta_cls is not None {
                                     lookup_type = union_meta_cls.clone_as_instance();
-                                    member = self._lookup_object_member(lookup_type, expr.right.value);
+                                    member = self._lookup_object_member(
+                                        lookup_type, expr.right.value
+                                    );
                                 }
                             }
                             if member is not None {
-                                prop_ret = self.get_getter_type_from_property(member.symbol)
-                                    if not lookup_type.is_instantiable_class() else None;
+                                prop_ret = self.get_getter_type_from_property(
+                                    member.symbol
+                                )
+                                    if not lookup_type.is_instantiable_class()
+                                    else None;
                                 if prop_ret is not None {
                                     member_types.append(
                                         self.specialize_member_type(
