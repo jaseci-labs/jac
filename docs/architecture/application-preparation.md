@@ -22,6 +22,10 @@ before preparation reads their artifacts. Package initializers are prepared with
 the entry module. Initialization uses the manifest's module identities, and the
 server receives the initialized entry's identity, so an entry such as `app.jac`
 cannot be confused with its enclosing sealed package named `app`.
+When an image's package name is already occupied by another module (for example,
+Python's `site`), its manifest entries load under an image-specific namespace.
+The existing module remains intact, and both CLI and in-process serving retain
+the initialized entry's name.
 Static assets also resolve relative to the sealed image, including configured
 asset directories outside its client distribution.
 

@@ -101,7 +101,7 @@ def prepare_inprocess_runtime(
             project_root,
             [svc.entry_path(project_root) for svc in services]
         );
-        initialize_application(prepared, cfg, served);
+        mod = initialize_application(prepared, cfg, served).__name__;
 
         serve_overrides: dict[str, any] = {'no_client': True};
         serve_overrides.update(overrides or {});

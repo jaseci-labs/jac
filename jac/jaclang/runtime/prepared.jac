@@ -64,6 +64,8 @@ def load_prepared_module(path: str) -> types.ModuleType {
     import from jaclang.jac0core.ext_registry { base_stem }
     import from jaclang.jac0core.sealed { image_for_bundle_dir }
     import from pathlib { Path }
+    import hashlib;
+    import sys;
     path = os.path.realpath(path);
     if (prepared_code(path) is None) {
         raise RuntimeError(f'No prepared executable artifact for {path}');
@@ -83,6 +85,20 @@ def load_prepared_module(path: str) -> types.ModuleType {
         if image is not None {
             relative = Path(path).relative_to(application.root).as_posix();
             target = image.manifest['modules'][relative]['module'];
+            package = image.package;
+            loaded = sys.modules.get(package);
+            if loaded is not None
+                and not str(getattr(loaded, '__file__', '') or '').startswith(
+                    application.root + os.sep
+                ) {
+                namespace = '_jac_app_'
+                    + hashlib.sha256(application.root.encode()).hexdigest()[:16];
+                for (source, info) in image.manifest['modules'].items() {
+                    name = namespace + info['module'][len(package):];
+                    image.index[name] = (info, source);
+                }
+                target = namespace + target[len(package):];
+            }
         }
     }
     modules = Jac.jac_import(target=target, base_path=base, lng='jac');
