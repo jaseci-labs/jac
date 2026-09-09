@@ -7,6 +7,9 @@ their aliases inherit the input's immutable access contract in every
 memory profile. Lifetime inference remains with the borrow analysis.
 """
 impl OwnershipCheckPass._stamp_immutable_aliases -> None {
+    if not self.imm_decl {
+        return;
+    }
     dependents: dict[SymId, list[Name]] = {};
     for assignment in self.idx_assignments {
         if assignment.aug_op is not None

@@ -31,7 +31,9 @@ and registries shared by analysis and codegen (`symbol_utils`, `expr_keys`, `typ
 
 When the driver knows a module's codespace before parsing, `jc_unit` runs the
 existing `ASTValidationPass` and `SymTabBuildPass` after annex weaving, inside
-the parse region. The tree and symbol graph cross into the host together.
+the parse region. If both succeed, `DeclImplMatchPass` matches declarations and
+implementations and resolves their local binding relationships there as well.
+The tree and symbol graph cross into the host together.
 Modules with wildcard imports defer symbol construction until the driver's
 dependency resolver has made the imported names available. Parsing without a
 compiler program, or without a known codespace, keeps the ordinary host schedule.
@@ -40,8 +42,16 @@ compiler program, or without a known codespace, keeps the ordinary host schedule
 driver, which applies diagnostic policy and records each pass once. Native field
 and reference-container layouts come from the backend's ABI metadata;
 `jc_materialize` preserves object identity when copying symbol indexes and edges.
+Edge payloads and connection order survive materialization through the shared
+OSP runtime. Linked declarations and implementations use one primary scope.
 Keep pass algorithms in `passes/`, and extend this shared boundary when another
 pass moves into the kernel.
+
+This path still materializes mutable host graph objects. Immutable fragment
+publication, owner/root coupling, dependency reuse and retained prior binding
+results are remaining work in [the compiler migration epic](https://github.com/jaseci-labs/jac/issues/9061).
+The current Region and graph lifetime support does not by itself complete that
+publication contract.
 
 `scripts/native_compile_bench.jac` at the repository root measures uncached AOT
 application builds with a warm compiler. Set `JAC_COMPILER_LIB` to each built
