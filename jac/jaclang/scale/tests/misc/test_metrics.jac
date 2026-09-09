@@ -207,9 +207,8 @@ test "parse prometheus text and calculate summary" {
 
     labels = [g['label'] for g in scopes['app']['distribution']];
     counts = [g['count'] for g in scopes['app']['distribution']];
-    assert labels
-        == ['under 25ms', '25 - 100ms', '100 - 500ms', '500ms - 2.5s', 'over 2.5s'];
-    assert counts == [0, 80, 22, 0, 10];
+    assert labels == ['under 100ms', '100 - 500ms', 'over 500ms'];
+    assert counts == [80, 22, 10];
 
     endpoints = summary['endpoints'];
     assert [(e['method'], e['path']) for e in endpoints]
@@ -263,7 +262,10 @@ test "metrics summary over a real collector exposition" {
     kinds = {e["path"]: e["kind"] for e in endpoints};
     assert kinds
         == {"/walker/Hello": "app", "/healthz": "health", "/metrics": "system"};
-    assert sum([g["count"] for g in summary["scopes"]["app"]["distribution"]]) == 3;
+    distribution = summary["scopes"]["app"]["distribution"];
+    assert [g["label"] for g in distribution]
+        == ["under 10ms", "10 - 100ms", "100ms - 1s", "over 1s"];
+    assert [g["count"] for g in distribution] == [0, 1, 1, 1];
 }
 
 test "metrics summary percentiles from bucket edges" {
@@ -304,6 +306,49 @@ test "metrics summary classifies platform paths out of the app scope" {
     assert _classify_path('/metrics') == 'system';
     assert _classify_path('/docs') == 'system';
     assert _classify_path('/openapi.json') == 'system';
+}
+
+
+glob BAND_TRAFFIC: list = [(0.005, 5), (0.05, 10), (0.2, 20), (1.0, 8), (5.0, 3)];
+
+
+def _distribution_for(cfg: dict) -> list {
+    import from jaclang.scale.admin.admin_portal {
+        _parse_prometheus_text,
+        _calculate_metrics_summary
+    }
+    collector = PrometheusMetricsCollector(config=cfg);
+    for (latency, n) in BAND_TRAFFIC {
+        for _ in range(n) {
+            collector.record_request("GET", "/walker/Work", 200, latency);
+        }
+    }
+    summary = _calculate_metrics_summary(
+        _parse_prometheus_text(collector.expose().decode("utf-8"))
+    );
+    return summary["scopes"]["app"]["distribution"];
+}
+
+
+test "latency bands are exact on the default buckets" {
+    dist = _distribution_for({"enabled": True, "namespace": "band_default"});
+    assert [g["label"] for g in dist]
+        == ["under 25ms", "25 - 100ms", "100 - 500ms", "500ms - 2.5s", "over 2.5s"];
+    assert [g["count"] for g in dist] == [5, 10, 20, 8, 3];
+}
+
+
+test "latency bands follow a custom histogram_buckets" {
+    dist = _distribution_for(
+        {
+            "enabled": True,
+            "namespace": "band_custom",
+            "histogram_buckets": [0.01, 0.1, 1.0]
+        }
+    );
+    assert [g["label"] for g in dist]
+        == ["under 10ms", "10 - 100ms", "100ms - 1s", "over 1s"];
+    assert [g["count"] for g in dist] == [5, 10, 28, 3];
 }
 
 import shutil;

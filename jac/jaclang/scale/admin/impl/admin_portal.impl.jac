@@ -1221,12 +1221,7 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict[str, any]] {
     return metrics_data;
 }
 
-glob _LATENCY_GROUPS: dict[str, float] = {
-         'under 25ms': 0.025,
-         '25 - 100ms': 0.1,
-         '100 - 500ms': 0.5,
-         '500ms - 2.5s': 2.5
-     };
+glob _LATENCY_CUTS: list[float] = [0.025, 0.1, 0.5, 2.5];
 
 
 def _classify_path(path: str) -> str {
@@ -1280,27 +1275,67 @@ def _percentile_from_buckets(buckets: list[dict[str, float]], q: float) -> dict 
 }
 
 
-def _cumulative_at(buckets: list[dict[str, float]], bound: float) -> float {
-    seen: float = 0.0;
-    for b in buckets {
-        if b['le'] <= bound {
-            seen = b['count'];
+def _format_seconds(secs: float) -> str {
+    unit: str = 'ms' if secs < 1.0 else 's';
+    value: float = round(secs * 1000.0, 6) if unit == 'ms' else round(secs, 6);
+    text: str = str(int(value)) if value == int(value) else str(value);
+    return text + unit;
+}
+
+
+def _range_label(lo: float, hi: float) -> str {
+    lo_text: str = _format_seconds(lo);
+    hi_text: str = _format_seconds(hi);
+    lo_unit: str = 'ms' if lo_text.endswith('ms') else 's';
+    hi_unit: str = 'ms' if hi_text.endswith('ms') else 's';
+    if lo_unit == hi_unit {
+        return lo_text[:-len(lo_unit)] + ' - ' + hi_text;
+    }
+    return lo_text + ' - ' + hi_text;
+}
+
+
+def _band_edges(edges: list[float]) -> list[float] {
+    chosen: list[float] = [];
+    for cut in _LATENCY_CUTS {
+        nearest: float = edges[0];
+        for le in edges {
+            if abs(le - cut) < abs(nearest - cut) {
+                nearest = le;
+            }
+        }
+        if nearest not in chosen {
+            chosen.append(nearest);
         }
     }
-    return seen;
+    return chosen;
 }
 
 
 def _latency_groups(buckets: list[dict[str, float]]) -> list[dict] {
-    total: float = buckets[-1]['count'] if buckets else 0.0;
+    edges: list[float] = [
+        b['le']
+        for b in buckets
+        if b['le'] != float('inf')
+    ];
+    if not edges {
+        return [];
+    }
+    counts: dict[float, float] = {b['le']: b['count'] for b in buckets};
+    total: float = buckets[-1]['count'];
     out: list[dict] = [];
     prev: float = 0.0;
-    for (label, bound) in _LATENCY_GROUPS.items() {
-        seen: float = _cumulative_at(buckets, bound);
+    lo: float = 0.0;
+    for (i, hi) in enumerate(_band_edges(edges)) {
+        seen: float = counts[hi];
+        label: str = ('under ' + _format_seconds(hi))
+            if i == 0
+            else _range_label(lo, hi);
         out.append({'label': label, 'count': int(seen - prev)});
         prev = seen;
+        lo = hi;
     }
-    out.append({'label': 'over 2.5s', 'count': int(total - prev)});
+    out.append({'label': 'over ' + _format_seconds(lo), 'count': int(total - prev)});
     return out;
 }
 
