@@ -1,11 +1,5 @@
 import from jaclang.compiler.frontend.diagnostics { E1309 }
 
-"""Preserve readonly access through local aliases of frozen references.
-
-Copying a scalar does not alias storage. Reference projections do, so
-their aliases inherit the input's immutable access contract in every
-memory profile. Lifetime inference remains with the borrow analysis.
-"""
 impl OwnershipCheckPass._stamp_immutable_aliases -> None {
     if not self.imm_decl {
         return;
