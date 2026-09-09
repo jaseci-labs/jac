@@ -6,6 +6,7 @@ import sys;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.scale.tests.support { require_pod_binary }
 import from jaclang.scale.injector.bundle {
     DEFAULT_SEAL_TIMEOUT_S,
     _stage_app,
@@ -264,10 +265,7 @@ test "a real pod binary seals the app into a .jab (source + _precompiled + manif
     # The checkout's own binary stands in for the downloaded pod binary; the
     # mechanism (stage -> precompile_bytecode.jac --seal -> pack _precompiled/**)
     # is identical for release binaries.
-    jac_bin = Path(__file__).parents[4] / "zig-out" / "bin" / "jac";
-    if not jac_bin.is_file() {
-        return;
-    }
+    jac_bin = require_pod_binary();
     names = _names(pack_jab(_mini_app(), jac_bin.read_bytes()));
     assert "svc.jac" in names;
     # The sealed manifest sits at the tar root, which is what makes this a .jab.

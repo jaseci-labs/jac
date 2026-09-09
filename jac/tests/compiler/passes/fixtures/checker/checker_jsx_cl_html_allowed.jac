@@ -1,10 +1,11 @@
-"""Fixture: .jac files may use raw HTML host tags even in a mobUI project.
+"""Fixture: .jac files may use raw HTML host tags even in a mobUI app.
 
-This is a regression fixture for the kind-leak bug: a consumer project with
-jac.toml ``client_kind = "mobui"`` stamped project_kind on the shared program, so
-JsxIntrinsicGuardPass fired E1105 on framework .jac files (e.g.
-client_runtime.jac) compiled into the same program during jac build."""
-
+This is a regression fixture for the kind-leak bug: a consumer app with
+``kind = "mobile"`` in its ``[apps.<name>]`` table stamped the mobUI
+enforcement root on the shared program, so JsxIntrinsicGuardPass fired E1105
+on framework .jac files (e.g. client_runtime.jac) compiled into the same
+program during jac build. The root is now a per-module fact
+(``Module.mobui_enforced_root``) and files outside it are exempt."""
 
 def Widget -> JsxElement {
     return

@@ -1,5 +1,5 @@
 import from contextvars { ContextVar }
-import from dataclasses { MISSING }
+import from jaclang.runtime.object_model { MISSING }
 import from jaclang.runtime.context { ExecutionContext, CallState }
 
 class JScaleExecutionContext(ExecutionContext) {

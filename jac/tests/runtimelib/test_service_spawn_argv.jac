@@ -50,25 +50,10 @@ def _capture_popen(captured: list) -> any {
 }
 
 
-test "sv-to-sv sibling spawn (scale plugin) argv is accepted by the real CLI" {
-    import from jaclang.scale.plugin { JacScalePlugin }
-    with TemporaryDirectory() as tmpdir {
-        (Path(tmpdir) / "argv_probe_plugin.jac").write_text(
-            "def:pub ping() -> int { return 1; }"
-        );
-        captured: list = [];
-        with unittest.mock.patch("subprocess.Popen", _capture_popen(captured)) {
-            with unittest.mock.patch(
-                "jaclang.scale.runtime.context.util.wait_for_health", return_value=True
-            ) {
-                JacScalePlugin.ensure_sv_service("argv_probe_plugin", tmpdir);
-            }
-        }
-        sv_client.unregister("argv_probe_plugin");
-        assert len(captured) == 1 , f"expected one spawn, got {captured}";
-        # captured[0][0] is the jac executable; the rest is the CLI invocation.
-        _parse_with_real_cli(captured[0][1:]);
-    }
+test "headless start args, the argv every fleet spawn site builds, are accepted by the real CLI" {
+    argv = sv_client.headless_start_args("argv_probe.jac", 18496);
+    assert argv[0] == "run" and "argv_probe.jac" in argv , argv;
+    _parse_with_real_cli(argv);
 }
 
 test "orchestrator start_service argv is accepted by the real CLI" {

@@ -1,4 +1,4 @@
-"""Shared node definitions for the jac-shop microservices.
+"""Shared node definitions for the jac-shop service apps.
 
 All services share one anchor store (jac.toml's shelf_db_path), so every
 service must be able to deserialize every node class that might appear

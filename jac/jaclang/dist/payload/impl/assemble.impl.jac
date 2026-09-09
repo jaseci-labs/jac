@@ -167,15 +167,15 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
         _bundle_bun(site, opts);
         return;
     }
-    log(f"==> building native compiler kernel (nacompile --shared {jc_src})");
+    log(f"==> building native compiler kernel (jac build --native --lib {jc_src})");
     jc_boot = (
         "import os, sys\n"
         + "root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         + "sys.path.insert(0, root)\n"
         + "import _jac_finder\n"
         + "_jac_finder.install()\n"
-        + "from jaclang.cli.commands.nacompile import nacompile\n"
-        + "rc = int(nacompile(src, output=dst, shared=True) or 0)\n"
+        + "from jaclang.cli.commands.native_build import native_build\n"
+        + "rc = int(native_build(src, output=dst, lib=True) or 0)\n"
         + "sys.stdout.flush()\n"
         + "sys.stderr.flush()\n"
         + "os._exit(rc)\n"

@@ -9,8 +9,7 @@ import from collections { OrderedDict, deque }
 import from collections.abc { Callable, Coroutine, Iterable, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
-import dataclasses;
-import from dataclasses { dataclass, field }
+import from jaclang.runtime.object_model { field, make_object }
 import from inspect { getfile }
 import from logging { getLogger }
 import from typing { TYPE_CHECKING, Literal, ParamSpec, Protocol, TypeAlias, TypeVar }
@@ -65,7 +64,8 @@ import type from jaclang.compiler.driver.selfhost { SelfHostCache }
 import type from jaclang.client.client_bundle { ClientBundle, ClientBundleBuilder }
 import type from jaclang.runtime.context { ExecutionContext }
 import type from jaclang.server.server { JacAPIServer as JacServer }
-import type from jaclang.server.server { ModuleIntrospector, UserManager }
+import type from jaclang.server.identity.user_manager { UserManager }
+import type from jaclang.server.server { ModuleIntrospector, ServerExtension }
 
 glob logger = getLogger(__name__),
      T = TypeVar('T'),
@@ -85,7 +85,8 @@ glob logger = getLogger(__name__),
      _default_full_target_path: list = [None],
      _shared_root_resolver: list = [None, None];
 
-glob _scale_provider_cache: list = [];
+glob _scale_provider_cache: list = [],
+     _scale_provider_error: list = [None];
 
 glob _persistent_memory_provider: list = [None];
 
@@ -97,9 +98,15 @@ def _scale_provider -> any {
     try {
         import from jaclang.scale.plugin { JacScalePlugin }
         result = JacScalePlugin;
-    } except ImportError {}
+    } except ImportError as e {
+        _scale_provider_error[0] = e;
+    }
     _scale_provider_cache.append(result);
     return result;
+}
+
+def scale_provider_error -> any {
+    return _scale_provider_error[0];
 }
 
 def _all_grant(anchor: Anchor) -> AccessLevel {
@@ -237,6 +244,7 @@ class JacAccessValidation {
         to: Anchor, min_level: AccessLevel, operation: str
     ) -> bool;
 
+    static def _is_shared_root(to: Anchor) -> bool;
     static def allow_root(
         archetype: Archetype,
         root_id: UUID,
@@ -362,10 +370,6 @@ class JacWalker {
 
 class JacArchetype {
     static def make_archetype(cls: type[Archetype]) -> type[Archetype];
-    static def field(
-        factory: (Callable[([], T)] | None) = None, `init: bool = True
-    ) -> T;
-
     static def on_entry(func: Callable) -> Callable;
     static def on_exit(func: Callable) -> Callable;
     static def set_trigger(
@@ -454,12 +458,7 @@ class JacServe {
     ) -> ClientBundle;
 
     static def get_api_server_class -> type;
-    static def ensure_sv_service(module_name: str, base_path: str) -> None;
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
-    static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: any
-    ) -> any;
-
+    static def get_server_extensions -> list[ServerExtension];
     static def get_sv_registry -> dict[str, str];
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
@@ -550,6 +549,7 @@ class JacRuntime(JacRuntimeInterface) {
     static def get_full_target_path -> (str | None);
     static def set_base_path(base_path: (str | None)) -> None;
     static def set_full_target_path(target_path: (str | None)) -> None;
+    static def shared_root_id -> (UUID | None);
     static def get_shared_root -> Root;
     static def set_shared_root_resolver(
         resolver: (Callable[([], (str | None))] | None)
@@ -558,4 +558,5 @@ class JacRuntime(JacRuntimeInterface) {
     static def set_context(context: ExecutionContext) -> None;
     static def push_request_context(context: ExecutionContext) -> any;
     static def reset_request_context(token: any) -> None;
+    static def after_fork_in_child -> None;
 }

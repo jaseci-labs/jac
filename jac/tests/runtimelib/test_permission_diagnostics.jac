@@ -37,7 +37,7 @@ def capture_get(captured: io.StringIO) -> str {
 def _run(entrypoint: str, args: list = [], root_id: str = "", nd: str = "") -> str {
     captured = capture_start();
     execution.run(
-        filename=FIXTURE, entry_name=entrypoint, args=args, root_id=root_id, nd=nd
+        target=FIXTURE, entry_name=entrypoint, args=args, root_id=root_id, nd=nd
     );
     return capture_get(captured).strip();
 }
@@ -251,6 +251,108 @@ test "strict mode raises PermissionError on cross-user delete" {
             raised = True;
         }
         assert raised , "strict mode must raise PermissionError on cross-user delete";
+    } finally {
+        Jac.strict_permissions = _orig_strict;
+        Jac.set_base_path(_orig);
+        shutil.rmtree(_tmp, ignore_errors=True);
+    }
+}
+
+def _lines(out: str, prefix: str) -> list[str] {
+    return [
+        line
+        for line in out.split("\n")
+        if line.startswith(prefix)
+    ];
+}
+
+test "grant across users emits acl_write diagnostic and the grant does not land" {
+    # Bob holds READ on alice's profile and tries to grant himself WRITE.
+    # An ACL write is a write on the node: it is refused at the call, under
+    # bob's principal, so nothing is left in memory for a later flush by
+    # anyone (alice, the close, the super root) to persist.
+    _tmp = mkdtemp();
+    _orig = Jac.get_base_path_dir();
+    Jac.set_base_path(_tmp);
+    try {
+        (alice, bob, profile_id) = _setup_alice_bob();
+        out = _run("try_acl_grant", args=[profile_id, bob, "WRITE"], root_id=bob);
+        diags = _lines(out, "DIAG:");
+        assert diags == ["DIAG:acl_write:Profile:WRITE:READ"] , (
+            f"expected one acl_write diagnostic at the call, got: {diags}"
+        );
+        # From alice's view bob is still a reader, in memory and in the store.
+        level = _run("check_grant_level", args=[profile_id, bob], root_id=alice);
+        assert _lines(level, "LEVEL:") == ["LEVEL:READ"] , (
+            f"self-grant landed: {level!r}"
+        );
+        # And bob still cannot write the field.
+        tag = _run(
+            "try_field_write_then_read", args=[profile_id, "TAMPERED"], root_id=bob
+        );
+        assert _lines(tag, "TAG:") == ["TAG:alice_v1"] , (
+            f"self-granted WRITE was honored: {tag!r}"
+        );
+    } finally {
+        Jac.set_base_path(_orig);
+        shutil.rmtree(_tmp, ignore_errors=True);
+    }
+}
+
+test "grant-to-all across users emits acl_write diagnostic and the node stays closed" {
+    _tmp = mkdtemp();
+    _orig = Jac.get_base_path_dir();
+    Jac.set_base_path(_tmp);
+    try {
+        (alice, bob, profile_id) = _setup_alice_bob();
+        out = _run("try_perm_grant", args=[profile_id, "WRITE"], root_id=bob);
+        diags = _lines(out, "DIAG:");
+        assert diags == ["DIAG:acl_write:Profile:WRITE:READ"] , (
+            f"expected one acl_write diagnostic at the call, got: {diags}"
+        );
+        level = _run("check_grant_level", args=[profile_id, bob], root_id=alice);
+        assert _lines(level, "ALL:") == ["ALL:NO_ACCESS"] , (
+            f"cross-user grant-to-all landed: {level!r}"
+        );
+    } finally {
+        Jac.set_base_path(_orig);
+        shutil.rmtree(_tmp, ignore_errors=True);
+    }
+}
+
+test "owner grant emits no diagnostic and lands" {
+    _tmp = mkdtemp();
+    _orig = Jac.get_base_path_dir();
+    Jac.set_base_path(_tmp);
+    try {
+        (alice, bob, profile_id) = _setup_alice_bob();
+        out = _run("try_acl_grant", args=[profile_id, bob, "CONNECT"], root_id=alice);
+        assert _lines(out, "DIAG:") == [] , f"owner grant emitted a diagnostic: {out!r}";
+        level = _run("check_grant_level", args=[profile_id, bob], root_id=alice);
+        assert _lines(level, "LEVEL:") == ["LEVEL:CONNECT"] , (
+            f"owner grant did not land: {level!r}"
+        );
+    } finally {
+        Jac.set_base_path(_orig);
+        shutil.rmtree(_tmp, ignore_errors=True);
+    }
+}
+
+test "strict mode raises PermissionError on cross-user grant" {
+    _tmp = mkdtemp();
+    _orig = Jac.get_base_path_dir();
+    _orig_strict = Jac.strict_permissions;
+    Jac.set_base_path(_tmp);
+    Jac.strict_permissions = True;
+    try {
+        (alice, bob, profile_id) = _setup_alice_bob();
+        raised = False;
+        try {
+            _run("try_acl_grant", args=[profile_id, bob, "WRITE"], root_id=bob);
+        } except PermissionError {
+            raised = True;
+        }
+        assert raised , "strict mode must raise PermissionError on cross-user grant";
     } finally {
         Jac.strict_permissions = _orig_strict;
         Jac.set_base_path(_orig);

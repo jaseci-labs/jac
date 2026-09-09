@@ -14,11 +14,6 @@ impl JacScaleConfig.get_config_strict_env(self: JacScaleConfig) -> str {
 
 impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     return {
-        'jwt': {
-            'secret': 'supersecretkey_for_testing_only!',
-            'algorithm': 'HS256',
-            'exp_delta_days': 7
-        },
         'sso': {
             'host': 'http://localhost:8000',
             'client_auth_callback_url': '',
@@ -35,7 +30,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         },
         'websocket': {
             'backplane': None,
-            'allowed_origins': [],
             'max_message_bytes': 65536,
             'max_connections_per_target': 5000,
             'max_connections_per_user': 10,
@@ -43,34 +37,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'target_timeout_seconds': 30,
             'messages_per_second': 20
         },
-        'kubernetes': {
-            'namespace': 'default',
-            'container_port': 8000,
-            'database_mode': 'auto',
-            'database_url': '',
-            'database_namespace': '',
-            'ingress_node_port': 30080,
-            'ingress_limit_rps': 20,
-            'ingress_limit_burst_multiplier': 5,
-            'ingress_limit_connections': 20,
-            'ingress_session_affinity': True,
-            'cpu_request': None,
-            'cpu_limit': None,
-            'memory_request': None,
-            'memory_limit': None,
-            'readiness_initial_delay': 10,
-            'readiness_period': 20,
-            'liveness_initial_delay': 10,
-            'liveness_period': 20,
-            'liveness_failure_threshold': 80
-        },
         'secrets': {},
-        'server': {
-            'port': 8000,
-            'host': '0.0.0.0',
-            'docs_enabled': True,
-            'suppress_health_check_logs': False
-        },
+        'server': {'structured_logs': True},
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
@@ -139,25 +107,9 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'verify_token_ttl_seconds': 86400,
             'reset_url_template': '',
             'verify_url_template': '',
-            'token_collection': 'auth_tokens',
-            'password_hash_cost': 14
+            'token_collection': 'auth_tokens'
         },
-        'microservices': {
-            'gateway_port': 8000,
-            'gateway_host': '0.0.0.0',
-            'routes': {},
-            'client': {'entry': '', 'dist_dir': '.jac/client/dist', 'base_route': '/'}
-        }
-    };
-}
-
-impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, any] {
-    config = self.load();
-    jwt_config = config.get('jwt', {});
-    return {
-        'secret': jwt_config.get('secret', 'supersecretkey_for_testing_only!'),
-        'algorithm': jwt_config.get('algorithm', 'HS256'),
-        'exp_delta_days': int(jwt_config.get('exp_delta_days', 7))
+        'gateway': {'gateway_port': 8000, 'gateway_host': '0.0.0.0', 'colocate': True}
     };
 }
 
@@ -210,6 +162,7 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
     return resolved;
 }
 
+
 impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     k8s_config = dict(config.get('kubernetes', {}));
@@ -243,15 +196,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
 impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     server_config = config.get('server', {});
-    return {
-        'port': int(server_config.get('port', 8000)),
-        'host': server_config.get('host', '0.0.0.0'),
-        'docs_enabled': server_config.get('docs_enabled', True),
-        'suppress_health_check_logs': bool(
-            server_config.get('suppress_health_check_logs', False)
-        ),
-        'structured_logs': bool(server_config.get('structured_logs', True))
-    };
+    return {'structured_logs': bool(server_config.get('structured_logs', True))};
 }
 
 impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
@@ -294,6 +239,24 @@ impl sanitize_prometheus_namespace(name: str) -> str {
     return sanitized or 'jaclang_scale';
 }
 
+impl _resolve_prometheus_namespace(configured: str | None, k8s_namespace: str) -> str {
+    configured = "" if configured is None else str(configured);
+    if not configured {
+        return sanitize_prometheus_namespace(k8s_namespace);
+    }
+    sanitized = sanitize_prometheus_namespace(configured);
+    if sanitized != configured and not _prometheus_namespace_warned {
+        _prometheus_namespace_warned = True;
+        import logging;
+        logging.getLogger(__name__).warning(
+            f"jac.toml [scale.monitoring] namespace '{configured}' is not a valid "
+            f"Prometheus prefix; metrics are exported under '{sanitized}' instead. "
+            "Update dashboards and alert rules that reference the old prefix."
+        );
+    }
+    return sanitized;
+}
+
 impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     monitoring_config = config.get('monitoring', {});
@@ -313,12 +276,10 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
         10.0
     ];
 
-    namespace = monitoring_config.get('namespace');
-    if not namespace {
-        k8s_config = config.get('kubernetes', {});
-        k8s_namespace = k8s_config.get('namespace', 'default');
-        namespace = sanitize_prometheus_namespace(k8s_namespace);
-    }
+    k8s_config = config.get('kubernetes', {});
+    namespace = _resolve_prometheus_namespace(
+        monitoring_config.get('namespace'), k8s_config.get('namespace', 'default')
+    );
     return {
         'enabled': monitoring_config.get('enabled', False),
         'endpoint': monitoring_config.get('endpoint', '/metrics'),
@@ -387,7 +348,6 @@ impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any]
     }
     return {
         'backplane': backplane,
-        'allowed_origins': [str(o) for o in (ws_config.get('allowed_origins') or [])],
         'max_message_bytes': int(_ws_positive(ws_config, 'max_message_bytes', 65536)),
         'max_connections_per_target': int(
             _ws_positive(ws_config, 'max_connections_per_target', 5000)
@@ -433,6 +393,8 @@ impl peek_scale_config -> JacScaleConfig | None {
 
 impl reset_scale_config -> None {
     _scale_config_instance = None;
+    _prometheus_namespace_warned = False;
+    _app_scale_cache.clear();
 }
 
 impl resolve_admin_enabled(configured: bool) -> bool {
@@ -457,21 +419,6 @@ impl resolve_admin_enabled(configured: bool) -> bool {
         "false/0/no/off to override [scale.admin] enabled in jac.toml."
     );
     return False;
-}
-
-impl resolve_password_hash_cost(configured_cost: int) -> int {
-    env_val = os.environ.get('JAC_SCALE_PASSWORD_HASH_COST');
-    if not env_val {
-        return max(10, min(15, configured_cost));
-    }
-    try {
-        cost = int(env_val);
-    } except ValueError as e {
-        raise ValueError(
-            f"JAC_SCALE_PASSWORD_HASH_COST must be an integer in 10..15, got: {env_val!r}"
-        ) from e;
-    }
-    return max(10, min(15, cost));
 }
 
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
@@ -531,9 +478,6 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
         'reset_url_template': auth_config.get('reset_url_template', ''),
         'verify_url_template': auth_config.get('verify_url_template', ''),
         'token_collection': auth_config.get('token_collection', 'auth_tokens'),
-        'password_hash_cost': resolve_password_hash_cost(
-            int(auth_config.get('password_hash_cost', 14))
-        ),
         'forgot_password_rate_per_hour': int(
             auth_config.get('forgot_password_rate_per_hour', 3)
         ),
@@ -545,79 +489,83 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, any] {
+impl JacScaleConfig.get_gateway_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
-    return normalize_microservices_config(config.get('microservices', {}));
+    return normalize_gateway_config(config.get('gateway', {}));
+}
+
+impl JacScaleConfig.get_app_scale_config(
+    self: JacScaleConfig, app_name: str
+) -> dict[str, any] {
+    if not app_name {
+        return {};
+    }
+    cached = _app_scale_cache.get(app_name);
+    if cached is not None {
+        return dict(cached);
+    }
+    try {
+        resolved = app_scale_overrides(self.get_jac_config(), app_name);
+    } except Exception {
+        resolved = {};
+    }
+    _app_scale_cache[app_name] = resolved;
+    return dict(resolved);
 }
 
 
-impl normalize_microservices_config(
-    ms_config: dict[str, any], env_routes_fallback: bool = True
-) -> dict[str, any] {
-    if 'enabled' in ms_config and not _ms_enabled_deprecation_warned {
-        _ms_enabled_deprecation_warned = True;
-        import logging;
-        logging.getLogger(__name__).warning(
-            "jac.toml [scale.microservices] `enabled` is deprecated: declaring "
-            "[scale.microservices.routes] is what turns microservice mode on, "
-            "and a deployed fleet pod ignores this key. Delete it (remove the "
-            "routes table to run single-process); a future release drops it."
+impl _pick_app_scale_keys(section: dict[str, any] | None) -> dict[str, any] {
+    import copy;
+    if not isinstance(section, dict) {
+        return {};
+    }
+    return {
+        key: copy.deepcopy(value)
+        for (key, value) in section.items()
+        if key in APP_SCALE_KEYS
+    };
+}
+
+
+impl app_scale_overrides(config: any, app_name: str) -> dict[str, any] {
+    if config is None or not app_name or app_name not in config.apps {
+        return {};
+    }
+    app = config.apps[app_name];
+    overlays = app.overlays if isinstance(app.overlays, dict) else {};
+    declared = overlays.get("scale");
+    if isinstance(declared, dict) {
+        import from jaclang.project.config_schema { report_schema_findings }
+        import from jaclang.scale.config.validation {
+            STRICT_ENV,
+            validate_app_scale_config
+        }
+        report_schema_findings(
+            validate_app_scale_config(declared, app_name),
+            f"apps.{app_name}.scale",
+            STRICT_ENV
         );
     }
-    client_config = ms_config.get('client', {});
-    cors_config = ms_config.get('cors', {});
-    rl_config = ms_config.get('rate_limit', {});
-
-    routes: dict[str, any] = dict(ms_config.get('routes', {}));
-    if not routes and env_routes_fallback {
-        import json;
-        env_routes: str = os.environ.get('JAC_SV_ROUTES', '');
-        if env_routes {
-            try {
-                routes = dict(json.loads(env_routes));
-            } except Exception as e {
-                import logging;
-                logging.getLogger(__name__).warning(
-                    f"Ignoring malformed JAC_SV_ROUTES env var ({e}); "
-                    f"gateway will have no routes from env."
-                );
-                routes = {};
-            }
-        }
+    try {
+        effective = config.effective_for_app(app_name);
+    } except Exception {
+        return _pick_app_scale_keys(declared);
     }
+    plugins = effective.plugins if isinstance(effective.plugins, dict) else {};
+    return _pick_app_scale_keys(plugins.get("scale", {}));
+}
 
-    service_files: dict = dict(ms_config.get('service_files', {}) or {});
-    if routes {
-        import from jaclang.scale.runtime.routing { ensure_main_service }
-        ensure_main_service(routes, service_files);
-    }
 
-    raw_client_entry = client_config.get('entry', None);
-
-    if raw_client_entry is False or raw_client_entry == '' {
-        resolved_client_entry: str = '';
-    } elif raw_client_entry {
-        resolved_client_entry: str = str(raw_client_entry);
-    } else {
-        try {
-            import from jaclang.project.config { get_config }
-            cfg = get_config();
-            resolved_client_entry: str = (cfg.project.entry_point if cfg else '')
-                or 'main.jac';
-        } except Exception {
-            resolved_client_entry: str = 'main.jac';
-        }
-    }
-
+impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str, any] {
+    raw = dict(gateway_config or {});
+    cors_config = dict(raw.get('cors', {}) or {});
+    rl_config = dict(raw.get('rate_limit', {}) or {});
     normalized = {
-        'enabled': ms_config.get('enabled', None),
-        'gateway_port': int(ms_config.get('gateway_port', 8000)),
-        'gateway_host': ms_config.get('gateway_host', '0.0.0.0'),
-        'drain_timeout_seconds': float(ms_config.get('drain_timeout_seconds', 10)),
-        'http_forward_timeout': float(ms_config.get('http_forward_timeout', 30)),
-        'routes': routes,
-        'service_files': service_files,
-        'services': dict(ms_config.get('services', {})),
+        'colocate': bool(raw.get('colocate', True)),
+        'gateway_port': int(raw.get('gateway_port', 8000)),
+        'gateway_host': str(raw.get('gateway_host', '0.0.0.0')),
+        'gateway_port_pinned': bool(raw.get('gateway_port_pinned', False)),
+        'http_forward_timeout': float(raw.get('http_forward_timeout', 30)),
         'rate_limit': {
             'enabled': bool(rl_config.get('enabled', False)),
             'per_ip_rpm': int(rl_config.get('per_ip_rpm', 60)),
@@ -626,9 +574,7 @@ impl normalize_microservices_config(
             'exempt_paths': list(
                 rl_config.get('exempt_paths', ["/health", "/healthz", "/metrics"])
             ),
-            'trusted_proxies': [
-                str(p) for p in (rl_config.get('trusted_proxies', []) or [])
-            ]
+            'shared': bool(rl_config.get('shared', True))
         },
         'cors': {
             'allow_origins': list(cors_config.get('allow_origins', ["*"])),
@@ -638,29 +584,24 @@ impl normalize_microservices_config(
             'expose_headers': list(cors_config.get('expose_headers', [])),
             'max_age': int(cors_config.get('max_age', 600))
         },
-        'client': {
-            'entry': resolved_client_entry,
-            'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
-            'base_route': client_config.get('base_route', '/'),
-            'static_mounts': list(client_config.get('static_mounts', []) or [])
-        },
         'identity': {
             'gateway_owned': bool(
-                dict(ms_config.get('identity', {})).get('gateway_owned', True)
+                dict(raw.get('identity', {}) or {}).get('gateway_owned', True)
             )
         },
-        'ingress': dict(ms_config.get('ingress', {})),
-        'shared_volumes': list(ms_config.get('shared_volumes', [])),
-        'logs': dict(ms_config.get('logs', {})),
-        'tracing': dict(ms_config.get('tracing', {}))
+        'ingress': dict(raw.get('ingress', {}) or {}),
+        'shared_volumes': list(raw.get('shared_volumes', []) or []),
+        'logs': dict(raw.get('logs', {}) or {}),
+        'tracing': dict(raw.get('tracing', {}) or {})
     };
-    for boot_key in (
-        'boot_health_timeout',
-        'boot_max_wait',
-        'health_monitor_interval'
-    ) {
-        if boot_key in ms_config {
-            normalized[boot_key] = ms_config[boot_key];
+    for boot_key in GATEWAY_BOOT_KEYS {
+        if boot_key in raw and raw[boot_key] is not None {
+            normalized[boot_key] = raw[boot_key];
+        }
+    }
+    for pod_key in GATEWAY_POD_KEYS {
+        if pod_key in raw and raw[pod_key] is not None {
+            normalized[pod_key] = raw[pod_key];
         }
     }
     return normalized;

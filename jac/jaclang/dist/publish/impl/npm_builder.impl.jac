@@ -11,6 +11,16 @@ import from jaclang.dist.publish.package_json {
     npm_tarball_filename
 }
 
+def _react_peer_floor(pkg: str) -> str {
+    import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS }
+    pin = str(CORE_RUNTIME_DEPS.get(pkg, ""));
+    major = pin.lstrip("^~>=< v").split(".")[0];
+    if major.isdigit() {
+        return f">={major}.0.0";
+    }
+    return ">=19.0.0";
+}
+
 def _resolve_externals(
     config: any, files: list[any]
 ) -> tuple[dict[str, str], dict[str, str]] {
@@ -42,10 +52,12 @@ def _resolve_externals(
         deps[rt_pkg] = rt_ver;
     }
     if "react" in externals {
-        peers["react"] = npm.get("react_version", ">=18.0.0");
+        peers["react"] = npm.get("react_version", _react_peer_floor("react"));
     }
     if "react-dom" in externals {
-        peers["react-dom"] = npm.get("react_dom_version", ">=18.0.0");
+        peers["react-dom"] = npm.get(
+            "react_dom_version", _react_peer_floor("react-dom")
+        );
     }
     return (deps, peers);
 }

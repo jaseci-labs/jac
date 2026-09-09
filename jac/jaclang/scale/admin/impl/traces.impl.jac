@@ -22,10 +22,8 @@ def _tempo_base_url -> str {
 
 def _trace_services -> list[str] {
     try {
-        ms = get_scale_config().get_microservices_config();
-        routes: dict = ms.get("routes", {});
-        names: list[str] = list(routes.keys());
-        return ["gateway"] + sorted(names);
+        import from jaclang.scale.runtime.fleet { fleet_member_names }
+        return ["gateway"] + sorted(fleet_member_names());
     } except Exception {
         return [];
     }
@@ -190,8 +188,8 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             tags=["Traces"],
             summary="Service dropdown options",
             description=(
-                "Microservices declared in [scale.microservices.routes] "
-                "+ 'gateway'. Used by the admin TracesPage service filter."
+                "The workspace's fleet apps + 'gateway'. Used by the admin "
+                "TracesPage service filter."
             )
         )
     );

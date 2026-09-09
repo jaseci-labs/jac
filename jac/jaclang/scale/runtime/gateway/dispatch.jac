@@ -1,5 +1,6 @@
 import from jaclang.scale.runtime.routing {
     GATEWAY_API_SEGMENTS,
+    GATEWAY_LISTING_SEGMENTS,
     GATEWAY_PAGE_SEGMENTS,
     GATEWAY_WELLKNOWN_SEGMENTS
 }
@@ -13,8 +14,11 @@ glob _PAGE_PATHS: set[str] = {f"/{seg}" for seg in GATEWAY_PAGE_SEGMENTS};
 
 glob _PASSTHROUGH_SEGMENTS: set[str] = set(GATEWAY_API_SEGMENTS);
 
-glob _SERVICE_MEMBER_SEGMENTS: set[str] = _PASSTHROUGH_SEGMENTS
-         | set(GATEWAY_WELLKNOWN_SEGMENTS);
+glob _SERVICE_MEMBER_SEGMENTS: set[str] = (
+         _PASSTHROUGH_SEGMENTS
+         | set(GATEWAY_WELLKNOWN_SEGMENTS)
+         | set(GATEWAY_LISTING_SEGMENTS)
+     );
 
 glob ROUTE_BUILTIN: str = "builtin",
      ROUTE_ADMIN: str = "admin",

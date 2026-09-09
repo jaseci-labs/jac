@@ -12,7 +12,7 @@ UX choices that distinguish this from raw Grafana:
 - Click a trace_id chip -> trace explorer view shows every line for
   that request across all services in causal order
 - Pre-scoped to the deployed namespace; never the all-cluster firehose
-- Service dropdown auto-populated from microservices.routes config
+- Service dropdown auto-populated from the workspace's fleet apps
 """
 
 import from "lucide-react" { ScrollText, RefreshCw, AlertTriangle, X }
@@ -347,7 +347,7 @@ def:pub LogsPage -> JsxElement {
                 <span>
                     Log backend unreachable. Make sure
                     <code className="mx-1 font-mono text-fg">
-                        [scale.microservices.logs].enabled
+                        [scale.gateway.logs].enabled
                     </code>
                     is true and the Loki + Alloy stack is running in the deployment namespace.
                 </span>

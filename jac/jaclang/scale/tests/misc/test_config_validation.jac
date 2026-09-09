@@ -8,7 +8,11 @@ import from jaclang.scale.config.validation {
     known_deploy_targets,
     validate_scale_config
 }
+import from jaclang.comptime { fields }
 import from jaclang.scale.config.plugin_config { JacScalePluginConfig }
+import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+    KubernetesConfig
+}
 import from jaclang.scale.config.config_loader {
     JacScaleConfig,
     get_scale_config,
@@ -39,10 +43,10 @@ def _collect_default_mismatches(
 }
 
 test "unknown section is flagged with a suggestion" {
-    msgs = validate_scale_config({"microservice": {"routes": {}}});
+    msgs = validate_scale_config({"gatway": {"colocate": True}});
     assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
-    assert "microservice" in msgs[0] , msgs[0];
-    assert "did you mean 'microservices'" in msgs[0] , msgs[0];
+    assert "gatway" in msgs[0] , msgs[0];
+    assert "did you mean 'gateway'" in msgs[0] , msgs[0];
 }
 
 test "unknown nested key is flagged with a suggestion" {
@@ -52,30 +56,21 @@ test "unknown nested key is flagged with a suggestion" {
     assert "did you mean 'cpu_limit'" in msgs[0] , msgs[0];
 }
 
-test "per-service unknown key is flagged" {
-    msgs = validate_scale_config(
-        {"microservices": {"services": {"myapp": {"cpu_limits": "2000m"}}}}
-    );
+test "gateway nested unknown key is flagged" {
+    msgs = validate_scale_config({"gateway": {"gateway_prot": 8001}});
     assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";
-    assert "scale.microservices.services.myapp" in msgs[0] , msgs[0];
-    assert "did you mean 'cpu_limit'" in msgs[0] , msgs[0];
+    assert "scale.gateway" in msgs[0] , msgs[0];
+    assert "did you mean 'gateway_port'" in msgs[0] , msgs[0];
 }
 
 test "open dict sections accept arbitrary keys" {
     cfg = {
         "secrets": {"MY_API_KEY": "${MY_API_KEY}"},
         "kubernetes": {"labels": {"team": "core"}},
-        "microservices": {
-            "routes": {"billing": "/billing"},
-            "services": {
-                "billing": {
-                    "env": {"LOG_LEVEL": "DEBUG"},
-                    "deployment_overlay": {"spec": {"replicas": 2}},
-                    "hpa": {
-                        "behavior": {"scaleDown": {"stabilizationWindowSeconds": 600}}
-                    }
-                }
-            }
+        "gateway": {
+            "env": {"LOG_LEVEL": "DEBUG"},
+            "deployment_overlay": {"spec": {"replicas": 2}},
+            "hpa": {"behavior": {"scaleDown": {"stabilizationWindowSeconds": 600}}}
         }
     };
     msgs = validate_scale_config(cfg);
@@ -84,8 +79,8 @@ test "open dict sections accept arbitrary keys" {
 
 test "valid config produces no findings" {
     cfg = {
-        "jwt": {"secret": "s", "algorithm": "HS256", "exp_delta_days": 7},
-        "server": {"port": 8080, "docs_enabled": False},
+        "sso": {"host": "http://localhost:8000"},
+        "server": {"structured_logs": False},
         "kubernetes": {"namespace": "prod", "cpu_limit": "1000m"},
         "fat_bundle": True,
         "seal_timeout": 120
@@ -94,7 +89,7 @@ test "valid config produces no findings" {
 }
 
 test "non-dict section values do not crash the validator" {
-    msgs = validate_scale_config({"jwt": "not-a-table", "bogus": 1});
+    msgs = validate_scale_config({"sso": "not-a-table", "bogus": 1});
     assert len(msgs) == 1 , f"expected only the bogus finding, got {msgs}";
     assert "bogus" in msgs[0] , msgs[0];
 }
@@ -121,11 +116,79 @@ test "schema defaults agree with runtime defaults" {
     assert bad == [] , f"schema/defaults disagree: {bad}";
 }
 
+# get_default_config no longer restates the [scale.kubernetes] block, because
+# KubernetesConfig's own has-declaration is the single source of those
+# defaults. The test above therefore no longer reaches that section; these two
+# hold the same contract against the declaration instead. _LOADER_DERIVED are
+# the fields get_kubernetes_config assigns after loading, from
+# [scale.monitoring], [scale.admin] and the system plugin deps: declaring them
+# under [scale.kubernetes] would validate a value that is then overwritten.
+# app_name is exempt from the default comparison alone: the schema's None means
+# "derive a slug from [project].name", the declaration's 'jaseci' is the
+# fallback when no project name is usable.
+glob _LOADER_DERIVED: set[str] = {
+         "admin_username",
+         "monitoring_enabled",
+         "k8s_metrics_enabled",
+         "prometheus_admin_password",
+         "service_dependencies"
+     },
+     _DERIVED_DEFAULT: set[str] = {"app_name"};
+
+
+def _k8s_schema_options -> dict[str, any] {
+    return JacScalePluginConfig.get_config_schema()["options"]["kubernetes"]["nested"];
+}
+
+
+test "every [scale.kubernetes] field the loader reads is declared in the schema" {
+    opts = _k8s_schema_options();
+    undeclared: list[str] = [];
+    for f in fields(KubernetesConfig) {
+        if f.name in _LOADER_DERIVED {
+            continue;
+        }
+        if f.name not in opts {
+            undeclared.append(f.name);
+        }
+    }
+    assert sorted(undeclared) == [] , (
+        f"KubernetesConfig declares {sorted(undeclared)}, which [scale.kubernetes] "
+        "never names, so a user setting one is warned it is unknown while the "
+        "loader uses it"
+    );
+}
+
+
+test "the [scale.kubernetes] schema agrees with the declaration it documents" {
+    opts = _k8s_schema_options();
+    declared = KubernetesConfig();
+    drift: list[str] = [];
+    for f in fields(KubernetesConfig) {
+        if f.name in _LOADER_DERIVED or f.name in _DERIVED_DEFAULT {
+            continue;
+        }
+        spec = opts.get(f.name);
+        if not isinstance(spec, dict) {
+            continue;
+        }
+        if spec.get("default") != getattr(declared, f.name) {
+            drift.append(
+                f"{f.name}: schema={spec.get('default')!r} "
+                f"declaration={getattr(declared, f.name)!r}"
+            );
+        }
+    }
+    disagreed = sorted(drift);
+    assert disagreed == [] , (
+        f"the schema documents a default the declaration does not apply: {disagreed}"
+    );
+}
+
+
 test "reporting does not raise outside strict mode" {
     os.environ.pop(STRICT_ENV, None);
-    report_schema_findings(
-        validate_scale_config({"microservice": {}}), "scale", STRICT_ENV
-    );
+    report_schema_findings(validate_scale_config({"gatway": {}}), "scale", STRICT_ENV);
 }
 
 test "strict env raises on unknown keys" {
@@ -134,11 +197,11 @@ test "strict env raises on unknown keys" {
         raised = False;
         try {
             report_schema_findings(
-                validate_scale_config({"microservice": {}}), "scale", STRICT_ENV
+                validate_scale_config({"gatway": {}}), "scale", STRICT_ENV
             );
         } except ValueError as e {
             raised = True;
-            assert "microservice" in str(e) , str(e);
+            assert "gatway" in str(e) , str(e);
         }
         assert raised , "expected ValueError in strict mode";
     } finally {
@@ -150,7 +213,9 @@ test "strict env ignores a clean config" {
     os.environ[STRICT_ENV] = "1";
     try {
         report_schema_findings(
-            validate_scale_config({"server": {"port": 9000}}), "scale", STRICT_ENV
+            validate_scale_config({"server": {"structured_logs": False}}),
+            "scale",
+            STRICT_ENV
         );
     } finally {
         os.environ.pop(STRICT_ENV, None);
@@ -171,7 +236,7 @@ test "an empty strict-env name never escalates" {
 test "the shared loader validates the on-disk jac.toml" {
     d = tempfile.mkdtemp();
     (Path(d) / "jac.toml").write_text(
-        "[project]\nname = \"demo\"\n\n[scale.microservice]\nroutes = {}\n"
+        "[project]\nname = \"demo\"\n\n[scale.gatway]\ncolocate = true\n"
     );
     os.environ[STRICT_ENV] = "1";
     reset_scale_config();
@@ -181,7 +246,7 @@ test "the shared loader validates the on-disk jac.toml" {
             get_scale_config(Path(d)).load();
         } except ValueError as e {
             raised = True;
-            assert "microservice" in str(e) , str(e);
+            assert "gatway" in str(e) , str(e);
         }
         assert raised , "expected strict validation to fire from PluginConfigBase.load";
     } finally {
@@ -194,15 +259,66 @@ test "the shared loader validates the on-disk jac.toml" {
 test "a clean on-disk jac.toml loads without complaint under strict mode" {
     d = tempfile.mkdtemp();
     (Path(d) / "jac.toml").write_text(
-        "[project]\nname = \"demo\"\n\n[scale.server]\nport = 9100\n"
+        "[project]\nname = \"demo\"\n\n[scale.server]\nstructured_logs = false\n"
     );
     os.environ[STRICT_ENV] = "1";
     reset_scale_config();
     try {
         cfg = get_scale_config(Path(d)).load();
-        assert cfg["server"]["port"] == 9100 , cfg["server"];
+        assert cfg["server"]["structured_logs"] is False , cfg["server"];
     } finally {
         os.environ.pop(STRICT_ENV, None);
+        reset_scale_config();
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+# A leftover [scale.microservices] table must stop every command at config
+# parse, not degrade into an "unknown key" warning and a single-pod deploy.
+# This guards what test_ms_config_failloud guarded before the table dissolved.
+test "a leftover [scale.microservices] table is a hard config error" {
+    import from jaclang.project.config { JacConfig }
+    for toml in [
+        "[project]\nname = \"demo\"\n\n[scale.microservices]\nenabled = true\n",
+        "[project]\nname = \"demo\"\n\n[scale.microservices.routes]\nadmin = \"\"\n",
+        "[project]\nname = \"demo\"\n\n[scale.microservices.logs]\nenabled = true\n",
+        "[project]\nname = \"demo\"\n\n[scale.microservices.services.billing]\n"
+        "replicas = 2\n"
+    ] {
+        caught = "";
+        try {
+            JacConfig.from_toml_str(toml);
+        } except ValueError as e {
+            caught = str(e);
+        }
+        assert caught , f"expected a ValueError for:\n{toml}";
+        assert "[scale.microservices]" in caught , caught;
+        assert "[apps.<name>]" in caught , caught;
+        assert "[scale.gateway]" in caught , caught;
+        assert "breaking-changes" in caught , caught;
+    }
+    d = tempfile.mkdtemp();
+    (Path(d) / "jac.toml").write_text(
+        "[project]\nname = \"demo\"\nentry-point = \"main.jac\"\n\n"
+        "[scale.microservices.routes]\nadmin = \"\"\n"
+    );
+    (Path(d) / "main.jac").write_text("with entry {}\n");
+    reset_scale_config();
+    try {
+        raised = "";
+        try {
+            get_scale_config(Path(d)).load();
+        } except ValueError as e {
+            raised = str(e);
+        }
+        assert "[scale.microservices]" in raised , (
+            f"the scale loader must refuse the on-disk table: {raised!r}"
+        );
+        clean = JacConfig.from_toml_str(
+            "[project]\nname = \"demo\"\n\n[scale.gateway]\ncolocate = false\n"
+        );
+        assert clean.plugins["scale"]["gateway"]["colocate"] is False;
+    } finally {
         reset_scale_config();
         shutil.rmtree(d, ignore_errors=True);
     }
@@ -213,7 +329,7 @@ test "plugins without a declared schema opt out of validation" {
     assert cfg.get_config_strict_env() == STRICT_ENV;
     schema = cfg.get_config_schema();
     assert schema.get("section") == "scale" , schema.get("section");
-    assert "microservices" in schema.get("options", {}) , "schema options missing";
+    assert "gateway" in schema.get("options", {}) , "schema options missing";
 }
 
 test "shipped jac.toml files validate clean" {
@@ -253,16 +369,14 @@ test "platform-injected and capability-intent keys are recognized" {
     assert msgs == [] , f"expected no findings, got {msgs}";
 }
 
-test "documented microservices boot and client keys are recognized" {
+test "documented gateway boot keys are recognized" {
     cfg = {
-        "microservices": {
+        "gateway": {
+            "colocate": False,
             "boot_health_timeout": 60.0,
             "boot_max_wait": 120,
             "health_monitor_interval": 10.0,
-            "client": {
-                "entry": "client/main.jac",
-                "static_mounts": [{"url_prefix": "/assets", "local_path": "public"}]
-            }
+            "route_refresh_seconds": 5.0
         }
     };
     msgs = validate_scale_config(cfg);
@@ -311,84 +425,10 @@ test "known targets are exactly the ones the factory can build" {
     }
 }
 
-test "normalizer passes documented boot and static-mount keys through" {
-    import from jaclang.scale.config.config_loader { normalize_microservices_config }
-    normalized = normalize_microservices_config(
-        {
-            "boot_max_wait": 120,
-            "client": {
-                "entry": "client/main.jac",
-                "static_mounts": [{"url_prefix": "/assets", "local_path": "public"}]
-            }
-        },
-        env_routes_fallback=False
-    );
+test "normalizer passes documented boot keys through" {
+    import from jaclang.scale.config.config_loader { normalize_gateway_config }
+    normalized = normalize_gateway_config({"boot_max_wait": 120, "colocate": False});
     assert normalized.get("boot_max_wait") == 120 , normalized;
+    assert normalized["colocate"] is False , normalized;
     assert "boot_health_timeout" not in normalized , normalized;
-    mounts = normalized["client"]["static_mounts"];
-    assert mounts == [{"url_prefix": "/assets", "local_path": "public"}] , mounts;
-}
-
-
-def _collect_schema_keys(schema: dict, out: set) -> None {
-    if not isinstance(schema, dict) {
-        return;
-    }
-    for (key, value) in schema.items() {
-        if isinstance(value, dict) {
-            out.add(str(key));
-            _collect_schema_keys(value.get("nested", {}), out);
-        }
-    }
-}
-
-
-# The blocker this guards: a KubernetesConfig field that from_dict reads but
-# the schema never declares. _walk_schema then warns "unknown key ... defaults
-# apply instead" on every command, and hard-fails under
-# JAC_SCALE_CONFIG_STRICT, for a key the loader does read. Walking the DEFAULT
-# config dict cannot catch it, because the default dict is not what
-# from_config consumes.
-test "every [scale.kubernetes] key the constructor reads is declared in the schema" {
-    import re;
-    import from pathlib { Path }
-    source = (
-        Path(__file__).parents[2]
-        / "deploy"
-        / "target"
-        / "kubernetes"
-        / "kubernetes_config.jac"
-    ).read_text();
-    # Split on the constructor's real name. Splitting on a name the file does
-    # not contain returns the WHOLE source, so the scrape silently widens to
-    # every config.get in the module and the guard below can never fire.
-    marker = "from_dict";
-    assert marker in source , (
-        f"'{marker}' is gone from kubernetes_config.jac, so this test is "
-        "scraping the whole file instead of the constructor; update it"
-    );
-    body = source.split(marker, 1)[-1];
-    consumed = set(re.findall(r"config\.get\(\s*'([a-z_]+)'", body));
-    assert consumed , "could not read the constructor's keys; update this test";
-
-    # Any section: a few keys the kubernetes block reads are owned by another
-    # section and merged in, so "declared somewhere" is the honest bar. What
-    # must never happen is a key the loader reads that the schema never names.
-    declared: set = set();
-    _collect_schema_keys(
-        JacScalePluginConfig.get_config_schema().get("options", {}), declared
-    );
-
-    # Keys get_kubernetes_config assigns unconditionally after loading, from
-    # [scale.monitoring] and from the system plugin deps. Declaring them under
-    # [scale.kubernetes] would validate a value that is then thrown away, which
-    # is the same lie this test exists to catch, pointing the other way.
-    derived: set = {"monitoring_enabled", "service_dependencies"};
-
-    missing = sorted(consumed - declared - derived);
-    assert missing == [] , (
-        f"the constructor reads {missing} but [scale.kubernetes] does not declare "
-        "them, so a user setting one gets an 'unknown key' warning and the "
-        "value is reported as ignored while the loader actually uses it"
-    );
 }

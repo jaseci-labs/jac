@@ -37,6 +37,35 @@ impl Scheduler.start -> None {
     self._thread.start();
 }
 
+impl Scheduler.start_if_pending -> None {
+    if self.has_pending() {
+        self.start();
+    }
+}
+
+impl Scheduler._lease_ttl(spec: ScheduleSpec) -> int {
+    if spec.interval is not None and spec.interval > 0 {
+        return max(1, min(300, int(float(spec.interval) * 0.8)));
+    }
+    if spec.cron is not None {
+        return 45;
+    }
+    return 300;
+}
+
+impl Scheduler._may_fire(task: ScheduledTask) -> bool {
+    if self.lease is None {
+        return True;
+    }
+    lease_fn: any = self.lease;
+    try {
+        return bool(lease_fn(f"sched:{task.name}", self._lease_ttl(task.spec)));
+    } except Exception as e {
+        logger.warning(f"lease check for '{task.name}' failed: {e}; firing anyway");
+        return True;
+    }
+}
+
 impl Scheduler.stop -> None {
     self._running = False;
     if self._stop_event is not None {
@@ -99,7 +128,11 @@ impl Scheduler._run_loop -> None {
         heapq.heappop(heap);
         now = datetime.datetime.now(datetime.timezone.utc);
         task.last_run = now;
-        threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
+        if self._may_fire(task) {
+            threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
+        } else {
+            logger.debug(f"'{task.name}' fired elsewhere this tick; skipping");
+        }
         new_next = self._compute_next_run(task.spec, now);
         task.next_run = new_next;
         if new_next is not None {

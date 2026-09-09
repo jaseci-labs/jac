@@ -9,6 +9,10 @@ for archetypes, so only fresh values may enter.
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import sys;
 import tempfile;
@@ -23,21 +27,17 @@ glob OWNFIELD_DIR = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "nogc_containers"
      ),
      MODE_FLAGS = {
-         "none": ["--enforce-nogc", "--gc", "none", "--assert-no-rc"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _enforced_codes(path: str) -> list[str] {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         prog.compile(
-            path,
-            options=CompileOptions(
-                aot_mode=True, na_gc_mode="none", nogc_enforce_all=True
-            )
+            path, options=CompileOptions(aot_mode=True, memory_profile="nogc")
         );
         codes = [
             a.code.code
@@ -48,11 +48,7 @@ def _enforced_codes(path: str) -> list[str] {
         codes.sort();
         return codes;
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -61,9 +57,9 @@ test "fresh archetype elements pass the container fence" {
     assert codes == [] , codes;
 }
 
-test "named archetype bindings stay fenced (E1406)" {
+test "named archetype bindings move into the container" {
     codes = _enforced_codes(os.path.join(CONTAINER_DIR, "append_obj_named.jac"));
-    assert "E1406" in codes , codes;
+    assert codes == [] , codes;
 }
 
 test "element drops fire exactly once at identical points in all gc modes" {
@@ -73,7 +69,7 @@ test "element drops fire exactly once at identical points in all gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"olc_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", fixture]
+                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

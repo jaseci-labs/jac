@@ -1,7 +1,11 @@
 enum IntrinsicDispatch {
     RC_RUNTIME = "rc_runtime",
     FLOAT_BITS = "float_bits",
-    BITS_FLOAT = "bits_float"
+    BITS_FLOAT = "bits_float",
+    MEM_LOAD = "mem_load",
+    MEM_STORE = "mem_store",
+    ATOMIC_XCHG = "atomic_xchg",
+    CALL_DTOR = "call_dtor"
 }
 
 obj IntrinsicEntry {
@@ -80,6 +84,42 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i64"],
                  result_spec="f64",
                  dispatch=IntrinsicDispatch.BITS_FLOAT
+             ),
+             "__mem_load_i32": IntrinsicEntry(
+                 name="__mem_load_i32",
+                 param_specs=["i64"],
+                 result_spec="i32",
+                 dispatch=IntrinsicDispatch.MEM_LOAD
+             ),
+             "__mem_store_i32": IntrinsicEntry(
+                 name="__mem_store_i32",
+                 param_specs=["i64", "i32"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.MEM_STORE
+             ),
+             "__mem_load_i64": IntrinsicEntry(
+                 name="__mem_load_i64",
+                 param_specs=["i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_LOAD
+             ),
+             "__mem_store_i64": IntrinsicEntry(
+                 name="__mem_store_i64",
+                 param_specs=["i64", "i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.MEM_STORE
+             ),
+             "__atomic_xchg_i64": IntrinsicEntry(
+                 name="__atomic_xchg_i64",
+                 param_specs=["i64", "i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.ATOMIC_XCHG
+             ),
+             "__mem_call_dtor": IntrinsicEntry(
+                 name="__mem_call_dtor",
+                 param_specs=["i64", "i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.CALL_DTOR
              )
          }
      );

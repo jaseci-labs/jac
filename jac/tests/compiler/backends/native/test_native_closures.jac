@@ -14,6 +14,7 @@ silently mis-bound value.
 """
 
 import ctypes;
+import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 import os;
 import from tests.support {
     TESTS_DIR,
@@ -24,6 +25,16 @@ import from tests.support {
     native_str_func
 }
 import jaclang;
+
+test "lambda parameters remain borrowed across explicit returns" {
+    (engine, module) = compile_native("lambda_borrowed_params.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(engine, "call_lambda", ctypes.c_int64);
+    drops = get_func(engine, "drop_count", ctypes.c_int64);
+    assert call() == 770;
+    assert drops() == 1;
+}
 
 import from jaclang.compiler.driver.program { JacProgram }
 
@@ -53,6 +64,122 @@ test "closure: nested def reads an enclosing param" {
     f = get_func(eng, "scaled", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(4, 5) == 20;
     assert f(0, 9) == 0;
+}
+
+test "closure: immediately invoked lambdas infer reference returns" {
+    (prog, module) = compile_na_inline_ir(
+        "immediate_reference",
+        """
+obj Box { has value: int; }
+def compute(value: int) -> int {
+    item = (lambda { result = Box(value); return result; })();
+    return item.value;
+}
+"""
+    );
+    assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
+    assert module.gen.native_engine is not None;
+    call = get_func(
+        module.gen.native_engine, "compute", ctypes.c_int64, ctypes.c_int64
+    );
+    assert call(37) == 37;
+}
+
+test "closure: nested method helpers retain the receiver and outer parameters" {
+    (prog, module) = compile_na_inline_ir(
+        "method_receiver",
+        """
+obj Counter {
+    has value: int = 10;
+    def add(amount: int = 1) -> int {
+        return self.value + amount;
+    }
+    def compute(label: str) -> int {
+        def invoke(amount: int) -> int {
+            if label == "double" {
+                return self.add(amount) * 2;
+            }
+            return self.value;
+        }
+        return invoke(3);
+    }
+}
+obj Derived(Counter) {
+    def inherited -> int {
+        def invoke -> int {
+            return super.add(4);
+        }
+        return invoke();
+    }
+}
+def probe -> int {
+    item = Counter();
+    derived = Derived();
+    return item.compute("double") + item.compute("single") + derived.inherited();
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    assert call() == 50;
+}
+
+test "closure: an escaped receiver stays alive until the closure is released" {
+    (prog, module) = compile_na_inline_ir(
+        "receiver_escape",
+        """
+glob dropped: int = 0;
+obj Owner {
+    has value: int = 21;
+    def callback -> Callable[[], int] {
+        def read -> int { return self.value; }
+        return read;
+    }
+    def drop { dropped += 1; }
+}
+def make -> Callable[[], int] { return Owner().callback(); }
+def probe -> int {
+    read = make();
+    return read();
+}
+def drops -> int { return dropped; }
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    drops = get_func(module.gen.native_engine, "drops", ctypes.c_int64);
+    before = drops();
+    assert call() == 21;
+    assert drops() - before == 1;
+}
+
+test "closure: split method implementations capture their declaration scope" {
+    (prog, module) = compile_na_inline_ir(
+        "impl_receiver",
+        """
+obj Factory {
+    has value: int = 30;
+    def callback(label: str) -> Callable[[], int];
+}
+impl Factory.callback {
+    def read -> int { return self.value + len(label); }
+    return read;
+}
+def probe -> int {
+    callback = Factory().callback("scope");
+    return callback();
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    assert call() == 35;
 }
 
 test "closure: read captures are late-bound (py backend parity)" {

@@ -251,10 +251,13 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
         }
     }
 
-    for (ext, lang) in [('.jac', 'jac'), ('.js', 'js')] {
-        path = os.path.join(runtime_dir, (module_name + ext));
-        if os.path.isfile(path) {
-            return (path, lang);
+    import from jaclang.client.runtime_source { jac_virtual_module_basenames }
+    for basename in jac_virtual_module_basenames(module_name) {
+        for (ext, lang) in [('.jac', 'jac'), ('.js', 'js')] {
+            path = os.path.join(runtime_dir, (basename + ext));
+            if os.path.isfile(path) {
+                return (path, lang);
+            }
         }
     }
 

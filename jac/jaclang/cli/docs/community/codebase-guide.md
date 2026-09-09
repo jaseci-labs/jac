@@ -33,7 +33,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Fix a compiler bug | `jac/jaclang/compiler/passes/` (shared analysis) + `compiler/backends/py/` (Python target) |
 | Add a language feature | `jac/jaclang/compiler/frontend/` (parser + AST) + `compiler/passes/` + `compiler/backends/` (all targets) |
 | Fix type checking | `jac/jaclang/compiler/types/` + `compiler/passes/type_checker_pass.jac` |
-| Work on native compilation | `jac/jaclang/compiler/backends/native/na_ir_gen/` |
+| Work on native compilation | `jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/` |
 | Work on JS compilation | `jac/jaclang/compiler/backends/es/` |
 | Improve the CLI | `jac/jaclang/cli/commands/` |
 | Fix a runtime bug | `jac/jaclang/runtime/` |
@@ -131,7 +131,7 @@ See `compiler/driver/compiler.jac` for the authoritative ordering -- it uses re-
 
 ### `compiler/backends/native/` -- Native Compilation
 
-The native backend generates LLVM IR via `llvmlite`. `na_ir_gen_pass.jac` composes `NaIRGenPass` from the sibling modules under `na_ir_gen/`, each its own compilation unit handling a different part of the language (every `<name>.jac` declares its slice, `<name>.impl.jac` implements it, and shared emitter state lives on `NaIRGenState` in `state.jac`):
+The native backend generates LLVM IR via `llvmlite`. `na_ir_gen_pass.jac` is the one declaration of `NaIRGenPass` (its state fields and every method signature, grouped by concern), and the bodies live under `na_ir_gen_pass.impl/`, one file per concern, the same shape as the Python and ECMAScript generators:
 
 | File | What it covers |
 |------|---------------|

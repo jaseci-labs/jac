@@ -1,629 +1,381 @@
-# Microservice Mode
+# Service Apps
 
-Split your Jac app into independent services by declaring them in
-`[scale.microservices.routes]`.
+A Jac workspace declares its apps in `jac.toml` under `[apps]`. Any app whose
+kind has a server (`web-app`, `service`, `service-mesh`) can be reached by the
+other apps; `service`-kind apps are the fleet the gateway fronts. There is no
+separate service table: **the app boundary is structural, the topology is
+profile**. The same workspace serves colocated in one process, as a local
+fleet of processes, or as one Kubernetes pod per app, without a code change.
 
 ## How It Works
 
-Declare the service cut in `jac.toml` - the compiler handles the rest.
-Providers are plain server modules exposing `def:pub` functions; consumers
-use plain imports, which lower to HTTP RPC stubs because the provider is in
-the routes table:
-
 ```toml
-[scale.microservices.routes]
-cart_app = "/api/cart"
+[project]
+name = "shop"
+default-app = "web"
+
+[apps.web]                    # the served app: client UI + walkers, hosts the gateway
+kind = "web-app"
+path = "web"
+
+[apps.cart]                   # a file-rooted service app
+kind = "service"
+entry-point = "core/cart.jac"
+
+[apps.orders]
+kind = "service"
+entry-point = "core/orders.jac"
+route = "/api/orders"         # optional; default is /api/<name>
 ```
 
 ```jac
-# orders_app.jac
-import from cart_app { get_cart, clear_cart }
+# core/orders.jac
+import from core.cart { get_cart, clear_cart }
 
 def:pub create_order(user_id: str) -> dict {
-    cart = get_cart(user_id=user_id);      # cross-service call (HTTP under the hood)
-    # ... create order from cart items ...
-    clear_cart(user_id=user_id);           # another cross-service call
+    cart = await get_cart(user_id=user_id);     # cross-app call: a typed-async bridge
+    clear_cart(user_id=user_id);                # un-awaited spawn: deferred via the outbox
     return {"order_id": "ord_1", "status": "confirmed"};
 }
 ```
 
 ```jac
-# cart_app.jac - a plain server module; def:pub is the service surface
+# core/cart.jac - a plain server module; def:pub is the app's surface
 def:pub get_cart(user_id: str) -> dict { ... }
 def:pub clear_cart(user_id: str) -> bool { ... }
-def:pub add_to_cart(user_id: str, product_id: str, qty: int) -> dict { ... }
 ```
 
-Locally: runtime spawns subprocesses, assigns ports, routes calls.
-On K8s: runtime creates pods, uses K8s DNS, routes calls.
-**Same code, zero changes.**
+The compiler classifies an import whose provider belongs to another app as a
+service bridge and lowers it to an `async` stub over `sv_client`. Whether the
+provider runs in-process or behind HTTP is decided at serve time, not at
+compile time.
 
-## Quick Start
+## Topologies
 
-### 1. Create services
-
-Each service is a plain server module exposing `def:pub` functions:
-
-```
-my-app/
-├── jac.toml
-├── main.jac              # client UI + entry point
-├── products_app.jac      # product catalog functions
-├── cart_app.jac          # cart management functions
-├── orders_app.jac        # order functions (imports cart + products)
-```
-
-**products_app.jac**:
-
-```jac
-node Product {
-    has id: str, name: str, price: float;
-}
-
-def:pub list_products() -> list[dict] {
-    products: list[dict] = [];
-    for p in [-->](`?Product) {
-        products.append({"id": p.id, "name": p.name, "price": p.price});
-    }
-    return products;
-}
-
-def:pub get_product(product_id: str) -> dict | None { ... }
-```
-
-**orders_app.jac** - consumes other services with plain imports:
-
-```jac
-import from cart_app { get_cart, clear_cart }
-import from products_app { get_product }
-
-def:pub create_order(user_id: str) -> dict {
-    cart = get_cart(user_id=user_id);
-    # ... validate, create order ...
-    clear_cart(user_id=user_id);
-    return {"order_id": "ord_1", "status": "confirmed"};
-}
-```
-
-### 2. Configure jac.toml
-
-```toml
-# The service cut: each key runs as its own service; the value is its
-# gateway URL prefix ("" derives /<module-slug>). Declaring routes IS what
-# turns microservice mode on; remove the table to run single-process.
-[scale.microservices.routes]
-products_app = "/api/products"
-cart_app = "/api/cart"
-orders_app = "/api/orders"
-
-# Optional: client UI served as SPA
-[scale.microservices.client]
-entry = "main.jac"
-```
-
-Services ARE declared here, and only here - the routes table is the
-authoritative service cut. There is no discovery from source: a module
-becomes a service by being listed (`jac scale split <module>` adds an
-entry), and imports of a listed module compile to RPC stubs.
-`[scale.microservices.services.<name>].file` overrides the service's entry
-file. Without it, a `--scale` deploy resolves the service against the
-shipped bundle: root `<name>.jac` wins, else the single shipped module with
-that basename anywhere in the tree (test fixtures included); zero or several
-candidates fail the pack, so set `file` to disambiguate. The implicit
-`main` service boots the `[project] entry-point` module at its exact path;
-the path is read relative to the directory holding `jac.toml` and
-re-expressed against the deployed tree when the deploy starts from a
-subdirectory (an entry module outside that tree fails the deploy).
-Local microservice mode runs `<name>.jac` from the project root as-is.
-
-### 3. Start
+| | colocated (default) | `--fleet` / `colocate = false` | `jac scale deploy` |
+|-|-|-|-|
+| service apps | loaded into the served app's process | one local process each | one pod each |
+| served app | in-process server at `/` | root member behind the gateway | root pod behind the gateway pod |
+| bridged calls | in-process (`sv_client.register_local`) | HTTP to `JAC_APP_<APP>_URL` | HTTP to `<app>-service.<ns>.svc.cluster.local` |
+| URLs | `<route>/walker/<name>`, `<route>/function/<name>` on the app server | the same URLs on the gateway | the same URLs on the gateway |
 
 ```bash
-jac run main.jac
+jac run web                 # colocated: everything in one process on :8000
+jac run web --fleet         # local fleet: cart + orders as processes, gateway on :8000
+jac scale deploy web        # kubernetes: pods for web, cart, orders + the gateway
 ```
 
-Runtime automatically:
-
-1. Reads the service cut from `[scale.microservices.routes]`
-2. Spawns each service as a subprocess on an auto-assigned port
-3. Starts gateway on :8000
-4. Routes client requests to services by prefix
+`jac run web --fleet` (or `[scale.gateway] colocate = false` for every run)
+starts each service app with `jac run --serve --no-client <entry>` on an
+auto-assigned port, starts the served app the same way (with its client), then
+serves the gateway on `gateway_port`. Providers boot before consumers: the
+compiler records `consumer -> provider` app edges in each app's interop
+manifest and the orchestrator topologically sorts them, falling back to
+declaration order when there are no edges. Every process gets
+`JAC_APP_<PEER>_URL` for every other member and `JAC_SV_NAME=<app>`.
 
 ## URL Structure
 
+The gateway exposes exactly the URLs the colocated server mounts:
+
 ```
-POST /api/{module}/function/{func_name}     # public functions
-POST /api/{module}/walker/{walker_name}      # public walkers
-GET  /health                                 # gateway health
+POST /api/{app}/walker/{walker}              # a service app's walker
+POST /api/{app}/walker/{walker}/{node_id}
+POST /api/{app}/function/{function}          # a service app's public function
+GET  /api/{app}/walkers                       # per-app listings
+GET  /api/{app}/functions
+*    /                                        # everything else: the served app
+GET  /health, /metrics, /openapi.json, /docs  # gateway-owned
 ```
+
+Client stubs and `sv_client` resolve `gateway base + route`, so a browser or
+another app talks to `http://host:8000/api/orders/...` whether the workspace
+runs colocated, as a local fleet, or on Kubernetes.
+
+## Configuration
+
+Infrastructure knobs live under `[scale.gateway]`; per-app knobs live under
+`[apps.<name>.scale]`.
+
+```toml
+[scale.gateway]
+colocate = true                 # false: every `jac run` starts the fleet
+gateway_port = 8000
+gateway_host = "0.0.0.0"
+http_forward_timeout = 30       # gateway -> app forward timeout
+boot_health_timeout = 60        # per-app /healthz budget at boot
+boot_max_wait = 90              # whole-fleet boot window
+health_monitor_interval = 10    # restart loop cadence
+
+[scale.gateway.identity]
+gateway_owned = true            # apps provision users the gateway minted
+
+[scale.gateway.rate_limit]
+enabled = true
+per_ip_rpm = 600
+per_user_rpm = 120
+shared = true                   # buckets in Postgres, one limit across replicas
+
+[scale.gateway.cors]
+allow_origins = ["https://app.example.com"]
+
+[scale.gateway.ingress]
+enabled = true
+host = "shop.example.com"
+ingress_class_name = "nginx"
+
+[scale.gateway.logs]
+enabled = true                  # Loki + Alloy lane
+[scale.gateway.tracing]
+enabled = true                  # OTLP lane
+
+[[scale.gateway.shared_volumes]]
+name = "shared-data"
+mount_path = "/app/.jachome"
+apps = ["orders", "cart"]
+size = "10Gi"
+```
+
+Per-app overrides (formerly `[scale.microservices.services.<name>]`):
+
+```toml
+[apps.orders.scale]
+rpc_timeout = 120.0             # app-to-app RPC timeout
+http_forward_timeout = 30.0     # gateway -> this app
+replicas = 2
+cpu_request = "100m"
+cpu_limit = "2000m"
+memory_request = "128Mi"
+memory_limit = "4Gi"
+env = { LOG_LEVEL = "DEBUG" }
+read_cache = false
+
+[apps.orders.scale.hpa]
+enabled = true
+min = 1
+max = 20
+cpu_target = 60
+memory_target = 80
+
+[apps.orders.scale.pdb]
+enabled = true
+max_unavailable = 1
+
+[apps.orders.scale.http_activation]   # KEDA HTTP Add-on scale-to-zero
+enabled = true
+target_port = 8000
+concurrency_target = 5
+[[apps.orders.scale.http_activation.rules]]
+hosts = ["*"]
+
+[[apps.orders.scale.triggers]]        # KEDA event triggers
+type = "prometheus"
+metadata = { serverAddress = "http://prometheus:9090", metricName = "queue", threshold = "5", query = "sum(queue)" }
+```
+
+The gateway pod takes the same pod keys (`replicas`, `cpu_*`, `memory_*`,
+`env`, `hpa`, `pdb`, `deployment_overlay`) directly under `[scale.gateway]`.
+Every reader of a per-app value goes through
+`jaclang.scale.config.config_loader.app_scale_overrides(config, app)`, which
+validates `[apps.<name>.scale]` against the schema (strict under
+`JAC_SCALE_CONFIG_STRICT=1`) and reads the effective, profile-merged value.
 
 ## CLI Commands
 
 ```bash
-# Setup
-jac setup microservice                   # interactive config
-jac setup microservice --list            # show config
-jac setup microservice --add file.jac    # add route mapping
-jac setup microservice --remove name     # remove route mapping
+jac run <app> --fleet                    # local fleet for one run
+jac scale status                         # local fleet members and health
+jac scale stop orders                    # stop one app
+jac scale restart cart
+jac scale logs products
+jac scale destroy                        # stop every app
 
-# Service management
-jac scale status                         # show all services
-jac scale stop orders_app                # stop one service
-jac scale restart cart_app               # restart one service
-jac scale logs products_app              # view logs
-jac scale destroy                        # stop everything
-
-# Preview before applying (no cluster contact, no docker build)
-jac scale deploy main.jac --dry-run                # per-service plan + lint
-jac scale deploy main.jac --dry-run --show-yaml    # + raw multi-doc YAML
+jac scale deploy [app | app.jac]         # kubernetes; default app when omitted
+jac scale deploy --dry-run               # per-app plan + lint, no side effects
+jac scale deploy --dry-run --show-yaml   # + raw multi-doc YAML
+jac scale status app.jac                 # platform status
+jac scale destroy app.jac                # tear down
 ```
 
-`--dry-run` runs the same manifest generation as the real deploy but
-exits before any side effect. Sub-second. Default output is a
-per-service summary (image, replicas, cpu/mem, HPA bounds, route, PDB)
-with inline lint findings - errors block the apply (exit 2), warnings
-are advisory. Add `--show-yaml` for the raw multi-doc stream you can
-pipe into `kubectl diff` or `kubectl apply -f -`.
+`--dry-run` renders the same manifests as the real deploy and exits before
+any side effect: one row per app (image, replicas, cpu/mem, HPA bounds,
+route, PDB) plus the gateway, with inline lint findings. Errors block the
+apply (exit 2); warnings are advisory.
 
-## Inter-Service Communication
-
-**Plain imports of a routes-table module (recommended)**:
+## Inter-App Communication
 
 ```jac
-import from cart_app { get_cart, clear_cart }
+import from core.cart { get_cart, ClearCart }
 
-# Just call it like a normal function - auth propagated automatically
-cart = get_cart(user_id="u123");
-clear_cart(user_id="u123");
+cart = await get_cart(user_id="u123");     # awaited: BridgeError family on failure
+ClearCart(user_id="u123");                 # statement spawn: enqueued to the outbox
 ```
 
-Under the hood:
+1. The compiler sees that `core.cart` belongs to app `cart`, not the importer's
+   app, and emits an async stub keyed by the provider app name.
+2. The stub calls `sv_client.call("cart", "get_cart", {...})`.
+3. Colocated: the call runs in-process. Fleet or Kubernetes: jac-scale's
+   transport forwards the request with the caller's `Authorization`,
+   `X-Trace-Id` and `traceparent`, plus the bridge bearer token and an
+   `X-Jac-Idempotency-Key` for outbox deliveries.
+4. The provider validates the token, executes, and the stub rehydrates the
+   result.
 
-1. Compiler sees `cart_app` in `[scale.microservices.routes]` and generates an HTTP stub
-2. Stub calls `sv_client.call("cart_app", "get_cart", {user_id: "u123"})`
-3. jac-scale hook: reads auth from request context, forwards Authorization header
-4. Cart service validates token, executes function, returns result
-5. Stub unwraps response and returns to caller
-
-**No manual `service_call()`, no `auth_token` passing, no URL management.**
-
-## Client Frontend
-
-The frontend calls the gateway API directly:
-
-```jac
-impl app.apiCall(service: str, endpoint: str, body: dict = {}) -> any {
-    token = localStorage.getItem("jac_token");
-    resp = await fetch(f"/api/{service}/function/{endpoint}", {
-        "method": "POST",
-        "headers": {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + (token or "")
-        },
-        "body": JSON.stringify(body or {})
-    });
-    return await resp.json();
-}
-```
-
-### Static asset directories outside dist
-
-By default the gateway only serves files under `client.dist_dir`. If your
-SPA references assets from a sibling directory in your repo (e.g. an
-`assets/` folder for fonts, images, WASM, monaco workers, etc.) those
-URLs will 404 in microservices mode unless you:
-
-1. **Build them into dist** via your bundler (vite-plugin-static-copy,
-   `publicDir`, or equivalent), **or**
-2. **Declare a static mount** so the gateway serves them directly from
-   their source directory.
-
-Static mounts are the simpler option when you don't want to restructure
-the build. Add one or more entries to
-`[scale.microservices.client.static_mounts]`:
-
-```toml
-[[scale.microservices.client.static_mounts]]
-url_prefix = "/static/assets"
-local_path = "assets"
-
-[[scale.microservices.client.static_mounts]]
-url_prefix = "/uploads"
-local_path = "/var/jac-uploads"
-```
-
-Each entry maps a URL prefix to a directory on disk. `local_path` can be
-relative (resolved from the gateway's working directory) or absolute.
-At request time the gateway checks `static_mounts` **before** falling
-back to `client.dist_dir`, so a `GET /static/assets/logo.png` is served
-from `<local_path>/logo.png`.
-
-**Canonical ownership semantics**: a URL whose prefix matches a configured
-mount belongs to that mount exclusively. A miss inside the mount returns
-**404**, even if a same-named file exists under `client.dist_dir`. This
-prevents dist from silently masking a missing asset and surfaces the
-real configuration bug instead.
-
-**Path safety**: requests are jailed to the configured `local_path` via
-`Path.resolve()` + common-prefix check; `..` traversal and symlink
-escapes are rejected.
-
-**When dist works fine**: prefer building assets into dist if your
-bundler already produces them (e.g. monaco workers via vite plugins).
-Static mounts shine when you have a stable repo-root directory with
-content that has no reason to be rebuilt by vite - fonts, vendored WASM,
-agent prompt fixtures, manifest files, etc.
-
-## What Is and Isn't a Service
-
-A module is a service if and only if it is listed in
-`[scale.microservices.routes]`:
-
-| File | Service? |
-|------|----------|
-| `cart_app.jac` | Yes - `cart_app` is a routes-table key, so imports of it become RPC |
-| `products_app.jac` | Yes - listed in the routes table |
-| `shared/models.jac` | No - not listed; imports stay in-process |
-| `main.jac` | Entry point, client UI |
-
-The route value controls the service's **public gateway URL** (`""` derives
-`/<module-slug>`); an internal-only service can keep the derived prefix and
-simply never be called through the gateway.
+Awaited failures raise `BridgeUnavailable`, `BridgeTimeout`, `BridgeRejected`
+or `BridgeError`. Un-awaited walker spawns never raise at the call site; the
+outbox delivers them with retries.
 
 ## Architecture
 
 ```
-Client --> Gateway (:8000) --> /api/products/* --> products_app (:18342)
-                           --> /api/orders/*   --> orders_app   (:18567)
-                           --> /api/cart/*     --> cart_app     (:18103)
-                           --> Static files, Admin UI
+Browser --> Gateway (:8000) --> /api/orders/*   --> orders  (:18567)
+                            --> /api/cart/*     --> cart    (:18103)
+                            --> everything else --> web     (:18342)  (root member)
+                            --> /admin/*, /health, /metrics, /docs      (gateway-owned)
 
-Inter-service (RPC stub from a routes-table import, direct - no gateway hop):
-  orders_app (:18567) --sv_client.call()--> cart_app (:18103)
+App-to-app (direct, no gateway hop):
+  orders --sv_client.call()--> cart   via JAC_APP_CART_URL
 ```
 
-Ports are auto-assigned: `18000 + hash(module_name) % 1000`, 100 retries.
+Local ports are auto-assigned (`18000 + hash(app) % 1000`, 100 retries). The
+served app is the fleet's root member: the gateway forwards every path it does
+not own or proxy to it, so pages, `/walker/*`, `/user/*` (unless the gateway
+owns identity) and `/cl/<sibling>/` bundles behave as they do colocated.
 
 ## Auth Flow
 
 ```
-1. Client --> Gateway (Authorization: Bearer USER_TOKEN)
-2. Gateway forwards Authorization --> orders_app
-3. orders_app walker calls: get_cart(user_id)  [imported from a routes-table service]
-4. jac-scale sv_service_call hook:
-   a. Reads Authorization from execution context
-   b. POST to cart_app with same Authorization header
-5. cart_app validates token (same JWT secret)
-6. Result flows back automatically
+1. Browser --> Gateway (Authorization: Bearer USER_TOKEN)
+2. Gateway forwards Authorization --> orders
+3. orders calls get_cart(user_id) through the bridge
+4. jac-scale transport reads Authorization from the execution context and
+   forwards it to cart
+5. cart validates the token (same JWT secret) and, with
+   [scale.gateway.identity] gateway_owned = true, provisions the user's root
+   on first sight
 ```
-
-No manual token passing. The hook reads it from the execution context.
-
-## Local vs Kubernetes
-
-Same code, different deployer:
-
-| | Local | K8s (`jac scale deploy`) |
-|-|-------|-----------------|
-| Spawning | Subprocess per service | Pod per service |
-| URLs | `http://127.0.0.1:18xxx` | `http://svc.ns.svc.cluster.local:8000` |
-| Health | HTTP `/healthz` polling | K8s probes |
-| Lifecycle | `LocalDeployer` | `KubernetesDeployer` |
-| Scaling | 1 replica | HPA per service (KEDA `ScaledObject` when `autoscaler_engine = "keda"`) |
-| Data | `.jac/data/{module}/` per process | Separate PVC per pod |
 
 ## Kubernetes Deployment
 
-`jac scale deploy <file>.jac` with services declared in
-`[scale.microservices.routes]`
-auto-routes to the microservice K8s target: one image built and pushed,
-then per-service `Deployment` + `ClusterIP Service` + autoscaler (HPA or KEDA `ScaledObject`) + PDB applied
-for every `[scale.microservices.routes]` entry plus the gateway.
+`jac scale deploy [app]` always deploys a fleet (`colocate` is ignored): one
+`Deployment` + `ClusterIP Service` + autoscaler + PDB per app in the fleet
+(the served app included) plus the gateway. Each pod boots with
+`JAC_SV_NAME=<app>`, `JAC_SV_FILE=<entry relative to the bundle>`,
+`JAC_SV_FLEET=<the fleet as JSON>` and a `JAC_APP_<PEER>_URL` for every peer,
+resolved by in-cluster DNS (`<app>-service.<ns>.svc.cluster.local`). The
+gateway pod runs `jac scale gateway` and reads the fleet from `JAC_SV_FLEET`;
+every other pod runs `jac run --serve "$JAC_SV_FILE"`.
 
-Each pod boots with `JAC_SV_NAME=<service>` (`__gateway__` for gateway);
-the entrypoint reads it to know which service to host. Gateway resolves
-peers via in-cluster DNS (`<svc>-service.<ns>.svc.cluster.local`) - no
-code changes from local mode.
-
-### Per-service config
-
-`[scale.microservices.services.NAME]` (gateway = `__gateway__`):
-
-| Key | Default | Notes |
-|---|---|---|
-| `replicas` | `1` | `Deployment.spec.replicas` |
-| `cpu_request`/`cpu_limit` | unset | `"100m"`, `"2000m"` |
-| `memory_request`/`memory_limit` | unset | `"128Mi"`, `"4Gi"` |
-| `env` | `{}` | extra env vars |
-| `rpc_timeout` | `10.0` | service RPC timeout (s) |
-| `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
-| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `50` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
-| `hpa.behavior` | `{}` | Raw HPA `behavior` fragment (`scaleUp`/`scaleDown`) deep-merged over the generated scale-rate defaults - same merge rules as `deployment_overlay`. Applies to both engines; for `keda` it only governs scaling while replicas are above zero - the drop to zero is still controlled by `autoscaler_cooldown` (the ScaledObject's `cooldownPeriod`). See example below. |
-| `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[scale.kubernetes.extra_triggers]]`. |
-| `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
-
-```toml
-[scale.microservices.services.llm_app]
-replicas = 2
-cpu_limit = "2000m"
-memory_limit = "4Gi"
-rpc_timeout = 120.0
-
-[scale.microservices.services.llm_app.hpa]
-min = 3
-max = 20
-
-# KEDA per-service trigger (requires autoscaler_engine = "keda" in [scale.kubernetes])
-[[scale.microservices.services.llm_app.triggers]]
-type = "prometheus"
-name = "pending-jobs"
-metadata = { serverAddress = "http://prometheus:9090", metricName = "llm_queue_depth", threshold = "5", query = "sum(llm_queue_depth)" }
-```
-
-#### Redis trigger with TriggerAuthentication
-
-Use the `auth.secret_refs` field to wire a Kubernetes Secret into a KEDA `TriggerAuthentication` resource. jac-scale creates the `TriggerAuthentication` before the `ScaledObject` so KEDA's admission validation always finds it.
-
-`secret_refs` keys are the KEDA scaler parameter names (e.g. `password`, `username`). Each value points to a secret name and key within that secret.
-
-```toml
-[scale.kubernetes]
-autoscaler_engine = "keda"
-
-[scale.microservices.services.my_service.hpa]
-min = 1
-max = 4
-
-[[scale.microservices.services.my_service.triggers]]
-type = "redis"
-name = "my-queue"
-
-[scale.microservices.services.my_service.triggers.metadata]
-address    = "redis-service.default.svc:6379"
-listName   = "my-list"
-listLength = "5"
-
-[scale.microservices.services.my_service.triggers.auth.secret_refs]
-password = { name = "redis-secret", key = "password" }
-username = { name = "redis-secret", key = "username" }
-```
-
-This produces a `TriggerAuthentication` named `my-queue-trigger-auth` in the same namespace, and the `ScaledObject` trigger carries an `authenticationRef` pointing to it.
-
-**Address format:** always use the fully qualified service name (`{service}.{namespace}.svc`) in the `address` field. The KEDA operator runs in its own namespace (`keda`) and short service names only resolve within the same namespace, causing a DNS lookup failure at scale evaluation time.
-
-**Scaling formula:** KEDA divides the current list length by `listLength` to get the desired replica count. With `listLength = "5"` and 20 items in the list, KEDA targets 4 replicas (capped at `max`).
+The deploy resolves every app's entry host-side against the sources the
+bundle ships; a missing, parked (`.jacignore`) or out-of-tree entry fails the
+deploy, `--dry-run` included, before anything is downloaded or sealed. The
+served app's client bundle is built on the host from the staged sources and
+shipped in the bundle.
 
 ### Rolling deploy, autoscaling, drain
 
 Every Deployment gets `RollingUpdate { maxSurge: 1, maxUnavailable: 0 }`,
-readinessProbe on `/healthz/ready`, `terminationGracePeriodSeconds =
-drain_timeout_seconds + 5`, and `preStop: sleep 5`. Together with the
-drain middleware (`P13`), `kubectl rollout restart deployment/<svc>-deployment`
-completes with zero non-2xx responses.
+readiness on `/healthz/ready`, `terminationGracePeriodSeconds =
+[serve.timeouts] drain + 5` and a `preStop` sleep. Together with the drain
+middleware, `kubectl rollout restart deployment/<app>-deployment` completes
+with zero non-2xx responses.
 
-Each service also gets an autoscaler (an HPA by default, or a KEDA `ScaledObject`
-when `autoscaler_engine = "keda"` is set in `[scale.kubernetes]`) and a
-PDB (`maxUnavailable=1`). Opt out per-service with `hpa.enabled = false` / `pdb.enabled = false`.
-
-**KEDA scale-down timing:** `autoscaler_cooldown` only applies when scaling down to 0 replicas (requires `idle_replicas = 0`). When `min_replicas > 0`, scaling down from N to min is handled entirely by the Kubernetes HPA stabilization window (default 5 minutes), and `autoscaler_cooldown` has no effect on it. To reduce the scale-down delay in this case, patch the HPA stabilization window via the `keda.sh/downscale-stabilization` annotation on the ScaledObject, or accept the default 5-minute floor.
-
-**`autoscaler_polling_interval` only applies with scale-to-zero:** KEDA emits an advisory when `pollingInterval` is set but `min_replicas > 0` and `idle_replicas` is not set. The polling interval only affects how quickly KEDA evaluates triggers when scaling down to zero replicas. For normal min/max autoscaling, the Kubernetes HPA control loop governs the evaluation cadence instead.
+Each app gets an autoscaler (HPA, or a KEDA `ScaledObject` when
+`autoscaler_engine = "keda"` is set in `[scale.kubernetes]`) and a PDB. Opt
+out per app with `hpa.enabled = false` / `pdb.enabled = false` under
+`[apps.<name>.scale]`. `[[apps.<name>.scale.triggers]]` adds KEDA triggers;
+`auth.secret_refs` wires a `TriggerAuthentication`. `http_activation` (KEDA
+HTTP Add-on) scales an app to zero; the gateway is never scaled to zero.
 
 ### Ingress
 
-Default off. Opt in for an external URL routed to the gateway:
-
 ```toml
-[scale.microservices.ingress]
+[scale.gateway.ingress]
 enabled = true
-host = "shop.example.com"          # optional
-ingress_class_name = "nginx"       # or alb / gce / traefik
+host = "shop.example.com"
+ingress_class_name = "nginx"
 annotations = { "nginx.ingress.kubernetes.io/proxy-body-size" = "10m" }
 ```
 
-One `Ingress` routes `/` to `gateway-service`; the gateway dispatches
-`/api/{svc}/*` internally. HTTP only - TLS automation (cert-manager,
-ACM) is deployment-specific; add via your own annotations/`tls:` block.
+One `Ingress` routes `/` to `gateway-service`; the gateway dispatches each
+app's route internally and everything else to the served app.
 
 ### Tear down
 
 ```bash
-target.destroy("app-name")
+jac scale destroy app.jac
 # or:
 kubectl delete deployment,service,hpa,pdb,ingress -l managed=jac-scale -n <ns>
 ```
 
-`destroy()` deletes by `managed=jac-scale,jac-scale.role in
-(microservice,gateway)` so renamed services still get cleaned up.
-
-### Image + entrypoint
-
-Every pod runs the same image, only needs `jac` + `jac-scale[deploy]`.
-The pod-spec's `command`/`args` reads `JAC_SV_NAME` and dispatches:
-`__gateway__` -> `jac scale gateway`; any other service runs
-`jac run --serve "$JAC_SV_FILE"`, where the deploy resolved every service's
-file host-side against the set of sources the bundle ships (explicit
-`[scale.microservices.services.NAME] file` > root `NAME.jac` > the unique
-same-named module anywhere in the tree; the implicit `main` boots the
-`[project] entry-point` module) and pinned it in the pod env. A missing,
-parked, or ambiguous module fails the deploy, `--dry-run` included, before
-anything is downloaded or sealed. The pod refuses to boot a file the
-extracted bundle does not contain.
-`JAC_SV_SIBLING=1` is set so the JacScalePlugin pre-hook skips the
-local-mode orchestrator.
-
-### End-to-end smoke
-
-`jac-scale/scripts/k8s_microservice_real_e2e.sh` deploys via the no-Docker
-path (a host-built `jac` binary + source ship over a PVC, jac installs at
-pod startup), waits for rollout, curls gateway + per-service routes, then
-hammers `/health` during a rolling restart asserting zero non-2xx.
-
-```bash
-minikube start
-bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
-
-# Remote (registry):
-USE_MINIKUBE=0 REGISTRY=myregistry.io/myorg \
-    bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
-```
-
 ## Built-in Route Passthrough
 
-The gateway forwards these to healthy services (tries all, skips 404):
+With a root member every non-owned path forwards to the served app. Without
+one (a gateway fronting service apps only) the gateway probes healthy apps:
 
 | Route | What |
 |-------|------|
-| `/user/*` | Auth (register, login, refresh) |
+| `/user/*` | Auth (register, login, refresh); gateway-owned when its identity store is up |
 | `/sso/*` | SSO (Google, Apple, GitHub) |
 | `/walker/*`, `/function/*` | Direct walker/function calls |
 | `/healthz` | Health check |
-| `/cl/*` | Client error reporting |
-| `/docs`, `/openapi.json` | API documentation |
+| `/cl/*` | Client pages and sibling app bundles |
+| `/docs`, `/openapi.json` | Aggregated API documentation |
 
 ## Production-Hardening Knobs
-
-All configured under `[scale.microservices]` in `jac.toml`. `jac
-setup microservice` writes commented reference blocks for each; uncomment
-and tune per deployment.
 
 ### Graceful shutdown on SIGTERM
 
 ```toml
-[scale.microservices]
-drain_timeout_seconds = 10
+[serve.timeouts]
+drain = 10.0
 ```
 
-On SIGTERM (or `jac scale stop`), gateway + services flip a drain flag
-(new requests get `503 SERVICE_UNAVAILABLE` with `Retry-After: 2`) and
-then uvicorn waits up to `drain_timeout_seconds` for in-flight requests
-to complete. Mirrors K8s `terminationGracePeriodSeconds`.
+On SIGTERM (or `jac scale stop`), the gateway and every app flip a drain flag
+(`/healthz/ready` answers 503, new requests get `503 SERVICE_UNAVAILABLE`
+with `Retry-After: 1`) and the transport waits up to `[serve.timeouts]
+drain` for in-flight requests to complete. Under `[serve.workers] count > 1`
+the supervisor fans SIGTERM out and every worker drains on the same budget.
+Mirrors K8s `terminationGracePeriodSeconds`.
 
-### Per-service RPC timeout
+### Per-app RPC timeout
 
-Default is 10s. Override for LLM / generation / long-running services:
+`[apps.<name>.scale] rpc_timeout` (default 10s) bounds connection setup and
+the wait for the response head of every bridged call into that app.
 
-```toml
-[scale.microservices.services.llm_app]
-rpc_timeout = 120.0
-```
+### Streaming app-to-app RPC (generator returns)
 
-The override is read on every service RPC and applied as the
-transport timeout for connection setup and for reads while waiting
-on the response head.
-
-### Streaming sv-to-sv RPC (generator returns)
-
-A `def:pub` function that returns a Python generator (or any iterator
-yielding JSON-serializable dicts) is automatically delivered to the
-caller as a live stream. No new toml - the framing is per-call:
-
-```jac
-# Provider service
-def:pub stream_events(run_id: str) -> Iterator[dict] {
-    yield {"type": "started", "run_id": run_id};
-    for chunk in some_long_running_work() {
-        yield {"type": "chunk", "data": chunk};
-    }
-    yield {"type": "done"};
-}
-
-# Consumer service - exact same call shape as a non-streaming service RPC
-# (llm_app is in the routes table); the runtime reads Content-Type and
-# returns a generator on SSE.
-import from llm_app { stream_events }
-
-for ev in stream_events(run_id="abc") {
-    handle(ev);
-}
-```
-
-Wire format: `Content-Type: text/event-stream`, each yield framed as
-`data: {json}\n\n`, terminated by `event: end\ndata: {}\n\n`. Producer-
-side exceptions raised mid-stream surface as `event: error\ndata: {...}`
-and re-raise as a `RuntimeError` out of the consumer's iterator
-(so a normal `for ... in` loop sees the failure rather than a
-silently-truncated stream).
-
-Lifecycle: the consumer's generator owns the underlying
-connection. Exhausting the iterator OR letting it go out of scope
-closes the connection cleanly. Dropping mid-stream (consumer
-disconnects) closes too - the producer's `finally` blocks run.
-
-`rpc_timeout` semantics on streaming: the timeout bounds
-*establishing* the connection and the wait for the response head.
-Once the head has arrived, reads of the event body are not bounded
-by `rpc_timeout`: a producer that stalls between events holds the
-consumer's iterator open until the connection drops (see #8429).
-A fast-stepping stream of any total duration is fine.
-
-Retries happen only for connect-phase failures (DNS, refused,
-connect timeout), where the request provably never reached the peer.
-Any failure after the request is sent - a read timeout, a dropped
-connection, an HTTP error - fails fast without a replay, because the
-peer may already have executed the call. Every failed round trip in
-either phase records one circuit-breaker failure. This applies to
-streaming and non-streaming RPC alike.
+A `def:pub` function that returns a generator is delivered to the caller as
+a live SSE stream (`Content-Type: text/event-stream`, one `data:` frame per
+yield, `event: end` terminator, `event: error` re-raised as `RuntimeError`).
+The consumer's generator owns the connection; exhausting or dropping it
+closes the stream. `rpc_timeout` bounds only connection setup and the
+response head. Retries happen only for connect-phase failures.
 
 ### WebSockets + SSE proxy at the gateway
 
-No config needed. Any client-hit `/api/{service}/ws/{rest}` is proxied
-bidirectionally to `{service}`'s `ws://.../ws/{rest}` endpoint with
-auth + trace forwarding. HTTP responses that are `text/event-stream`
-or chunked are streamed through the gateway rather than buffered -
-this also covers the generator-return path above when a public
-client (vs. another sv-imported service) hits it.
+`/api/{app}/ws/{rest}` is proxied bidirectionally to the app's
+`ws://.../ws/{rest}` with auth and trace forwarding; `text/event-stream` and
+chunked responses stream through the gateway.
 
 ### CORS
 
-Open by default - `allow_origins` defaults to `["*"]` so local SPA
-dev workflows (Vite on `:5173`, React on `:3000`, etc.) work without
-config. Override to restrict:
-
-```toml
-[scale.microservices.cors]
-allow_origins     = ["https://app.example.com"]   # concrete list
-allow_methods     = ["GET", "POST", "OPTIONS"]
-allow_headers     = ["Authorization", "Content-Type"]
-allow_credentials = true    # requires concrete origins (not "*")
-max_age           = 600
-```
-
-Set `allow_origins = []` to disable CORS entirely. Registered
-outermost so preflights answer even during drain (clients need CORS
-headers to read a 503 envelope).
+`[scale.gateway.cors]`: open by default (`allow_origins = ["*"]`); set a
+concrete list to restrict or `[]` to disable. Registered outermost so
+preflights answer even during drain.
 
 ### Rate limiting
 
-Token bucket, per-IP + optional per-user. Opt-in:
-
-```toml
-[scale.microservices.rate_limit]
-enabled           = true
-per_ip_rpm        = 600
-per_user_rpm      = 120        # 0 disables per-user tier
-burst_multiplier  = 2.0        # capacity = rpm * burst / 60
-exempt_paths      = ["/health", "/healthz", "/metrics"]
-trusted_proxies   = []         # IPs/CIDRs allowed to set X-Forwarded-For
-```
-
-Per-IP key is the TCP peer address. `X-Forwarded-For` is honored only
-when the peer is listed in `trusted_proxies` (IPs or CIDRs); the key is
-then the rightmost forwarded hop not itself trusted, so clients cannot
-forge their way into fresh buckets. Deployments behind a proxy or
-ingress must list it in `trusted_proxies`, otherwise every request keys
-on the proxy's address and all clients share one bucket. Per-user key
-is `sha256(Authorization)[:32]`. 429 responses carry the standard
-envelope + `Retry-After` header.
+`[scale.gateway.rate_limit]`: token bucket per IP plus an optional per-user
+tier, kept in the project database (`shared = true`) so one limit holds
+across every gateway process and replica. The client address comes from the
+transport's proxy resolver: `X-Forwarded-For` is honored only from
+`[serve.proxy] trusted`, so list your ingress there or every client shares
+one bucket. 429 responses carry the standard envelope and `Retry-After`.
 
 ### Observability
 
-+ `GET /health` - JSON summary of service statuses (always on).
-+ `GET /metrics` - Prometheus exposition. Enable with
-  `[scale.monitoring] enabled = true`.
-+ `X-Trace-Id` - gateway mints one if the client omits it and threads
-  it through every downstream hop (including service RPCs). Echoed back
-  on every response.
-+ `GET /docs` + `GET /openapi.json` - unified Swagger UI + merged
-  OpenAPI doc across all healthy services.
++ `GET /health` - JSON summary of app statuses (always on).
++ `GET /metrics` - Prometheus exposition; enable with `[scale.monitoring] enabled = true`.
++ `X-Trace-Id` - minted by the gateway when absent and threaded through every hop.
++ `GET /docs` + `GET /openapi.json` - unified Swagger UI + merged OpenAPI across every healthy app.

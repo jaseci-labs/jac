@@ -501,16 +501,18 @@ impl PgStore.ensure_schema(promotions: dict[str, list[str]]) -> None {
 
 
 impl PgStore.ensure_schema_once(promotions: dict[str, list[str]]) -> None {
+    self._ensure_ready();
     ns = _store_ns(self.conninfo);
-    if ns in _schema_ready {
+    key = _schema_extension_key();
+    if _schema_ready.get(ns) == key {
         return;
     }
     with _schema_gate {
-        if ns in _schema_ready {
+        if _schema_ready.get(ns) == key {
             return;
         }
         self.ensure_schema(promotions);
-        _schema_ready.add(ns);
+        _schema_ready[ns] = key;
     }
 }
 
@@ -628,6 +630,11 @@ impl PgStore._apply_schema_ddl -> None {
         }
         self._apply_promotions();
         self._property_graph_ddl();
+        for name in sorted(_schema_extensions) {
+            for stmt in _schema_extensions[name] {
+                self._run(stmt, {});
+            }
+        }
     } finally {
         self._run('SET lock_timeout = DEFAULT', {});
     }
@@ -651,6 +658,12 @@ impl PgStore._schema_fingerprint -> str {
     }
     for col in sorted(self._promotion_columns()) {
         h.update(str(col).encode());
+    }
+    for name in sorted(_schema_extensions) {
+        h.update(name.encode());
+        for stmt in _schema_extensions[name] {
+            h.update(stmt.encode());
+        }
     }
     return f"{SCHEMA_VERSION}:{h.hexdigest()[:24]}";
 }
@@ -1077,6 +1090,46 @@ impl PgStore.kv_put_ttl(key: str, value: str, ttl_seconds: int) -> None {
 
 impl PgStore.kv_delete(key: str) -> None {
     self._run('DELETE FROM kv_state WHERE key = :k', {'k': key});
+}
+
+
+impl PgStore.kv_acquire_lease(key: str, ttl_seconds: int, owner: str) -> bool {
+    with self._lock {
+        conn: any = self._side();
+        rows = conn.run(
+            """
+            INSERT INTO kv_state (key, value, expires_at, updated_at)
+            VALUES (
+                :k, :o, now() + make_interval(secs => CAST(:ttl AS int)), now()
+            )
+            ON CONFLICT (key) DO UPDATE SET
+                value = EXCLUDED.value,
+                expires_at = EXCLUDED.expires_at,
+                updated_at = now()
+            WHERE kv_state.value = :o
+                  OR kv_state.expires_at IS NULL
+                  OR kv_state.expires_at <= now()
+            RETURNING key
+            """,
+            k=f"lease:{key}",
+            o=owner,
+            ttl=ttl_seconds
+        );
+    }
+    return bool(rows);
+}
+
+
+impl PgStore.kv_release_lease(key: str, owner: str) -> bool {
+    with self._lock {
+        conn: any = self._side();
+        rows = conn.run(
+            'DELETE FROM kv_state WHERE key = :k AND value = :o RETURNING key',
+            k=f"lease:{key}",
+            o=owner
+        );
+    }
+    return bool(rows);
 }
 
 

@@ -73,8 +73,8 @@ def _config(
 # namespace ensure, the readiness-gate step, Service + Deployment apply, and
 # the superseded-Deployment sweep. Nothing is faked or patched.
 def _deploy_through_apply(cfg: KubernetesConfig) {
-    target = KubernetesTarget(config=cfg, microservices_config={});
-    builder = ManifestBuilder(k8s_config=cfg, microservices_config={});
+    target = KubernetesTarget(config=cfg);
+    builder = ManifestBuilder(k8s_config=cfg);
     specs = builder.generate_service_pod_specs(
         AppConfig(code_folder="/apps/standup", file_name="main.jac"), "img"
     );

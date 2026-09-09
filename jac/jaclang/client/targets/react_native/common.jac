@@ -1,3 +1,4 @@
+import socket;
 import from pathlib { Path }
 import from jaclang.client.targets.build_common { SUBPROCESS_TIMEOUT_BUILD_NATIVE }
 import from jaclang.client.targets.node_tooling_common {
@@ -50,6 +51,21 @@ def normalize_rn_platform(platform: str | None = None) -> str {
         return value;
     }
     raise ValueError(
-        f"Unsupported react-native platform '{platform}'. " "Supported: android, ios."
+        f"Unsupported mobile platform '{platform}'. Supported: android, ios, web."
     );
+}
+
+def detect_lan_ipv4 -> str | None {
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
+    try {
+        s.settimeout(0.5);
+        s.connect(("8.8.8.8", 80));
+        addr = s.getsockname()[0];
+        if addr and addr != "127.0.0.1" {
+            return addr;
+        }
+    } except OSError {} finally {
+        s.close();
+    }
+    return None;
 }

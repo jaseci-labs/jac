@@ -64,7 +64,7 @@ def _na_run(fixture: str) -> tuple[(str, str)] {
     src = os.path.join(FIXTURES, fixture);
     out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "nacompile", src, "-o", out_bin],
+        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
         capture_output=True,
         text=True,
         timeout=900
@@ -139,7 +139,7 @@ test "a ContextVar at a scalar type argument is refused, not lowered" {
     src = os.path.join(FIXTURES, "contextvars_unsupported.jac");
     out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "nacompile", src, "-o", out_bin],
+        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
         capture_output=True,
         text=True,
         timeout=900

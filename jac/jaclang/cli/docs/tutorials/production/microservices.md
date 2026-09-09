@@ -1,54 +1,58 @@
-# Microservices with the Routes Table
+# Service Apps
 
-> **Concept:** [Scale invariance](../../reference/plugins/jac-scale.md#the-scale-invariance-contract): monolith and service mesh are deployment shapes of the same program text.
+> **Concept:** [Scale invariance](../../reference/plugins/jac-scale.md#the-scale-invariance-contract): one process and a fleet of services are deployment shapes of the same program text. The boundary is structural, the topology is profile.
 
-A Jac codebase can run as a single monolith or as several independently-deployed microservices, with no source changes between the two. The trick is the `[scale.microservices.routes]` table in `jac.toml` -- the **service cut**: when a module is listed there, the compiler generates HTTP client stubs for every import of it instead of pulling the provider into the consumer's process. Calls become RPCs over the wire, but the source still reads like a normal import -- because it *is* a normal import. Both `def:pub` functions and `walker:pub` archetypes are supported -- functions translate to `POST /function/<name>`, walkers to `POST /walker/<name>` plus a return-side rehydration that hands the consumer back a real walker instance with `reports` populated.
+A Jac project can run as a single process or as several independently-deployed services, with no source changes between the two. The unit is the **app**: an `[apps.<name>]` table in `jac.toml` with `kind = "service"` makes a module its own service app, and every import of what that app owns compiles to a typed-async **bridge stub** instead of loading the provider into the consumer's process. Calls become RPCs you `await`, but the source still reads like a normal import -- because it *is* a normal import. Both `def:pub` functions and walkers cross the boundary: functions translate to `POST /function/<name>`, walkers to `POST /walker/<name>` plus a return-side rehydration that hands the consumer back a real walker instance with `reports` populated.
 
-This tutorial walks through splitting a tiny app into two services, running the whole thing from one command, watching the round-trip happen over real HTTP, and then covers testing and multi-host production deployment.
+This tutorial walks through splitting a tiny project into two apps, running the whole thing from one command (colocated, then as a local fleet), watching the round-trip happen over real HTTP, deferring a spawn through the outbox, and then covers testing and production deployment.
 
 > **Prerequisites**
 >
 > - Completed: [Local API Server](local.md)
 > - Time: ~20 minutes
-> - Reference: [Microservice Interop](../../reference/plugins/jac-scale-http.md#microservice-interop-sv-to-sv) in the Scale reference
+> - Reference: [Service Apps](../../reference/plugins/jac-scale-http.md#service-apps-cross-app-bridging) in the Scale reference · [Workspaces & Apps](../../reference/apps.md)
 
 ---
 
 ## Overview
 
-Two services, one HTTP boundary between them. The consumer imports the provider with a regular import, but because the provider is in the routes table, every call out to it is a `POST /function/<name>` over the wire. The consumer never loads the provider's code into its own memory.
-
-The default single-host deployment runs the whole app from one `jac run` command: the consumer brings the provider up automatically before serving the first request.
+Two apps, one boundary between them. The consumer imports the provider with a regular import, but because the provider is its own app, every call out to it crosses the boundary -- in-process when the two are colocated, `POST /function/<name>` over the wire when they are not. The consumer never loads the provider's code as its own.
 
 ```mermaid
 graph LR
-    Client["Client<br/>(curl, browser)"] -- "POST /function/sum_list" --> Calc["calculator_service<br/>port 8002"]
-    Calc -- "POST /function/add (x5)" --> Math["math_service<br/>auto-started sibling"]
+    Client["Client<br/>(curl, browser)"] -- "POST /function/sum_list" --> Calc["calculator app<br/>port 8002"]
+    Calc -- "await add(...) x5" --> Math["math app<br/>colocated, or its own process"]
     Math -- "result" --> Calc
     Calc -- "result" --> Client
 ```
 
 ---
 
-## 1. Set Up the Project
+## 1. Set Up the Workspace
 
-Create a working directory with a `jac.toml` so `jac run` recognizes it as a project, and declare the provider in `[scale.microservices.routes]` -- that entry is what makes `math_service` a separate service. The two services live side by side in the same directory.
+Create a project and declare both apps. `jac create --app` writes the tables for you; here they are spelled out so you can see what an app *is*:
 
 ```bash
-mkdir microservices-demo && cd microservices-demo
-cat > jac.toml <<'EOF'
+mkdir calc-demo && cd calc-demo
+cat > jac.toml <<'EOT'
 [project]
-name = "microservices-demo"
+name = "calc-demo"
 version = "0.1.0"
+default-app = "calculator"
 
-[scale.microservices.routes]
-math_service = ""
-EOF
+[apps.calculator]
+kind = "service"
+entry-point = "calculator_service.jac"
+
+[apps.math]
+kind = "service"
+entry-point = "math_service.jac"
+EOT
 ```
 
-(`jac scale split math_service` writes the routes entry for you; `""` derives the route prefix from the module name.)
+Both apps are **file-rooted**: no `path`, so each claims exactly its entry file and nothing else. `default-app` makes a bare `jac run` mean `jac run calculator`. Each serving app answers under its route, `/api/<name>` unless you set `route` -- and two apps claiming the same route is a config error.
 
-> **Why `jac.toml`?** `jac run <relative-path>` requires a `jac.toml` in the current directory. Without one, you get `Error: No jac.toml found`. The routes table also lives here -- it is the single authoritative declaration of which modules run as their own services. And the services need to live in the same directory so the consumer can find and auto-start the provider at runtime, so a shared project layout is the simplest path.
+> **Why two apps and not one?** One app is one transaction boundary and one process by default. Splitting `math` out means its walkers and functions run on *its* server, the `calculator` app bridges to them, and whether the two share a process is now a run-time choice (`--fleet`) rather than a rewrite. See [the consistency model](../../reference/apps.md#the-consistency-model).
 
 ---
 
@@ -57,7 +61,7 @@ EOF
 `math_service.jac` exposes three public functions and one boundary type.
 
 ```jac
-# math_service.jac
+# math_service.jac -- the entry file of [apps.math]
 obj DivResult {
     has result: float | None = None,
         error: str = "";
@@ -79,59 +83,93 @@ def:pub divide(a: float, b: float) -> DivResult {
 }
 ```
 
-The `def:pub` modifier is required: only public functions get registered as `/function/<name>` endpoints, and the consumer's generated stub will 404 against anything else. `DivResult` is a boundary type -- it crosses the wire as JSON and gets re-hydrated on the consumer side.
+The `def:pub` modifier is what puts a function on the app's **bridge surface**: only public functions get registered as `/function/<name>` endpoints, and a consumer that imports anything else is refused at compile time (`E5106`). `DivResult` is a boundary type -- it crosses the wire as JSON and gets re-hydrated on the consumer side.
 
 ---
 
 ## 3. Create the Consumer
 
-`calculator_service.jac` imports from the provider with a plain import and uses the imported functions like ordinary local calls. Because `math_service` is in the routes table, the import lowers to HTTP stubs.
+`calculator_service.jac` imports from the provider with a plain import and uses the imported functions like ordinary local calls -- awaited, because a bridged call is a coroutine.
 
 ```jac
-# calculator_service.jac
+# calculator_service.jac -- the entry file of [apps.calculator]
 import from math_service { add, multiply, divide, DivResult }
 
-def:pub sum_list(numbers: list[int]) -> int {
+async def:pub sum_list(numbers: list[int]) -> int {
     result = 0;
     for n in numbers {
-        result = add(result, n);  # HTTP call to math_service
+        result = await add(result, n);  # bridged to the math app
     }
     return result;
 }
 
-def:pub dot_product(a: list[int], b: list[int]) -> int {
+async def:pub dot_product(a: list[int], b: list[int]) -> int {
     result = 0;
     for i in range(len(a)) {
-        result = add(result, multiply(a[i], b[i]));
+        result = await add(result, await multiply(a[i], b[i]));
     }
     return result;
 }
 
-def:pub safe_divide(a: float, b: float) -> DivResult {
-    return divide(a, b);  # boundary type round-trips
+async def:pub safe_divide(a: float, b: float) -> DivResult {
+    return await divide(a, b);  # boundary type round-trips
 }
 ```
 
-Read this file as if `add`, `multiply`, and `divide` were local functions. The compiler swaps them out for HTTP stubs at compile time, but the call site does not change.
+Read this file as if `add`, `multiply`, and `divide` were local functions with one difference: the `await`. Nothing in the import says "remote" -- the compiler classifies the import by the **owner** of what it names. `math_service.jac` belongs to the `math` app, the importer belongs to `calculator`, so the import is a bridge and the stubs are coroutines. Forget the `await` and `jac check` says so:
+
+```text
+error[E1042]: Expected int, but got Coroutine[Any, Any, int] -- this call returns a coroutine that was not awaited
+```
+
+Check the workspace before running it:
+
+```bash
+jac check
+```
+
+With no paths, `jac check` compiles one program per app (each diagnostic prefixed `[calculator]` / `[math]` when there is anything to say) and sweeps any file no app reached.
 
 ---
 
-## 4. Run the App
+## 4. Run the Workspace
 
-From the `microservices-demo` directory, start the consumer:
+From the `calc-demo` directory, start the default app:
 
 ```bash
-jac run --port 8002 calculator_service.jac
+jac run --port 8002
 ```
 
-That is all. The consumer finds every routes-table service it imports (`math_service`, in this case) and brings them up automatically inside the same process before serving the first request. Transitive dependencies come along for free: if `math_service` itself imported another service in the cut, that provider would also be auto-started. One command, whole cluster.
+That is all. The consumer's service apps are brought up **before** it serves the first request. By default they are **colocated**: the `math` app's entry module is loaded into the same process and registered as a local provider, so `await add(...)` runs in-process -- no sockets, but still through the bridge, still awaited, still a cut. One command, one process, the whole workspace.
 
-Startup is **fail-fast**: if any service fails to come up (missing source file, syntax error, port in use), the consumer crashes at startup with the underlying error. You find out at deploy time, not at first request.
+To run the apps apart on your machine, ask for a **fleet**:
 
-A couple of things to know about the auto-started services:
+```bash
+jac run --port 8002 --fleet
+```
 
-- **They are loopback-only.** Auto-started services bind `127.0.0.1`, not `0.0.0.0`, so they cannot serve traffic to other hosts. Single-command mode is a supported deployment for **single-host** setups. When your providers live on different hosts, see [Section 7: Going to Production](#7-going-to-production).
-- **Avoid ports 18000-18999 for your own `--port` flags.** That range is reserved for auto-started sibling services, and a manual port in that range can collide with a future auto-start. Pick something in the 8000s for explicit external ports.
+Now `math` is its own local process behind the `calculator` app's gateway, and the same `await add(...)` is a `POST /function/add` over loopback. Transitive providers come along either way: if `math` bridged to a third app, that app would be colocated or started too. Startup is **fail-fast**: if any service app fails to come up (missing entry file, syntax error, port in use), the served app exits at startup with the underlying error -- at deploy time, not at first request.
+
+### Which topology a local run picks
+
+`[apps]` describes the cut; the topology is a run-time choice:
+
+| Command | Topology |
+|---------|----------|
+| `jac run` | One process: the service apps are colocated in the served app's process (with vite and HMR under `--dev`) |
+| `jac run --fleet` | Gateway + one local process per service app; the served app is the fleet's root member and runs behind the gateway |
+| `jac run --dev --fleet` | The same fleet, dev client included: the root member runs vite and HMR behind the gateway |
+| `[scale.gateway] colocate = false` | Every local run is a fleet, as if `--fleet` were passed |
+
+In a fleet run the served app owns the project root: `/`, `/cl/<page>`, `/static/client.js` and any client-side route the fleet does not claim reach it through the gateway (in `--dev` at its vite dev server, with its own API as the fallback, so a client dev server that dies costs HMR, not the site). Root ownership needs a root member that actually serves a client, so a deployed gateway pod is unaffected and keeps serving the client bundle its image staged.
+
+`/cl/<page>` is not exclusive: it stays a discovery family, with the root member asked first and a page it does not serve still reaching the service app that does.
+
+Because the root member compiles the client, it starts and finishes booting before the rest of the fleet -- a module another member analyzed first reaches the client backend with its calls unresolved. The service apps then start in parallel behind it; `[scale.gateway] app_boot_timeout` bounds that wait, and a headless fleet skips it entirely.
+
+A service app still compiling never costs the fleet its routes either: the gateway keeps asking for its `/openapi.json` until it is healthy, and never caches what it said before then.
+
+`jac run --show` prints one plan row per app (`app`, `kind`, `entry`, `action`, `client`, `route`) without running anything.
 
 ---
 
@@ -140,7 +178,7 @@ A couple of things to know about the auto-started services:
 From a second terminal, exercise the consumer:
 
 ```bash
-# Cross-service: 5 add() calls under the hood
+# Cross-app: 5 add() calls under the hood
 curl -X POST http://localhost:8002/function/sum_list \
   -H "Content-Type: application/json" \
   -d '{"numbers":[1,2,3,4,5]}'
@@ -150,7 +188,7 @@ curl -X POST http://localhost:8002/function/sum_list \
 {"ok":true,"type":"response","data":{"result":15,"reports":[]},"error":null,"meta":{"extra":{"http_status":200}}}
 ```
 
-Back in the consumer's terminal you will see the consumer's `sum_list` call followed by five `POST /function/add` lines from the auto-started `math_service` sibling -- one per iteration of the loop -- before the outer `sum_list` closes out:
+In fleet mode the consumer's terminal shows the `sum_list` call followed by five `POST /function/add` lines from the `math` process -- one per iteration of the loop -- before the outer `sum_list` closes out:
 
 ```text
 Executing function 'sum_list' with params: {'numbers': [1, 2, 3, 4, 5]}
@@ -162,7 +200,7 @@ Executing function 'sum_list' with params: {'numbers': [1, 2, 3, 4, 5]}
   127.0.0.1:52652 - "POST /function/sum_list HTTP/1.1" 200
 ```
 
-That is the proof: the consumer's loop is fanning out to the provider on each iteration, over real HTTP. The auto-started sibling is a separate server inside the same process, not a function call.
+That is the proof: the consumer's loop is fanning out to the provider on each iteration, over real HTTP. Run it colocated and the five lines vanish while the result stays identical -- the topology changed, the program did not.
 
 ### Boundary Type Round-Trip
 
@@ -192,12 +230,12 @@ Both error and success cases survive the boundary intact. The `_jac_type` metada
 
 ### Walker Imports
 
-`def:pub` is one of two shapes that can cross the service boundary; the other is `walker:pub`. A walker imported from a routes-table service becomes a remote spawn: the consumer-side stub class accepts the walker's `has` fields as keyword arguments, fires off a `POST /walker/<name>` over the wire, and returns the executed walker with its fields and `reports` populated -- the same shape you'd get from a local spawn.
+`def:pub` is one of two shapes that can cross the boundary; the other is a walker. A walker imported from another app becomes a remote spawn: the consumer-side stub class accepts the walker's `has` fields as keyword arguments, spawns it on the provider (`POST /walker/<name>` when apart), and -- awaited -- returns the executed walker with its fields and `reports` populated, the same shape you'd get from a local spawn.
 
 Add a walker to `math_service.jac`:
 
 ```jac
-walker:pub Greet {
+walker Greet {
     has name: str;
     can greet with Root entry {
         report f"hello, {self.name}";
@@ -212,9 +250,9 @@ import from math_service { add, multiply, divide, Greet, DivResult }
 
 walker:pub TriggerGreet {
     has who: str;
-    can run with Root entry {
-        rg = Greet(name=self.who);   # POST /walker/Greet on the provider
-        report rg.reports[0];        # "hello, <who>"
+    async can run with Root entry {
+        rg = await Greet(name=self.who);   # spawn on the math app
+        report rg.reports[0];              # "hello, <who>"
     }
 }
 ```
@@ -231,20 +269,58 @@ curl -X POST http://localhost:8002/walker/TriggerGreet \
 {"ok":true,"type":"response","data":{"result":{"_jac_type":"TriggerGreet","_jac_id":"...","_jac_archetype":"walker","reports":[],"who":"world"},"reports":["hello, world"]},"error":null,"meta":{"extra":{"http_status":200}}}
 ```
 
-The provider log shows the cross-service hop: `POST /walker/Greet 200`. The consumer's `Greet(name=self.who)` call site reads exactly like a local construction; the compiler swaps it for an HTTP spawn at compile time.
+In fleet mode the provider log shows the cross-app hop: `POST /walker/Greet 200`. The consumer's `Greet(name=self.who)` reads exactly like a local construction; the compiler swaps it for a bridged spawn at compile time.
 
 A few things to know:
 
-- **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary there's no useful concept of an unexecuted remote walker, so instantiating a service-imported walker is **spawn-and-execute** and always returns a post-execution instance.
-- **`walker:pub` only.** Private walkers don't get an endpoint. The same 404 you'd see for non-public functions also fires for non-public walkers.
+- **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary there's no useful concept of an unexecuted remote walker, so instantiating a bridged walker is **spawn-and-execute** and, awaited, always yields a post-execution instance.
+- **Walkers are on the bridge surface as declared; functions need `def:pub`.** A `def` without `:pub` is private to its app and a consumer that imports it gets `E5106`.
 - **Boundary types still flow through.** A walker that emits an `obj` value via `report` comes back as that type, not as a raw dict, as long as the type is also listed in the import.
-- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [Scale reference](../../reference/plugins/jac-scale-http.md#walker-imports) for the full contract.
+- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls.
+
+### Fire and Forget: the Outbox
+
+Sometimes the consumer does not need the answer -- a notification, an audit record, a recount that can lag. Spawn the bridged walker as a **statement and do not await it**:
+
+```jac
+walker:pub RecordVisit {
+    has who: str;
+    can run with Root entry {
+        Greet(name=self.who);     # un-awaited, statement position: deferred delivery
+        report "recorded";
+    }
+}
+```
+
+This is not a dropped coroutine. An un-awaited cross-app spawn lowers to a **deferred** spawn: it is written to the outbox inside this request (same transaction where the store allows), and a background worker delivers it to the `math` app with exponential backoff -- at least once, with an idempotency key (`X-Jac-Idempotency-Key`) the receiver dedupes on, so a retry after a lost acknowledgement does not run the walker twice. After eight failed attempts the entry is dead-lettered (`outbox.dead_letters()`). The call site **never raises**: the caller's request commits whether or not `math` is reachable right now.
+
+That is the consistency model in two lines: `await` when you need the answer inside this request (ACID within an app), plain statement when you need it to happen eventually (eventual across apps). See [Deferred delivery](../../reference/plugins/jac-scale-http.md#deferred-delivery-the-outbox) for keys and storage.
+
+### When the Bridge Fails
+
+An awaited call that cannot complete raises one of the `BridgeError` family from `jaclang.server.bridge` -- `BridgeUnavailable` (no route to the provider), `BridgeTimeout`, `BridgeRejected` (4xx: not `pub`, unauthorized, bad arguments), or `BridgeError` (anything else) -- each with `app`, `name`, `detail` and `status`. Catch where you want graceful degradation:
+
+```jac
+import from jaclang.server.bridge { BridgeError, BridgeUnavailable }
+
+async def:pub sum_or_zero(numbers: list[int]) -> int {
+    try {
+        return await sum_list(numbers);
+    } except BridgeUnavailable {
+        return 0;                      # math is down; degrade
+    } except BridgeError as e {
+        raise RuntimeError(f"math failed: {e.detail}");
+    }
+}
+```
+
+Exception parity with an in-process spawn is the contract: the same `try` works whether `math` is colocated, a sibling process, or a pod two clusters away.
 
 ---
 
 ## 6. Test the Boundary In-Process
 
-When you write tests for the consumer, you do not want them to hit a real provider over HTTP. Instead, register an in-process test client (a `JacTestClient`) for each provider, and the consumer's calls route through it directly -- no sockets, no port allocation, no background threads.
+When you write tests for the consumer, you do not want them to hit a real provider over HTTP. Instead, register an in-process test client (a `JacTestClient`) for each provider **app**, and the consumer's bridged calls route through it directly -- no sockets, no port allocation, no background threads.
 
 The core pattern is three lines:
 
@@ -253,160 +329,113 @@ import from jaclang.server { sv_client }
 
 with entry {
     sv_client.clear_test_clients();
-    sv_client.register_test_client("math_service", math_test_client);
-    # ...the consumer's service-stub calls into math_service now go through math_test_client
+    sv_client.register_test_client("math", math_test_client);
+    # ...the consumer's bridge stubs into the math app now go through math_test_client
 }
 ```
 
-Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over from a previous test's registrations.
+The key is the **app name** (`"math"`), exactly as in `[apps.math]`. Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over from a previous test's registrations.
 
-The pieces left unshown here -- building a `JacTestClient` over a consumer and provider from the same source tree -- require hands-on use of scale's server-construction APIs and are currently more verbose than the tutorial should be. The sv-to-sv test suite in the scale source tree (`jac/jaclang/scale/`) has a worked example that copies fixtures into a temp directory and stands both sides up end-to-end. Start there if you need a ready-to-run harness.
+`JacTestClient.from_file` builds a whole app in-process from its entry file; the [Testing section](../../reference/plugins/jac-scale-http.md#testing) of the Scale reference has the full harness, and the cross-app test suite in the compiler tree (`jac/tests/compiler/test_cross_app_import.jac` with its `fixtures/apps/` workspace) shows what the compiler guarantees at each seam.
 
 ---
 
 ## 7. Going to Production
 
-Single-command mode is great for a single host, but once your services live on **different hosts** you need to tell each consumer where its providers actually are. The mechanism is the `JAC_SV_<UPPERCASED_MODULE>_URL` environment variable: when set, it takes precedence over auto-start and points the consumer at the URL you provide. The module name is exactly the routes-table key, upper-cased.
+Colocated and `--fleet` cover one host. Once your apps live on **different hosts** you tell each consumer where its providers are with the `JAC_APP_<APP>_URL` environment variable: the app name upper-cased (non-alphanumerics become `_`), and the value takes precedence over colocation.
 
 ### Local Multi-Process
 
-Before jumping to containers, you can test the multi-process flow on your own machine by running each service as its own `jac run` and wiring the consumer with an env var.
+Before jumping to containers, you can test the multi-host flow on your own machine by running each app as its own `jac run` and wiring the consumer with an env var.
 
-Open two terminals, both in the `microservices-demo` directory.
+Open two terminals, both in the `calc-demo` directory.
 
 **Terminal 1 -- start the provider:**
 
 ```bash
-jac run --port 8001 math_service.jac
+jac run math --port 8001
 ```
 
 **Terminal 2 -- start the consumer pointed at the provider URL:**
 
 ```bash
-JAC_SV_MATH_SERVICE_URL=http://localhost:8001 \
-    jac run --port 8002 calculator_service.jac
+JAC_APP_MATH_URL=http://localhost:8001 jac run calculator --port 8002
 ```
 
-Hitting `/function/sum_list` on port 8002 now produces the same round-trip as single-command mode, except the provider logs appear in Terminal 1 instead of being interleaved with the consumer's output. This is the stepping stone to a real multi-host deployment: the env var is the only thing pointing the consumer at the provider, and swapping `localhost` for a cluster DNS name or public hostname is the only change you make when you deploy.
+Hitting `/function/sum_list` on port 8002 now produces the same round-trip as before, except the provider logs appear in Terminal 1. This is the stepping stone to a real multi-host deployment: the env var is the only thing pointing the consumer at the provider, and swapping `localhost` for a cluster DNS name or public hostname is the only change you make when you deploy.
 
 ### Kubernetes
 
-```yaml
-# inventory-service: provider
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: inventory-service
-spec:
-  template:
-    spec:
-      containers:
-      - name: inventory-service
-        image: my-registry/inventory-service:latest
-        ports:
-        - containerPort: 8000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: inventory-service
-spec:
-  selector:
-    app: inventory-service
-  ports:
-  - port: 8000
----
-# order-service: consumer, points at inventory-service via cluster DNS
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: order-service
-spec:
-  template:
-    spec:
-      containers:
-      - name: order-service
-        image: my-registry/order-service:latest
-        env:
-        - name: JAC_SV_INVENTORY_SERVICE_URL
-          value: "http://inventory-service.default.svc.cluster.local:8000"
+`jac scale deploy` **always deploys a fleet**: every serving app becomes its own Deployment + Service + HPA + PodDisruptionBudget, the deployed app hosts the gateway pod that fronts each service app at its route (`/api/math`, ...), and every pod gets its peers' `JAC_APP_<APP>_URL` injected, pointing at the in-cluster Service DNS (`math` → `math-service.<namespace>.svc.cluster.local`). Providers boot before consumers, in the order of the app graph the compiler recorded. `[scale.gateway] colocate` is ignored on deploy.
+
+```bash
+jac scale deploy
 ```
 
-Hyphens in module names become underscores in the env var name; dots stay as dots.
+Per-app settings -- replicas, resources, `rpc_timeout` (bump to 120-300s for LLM-backed apps), `http_activation`, extra `env` -- live in each app's overlay:
 
-For the full Kubernetes deployment story (image building, ingress, autoscaling), see the [Kubernetes tutorial](kubernetes.md) -- it applies here unchanged, you just deploy each service separately and wire them with env vars.
+```toml
+[apps.math.scale]
+rpc_timeout = 120.0
+hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 
-### Microservice Mode + Gateway
+[apps.calculator.scale]
+replicas = 2
+```
 
-For projects with more than a handful of services, the built-in `scale` subsystem ships a microservice mode that puts a single API gateway in front of all of them. `jac setup microservice` writes the plumbing into `jac.toml` and `jac run` on the project root brings the whole stack up -- one public port, one unified `/docs`, one `/metrics` endpoint, one shared anchor store. The same source still runs as a monolith when microservice mode is disabled.
-
-The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path (proxy, passthrough, aggregation). Drop-in observability: `X-Trace-Id` is minted if absent and threaded through every service RPC hop. The following knobs all live under `[scale.microservices]` and are emitted as commented reference blocks by `jac setup microservice`:
+The gateway's own knobs live under `[scale.gateway]` -- and the whole error envelope, tracing and drain story with them:
 
 | Concern | Config | Default |
 |---------|--------|---------|
-| Graceful shutdown | `drain_timeout_seconds = 10` | 10s |
-| Per-service RPC timeout | `[...services.NAME] rpc_timeout = 120.0` | 10s |
-| Boot-time per-service /healthz wait | `boot_health_timeout = 60.0` | 60s |
+| Colocate service apps under `jac run` | `colocate = true` | true (`--fleet` overrides) |
+| Graceful shutdown | `[serve.timeouts] drain = 10.0` | 10s |
+| Per-app bridged-call timeout | `[apps.NAME.scale] rpc_timeout = 120.0` | 10s |
+| Boot-time per-app /healthz wait | `boot_health_timeout = 60.0` | 60s |
 | Boot-time overall startup window | `boot_max_wait = 90` | 90s |
-| Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
-| CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
-| Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
-| Centralised logs (Loki + Alloy) | `[...logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale-kubernetes.md#centralised-logs) for the deployed components, dashboard, and storage caveats |
+| Root member's head start (it compiles the client, so it boots alone) | `app_boot_timeout = 900.0` | 900s, a stall budget: the clock resets while it is still writing to its log |
+| Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s (2s while anything is unhealthy) |
+| CORS | `[scale.gateway.cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
+| Rate limiting | `[scale.gateway.rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
+| Centralised logs (Loki + Alloy) | `[scale.gateway.logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale-kubernetes.md#centralised-logs) |
 
-WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and the server waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
+The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path; `X-Trace-Id` is minted if absent and threaded through every hop. WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently. On `SIGTERM` (or `jac scale stop`), each app flips a drain flag (new requests get `503` with `Retry-After: 1`) and the server waits up to `[serve.timeouts] drain` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
 
-The gateway implementation lives under [`jac/jaclang/scale/runtime/gateway/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale/runtime/gateway) in the scale source tree.
-
-### Kubernetes (microservice mode)
-
-When `[scale.microservices].enabled = true`, `jac scale deploy` deploys every service as its own Kubernetes Deployment, fronted by the gateway. Each service gets its own pod template, HPA, and PodDisruptionBudget; peer URLs and routing are derived from `[scale.microservices.routes]`. You do not write any of those manifests by hand and you do not set the peer URLs by hand either -- in deployed K8s mode the consumer's `JAC_SV_<MODULE>_URL` for every peer is auto-injected on every pod, pointing at the in-cluster Service DNS:
-
-```text
-JAC_SV_INVENTORY_SERVICE_URL=http://inventory-service.<namespace>.svc.cluster.local:<port>
-```
-
-The env-var name follows the same convention as the manual setup above (the raw routes-table key, upper-cased, joined with `JAC_SV_…_URL`); the URL host uses the Kubernetes Service's DNS-1123 form (`jac_coder_sv` becomes `jac-coder-sv-service`). Per-service env overrides under `[scale.microservices.services.<name>.env]` cannot shadow these keys -- a stale override would silently route sv-to-sv calls to the wrong backend.
-
-If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor SaaS), wire it like the [Kubernetes section](#kubernetes) above by editing the Deployment's env spec directly; the value you set wins for that one service. Most apps never need to.
-
-For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md).
+For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md) and [Service Apps in Kubernetes](../../reference/plugins/jac-scale-kubernetes.md#service-apps-in-kubernetes).
 
 ### Previewing a deploy with `--dry-run`
 
-`jac scale deploy` builds an image, pushes it to a registry, and applies manifests to your cluster. That is 5-10 minutes of work and several side effects (registry tags, rolling pod restarts, namespace state). If your config is wrong, you find out at the end.
-
-`jac scale deploy --dry-run` does the same planning step in under a second, lints the config, and prints a per-service summary of what would be applied. Nothing is built, pushed, or applied.
+`jac scale deploy` builds, pushes and applies. `jac scale deploy --dry-run` does the same planning step in under a second, lints the config, and prints a per-app summary of what would be applied. Nothing is built, pushed, or applied.
 
 ```bash
-jac scale deploy main.jac --dry-run
+jac scale deploy --dry-run
 ```
 
 Output (default, card view):
 
 ```text
 === jac scale plan: dry-run ===
-Cluster:    <active-kube-context>    Namespace: my-app
+Cluster:    <active-kube-context>    Namespace: calc-demo
 check: no errors or warnings
 
-Microservices (3)
+Apps (3)
 
-  orders_app
-    image:     my-app:v1.0
+  calculator
+    image:     calc-demo:v1.0
     replicas:  2  (HPA: 2 -> 10 @ 70% CPU)
     resources: cpu 100m -> 500m    mem 128Mi -> 256Mi
     port:      8000
-    route:     /api/orders  (via gateway)
+    route:     /api/calculator  (via gateway)
     pdb:       maxUnavailable=1
 
-  users_app
-    image:     my-app:v1.0
-    replicas:  1  (HPA: 1 -> 3 @ 70% CPU)
+  math
+    image:     calc-demo:v1.0
+    replicas:  2  (HPA: 2 -> 10 @ 60% CPU)
     resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
     port:      8000
-    route:     /api/users  (via gateway)
+    route:     /api/math  (via gateway)
 
   __gateway__
-    image:     my-app:v1.0
+    image:     calc-demo:v1.0
     replicas:  1
     resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
     port:      8000
@@ -417,48 +446,38 @@ Totals
 To see the raw YAML manifests, re-run with --show-yaml
 ```
 
-Note the `__gateway__` entry above has `replicas: 1` and no HPA line -- that's the framework default, and it is a single point of failure for all external traffic. See [Gateway High Availability](../../reference/plugins/jac-scale-kubernetes.md#gateway-high-availability) for why, and how to configure a second replica.
+The `__gateway__` entry has `replicas: 1` and no HPA line -- the default, and a single point of failure for all external traffic. See [Gateway High Availability](../../reference/plugins/jac-scale-kubernetes.md#gateway-high-availability) for how to give it a second replica under `[scale.gateway]`.
 
-The summary line at the top tells you whether the plan is deployable:
-
-- `check: no errors or warnings` - safe to apply
-- `! N warnings` - advisory; deploy still works
-- `X N errors` - errors block the apply; exit code is 2
-
-Errors and warnings appear inline on the service card they belong to, so you don't have to hunt for the offending block. The validator catches things like HPA `min > max`, `cpu_request > cpu_limit`, missing image resolution, PDB `minAvailable` that would block node drains, and invalid Kubernetes resource units (`500MB` instead of `500Mi`).
-
-**Use `--dry-run` whenever you:**
-
-- Edit `jac.toml` (routes, resources, ingress, secrets, HPA, PDB)
-- Add or remove a service from `routes`
-- Deploy to a shared/staging/prod cluster
-- Want a reviewer to see the plan in a PR
-
-For the raw YAML stream (e.g. to pipe into `kubectl diff`), add `--show-yaml`:
+The summary line at the top tells you whether the plan is deployable: `check: no errors or warnings` is safe to apply; `! N warnings` is advisory; `X N errors` blocks the apply with exit code 2. Errors and warnings appear inline on the app card they belong to. Use `--dry-run` whenever you edit `jac.toml` (apps, routes, resources, ingress, secrets, HPA, PDB), add or remove an app, or want a reviewer to see the plan in a PR. For the raw YAML stream, add `--show-yaml`:
 
 ```bash
-jac scale deploy main.jac --dry-run --show-yaml | sed -n '/^---$/,$p' > planned.yaml
-diff <(kubectl get -n my-app deployment,service,hpa,pdb,ingress -o yaml) planned.yaml
+jac scale deploy --dry-run --show-yaml | sed -n '/^---$/,$p' > planned.yaml
+diff <(kubectl get -n calc-demo deployment,service,hpa,pdb,ingress -o yaml) planned.yaml
 ```
 
 ---
 
 ## Common Pitfalls
 
-- **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchor data persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to sv-to-sv; any `def:pub` call can hit this after a schema change.
-- **Consumer crashes at startup with `ModuleNotFoundError: No module named '<provider>'`.** Automatic startup could not find the provider source in the directory you ran `jac run` from. Either move all services into the same project directory and run `jac run` from there, or set `JAC_SV_<MODULE>_URL` to point at a provider already running elsewhere.
-- **Cross-service call returns 404.** The provider function is not declared `def:pub`, or the walker is not declared `walker:pub`. Only public symbols are exposed at the HTTP boundary.
-- **`Error: No jac.toml found`.** `jac run <relative-path>` requires a `jac.toml` in the current directory. Run `jac create` (or just create an empty one), or pass an absolute path.
-- **Cross-service errors raise an exception.** Network failures, missing services, and error responses from the provider all surface at the call site as an exception. Function-call failures use the message `sv-to-sv RPC '<module>.<func>' failed: <reason>`; walker-spawn failures use `sv-to-sv walker spawn '<module>.<walker>' failed: <reason>`. Catch at the boundaries where you want graceful degradation.
+If an endpoint reports an invalid anchor, check its ID, the selected app and store, and recent schema changes. Run `jac guide jac-debugging --section diagnose-state-and-cache-errors` for the diagnostic sequence. Preserve existing data until you have identified the cause and chosen a repair.
+
+- **`E1042` on a call that looks local.** The imported element is owned by another app, so the stub is a coroutine: `await` it and make the enclosing function or ability `async`.
+- **`E5106` on an import.** The consumer names something that is not on the provider's bridge surface. Mark the function `def:pub`, or move it into shared code (a module under no app root) if both apps need it in-process.
+- **`E5107` on a shared module.** Two serving apps reach the same server-placed shared module and neither owns it. Give it its own `[apps.<name>]` table (`kind = "service"`, `entry-point = ...`) or pin an owner with `[apps.<owner>.placement.pins]`.
+- **`E5104`.** Your apps bridge in a circle. Move the shared piece into shared code, or merge the apps.
+- **`BridgeUnavailable: app 'math' is not registered`.** The provider is neither colocated (no `[apps.math]` in this workspace) nor reachable (no `JAC_APP_MATH_URL`) at the first awaited call.
+- **`BridgeRejected` with status 401.** `:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header, but an anonymous chain has none. Keep the cross-app surface on `def:pub` / walkers.
+- **`Error: No jac.toml found`.** `jac run <app>` needs the workspace's `jac.toml` in the current directory or an ancestor.
 
 ---
 
 ## What You Built
 
-Two services that read like a single program. The split happens at deploy time, not source time -- the same `calculator_service.jac` runs unchanged whether `math_service` is a module in the same process, a sibling thread, a separate `jac run`, or a Kubernetes Deployment two clusters away.
+Two apps that read like a single program. The split happened at *declaration* time -- one `[apps.math]` table -- and the topology at *run* time: the same `calculator_service.jac` runs unchanged whether `math` is colocated in its process, a sibling process behind the gateway, a separate `jac run` on another host, or a Kubernetes Deployment two clusters away.
 
 ## Next Steps
 
-- [Microservice Interop reference](../../reference/plugins/jac-scale-http.md#microservice-interop-sv-to-sv) for the resolution chain, `sv_client` API, and plugin hook details.
-- [Kubernetes tutorial](kubernetes.md) for the full deployment pipeline that packages each service into its own image.
-- [Backend Integration](../fullstack/backend.md) for the client-to-server flavor of the RPC bridge, where a browser client calls a server.
+- [Service Apps reference](../../reference/plugins/jac-scale-http.md#service-apps-cross-app-bridging) for the discovery chain, the `BridgeError` family, the outbox, and the `sv_client` API.
+- [Workspaces & Apps](../../reference/apps.md) for membership, ownership, the app DAG, per-app config, and the flagship layout (a web app, a mobile app, a CLI and two service apps over one `core/`).
+- [Kubernetes tutorial](kubernetes.md) for the full deployment pipeline.
+- [Backend Integration](../fullstack/backend.md) for the client-to-server flavor of the bridge, where a browser client calls a server.

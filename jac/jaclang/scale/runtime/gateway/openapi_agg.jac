@@ -140,9 +140,9 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
     return {
         "openapi": "3.0.2",
         "info": {
-            "title": "Jac Microservice Gateway",
+            "title": "Jac Gateway",
             "version": "1.0.0",
-            "description": "Aggregated OpenAPI across all healthy microservices."
+            "description": "Aggregated OpenAPI across every healthy app in the fleet."
         },
         "paths": merged_paths,
         "components": {"schemas": merged_schemas}

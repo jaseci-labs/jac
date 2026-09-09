@@ -80,7 +80,7 @@ def select_injector(
     project_dir: str,
     dry_run: bool = False,
     access_mode: str = "ReadWriteMany",
-    ms_config: (dict[str, any] | None) = None
+    fleet: any = None
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     import from jaclang.scale.config.dev_config { resolve_dev_channel }
@@ -97,7 +97,7 @@ def select_injector(
             channel=channel,
             storage_class=storage_class,
             access_mode=access_mode,
-            _ms_config=ms_config
+            _fleet=fleet
         );
         injector._object_key = bundle_object_key(app_name, DRY_RUN_DIGEST);
         injector._toolchain_object_key = toolchain_object_key(app_name, DRY_RUN_DIGEST);
@@ -113,7 +113,7 @@ def select_injector(
             channel=channel,
             storage_class=storage_class,
             access_mode=access_mode,
-            _ms_config=ms_config
+            _fleet=fleet
         );
         injector.prepare(app_name, namespace, project_dir);
         console.print(f"Ready: {blurbs[channel]}.");

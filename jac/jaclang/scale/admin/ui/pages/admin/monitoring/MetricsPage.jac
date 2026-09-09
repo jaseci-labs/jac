@@ -286,11 +286,11 @@ def:pub MetricsPage -> JsxElement {
     maxFds = getMetricValue("process_max_fds");
     startTime = getMetricValue("process_start_time_seconds");
 
-    pythonInfo = getMetricByName("python_info");
-    pythonVersion = "N/A";
-    if pythonInfo and pythonInfo["values"] and len(pythonInfo["values"]) > 0 {
-        pythonLabels = pythonInfo["values"][0]["labels"] or {};
-        pythonVersion = pythonLabels["version"] or "N/A";
+    jacInfo = getMetricByName("jac_info");
+    jacVersion = "N/A";
+    if jacInfo and jacInfo["values"] and len(jacInfo["values"]) > 0 {
+        jacLabels = jacInfo["values"][0]["labels"] or {};
+        jacVersion = jacLabels["version"] or "N/A";
     }
 
     gcGen0 = int(
@@ -381,7 +381,7 @@ def:pub MetricsPage -> JsxElement {
                     <Cpu className="w-4 h-4 text-faint"/>
                 </div>
                 <div className="text-base font-semibold text-fg mt-3 font-mono">
-                    Python {pythonVersion}
+                    Jac {jacVersion}
                 </div>
             </div>
         </div>

@@ -369,24 +369,27 @@ def emit_wasm_from_ir(
 }
 
 def wasm_import_map(wasm_bytes: bytes) -> dict {
-    import from jaclang.compiler.backends.native.wasm_linker { _rd_uleb, _rd_name }
+    import from jaclang.compiler.backends.native.linker_common {
+        read_leb_name,
+        read_uleb128
+    }
     out = {};
     o = 8;
     while o < len(wasm_bytes) {
         sid = wasm_bytes[o];
         o += 1;
-        (size, o) = _rd_uleb(wasm_bytes, o);
+        (size, o) = read_uleb128(wasm_bytes, o);
         end = o + size;
         if sid == 2 {
-            (cnt, o) = _rd_uleb(wasm_bytes, o);
+            (cnt, o) = read_uleb128(wasm_bytes, o);
             ci = 0;
             while ci < cnt and o < end {
-                (mod_nm, o) = _rd_name(wasm_bytes, o);
-                (fld, o) = _rd_name(wasm_bytes, o);
+                (mod_nm, o) = read_leb_name(wasm_bytes, o);
+                (fld, o) = read_leb_name(wasm_bytes, o);
                 kind = wasm_bytes[o];
                 o += 1;
                 if kind == 0 {
-                    (_t, o) = _rd_uleb(wasm_bytes, o);
+                    (_t, o) = read_uleb128(wasm_bytes, o);
                     out.setdefault(mod_nm, []).append(fld);
                 } else {
                     break;
@@ -426,9 +429,9 @@ def _project_gc_settings -> tuple[str, list[str], list[str]] {
         import from jaclang.project { get_config }
         cfg = get_config();
         if cfg {
-            gc_mode = cfg.gc.`default;
-            enf_mods = list(cfg.gc.enforce.modules);
-            enf_grand = list(cfg.gc.enforce.grandfathered);
+            gc_mode = cfg.memory.gc_mode();
+            enf_mods = list(cfg.memory.enforce);
+            enf_grand = list(cfg.memory.exempt);
         }
     } except Exception {
         return ("cycles", [], []);
@@ -443,18 +446,18 @@ def _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
         syms.add(m.group(0));
     }
     probes: list[str] = [];
-    for probe in ("JAC_NO_GC", "JAC_GC_CYCLES") {
+    for probe in ("JAC_GC", ) {
         if probe in llvm_ir_str {
             probes.append(probe);
         }
     }
     if syms or probes {
         raise RuntimeError(
-            f"'{os.path.basename(file_path)}' compiled under [gc] default ="
-                + " \"none\" but its IR still carries RC machinery ("
+            f"'{os.path.basename(file_path)}' compiled under [memory] profile ="
+                + " \"nogc\" but its IR still carries RC machinery ("
                 + ", ".join(sorted(syms) + probes)
-                + "); add the module to [gc.enforce] modules so the ownership"
-                + " checker reports what re-enters the reference-counted world"
+                + "); this is a compiler bug: the ownership checker admitted code"
+                + " that re-enters the reference-counted world"
         );
     }
 }
@@ -463,15 +466,15 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
-        push_native_target_env,
-        pop_native_target_env
+        push_native_target,
+        pop_native_target
     }
     import from jaclang.compiler.driver.na_coverage {
         na_coverage_begin,
         na_coverage_end
     }
     (gc_mode, enf_mods, enf_grand) = _project_gc_settings();
-    prev = push_native_target_env("wasm32-unknown-unknown");
+    prev = push_native_target("wasm32-unknown-unknown");
     auto_promote = True;
     try {
         prog = JacProgram();
@@ -483,8 +486,8 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
                     aot_mode=True,
                     default_codespace=('native' if auto_promote else ''),
                     na_gc_mode=gc_mode,
-                    nogc_enforce_modules=enf_mods,
-                    nogc_grandfathered=enf_grand,
+                    memory_enforce=enf_mods,
+                    memory_exempt=enf_grand,
                     native_target="wasm32-unknown-unknown"
                 )
             );
@@ -511,10 +514,13 @@ def compile_to_wasm(file_path: str, export_funcs: list = []) -> bytes {
                 f"native lowering produced no IR for '{file_path}': {reason}"
             );
         }
-        llvm_ir_str = str(ir.gen.llvm_ir);
+        import from jaclang.compiler.backends.native.na_compile_pass {
+            native_linked_ir_text
+        }
+        llvm_ir_str = native_linked_ir_text(ir);
         app_imports = app_declared_imports(ir);
     } finally {
-        pop_native_target_env(prev);
+        pop_native_target(prev);
     }
     if gc_mode == "none" {
         _assert_ir_rc_free(llvm_ir_str, file_path);

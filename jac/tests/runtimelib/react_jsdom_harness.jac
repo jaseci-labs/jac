@@ -25,17 +25,15 @@ import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
+import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS, OPTIONAL_RUNTIME_DEPS }
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
 
-# Mirrors `_default_client_deps("react")` runtime deps; jsdom is test-only.
+# The react deps the client pipeline itself pins, so a version bump reaches
+# these suites without a second edit here; jsdom is test-only.
 glob REACT_JSDOM_DEPS: dict[str, str] = {
          "jsdom": "^24.0.0",
-         "react": "^18.2.0",
-         "react-dom": "^18.2.0",
-         "react-router-dom": "^6.22.0",
-         "react-error-boundary": "^5.0.0",
-         "@tanstack/react-form": "^1.33.0",
-         "zod": "^4.3.6"
+         ** CORE_RUNTIME_DEPS,
+         ** OPTIONAL_RUNTIME_DEPS
      };
 
 """Skip unless the client toolchain is present (JAC_TEST_STRICT escalates)."""
@@ -88,6 +86,7 @@ def compile_page(path: str, backend: any) -> str {
 """Emit the compiled `@jac/runtime` shim + its core into the work dir."""
 def write_runtime(work: Path) {
     runtime_path = resolve_client_runtime_cl_path("react");
+    write_runtime_support(work, runtime_path);
     (work / "jac_runtime.js").write_text(
         rewrite_core_specifier(compile_react(runtime_path)), encoding="utf-8"
     );
@@ -97,15 +96,28 @@ def write_runtime(work: Path) {
     );
 }
 
-"""`bun install` the shared dep set into `work`."""
-def bun_install(bun: str, work: Path, name: str) {
+def write_runtime_support(work: Path, runtime_path: str) {
+    for name in ["auth_contract", "endpoint_cache"] {
+        (work / (name + ".js")).write_text(
+            compile_react(str(Path(runtime_path).parent / (name + ".jac"))),
+            encoding="utf-8"
+        );
+    }
+}
+
+"""`bun install` a dep set into `work`; defaults to the shared one.
+
+`deps` lets a suite install exactly the versions the client pipeline pins
+(plus its own extras) instead of the shared mirror, so a pin drift shows up
+as that suite failing rather than as a silently stale harness."""
+def bun_install(bun: str, work: Path, name: str, deps: (dict[str, str] | None) = None) {
     (work / "package.json").write_text(
         json.dumps(
             {
                 "name": name,
                 "private": True,
                 "type": "module",
-                "dependencies": REACT_JSDOM_DEPS
+                "dependencies": REACT_JSDOM_DEPS if deps is None else deps
             }
         ),
         encoding="utf-8"

@@ -290,7 +290,7 @@ This scaffolds a themed starter: a generated `global.css` (theme colors + font +
 
 | Flag | Values | Default |
 |------|--------|---------|
-| `--style` | `nova`, `vega`, `maia`, `lyra`, `mira` | `nova` |
+| `--style` | `nova`, `vega`, `maia`, `lyra`, `mira`, `luma`, `rhea`, `sera` | `nova` |
 | `--baseColor` | `neutral`, `stone`, `zinc`, `gray` | `neutral` |
 | `--theme` | `rose`, `emerald`, `blue`, `amber`, … | `neutral` |
 | `--font` | `inter`, `outfit`, `geist`, … | `figtree` |
@@ -389,7 +389,7 @@ glob _buttonVariants: any = cva(
     }
 );
 
-def:pub Button(props: any, ref: Ref[HTMLButtonElement]) -> JsxElement {
+def:pub Button(props: any) -> JsxElement {
     variant = props.variant or "default";
     size = props.size or "default";
     computedClass = cn(
@@ -397,13 +397,13 @@ def:pub Button(props: any, ref: Ref[HTMLButtonElement]) -> JsxElement {
         props.className
     );
 
-    <button ref={ref} className={computedClass} {**props}>
+    <button className={computedClass} {**props}>
         {props.children}
     </button>
 }
 ```
 
-The trailing `ref: Ref[HTMLButtonElement]` parameter is what lets this `Button` be used as a radix `asChild` trigger (`DropdownMenuTrigger`, `Tooltip.Trigger`, ...). It forwards the anchor ref radix needs for positioning down to the real `<button>`; without it the trigger would silently never open. See [forwarding a ref into your component](state.md#forwarding-a-ref-into-your-component) for the details.
+The `{**props}` spread onto the `<button>` is what lets this `Button` be used as a radix `asChild` trigger (`DropdownMenuTrigger`, `Tooltip.Trigger`, ...). The client runtime is React 19, where `ref` is an ordinary prop, so the anchor ref radix needs for positioning rides that spread down to the real `<button>`. Drop the spread and the trigger has no anchor: the popper positions at the viewport origin instead of at the button. See [forwarding a ref into your component](state.md#forwarding-a-ref-into-your-component) for the details.
 
 Required dependencies:
 
@@ -414,33 +414,33 @@ Required dependencies:
 
 ### Wrapping Radix UI Primitives
 
-shadcn components wrap Radix UI primitives. Each wrapper that renders a DOM node **forwards a ref** to it (via a trailing `ref: Ref` parameter) so the primitive stays a valid `asChild` / positioning target -- exactly as upstream shadcn does with `React.forwardRef`. The exception is a wrapper around a context-only primitive like `Dialog.Root`, which renders no element and takes no ref. Here's a Dialog example in Jac:
+shadcn components wrap Radix UI primitives. Each wrapper takes one `props: any` bundle and spreads it onto the primitive it renders, so `ref` -- an ordinary prop on React 19 -- passes straight through and the wrapper stays a valid `asChild` / positioning target. Upstream shadcn needs `React.forwardRef` for the same effect; here the spread is enough. Here's a Dialog example in Jac:
 
 ```jac
 # components/ui/dialog.jac
 import from "radix-ui" { Dialog as DialogPrimitive }
 import from ...lib.utils { cn }
 
-# Root is a context provider -- it renders no DOM node, so it takes no ref.
+# Root is a context provider -- it renders no DOM node, so no ref reaches one.
 def:pub Dialog(props: any) -> JsxElement {
     <DialogPrimitive.Root {**props}>
         {props.children}
     </DialogPrimitive.Root>
 }
 
-def:pub DialogTrigger(props: any, ref: Ref[HTMLButtonElement]) -> JsxElement {
-    <DialogPrimitive.Trigger ref={ref} {**props}>
+def:pub DialogTrigger(props: any) -> JsxElement {
+    <DialogPrimitive.Trigger {**props}>
         {props.children}
     </DialogPrimitive.Trigger>
 }
 
-def:pub DialogContent(props: any, ref: Ref[HTMLElement]) -> JsxElement {
+def:pub DialogContent(props: any) -> JsxElement {
     <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
             className={cn("fixed inset-0 z-50 bg-black/50", props.overlayClassName)}
         />
         <DialogPrimitive.Content
-            ref={ref}
+            {**props}
             className={cn(
                 "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
                 "w-full max-w-lg rounded-lg bg-background p-6 shadow-lg",
@@ -453,13 +453,13 @@ def:pub DialogContent(props: any, ref: Ref[HTMLElement]) -> JsxElement {
 }
 ```
 
-Forwarding the ref on `DialogTrigger` is what lets `<DialogTrigger asChild>` wrap your own `Button` and still open: radix attaches the anchor ref through the trigger down to the host node. See [forwarding a ref into your component](state.md#forwarding-a-ref-into-your-component) for how the trailing `ref: Ref` parameter lowers to `forwardRef`.
+Passing props through on `DialogTrigger` is what lets `<DialogTrigger asChild>` wrap your own `Button` and still open: radix attaches the anchor ref through the trigger down to the host node, and each wrapper's spread carries it. See [forwarding a ref into your component](state.md#forwarding-a-ref-into-your-component) for the full rule, including the trailing `ref: Ref` parameter a named-param component needs.
 
 Required dependencies:
 
 ```toml
 [dependencies.npm]
-"radix-ui" = "^1.4.3"
+"radix-ui" = "^1.6.7"
 ```
 
 ### Using shadcn Semantic Color Tokens

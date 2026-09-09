@@ -509,19 +509,18 @@ test "fresh mtime does not admit a cache written under a different environment" 
             "restoring the compiler digest should restore validity"
         );
 
-        prev_tgt = os.environ.get("JAC_NATIVE_TARGET");
+        import from jaclang.compiler.driver.compile_options {
+            push_native_target,
+            pop_native_target
+        }
+        prev_tgt = push_native_target("wasm32-unknown-unknown");
         try {
-            os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
             assert not is_module_cache_valid(jac_file, cache_path) , (
                 "a fresh mtime served a cache written under a different "
                 "analysis fingerprint"
             );
         } finally {
-            if prev_tgt is None {
-                os.environ.pop("JAC_NATIVE_TARGET", None);
-            } else {
-                os.environ["JAC_NATIVE_TARGET"] = prev_tgt;
-            }
+            pop_native_target(prev_tgt);
         }
         assert is_module_cache_valid(jac_file, cache_path) , (
             "restoring the analysis fingerprint should restore validity"
@@ -641,9 +640,18 @@ test "stub module cache key is source focused" {
         assert stub_key == module_cache_key(stub_file) , (
             "module_cache_key should use stub key for .pyi"
         );
-        jac_key = compute_module_key(stub_file);
+        jac_probe = stub_file[:-4] + ".jac";
+        with open(jac_probe, "w") as jac_tmp {
+            jac_tmp.write("class KeyProbe:\n    k: int\n");
+        }
+        try {
+            jac_key = compute_module_key(jac_probe);
+        } finally {
+            os.unlink(jac_probe);
+        }
         assert stub_key != jac_key , (
-            "stub cache key should not include placement/client config"
+            "a project module's key folds in placement/client config; "
+            "a stub's key must not"
         );
     } finally {
         os.unlink(stub_file);

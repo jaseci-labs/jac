@@ -14,7 +14,7 @@ test "custom method walker" {
     client = make_client("restspec_fixtures.jac");
     try {
         response = client.get("/walker/GetWalker");
-        assert response.status_code == 200;
+        assert response.status_code == 200 , response.text;
         data = extract_data(response.json());
         assert data["reports"][0]["message"] == "GetWalker executed";
     } finally {
@@ -247,7 +247,7 @@ test "openapi specs" {
     try {
         srv = client._server;
         assert srv is not None , "server must be running";
-        spec = srv.server.app.openapi();
+        spec = srv.app.openapi();
         paths = spec["paths"];
 
         assert "/custom/walker" in paths;
@@ -287,7 +287,7 @@ test "restspec path parameters" {
         # --- OpenAPI schema: routes registered with correct path templates ---
         srv = client._server;
         assert srv is not None , "server must be running";
-        spec = srv.server.app.openapi();
+        spec = srv.app.openapi();
         paths = spec["paths"];
         assert "/items/{item_id}" in paths and "get" in paths["/items/{item_id}"];
         assert "/users/{user_id}/orders" in paths
@@ -369,7 +369,7 @@ test "walker with default node parameter route" {
     try {
         srv = client._server;
         assert srv is not None , "server must be running";
-        spec = srv.server.app.openapi();
+        spec = srv.app.openapi();
         paths = spec["paths"];
 
         walker_paths_with_param = [
@@ -446,7 +446,7 @@ test "custom obj body - walker flows" {
         # OpenAPI: UserBody schema + CreateUser body references it via $ref
         srv = client._server;
         assert srv is not None , "server must be running";
-        spec = srv.server.app.openapi();
+        spec = srv.app.openapi();
         schemas = spec["components"]["schemas"];
         assert "UserBody" in schemas;
         user_schema = schemas["UserBody"];
@@ -569,7 +569,7 @@ test "recursive obj body flows" {
         # OpenAPI: TreeNode.children items $ref TreeNode (self-reference)
         srv = client._server;
         assert srv is not None , "server must be running";
-        spec = srv.server.app.openapi();
+        spec = srv.app.openapi();
         schemas = spec["components"]["schemas"];
         assert "TreeNode" in schemas;
         items = schemas["TreeNode"]["properties"]["children"].get("items", {});
@@ -705,7 +705,7 @@ test "restspec without method registers a live POST route (#8000 f3)" {
 
         srv = client._server;
         assert srv is not None , "server must be running";
-        schema = srv.server.app.openapi();
+        schema = srv.app.openapi();
         methods = list(schema["paths"]["/custom/no-method-func"].keys());
         assert methods == ["post"] , f"openapi must carry a real verb, got {methods}";
     } finally {

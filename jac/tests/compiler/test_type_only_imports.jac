@@ -452,14 +452,14 @@ test "type uses of an import-type binding are accepted in a server module" {
 
 
 # ---------------------------------------------------------------------------
-# 5. Guard: the sv-import stub path still skips archetypes, keeps functions
+# 5. Guard: the bridged-import stub path still skips archetypes, keeps functions
 # ---------------------------------------------------------------------------
 
-test "sv import stubs skip archetype items and keep function items" {
+test "bridged import stubs skip archetype items and keep function items" {
     # Guards the unification of `_sv_import_item_is_type` onto the binding-kind
-    # fact: an `obj` crossing the sv boundary is a type item (no RPC stub -- it
-    # arrives as a boundary-type class), while the ability beside it in the same
-    # import keeps its stub.
+    # fact: an `obj` crossing the client/server boundary is a type item (no RPC
+    # stub -- it arrives as a boundary-type class), while the ability beside it
+    # in the same import keeps its stub.
     with TemporaryDirectory() as td {
         proj_root = Path(cast(str, td));
         (proj_root / "jac.toml").write_text(

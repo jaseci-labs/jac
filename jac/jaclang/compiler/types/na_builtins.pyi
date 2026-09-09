@@ -13,7 +13,8 @@ type-checks accurately instead of degrading to UnknownType.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, TypeVar, overload
+from collections.abc import Iterable as Iterable, Iterator as Iterator
+from typing import Literal, TypeVar, overload
 
 __all__ = [
     "File",
@@ -24,12 +25,19 @@ __all__ = [
     "iter",
     "next",
     "managed",
+    "take",
+    "swap",
     "Region",
+    "region_of",
 ]
 
 _T = TypeVar("_T")
 
 def managed(__x: _T) -> _T: ...
+
+def take(__place: _T) -> _T: ...
+
+def swap(__a: _T, __b: _T) -> None: ...
 
 # First-class region handle: an ownable, sendable, escape-checked allocation
 # extent opened by `in <handle> { ... }`. Native codegen lowers it to an arena.
@@ -39,12 +47,9 @@ class Region:
     @overload
     def partition(self, n: int) -> tuple[Region, ...]: ...
 
-class Iterable(Protocol[_T]):
-    def __iter__(self) -> Iterator[_T]: ...
-
-class Iterator(Iterable[_T], Protocol[_T]):
-    def __iter__(self) -> Iterator[_T]: ...
-    def __next__(self) -> _T: ...
+# The region a value was allocated in (the growth anchor of a traversal),
+# or None for a managed value.
+def region_of(__x: object) -> Region | None: ...
 
 def iter(__o: Iterable[_T]) -> Iterator[_T]: ...
 def next(__i: Iterator[_T]) -> _T: ...

@@ -182,7 +182,7 @@ def install_tracing(
         trace.set_tracer_provider(provider);
 
         _provider = provider;
-        _tracer = trace.get_tracer("jaclang.scale.microservices");
+        _tracer = trace.get_tracer("jaclang.scale.fleet");
         _tracing_active = True;
         _logger.info(
             f"Tracing active: service={svc} otlp={traces_url} sample_ratio={ratio}"

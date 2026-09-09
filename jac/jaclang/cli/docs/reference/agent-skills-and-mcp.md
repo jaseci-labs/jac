@@ -2,14 +2,14 @@
 
 AI coding assistants are good at Jac's *ideas* but often wrong about its *syntax* -- the language has evolved, and models routinely confuse Jac with Python or JSX. The `jac` CLI ships the corrective reference built in, so there is nothing to install.
 
-- **`jac guide`** -- curated reference guides bundled with the compiler. They are the authoritative spec for writing correct, idiomatic Jac, and any agent that can run a shell command can read them.
+- **`jac guide`** -- curated reference guides bundled with the compiler. They provide versioned coding guidance for Jac, and any agent that can run a shell command can read them.
 - **The `jac mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
 
 These are complementary: the guides tell a model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler.
 
 ## `jac guide` -- the built-in reference
 
-The guides ship inside the `jac` CLI -- one per topic (`jac-core-cheatsheet`, `jac-types`, `jac-comptime`, `jac-walker-patterns`, `jac-by-llm`, the `jac-sv-*` server guides, the `jac-cl-*` client guides, and more). They are always version-matched to the compiler you have installed.
+The guides ship inside the `jac` CLI -- one per topic (`jac-essentials`, `jac-core-cheatsheet`, `jac-types`, `jac-comptime`, `jac-walker-patterns`, `jac-by-llm`, the `jac-sv-*` server guides, the `jac-cl-*` client guides, and more). They are always version-matched to the compiler you have installed.
 
 ```bash
 jac guide                      # list every available guide
@@ -23,6 +23,20 @@ Because the guides are part of the CLI, an AI agent working in your project can 
 
 - **`jac create` seeds an `AGENTS.md`** in every new project, telling agents to consult `jac guide`.
 - **`jac check` diagnostics link to guides.** When the type checker flags an error it points at the relevant guide -- e.g. a type error prints `→ run 'jac guide jac-types' for guidance` -- so the model is pulled to the fix at the moment it is wrong.
+
+## Load only what the task needs
+
+Start with `jac guide jac-essentials` for syntax constraints and task routing. Then select the relevant guide rather than loading every topic:
+
+```bash
+jac guide jac-types --sections
+jac guide jac-types --section pitfalls
+jac guide jac-types --section pitfalls --json
+```
+
+`--sections` lists headings and unique slugs; its JSON output also includes body-relative line numbers. `--section` accepts a listed slug or an unambiguous exact heading and includes its subsections up to the next heading of equal or higher level. Code-fence contents are not section headings. A selected fragment may depend on declarations elsewhere; retrieve the parent section when needed.
+
+Larger component and memory examples live in `reference/agent-patterns`; their compact skills point to that detail. The same section commands work for both docs and skills. Run `jac check`, relevant tests, and the affected application behavior after editing. Guides help select a valid approach; they do not replace those checks.
 
 ## Export as Agent Skills (Claude Code, Cursor)
 

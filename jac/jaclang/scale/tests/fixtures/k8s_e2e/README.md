@@ -1,14 +1,14 @@
 # jac-shop: E-Commerce Microservice Example
 
-Three-service demo for jac-scale microservice mode. `orders_app` does
-`sv import from cart_app` to exercise the inter-service auth-forwarding
+Three-service workspace demo for jac-scale fleet mode. `orders_app` imports
+`cart_app` across the app boundary to exercise the inter-app auth-forwarding
 path end-to-end.
 
 ```
 micr-s-example/
   main.jac              client UI entry (cl block only)
-  jac.toml              ZERO scale config - services, routes, database and
-                        client entry are all auto-derived (#7137/#7140)
+  jac.toml              [apps.*] declares web + three service apps; the
+                        database and client build are derived from them
   products_app.jac      list_products, get_product
   cart_app.jac          add_to_cart, view_cart, remove_from_cart, clear_cart
   orders_app.jac        create_order, list_orders, get_order, cancel_order
@@ -17,8 +17,9 @@ micr-s-example/
   components/           reusable UI components
 ```
 
-Gateway `:8000` fronts all three services; `/api/{svc}/function/{name}`
-forwards to the matching service. The client (browser/curl) only talks
+Gateway `:8000` fronts all three services; `<route>/function/{name}`
+(`/products`, `/orders`, `/cart`) forwards to the matching app and everything
+else goes to `web`. The client (browser/curl) only talks
 to the gateway.
 
 ## Dev setup

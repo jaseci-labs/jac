@@ -441,6 +441,10 @@ impl JSCodeGenerator.gen_identifier(nd: es.Identifier) -> str {
     return nd.name;
 }
 
+impl JSCodeGenerator.gen_raw_code(nd: es.RawCode) -> str {
+    return nd.code;
+}
+
 impl JSCodeGenerator.gen_property_definition(nd: es.PropertyDefinition) -> str {
     static_str = 'static ' if nd.`static else '';
     key = self.generate(nd.key) if nd.key else '';

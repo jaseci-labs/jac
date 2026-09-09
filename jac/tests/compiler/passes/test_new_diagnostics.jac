@@ -174,6 +174,32 @@ test "kwesc: the prefix form parses clean" {
     assert len(prog.errors_had) == 0;
 }
 
+
+test "E0013: a keyword after a dot is an attribute, no escape needed" {
+    # #8982 item 9: `sys.exit(0)` is the idiom every CLI ends with.
+    for src in [
+        "import sys; with entry { sys.exit(0); }",
+        "with entry { m = re.match; x = obj_.entry; y = cfg.default; }",
+        "with entry { z = a.b.node.edge.walker; }"
+    ] {
+        (prog, had_error) = parse_with_prog(src);
+        assert not had_error , src;
+        assert not has_diagnostic_code(prog, "E0013") , src;
+    }
+}
+
+test "E0013: a keyword still cannot bind a name, and names the escape" {
+    for src in [
+        "with entry { exit = 1; }",
+        "def f(match: int) {}",
+        "obj X { has entry: int = 1; }",
+        "def g(own: int, mut: int, imm: int, awaiting: int) {}"
+    ] {
+        (prog, _) = parse_with_prog(src);
+        assert has_diagnostic_code(prog, "E0013") , src;
+    }
+}
+
 test "E0025: js arrow in jsx attribute slot" {
     src = 'cl { def:pub Foo() -> JsxElement {'
         + ' return <button onClick={e => doThing(e)}>Click</button>; } }';
@@ -380,7 +406,7 @@ test "removed placement-marker blocks raise the migration error" {
     }
 }
 
-test "E0063: glob inside a function produces no runnable bytecode" {
+test "E0063: glob inside a function blocks codegen and points at the rebinding idiom" {
     # Detected by ASTValidationPass (not the parser), and the structural
     # error must block codegen so the invalid module cannot silently execute.
     prog = JacProgram();
@@ -390,6 +416,16 @@ test "E0063: glob inside a function produces no runnable bytecode" {
     );
     assert has_diagnostic_code(prog, "E0063");
     assert not mod.gen.py_bytecode;
+    # Jac has no `global` statement; a function rebinds a module glob by
+    # plain assignment, so a hint that says "global" leads to a parse error (#8612).
+    alert = [
+        a
+        for a in prog.errors_had
+        if a.code is not None and a.code.code == "E0063"
+    ][0];
+    assert "global" not in alert.msg;
+    assert alert.help_text is not None;
+    assert "assignment" in alert.help_text and "no global statement" in alert.help_text;
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -408,24 +444,26 @@ test "E1042: calling an async function without await" {
     f"errors={[str(e) for e in prog.errors_had]}";
 }
 
-test "E1042: missing await on sv-imported call (issue #6236)" {
-    # `sv import` functions are async RPC stubs on the client; calling one
-    # without `await` assigns a coroutine to a typed field and crashes at
-    # runtime. `jac check` must flag it.
+test "E1042: missing await on a bridged server call (issue #6236)" {
+    # Server functions imported into client context (a CLIENT_BRIDGE) are
+    # async RPC stubs; calling one without `await` assigns a coroutine to a
+    # typed field and crashes at runtime. `jac check` must flag it.
     (prog, _) = compile_and_check("type_E1042_sv_missing_await.jac");
-    assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited sv import call; "
+    assert has_diagnostic_code(prog, "E1042") , f"expected E1042 for the un-awaited bridged call; "
     f"errors={[str(e) for e in prog.errors_had]}";
 }
 
-test "E1042: sv->sv import call is synchronous, not an awaitable coroutine" {
-    # An sv->sv import (a server consuming another server) lowers to a
-    # synchronous `def` stub, so binding its result to a concrete type
-    # without `await` is correct and must NOT raise E1042. Uses the SAME
-    # provider as the cl->sv fixture above, which still must raise it --
-    # the check is sensitive to the importing module's context, not just
-    # the `sv import` keyword.
+test "E1042: a same-app server->server call is synchronous, not a coroutine" {
+    # A server module importing another server module of the same app is a
+    # LOCAL import (no app boundary, no bridge), so binding its result to a
+    # concrete type without `await` is correct and must NOT raise E1042.
+    # Uses the SAME provider as the client fixture above, which still must
+    # raise it -- the check is sensitive to the importing module's context,
+    # not to the shape of the import statement. The cross-app server case
+    # (SERVICE_BRIDGE, which IS a coroutine) is covered in
+    # tests/compiler/test_cross_app_import.jac.
     (prog, _) = compile_and_check("type_E1042_sv_sync_call_server.jac");
-    assert count_diagnostic_code(prog, "E1042") == 0 , f"sv->sv call must not be flagged as a missing-await coroutine; "
+    assert count_diagnostic_code(prog, "E1042") == 0 , f"same-app server call must not be flagged as a missing-await coroutine; "
     f"errors={[str(e) for e in prog.errors_had]}";
 }
 
@@ -483,6 +521,17 @@ test "W2075 silent for boolean-literal tests over non-bool operands" {
 test "E2083: disengage outside walker" {
     (prog, _) = compile_and_check("context_E2083_disengage_outside_walker.jac");
     assert has_diagnostic_code(prog, "E2083");
+}
+
+test "E2085: await outside async function or ability (issue #8998)" {
+    # jac check must catch what only jac run's bytecode compile caught before:
+    # a plain `can`/`def` body that awaits is invalid, and the checker had no
+    # opinion on it at all -- `await` was never visited by any checking pass.
+    (prog, _) = compile_and_check("context_E2085_await_outside_async.jac");
+    assert count_diagnostic_code(prog, "E2085") == 1 , f"expected exactly 1 E2085 (the plain 'can', not the 'async can'), got "
+    f"{count_diagnostic_code(prog, 'E2085')}; errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -866,4 +915,30 @@ with entry {
         validate_reject_test,
         id_fn=lambda (x: tuple[str, str]) { x[0]; }
     );
+}
+
+
+test "E2085 permits async client functions and implicit async client tests" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='import from "@jac/runtime" { jacLogin }\n'
+        'async def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'test "login" { await jacLogin("a", "b"); }\n',
+        file_path="await_client.jac",
+        no_cgen=True
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+}
+
+
+test "E2085 rejects plain client functions and lambdas inside async tests" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='import from "@jac/runtime" { jacLogin }\n'
+        'def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'test "login" { callback = lambda { await jacLogin("a", "b"); }; }\n',
+        file_path="invalid_await_client.jac",
+        no_cgen=True
+    );
+    assert count_diagnostic_code(prog, "E2085") == 2;
 }

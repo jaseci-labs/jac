@@ -13,6 +13,7 @@ import from jaclang.server.serving.authcrypt {
     jwt_decode as _jwt_decode,
     jwt_encode as _jwt_encode
 }
+import from jaclang.server.identity.config { signing_secret as jwt_secret }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from jaclang.scale.tests.scale_test_client {
@@ -62,7 +63,7 @@ def register_and_get_token(client: any, username: str, password: str) -> str {
 }
 
 def _create_expired_token(username: str, days_ago: int = 1) -> str {
-    secret = "supersecretkey_for_testing_only!";
+    secret = jwt_secret();
     algorithm = "HS256";
 
     past_time = datetime.now(UTC) - timedelta(days=days_ago);
@@ -75,7 +76,7 @@ def _create_expired_token(username: str, days_ago: int = 1) -> str {
 }
 
 def _create_very_old_token(username: str, days_ago: int = 15) -> str {
-    secret = "supersecretkey_for_testing_only!";
+    secret = jwt_secret();
     algorithm = "HS256";
 
     past_time = datetime.now(UTC) - timedelta(days=days_ago);
@@ -127,7 +128,7 @@ test "static and schema endpoints" {
 
         srv = client._server;
         assert srv is not None , "server must be running";
-        openapi_spec = srv.server.app.openapi();
+        openapi_spec = srv.app.openapi();
         paths = openapi_spec.get("paths", {});
 
         assert "/user/refresh-token" in paths;
@@ -197,11 +198,7 @@ test "user registration and login" {
     try {
         test_username = f"testuser_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": test_username}],
-                "credential": {"type": "password", "password": "testpass123"}
-            }
+            "/user/register", json=register_payload(test_username, "testpass123")
         );
         result = extract_data(response.json());
         assert "user_id" in result;
@@ -209,40 +206,24 @@ test "user registration and login" {
 
         status_user = f"status_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": status_user}],
-                "credential": {"type": "password", "password": "password123"}
-            }
+            "/user/register", json=register_payload(status_user, "password123")
         );
         assert response.status_code == 201;
         data = extract_data(response.json());
         assert "user_id" in data;
 
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": status_user}],
-                "credential": {"type": "password", "password": "password123"}
-            }
+            "/user/register", json=register_payload(status_user, "password123")
         );
         assert response.status_code == 400;
 
         login_username = f"login_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": login_username}],
-                "credential": {"type": "password", "password": "loginpass"}
-            }
+            "/user/register", json=register_payload(login_username, "loginpass")
         );
         create_result = extract_data(response.json());
         response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": login_username},
-                "credential": {"type": "password", "password": "loginpass"}
-            }
+            "/user/login", json=login_payload(login_username, "loginpass")
         );
         login_result = extract_data(response.json());
         assert "token" in login_result;
@@ -250,38 +231,22 @@ test "user registration and login" {
         assert "root_id" in login_result;
 
         response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": login_username},
-                "credential": {"type": "password", "password": "loginpass"}
-            }
+            "/user/login", json=login_payload(login_username, "loginpass")
         );
         assert response.status_code == 200;
 
         fail_username = f"fail_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": fail_username}],
-                "credential": {"type": "password", "password": "correctpass"}
-            }
+            "/user/register", json=register_payload(fail_username, "correctpass")
         );
         response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": fail_username},
-                "credential": {"type": "password", "password": "wrongpass"}
-            }
+            "/user/login", json=login_payload(fail_username, "wrongpass")
         );
         login_result = extract_data(response.json());
         assert "error" in login_result;
 
         response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": fail_username},
-                "credential": {"type": "password", "password": "wrongpass"}
-            }
+            "/user/login", json=login_payload(fail_username, "wrongpass")
         );
         assert response.status_code == 401;
         data = extract_data(response.json());
@@ -296,21 +261,11 @@ test "user registration and login" {
         );
         assert response.status_code in (400, 422);
 
-        response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": ""},
-                "credential": {"type": "password", "password": "x"}
-            }
-        );
+        response = client.post("/user/login", json=login_payload("", "x"));
         assert response.status_code in (400, 422);
 
         response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": "nonexistent"},
-                "credential": {"type": "password", "password": "password"}
-            }
+            "/user/login", json=login_payload("nonexistent", "password")
         );
         assert response.status_code == 401;
     } finally {
@@ -490,7 +445,7 @@ test "token refresh functionality" {
         refresh_result = extract_data(response.json());
         new_token = refresh_result["token"];
 
-        secret = "supersecretkey_for_testing_only!";
+        secret = jwt_secret();
         algorithm = "HS256";
 
         original_payload = _jwt_decode(token, secret, algorithms=[algorithm]);
@@ -534,33 +489,21 @@ test "integration auth flow" {
         username = f"integration_{uuid.uuid4().hex[:8]}";
 
         register_response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": username}],
-                "credential": {"type": "password", "password": "secure123"}
-            }
+            "/user/register", json=register_payload(username, "secure123")
         );
         assert register_response.status_code == 201;
         data = extract_data(register_response.json());
         assert "user_id" in data;
 
         login_response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": username},
-                "credential": {"type": "password", "password": "secure123"}
-            }
+            "/user/login", json=login_payload(username, "secure123")
         );
         assert login_response.status_code == 200;
         data = extract_data(login_response.json());
         token1 = data["token"];
 
         login_response2 = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": username},
-                "credential": {"type": "password", "password": "secure123"}
-            }
+            "/user/login", json=login_payload(username, "secure123")
         );
         assert login_response2.status_code == 200;
         data = extract_data(login_response2.json());
@@ -572,11 +515,7 @@ test "integration auth flow" {
         token3 = data["token"];
 
         fail_response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": username},
-                "credential": {"type": "password", "password": "wrongpass"}
-            }
+            "/user/login", json=login_payload(username, "wrongpass")
         );
         assert fail_response.status_code == 401;
 
@@ -594,10 +533,7 @@ def _me_register_and_login(
     password: str = "pw12345",
     profile: dict[str, any] | None = None
 ) -> tuple[str, str] {
-    body: dict[str, any] = {
-        "identities": [{"type": "username", "value": username}],
-        "credential": {"type": "password", "password": password}
-    };
+    body: dict[str, any] = register_payload(username, password);
     if profile is not None {
         body["profile"] = profile;
     }
@@ -605,13 +541,7 @@ def _me_register_and_login(
     assert register.status_code == 201 , f"register failed: {register.json()}";
     user_id = extract_data(register.json())["user_id"];
 
-    login = client.post(
-        "/user/login",
-        json={
-            "identity": {"type": "username", "value": username},
-            "credential": {"type": "password", "password": password}
-        }
-    );
+    login = client.post("/user/login", json=login_payload(username, password));
     assert login.status_code == 200 , f"login failed: {login.json()}";
     return (user_id, extract_data(login.json())["token"]);
 }
@@ -775,21 +705,11 @@ test "function calls" {
     try {
         func_user = f"funcuser_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": func_user}],
-                "credential": {"type": "password", "password": "pass"}
-            }
+            "/user/register", json=register_payload(func_user, "pass")
         );
         create_result = extract_data(response.json());
         assert "user_id" in create_result;
-        response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": func_user},
-                "credential": {"type": "password", "password": "pass"}
-            }
-        );
+        response = client.post("/user/login", json=login_payload(func_user, "pass"));
         login_result = extract_data(response.json());
         token = login_result["token"];
 
@@ -885,21 +805,11 @@ test "walker calls" {
     try {
         walker_user = f"walkeruser_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": walker_user}],
-                "credential": {"type": "password", "password": "pass"}
-            }
+            "/user/register", json=register_payload(walker_user, "pass")
         );
         create_result = extract_data(response.json());
         assert "user_id" in create_result;
-        response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": walker_user},
-                "credential": {"type": "password", "password": "pass"}
-            }
-        );
+        response = client.post("/user/login", json=login_payload(walker_user, "pass"));
         login_result = extract_data(response.json());
         token = login_result["token"];
 
@@ -939,7 +849,7 @@ test "walker calls" {
         data = response_data["reports"][0];
         assert data["message"] == "This is a public endpoint";
 
-        secret = "supersecretkey_for_testing_only!";
+        secret = jwt_secret();
         now = datetime.now(UTC);
         payload = {
             "username": "deleted_user",
@@ -964,21 +874,11 @@ test "walker calls" {
 
         g_user = f"guser_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register",
-            json={
-                "identities": [{"type": "username", "value": g_user}],
-                "credential": {"type": "password", "password": "gpass"}
-            }
+            "/user/register", json=register_payload(g_user, "gpass")
         );
         reg = extract_data(response.json());
         assert "user_id" in reg;
-        response = client.post(
-            "/user/login",
-            json={
-                "identity": {"type": "username", "value": g_user},
-                "credential": {"type": "password", "password": "gpass"}
-            }
-        );
+        response = client.post("/user/login", json=login_payload(g_user, "gpass"));
         reg_login = extract_data(response.json());
         response = client.post(
             "/walker/CreateTask",
@@ -1232,20 +1132,14 @@ test "websocket functionality" {
 
         response = requests.post(
             f"{sv_base_url}/user/register",
-            json={
-                "identities": [{"type": "username", "value": username}],
-                "credential": {"type": "password", "password": password}
-            },
+            json=register_payload(username, password),
             timeout=10
         );
         assert response.status_code in (200, 201) , f"Failed to create user: {response.text}";
 
         response = requests.post(
             f"{sv_base_url}/user/login",
-            json={
-                "identity": {"type": "username", "value": username},
-                "credential": {"type": "password", "password": password}
-            },
+            json=login_payload(username, password),
             timeout=10
         );
         assert response.status_code == 200 , f"Failed to login: {response.text}";
@@ -1273,20 +1167,14 @@ test "websocket functionality" {
         username = f"ws_query_user_{uuid.uuid4().hex[:8]}";
         response = requests.post(
             f"{sv_base_url}/user/register",
-            json={
-                "identities": [{"type": "username", "value": username}],
-                "credential": {"type": "password", "password": password}
-            },
+            json=register_payload(username, password),
             timeout=10
         );
         assert response.status_code in (200, 201);
 
         response = requests.post(
             f"{sv_base_url}/user/login",
-            json={
-                "identity": {"type": "username", "value": username},
-                "credential": {"type": "password", "password": password}
-            },
+            json=login_payload(username, password),
             timeout=10
         );
         assert response.status_code == 200;
@@ -1364,20 +1252,14 @@ test "websocket functionality" {
 
             response = requests.post(
                 f"{sv_base_url}/user/register",
-                json={
-                    "identities": [{"type": "username", "value": username}],
-                    "credential": {"type": "password", "password": password}
-                },
+                json=register_payload(username, password),
                 timeout=10
             );
             assert response.status_code in (200, 201);
 
             response = requests.post(
                 f"{sv_base_url}/user/login",
-                json={
-                    "identity": {"type": "username", "value": username},
-                    "credential": {"type": "password", "password": password}
-                },
+                json=login_payload(username, password),
                 timeout=10
             );
             assert response.status_code == 200;
@@ -1524,19 +1406,13 @@ test "dev mode operations" {
         devtest_user = f"devtest_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
-            json={
-                "identities": [{"type": "username", "value": devtest_user}],
-                "credential": {"type": "password", "password": "pass"}
-            },
+            json=register_payload(devtest_user, "pass"),
             timeout=10
         );
         assert register_response.status_code == 201;
         login_response = requests.post(
             f"{dm_base_url}/user/login",
-            json={
-                "identity": {"type": "username", "value": devtest_user},
-                "credential": {"type": "password", "password": "pass"}
-            },
+            json=login_payload(devtest_user, "pass"),
             timeout=10
         );
         token = _extract_data_dev(login_response.json())["token"];
@@ -1557,19 +1433,13 @@ test "dev mode operations" {
         devfunc_user = f"devfunc_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
-            json={
-                "identities": [{"type": "username", "value": devfunc_user}],
-                "credential": {"type": "password", "password": "pass"}
-            },
+            json=register_payload(devfunc_user, "pass"),
             timeout=10
         );
         assert register_response.status_code == 201;
         login_response = requests.post(
             f"{dm_base_url}/user/login",
-            json={
-                "identity": {"type": "username", "value": devfunc_user},
-                "credential": {"type": "password", "password": "pass"}
-            },
+            json=login_payload(devfunc_user, "pass"),
             timeout=10
         );
         token = _extract_data_dev(login_response.json())["token"];
@@ -1606,19 +1476,13 @@ test "dev mode operations" {
         username = f"asyncuser_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
-            json={
-                "identities": [{"type": "username", "value": username}],
-                "credential": {"type": "password", "password": "password123"}
-            },
+            json=register_payload(username, "password123"),
             timeout=10
         );
         assert register_response.status_code == 201;
         login_response = requests.post(
             f"{dm_base_url}/user/login",
-            json={
-                "identity": {"type": "username", "value": username},
-                "credential": {"type": "password", "password": "password123"}
-            },
+            json=login_payload(username, "password123"),
             timeout=10
         );
         token = _extract_data_dev(login_response.json())["token"];
@@ -1760,14 +1624,11 @@ test "dev mode named endpoints and HMR refresh" {
     }
 }
 
-import from jaclang.scale.server.serve { _get_network_ips }
 import from jaclang.server.net {
     find_available_port as _find_available_port,
     PortInUseError,
     PORT_RETRY_LIMIT,
-    ERRNO_ADDR_IN_USE_LINUX,
-    ERRNO_ADDR_IN_USE_MACOS,
-    ERRNO_ADDR_IN_USE_WINDOWS
+    ERRNO_ADDR_IN_USE
 }
 import from jaclang.cli.commands.execution { _find_free_port }
 
@@ -1938,23 +1799,11 @@ test "port fallback - raises error when no ports available" {
     }
 }
 
-test "network IPs - returns valid IP list" {
-    ips = _get_network_ips();
-    assert isinstance(ips, list) , "Expected list of IPs";
-
-    for ip in ips {
-        assert not ip.startswith('127.') , f"Localhost IP {ip} should be filtered";
-        assert ':' not in ip , f"IPv6 address {ip} should be filtered";
-    }
-
-    assert len(ips) == len(set(ips)) , "IP list should not contain duplicates";
-}
-
 test "port constants - values are correct" {
     assert PORT_RETRY_LIMIT == 10 , "PORT_RETRY_LIMIT should be 10";
-    assert ERRNO_ADDR_IN_USE_LINUX == 98 , "ERRNO_ADDR_IN_USE_LINUX should be 98";
-    assert ERRNO_ADDR_IN_USE_MACOS == 48 , "ERRNO_ADDR_IN_USE_MACOS should be 48";
-    assert ERRNO_ADDR_IN_USE_WINDOWS == 10048 , "ERRNO_ADDR_IN_USE_WINDOWS should be 10048";
+    assert 98 in ERRNO_ADDR_IN_USE , "Linux EADDRINUSE should be recognised";
+    assert 48 in ERRNO_ADDR_IN_USE , "macOS EADDRINUSE should be recognised";
+    assert 10048 in ERRNO_ADDR_IN_USE , "Windows WSAEADDRINUSE should be recognised";
 }
 
 test "server startup - a second server refuses an already-taken explicit port" {
@@ -2013,133 +1862,122 @@ test "server startup - a second server refuses an already-taken explicit port" {
     }
 }
 
-test "health check filter is disabled by default" {
+test "health check filter is off unless [serve.access_log] asks for it" {
     import logging;
-    import from jaclang.scale.config.config_loader {
-        get_scale_config,
-        reset_scale_config
+    import from jaclang.server.serving.accesslog {
+        HealthCheckFilter,
+        access_logger,
+        configure_access_logging
     }
-    import from jaclang.scale.server.native_server {
-        ConsoleLogHandler,
+    import from jaclang.server.settings { ServeSettings }
+
+    settings = ServeSettings();
+    assert not settings.access_log.suppress_health_checks , "suppress_health_checks should default to False";
+
+    configure_access_logging(enabled=True, format='text', suppress_health_checks=False);
+    handler = access_logger.handlers[0];
+    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_checks is false";
+
+    configure_access_logging(enabled=True, format='text', suppress_health_checks=True);
+    handler = access_logger.handlers[0];
+    assert any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should be attached when suppress_health_checks is true";
+    configure_access_logging(enabled=True, format='text', suppress_health_checks=False);
+}
+
+test "health check filter suppresses probe records and keeps the rest" {
+    import logging;
+    import from jaclang.server.serving.accesslog {
+        ACCESS_LOGGER_NAME,
+        AccessRecord,
         HealthCheckFilter
     }
 
-    reset_scale_config();
-    cfg = get_scale_config();
-    server_cfg = cfg.get_server_config();
-
-    assert not server_cfg.get('suppress_health_check_logs', False) , "suppress_health_check_logs should default to False";
-
-    handler = ConsoleLogHandler();
-    handler.setFormatter(logging.Formatter("%(message)s"));
-    if server_cfg.get('suppress_health_check_logs', False) {
-        handler.addFilter(HealthCheckFilter());
-    }
-    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
-
-    reset_scale_config();
-}
-
-test "health check filter suppresses health endpoint log records" {
-    import logging;
-    import from jaclang.scale.server.native_server { HealthCheckFilter }
-    import from jaclang.server.serving.server { ACCESS_LOGGER_NAME }
-
-    def make_record(msg: str) -> logging.LogRecord {
-        return logging.LogRecord(
+    def make_record(path: str) -> logging.LogRecord {
+        rec = logging.LogRecord(
             name=ACCESS_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
-            msg=msg,
+            msg=path,
             args=(),
             exc_info=None
         );
+        setattr(
+            rec,
+            'access',
+            AccessRecord(client='127.0.0.1', method='GET', path=path, status=200)
+        );
+        return rec;
     }
 
     f = HealthCheckFilter();
-
-    suppressed = [
-        '127.0.0.1:12345 - "GET /health HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET / HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /openapi.json HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz/ready HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz/live HTTP/1.1" 200',
-
-    ];
-    for msg in suppressed {
-        assert not f.filter(make_record(msg)) , f"Expected suppressed: {msg}";
+    for path in ['/healthz', '/healthz/ready', '/healthz/live'] {
+        assert not f.filter(make_record(path)) , f"Expected suppressed: {path}";
     }
-
-    allowed = [
-        '127.0.0.1:12345 - "GET /walker/MyWalker HTTP/1.1" 200',
-        '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
-        '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',
-
-    ];
-    for msg in allowed {
-        assert f.filter(make_record(msg)) , f"Expected allowed: {msg}";
+    for path in [
+        '/walker/MyWalker',
+        '/user/login',
+        '/graph',
+        '/function/add_numbers',
+        '/health/extra',
+        '/docs',
+        '/'
+    ] {
+        assert f.filter(make_record(path)) , f"Expected allowed: {path}";
     }
+    plain = logging.LogRecord(
+        name=ACCESS_LOGGER_NAME,
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="x",
+        args=(),
+        exc_info=None
+    );
+    assert f.filter(plain) , "records without an access payload pass through";
 }
 
-test "health check filter blocks records when attached to a handler" {
+test "json access log formatter emits one object per request" {
+    import json;
     import logging;
-    import from jaclang.scale.server.native_server { HealthCheckFilter }
-    import from jaclang.server.serving.server { ACCESS_LOGGER_NAME }
-
-    class _CapturingHandler(logging.Handler) {
-        has captured: list = [];
-
-        def emit(self: _CapturingHandler, record: logging.LogRecord) {
-            self.captured.append(record.getMessage());
-        }
+    import from jaclang.server.serving.accesslog {
+        ACCESS_LOGGER_NAME,
+        AccessJsonFormatter,
+        AccessRecord
     }
-
-    def make_record(msg: str) -> logging.LogRecord {
-        return logging.LogRecord(
-            name=ACCESS_LOGGER_NAME,
-            level=logging.INFO,
-            pathname="",
-            lineno=0,
-            msg=msg,
-            args=(),
-            exc_info=None
-        );
-    }
-
-    handler = _CapturingHandler();
-    handler.setFormatter(logging.Formatter("%(message)s"));
-    handler.addFilter(HealthCheckFilter());
-
-    records = [
-        ('127.0.0.1 - "GET /health HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /docs HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET / HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /openapi.json HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /healthz/ready HTTP/1.1" 200', False),
-        ('127.0.0.1 - "GET /healthz/live HTTP/1.1" 200', False),
-        ('127.0.0.1 - "POST /user/login HTTP/1.1" 200', True),
-        ('127.0.0.1 - "GET /walker/Foo HTTP/1.1" 200', True),
-
-    ];
-
-    for (msg, should_appear) in records {
-        handler.captured = [];
-        handler.handle(make_record(msg));
-        if should_appear {
-            assert len(handler.captured) == 1 , f"Expected handler to receive: {msg}";
-        } else {
-            assert len(handler.captured) == 0 , f"Expected handler to suppress: {msg}";
-        }
-    }
+    rec = logging.LogRecord(
+        name=ACCESS_LOGGER_NAME,
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="m",
+        args=(),
+        exc_info=None
+    );
+    setattr(
+        rec,
+        'access',
+        AccessRecord(
+            client='10.0.0.9',
+            method='POST',
+            path='/walker/Foo',
+            status=201,
+            bytes_sent=42,
+            duration_ms=3.5,
+            request_id='abc',
+            ts=1700000000.25
+        )
+    );
+    payload = json.loads(AccessJsonFormatter().format(rec));
+    assert payload['method'] == 'POST';
+    assert payload['path'] == '/walker/Foo';
+    assert payload['status'] == 201;
+    assert payload['bytes'] == 42;
+    assert payload['request_id'] == 'abc';
+    assert payload['ts'].endswith('Z');
 }
 
-test "pwa target uses jac-scale server" {
+test "pwa project uses jac-scale server" {
     import tempfile;
 
     port = get_free_port();
@@ -2158,17 +1996,10 @@ version = "1.0.0"
 theme_color = "#000000"
 '''
         );
+        # A [client.pwa] table is what makes this a PWA; there is no
+        # separate PWA client target or --client flag.
         server = subprocess.Popen(
-            [
-                jac_executable(),
-                "run",
-                "--serve",
-                "--client",
-                "pwa",
-                "-p",
-                str(port),
-                "main.jac"
-            ],
+            [jac_executable(), "run", "--serve", "-p", str(port), "main.jac"],
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -2208,21 +2039,9 @@ test "jwt middleware: per-user isolation and token rejection" {
     client = make_client();
     try {
         def reg(name: str) -> str {
-            r = client.post(
-                "/user/register",
-                json={
-                    "identities": [{"type": "username", "value": name}],
-                    "credential": {"type": "password", "password": "Pass!99"}
-                }
-            );
+            r = client.post("/user/register", json=register_payload(name, "Pass!99"));
             assert r.status_code == 201;
-            login = client.post(
-                "/user/login",
-                json={
-                    "identity": {"type": "username", "value": name},
-                    "credential": {"type": "password", "password": "Pass!99"}
-                }
-            );
+            login = client.post("/user/login", json=login_payload(name, "Pass!99"));
             assert login.status_code == 200;
             return extract_data(login.json())["token"];
         }

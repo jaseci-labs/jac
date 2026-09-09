@@ -1,4 +1,4 @@
-import from dataclasses { is_dataclass }
+import from jaclang.runtime.object_interop { is_record }
 import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
 import from typing { Union, get_args, get_origin, get_type_hints }

@@ -132,6 +132,7 @@ jobs:
           WORK="$(mktemp -d)"
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" -c 'import os, ssl; assert os.path.isfile(os.environ["SSL_CERT_FILE"]); assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
           echo "$out" | grep -q 49
 
@@ -248,13 +249,15 @@ jobs:
       # saved ~7 MB and restored nothing. There is no digest-agnostic
       # fallback key: a generation directory from another compiler digest
       # is dead weight to restore.
+      # Retries must be able to rule out a stale analysis/runtime cache.
       - name: Restore JIR analysis cache
+        if: github.run_attempt == 1
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
+            jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -272,7 +275,7 @@ jobs:
             "firebase-admin>=6.0.0,<8.0.0" "requests>=2.32.0,<3.0.0" \
             --global
           jac install \
-            "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
 
@@ -375,11 +378,11 @@ jobs:
           jac check . --ignore $IGNORE_ARGS --nowarn
 
       - name: Save JIR analysis cache
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
+          key: jac-check-cache-v2-${{ runner.os }}-${{ hashFiles('jac/jaclang/compiler/**', 'jac/jaclang/runtime/**', 'jac/jaclang/lib/**', 'jac/jaclang/jac0core/**', 'jac/jaclang/jac0.py', 'jac/jaclang/meta_importer.py', 'jac/jaclang/bootstrap_manifest.py', 'jac/jaclang/cli/cli_boot.jac', 'jac/jaclang/project/tomlio.jac', 'jac/jaclang/dist/precompile_bytecode.jac') }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
@@ -433,6 +436,19 @@ jobs:
             exit 1
           fi
 
+      - name: Block duplicate diagnostic codes
+        # Two branches each take the next free code and the merge keeps both;
+        # the registry refuses at import, which here means the kit fails to
+        # build. Reading the source names the collision in seconds instead.
+        # Mirrors tests/compiler/test_diagnostic_registry.jac.
+        run: |
+          dupes=$(grep -Pzo '\b[EW]\d{4} = _(?:err|warn)\(\s*"\K[EW]\d{4}' \
+            jac/jaclang/compiler/frontend/diagnostics.jac | tr '\0' '\n' | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "::error::diagnostic code(s) claimed more than once in diagnostics.jac: $(echo $dupes)"
+            exit 1
+          fi
+
       - name: Check Release Notes Updated
         if: |
           github.event_name == 'pull_request' &&
@@ -466,6 +482,9 @@ jobs:
           - chunk: passes-main
             paths: tests/compiler/passes tests/compiler/backends/es
             sealed: "1"
+            # Keep headroom for compiler workers and ES subprocesses on the
+            # 16 GB runner; auto-sized concurrency repeatedly lost the runner.
+            jobs: "2"
           - chunk: toplevel
             paths: tests/compiler/test_*.jac
             sealed: "1"
@@ -482,6 +501,9 @@ jobs:
             paths: jaclang/compiler/tests
             sealed: ""
             iface_verify: "1"
+            # Source compiler workers peak above 4 GB; four can exhaust this
+            # 16 GB runner before the pool's per-file recycling can intervene.
+            jobs: "2"
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/jac-kit
@@ -497,7 +519,7 @@ jobs:
         run: |
           set -uxo pipefail
           WORK="$(mktemp -d)"
-          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=auto JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
+          HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
 
   # Everything except the compiler tests.
   test-runtime:
@@ -575,7 +597,7 @@ jobs:
             requests "moto[s3]>=5.0.0" \
             --global
           jac install \
-            "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
       # Run from a copy OUTSIDE the checkout. The resolver's self-tree rule
@@ -625,7 +647,8 @@ jobs:
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
       - name: Run all client tests
         # Serial: parallel workers intermittently disagreed on collection of
-        # test_react_native_target.jac under the old pytest-xdist runner.
+        # test_mobile_target.jac (then test_react_native_target.jac) under the
+        # old pytest-xdist runner.
         # test_cef_dispatch_build.jac (the old test-cef-build job) runs here.
         env:
           JAC_TEST_JOBS: "0"
@@ -657,7 +680,7 @@ jobs:
       - name: Install byllm deps + test deps
         run: |
           jac install \
-            "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
             "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
             --global
       # test_mtir_integration.jac runs in test-in-package-sealed (see there).
@@ -684,7 +707,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [server, data, microservices, deploy, misc, root]
+        group: [server, data, microservices, deploy, misc]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -708,29 +731,21 @@ jobs:
             requests "moto[s3]>=5.0.0" \
             --global
       - name: Install scale firebase deps
-        if: matrix.group == 'root'
+        if: matrix.group == 'data' || matrix.group == 'server'
         run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
       # One process per file comes from the [test] isolate marks in the root
       # jac.toml (the shelf-db sharers are marked serial there); JOBS=1 keeps
       # files sequential the way the old shell loop ran them. The HMR test in
-      # server/test_serve.jac runs in test-in-package-sealed. The root group
-      # is the directory's own top-level files -- including the ones the old
-      # per-group globs never reached; test_deploy_k8s asks for JAC_TEST_K8S
-      # and skips itself here.
+      # server/test_serve.jac runs in test-in-package-sealed. Every test file
+      # lives in one of the five group directories; deploy/test_deploy_k8s.jac
+      # asks for JAC_TEST_K8S and skips itself here, the cluster leg runs it.
       - name: Run ${{ matrix.group }} tests
         env:
           JAC_TEST_JOBS: "1"
           JAC_TEST_STRICT: "1"
         run: |
           set -euo pipefail
-          if [ "${{ matrix.group }}" = "root" ]; then
-            jac test jac/jaclang/scale/tests \
-              --ignore jac/jaclang/scale/tests/server \
-                jac/jaclang/scale/tests/data \
-                jac/jaclang/scale/tests/microservices \
-                jac/jaclang/scale/tests/deploy \
-                jac/jaclang/scale/tests/misc
-          elif [ "${{ matrix.group }}" = "server" ]; then
+          if [ "${{ matrix.group }}" = "server" ]; then
             jac test jac/jaclang/scale/tests/server -f "not hmr"
           else
             jac test jac/jaclang/scale/tests/${{ matrix.group }}
@@ -794,9 +809,7 @@ jobs:
         env:
           JAC_TEST_JOBS: "0"
         run: |
-          jac test jac/jaclang/scale/tests/test_pod_env.jac -x
-          jac test jac/jaclang/scale/tests/test_k8s_utils.jac -x
-          jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"
+          jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x -f "not (early and exit)"
       - name: Run KEDA HTTP-activation e2e
         env:
           # Ship the jac built from this checkout to the pods (channel LOCAL),
@@ -815,7 +828,15 @@ jobs:
           # Ship the jac built from this checkout to the pods (channel LOCAL).
           JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
         run: |
-          jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
+          jac test jac/jaclang/scale/tests/deploy/test_deploy_k8s.jac -x --test_name "early exit"
+
+      # Destroy deletes namespaces and volumes, so what it reclaims and what it
+      # spares is only decidable by an API server. Runs on every scale PR.
+      - name: Run destroy reclamation e2e
+        env:
+          CLUSTER_TYPE: microk8s
+          JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
+        run: bash jac/jaclang/scale/tests/deploy/destroy_reclaim_real_e2e.sh
 
   # aarch64 cross lane: in-house ELF linker + arch-parameterized musl from the
   # kit, binaries run under qemu-user.
@@ -936,25 +957,118 @@ jobs:
             "requests>=2.32.0,<3.0.0" \
             --global
 
-      # Fullstack smoke on the in-tree jaclang.org site
-      # (jac/examples/jaclang_org). JAC_NO_DEV_SOURCE=1 (job env) so the
-      # site's [dev] stanza is ignored and the sealed kit binary is what gets
-      # validated, not a live-source reroute.
-      - name: Install site deps (first run pulls npm deps)
-        working-directory: jac/examples/jaclang_org
-        run: jac install
+      # Fullstack smoke on the jaclang.org site, scaffolded the way the README
+      # quickstart tells a user to. `jac create <name> --awesome` dumps the copy
+      # of jac/examples/jaclang_org that the payload bundles beside the jaclang
+      # package (awesome_template) and pulls its npm deps. Running the
+      # scaffolded copy instead of the checkout is what exercises the bundling
+      # step and the template resolver (the [dev] stanza is dropped, the
+      # project is renamed); nothing else in CI runs that path. Because the
+      # template ships inside the binary, the binary and the site it serves are
+      # version-matched by construction, which is why the old happy-path lane
+      # (released binary against main's clone) no longer had a quickstart to
+      # validate. JAC_NO_DEV_SOURCE=1 (job env) so the sealed kit binary is
+      # what gets validated, not a live-source reroute.
+      - name: Scaffold the site (jac create --awesome; pulls npm deps)
+        run: jac create site --awesome
+
+      # `jac create` reports a failed dependency install as a next step, not a
+      # non-zero exit, so check the scaffold before serving it: the failure
+      # should name the quickstart step, not a missing module at bundle time.
+      - name: Verify the scaffold came from the bundled template
+        run: |
+          test -f site/web/main.jac && test -f site/core/site/game/arena.jac \
+            || { echo "::error::scaffold is missing the site's entry or the wasm game"; exit 1; }
+          test -f site/desktop/main.jac \
+            || { echo "::error::scaffold is missing the desktop app"; exit 1; }
+          # Client npm deps live under the project's build dir (.jac/client),
+          # not a top-level node_modules; that is where the vite bundler looks.
+          test -d site/.jac/client/node_modules/vite \
+            || { echo "::error::jac create did not pull the site's npm deps (no vite under site/.jac/client/node_modules)"; exit 1; }
+          if grep -q '^\[dev\]' site/jac.toml; then
+            echo "::error::the [dev] live-source stanza leaked into the scaffold"; exit 1
+          fi
+          grep -q '^name = "site"' site/jac.toml \
+            || { echo "::error::the scaffold was not renamed to the project name"; exit 1; }
+          cmp jac/examples/jaclang_org/core/site/assets/og-card.png site/core/site/assets/og-card.png \
+            || { echo "::error::a binary asset did not survive the template round trip"; exit 1; }
+          echo "scaffold matches the README quickstart"
 
       - name: Type check the site
-        working-directory: jac/examples/jaclang_org
-        run: jac check main.jac
+        working-directory: site
+        run: jac check
+
+      # The site ships as a desktop app too (apps.desktop, backend jaclang.org):
+      # the native engine needs WebKitGTK + a C toolchain to build libwebview,
+      # patchelf for the $ORIGIN runpath, and a display to launch under.
+      - name: Install desktop build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
+            patchelf xvfb
+
+      - name: Build the desktop app
+        working-directory: site
+        run: jac build desktop
+
+      - name: Desktop artifact audit
+        working-directory: site
+        run: |
+          OUT=.jac/client/desktop/desktop
+          test -x $OUT/jaclang || { echo "::error::no desktop binary"; exit 1; }
+          test -f $OUT/app.jab || { echo "::error::no sealed app image beside the binary"; exit 1; }
+          test -f $OUT/dist/index.html || { echo "::error::no client bundle beside the binary"; exit 1; }
+          test ! -d $OUT/sv || { echo "::error::loose sources shipped; the image is the program"; exit 1; }
+          grep -q "https://jaclang.org" $OUT/dist/client.*.js \
+            || { echo "::error::the bundle does not carry its remote backend"; exit 1; }
+
+      # Launch under Xvfb: the host announces its loopback origin on stdout,
+      # serves the bundle and the broker there, and answers no walker locally
+      # because its backend is remote.
+      - name: Desktop smoke (Xvfb)
+        working-directory: site/.jac/client/desktop/desktop
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 &
+          XVFB_PID=$!
+          DISPLAY=:99 GDK_BACKEND=x11 timeout 600s ./jaclang-launch.sh > /tmp/site-desktop.log 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 110); do
+            grep -q "JAC_DESKTOP_SERVING" /tmp/site-desktop.log && break
+            if ! kill -0 $APP_PID 2>/dev/null; then echo "::error::desktop app exited early"; cat /tmp/site-desktop.log; exit 1; fi
+            sleep 5
+          done
+          ORIGIN=$(grep -o "JAC_DESKTOP_SERVING http://[^ ]*" /tmp/site-desktop.log | head -1 | cut -d' ' -f2)
+          test -n "$ORIGIN" || { echo "::error::the desktop host never announced its origin"; cat /tmp/site-desktop.log; exit 1; }
+          curl -fsS "${ORIGIN}__jac/health" | grep -q '"ok": true' || { echo "::error::broker health failed"; exit 1; }
+          curl -fsS "$ORIGIN" | grep -q "The Jac Programming Language" || { echo "::error::the site index did not load"; exit 1; }
+          curl -fsS "${ORIGIN}docs/getting-started" | grep -q "The Jac Programming Language" || { echo "::error::SPA fallback failed"; exit 1; }
+          curl -fsS "${ORIGIN}static/assets/jac-logo.svg" | grep -q "<svg" || { echo "::error::the shared site assets are not served by the desktop host"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${ORIGIN}walker/doc_page" -H 'Content-Type: application/json' -d '{}')
+          [ "$code" = "404" ] || [ "$code" = "405" ] || { echo "::error::a remote-backend desktop app served a walker locally ($code)"; exit 1; }
+          kill $APP_PID $XVFB_PID 2>/dev/null || true
+          echo "desktop app serves the site on $ORIGIN"
+
+      - name: Upload desktop logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-desktop-logs
+          path: /tmp/site-desktop.log
+          if-no-files-found: ignore
 
       # The docs section reads the corpus bundled with the jac binary under
       # test in-process (jaclang.cli.guide_store), so the docs journey stop is
       # hermetic with no extra setup.
-      - name: Start site server in background
-        working-directory: jac/examples/jaclang_org
+      # The site is a workspace whose service apps colocate in the served
+      # app's process by default. Exercise the exact quickstart, `jac run`, in the single
+      # process serving stack. The fleet topology (`--fleet`: one local
+      # process per service app behind the gateway) gets its own pass over
+      # the same journey below.
+      - name: Start the quickstart with bare jac run
+        working-directory: site
         run: |
-          timeout 1200 jac run --serve main.jac > /tmp/site-server.log 2>&1 &
+          timeout 1200 jac run > /tmp/site-server.log 2>&1 &
           SERVER_PID=$!
           echo "SITE_PID=$SERVER_PID" >> $GITHUB_ENV
           echo "site server starting with PID $SERVER_PID..."
@@ -990,7 +1104,7 @@ jobs:
         run: |
           HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
           echo "site root endpoint: HTTP $HTTP_CODE"
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          if [ "$HTTP_CODE" -eq 200 ]; then
             echo "site server responding correctly"
           else
             echo "Unexpected HTTP $HTTP_CODE"
@@ -1029,11 +1143,19 @@ jobs:
           SITE_JOURNEY_ARTIFACTS: /tmp
         run: bash scripts/site-browse-journey.sh http://localhost:8000
 
+      - name: Verify development mode and no dependency scan errors
+        run: |
+          grep -q 'Development (with HMR)' /tmp/site-server.log
+          if grep -E 'Failed to scan for dependencies|No matching export|Could not start Vite dev server' /tmp/site-server.log; then
+            echo "::error::the quickstart client failed despite a live server process"
+            exit 1
+          fi
+
       - name: Dump server thread stacks on failure
         if: failure()
         run: |
           pip install py-spy >/dev/null 2>&1 || true
-          for p in $(pgrep -f "jac run --serve main.jac"); do
+          for p in $(pgrep -f "jac run"); do
             echo "=== py-spy dump pid $p ==="
             sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
           done
@@ -1059,9 +1181,130 @@ jobs:
           jac browse close 2>/dev/null || true
           if [ -n "${{ env.SITE_PID }}" ]; then
             kill ${{ env.SITE_PID }} 2>/dev/null || true
-            sleep 3
+            for i in $(seq 1 30); do
+              kill -0 ${{ env.SITE_PID }} 2>/dev/null || break
+              sleep 1
+            done
             kill -9 ${{ env.SITE_PID }} 2>/dev/null || true
           fi
+
+      - name: Build the production artifact
+        working-directory: site
+        run: jac build --output dist
+
+      - name: Serve the production artifact outside the source project
+        working-directory: ${{ runner.temp }}
+        run: |
+          timeout 1200 jac run --port 8000 "${{ github.workspace }}/site/dist/site.jab" > /tmp/site-artifact.log 2>&1 &
+          echo "ARTIFACT_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for the production artifact
+        run: |
+          for i in $(seq 1 60); do
+            if ! kill -0 "${{ env.ARTIFACT_PID }}" 2>/dev/null; then
+              cat /tmp/site-artifact.log
+              exit 1
+            fi
+            if curl -sf --max-time 10 http://localhost:8000/ -o /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          cat /tmp/site-artifact.log
+          exit 1
+
+      - name: Browse the production artifact (same journey)
+        timeout-minutes: 15
+        run: bash scripts/site-browse-journey.sh http://localhost:8000
+
+      - name: Stop the production artifact
+        if: always()
+        run: |
+          jac browse close 2>/dev/null || true
+          if [ -n "${{ env.ARTIFACT_PID }}" ]; then
+            kill "${{ env.ARTIFACT_PID }}" 2>/dev/null || true
+            sleep 3
+            kill -9 "${{ env.ARTIFACT_PID }}" 2>/dev/null || true
+          fi
+          cat /tmp/site-artifact.log 2>/dev/null || true
+
+      # The other topology for the same site: `jac run --fleet` puts the
+      # gateway in front of one local process per service app, with the
+      # served app (`web`) as the fleet's root member owning the project
+      # root. The journey below is the same one the single-process lane just
+      # ran, so the two lanes assert the same site, including the closing
+      # console-error sweep.
+      - name: Start the site behind the fleet gateway
+        working-directory: jac/examples/jaclang_org
+        env:
+          JAC_DOCS_LOCAL: ${{ github.workspace }}
+        run: |
+          timeout 1800 jac run --serve --fleet --port 8000 web \
+            > /tmp/site-ms.log 2>&1 &
+          MS_PID=$!
+          echo "MS_PID=$MS_PID" >> $GITHUB_ENV
+          echo "gateway starting with PID $MS_PID..."
+          sleep 10
+          if ! kill -0 $MS_PID 2>/dev/null; then
+            echo "Gateway process died during startup"
+            cat /tmp/site-ms.log
+            exit 1
+          fi
+
+      - name: Wait for the gateway to be ready
+        run: |
+          for i in $(seq 1 90); do
+            if ! kill -0 ${{ env.MS_PID }} 2>/dev/null; then
+              echo "Gateway exited unexpectedly"
+              tail -100 /tmp/site-ms.log
+              exit 1
+            fi
+            if curl -sf --max-time 10 http://localhost:8000/health -o /dev/null; then
+              echo "gateway is ready (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i/90: gateway not ready, waiting 15s..."
+            sleep 15
+          done
+          echo "Gateway failed to answer after 90 attempts"
+          tail -200 /tmp/site-ms.log
+          exit 1
+
+      - name: Browse the site through the gateway (full journey)
+        timeout-minutes: 20
+        env:
+          SITE_JOURNEY_ARTIFACTS: /tmp
+        run: bash scripts/site-browse-journey.sh http://localhost:8000
+
+      - name: Dump gateway and service thread stacks on failure
+        if: failure()
+        run: |
+          pip install py-spy >/dev/null 2>&1 || true
+          for p in $(pgrep -f "jac run"); do
+            echo "=== py-spy dump pid $p ==="
+            sudo env "PATH=$PATH" py-spy dump --pid "$p" --nonblocking || true
+          done
+
+      - name: Gateway and service logs
+        if: always()
+        run: |
+          echo "=== gateway ==="
+          tail -200 /tmp/site-ms.log || true
+          for f in jac/examples/jaclang_org/.jac/logs/*.log; do
+            echo "=== $f ==="
+            tail -80 "$f" || true
+          done
+
+      - name: Stop the fleet gateway
+        if: always()
+        run: |
+          jac browse close 2>/dev/null || true
+          if [ -n "${{ env.MS_PID }}" ]; then
+            kill ${{ env.MS_PID }} 2>/dev/null || true
+            sleep 5
+            kill -9 ${{ env.MS_PID }} 2>/dev/null || true
+          fi
+          pkill -f "jac run --serve --port 1" 2>/dev/null || true
 
       - name: Create fullstack project and eject it
         run: |
@@ -1146,6 +1389,40 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
     uses: ./.github/workflows/_macos-native.yml
 
+  test-managed-android:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      JAC_NO_DEV_SOURCE: "1"
+      JAC_ACCEPT_ANDROID_LICENSES: "1"
+      JAC_TOOLCHAIN_USE_SYSTEM: "0"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+      # Keep the small multiscreen fixture for focused dual-target tests; this
+      # lane packages the real JacYac mobile workspace with a fresh Android SDK.
+      - name: Build the JacYac release APK with a fresh managed Android SDK
+        run: |
+          set -euo pipefail
+          export JAC_TOOLCHAIN_DIR="$RUNNER_TEMP/toolchains"
+          export ANDROID_HOME="$JAC_TOOLCHAIN_DIR/android-sdk/linux-x64"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          cp -r jac/examples/jaclang_org "$RUNNER_TEMP/mobile-app"
+          printf '\n[client.react_native]\nrelease = true\nproject_dir = ".jac/mobile-rn"\n' >> "$RUNNER_TEMP/mobile-app/jac.toml"
+          jac setup --toolchain android
+          cd "$RUNNER_TEMP/mobile-app"
+          jac build --platform android mobile
+          test -n "$(find .jac/mobile-rn/android/app/build/outputs/apk -name '*.apk' -print -quit)"
+      - name: Upload the generated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacyac-android-apk
+          path: ${{ runner.temp }}/mobile-app/.jac/mobile-rn/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
   # Aggregate gate: branch protection requires only this context. A NEW job
   # must be added to needs below by hand; always() so failures upstream fail
   # the gate instead of skipping it (skipped required checks count as passing).
@@ -1162,6 +1439,7 @@ jobs:
       - test-runtime
       - test-in-package-sealed
       - test-client
+      - test-managed-android
       - test-packages-and-docs
       - test-scale
       - test-scale-k8s

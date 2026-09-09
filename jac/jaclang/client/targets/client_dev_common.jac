@@ -148,11 +148,7 @@ def prepare_vite_dev_compilation(project_dir: Path, entry_file: Path) -> tuple {
         raise RuntimeError("Client compiled directory could not be resolved");
     }
     compiled_dir.mkdir(parents=True, exist_ok=True);
-    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
-    if not mod {
-        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
-    }
-    compiler.compile(mod, entry_file);
+    compiler.compile(None, entry_file);
     console.print("  ✔ Client modules compiled for dev mode", style="success");
     return (bundler, compiler);
 }
@@ -174,20 +170,33 @@ obj _ClientHmrHandler {
                 return;
             }
             invalidate_runtime_module_cache([pth, str(self.entry_file)]);
-            compile_out = cast(
-                any, self.compiler.jac_compiler.compile_module(self.entry_file)
-            );
-            mod2 = compile_out[1];
-            if not mod2 {
-                return;
-            }
-            self.compiler.compile(mod2, self.entry_file);
+            self.compiler.compile(None, self.entry_file);
             console.print("  ✔ Client recompiled after save", style="success");
         } except Exception as e {
             console.error(f"  HMR recompile failed: {e}");
         }
     }
 }
+
+def dev_proxy_paths(project_dir: Path, entry_file: Path) -> tuple {
+    import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
+    import from jaclang.jac0core.ext_registry { base_stem }
+    try {
+        import from jaclang.server.server { ModuleIntrospector }
+        introspector = ModuleIntrospector(
+            module_name=base_stem(entry_file.name), base_path=str(project_dir)
+        );
+        introspector.load();
+        return (
+            introspector.declared_api_paths(),
+            introspector.client_claimed_paths(DEV_PROXY_PREFIXES)
+        );
+    } except Exception as e {
+        console.warning(f"Could not resolve dev proxy paths: {e}");
+        return ([], []);
+    }
+}
+
 
 def invalidate_runtime_module_cache(paths: list[str]) -> None {
     try {

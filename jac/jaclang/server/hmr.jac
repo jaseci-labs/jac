@@ -57,10 +57,12 @@ obj HotReloader {
     def _remove_compiled_output(file_path: str) -> None;
     def _remove_compiled_dir(file_path: str) -> None;
     def _refresh_routing(file_path: str) -> None;
+    def _tracked_wasm_module(file_path: str) -> bool;
+    def _reemit_native_wasm(file_path: str) -> None;
     def _entry_module_path -> Path;
     def _status_file_path -> Path;
     def _sync_status_file -> None;
-    def _classify_declarations(file_path: str) -> tuple[bool, bool];
+    def _classify_declarations(file_path: str) -> tuple[bool, bool, bool];
     def _path_to_module(file_path: str) -> str;
     def _get_js_filename(file_path: str) -> str;
     def _copy_frontend_files(file_path: str) -> None;

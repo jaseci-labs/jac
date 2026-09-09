@@ -1,11 +1,18 @@
 # Welcome to Jac
 
-**One language, one compiler, the whole stack. No glue.**
+Jac is a programming language for server, browser, and native code. It combines familiar imperative programming with graph traversal and functions implemented by language models. Its compiler uses shared declarations to generate supported cross-tier calls and check their types.
 
-Jac is a programming language designed for humans and AI to build together. With clean, Python-like syntax, Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible), giving full access to every library in the PyPI, npm, and native ecosystems. One compiler sees the whole application: the AI calls, the data model, the API, the frontend, and the deployment are language features checked together, not frameworks assembled around a language. Jac moves complexity out of the developer's code and into the compiler and runtime.
+Choose a starting point:
+
+- [Install Jac](install.md) and run your first program.
+- [Jac Fundamentals](../tutorials/language/basics.md) introduces the syntax for readers who already program.
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) teaches Jac through seven lessons.
+- [Project Kinds](project-kinds.md) helps you select a target for an existing idea.
+
+The example below previews a web application. Its configuration and model setup follow the code; the day-planner lessons explain the constructs one at a time.
 
 ```jac
-# A complete full-stack AI app in one file
+# Application source; configuration follows below
 
 node Todo {
     has title: str, category: str = "other", done: bool = False;
@@ -51,7 +58,7 @@ def:pub app -> JsxElement {
 }
 ```
 
-This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend. There is no database to set up, no hand-written prompt (the compiler derives it from your names and types), and no separate frontend project. Just Jac.
+This file declares the data model, categorization function, server endpoints, and client interface. Jac generates the supported connections between them. Running it also requires the project configuration, dependencies, and model access described below.
 
 ??? info "You can actually run this example"
     Save the code above as `main.jac`, then create a `jac.toml` in the same directory:
@@ -61,18 +68,15 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     name = "mini-todo"
 
     [dependencies.npm]
-    react = "^18.2.0"
-    react-dom = "^18.2.0"
+    react = "^19.2.0"
+    react-dom = "^19.2.0"
 
     [dependencies.npm.dev]
     vite = "^6.4.1"
     "@vitejs/plugin-react" = "^4.2.1"
     typescript = "^5.3.3"
-    "@types/react" = "^18.2.0"
-    "@types/react-dom" = "^18.2.0"
-
-    [serve]
-    base_route_app = "app"
+    "@types/react" = "^19.2.0"
+    "@types/react-dom" = "^19.2.0"
 
     [scale]
 
@@ -96,7 +100,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
 
 ## The Two Ideas
 
-Modern software fragments into a dozen notations, and defects pool at the seams no compiler can see. [Why Jac Exists](why-jac.md) counts that cost. Jac's answer is two properties, each a first in a production language:
+Two independent ideas guide Jac's design: continuity across execution environments and computation expressed through graph traversal. These are useful background; the tutorials introduce their concrete syntax and behavior.
 
 <div class="grid cards" markdown>
 
@@ -104,7 +108,7 @@ Modern software fragments into a dozen notations, and defects pool at the seams 
 
     ---
 
-    Jac presents one continuous, compiler-checked medium across tiers, ecosystems, and toolchains. The property is called *synechic*. Frontend, backend, and native code live in one language, PyPI, npm, and C libraries arrive through a plain `import`, and a `node` declared once is the same type in the store, on the wire, and in the browser. Rename a field and every stale use in every tier is a compile error.
+    The synechic class concerns continuity across runtimes, ecosystems, and toolchains. Jac applies this idea through shared declarations, placement inference, and compiler-generated bridges for supported cross-tier operations.
 
     [:octicons-arrow-right-24: The Two Ideas](ideas-behind-jac.md#synechic) · [:octicons-arrow-right-24: How Codespaces Work](what-makes-jac-different.md#1-how-can-one-language-target-frontends-backends-and-native-binaries-at-the-same-time) · [:octicons-arrow-right-24: Full-Stack Reference](../reference/plugins/jac-client.md)
 
@@ -112,18 +116,18 @@ Modern software fragments into a dozen notations, and defects pool at the seams 
 
     ---
 
-    Jac makes the moving locus of computation a language construct. The property is called *topokinetic*, and *Object-Spatial Programming* realizes it. Model your domain as typed nodes and edges, send walkers to traverse it, and mark a walker `:pub` to serve it as a REST endpoint. Whatever is reachable from `root` persists: persistence is a predicate, not an event.
+    The topokinetic class makes traversal a way to express computation. In Jac, nodes and edges model relationships and walkers carry state through them. Graphs can be transient or persisted through the runtime.
 
     [:octicons-arrow-right-24: The Two Ideas](ideas-behind-jac.md#topokinetic) · [:octicons-arrow-right-24: OSP Reference](../reference/language/osp.md) · [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data)
 
 </div>
 
-The two properties compound. With one continuous medium and mobile computation together, the topology of nodes and edges is at once the data model and the store, so the database stops existing as a separate system. Jac is the first language with both properties, and [The Two Ideas](ideas-behind-jac.md) makes the full argument.
+The properties are independent and can be combined. A server walker can traverse related records and report a result to a client through a generated bridge. [The Two Ideas](ideas-behind-jac.md) explains the design and its limits.
 
 The machinery beneath them has names too:
 
 - **[Meaning types](../reference/plugins/byllm.md)** make the model a typed executor: `by llm()` delegates a function to an LLM, and the prompt is derived from your names, types, and `sem` annotations rather than written by hand.
-- **[Scale invariance](../reference/plugins/jac-scale.md#the-scale-invariance-contract)** keeps semantics fixed from `jac run` to `jac scale deploy`: same program text at every deployment scale, with Kubernetes and Postgres provisioned by the runtime.
+- **[Scale invariance](../reference/plugins/jac-scale.md#the-scale-invariance-contract)** describes the runtime contract for preserving supported application behavior across deployment configurations. Resource limits, failures, and operational setup remain relevant.
 - **The [polypiler](one-binary.md)** compiles the whole polyglot application as one unit: its targets are ecosystems rather than instruction sets, and it ships as one self-contained binary.
 - **[Gradual borrow checking](../reference/language/ownership-borrowing.md)** makes memory discipline a dial rather than a divide: managed semantics by default, ownership adopted one declaration at a time, down to native code with no collector.
 
@@ -131,7 +135,7 @@ The machinery beneath them has names too:
 
 ## Build Anything
 
-The two properties combine into whatever you're shipping: a CLI tool, a REST API, a full-stack app, a desktop or mobile build, native compute in the browser, or a redistributable library. The [**Build Anything**](project-kinds.md) hub has a small working recipe for each, and every recipe links to a guided **"I like to build…"** track that takes you from a 5-minute quick win to the full tutorials.
+The [project kinds](project-kinds.md) page links to recipes for CLI tools, APIs, web applications, desktop and mobile builds, and reusable libraries. Choose a track based on the artifact you need.
 
 For the *why* and *how* beneath them (codespaces, Object-Spatial Programming, and `by llm()`), read [Core Concepts](what-makes-jac-different.md).
 
@@ -139,7 +143,7 @@ For the *why* and *how* beneath them (codespaces, Object-Spatial Programming, an
 
 ---
 
-## Get Started in 5 Minutes
+## Run Your First Program {#get-started-in-5-minutes}
 
 ### Step 1: Install
 
@@ -147,7 +151,7 @@ For the *why* and *how* beneath them (codespaces, Object-Spatial Programming, an
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler, the built-in full-stack frontend/desktop framework, and the built-in `scale` subsystem for serving and deployment. Add AI integration with `jac install byllm`; scale's optional deps (Kubernetes, Prometheus, OpenTelemetry, ...) are pulled per-project by your `[scale.*]` config plus `jac install`.
+This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler, the built-in full-stack frontend/desktop framework, and the built-in `scale` subsystem for serving and deployment. byLLM integration is included; scale's optional deps (Kubernetes, Prometheus, OpenTelemetry, ...) are pulled per-project by your `[scale.*]` config plus `jac install`.
 
 Verify your installation:
 
@@ -177,24 +181,13 @@ Note: `jac` is shorthand for `jac run` -- both work identically.
 
 > **💡 Tip**: Add `-e all` to see type check diagnostics: `jac -e all hello.jac`. This shows errors and warnings without needing a separate `jac check`.
 
-**That's it!** You just ran your first Jac program.
+The output should be `Hello from Jac!`. Change the string and run the file again to verify the edit.
 
 ---
 
 ## Who is Jac For?
 
-Jac is designed for developers who want to build AI-powered applications without the complexity of managing multiple languages and tools. If you've ever wished you could write your frontend, backend, AI logic, and deployment config in one place, Jac is for you.
-
-| You Are | Jac Gives You |
-|---------|---------------|
-| **Startup Founder** | Ship complete products faster: one language, one deploy command |
-| **AI/ML Engineer** | Native LLM integration with no hand-written prompts to maintain |
-| **Full-Stack Developer** | React frontend + Python backend, no context switching |
-| **Python Developer** | Familiar syntax with powerful new capabilities (Jac compiles to Python bytecode -- all your libraries just work) |
-| **Student/Learner** | Modern language designed for clarity, with clean syntax AI models can read and write |
-
-!!! note "What You Should Know"
-    Jac compiles to Python bytecode, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
+These docs assume basic programming knowledge. If you are new to programming, begin with the [coding primer](../tutorials/language/coding_primer.md). Python experience helps with expressions and control flow; HTML and JSX experience helps with browser components. The graph tutorials introduce nodes, edges, and walkers without assuming graph-database experience.
 
 ---
 

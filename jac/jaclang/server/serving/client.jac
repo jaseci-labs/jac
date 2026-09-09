@@ -56,7 +56,7 @@ obj ClientResponse {
         return 200 <= self.status_code < 400;
     }
 
-    async def aiter_raw -> any {
+    async def aiter_raw -> AsyncIterator[bytes] {
         if self.reader is None {
             if self.body {
                 yield self.body;
@@ -107,7 +107,7 @@ obj ClientResponse {
         }
     }
 
-    async def aiter_lines -> any {
+    async def aiter_lines -> AsyncIterator[bytes] {
         buffer = b'';
         async for block in self.aiter_raw() {
             buffer += block;
@@ -333,7 +333,13 @@ async def aws_connect(
         } except Exception {}
         raise ClientConnectionError(detail='Sec-WebSocket-Accept mismatch');
     }
-    return WebSocket(reader=reader, writer=writer, is_client_side=True, accepted=True);
+    return WebSocket(
+        reader=reader,
+        writer=writer,
+        is_client_side=True,
+        accepted=True,
+        subprotocol=str(resp_headers.get('Sec-WebSocket-Protocol') or '').strip()
+    );
 }
 
 def run_blocking(coro: any) -> any {

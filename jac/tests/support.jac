@@ -13,6 +13,9 @@ Imported as `from tests.support`, which resolves identically under the single
 import ctypes;
 
 import from pathlib { Path }
+import type from jaclang.compiler.driver.compile_options { CompileOptions }
+import type from jaclang.compiler.frontend.unitree { Module }
+import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
@@ -26,7 +29,7 @@ compile a fixture and expect a JIT engine now state the mandate explicitly.
 Forced placement keeps lowering failures loud (no server demotion), exactly
 like the old suffix.
 """
-def native_force_opts -> any {
+def native_force_opts -> CompileOptions {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     return CompileOptions(force_codespace='native', force_target_program=True);
 }
@@ -154,16 +157,42 @@ module's mutable globals, so handing the same one to two tests would let the
 first test's writes reach the second. Tests that want a fixture compiled once
 should assert against it once, in a single test.
 """
-def compile_native(fixture: str, fixture_dir: str = "") -> tuple {
-    import from jaclang.compiler.driver.program { JacProgram }
-    base = fixture_dir or NATIVE_FIXTURES;
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(Path(base) / fixture), options=native_force_opts());
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
+def compile_native(
+    fixture: str, fixture_dir: str = ""
+) -> tuple[ExecutionEngine, Module] {
+    ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
     return (eng, ir);
+}
+
+"""Inspect fresh lowering output before LLVM optimization removes layout types."""
+def compile_native_ir(
+    fixture: str, fixture_dir: str = "", options: CompileOptions | None = None
+) -> Module {
+    options = options or native_force_opts();
+    options.skip_native_engine = True;
+    options.no_ir_cache = True;
+    return _compile_native_fixture(fixture, fixture_dir, options);
+}
+
+def _compile_native_fixture(
+    fixture: str, fixture_dir: str, options: CompileOptions
+) -> Module {
+    import from jaclang.compiler.driver.program { JacProgram }
+    base = fixture_dir or NATIVE_FIXTURES;
+    prog = JacProgram();
+    ir = prog.compile(file_path=str(Path(base) / fixture), options=options);
+    errors = [e.pretty_print() for e in prog.errors_had] if prog.errors_had else [];
+    if errors and ir is not None and ir.gen.llvm_ir is not None {
+        import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+        errors.extend(
+            issue.detail for issue in native_lowering_issues(str(ir.gen.llvm_ir))
+        );
+    }
+    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
+    assert ir is not None , f"No module produced for {fixture}";
+    return ir;
 }
 
 """Get a ctypes-callable function from a JIT engine."""
@@ -182,4 +211,143 @@ def has_error_code(prog: any, code: str) -> bool {
         }
     }
     return False;
+}
+
+"""Memory profiles a native test can build under.
+
+`nogc` is the headerless endpoint (zero-RC enforcement, no runtime, the
+RC-free IR scan on); `rc` and `managed` are the reference-counted runtimes
+without and with the cycle collector. The CLI spelling of each profile lives
+here and nowhere else in the test tree, so a flag rename is a one-line
+change.
+"""
+glob NATIVE_MEMORY_PROFILES: list[str] = ["nogc", "rc", "managed"];
+
+def native_memory_flags(memory: str) -> list[str] {
+    if memory in ("nogc", "rc", "managed") {
+        return ["--memory", memory];
+    }
+    raise ValueError(f"unknown native memory profile: {memory}");
+}
+
+"""Build `src` into the native binary `out_bin` through the CLI.
+
+Runs the compiler in a subprocess exactly as a developer would, under the
+given memory profile, and asserts the build succeeded. Returns the build's
+combined stdout/stderr so a caller can grep a build-time line (rc-stats,
+assert-no-rc) without a second compile.
+"""
+def native_build(
+    src: str,
+    out_bin: str,
+    memory: str = "managed",
+    extra: list[str] | None = None,
+    timeout: int = 300
+) -> str {
+    import os;
+    import subprocess;
+    import sys;
+    assert os.path.exists(src) , f"fixture missing: {src}";
+    cmd = (
+        [sys.executable, "-m", "jaclang", "build", src, "--native"]
+        + native_memory_flags(memory)
+        + list(extra or [])
+        + ["-o", out_bin]
+    );
+    comp = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout);
+    assert comp.returncode == 0 , (
+        f"native build ({memory}) failed for {os.path.basename(src)}:"
+        f" exit={comp.returncode}\n"
+        f"stdout: {comp.stdout[-800:] if comp.stdout else '(empty)'}\n"
+        f"stderr: {comp.stderr[-800:] if comp.stderr else '(empty)'}"
+    );
+    assert os.path.exists(out_bin) , f"binary not produced at {out_bin}";
+    return (comp.stdout or "") + (comp.stderr or "");
+}
+
+"""Run a built native binary and return its stdout; assert a clean exit."""
+def native_run(
+    out_bin: str,
+    args: list[str] | None = None,
+    timeout: int = 120,
+    env: dict[str, str] | None = None
+) -> str {
+    import os;
+    import subprocess;
+    run_env = dict(os.environ);
+    if env {
+        run_env.update(env);
+    }
+    proc = subprocess.run(
+        [out_bin] + list(args or []),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=run_env
+    );
+    assert proc.returncode == 0 , (
+        f"{os.path.basename(out_bin)} exited {proc.returncode}"
+        f" (a segfault or abort here is a codegen regression)\n"
+        f"stdout: {proc.stdout[-400:] if proc.stdout else '(empty)'}\n"
+        f"stderr: {proc.stderr[-400:] if proc.stderr else '(empty)'}"
+    );
+    return proc.stdout;
+}
+
+"""Run `src` directly on the Python bytecode backend and return its stdout."""
+def python_run(src: str, args: list[str] | None = None, timeout: int = 120) -> str {
+    import os;
+    import subprocess;
+    import sys;
+    proc = subprocess.run(
+        [sys.executable, "-m", "jaclang", "run", "--backend", "python", src]
+            + list(args or []),
+        capture_output=True,
+        text=True,
+        timeout=timeout
+    );
+    assert proc.returncode == 0 , (
+        f"Python backend failed for {os.path.basename(src)}: exit={proc.returncode}\n"
+        f"stderr: {proc.stderr[-800:] if proc.stderr else '(empty)'}"
+    );
+    return proc.stdout;
+}
+
+"""Build and run `src` under every memory profile and on the Python backend.
+
+Returns {profile: stdout}. The identity contract of the ownership design is
+that these agree byte for byte: annotations erase, and a headerless build
+must behave exactly like the managed ones. A caller asserts that agreement
+with `assert_native_identity`.
+"""
+def native_outputs(
+    src: str, args: list[str] | None = None, profiles: list[str] | None = None
+) -> dict[str, str] {
+    import os;
+    import tempfile;
+    outs: dict[str, str] = {};
+    with tempfile.TemporaryDirectory() as tmp {
+        for memory in (profiles or NATIVE_MEMORY_PROFILES) {
+            out_bin = os.path.join(tmp, f"{Path(src).stem}.{memory}");
+            native_build(src, out_bin, memory=memory);
+            outs[memory] = native_run(out_bin, args);
+        }
+    }
+    outs["python"] = python_run(src, args);
+    return outs;
+}
+
+"""Assert every backend produced the same stdout for `src`; return that stdout."""
+def assert_native_identity(
+    src: str, args: list[str] | None = None, profiles: list[str] | None = None
+) -> str {
+    outs = native_outputs(src, args, profiles);
+    reference = outs["python"];
+    for (memory, out) in outs.items() {
+        assert out == reference , (
+            f"{Path(src).name}: {memory} output differs from the Python backend\n"
+            f"--- {memory} ---\n{out}\n--- python ---\n{reference}"
+        );
+    }
+    return reference;
 }

@@ -20,6 +20,7 @@ import from jaclang.compiler.frontend.constant { JacSemTokenType as SemTokType }
 import from jaclang.compiler.frontend.constant { Tokens as Tok }
 import from jaclang.compiler.frontend.constant { ParamKind }
 import type from jaclang.compiler.types.types { TypeBase }
+import type from jaclang.compiler.types.ct_value { CtValue }
 import from jaclang.compiler.frontend.roles {
     Role,
     Kid,
@@ -136,6 +137,7 @@ import from jaclang.compiler.frontend.relations {
     CfgSucc,
     CfgTrue,
     DecidedCodespace,
+    Codespace,
     Defines,
     InScope,
     PlacedIn,
@@ -252,19 +254,29 @@ node UniNode {
     def __repr__ -> str;
 }
 
+obj SymbolProvider {
+    def resolve_type(symbol: Symbol) -> TypeBase abst;
+    def definition -> Symbol | None abst;
+    def property_kind -> int abst;
+    def property_write_kind -> int abst;
+    def property_write_type -> TypeBase | None abst;
+}
+
 node Symbol {
     has name: str postinit,
         access: SymbolAccess postinit,
         imported: bool postinit,
         semstr: str postinit,
         ownership: OwnershipKind = OwnershipKind.NONE,
+        linear: bool = False,
+        is_view: bool = False,
         param_rebound: bool = False,
         na_escapes: bool = False,
         na_region_handle: bool = False,
         na_stack_ok: bool = False,
         _in_stub_scope: (bool | None) = None,
         _binding_kind: (BindingKind | None) = None,
-        provider: any = None;
+        provider: SymbolProvider | None = None;
 
     def init(
         defn: NameAtom,
@@ -496,7 +508,7 @@ node Expr(UniNode) {
     has _type_sym_tab: (UniScopeNode | None) postinit,
         _type_cache: (TypeBase | None) postinit,
         _type_cache_ok: bool postinit,
-        ct_value: any postinit,
+        ct_value: CtValue | None postinit,
         coerce_to: (str | None) postinit,
         fw: (str | None) postinit,
         fw_safe: bool postinit,
@@ -574,7 +586,7 @@ node NameAtom(AtomExpr, EnumBlockStmt) {
 
     def postinit -> None;
 
-    has sym: (Symbol | None) { getter; setter(sym: Symbol); }
+    has sym: (Symbol | None) { getter; setter(sym: Symbol | None); }
     has sym_name: str { getter; }
     has sym_category: SymbolType { getter; }
 
@@ -614,12 +626,14 @@ node MatchPattern(UniNode) {}
 
 node SubTag[T](UniNode) {
     has tag: T,
-        ownership: OwnershipKind = OwnershipKind.NONE;
+        ownership: OwnershipKind = OwnershipKind.NONE,
+        linear: bool = False;
 
     def init(
         *,
         tag: T,
         ownership: OwnershipKind = OwnershipKind.NONE,
+        linear: bool = False,
         kid: Sequence[UniNode] = []
     ) -> None;
 
@@ -628,6 +642,8 @@ node SubTag[T](UniNode) {
 }
 
 node Module(AstDocNode, UniScopeNode) {
+    def set_code_context(context: CodeContext) -> None;
+
     has name: str,
         source: Source,
         terminals: list[Token],
@@ -638,15 +654,19 @@ node Module(AstDocNode, UniScopeNode) {
         mobui_enforced_root: (str | None) = None,
         jac_project_root: (str | None) = None,
         access_enforced: bool = False,
+        app: (str | None) = None,
+        app_root: (str | None) = None,
+        app_kind: str = "",
+        owner_app: (str | None) = None,
         ct_resolved: bool = False,
         ct_file_deps: list[str] postinit,
+        ct_body_deps: list[str] postinit,
         native_viols_reported: bool = False,
         client_viols_reported: bool = False,
         rc_last_use: dict[int, list[str]] postinit,
+        rc_scope_cleanup: dict[int, list[str]] postinit,
         rc_move_in: set[int] postinit,
-        anon_region_open: dict[int, int] postinit,
-        anon_region_close: dict[int, int] postinit,
-        anon_region_locals: dict[int, list[str]] postinit;
+        own_move_sites: set[int] postinit;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
 
@@ -728,7 +748,7 @@ node TypeParam(AstSymbolNode, UniNode) {
 node TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
     has is_distinct: bool = False;
     has name: Name { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
     has value: Expr { getter; }
 
     def init(
@@ -831,7 +851,8 @@ obj ImportBoundaryFacts {
         na_unmappable_targets: list[str] = [],
         native_absorb_path: (str | None) = None,
         native_item_paths: dict[(str, str)] = {},
-        bridged_decls: dict[(str, Ability)] = {};
+        bridged_decls: dict[(str, Ability)] = {},
+        cross_app_kind: str = "local";
 }
 
 node Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
@@ -928,9 +949,9 @@ node ModuleItem(UniNode) {
 node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     has name: Name { getter; }
     has arch_type: Token { getter; }
-    has base_classes: (Sequence[Expr] | None) { getter; }
+    has base_classes: list[Expr] { getter; }
     has keywords: (Sequence[KWPair] | None) { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
     has src_endpoint: (Expr | None) { getter; }
     has tgt_endpoint: (Expr | None) { getter; }
 
@@ -1006,7 +1027,7 @@ node SemDef(ElementStmt, AstSymbolNode, UniScopeNode, CodeBlockStmt) {
 node Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
     has name: Name { getter; }
     has value_type: (Expr | None) { getter; }
-    has base_classes: (Sequence[Expr] | None) { getter; }
+    has base_classes: list[Expr] { getter; }
 
     def init(
         *,
@@ -1042,7 +1063,7 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     has name_ref: (NameAtom | None) { getter; }
     has signature: FuncSignature | EventSignature | None { getter; }
     has decorators: (Sequence[Expr] | None) { getter; }
-    has type_params: (Sequence[TypeParam] | None) { getter; }
+    has type_params: list[TypeParam] { getter; }
 
     def init(
         *,
@@ -1066,6 +1087,9 @@ node Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlo
     ) -> None;
 
     def postinit -> None;
+
+    has receiver_mode: OwnershipKind = OwnershipKind.NONE,
+        raises: list[str] postinit;
 
     has is_method: bool { getter; }
     has is_cls_method: bool { getter; }
@@ -1459,6 +1483,7 @@ node DeleteStmt(CodeBlockStmt) {
     def leaf_targets -> list[Expr];
     static def unwrap_target(target: Expr) -> Expr;
     static def is_location(target: Expr) -> bool;
+    static def type_has_graph_member(t: (TypeBase | None)) -> bool;
     static def type_may_hold_graph(t: (TypeBase | None)) -> bool;
     static def target_may_hold_graph(target: Expr) -> bool;
 }
@@ -1855,6 +1880,14 @@ node AtomUnit(Expr) {
     def __repr__ -> str;
 }
 
+node GraphExpr(Expr) {
+    has exprs: Sequence[Expr] { getter; }
+
+    def init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> None;
+    def postinit -> None;
+    def __repr__ -> str;
+}
+
 node YieldExpr(Expr) {
     has with_from: bool;
     has expr: (Expr | None) { getter; }
@@ -1965,7 +1998,9 @@ node DisconnectOp(WalkerStmtOnlyNode) {
 }
 
 node ConnectOp(UniNode) {
-    has edge_dir: EdgeDir;
+    has edge_dir: EdgeDir,
+        capture_edges: bool = False;
+
     has conn_type: (Expr | None) { getter; }
     has conn_assign: (AssignCompr | None) { getter; }
 
@@ -2685,6 +2720,16 @@ def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
     return bytes(out);
 }
 
+def literal_string_value(expr: UniNode) -> str | None {
+    if isinstance(expr, (String, MultiString)) {
+        value = expr.lit_value;
+        if isinstance(value, str) {
+            return value;
+        }
+    }
+    return None;
+}
+
 def decode_string_literal(text: str) -> str | bytes {
     start = _lit_prefix_len(text);
     if (start < 0) {
@@ -2706,6 +2751,8 @@ def decode_string_literal(text: str) -> str | bytes {
 def is_identifier_slot(nd: UniNode) -> bool;
 
 def find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None);
+
+def same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool;
 
 def find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode;
 
@@ -2743,4 +2790,4 @@ def is_client_destined(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
-def in_type_position(nd: UniNode) -> bool;
+def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

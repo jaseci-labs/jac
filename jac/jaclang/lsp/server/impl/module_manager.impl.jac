@@ -17,7 +17,7 @@ impl ModuleManager.update(
     update_annexed: bool = True,
     files: (list[str] | None) = None
 ) -> None {
-    self.program.mod.hub[file_path] = build;
+    self.program.install_module(file_path, build);
 
     if update_annexed {
         for f in (files or [file_path]) {

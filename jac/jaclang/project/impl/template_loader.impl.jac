@@ -1,5 +1,6 @@
 import from pathlib { Path }
-import from jaclang.project.template_registry { ProjectTemplate }
+import from jaclang.project.config { JacConfig }
+import from jaclang.project.template_registry { ProjectTemplate, template_kind_for }
 import from jaclang.project.tomlio { read_toml_with_encoding }
 import json;
 import importlib;
@@ -105,7 +106,16 @@ impl load_template_from_directory(
         }
     }
 
-    kind = config.get("project", {}).get("kind", "") or "cli";
+    apps_table = config.get("apps");
+    if isinstance(apps_table, dict) and apps_table {
+        import from jaclang.project.apps { parse_apps }
+        try {
+            parse_apps(config.get("project", {}), apps_table);
+        } except ValueError as exc {
+            raise ValueError(f"Template '{name}' has an invalid [apps] table: {exc}");
+        }
+    }
+    kind = template_kind_for(config);
     default_for_kind = options.get("default_for_kind", True);
     return ProjectTemplate(
         name=name,
@@ -185,9 +195,7 @@ impl load_template_from_json(
     if hook is None and "post_create_hook" in data {
         hook = resolve_post_create_hook(data["post_create_hook"]);
     }
-    kind = data.get("kind")
-        or data.get("config", {}).get("project", {}).get("kind", "")
-        or "cli";
+    kind = template_kind_for(data.get("config", {}), str(data.get("kind") or ""));
     return ProjectTemplate(
         name=data["name"],
         description=data["description"],
@@ -233,5 +241,179 @@ impl resolve_post_create_hook(hook_path: str) -> Callable | None {
     } except AttributeError as e {
         console.print(f"Warning: Hook function not found '{hook_path}': {e}");
         return None;
+    }
+}
+
+impl scaffold_app(
+    project_root: str, name: str, kind: str, path: str, template: ProjectTemplate
+) -> list[str] {
+    import os;
+    import tomllib;
+    import from jaclang.compiler.frontend.helpers { read_file_with_encoding }
+    import from jaclang.project.apps { APP_TABLE_KEYS, parse_apps, validate_app_name }
+    import from jaclang.project.config { _toml_append_section }
+    import from jaclang.project.kinds { KIND_SPECS, kind_entry }
+    validate_app_name(name);
+    if kind not in KIND_SPECS {
+        raise ValueError(
+            f"Unknown app kind '{kind}'; expected one of {', '.join(KIND_SPECS.keys())}"
+        );
+    }
+    root_path = Path(project_root).resolve();
+    toml_path = root_path / "jac.toml";
+    if not toml_path.exists() {
+        raise ValueError(f"No jac.toml in {root_path}; create a project first");
+    }
+    app_path = (path or name).strip().replace("\\", "/").strip("/");
+    if not app_path or os.path.isabs(app_path) or app_path.startswith("..") {
+        raise ValueError(f"App path '{path}' must be a directory inside the project");
+    }
+    text = read_file_with_encoding(str(toml_path));
+    doc = tomllib.loads(text);
+    apps_table = doc.get("apps", {});
+    if not isinstance(apps_table, dict) {
+        raise ValueError(f"[apps] in {toml_path} is not a table");
+    }
+    if name in apps_table {
+        raise ValueError(f"App '{name}' already exists in {toml_path}");
+    }
+    for (other, table) in apps_table.items() {
+        other_path = (
+            str(table.get("path", "")).strip().strip("/")
+                if isinstance(table, dict)
+                else ""
+        );
+        if other_path and os.path.normpath(other_path) == os.path.normpath(app_path) {
+            raise ValueError(
+                f"Path '{app_path}' is already the root_path of app '{other}'"
+            );
+        }
+    }
+    lines: list[str] = text.split("\n");
+    if not apps_table {
+        base = JacConfig.load(toml_path);
+        if base.resolve_app("").name == name {
+            raise ValueError(
+                f"App '{name}' collides with the project's own app name; "
+                "pick another name"
+            );
+        }
+        migrate_implicit_app(lines, base);
+    }
+    table: dict[str, any] = {"kind": kind, "path": app_path};
+    tmpl_app = template_app_table(template);
+    tmpl_entry = str(
+        tmpl_app.get("entry-point", tmpl_app.get("entry_point", "")) or ""
+    );
+    if tmpl_entry and tmpl_entry != kind_entry(kind) {
+        table["entry-point"] = tmpl_entry;
+    }
+    for (key, value) in tmpl_app.items() {
+        attr = str(key).replace("-", "_");
+        if attr in ("kind", "path", "entry_point") or attr not in APP_TABLE_KEYS {
+            continue;
+        }
+        if isinstance(value, dict) or value is None or value == "" {
+            continue;
+        }
+        table[str(key)] = value;
+    }
+    _toml_append_section(lines, ("apps", name), table);
+    tmpl_deps = template.config.get("dependencies", {});
+    tmpl_npm = tmpl_deps.get("npm") if isinstance(tmpl_deps, dict) else None;
+    if isinstance(tmpl_npm, dict) and tmpl_npm {
+        _append_overlay_tables(lines, ("apps", name, "dependencies", "npm"), tmpl_npm);
+    }
+    new_text = "\n".join(lines);
+    new_doc = tomllib.loads(new_text);
+    parse_apps(new_doc.get("project", {}), new_doc.get("apps", {}));
+    toml_path.write_text(new_text, encoding="utf-8");
+
+    created: list[str] = [];
+    app_dir = root_path / app_path;
+    app_dir.mkdir(parents=True, exist_ok=True);
+    for (rel, content) in template.files.items() {
+        full = app_dir / rel;
+        if full.exists() {
+            continue;
+        }
+        full.parent.mkdir(parents=True, exist_ok=True);
+        if content.startswith("base64:") {
+            full.write_bytes(base64.b64decode(content[7:]));
+        } else {
+            full.write_text(content.replace("{{name}}", name), encoding="utf-8");
+        }
+        created.append(str(full));
+    }
+    return created;
+}
+
+impl template_app_table(template: ProjectTemplate) -> dict[str, any] {
+    apps = template.config.get("apps");
+    if isinstance(apps, dict) and len(apps) == 1 {
+        sole = next(iter(apps.values()));
+        if isinstance(sole, dict) {
+            return {
+                k: v
+                for (k, v) in sole.items()
+                if not isinstance(v, dict)
+            };
+        }
+        return {};
+    }
+    project = template.config.get("project", {});
+    if not isinstance(project, dict) {
+        return {};
+    }
+    entry_point = str(project.get("entry-point", "") or "");
+    return {"entry-point": entry_point} if entry_point else {};
+}
+
+impl migrate_implicit_app(lines: list[str], base: JacConfig) -> str {
+    import from jaclang.project.config {
+        _toml_append_section,
+        _toml_delete_key,
+        _toml_insert_key,
+        toml_value
+    }
+    import from jaclang.project.kinds { kind_entry }
+    base_app = base.resolve_app("");
+    base_kind = base.resolved_kind(base_app);
+    for key in ("kind", "entry-point", "entry_point") {
+        _toml_delete_key(lines, ("project", ), key);
+    }
+    default_line = toml_value(base_app.name);
+    if not _toml_insert_key(lines, ("project", ), "default-app", default_line) {
+        lines[0:0] = ["[project]", f"default-app = {default_line}", ""];
+    }
+    _toml_append_section(
+        lines,
+        ("apps", base_app.name),
+        {
+            "kind": base_kind,
+            "entry-point": base_app.entry_point or kind_entry(base_kind)
+        }
+    );
+    return base_app.name;
+}
+
+impl _append_overlay_tables(
+    lines: list[str], parts: tuple[str, ...], table: dict[str, any]
+) -> None {
+    import from jaclang.project.config { _toml_append_section }
+    flat: dict[str, any] = {};
+    nested: list[tuple[str, dict[str, any]]] = [];
+    for (k, v) in table.items() {
+        if isinstance(v, dict) {
+            nested.append((str(k), v));
+        } else {
+            flat[str(k)] = v;
+        }
+    }
+    if flat {
+        _toml_append_section(lines, parts, flat);
+    }
+    for (sub, sub_table) in nested {
+        _append_overlay_tables(lines, parts + (sub, ), sub_table);
     }
 }

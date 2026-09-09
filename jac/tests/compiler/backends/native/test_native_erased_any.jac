@@ -48,12 +48,12 @@ So the list is spent as a list: nothing on it blocks anything any more. The
 single named hold that replaced it is spent too, and its prediction held
 exactly: with the entry empty, four of `capability_check_pass`'s five seams
 cleared -- three because it reads `codeinfo`'s tables in-unit, and
-`ClientCapabilityCheckPass.transform` because `module_codegen_pass` joined
-alongside. That measurement lived in `test_pass_seal_wave6_baseline.jac`,
+`ClientCapabilityCheckPass.transform` because the module-facts helpers (then
+`module_codegen_pass`, now `frontend/module_facts`) joined alongside. That measurement lived in `test_pass_seal_wave6_baseline.jac`,
 deleted with the native seal (#8735).
 
 The last test keeps the half of the old reasoning that outlived the rest.
-`ModuleCodegenPass.is_erased_type_decl` reads the *marker* set
+`ModuleFacts.is_erased_type_decl` reads the *marker* set
 (`NATIVE_ERASED_TYPE_MARKERS`, `TypeAlias`) to decide which globs are
 compile-time declarations the backend skips. An `any`-annotated glob is not
 one: it is an ordinary global whose value has to reach the binary, and
@@ -67,7 +67,7 @@ import from jaclang.compiler.frontend.codeinfo { native_erased_import_names }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.py.module_codegen_pass { ModuleCodegenPass }
+import from jaclang.compiler.frontend.module_facts { ModuleFacts }
 import from jaclang.compiler.frontend.unitree { Assignment, GlobalVars }
 import from tests.support { TESTS_DIR }
 
@@ -152,7 +152,7 @@ test "an any-annotated glob is not a compile-time declaration" {
                 continue;
             }
             found = True;
-            assert not ModuleCodegenPass.is_erased_type_decl(assign) , (
+            assert not ModuleFacts.is_erased_type_decl(assign) , (
                 "the any-annotated glob was classified as a compile-time "
                 "declaration, so its value would never be emitted"
             );

@@ -37,7 +37,11 @@ import from jaclang.byllm.types {
     reroute_tool_images_to_user_message
 }
 import from jaclang.byllm.config_loader { get_byllm_config }
-import from jaclang.byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }
+import from jaclang.byllm.telemetry {
+    _emit_agent_telemetry,
+    _current_invocation_id,
+    _aggregate_usage
+}
 import from jaclang.byllm.parallel {
     dispatch_batch,
     _index_by_identity,
@@ -66,6 +70,23 @@ glob _TOOL_DELTA_MIN_CHARS = 48,
 glob DEFAULT_BASE_URL = "http://localhost:4000",
      MODEL_MOCK = "mockllm";
 
+def _stream_chunk_builder_accepts_logging_obj -> bool {
+    import inspect;
+    try {
+        builder: any = litellm.stream_chunk_builder;
+        return "logging_obj" in inspect.signature(builder).parameters;
+    } except Exception as e {
+        logger.debug(
+            f"could not inspect stream_chunk_builder, omitting logging_obj: {e}"
+        );
+        return False;
+    }
+}
+
+glob _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ: bool = (
+         _stream_chunk_builder_accepts_logging_obj()
+     );
+
 obj BaseLLM {
     has model_name: str,
         config: dict = {},
@@ -73,8 +94,7 @@ obj BaseLLM {
         api_base: str = "",
         call_params: dict[(str, object)] = {},
         ctx_window: int = 0,
-        supports_native_tools: bool = True,
-        _usage_history: list = [];
+        supports_native_tools: bool = True;
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> any;
@@ -136,7 +156,10 @@ obj BaseLLM {
     def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
     def _yield_recovery_result(
-        recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime
+        recovery_resp: CompletionResult,
+        iter_count: int,
+        mt_run: MTRuntime,
+        usage_base: int
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
@@ -201,6 +224,7 @@ obj Model(BaseLLM) {
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> any;
+    override async def ainvoke(mt_run: MTRuntime) -> object;
     def _raise_mapped_provider_error(e: Exception) -> None;
     def model_call_no_stream(params: dict) -> dict;
     async def model_call_no_stream_async(params: dict) -> dict;

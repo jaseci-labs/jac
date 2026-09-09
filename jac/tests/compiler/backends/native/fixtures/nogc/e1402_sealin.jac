@@ -1,4 +1,4 @@
-"""Must-fail under --enforce-nogc: owned value sealed into managed storage (E1402)."""
+"""Must-fail under --memory nogc: owned value sealed into managed storage (E1402)."""
 
 glob cache: list[list[int]] = [];
 

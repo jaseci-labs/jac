@@ -1,12 +1,13 @@
 [project]
 name = "react_native_multiscreen"
 version = "1.0.0"
-description = "React Native multi-screen fixture: login, list, detail"
+description = "Mobile (React Native) multi-screen fixture: login, list, detail"
 entry-point = "main.jac"
+kind = "mobile"
 
 [dependencies.npm]
-react = "^18.2.0"
-react-dom = "^18.2.0"
+react = "^19.2.0"
+react-dom = "^19.2.0"
 react-router-dom = "^6.22.0"
 react-error-boundary = "^5.0.0"
 "@tanstack/react-form" = "^1.33.0"
@@ -16,13 +17,10 @@ zod = "^4.3.6"
 vite = "^6.4.1"
 "@vitejs/plugin-react" = "^4.2.1"
 typescript = "^5.3.3"
-"@types/react" = "^18.2.0"
-"@types/react-dom" = "^18.2.0"
+"@types/react" = "^19.2.0"
+"@types/react-dom" = "^19.2.0"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
-
-[serve]
-base_route_app = "app"
 
 [client]

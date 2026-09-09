@@ -8,7 +8,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     create_k8s_secret,
-    ensure_namespace_exists,
     get_cluster_provider,
     resize_pvc_if_needed
 }
@@ -22,7 +21,6 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.deploy.database.kubernetes_postgres {
     KubernetesPostgresProvider
 }
-import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 
 obj KubernetesTargetBase(DeploymentTarget) {

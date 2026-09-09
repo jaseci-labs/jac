@@ -8,15 +8,20 @@ impl RcFactsPass._run_impl(ir_in: Module) -> Module {
     self._stamp_escapes(ir_in);
     self._stamp_region_handles(ir_in);
     self._stamp_last_use(ir_in);
+    self._stamp_scope_cleanup(ir_in);
     self._stamp_move_in(ir_in);
-    self._stamp_anon_regions(ir_in);
     return ir_in;
 }
 
-impl RcFactsPass._enclosing_fn_scope(nd: UniNode) -> (UniNode | None) {
+impl RcFactsPass._enclosing_fn_scope(
+    nd: UniNode, stop_at_comprehension: bool = False
+) -> UniNode | None {
     cur = nd.parent;
     while cur is not None {
-        if isinstance(cur, (Ability, LambdaExpr, Test, ModuleCode)) {
+        if isinstance(cur, (Ability, ImplDef, LambdaExpr, Test, ModuleCode)) {
+            return cur;
+        }
+        if stop_at_comprehension and isinstance(cur, (ListCompr, DictCompr)) {
             return cur;
         }
         cur = cur.parent;
@@ -172,34 +177,17 @@ impl RcFactsPass._borrow_arg_callee_ok(bx: UnaryExpr) -> bool {
 }
 
 impl RcFactsPass._asn_makes_region_handle(nd: Assignment) -> bool {
-    import from jaclang.compiler.expr_keys { is_builtin_region_name }
-    if isinstance(nd.value, FuncCall) and is_builtin_region_name(nd.value.target) {
+    import from jaclang.compiler.expr_keys { expr_is_builtin_region }
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    if isinstance(nd.value, FuncCall) and expr_is_builtin_region(nd.value) {
         return True;
     }
     if nd.type_tag is not None {
-        _tt_expr = nd.type_tag.tag;
-        while isinstance(_tt_expr, AtomTrailer) {
-            _tt_expr = _tt_expr.target;
-        }
-        if is_builtin_region_name(_tt_expr) {
-            return True;
-        }
-    }
-    if (
-        isinstance(nd.value, FuncCall)
-        and isinstance(nd.value.target, Name)
-        and nd.value.target.sym is not None
-        and nd.value.target.sym.decl is not None
-    ) {
-        _cal_ab = nd.value.target.sym.decl.find_parent_of_type(Ability);
-        if _cal_ab is not None
-            and isinstance(_cal_ab.signature, FuncSignature)
-            and _cal_ab.signature.return_type is not None {
-            _rt_expr = _cal_ab.signature.return_type;
-            while isinstance(_rt_expr, AtomTrailer) {
-                _rt_expr = _rt_expr.target;
-            }
-            if is_builtin_region_name(_rt_expr) {
+        for tgt in nd.target {
+            if isinstance(tgt, Name)
+                and tgt.sym is not None
+                and tgt.sym.ownership == OwnershipKind.OWN
+                and expr_is_builtin_region(tgt) {
                 return True;
             }
         }
@@ -263,13 +251,19 @@ impl RcFactsPass._collect_last_use(
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
             if sym is None
-                or sym.storage != SymbolStorage.LOCAL
                 or sym.na_escapes
-                or self._is_param_sym(sym)
-                or nm.sym_name == "self" {
+                or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
+                or not self._last_use_tracked(sym) {
                 continue;
             }
-            if self._enclosing_fn_scope(nm) is not owner {
+            if not same_lexical_scope(self._enclosing_fn_scope(nm), owner) {
+                continue;
+            }
+            decl = sym.decl;
+            if decl is None
+                or not same_lexical_scope(
+                    self._enclosing_fn_scope(decl, stop_at_comprehension=True), owner
+                ) {
                 continue;
             }
             sym_last[id(sym)] = (idx, nm.sym_name);
@@ -286,6 +280,13 @@ impl RcFactsPass._collect_last_use(
             out[key].append(_name);
         }
     }
+}
+
+impl RcFactsPass._last_use_tracked(sym: Symbol) -> bool {
+    if sym.storage == SymbolStorage.LOCAL {
+        return not self._is_param_sym(sym);
+    }
+    return sym.storage == SymbolStorage.PARAM and sym.ownership == OwnershipKind.OWN;
 }
 
 impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {
@@ -329,298 +330,6 @@ impl RcFactsPass._stamp_move_in(ir_in: Module) -> None {
         out.add(id(use));
     }
     ir_in.rc_move_in = out;
-}
-
-impl RcFactsPass._stamp_anon_regions(ir_in: Module) -> None {
-    open_map: dict[int, int] = {};
-    close_map: dict[int, int] = {};
-    locals_map: dict[int, list[str]] = {};
-    gidx = 0;
-    blocks: list[Sequence[UniNode]] = [];
-    for ab in ir_in.get_all_sub_nodes(Ability) {
-        if isinstance(ab.signature, FuncSignature)
-            and isinstance(ab.body, (list, tuple)) {
-            blocks.append(ab.body);
-        }
-    }
-    for mc in ir_in.get_all_sub_nodes(ModuleCode) {
-        if isinstance(mc.body, (list, tuple)) {
-            blocks.append(mc.body);
-        }
-    }
-    for body in blocks {
-        for grp in self._scan_anon_region_block(body) {
-            (o, c, names) = grp;
-            open_map[id(body[o])] = gidx;
-            close_map[id(body[c])] = gidx;
-            locals_map[gidx] = names;
-            gidx += 1;
-        }
-    }
-    ir_in.anon_region_open = open_map;
-    ir_in.anon_region_close = close_map;
-    ir_in.anon_region_locals = locals_map;
-}
-
-impl RcFactsPass._arch_of_call(expr: (UniNode | None)) -> (Archetype | None) {
-    if not isinstance(expr, FuncCall) or not isinstance(expr.target, Name) {
-        return None;
-    }
-    sym = expr.target.sym;
-    if sym is None or sym.decl is None {
-        return None;
-    }
-    decl = sym.decl;
-    arch = decl if isinstance(decl, Archetype) else decl.find_parent_of_type(Archetype);
-    if arch is not None and arch.name.value == expr.target.sym_name {
-        return arch;
-    }
-    return None;
-}
-
-impl RcFactsPass._connect_chain_leaves(expr: UniNode) -> (list[Name] | None) {
-    if isinstance(expr, BinaryExpr) and isinstance(expr.op, ConnectOp) {
-        l = self._connect_chain_leaves(expr.left);
-        r = self._connect_chain_leaves(expr.right);
-        if l is None or r is None {
-            return None;
-        }
-        return l + r;
-    }
-    if isinstance(expr, Name) {
-        return [expr];
-    }
-    return None;
-}
-
-impl RcFactsPass._blessed_arch_call(fc: FuncCall, member_sids: set[int]) -> bool {
-    par = fc.parent;
-    if isinstance(par, Assignment) and par.value is fc {
-        tgts = par.target if isinstance(par.target, (list, tuple)) else [(par.target)];
-        if len(tgts) == 1
-            and isinstance(tgts[0], Name)
-            and tgts[0].sym is not None
-            and id(tgts[0].sym) in member_sids {
-            return True;
-        }
-    }
-    if isinstance(par, BinaryExpr)
-        and isinstance(par.op, Token)
-        and par.op.name == Tok.KW_SPAWN
-        and (par.left is fc or par.right is fc) {
-        arch = self._arch_of_call(fc);
-        return arch is not None and arch.arch_type.name == Tok.KW_WALKER;
-    }
-    if isinstance(par, ConnectOp) and par.conn_type is fc {
-        return True;
-    }
-    return False;
-}
-
-impl RcFactsPass._anon_extent_poisoned(
-    body: Sequence[UniNode], open_idx: int, close_idx: int, member_sids: set[int]
-) -> bool {
-    for s2 in body[open_idx:close_idx + 1] {
-        if isinstance(s2, (OpenStmt, ReturnStmt, CtrlStmt, RaiseStmt)) {
-            return True;
-        }
-        if s2.get_all_sub_nodes(ReturnStmt)
-            or s2.get_all_sub_nodes(CtrlStmt)
-            or s2.get_all_sub_nodes(RaiseStmt)
-            or s2.get_all_sub_nodes(YieldExpr)
-            or s2.get_all_sub_nodes(OpenStmt) {
-            return True;
-        }
-        for sub in s2.get_all_sub_nodes(Name) {
-            if sub.sym_name in ("root", "here") {
-                return True;
-            }
-        }
-        for sub in s2.get_all_sub_nodes(FuncCall) {
-            if self._arch_of_call(sub) is not None
-                and not self._blessed_arch_call(sub, member_sids) {
-                return True;
-            }
-        }
-    }
-    return False;
-}
-
-impl RcFactsPass._scan_anon_region_block(
-    body: Sequence[UniNode]
-) -> list[tuple[int, int, list[str]]] {
-    stmt_idx: dict[int, int] = {};
-    for (i, s) in enumerate(body) {
-        stmt_idx[id(s)] = i;
-    }
-    members: dict[int, tuple[Symbol, int, str]] = {};
-    order: list[int] = [];
-    bad: set[int] = set();
-    for (i, s) in enumerate(body) {
-        if not isinstance(s, Assignment) {
-            continue;
-        }
-        tgts = s.target if isinstance(s.target, (list, tuple)) else [(s.target)];
-        if len(tgts) != 1 or not isinstance(tgts[0], Name) {
-            continue;
-        }
-        tsym = tgts[0].sym;
-        if tsym is None
-            or tsym.storage not in (SymbolStorage.LOCAL, SymbolStorage.MODULE_GLOBAL) {
-            continue;
-        }
-        arch = self._arch_of_call(s.value);
-        if arch is None or arch.arch_type.name != Tok.KW_NODE {
-            continue;
-        }
-        sid = id(tsym);
-        if sid in members {
-            bad.add(sid);
-            continue;
-        }
-        for d in tsym.defn {
-            _dc: (UniNode | None) = d;
-            while _dc is not None and id(_dc) not in stmt_idx {
-                _dc = _dc.parent;
-            }
-            if _dc is None {
-                bad.add(sid);
-            }
-        }
-        members[sid] = (tsym, i, tgts[0].sym_name);
-        order.append(sid);
-    }
-    if not members {
-        return [];
-    }
-    label: dict[int, int] = {};
-    for (k, sid) in enumerate(order) {
-        label[sid] = k;
-    }
-    spawned: set[int] = set();
-    last_idx: dict[int, int] = {sid: members[sid][1] for sid in order};
-    for sid in order {
-        _mrec = members[sid];
-        sym: Symbol = _mrec[0];
-        _use_map2: dict[int, NameAtom] = {};
-        for u0 in sym.uses {
-            if not self._is_def_name(u0) {
-                _use_map2[id(u0)] = u0;
-            }
-        }
-        for u in _use_map2.values() {
-            _cur: (UniNode | None) = u;
-            top: (UniNode | None) = None;
-            while _cur is not None {
-                if id(_cur) in stmt_idx {
-                    top = _cur;
-                    break;
-                }
-                _cur = _cur.parent;
-            }
-            if top is None {
-                bad.add(sid);
-                continue;
-            }
-            ti = stmt_idx[id(top)];
-            expr = top.expr if isinstance(top, ExprStmt) else top;
-            ok = False;
-            if isinstance(expr, BinaryExpr) and isinstance(expr.op, ConnectOp) {
-                leaves = self._connect_chain_leaves(expr);
-                if leaves is not None {
-                    good = True;
-                    seen_u = False;
-                    lsids: list[int] = [];
-                    for lf in leaves {
-                        if lf is u {
-                            seen_u = True;
-                        }
-                        if lf.sym is None or id(lf.sym) not in members {
-                            good = False;
-                        } else {
-                            lsids.append(id(lf.sym));
-                        }
-                    }
-                    if good and seen_u {
-                        ok = True;
-                        for l2 in lsids {
-                            if label[l2] != label[sid] {
-                                _from = label[l2];
-                                for s3 in order {
-                                    if label[s3] == _from {
-                                        label[s3] = label[sid];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } elif isinstance(expr, BinaryExpr)
-                and isinstance(expr.op, Token)
-                and expr.op.name == Tok.KW_SPAWN
-                and isinstance(top, ExprStmt)
-                and (expr.left is u or expr.right is u) {
-                ok = True;
-                spawned.add(sid);
-            }
-            if not ok {
-                bad.add(sid);
-            } elif ti > last_idx[sid] {
-                last_idx[sid] = ti;
-            }
-        }
-    }
-    groups: dict[int, list[int]] = {};
-    for sid in order {
-        lb = label[sid];
-        if lb not in groups {
-            groups[lb] = [];
-        }
-        groups[lb].append(sid);
-    }
-    out: list[tuple[int, int, list[str]]] = [];
-    used_ranges: list[tuple[int, int]] = [];
-    for (lb, sids) in groups.items() {
-        if any([(s in bad) for s in sids]) {
-            continue;
-        }
-        if not any([(s in spawned) for s in sids]) {
-            continue;
-        }
-        open_idx = -1;
-        close_idx = -1;
-        for s in sids {
-            _oi: int = members[s][1];
-            _ci: int = last_idx[s];
-            if open_idx < 0 or _oi < open_idx {
-                open_idx = _oi;
-            }
-            if _ci > close_idx {
-                close_idx = _ci;
-            }
-        }
-        if close_idx <= open_idx {
-            continue;
-        }
-        member_sids = set(sids);
-        if self._anon_extent_poisoned(body, open_idx, close_idx, member_sids) {
-            continue;
-        }
-        overlap = False;
-        for rng in used_ranges {
-            (ro, rc) = rng;
-            if not (close_idx < ro or rc < open_idx) {
-                overlap = True;
-            }
-        }
-        if overlap {
-            continue;
-        }
-        used_ranges.append((open_idx, close_idx));
-        pairs = sorted([(members[s][1], members[s][2]) for s in sids]);
-        out.append((open_idx, close_idx, [p[1] for p in pairs]));
-    }
-    return out;
 }
 
 impl RcFactsPass._stamp_param_rebound(ir_in: Module) -> None {
@@ -827,4 +536,48 @@ impl RcFactsPass.transform(ir_in: Module) -> Module {
 
 impl RcFactsPass.run_walk with Module entry {
     self.ir_out = self._run_impl(here);
+}
+
+impl RcFactsPass._stamp_scope_cleanup(ir_in: Module) -> None {
+    out: dict[int, list[str]] = {};
+    for ability in ir_in.get_all_sub_nodes(Ability) {
+        names: list[str] = [];
+        borrows: list[str] = [];
+        seen: set[int] = set();
+        for nm in ability.get_all_sub_nodes(Name) {
+            sym = nm.sym;
+            if sym is None
+                or id(sym) in seen
+                or sym.storage not in (SymbolStorage.LOCAL, SymbolStorage.PARAM)
+                or nm.find_parent_of_type(Ability) is not ability {
+                continue;
+            }
+            seen.add(id(sym));
+            if is_borrow_kind(sym.ownership) {
+                borrows.append(nm.sym_name);
+                continue;
+            }
+            owns = sym.ownership == OwnershipKind.OWN;
+            if not owns and sym.defn {
+                decl = sym.defn[0].parent;
+                if isinstance(decl, (Assignment, ParamVar))
+                    and decl.type_tag is not None {
+                    owns = any(
+                        [
+                            isinstance(un, UnaryExpr)
+                                and un.ownership == OwnershipKind.OWN
+                            for un in decl.type_tag.get_all_sub_nodes(UnaryExpr)
+                        ]
+                    );
+                }
+            }
+            if owns {
+                names.append(nm.sym_name);
+            }
+        }
+        if names or borrows {
+            out[id(ability)] = list(reversed(borrows)) + list(reversed(names));
+        }
+    }
+    ir_in.rc_scope_cleanup = out;
 }

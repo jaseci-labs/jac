@@ -20,11 +20,10 @@ import from jaclang.compiler.driver.jir { compute_module_key }
 
 def _pinned_opts(**overrides: any) -> CompileOptions {
     base: dict = {
-        "na_gc_mode": "cycles",
+        "memory_profile": "managed",
         "nogc_enforce_all": False,
-        "nogc_cli_target": "",
-        "nogc_enforce_modules": [],
-        "nogc_grandfathered": [],
+        "memory_enforce": [],
+        "memory_exempt": [],
         "rc_debug_codegen": False,
         "native_target": "",
         "native_debug": False,
@@ -39,15 +38,34 @@ test "identical codegen options produce an identical fingerprint" {
     assert _pinned_opts().codegen_fingerprint() == _pinned_opts().codegen_fingerprint();
 }
 
+test "forced server compilation retains Python standard-library imports" {
+    import from jaclang.compiler.driver.program { JacProgram }
+    program = JacProgram();
+    module = program.compile(
+        file_path="forced_server_socket.jac",
+        use_str="import socket;\n"
+            + "def bind_local { sock = socket.socket(); "
+            + "sock.bind(('127.0.0.1', 0)); sock.close(); }\n",
+        options=CompileOptions(
+            default_codespace="native",
+            force_codespace="server",
+            force_target_program=True,
+            need_full_ast=True
+        )
+    );
+    assert not program.errors_had , str(program.errors_had);
+    assert not module.in_native_context();
+    assert module.gen.py_bytecode is not None;
+}
+
 test "every codegen option flip changes the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
     flips: list = [
-        _pinned_opts(na_gc_mode="none"),
-        _pinned_opts(na_gc_mode="rc"),
+        _pinned_opts(memory_profile="nogc"),
+        _pinned_opts(memory_profile="rc"),
         _pinned_opts(nogc_enforce_all=True),
-        _pinned_opts(nogc_cli_target="mainmod"),
-        _pinned_opts(nogc_enforce_modules=["svc*"]),
-        _pinned_opts(nogc_grandfathered=["legacy*"]),
+        _pinned_opts(memory_enforce=["svc*"]),
+        _pinned_opts(memory_exempt=["legacy*"]),
         _pinned_opts(rc_debug_codegen=True),
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
@@ -103,13 +121,13 @@ test "JAC_NA_DEBUG enters the options object at construction" {
 
 test "clone_for_native_import carries the full codegen identity" {
     parent = _pinned_opts(
-        na_gc_mode="rc",
+        memory_profile="rc",
         rc_debug_codegen=True,
         native_target="x86_64-unknown-linux-gnu",
         native_debug=True,
         opt_level=1,
-        nogc_enforce_modules=["svc*"],
-        nogc_grandfathered=["legacy*"]
+        memory_enforce=["svc*"],
+        memory_exempt=["legacy*"]
     );
     child = parent.clone_for_native_import();
     assert child.skip_native_engine and child.aot_mode;
@@ -123,7 +141,7 @@ test "clone_for_native_import carries the full codegen identity" {
 
 test "link_fingerprint_mismatches names every non-matching participant" {
     current = _pinned_opts().codegen_fingerprint();
-    other = _pinned_opts(na_gc_mode="none").codegen_fingerprint();
+    other = _pinned_opts(memory_profile="nogc").codegen_fingerprint();
     got = link_fingerprint_mismatches(
         [("a.jac", current), ("b.jac", other), ("c.jac", "")], current
     );
@@ -131,66 +149,52 @@ test "link_fingerprint_mismatches names every non-matching participant" {
     assert link_fingerprint_mismatches([("a.jac", current)], current) == [];
 }
 
-test "env overrides enter the options object at construction" {
-    saved = os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
-    try {
-        assert CompileOptions().rc_debug_codegen == False;
-        os.environ["JAC_RC_DEBUG_CODEGEN"] = "1";
-        assert CompileOptions().rc_debug_codegen == True;
-        assert CompileOptions(rc_debug_codegen=False).rc_debug_codegen == False;
-    } finally {
-        if saved is None {
-            os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
-        } else {
-            os.environ["JAC_RC_DEBUG_CODEGEN"] = saved;
-        }
-    }
+test "native debug enters the options object from the option, not the environment" {
+    assert CompileOptions().rc_debug_codegen == False;
+    assert CompileOptions(native_debug=True).rc_debug_codegen == True;
+    assert CompileOptions(native_debug=True, rc_debug_codegen=False).rc_debug_codegen
+        == False;
+    assert CompileOptions(memory_profile="nogc").na_gc_mode == "none";
+    assert CompileOptions(memory_profile="nogc").nogc_enforce_all == True;
+    assert CompileOptions(memory_profile="rc").na_gc_mode == "rc";
+    assert CompileOptions().na_gc_mode == "cycles";
 }
 
-test "JIR module key follows analysis env flags, not native-only codegen flags" {
-    saved_rc = os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
-    saved_tgt = os.environ.pop("JAC_NATIVE_TARGET", None);
-    try {
-        with tempfile.TemporaryDirectory() as tmp {
-            src = os.path.join(tmp, "modkey_probe.jac");
-            with open(src, "w") as f {
-                f.write("with entry { print(1); }\n");
-            }
-            base_key = compute_module_key(src);
-            assert base_key == compute_module_key(src);
-            os.environ["JAC_RC_DEBUG_CODEGEN"] = "1";
-            rc_key = compute_module_key(src);
-            os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
-            os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+test "JIR module key follows the target override, not native-only codegen flags" {
+    import from jaclang.compiler.driver.compile_options {
+        push_native_target,
+        pop_native_target
+    }
+    with tempfile.TemporaryDirectory() as tmp {
+        src = os.path.join(tmp, "modkey_probe.jac");
+        with open(src, "w") as f {
+            f.write("with entry { print(1); }\n");
+        }
+        base_key = compute_module_key(src);
+        assert base_key == compute_module_key(src);
+        prev = push_native_target("wasm32-unknown-unknown");
+        try {
             tgt_key = compute_module_key(src);
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-            assert rc_key == base_key , (
-                "JAC_RC_DEBUG_CODEGEN is a native-only codegen knob and must "
-                "not change a bytecode module key"
-            );
-            assert tgt_key != base_key , "JAC_NATIVE_TARGET flip kept the key";
-            assert compute_module_key(src) == base_key;
+        } finally {
+            pop_native_target(prev);
         }
-    } finally {
-        if saved_rc is not None {
-            os.environ["JAC_RC_DEBUG_CODEGEN"] = saved_rc;
-        }
-        if saved_tgt is not None {
-            os.environ["JAC_NATIVE_TARGET"] = saved_tgt;
-        }
+        assert tgt_key != base_key , "native target flip kept the key";
+        assert compute_module_key(src) == base_key;
     }
 }
 
-test "effective fingerprint tracks the process env" {
+test "the codegen fingerprint tracks the native debug option, not the environment" {
+    base = CompileOptions().codegen_fingerprint();
+    assert CompileOptions(native_debug=True).codegen_fingerprint() != base;
     saved = os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
     try {
-        base = effective_codegen_fingerprint();
         os.environ["JAC_RC_DEBUG_CODEGEN"] = "1";
-        assert effective_codegen_fingerprint() != base;
+        assert CompileOptions().codegen_fingerprint() == base , (
+            "a compile-time environment variable must not enter the options"
+        );
     } finally {
-        if saved is None {
-            os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
-        } else {
+        os.environ.pop("JAC_RC_DEBUG_CODEGEN", None);
+        if saved is not None {
             os.environ["JAC_RC_DEBUG_CODEGEN"] = saved;
         }
     }
@@ -241,7 +245,7 @@ test "no positional intrinsic name matching inside _codegen_call" {
         "compiler",
         "backends",
         "native",
-        "na_ir_gen",
+        "na_ir_gen_pass.impl",
         "calls.impl.jac"
     );
     assert os.path.isfile(calls_impl) , f"calls impl missing: {calls_impl}";
@@ -252,7 +256,7 @@ test "no positional intrinsic name matching inside _codegen_call" {
         "the RC intrinsic pre-classification name set must stay deleted; "
         "INTRINSIC_REGISTRY is the sole authority"
     );
-    marker = "impl NaIRGenCalls._codegen_call(";
+    marker = "impl NaIRGenPass._codegen_call(";
     start = source.find(marker);
     assert start >= 0 , "_codegen_call impl not found";
     nxt = source.find("\nimpl ", start + len(marker));
@@ -330,7 +334,7 @@ test "native type identity never reads walk-time registration maps" {
         "native"
     );
     assert os.path.isdir(native_dir) , f"native dir missing: {native_dir}";
-    impl_dir = os.path.join(native_dir, "na_ir_gen");
+    impl_dir = os.path.join(native_dir, "na_ir_gen_pass.impl");
     dead_tokens = ["_try_resolve_field_type"];
     write_pat = re.compile(r"self\.type_map\s*\[[^\]]*\]\s*=");
     # `struct_field_opaque` is a live name again, and it means the opposite of
@@ -348,8 +352,8 @@ test "native type identity never reads walk-time registration maps" {
     # -- that a touch really does refuse and demote -- is in
     # `test_native_walk_order.jac`.
     opaque_ok = [
-        os.path.join("na_ir_gen", "state.jac"),
-        os.path.join("na_ir_gen", "objects.impl.jac")
+        "na_ir_gen_pass.jac",
+        os.path.join("na_ir_gen_pass.impl", "objects.impl.jac")
     ];
     offenders: list[str] = [];
     for (dirpath, _dirs, files) in os.walk(native_dir) {
@@ -371,7 +375,8 @@ test "native type identity never reads walk-time registration maps" {
                         offenders.append(f"{rel}:{lineno}: {line.strip()}");
                     }
                     if write_pat.search(line)
-                        and rel != os.path.join("na_ir_gen", "core.impl.jac") {
+                        and rel
+                            != os.path.join("na_ir_gen_pass.impl", "core.impl.jac") {
                         offenders.append(f"{rel}:{lineno}: {line.strip()}");
                     }
                 }
@@ -389,7 +394,7 @@ test "native type identity never reads walk-time registration maps" {
     with open(objects_impl, "r", encoding="utf-8") as f {
         objects_src = f.read();
     }
-    refuse_marker = "impl NaIRGenObjects._refuse_opaque_field(";
+    refuse_marker = "impl NaIRGenPass._refuse_opaque_field(";
     r_start = objects_src.find(refuse_marker);
     assert r_start >= 0 , (
         "_refuse_opaque_field impl not found; the erased-field table has no "
@@ -414,7 +419,7 @@ test "native type identity never reads walk-time registration maps" {
     with open(types_impl, "r", encoding="utf-8") as f {
         types_src = f.read();
     }
-    marker = "impl NaIRGenTypes._lower_class_type(";
+    marker = "impl NaIRGenPass._lower_class_type(";
     start = types_src.find(marker);
     assert start >= 0 , "_lower_class_type impl not found";
     nxt = types_src.find("\nimpl ", start + len(marker));
@@ -436,7 +441,7 @@ test "container lifecycle emission lives only in the shared emitters" {
         "compiler",
         "backends",
         "native",
-        "na_ir_gen"
+        "na_ir_gen_pass.impl"
     );
     per_container = [
         "dicts.impl.jac",
@@ -545,9 +550,9 @@ test "one static-string constructor" {
         "(_static_str_struct_const in builtins.impl.jac); found: "
         + ", ".join(hits)
     );
-    assert hits[0].startswith(os.path.join("na_ir_gen", "builtins.impl.jac")) , f"static-string constructor moved: {hits[
-        0
-    ]}";
+    assert hits[0].startswith(
+        os.path.join("na_ir_gen_pass.impl", "builtins.impl.jac")
+    ) , f"static-string constructor moved: {hits[0]}";
 }
 
 test "set shares the dict hash core with no linear-scan sibling" {
@@ -558,7 +563,7 @@ test "set shares the dict hash core with no linear-scan sibling" {
         "backends",
         "native"
     );
-    impl_dir = os.path.join(native_dir, "na_ir_gen");
+    impl_dir = os.path.join(native_dir, "na_ir_gen_pass.impl");
     core_callers: list[str] = [];
     for (dirpath, _dirs, files) in os.walk(native_dir) {
         for fname in files {
@@ -619,7 +624,7 @@ test "hetero container band-aids are deleted; one element-storage authority" {
                             offenders.append(f"{rel}:{lineno}: {line.strip()}");
                         }
                     }
-                    if "impl NaIRGenTypes._elem_storage_llvm(" in line {
+                    if "impl NaIRGenPass._elem_storage_llvm(" in line {
                         authority_defs.append(os.path.relpath(fpath, pkg_root));
                     }
                 }
@@ -634,7 +639,11 @@ test "hetero container band-aids are deleted; one element-storage authority" {
     assert authority_defs
         == [
             os.path.join(
-                "compiler", "backends", "native", "na_ir_gen", "types.impl.jac"
+                "compiler",
+                "backends",
+                "native",
+                "na_ir_gen_pass.impl",
+                "types.impl.jac"
             )
         ] , (
         "container element storage must be decided by exactly one authority "
@@ -694,7 +703,9 @@ test "no consumer-site NULL guards on string operands" {
         + "\n".join(offenders)
     );
     assert len(unwrap_sites) == 1
-        and unwrap_sites[0].startswith(os.path.join("na_ir_gen", "types.impl.jac")) , (
+        and unwrap_sites[0].startswith(
+            os.path.join("na_ir_gen_pass.impl", "types.impl.jac")
+        ) , (
         "optional unwrap must be emitted by exactly one site "
         f"(_coerce_type_inner in types.impl.jac); found: {unwrap_sites}"
     );

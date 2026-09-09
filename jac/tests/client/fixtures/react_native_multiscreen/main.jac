@@ -1,7 +1,9 @@
-"""Multi-screen React Native fixture: login -> list -> detail.
+"""Multi-screen mobile (React Native) fixture: login -> list -> detail.
 
-Exercises AuthGuard-protected routes, JacForm login, walker calls, and
-dynamic route params for dual-target gate tests.
+A `kind = "mobile"` app, so the screens use the mobUI vocabulary (raw HTML
+tags are E1105 here). Exercises AuthGuard-protected routes, JacForm login,
+walker calls, and dynamic route params for the dual-target gate tests
+(`jac build --platform android main.jac` and `--platform web`).
 """
 walker:pub whoami {
     can check with Root entry {
@@ -20,6 +22,7 @@ import from '@jac/runtime' {
     Link,
     jacLogin
 }
+import from '@jac/mobui' { View, Text }
 
 def:pub LoginPage -> JsxElement {
     schema = JacSchema(
@@ -54,17 +57,17 @@ def:pub ListPage -> JsxElement {
         }
     }
 
-    <div>
-        <h1>Items</h1>
-        <p data-testid="greeting">{greeting}</p>
+    <View>
+        <Text style={{"fontSize": 24, "fontWeight": "bold"}}>Items</Text>
+        <Text testID="greeting">{greeting}</Text>
         <Link to="/detail/1">View item 1</Link>
-    </div>
+    </View>
 }
 
 def:pub DetailPage -> JsxElement {
-    <div>
-        <h1>Item Detail</h1>
-    </div>
+    <View>
+        <Text style={{"fontSize": 24, "fontWeight": "bold"}}>Item Detail</Text>
+    </View>
 }
 
 def:pub app -> JsxElement {

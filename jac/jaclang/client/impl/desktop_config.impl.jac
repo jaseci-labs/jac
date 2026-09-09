@@ -67,6 +67,21 @@ impl JacDesktopConfig.get_engine(self: JacDesktopConfig) -> str {
     return engine;
 }
 
+impl JacDesktopConfig.get_backend(self: JacDesktopConfig) -> str {
+    config = self.load();
+    backend = str(config.get('backend', 'embedded') or 'embedded').strip();
+    if backend == 'embedded' {
+        return backend;
+    }
+    if backend.startswith('http://') or backend.startswith('https://') {
+        return backend.rstrip('/');
+    }
+    raise ValueError(
+        "Desktop configuration error: backend must be 'embedded' or an http(s) URL, "
+        f"got '{backend}'"
+    );
+}
+
 impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
     config = self.load();
     plugins = config.get('plugins', {});

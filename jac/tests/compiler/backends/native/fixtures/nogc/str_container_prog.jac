@@ -1,4 +1,4 @@
-"""Owned str containers under --gc none: moves, copies, and element drops."""
+"""Owned str containers under --memory nogc: moves, copies, and element drops."""
 
 def run_lists {
     xs: list[str] = [];

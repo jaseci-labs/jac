@@ -18,10 +18,53 @@ test "register_targets registers the built-in client targets directly" {
 
     register_targets();
     registry = get_target_registry();
-    for name in ["web", "pwa", "static", "mobile", "desktop", "react-native"] {
+    for name in ["web", "static", "desktop", "mobile"] {
         assert registry.get(name) is not None , (
             f"register_targets() must register the '{name}' target directly"
         );
+    }
+    # One target per client kind, and nothing else: PWA is a decoration of
+    # the web build ([client.pwa]), CEF is a desktop engine ([desktop]
+    # engine = "cef"), and the Capacitor / react-native names are gone.
+    assert sorted(t.name for t in registry.get_all())
+        == ["desktop", "mobile", "static", "web"] , (
+        f"unexpected target set: {[t.name for t in registry.get_all()]}"
+    );
+    for gone in ["pwa", "cef", "react-native", "react_native", "native-desktop"] {
+        assert registry.get(gone) is None , (
+            f"'{gone}' is not a client target any more"
+        );
+    }
+}
+
+test "every client kind maps onto a registered target" {
+    import from jaclang.client.targets.registry {
+        KIND_TARGET,
+        get_target_registry,
+        target_for_kind
+    }
+    import from jaclang.project.kinds { KIND_SPECS, kind_has_client }
+    import from pathlib { Path }
+
+    registry = get_target_registry();
+    assert KIND_TARGET
+        == {
+            "web-app": "web",
+            "js-package": "web",
+            "web-static": "static",
+            "desktop": "desktop",
+            "mobile": "mobile"
+        };
+    for (kind, spec) in KIND_SPECS.items() {
+        if kind_has_client(kind) {
+            assert kind in KIND_TARGET , f"client kind {kind} has no target";
+            target = target_for_kind(kind, Path("."));
+            assert target is registry.get(KIND_TARGET[kind]);
+            assert spec.ui in ("dom", "mobui");
+        } else {
+            assert kind not in KIND_TARGET , f"{kind} has no client but a target";
+            assert spec.ui == "";
+        }
     }
 }
 
@@ -30,9 +73,20 @@ test "register.jac registers built-in targets without a plugin group" {
     # Direct registration: each built-in target is registered on the registry.
     assert "def register_targets" in content;
     assert "registry.register(WebTarget())" in content;
+    assert "registry.register(StaticTarget())" in content;
+    assert "registry.register(DesktopTarget())" in content;
     assert "registry.register(MobileTarget())" in content;
-    assert "registry.register(NativeDesktopTarget())" in content;
-    assert "registry.register(ReactNativeTarget())" in content;
+    assert content.count("registry.register(") == 4 , (
+        "exactly four targets: web, static, desktop, mobile"
+    );
+    for gone in [
+        "PWATarget",
+        "CefDesktopTarget",
+        "NativeDesktopTarget",
+        "ReactNativeTarget"
+    ] {
+        assert gone not in content , f"{gone} was folded away and must not be registered";
+    }
     # The removed secondary plugin-group indirection must not have returned.
     assert "JacClientRuntime" not in content;
     assert "load_client_plugins" not in content;
@@ -42,11 +96,14 @@ test "register.jac registers built-in targets without a plugin group" {
 
 test "targets register lazily on first registry access" {
     # Registration was folded into first registry access (lazy init): the CLI
-    # no longer calls register_targets() eagerly, and the `build --client`
-    # choices are a compile-time literal in the command spec, so nothing at
-    # import time needs to read the registry either.
+    # no longer calls register_targets() eagerly, and with the `--client`
+    # flag gone (the kind picks the target) nothing at import time needs to
+    # read the registry either.
     cli_content = _cli_jac.read_text().replace("\r\n", "\n");
     assert "sync_client_target_choices" not in cli_content;
+    assert "--client" not in cli_content , "the --client flag is gone from the client CLI";
+    assert "get_target_factory" not in cli_content , "targets resolve by kind now";
+    assert "target_for_app" in cli_content;
     assert "with entry {" not in cli_content;
     # The eager register_targets() call must not have returned to cli.jac.
     assert "register_targets();" not in cli_content;

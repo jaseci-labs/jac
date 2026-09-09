@@ -1,12 +1,12 @@
-"""Coverage for the JAC_RC_DEBUG_CODEGEN compile-time RC trace gate.
+"""Coverage for the compile-time RC trace gate.
 
 The RC printf trace (RC MALLOC / RC RETAIN / RC RELEASE / RC FREE) is
-emitted only when JAC_RC_DEBUG_CODEGEN is present in the *compiler's*
-environment — NaIRGenPass reads it at codegen time in its postinit, so the
-flag must be injected into the `jac nacompile` subprocess env, not the
-compiled binary's. Gate ON must reproduce the runtime-toggleable trace;
-gate OFF must compile the trace out entirely and reduce
-`__rc_debug_enable()` to a one-line stderr notice.
+emitted only when the build is a debug build (`jac build --native --debug`,
+or `[native] debug = true` in jac.toml): NaIRGenPass reads
+`rc_debug_codegen` from its compile options, which follow `native_debug`
+when unset. Gate ON must reproduce the runtime-toggleable trace; gate OFF
+must compile the trace out entirely and reduce `__rc_debug_enable()` to a
+one-line stderr notice.
 
 Each variant compiles a copy of the fixture inside its own tempdir so the
 per-source `.jac/cache` lands there too — the two compiles can never see
@@ -23,45 +23,41 @@ import from pathlib { Path }
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      GATE_OFF_NOTICE = (
          "jac: RC debug tracing not compiled in"
-         + " (build with JAC_RC_DEBUG_CODEGEN=1)"
+         + " (build with --debug or [native] debug = true)"
      );
 
 
 """Compile the trace fixture with/without the codegen gate, run the binary.
 
-`rc_debug_codegen` controls whether JAC_RC_DEBUG_CODEGEN=1 is present in
-the compiler subprocess's environment (it is scrubbed from the inherited
-env either way, so an ambient setting cannot flip a variant). The child
-binary always runs with a scrubbed env too — the gate must act at compile
-time only. Returns the binary's (stdout, stderr).
+`rc_debug_codegen` controls whether the build is invoked with `--debug`.
+The child binary runs with the inherited environment; the gate acts at
+compile time only. Returns the binary's (stdout, stderr).
 """
 def _compile_and_run(rc_debug_codegen: bool) -> tuple[str, str] {
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "rc_debug_trace.jac");
         shutil.copyfile(os.path.join(FIXTURES, "rc_debug_trace.jac"), src);
         out_bin = os.path.join(tmp, "rc_debug_trace");
-        env = os.environ.copy();
-        env.pop("JAC_RC_DEBUG_CODEGEN", None);
+        cmd = [
+            sys.executable,
+            "-m",
+            "jaclang",
+            "build",
+            "--native",
+            src,
+            "-o",
+            out_bin
+        ];
         if rc_debug_codegen {
-            env["JAC_RC_DEBUG_CODEGEN"] = "1";
+            cmd.append("--debug");
         }
-        comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", src, "-o", out_bin],
-            capture_output=True,
-            text=True,
-            timeout=900,
-            env=env,
-        );
+        comp = subprocess.run(cmd, capture_output=True, text=True, timeout=900);
         assert comp.returncode == 0 , (
-            f"nacompile (gate={rc_debug_codegen}) failed: exit={comp.returncode}\n"
+            f"jac build --native (gate={rc_debug_codegen}) failed: exit={comp.returncode}\n"
             f"stderr: {comp.stderr[-800:] if comp.stderr else '(empty)'}"
         );
         assert os.path.exists(out_bin) , f"binary not produced at {out_bin}";
-        run_env = os.environ.copy();
-        run_env.pop("JAC_RC_DEBUG_CODEGEN", None);
-        proc = subprocess.run(
-            [out_bin], capture_output=True, text=True, timeout=60, env=run_env
-        );
+        proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=60);
         assert proc.returncode == 0 , (
             f"binary (gate={rc_debug_codegen}) exited non-zero: {proc.returncode}\n"
             f"stderr: {proc.stderr[-800:] if proc.stderr else '(empty)'}"

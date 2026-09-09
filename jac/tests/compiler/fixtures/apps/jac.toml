@@ -1,0 +1,36 @@
+[project]
+name = "apps-fixture"
+default-app = "web"
+
+[apps.web]
+kind = "web-app"
+path = "web"
+
+[apps.social]
+kind = "service"
+entry-point = "social_app.jac"
+route = "/api/social"
+
+[apps.cli]
+kind = "cli"
+entry-point = "cli_app.jac"
+
+[apps.portal]
+kind = "web-app"
+path = "portal"
+
+[apps.feed]
+kind = "service"
+entry-point = "feed_app.jac"
+
+[apps.cycle_a]
+kind = "service"
+entry-point = "cycle_a.jac"
+
+[apps.cycle_b]
+kind = "service"
+entry-point = "cycle_b.jac"
+
+[apps.cli_spawn]
+kind = "cli"
+entry-point = "cli_spawn.jac"

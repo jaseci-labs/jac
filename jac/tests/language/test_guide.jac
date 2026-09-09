@@ -227,39 +227,11 @@ test "guide store maps diagnostic codes to guides" {
 }
 
 test "every mapped diagnostic code resolves to a bundled guide" {
-    # Each code in _CODE_GUIDE_MAP, pinned with the guide that documents it.
-    expected: dict[str, str] = {
-        "E0077": "jac-impl-files",
-        "W0060": "jac-core-cheatsheet",
-        "W0061": "jac-sv-persistence",
-        "E1050": "jac-walker-patterns",
-        "E1102": "jac-cl-components",
-        "E1104": "jac-npm-packages",
-        "E1301": "jac-native-memory",
-        "E1302": "jac-native-memory",
-        "E1303": "jac-native-memory",
-        "E1304": "jac-native-memory",
-        "E1306": "jac-native-memory",
-        "E1307": "jac-native-memory",
-        "E1308": "jac-native-memory",
-        "E1309": "jac-native-memory",
-        "E1311": "jac-native-memory",
-        "W1312": "jac-native-memory",
-        "E1313": "jac-native-memory",
-        "E1314": "jac-native-memory",
-        "E1401": "jac-native-memory",
-        "E1402": "jac-native-memory",
-        "E1403": "jac-native-memory",
-        "E1404": "jac-native-memory",
-        "E1405": "jac-native-memory",
-        "E1406": "jac-native-memory",
-        "E2004": "jac-has-fields",
-        "E2025": "jac-npm-packages",
-        "W2075": "jac-sv-persistence",
-        "W3037": "jac-types",
-
-    };
-    for (code, name) in expected.items() {
+    import from jaclang.cli.guide_store { _CODE_GUIDE_MAP }
+    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+    assert _CODE_GUIDE_MAP , "the code-to-guide map is empty";
+    for (code, name) in _CODE_GUIDE_MAP.items() {
+        assert code in DIAGNOSTICS , f"{code} is mapped to '{name}' but is not a registered diagnostic";
         assert guide_for_diagnostic(code) == name , (
             f"{code} should resolve to '{name}'"
         );
@@ -267,7 +239,14 @@ test "every mapped diagnostic code resolves to a bundled guide" {
             f"{code} maps to '{name}', which is not bundled"
         );
     }
+    # The workspace-apps laws point at their own guide, not the generic
+    # diagnostics page.
+    for code in ["E5104", "E5105", "E5106", "E5107", "E5108", "E2039", "E2040"] {
+        assert guide_for_diagnostic(code) == "jac-apps" , code;
+    }
+    assert guide_for_diagnostic("E1042") == "jac-sv-microservices";
 }
+
 
 test "guide groups resolve via name map, prefix rules, then Other" {
     assert guide_group("jac-types") == "Language";
@@ -366,11 +345,14 @@ def check_guide_block(code: str) -> tuple[int, str] {
         # nowarn: guide examples may warn (unresolved @jac/runtime imports in
         # standalone .jac, etc.) -- only hard errors should fail a guide.
         # no-print: examples intentionally use print() for readable output.
+        # E1134: the block is written to a bare temp file with no siblings, so
+        # a project-relative import (`.ui.button`) can never resolve here. That
+        # is a property of this harness, not of the example.
         rc = analysis.check(
             [path],
             print_errs=True,
             nowarn=True,
-            disable_error_code=["no-print", "E3012"]
+            disable_error_code=["no-print", "E3012", "E1134"]
         );
     } finally {
         if prev_explicit is not None {

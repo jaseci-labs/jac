@@ -1,4 +1,4 @@
-"""Regression tests for --enforce-nogc local ownership inference (issue #7466
+"""Regression tests for --memory nogc local ownership inference (issue #7466
 bug 5).
 
 `_nogc_infer_locals` auto-stamps `own` on locals whose initializer produces
@@ -12,7 +12,7 @@ use-after-move on them keeps firing.
 
 Each fixture is compiled through the real type-check schedule with
 enforcement enabled via CompileOptions, matching
-`jac nacompile --enforce-nogc --gc none`.
+`jac build --native --memory nogc`.
 """
 
 import os;
@@ -29,7 +29,7 @@ sorted diagnostic codes."""
 def enforced_codes(fixture: str) -> list[str] {
     path = os.path.join(FIXTURES, fixture);
     prog = JacProgram();
-    opts = CompileOptions(aot_mode=True, na_gc_mode="none", nogc_enforce_all=True);
+    opts = CompileOptions(aot_mode=True, memory_profile="nogc");
     prog.compile(file_path=path, options=opts);
     codes: set[str] = set();
     for alert in list(prog.errors_had) {
@@ -70,7 +70,7 @@ test "compiler-internal modules are exempt from ambient enforcement" {
         os.path.dirname(jaclang.__file__), "compiler", "passes", "dataflow.jac"
     );
     prog = JacProgram();
-    opts = CompileOptions(na_gc_mode="none", nogc_enforce_all=True);
+    opts = CompileOptions(memory_profile="nogc");
     prog.compile(file_path=path, options=opts);
     e14 = [
         a.code.code

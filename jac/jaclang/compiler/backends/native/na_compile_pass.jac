@@ -5,7 +5,7 @@ import type from jaclang.compiler.backends.native.llvm.binding {
     ValueRef
 }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.passes { Transform }
+import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.compiler.frontend.codeinfo {
     CodeGenTarget,
     install_native_static_init
@@ -23,6 +23,7 @@ import from jaclang.compiler.frontend.diagnostics {
     E5029
 }
 import type from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 obj DepClibMeta {
     has clib_paths: list[str] = [],
@@ -32,6 +33,7 @@ obj DepClibMeta {
         owned_symbols: list[str] = [],
         demoted_symbols: list[str] = [],
         transitive_deps: list[str] = [],
+        ct_deps: str = "",
         options_fingerprint: str = "",
         unverified_live_calls: dict[str, list[str]] = {},
         coverage: dict = {};
@@ -41,17 +43,18 @@ obj DepClibMeta {
     def propagate_to(gen: CodeGenTarget) -> None;
 }
 
-def native_compiler_fingerprint(options: any) -> str;
-def native_dep_cache_paths(real_path: str, options: any) -> tuple;
+def native_compiler_fingerprint(options: CompileOptions) -> str;
+def native_dep_cache_paths(real_path: str, options: CompileOptions) -> tuple[str, str];
 def native_demoted_ir_symbols(llvm_ir_text: str) -> list[str];
+def native_linked_ir_text(module: uni.Module) -> str;
 def native_ir_live_externs(llvm_ir_text: str) -> set[str];
 def native_prune_live_record(pending: dict, declared: set[str]) -> dict[str, set[str]];
 def native_unit_demotions(
-    prog: any, real_path: str, options: any
+    prog: JacProgram, real_path: str, options: CompileOptions
 ) -> (set[str] | None);
 
 def native_live_call_conflicts(
-    prog: any, pending: dict, options: any
+    prog: JacProgram, pending: dict, options: CompileOptions
 ) -> dict[str, set[str]];
 
 glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,
@@ -59,7 +62,7 @@ glob NATIVE_VERDICT_TAINT_BOUND: int = 2048,
      NATIVE_VERDICT_MISS_BOUND: int = 512;
 
 def native_verdict_blast_guard(
-    prog: any, composed: int, aot_lane: bool = False
+    prog: JacProgram, composed: int, aot_lane: bool = False
 ) -> str;
 
 
@@ -74,7 +77,7 @@ walker NativeCompilePass(Transform) {
     def _compile_and_link_native_imports(
         module: uni.Module,
         main_mod: ModuleRef,
-        imports: list,
+        sources: list[str],
         target_machine: TargetMachine
     ) -> None;
 
@@ -83,4 +86,7 @@ walker NativeCompilePass(Transform) {
     def _references_undefined_osp_kernel(main_mod: ModuleRef) -> bool;
     def _link_fmt_kernel(main_mod: ModuleRef) -> None;
     def _references_undefined_fmt_kernel(main_mod: ModuleRef) -> bool;
+    def _link_region_kernel(main_mod: ModuleRef) -> None;
+    def _references_undefined_region_kernel(main_mod: ModuleRef) -> bool;
+    def _module_defines(main_mod: ModuleRef, name: str) -> bool;
 }

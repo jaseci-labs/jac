@@ -9,7 +9,7 @@ assert full reclamation from allocator in-use counters. The entry block
 self-checks and prints OK so the same fixture drives the AOT gc-mode runs.
 """
 
-def hl_read_str(s: str) -> str {
+def hl_read_str(s: &str) -> str {
     l: list = [1, s + "!", 2.5];
     return l[1];
 }
@@ -28,7 +28,7 @@ def hl_read_float -> float {
 }
 
 
-def hl_overwrite(s: str) -> str {
+def hl_overwrite(s: &str) -> str {
     l: list = [7, "seed"];
     l[1] = s + "-one";
     l[1] = s + "-two";
@@ -63,7 +63,7 @@ def hl_repr -> str {
 }
 
 
-def hl_annotated(s: str) -> str {
+def hl_annotated(s: &str) -> str {
     l: list[int | str] = [1, s + "?"];
     v = l[1];
     out = "";
@@ -90,7 +90,7 @@ def hd_read_int -> int {
 }
 
 
-def hd_overwrite(s: str) -> str {
+def hd_overwrite(s: &str) -> str {
     d: dict = {"k": 1, "pad": 2.5};
     d["k"] = s + "-first";
     d["k"] = s + "-second";
@@ -98,14 +98,14 @@ def hd_overwrite(s: str) -> str {
 }
 
 
-def hd_pop_len(s: str) -> int {
+def hd_pop_len(s: &str) -> int {
     d: dict = {"a": s + "abc", "b": 5};
     x: str = d.pop("a");
     return len(x) + len(d);
 }
 
 
-def hd_clear_len(s: str) -> int {
+def hd_clear_len(s: &str) -> int {
     d: dict = {"a": s + "abc", "b": 5, "c": 1.5};
     d.clear();
     return len(d);

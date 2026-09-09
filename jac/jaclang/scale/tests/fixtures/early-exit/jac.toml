@@ -17,8 +17,8 @@ vite = "^6.4.1"
 "@babel/preset-react" = "^7.28.5"
 "@vitejs/plugin-react" = "^4.2.1"
 typescript = "^5.3.3"
-"@types/react" = "^18.2.45"
-"@types/react-dom" = "^18.2.18"
+"@types/react" = "^19.2.0"
+"@types/react-dom" = "^19.2.0"
 
 [client]
 # Vite bundler configuration (optional overrides)

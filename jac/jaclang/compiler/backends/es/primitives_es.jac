@@ -1,4 +1,4 @@
-import from jaclang.compiler.primitives {
+import from jaclang.compiler.backends.common.primitives {
     IntEmitter,
     FloatEmitter,
     ComplexEmitter,

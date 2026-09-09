@@ -14,28 +14,26 @@ impl TargetRegistry.clear -> None {
     self._targets = {};
 }
 
-impl TargetFactory.create(name: str, project_dir: Path) -> ClientTarget {
+impl target_for_kind(kind: str, project_dir: Path) -> ClientTarget {
     import from jaclang.client.targets.registry { get_target_registry }
-    registry = get_target_registry();
-    target_name = name.lower().strip();
-    target = registry.get(target_name);
+    target_name = KIND_TARGET.get(kind, "");
+    if not target_name {
+        raise ValueError(
+            f"Kind '{kind}' has no client; client kinds are "
+            f"{', '.join(KIND_TARGET.keys())}."
+        );
+    }
+    target = get_target_registry().get(target_name);
     if target is None {
-        available = [t.name for t in registry.get_all()];
-        raise ValueError(f"Unknown target: {name}. Available: {', '.join(available)}.");
+        raise ValueError(f"No client target registered for kind '{kind}'.");
     }
     target.project_dir = project_dir;
     return target;
 }
 
-impl TargetFactory.create_by_type(
-    target_type: TargetType, project_dir: Path
-) -> ClientTarget {
-    import from jaclang.client.targets.registry { TargetType }
-    return self.create(target_type.value, project_dir);
-}
-
-impl TargetFactory.get_available_target_names -> list[str] {
-    import from jaclang.client.targets.registry { get_target_registry }
-    registry = get_target_registry();
-    return [target.name for target in registry.get_all()];
+impl target_for_app(app: AppConfig, project_dir: Path) -> ClientTarget {
+    import from jaclang.project.config { get_config }
+    cfg = get_config();
+    kind = cfg.resolved_kind(app) if cfg is not None else app.kind;
+    return target_for_kind(kind, project_dir);
 }

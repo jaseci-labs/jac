@@ -1,6 +1,6 @@
 """Fixture for app-facing token tests: an invitation flow over app_tokens."""
 
-import from jaclang.scale.identity.app_tokens {
+import from jaclang.server.identity.app_tokens {
     token_create,
     token_peek,
     token_consume,

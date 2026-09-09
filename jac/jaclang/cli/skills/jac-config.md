@@ -1,6 +1,6 @@
 ---
 name: jac-config
-description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], capability tables ([byllm], [scale], [client] incl. app_meta_data, [desktop]), [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/install/remove/update/x). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
+description: Edit jac.toml project, app, dependency, build, and runtime settings. Use when selecting configuration keys or resolving configuration errors.
 ---
 
 `jac.toml` is the single config file (think `pyproject.toml` + `package.json`). Commands find it by walking up from cwd. Generate it with `jac create`, then edit sections directly or via `jac config set` / `jac install <pkg>` - hand-editing is normal and expected.
@@ -9,26 +9,31 @@ description: The jac.toml control plane - every section ([project], [dependencie
 
 | Section | Purpose |
 |---|---|
-| `[project]` | name (required), version, description, **`entry-point`** (default for `jac run`, defaults to `main.jac`), **`kind`** (project kind that makes a bare `jac run` execute / serve / build the project - empty = inferred from the entry-point codespace; see `jac-project-kinds`), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac build --as wheel` (see `jac-packaging`) |
+| `[project]` | name (required), version, description, **`entry-point`** (default for `jac run`, defaults to `main.jac`), **`kind`** (project kind that makes a bare `jac run` execute / serve / build the project - empty = inferred from the entry-point codespace; see `jac-project-kinds`), **`default-app`** (workspaces: the app a bare `jac run`/`build`/`test`/`setup` targets), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac build --as wheel` (see `jac-packaging`). `entry-point` and `kind` are single-app only - alongside `[apps]` they are a hard error |
+| `[apps.<name>]` | one table per app turns the project into a **workspace**: `kind` (required; decides the client too: `web-app`/`web-static`/`desktop` render React DOM, `mobile` is React Native through `@jac/mobui`), `path` (dir root) or `entry-point` (file-rooted), `platform`, `route` (default `/api/<name>`). Modules under no app root are shared. No `[apps]` = one implicit app. See `jac-sv-microservices` for service apps |
+| `[apps.<name>.<section>]` | per-app **overlay** of any section (`[apps.web.serve]`, `[apps.mobile.dependencies.npm]`, `[apps.svc.scale]`, `[apps.web.placement.pins]`), deep-merged over the base for that app only. Effective config = base → app overlays → profile → `jac.local.toml` |
 | `[dependencies]` | PyPI packages, pip-style specs (`requests = ">=2.28.0"`) |
-| `[dependencies.npm]` / `[dependencies.npm.dev]` | npm packages for client code (see `jac-npm-packages`) |
+| `[dependencies.npm]` / `[dependencies.npm.dev]` | npm packages for client code (see `jac-npm-packages`); `[dependencies.npm.web]` / `.static` / `.desktop` / `.mobile` scope a table to one client kind, `[dependencies.npm.native]` feeds a mobile app's Expo project |
 | `[dependencies.git]` | `mylib = { git = "https://...", branch = "main" }` |
 | `[dev-dependencies]` | dev-only tools; installed with `jac install --dev` |
 | `[optional-dependencies.<group>]` | extras: `jac install --extras <group>`, wheel extras on publish |
-| `[serve]` | `jac run` defaults: `port`, `base_route_app` (client app served at `/`), `cl_route_prefix` |
+| `[serve]` | `jac run` defaults: `port`, `session`, `on_conflict` (the served app's client is at `/`; sibling apps with a built bundle at `/cl/<app>/`) |
 | `[run]` | `jac run` defaults: `cache`, `session`, `diagnostics` (`"error"`/`"all"`/`"none"`) |
 | `[check]` | type-check behavior: `enforce_access` (promote `:pub`/`:protect`/`:priv` visibility violations from warnings to hard errors), `warn_native_seams` (warn when a native-eligible method falls back to Python) |
 | `[check.lint]` | lint rule selection: `select = ["default"]` / `["all"]`, `ignore = ["combine-has"]`, `exclude = ["legacy/*"]` |
 | `[test]` | `jac test` defaults: `directory`, `filter`, `verbose`, `fail_fast`, `max_failures` |
 | `[build]` | `dir` (artifact root, default `.jac/` - holds `cache/`, `venv/`, `client/`, `data/`) |
-| `[gc]` / `[gc.enforce]` | native memory management: `default = "cycles"/"rc"/"none"` (mode when `--gc` not passed); `enforce.modules`/`enforce.grandfathered` glob patterns opt modules into zero-RC nogc enforcement (see `jac-native-memory`) |
+| `[memory]` | the memory profile: `profile = "managed"/"rc"/"nogc"` (overridable per build with `--memory`); `enforce`/`exempt` glob patterns hold modules to the zero-RC contract under a managed profile (see `jac-native-memory`) |
+| `[native]` | native build knobs: `target`, `opt`, `debug`, `threads` |
+| `[placement]` | `default = "native"/"server"` for markerless modules, beside `[placement.pins]` |
 | `[scripts]` | named command shortcuts run via `jac x <name>` |
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[byllm]` / `[byllm.model]` / `[byllm.call_params]` | AI settings: model identity, API keys, call params (see `jac-by-llm`) |
-| `[scale.*]` | serving/deployment settings: `[scale.server]`, `[scale.database]`, `[scale.kubernetes]`, ... (see `jac-sv-deploy`) |
-| `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the client target emits; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects |
+| `[serve]` | the server process: host, port, workers, TLS, proxy, limits, timeouts, access log, compression, auth (every key has a `JAC_SERVE_*` mirror) |
+| `[scale.*]` | deployment and scale features: `[scale.database]`, `[scale.kubernetes]`, `[scale.gateway]` (the fleet gateway: `colocate`, ports, `cors`, `rate_limit`, `logs`, `shared_volumes`), ... (see `jac-sv-deploy`, `jac-sv-microservices`) |
+| `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the client bundle uses; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects; `[client.pwa]` (theme_color, cache_name, install_banner...) turns a web app into a PWA at build; `[client.react_native]` holds a mobile app's Expo/EAS knobs - see `jac-mobile-app` |
 | `[client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
-| `[desktop]` / `[desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
+| `[desktop]` / `[desktop.plugins]` | desktop app identity, `engine` (`"native"` OS webview or `"cef"`) + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
 | `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac install --shadcn` / `jac retheme` - don't hand-edit. Two paths you MAY set by hand: `components_dir` and `utils_path`, which tell the installer where your primitives and `cn()` live if not `components/ui/` and `lib/utils.jac` (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
@@ -58,7 +63,7 @@ jac config path               # where the jac.toml is         jac config list -o
 
 ## Environment variables and profiles
 
-`${VAR}` interpolation works in any string value:
+`${VAR}` interpolation works in **every** string value, uniformly - app tables, overlays, profiles, capability tables:
 
 ```toml
 [byllm.model]
@@ -92,7 +97,8 @@ byLLM, scale, the client/desktop framework, and the MCP server all ship inside t
 
 ## Pitfalls
 
-- **Hyphen vs underscore is per-key and unforgiving**: `entry-point`, `requires-python`, `jac-version` (hyphens) but `fail_fast`, `max_failures`, `cl_route_prefix`, `base_route_app` (underscores). A wrong form is silently ignored - verify with `jac config get <key>`.
+- **Hyphen vs underscore is per-key and unforgiving**: `entry-point`, `requires-python`, `jac-version`, `default-app` (hyphens) but `fail_fast`, `max_failures`, `on_conflict`, `theme_color` (underscores). A wrong form is silently ignored - verify with `jac config get <key>` (`jac config list -g apps` for the app tables).
+- **`[apps]` is exclusive with `[project] kind` / `entry-point`** - a hard config error (exit 2). An unknown key inside an `[apps.<name>]` table is also a hard error naming the accepted keys (`kind`, `path`, `entry-point`, `platform`, `route`).
 - **`jac install <pkg>` without a version pins `~=major.minor`** of whatever pip resolved - pass an explicit spec (`jac install "requests>=2.28"`) when you need a different constraint.
 - **CLI flags override jac.toml for that run** (`jac run --port 3000`, `jac test -v`, `jac run -e all`); jac.toml only sets defaults.
 - **After editing `[dependencies*]`, run `jac install`** - editing the file alone installs nothing.

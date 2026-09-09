@@ -14,6 +14,7 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      TEXT_DOCUMENT_REFERENCES = "textDocument/references",
      TEXT_DOCUMENT_RENAME = "textDocument/rename",
      TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL = "textDocument/semanticTokens/full",
+     TEXT_DOCUMENT_INLAY_HINT = "textDocument/inlayHint",
      WORKSPACE_DID_CREATE_FILES = "workspace/didCreateFiles",
      WORKSPACE_DID_RENAME_FILES = "workspace/didRenameFiles",
      WORKSPACE_DID_DELETE_FILES = "workspace/didDeleteFiles",
@@ -28,6 +29,8 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      WINDOW_LOG_MESSAGE = "window/logMessage";
 
 enum MessageType(IntEnum) { Error = 1, Warning = 2, Info = 3, Log = 4 }
+
+enum InlayHintKind(IntEnum) { Type = 1, Parameter = 2 }
 
 enum DiagnosticSeverity(IntEnum) { Error = 1, Warning = 2, Information = 3, Hint = 4 }
 
@@ -283,6 +286,20 @@ obj CompletionList {
         items: list[CompletionItem] = [];
 }
 
+obj InlayHint {
+    has position: Position = Position(),
+        label: str = "",
+        kind: Optional[InlayHintKind] = None,
+        tooltip: Optional[str] = None,
+        padding_left: bool = False,
+        padding_right: bool = False;
+}
+
+obj InlayHintParams {
+    has text_document: TextDocumentIdentifier = TextDocumentIdentifier(),
+        range: Range = Range();
+}
+
 obj Hover {
     has contents: Union[MarkupContent, str] = "",
         range: Optional[Range] = None;
@@ -343,6 +360,7 @@ glob METHOD_TO_PARAMS: dict[str, type] = {
          TEXT_DOCUMENT_REFERENCES: ReferenceParams,
          TEXT_DOCUMENT_RENAME: RenameParams,
          TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL: SemanticTokensParams,
+         TEXT_DOCUMENT_INLAY_HINT: InlayHintParams,
          WORKSPACE_DID_CREATE_FILES: CreateFilesParams,
          WORKSPACE_DID_RENAME_FILES: RenameFilesParams,
          WORKSPACE_DID_DELETE_FILES: DeleteFilesParams,

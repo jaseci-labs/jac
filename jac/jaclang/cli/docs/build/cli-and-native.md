@@ -33,7 +33,7 @@ The graph hanging off `root` is saved between runs automatically -- the same per
 
 ## Ship it as a native binary {#native-binary}
 
-`jac nacompile` compiles a `.jac` file through LLVM to a **standalone, zero-dependency executable** you can ship to machines that have neither Jac nor Python -- like a `curl`-style single-binary tool:
+`jac build --native` compiles a `.jac` file through LLVM to a **standalone, zero-dependency executable** you can ship to machines that have neither Jac nor Python -- like a `curl`-style single-binary tool:
 
 ```jac
 # sum.jac
@@ -47,11 +47,11 @@ with entry { print(f"Sum of 1 to 10: {compute_sum(10)}"); }
 ```
 
 ```bash
-jac nacompile sum.jac -o sum
+jac build --native sum.jac -o sum
 ./sum
 ```
 
-Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The native subset requires a `with entry` block and allows no walkers/nodes/async or Python imports. Memory is reference-counted by default, and modules written with [ownership annotations](../reference/language/ownership-borrowing.md) can compile with `--gc none --enforce-nogc` to Rust-style static allocation and free -- no refcounting or collector in the binary, verifiable with `--assert-no-rc` (see [zero-RC compilation](../reference/language/native-pathway.md#zero-rc-ownership-compilation)).
+Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The native subset requires a `with entry` block and allows no walkers/nodes/async or Python imports. Memory is reference-counted by default, and modules written with [ownership annotations](../reference/language/ownership-borrowing.md) can compile with `--memory nogc` to Rust-style static allocation and free -- no refcounting or collector in the binary, an invariant every `nogc` build checks (see [zero-RC compilation](../reference/language/native-pathway.md#zero-rc-ownership-compilation)).
 
 !!! tip "Shipping a full app instead?"
     The native subset is the price of the smallest possible artifact. To ship *any* Jac program (walkers, Python imports, even a web client) as one executable, use `jac build --as binary` -- it fuses your app's sealed `.jab` onto the `jac` launcher so the file carries the full runtime. A plain `jac build` emits the sealed `.jab` bundle itself, which any Jac install runs with zero live compilation. Add `--fat` to either to vendor the Python dependency closure into the bundle so it materializes offline, with no PyPI (see [fat jab](../reference/cli/index.md#jac-build)). See [Ship it](../quick-guide/project-kinds.md#ship-it-one-file-or-one-executable) and [`jac build`](../reference/cli/index.md#jac-build).

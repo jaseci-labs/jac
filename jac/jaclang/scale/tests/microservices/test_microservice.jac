@@ -9,7 +9,7 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import from jaclang.server { sv_client as __jac_sv }
 import from jaclang.testing.testkit { ServingTestClient as TestClient }
-import from jaclang.scale.server.serve { JacAPIServer }
+import from jaclang.server.server { JacAPIServer }
 
 glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
 
@@ -21,18 +21,11 @@ def build_service(mod: str, tmp: str) -> tuple[TestClient, JacAPIServer] {
         del sys.modules[mod];
     }
     Jac.jac_import(target=mod, base_path=tmp, lng="jac");
-    srv = JacAPIServer(module_name=mod, port=0, base_path=tmp);
+    srv = JacAPIServer(module_name=mod, port=0, base_path=tmp, extensions=[]);
     srv.load_module();
-    srv.register_health_endpoint();
-    srv.register_walkers_endpoints();
-    srv.register_functions_endpoints();
-    srv.register_auth_endpoints();
-    user_manager = srv.user_manager;
-    assert user_manager is not None;
-    user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
-    server_impl = srv.server;
-    assert server_impl is not None;
-    client = TestClient(server_impl.app, raise_server_exceptions=False);
+    srv._ensure_internal_users();
+    app = srv.build_app();
+    client = TestClient(app, raise_server_exceptions=False);
     __jac_sv.register_test_client(mod, client);
     return (client, srv);
 }
@@ -271,7 +264,7 @@ test "sv-to-sv: sv-imported walker does not load provider in-process" {
 }
 
 glob _SECURE_PROVIDER_SRC: str = '"""Secure downstream provider fixture.\n\n`report_status` (function) and `PrivateAudit` (walker) carry NO :pub marker,\nso the scale serve layer treats them as auth-required. A cross-service caller\nthat reaches these endpoints without a valid token is rejected by the real\ndownstream enforcement in serve.endpoints (requires_auth).\n"""\n\nobj AuditEntry {\n    has actor: str = "",\n        action: str = "",\n        allowed: bool = False;\n}\n\ndef report_status(actor: str) -> AuditEntry {\n    return AuditEntry(actor=actor, action="status", allowed=True);\n}\n\nwalker PrivateAudit {\n    has action: str;\n\n    can run with Root entry {\n        report AuditEntry(actor="downstream", action=self.action, allowed=True);\n    }\n}\n',
-     _SECURE_CONSUMER_SRC: str = '"""Consumer that imports the private downstream function report_status."""\n\nimport from secure_service { report_status, AuditEntry }\n\ndef:pub proxy_status(actor: str) -> AuditEntry {\n    return report_status(actor);\n}\n';
+     _SECURE_CONSUMER_SRC: str = '"""Consumer that imports the private downstream function report_status."""\n\nimport from secure_service { report_status, AuditEntry }\n\nasync def:pub proxy_status(actor: str) -> AuditEntry {\n    return await report_status(actor);\n}\n';
 
 def _mint_user_token(srv: JacAPIServer, username: str) -> tuple[str, str] {
     user_manager = srv.user_manager;
@@ -319,7 +312,10 @@ test "sv boundary: private function rejects malformed token (401)" {
 test "sv boundary: private function rejects expired token (401)" {
     import from datetime { datetime, UTC, timedelta }
     import from jaclang.server.serving.authcrypt { jwt_encode }
-    import from jaclang.scale.identity.user_manager { JWT_SECRET, JWT_ALGORITHM }
+    import from jaclang.server.identity.config {
+        signing_algorithm as jwt_algorithm,
+        signing_secret as jwt_secret
+    }
 
     tmp = setup_env();
     try {
@@ -333,8 +329,8 @@ test "sv boundary: private function rejects expired token (401)" {
                 "exp": past,
                 "iat": (past - timedelta(minutes=1)).timestamp()
             },
-            JWT_SECRET,
-            algorithm=JWT_ALGORITHM
+            jwt_secret(),
+            algorithm=jwt_algorithm()
         );
         resp = prov.post(
             "/function/report_status",
@@ -406,10 +402,17 @@ test "sv boundary: unauthenticated cross-service call is rejected downstream" {
     try {
         write_service(tmp, "secure_service", _SECURE_PROVIDER_SRC);
         write_service(tmp, "secure_consumer", _SECURE_CONSUMER_SRC);
-        # Declare the provider so the import lowers to an RPC stub (#7772), making
-        # the call cross-service and subject to the real downstream auth enforcement.
+        # Declare both sides as file-rooted service apps so the import lowers to a
+        # typed-async RPC stub (#7772, #8823), making the call cross-service and
+        # subject to the real downstream auth enforcement.
         toml_path = Path(tmp) / "jac.toml";
-        toml_path.write_text(toml_path.read_text() + '\nsecure_service = "/secure"\n');
+        toml_path.write_text(
+            toml_path.read_text()
+                + '\n[apps.secure_service]\nkind = "service"\n'
+                + 'entry-point = "secure_service.jac"\nroute = "/secure"\n'
+                + '\n[apps.secure_consumer]\nkind = "service"\n'
+                + 'entry-point = "secure_consumer.jac"\nroute = "/secure-consumer"\n'
+        );
         prov = make_server("secure_service", tmp);
         cons = make_server("secure_consumer", tmp);
 
@@ -417,6 +420,97 @@ test "sv boundary: unauthenticated cross-service call is rejected downstream" {
         body = resp.json();
         assert body["ok"] is False;
         assert "Unauthorized" in json.dumps(body.get("error") or {});
+    } finally {
+        done(tmp);
+    }
+}
+
+test "sv-to-sv over the wire: a sibling peer's JAC_APP url is used as given" {
+    import from jaclang.server.serving.server { ServingServer }
+    tmp = setup_env();
+    url_key = __jac_sv.peer_url_env_key("notify_service");
+    route_key = __jac_sv.peer_route_env_key("notify_service");
+    saved_url = os.environ.get(url_key);
+    saved_route = os.environ.get(route_key);
+    os.environ.pop(route_key, None);
+    stop_provider: any = None;
+    try {
+        # The provider is a real HTTP server on a loopback port, mounted at its
+        # root the way a fleet member or a deployed pod is (JAC_SV_SIBLING).
+        (_prov_client, prov_srv) = build_service("notify_service", tmp);
+        __jac_sv._test_clients.pop("notify_service", None);
+        __jac_sv.unregister("notify_service");
+        wire = ServingServer(app=prov_srv.require_app(), host="127.0.0.1", port=0);
+        stop_provider = wire.serve_background();
+        base = f"http://127.0.0.1:{wire.bound_port}";
+        os.environ[url_key] = base;
+
+        cons = make_server("dispatcher_service", tmp);
+        # The compiled consumer declared the provider's public route; that route
+        # belongs to the gateway, not to the peer URL.
+        assert __jac_sv.provider_route("notify_service") == "/notify";
+        rpt = xd(cons.post("/walker/TriggerGreet", json={"who": "wire"}))["reports"][0];
+        assert rpt == "hello, wire";
+        assert __jac_sv.resolve_url("notify_service") == base;
+        assert __jac_sv.registered_route("notify_service") == "";
+    } finally {
+        if stop_provider is not None {
+            stop_provider();
+        }
+        __jac_sv.unregister("notify_service");
+        for (k, v) in [(url_key, saved_url), (route_key, saved_route)] {
+            if v is None {
+                os.environ.pop(k, None);
+            } else {
+                os.environ[k] = v;
+            }
+        }
+        done(tmp);
+    }
+}
+
+
+test "sv-to-sv: a bridged streaming call is awaited and forwarded frame by frame" {
+    # #8982 follow-up to the jac-sv-streaming skill: the bridge stub for a
+    # generator-returning def:pub is a coroutine; awaiting it yields the live
+    # generator, and the consumer's own stream re-yields it as SSE.
+    tmp = setup_env();
+    try {
+        prov = make_server("narrator_service", tmp);
+        assert "text/event-stream"
+            in prov.post("/function/narrate", json={"n": 2}).headers.get(
+                "Content-Type", ""
+            );
+        cons = make_server("story_service", tmp);
+        resp = cons.post("/function/story", json={"n": 3});
+        assert resp.status_code == 200 , f"status {resp.status_code}: {resp.text}";
+        assert "text/event-stream" in resp.headers.get("Content-Type", "") , resp.text;
+        for i in range(3) {
+            assert f'data: "CHUNK {i}"' in resp.text , resp.text;
+        }
+        assert "event: end" in resp.text;
+    } finally {
+        done(tmp);
+    }
+}
+
+
+test "sv-to-sv: a colocated streaming provider streams exactly like a remote one" {
+    tmp = setup_env();
+    try {
+        make_server("narrator_service", tmp);
+        provider_mod = sys.modules["narrator_service"];
+        __jac_sv.clear_test_clients();
+        __jac_sv.register_local("narrator_service", provider_mod);
+        try {
+            cons = make_server("story_service", tmp);
+            resp = cons.post("/function/story", json={"n": 2});
+            assert resp.status_code == 200 , f"status {resp.status_code}: {resp.text}";
+            assert "text/event-stream" in resp.headers.get("Content-Type", "") , resp.text;
+            assert 'data: "CHUNK 0"' in resp.text and 'data: "CHUNK 1"' in resp.text , resp.text;
+        } finally {
+            __jac_sv.unregister_local("narrator_service");
+        }
     } finally {
         done(tmp);
     }

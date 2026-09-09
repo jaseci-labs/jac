@@ -1,6 +1,6 @@
 ---
 name: jac-shadcn-blocks
-description: Design system constants, anti-patterns, and composition patterns for jac-shadcn. Load when building any jac-shadcn page - provides spacing scale, type scale, and structural JSX skeletons for auth, sidebar app shell, data table, stats, pricing, CTA, empty state, and marketing sections.
+description: Compose jac-shadcn pages from layout patterns and design tokens. Use for application shells, forms, tables, or marketing sections.
 ---
 
 Component shape, named typed params (including `children: any = None`), and JSX comments - see `jac-cl-components`.

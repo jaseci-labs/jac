@@ -363,7 +363,7 @@ class _ConstOpMixin(object) {
         Pointer cast to a different pointer type.
         """
     @_castop('bitcast')
-    def bitcast(self: _ConstOpMixin, typ: any) -> object {}
+    def bitcast(self: _ConstOpMixin, typ: any) -> Value {}
 
     """
         Convert unsigned integer to floating-point.
@@ -418,7 +418,7 @@ class _ConstOpMixin(object) {
     """
         Call getelementptr on this pointer constant.
         """
-    def gep(self: _ConstOpMixin, indices: any) -> object {
+    def gep(self: _ConstOpMixin, indices: any) -> FormattedConstant {
         if not isinstance(self.type, types.PointerType) {
             raise TypeError(
                 ("can only call gep() on pointer constants, not '%s'" % (self.type, ))
@@ -443,10 +443,20 @@ class _ConstOpMixin(object) {
     """
 class Value(object) {
     has type: types.Type,
+        is_owned: bool = False,
         jac_loc: str = "",
         jac_signed: bool = False,
         jac_env_struct: str | None = None,
         na_tuple_owned: list[bool] | None = None;
+
+    @property
+    def pointee_type(self: Value) -> types.Type {
+        ty = self.type;
+        if not isinstance(ty, types._TypedPointerType) {
+            raise TypeError(f"Value has no typed pointee: {ty}");
+        }
+        return ty.pointee;
+    }
 
     def get_reference(self: Value) -> str {
         raise NotImplementedError;
@@ -910,7 +920,11 @@ class GlobalVariable(GlobalValue) {
     }
 
     def init(
-        self: GlobalVariable, module: any, typ: any, name: any, addrspace: any = 0
+        self: GlobalVariable,
+        module: any,
+        typ: types.Type,
+        name: any,
+        addrspace: any = 0
     ) -> object {
         assert isinstance(typ, types.Type);
         super.init(module, typ.as_pointer(addrspace), name=name);
@@ -918,6 +932,7 @@ class GlobalVariable(GlobalValue) {
         self.initializer = None;
         self.unnamed_addr = False;
         self.global_constant = False;
+        self.thread_local = False;
         self.addrspace = addrspace;
         self.align = None;
         self.parent.add_global(self);
@@ -939,6 +954,13 @@ class GlobalVariable(GlobalValue) {
         }
         if self.storage_class {
             buf.append((self.storage_class + " "));
+        }
+        # LLVM grammar puts the thread-local model between the storage class
+        # and unnamed_addr; a bare `thread_local` selects the general-dynamic
+        # model, which every target we emit for accepts (the wasm backend
+        # strips it to a plain global when the module has no atomics).
+        if self.thread_local {
+            buf.append("thread_local ");
         }
         if self.unnamed_addr {
             buf.append("unnamed_addr ");
@@ -1115,7 +1137,7 @@ class Function(GlobalValue) {
         super.init(module, ftype.as_pointer(), name=name);
         self.ftype = ftype;
         self.scope = _utils.NameScope();
-        self.blocks = [];
+        self.blocks: list[Block] = [];
         self.attributes = FunctionAttributes();
         self.args = `tuple([Argument(self, t) for t in ftype.args]);
         self.return_value = ReturnValue(self, ftype.return_type);
@@ -1129,12 +1151,12 @@ class Function(GlobalValue) {
     }
 
     @property
-    def entry_basic_block(self: Function) -> object {
+    def entry_basic_block(self: Function) -> Block {
         return self.blocks[0];
     }
 
     @property
-    def basic_blocks(self: Function) -> object {
+    def basic_blocks(self: Function) -> list[Block] {
         return self.blocks;
     }
 

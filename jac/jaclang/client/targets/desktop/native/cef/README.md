@@ -1,12 +1,14 @@
 # Jac-native CEF binding
 
 The CEF (Chromium Embedded Framework) binding for `jac-desktop` provides a
-consistent Chromium rendering engine across all platforms. Use the
-`cef` client target (`jac build --client cef`).
+consistent Chromium rendering engine across all platforms. A `desktop` app
+selects it with `[desktop] engine = "cef"` in `jac.toml`; `jac build <app>` and
+`jac run <app>` then build and launch the CEF shell
+([`cef_shell.jac`](../../cef_shell.jac)) instead of the OS webview.
 
 ## Architecture
 
-The `cef` host is a single `jac nacompile` binary. There is **no C
+The `cef` host is a single `jac build --native` binary. There is **no C
 shim**: the CEF vtables and glue are written in Jac-native (`*.jac`) and
 compiled directly. libpython is **not** used to talk to Chromium; it only
 embeds a minimal CPython runtime for the loopback HTTP server.
@@ -70,14 +72,14 @@ with entry {                       # generated host.jac
 }
 ```
 
-### Comparison with the native `desktop` target
+### Comparison with the native webview shell
 
-Both targets boot through the same runtime module (`native/host_boot.jac` --
+Both shells boot through the same runtime module (`native/host_boot.jac` --
 plugins, in-process dispatch, loopback server + `oauth_broker`), and both
-compile a generated `host.jac` via `jac nacompile`. They differ only in
+compile a generated `host.jac` via `jac build --native`. They differ only in
 the renderer:
 
-| | Native (`desktop`) | CEF (`cef`) |
+| | Native webview (`engine = "native"`) | CEF (`engine = "cef"`) |
 |--|-------------------|---------------------|
 | Renderer FFI | Jac `na` → `libwebview.so` | Jac `na` → `libcef.so` + `libcef_dispatch.so` |
 | Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` in `cef_dispatch.jac` (V8 globals) |
@@ -98,11 +100,11 @@ the renderer:
 
 ## Prerequisites
 
-On first `cef` build the pipeline fetches the CEF distribution and compiles the
+On the first build with `engine = "cef"` the pipeline fetches the CEF distribution and compiles the
 native pieces automatically (all in Jac -- see `desktop_build.jac`; `build.jac`
 is the standalone entry). You need:
 
-- `jac` on `PATH` (the native pieces compile with `jac nacompile`, **no gcc**;
+- `jac` on `PATH` (the native pieces compile with `jac build --native`, **no gcc**;
   the download + SHA-1 verify + unpack run in-process via the Python stdlib, so
   **no `curl`**)
 - `patchelf` (optional) -- the Jac native linker already emits an `$ORIGIN`
@@ -134,5 +136,5 @@ Without setuid, the host passes `--no-sandbox` (OK for dev).
 - **Bootstrap JS injection**: the `on_context_created` handler sets
   `window.__JAC_DESKTOP__ = true` and `window.__JAC_BROKER__ = '/__jac'` on the
   V8 global object before any page scripts execute (the CEF equivalent of the
-  native target's `webview_init(BOOTSTRAP_JS)`).
+  webview shell's `webview_init(BOOTSTRAP_JS)`).
 - `cache_path` controls CEF profile/localStorage persistence.

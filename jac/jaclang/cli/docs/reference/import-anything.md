@@ -227,7 +227,7 @@ import from "libgeometry.so" {
 
 ## Crossing codespaces
 
-A single file can mix all three codespaces, and imports can reach *across* the boundary. Placement is inferred: importing a server walker or `def:pub` function into client code is just a plain import, and the compiler rewrites each call into an HTTP request automatically. A server-to-server microservice boundary is declared in config instead -- list the provider module in `[scale.microservices.routes]` and imports of it lower to service RPC stubs.
+A single file can mix all three codespaces, and imports can reach *across* the boundary. Placement is inferred: importing a server walker or `def:pub` function into client code is just a plain import, and the compiler rewrites each call into an HTTP request automatically. Between two server-side apps the same rule holds: import a walker or `def:pub` function that another app owns and the import lowers to a typed-async bridge stub -- `await` it -- with no import form and no routes table. Which app owns what is declared in `jac.toml` under `[apps]` (see [Workspaces & Apps](apps.md)).
 
 ```jac
 # Import a server walker into client code -- calls become HTTP requests.
@@ -299,7 +299,7 @@ jac check --parse_only myfile.jac   # syntax only -- works for sv, cl, and na
 jac check myfile.jac                # full type-check (server / client code)
 ```
 
-`--parse_only` is the universally safe check for all three codespaces. For **native (`na`) code that calls C libraries**, the most reliable verification is to compile it -- `jac run myfile.jac` or `jac nacompile myfile.jac` -- since the native backend, not the general type checker, owns C-ABI coercion.
+`--parse_only` is the universally safe check for all three codespaces. For **native (`na`) code that calls C libraries**, the most reliable verification is to compile it -- `jac run myfile.jac` or `jac build --native myfile.jac` -- since the native backend, not the general type checker, owns C-ABI coercion.
 
 If you have the [`jac mcp`](mcp.md) server connected, the `check_syntax` and `validate_jac` tools do the same thing from your AI assistant.
 

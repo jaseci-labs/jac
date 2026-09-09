@@ -195,7 +195,6 @@ test "health endpoint returns service summary" {
 }
 
 test "/healthz/live returns 200 always (liveness, no drain check)" {
-    import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -207,17 +206,16 @@ test "/healthz/live returns 200 always (liveness, no drain check)" {
         assert resp.status_code == 200;
         assert resp.json()["status"] == "alive";
 
-        start_drain(10.0);
+        gw.drain.start("test");
         resp2 = client.get("/healthz/live");
         assert resp2.status_code == 200;
     } finally {
-        reset_drain();
+        gw.drain.reset();
     }
 }
 
 
 test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
-    import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -229,7 +227,7 @@ test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
         assert resp.status_code == 200;
         assert resp.json()["status"] == "ready";
 
-        start_drain(10.0);
+        gw.drain.start("test");
         resp2 = client.get("/healthz/ready");
         assert resp2.status_code == 503 , (
             "readiness must 503 during drain so kube-proxy removes "
@@ -239,7 +237,7 @@ test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
         assert body["ready"] is False;
         assert body["status"] == "draining";
     } finally {
-        reset_drain();
+        gw.drain.reset();
     }
 }
 
@@ -1238,13 +1236,6 @@ test "health endpoint does not require auth" {
 }
 
 test "gateway drain 503s new requests with Retry-After + envelope" {
-    import from jaclang.scale.runtime.lifecycle.drain {
-        reset_drain,
-        start_drain,
-        is_draining
-    }
-    reset_drain();
-
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -1255,28 +1246,25 @@ test "gateway drain 503s new requests with Retry-After + envelope" {
     resp = client.get("/health");
     assert resp.status_code == 200;
 
-    start_drain(10.0);
-    assert is_draining();
+    gw.drain.start("test");
+    assert gw.drain.draining;
 
     resp = client.get("/health");
     assert resp.status_code == 503;
-    assert resp.headers.get("Retry-After") == "2";
+    assert resp.headers.get("Retry-After") == "1";
 
     body = resp.json();
     assert body["ok"] == False;
     assert body["error"]["code"] == "SERVICE_UNAVAILABLE";
-    assert body["error"]["service"] == "__gateway__";
+    assert "__gateway__" in body["error"]["message"];
     assert "draining" in body["error"]["message"];
 
-    reset_drain();
+    gw.drain.reset();
     resp = client.get("/health");
     assert resp.status_code == 200;
 }
 
 test "gateway drain does not burn metrics labels on 503d requests" {
-    import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
-    reset_drain();
-
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -1284,28 +1272,25 @@ test "gateway drain does not burn metrics labels on 503d requests" {
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
 
-    start_drain(5.0);
+    gw.drain.start("test");
     resp = client.get("/health");
     assert resp.status_code == 503;
     assert "x-trace-id" not in {k.lower() for k in resp.headers.keys()};
 
-    reset_drain();
+    gw.drain.reset();
 }
 
 
 obj _FakeScaleConfig {
     has _cors: dict = {};
 
-    def get_microservices_config -> dict {
+    def get_gateway_config -> dict {
         return {
-            "enabled": True,
             "gateway_port": 8000,
             "gateway_host": "0.0.0.0",
-            "drain_timeout_seconds": 10.0,
-            "routes": {},
-            "services": {},
+            "rate_limit": {},
             "cors": self._cors,
-            "client": {"entry": "", "dist_dir": "", "base_route": "/"}
+            "tracing": {}
         };
     }
 
@@ -1420,7 +1405,6 @@ test "CORS simple request echoes Allow-Origin on the response" {
 
 
 test "CORS preflight still responds during drain (headers reachable on 503)" {
-    import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
     def build -> object {
         reg = ServiceRegistry();
         gw = MicroserviceGateway(registry=reg);
@@ -1439,8 +1423,7 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
 
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
-    reset_drain();
-    start_drain(5.0);
+    gw.drain.start("test");
     try {
         resp = client.options(
             "/health",
@@ -1458,7 +1441,7 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
         assert resp2.headers.get("access-control-allow-origin")
             == "http://app.example.com";
     } finally {
-        reset_drain();
+        gw.drain.reset();
     }
 }
 
@@ -1472,12 +1455,20 @@ test "http_forward_timeout falls back to 30s default when config read fails" {
 obj _TimeoutStubCfg {
     has data: dict[str, any];
 
-    def get_microservices_config -> dict[str, any] {
-        return self.data;
+    def get_gateway_config -> dict[str, any] {
+        return {
+            k: v
+            for (k, v) in self.data.items()
+            if k != "apps"
+        };
+    }
+
+    def get_app_scale_config(app_name: str) -> dict[str, any] {
+        return dict(self.data.get("apps", {}).get(app_name, {}));
     }
 }
 
-test "http_forward_timeout precedence: per-service > global > default" {
+test "http_forward_timeout precedence: per-app > gateway > default" {
     import from jaclang.scale.runtime.context.util { http_forward_timeout }
     import jaclang.scale.config.config_loader as cfg_mod;
 
@@ -1486,9 +1477,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda { _TimeoutStubCfg(
-                data={"http_forward_timeout": 45.0, "services": {}}
-            ); }
+            lambda { _TimeoutStubCfg(data={"http_forward_timeout": 45.0, "apps": {}}); }
         );
         assert http_forward_timeout(None) == 45.0;
         assert http_forward_timeout("any_service") == 45.0;
@@ -1499,7 +1488,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
             lambda { _TimeoutStubCfg(
                 data={
                     "http_forward_timeout": 45.0,
-                    "services": {"llm_app": {"http_forward_timeout": 300.0}}
+                    "apps": {"llm_app": {"http_forward_timeout": 300.0}}
                 }
             ); }
         );
@@ -1510,7 +1499,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
             cfg_mod,
             "get_scale_config",
             lambda { _TimeoutStubCfg(
-                data={"services": {"llm_app": {"http_forward_timeout": 120.0}}}
+                data={"apps": {"llm_app": {"http_forward_timeout": 120.0}}}
             ); }
         );
         assert http_forward_timeout("llm_app") == 120.0;
@@ -1522,7 +1511,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
             lambda { _TimeoutStubCfg(
                 data={
                     "http_forward_timeout": 45.0,
-                    "services": {"llm_app": {"rpc_timeout": 120.0}}
+                    "apps": {"llm_app": {"rpc_timeout": 120.0}}
                 }
             ); }
         );
@@ -1830,12 +1819,12 @@ test "identity fallthrough POST is delivered exactly once" {
             [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
         );
         resp = client.post(
-            "/user/verify-identity", json={"token": "secret", "identity": "x"}
+            "/user/send-verification", json={"token": "secret", "identity": "x"}
         );
 
         total = (
-            hits_a.get("POST /user/verify-identity", 0)
-            + hits_b.get("POST /user/verify-identity", 0)
+            hits_a.get("POST /user/send-verification", 0)
+            + hits_b.get("POST /user/send-verification", 0)
         );
         assert total == 1 , (
             f"credential-bearing body must reach exactly one service, reached {total}"

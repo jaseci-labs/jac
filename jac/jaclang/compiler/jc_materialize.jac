@@ -1,6 +1,5 @@
 import from c { def memcpy(dst: bytes, src: int, n: u64) -> int;  }
 import from c { def osp_adj_pairs(origin: int, dir: int) -> list[int];  }
-import from c { def osp_graph_wipe -> int;  }
 import from c { def PyType_GenericAlloc(t: int, n: int) -> int;  }
 import from c { def PyObject_SetAttr(o: int, k: int, v: int) -> int;  }
 import from c { def PyObject_GetAttr(o: int, k: int) -> int;  }
@@ -30,7 +29,39 @@ glob CODE_SKIP: int = 0,
      CODE_OBJ: int = 6,
      CODE_NATLIST: int = 7,
      CODE_UNION: int = 8,
-     CODE_OPTENUM: int = 9;
+     CODE_OPTENUM: int = 9,
+     CODE_NATDICT: int = 10;
+
+obj ValueRow {
+    has code: int,
+        tag: int,
+        child: int,
+        key_off: int,
+        data_off: int,
+        order_off: int;
+}
+
+obj ContainerCopy {
+    has owner: int,
+        key: int,
+        value: int,
+        layout: int;
+}
+
+glob _VALUES: dict[int, ValueRow] = {};
+
+def:pub jc_reg_value(
+    index: int,
+    code: int,
+    tag: int,
+    child: int,
+    key_off: int,
+    data_off: int,
+    order_off: int
+) -> int {
+    _VALUES[index] = ValueRow(code, tag, child, key_off, data_off, order_off);
+    return 0;
+}
 
 obj FieldRow {
     has key_h: int,
@@ -224,7 +255,8 @@ obj Mz {
         lst_l: list[int] = [],
         lst_i: list[int] = [],
         lst_t: list[int] = [],
-        skipped: int = 0;
+        skipped: int = 0,
+        containers: list[ContainerCopy] = [];
 }
 
 glob _LAST: list[Mz] = [];
@@ -234,6 +266,58 @@ def _enqueue(m: Mz, h: int, hint: int) {
         m.q.append(h);
         m.q_hint.append(hint);
     }
+}
+
+def _enqueue_value(m: Mz, h: int, layout: int) {
+    if h == 0 {
+        return;
+    }
+    row = _VALUES[layout];
+    if row.code == CODE_OBJ {
+        _enqueue(m, h, row.tag);
+    } elif row.code == CODE_NATLIST or row.code == CODE_NATDICT {
+        n = _peek64(h);
+        data = _peek64(h + row.data_off);
+        order = _peek64(h + row.order_off) if row.code == CODE_NATDICT else 0;
+        for i in range(n) {
+            slot = _peek64(order + i * 8) if row.code == CODE_NATDICT else i;
+            _enqueue_value(m, _peek64(data + slot * 8), row.child);
+        }
+    }
+}
+
+def _copy_value(m: Mz, h: int, layout: int) -> int {
+    if h == 0 {
+        Py_IncRef(_K.none_h);
+        return _K.none_h;
+    }
+    row = _VALUES[layout];
+    if row.code == CODE_OBJ {
+        obj_h = m.map.get(h, 0) or _K.none_h;
+        Py_IncRef(obj_h);
+        return obj_h;
+    }
+    if row.code == CODE_STR {
+        return PyUnicode_FromString(h);
+    }
+    n = _peek64(h);
+    data = _peek64(h + row.data_off);
+    out = PyDict_New() if row.code == CODE_NATDICT else PyList_New(n);
+    keys = _peek64(h + row.key_off) if row.code == CODE_NATDICT else 0;
+    order = _peek64(h + row.order_off) if row.code == CODE_NATDICT else 0;
+    for i in range(n) {
+        slot = _peek64(order + i * 8) if row.code == CODE_NATDICT else i;
+        value = _copy_value(m, _peek64(data + slot * 8), row.child);
+        if row.code == CODE_NATDICT {
+            key = PyUnicode_FromString(_peek64(keys + slot * 8));
+            PyDict_SetItem(out, key, value);
+            Py_DecRef(key);
+            Py_DecRef(value);
+        } else {
+            PyList_SetItem(out, i, value);
+        }
+    }
+    return out;
 }
 
 def _defer_ref(m: Mz, o: int, k: int, t: int, hint: int) {
@@ -369,6 +453,12 @@ def _copy_fields(m: Mz, row: ClassRow, h: int, o: int) {
                 _set_enum(o, fr.key_h, fr.enum_h, _ld64s(buf, fr.off + 8));
             } else {
                 PyObject_SetAttr(o, fr.key_h, _K.none_h);
+            }
+        } elif code == CODE_NATDICT {
+            value = _ld64u(buf, fr.off);
+            if value != 0 {
+                m.containers.append(ContainerCopy(o, fr.key_h, value, fr.aux_tag));
+                _enqueue_value(m, value, fr.aux_tag);
             }
         }
     }
@@ -574,6 +664,9 @@ def _run(start_h: int, start_hint: int, do_edges: int) -> int {
         _visit(m, h, hint);
     }
     _patch_refs(m);
+    for copy in m.containers {
+        _set_fresh(copy.owner, copy.key, _copy_value(m, copy.value, copy.layout));
+    }
     if do_edges != 0 {
         for h in m.map {
             if m.map[h] != 0 {
@@ -660,8 +753,4 @@ def:pub jc_mz_dispose -> int {
         _LAST.pop();
     }
     return 0;
-}
-
-def:pub jc_graph_wipe -> int {
-    return osp_graph_wipe();
 }

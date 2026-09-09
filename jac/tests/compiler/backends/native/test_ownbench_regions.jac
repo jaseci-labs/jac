@@ -26,30 +26,24 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { native_memory_flags, python_run }
 
 glob OWNBENCH = str(Path(__file__).resolve().parents[4] / "examples" / "ownbench"),
      MODES = ["rc", "cycles"];
 
-"""Compile `src` under a gc mode; assert success."""
+"""Build `src` under a memory profile spelled as a legacy gc mode; assert success."""
 def _nacompile(src: str, mode: str, out_bin: str) {
+    profile = {"none": "nogc", "rc": "rc", "cycles": "managed"}[mode];
     comp = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "nacompile",
-            src,
-            "--gc",
-            mode,
-            "-o",
-            out_bin
-        ],
+        [sys.executable, "-m", "jaclang", "build", "--native", src]
+            + native_memory_flags(profile)
+            + ["-o", out_bin],
         capture_output=True,
         text=True,
         timeout=300,
     );
     assert comp.returncode == 0 , (
-        f"nacompile --gc {mode} failed for {os.path.basename(src)}:"
+        f"jac build --native --memory {profile} failed for {os.path.basename(src)}:"
         f" exit={comp.returncode}\n"
         f"stdout: {comp.stdout[-600:] if comp.stdout else '(empty)'}\n"
         f"stderr: {comp.stderr[-600:] if comp.stderr else '(empty)'}"
@@ -139,16 +133,10 @@ test "rgraph: python backend matches native digest" {
         nb = os.path.join(tmp, "native");
         _nacompile(src, "cycles", nb);
         (nd, nm) = _run(nb, args);
-        proc = subprocess.run(
-            [sys.executable, "-m", "jaclang", "run", src] + args,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        );
-        assert proc.returncode == 0 , f"jac run failed: {proc.stderr[-400:]}";
+        py_output = python_run(src, args, timeout=300);
         py_lines = [
             ln
-            for ln in proc.stdout.splitlines()
+            for ln in py_output.splitlines()
             if not (ln.startswith("ns=") or ln.startswith("m:"))
         ];
         assert "\n".join(py_lines) == nd , (

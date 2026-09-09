@@ -14,6 +14,7 @@ glob logger = logging.getLogger(__name__);
 obj LocalDeployer(ServiceDeployer) {
     has registry: ServiceRegistry,
         target: str = "local",
+        dev_mode: bool = False,
         process_manager: ServiceProcessManager | None = None;
 
     def _ensure_pm -> ServiceProcessManager;

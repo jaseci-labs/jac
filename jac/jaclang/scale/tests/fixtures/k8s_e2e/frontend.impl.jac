@@ -96,12 +96,12 @@ impl app.handleSignup -> None {
     loading = True;
     result = await jacSignup(authUsername, authPassword);
     loading = False;
-    if result["success"] {
+    if result.success {
         isLoggedIn = True;
         authUsername = "";
         authPassword = "";
     } else {
-        error = result["error"] if result["error"] else "Signup failed";
+        error = result.error if result.error else "Signup failed";
     }
 }
 

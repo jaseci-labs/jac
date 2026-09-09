@@ -21,3 +21,19 @@ It covers the full workflow:
 For a guided tour of the codebase itself -- how the repository is laid out,
 where the compiler, runtime, and CLI live, and how to find your way to the
 code you want to change -- see the [Codebase Guide](codebase-guide.md).
+
+## Writing documentation and agent skills
+
+Human documentation and agent skills serve different reading patterns:
+
+| Material | Write for | Include |
+|---|---|---|
+| Tutorial | A learner completing a task | Prerequisites, a small runnable step, explanation, expected behavior, and a recovery checkpoint |
+| Reference | A reader resolving a specific question | Definitions, supported syntax, constraints, failure behavior, and focused examples |
+| Agent skill | An assistant implementing a task | A short task-trigger description, necessary syntax and invariants, specific pitfalls, and validation commands |
+
+Use direct technical prose. Explain what a construct does before giving its design motivation. Qualify guarantees by execution context and avoid universal claims about other languages, libraries, or model correctness. Research terminology belongs in background pages unless it helps explain the immediate task.
+
+Keep one detailed source for a rule or pattern. A skill can summarize the necessary constraint and point to a reference section through `jac guide`; do not duplicate a long catalog in its entrypoint. Preserve diagnostic codes and exceptions that change the correct implementation. Compression should reduce irrelevant reading, not remove information needed to avoid a known error.
+
+When updating examples, distinguish complete programs from fragments and intentional errors. Check links and navigation, parse example code, and exercise representative complete programs. Parsing alone is not evidence that a tutorial runs correctly. For troubleshooting, diagnose the selected source, app, storage, and error before suggesting a reset; name the data affected by any destructive operation.

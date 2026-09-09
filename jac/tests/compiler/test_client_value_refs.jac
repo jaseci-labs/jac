@@ -77,7 +77,7 @@ test "calls to the same endpoint still bridge over RPC" {
     (prog, mod) = build_fixture("infer_value_ref_call.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     js = mod.gen.js or "";
-    assert '__jacCallFunction("push_tag", {"tag": "x"})' in js , (
+    assert '__jacCallFunction("push_tag", {"tag": "x"},' in js , (
         f"the call-site rewrite still carries Jac's calling convention; got:\n{js}"
     );
 }

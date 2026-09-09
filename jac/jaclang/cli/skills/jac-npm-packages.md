@@ -1,6 +1,6 @@
 ---
 name: jac-npm-packages
-description: How to add npm packages to jac.toml and import them in client `.jac` files, plus DOM/value refs with `Ref[T]` fields, ref forwarding, and React hooks (useCallback, useMemo). Load when a task uses third-party npm libraries or needs a ref. This covers CONSUMING npm packages - to PUBLISH a Jac package to npm, see `jac-packaging`.
+description: Install and consume npm libraries in client Jac, including refs and hooks. Use for third-party client imports; packaging covers publishing.
 ---
 
 > **jac-shadcn projects** (has `[jac-shadcn]` in jac.toml): the template ships only `clsx`, `tailwind-merge`, and `tw-animate-css` in `[dependencies.npm]`. Each shadcn component's own peer deps (radix-ui, etc.) are added automatically when you run `jac install --shadcn <component>` - don't add those by hand. Any *other* npm package (charts, icons, ...) you still add yourself, as below.
@@ -20,7 +20,7 @@ Declare all packages in `jac.toml` before running `jac install` (or use `jac ins
 "@hugeicons/react" = "*"
 "@hugeicons/core-free-icons" = "*"
 "lucide-react" = "*"
-"radix-ui" = "^1.4.3"
+"radix-ui" = "^1.6.7"
 "class-variance-authority" = "^0.7.1"
 ```
 
@@ -65,22 +65,39 @@ def:pub TextInput() -> JsxElement {
 
 ## Ref forwarding (parents pointing refs at YOUR component)
 
-A component opts into receiving a ref by declaring a **trailing parameter typed `Ref`** - it lowers to React's `forwardRef((props, ref) => ...)`:
+**`ref` is an ordinary prop.** The client runtime is React 19, so a compiled component receives `ref` in its props like any other. The compiler never threads it onto an element for you - a ref reaches a DOM node only where you write `ref=` or spread a bundle that still carries it.
+
+**Props-bundle component (a single `props` param) - already receives it.** `props["ref"]` is set; spread the bundle (or a rest copy that does not exclude `ref`) onto the host tag:
 
 ```jac
-def:pub FancyInput(placeholder: str, ref: Ref[HTMLInputElement] = Ref()) -> JsxElement {
-    <input ref={ref} placeholder={placeholder} className="fancy" />
+# jac:ignore[W5015]
+def:pub FancyInput(props: dict) -> JsxElement {
+    <input className="fancy" {**props} />
+}
+```
+
+This is the shape every installed `components/ui/` primitive uses, and it is why they work as radix `asChild` anchors with no ref plumbing of their own. A `props` bundle emits **W5015** (`jac-cl-components` tells you to default to named params for that reason) - being a ref target is the intentional forwarding that warning leaves room for, so `# jac:ignore[W5015]` is expected on these and only these.
+
+**Named-param component - declare a trailing `Ref` param.** Named params destructure only what they declare, so `ref` is not among them. A trailing parameter typed `Ref` lowers to React's `forwardRef((props, ref) => ...)`:
+
+```jac
+def:pub FancyLabel(text: str, ref: Ref[HTMLElement] = Ref()) -> JsxElement {
+    <span ref={ref} className="fancy">{text}</span>
 }
 
-# Parent: point a ref at the component, reach the inner <input>
+# Parent: both shapes are pointed at the same way from the call site
 def:pub ParentForm() -> JsxElement {
     has inputRef: Ref[HTMLInputElement] = Ref();
-    <FancyInput ref={inputRef} placeholder="Type here" />
+    has labelRef: Ref[HTMLElement] = Ref();
+    <div>
+        <FancyInput ref={inputRef} placeholder="Type here" />
+        <FancyLabel ref={labelRef} text="Hello" />
+    </div>
 }
 ```
 
 - Only the **last** parameter qualifies, and it must be typed `Ref` / `Ref[T]` - the lowering keys on the type alone, so a `= Ref()` default changes nothing at runtime but keeps `jac check` happy at call sites that pass `ref=` as a JSX attribute. Params before it stay normal named props; `ref` is never folded into the props bundle. `forwardRef` is auto-imported.
-- **This is what makes a component usable as a radix `asChild` trigger child** (`DropdownMenuTrigger`, `Popover.Trigger`, ...) - the trigger attaches a positioning-anchor ref to its child; a component that can't forward it leaves the anchor null and the menu **silently never opens**. See `jac-shadcn-components`.
+- **This is what makes a component usable as a radix `asChild` trigger child** (`DropdownMenuTrigger`, `Popover.Trigger`, ...) - the trigger attaches a positioning-anchor ref to its child. A child that lands the ref nowhere leaves that anchor null, and the popper positions at the viewport origin instead of at the trigger. Nothing warns about it. See `jac-shadcn-components`.
 - Known `jac check` false positive (build + runtime verified correct): if the trailing ref param has NO default, every call site reports `E1102: requires prop 'ref'` (the `ref=` attribute is reserved and not counted toward params) - the `= Ref()` default above avoids this. Likewise `{**props}` of a `props: any` bundle into a host tag reports E1104; `jac build` succeeds and the emitted JS is correct.
 
 ## Other React hooks (direct import)

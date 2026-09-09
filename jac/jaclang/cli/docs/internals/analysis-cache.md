@@ -76,7 +76,46 @@ changes the hash and exactly the affected importers re-analyze.
 Comptime dependencies (`SEC_CTDEPS`) fold in through validity rather than
 through the hash: a changed comptime input invalidates the module's cache
 entirely, the interface is rebuilt, and the rebuild cascades only if the
-exported surface actually moved -- the same cutoff rule.
+exported surface actually moved -- the same cutoff rule. The inputs are
+whatever the comptime evaluation actually read: every `embed_file` target,
+plus the home module of every comptime binding it unfolded, every ability
+body it interpreted, every enum whose member values it read, every
+class-body constant it reached through an attribute, and every archetype
+whose `has` defaults it folded during construction. Each is attributed to
+the module whose expression started the evaluation, so a value that
+travelled through an intermediate producer lands on the consumer that baked
+it in. The interface hash cannot serve this role: a producer whose comptime
+value changed still exports the same interface, which is why folds need
+their own section rather than a `SEC_DEPS` row.
+
+Entries are keyed on a content digest, so a rebuild or a `touch` is not an
+invalidation. A row records whether the evaluator read the module's source
+or interpreted a body out of it, and only the body rows fold in the impl and
+test annex digests. That split is what keeps the dev loop cheap: editing an
+impl annex of a CLI command module does not rebuild `cli/manifest.jac`,
+while editing the declaration that holds the folded `SPEC_*` value does.
+
+A module that folds across a `comptime import` also ingests those producers
+with full trees rather than from `SEC_IFACE`: an interface carries the
+declared surface, not the initializer the fold has to evaluate. The
+ingestion runs at the top of the compile pipeline, so a producer already
+resident in the program's hub is taken as it stands; a hub entry that
+arrived as a hydrated interface earlier in the same process is therefore not
+upgraded, which is why the ingestion is seeded before analysis rather than
+on demand.
+
+Every carrier of a fold checks the same section, because any one of them
+that does not becomes the stale path:
+
+| Carrier | Rule |
+|---|---|
+| Module cache | `is_module_cache_valid` fails when a row's digest moved |
+| Unsealed precompiled bundle | served only while its rows are fresh; a sealed image is a frozen build and is served on its seal alone |
+| Bundle promoted into the module cache | the bundle's rows ride along on the promotion write, absolutized onto the package root |
+| Native dependency IR cache | `.ir_cache` is keyed on the module's own source, so its `.ir_meta` stamps the rows the fold read and a hit whose stamp moved is dropped and rebuilt |
+
+Bundle rows are stored relative to the package root so a relocated bundle
+still resolves them, and absolutized again on the way into a module cache.
 
 Dependency edges are recorded at the one seam every ingestion path goes
 through (`JacProgram.load_dependency_module`), attributed to the innermost
@@ -140,15 +179,44 @@ real-AST derivation (a pinned identity contract; their frontend is the
 cheap phase) -- they participate in `SEC_DEPS` through their content key
 instead, so a stub edit still re-analyzes its importers.
 
-The bootstrap and sealed-image paths are untouched: hydration never engages
-for the selfhost program (the compiler compiling itself), and the jac0 seed
-path does not know the cache exists. The firewall is the program, not the
-path: a regular program analyzing compiler-tree files (`jac check` over the
-jaclang tree) hydrates and replays like anything else, and those files are
-the most replay-stable of all -- every ENVKEY folds the compiler digest, so
-any compiler edit invalidates them wholesale. For the same reason,
-compiler-tree dependencies carry no `SEC_DEPS` edges: the ENVKEY already
-subsumes them.
+The compiler's own tree is an ordinary citizen of the cache. The selfhost
+program (the compiler compiling itself) hydrates and persists like any
+other program; the one bootstrap rule is readiness, not identity. While the
+interface codec's own modules (the type evaluator and the stubcat reader,
+writer and modiface) are not yet importable, or are mid-import, `eligible`
+answers no and those compiles run cold. The jac0 seed tier never goes
+through `compile()` and does not know the cache exists.
+
+Interfaces are encoded only inside analysis-driven closures: the compile
+at the root of the closure (the outermost `compile()` call) must be a
+`no_cgen` or `symtab_ir_only` compile. A codegen-driven closure, which is
+what an import or `jac run` produces, records `SEC_DEPS` and
+`SEC_PLACEMENT` for every module it touches and leaves `SEC_IFACE` to the
+first analysis-driven closure that asks for it. Encoding forces the type of
+every export, which cascades dependency ingestion through the reachable
+closure, so an import-order rebuild of the compiler must never trigger it;
+the first `jac check`, LSP open or precompile analysis produces each
+interface once and every later consumer hydrates.
+
+Dependency rows exempt only modules inside the compiler digest roots
+(`is_compiler_tree_path`): every ENVKEY folds the compiler digest, so any
+edit there invalidates every JIR wholesale and a row would be redundant.
+Non-root jaclang modules (cli, server, scale, byllm and friends) are mutable
+within a generation and carry rows like any other dependency. The registry
+reads the module cache first and the sealed image second, but a sealed
+image carries no analysis sections yet: the seal must be a pure function of
+content, and sections copied from a module cache depend on that cache's
+history. Producing them deterministically at seal time, by running the
+analysis frontier per unit, is the precompiler's follow-up.
+
+A Jac instance method's interface symbol carries an instance-method bit
+(`SYMF_INSTANCE_METHOD`), which the unbound-call check reads in place of the
+real `Ability` node, so `Cls.method(self, ...)` through a hydrated class
+binds like it does through a real tree while the member's type stays the
+self-less form the tree presents. The writer also materializes the members
+the evaluator would only discover lazily (an `init` parameter or a `self.x`
+assignment first looked up on a miss), so an interface never depends on
+which attributes an earlier closure happened to touch.
 
 ## The codegen lane
 

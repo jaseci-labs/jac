@@ -53,6 +53,9 @@ impl ServiceRouteTable.is_learned(service_name: str) -> bool {
 impl ServiceRouteTable.spec_due(
     service_entry: ServiceEntry, now: float, max_age: float
 ) -> bool {
+    if service_entry.status != ServiceStatus.HEALTHY {
+        return True;
+    }
     seen = self._spec_seen.get(service_entry.name);
     if seen is None {
         return True;

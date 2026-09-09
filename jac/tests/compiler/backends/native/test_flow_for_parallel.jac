@@ -1,6 +1,6 @@
 """Parallel flow for in zero-RC enforced builds (#7857 Phase D).
 
-An --assert-no-rc binary provably contains no refcount operations and no
+An binary provably contains no refcount operations and no
 OSP kernel, and the checker bans every unsound capture from a flow for
 body -- so threads are unconditionally safe there. The enforced build
 outlines the body, fans element ranges out over pthreads, and joins at
@@ -39,9 +39,9 @@ glob FIXTURE = os.path.join(
      ),
      RED_EXPECTED = "31712031\n14722\n975010\nend\n",
      MODE_FLAGS = {
-         "none": ["--enforce-nogc", "--gc", "none", "--assert-no-rc"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _compile_ir_path(path: str, gc_mode: str, enforce: bool) -> str {
@@ -66,7 +66,7 @@ def _run_matrix(fixture: str, expected: str) {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffr_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", fixture]
+                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -109,7 +109,7 @@ test "rc parallel output is byte-identical across thread counts" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "ffp_rc_par");
         res = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", FIXTURE]
+            [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
                 + MODE_FLAGS["rc"]
                 + ["-o", out_bin],
             capture_output=True,
@@ -133,7 +133,7 @@ test "shared-capture rc stress is identical across widths and modes" {
         for mode in ("rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffs_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", SHARED_FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", SHARED_FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -176,7 +176,7 @@ test "output is byte-identical across gc modes and thread counts" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"ffp_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

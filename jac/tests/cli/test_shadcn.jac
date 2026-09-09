@@ -438,3 +438,95 @@ test "component with a peer resolves to a matching underscored import" {
         assert 'import from ".input-group"' not in combobox_src;
     }
 }
+
+
+# ── AI-chat primitives synced from upstream (issue #8702) ──
+test "message component installs with no npm deps" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["message"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "message.jac").exists();
+    }
+}
+
+test "bubble resolves every cn- token against every style" {
+    # bubble.tsx is token-only (no inline utilities on its variants), so an
+    # unresolved cn-bubble-* token means the style CSS drifted and the
+    # component would ship unstyled. Check all eight styles, not just nova.
+    for style in ["lyra", "maia", "mira", "nova", "vega", "luma", "rhea", "sera"] {
+        data = resolve_single_component("bubble", style);
+        assert "error" not in data;
+        assert "cn-" not in data["content"] , f"bubble has unresolved cn- token in {style}";
+    }
+}
+
+test "attachment pulls in the button peer and pins its deps" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["attachment"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "attachment.jac").exists();
+        assert (ui_dir / "button.jac").exists();
+        attachment_src = (ui_dir / "attachment.jac").read_text();
+        assert "import from .button {" in attachment_src;
+        assert "-" not in (ui_dir / "attachment.jac").name;
+        toml_after = toml_path.read_text();
+        # Assert the resolved version ranges, not just the bare package names:
+        # a bare-name substring check passes even against an unpinned "*".
+        assert 'class-variance-authority = "^0.7.1"' in toml_after;
+        assert 'radix-ui = "^1.6.7"' in toml_after;
+    }
+}
+
+test "every declared cn-* rule is parseable in every style" {
+    # `len > 0` and a `cn-bubble` substring pass even when a style silently
+    # drops a rule (a stray comment before @apply, a missing semicolon). The
+    # invariant that actually holds: every `.cn-*` selector in the file must
+    # come back out of parse_style_css. `declared` is derived by splitting
+    # rule blocks first, independent of the selector shape parse_style_css
+    # keys on, so a selector list (`.cn-a, .cn-b { @apply ... }`) that the
+    # parser only half-sees still fails the assertion.
+    import from jaclang.cli.shadcn.shadcn_handler { _registry_dir }
+    import re;
+    styles_dir = _registry_dir() / "styles";
+    for style in ["lyra", "maia", "mira", "nova", "vega", "luma", "rhea", "sera"] {
+        css = (styles_dir / f"style-{style}.css").read_text();
+        css = re.sub(r'/\*.*?\*/', "", css, flags=re.DOTALL);
+        declared = set();
+        for (sel, body) in re.findall(r'([^{}]*)\{([^{}]*)\}', css) {
+            if "@apply" in body {
+                declared |= set(re.findall(r'\.(cn-[\w-]+)', sel));
+                assert body.count("@apply") == 1 , f"{style}: {sel.strip()} has >1 @apply, only the first resolves";
+            }
+        }
+        parsed = set(parse_style_css(style).keys());
+        assert declared == parsed , f"{style}: unparsed {declared - parsed}";
+    }
+}
+
+test "drawer and sheet keep their layout after style resolution" {
+    # Upstream moved the direction/positioning and enter-exit animation
+    # utilities out of the cn-drawer-content / cn-sheet-content tokens and into
+    # the component. Guard against a resolved component that has lost them.
+    for style in ["lyra", "maia", "mira", "nova", "vega", "luma", "rhea", "sera"] {
+        drawer = resolve_single_component("drawer", style)["content"];
+        assert "data-[vaul-drawer-direction=left]:left-0" in drawer , f"drawer lost edge positioning in {style}";
+        sheet = resolve_single_component("sheet", style)["content"];
+        assert "data-[side=right]:data-open:slide-in-from-right-10" in sheet , f"sheet lost its open animation in {style}";
+    }
+}

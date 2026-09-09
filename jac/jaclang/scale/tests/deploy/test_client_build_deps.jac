@@ -28,7 +28,7 @@ glob APP_DEP: str = "toposort",
 def _builder(project_dir: str, dry_run: bool = False) -> ManifestBuilder {
     mb = ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="shop", namespace="jb-shop"),
-        microservices_config={"client": {"entry": "main.jac"}},
+        client_entry="main.jac",
         dry_run=dry_run
     );
     mb.project_dir = project_dir;
@@ -44,7 +44,7 @@ def _project(dependencies: str, server_import: str) -> str {
         "jac.toml": (
             '[project]\nname = "shop"\nentry-point = "main.jac"\n\n'
             f"[dependencies]\n{dependencies}\n\n"
-            '[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\n'
+            '[dependencies.npm]\nreact = "^19.2.0"\nreact-dom = "^19.2.0"\n'
         ),
         "db.jac": (
             f"import {server_import};\n\n"

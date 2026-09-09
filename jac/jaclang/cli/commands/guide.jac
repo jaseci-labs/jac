@@ -24,6 +24,19 @@ comptime SPEC_GUIDE: CommandSpec = CommandSpec(
                  short="s"
              ),
              Arg.create(
+                 "section",
+                 short="",
+                 `default="",
+                 help="Print one section by slug or exact heading; requires a topic"
+             ),
+             Arg(
+                 name="sections",
+                 kind=ArgKind.OPTION,
+                 typ=bool,
+                 `default=False,
+                 help="List section headings and slugs without loading their text"
+             ),
+             Arg.create(
                  "export",
                  `default="",
                  help="Export all guides as a Claude Code skills directory at this path",
@@ -51,6 +64,8 @@ comptime SPEC_GUIDE: CommandSpec = CommandSpec(
          examples=[
              ("jac guide", "List every bundled guide and doc set"),
              ("jac guide jac-types", "Print the jac-types guide"),
+             ("jac guide jac-types --sections", "List sections before reading"),
+             ("jac guide jac-types --section pitfalls", "Read one section"),
              (
                  "jac guide reference/diagnostics",
                  "Print the bundled diagnostics reference"
@@ -72,5 +87,7 @@ def guide(
     search: str = "",
     export: str = "",
     nav: bool = False,
-    as_json: bool = False
+    as_json: bool = False,
+    section: str = "",
+    sections: bool = False
 ) -> int;

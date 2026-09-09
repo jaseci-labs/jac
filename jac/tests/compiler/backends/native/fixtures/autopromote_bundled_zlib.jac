@@ -1,5 +1,5 @@
 """Regular .jac (no `na {}` block, not a `.jac`) that imports a bundled
-na_stdlib module. Driven through `jac nacompile`, the file is auto-promoted to
+na_stdlib module. Driven through `jac build --native`, the file is auto-promoted to
 the native backend; the import must pull the bundled `zlib` module's IR (and its
 transitive `_zlib_native`) into the binary -- including each module's
 `__jac_glob_init_<safe>` initializer, which the entry point calls. If the

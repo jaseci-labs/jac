@@ -1,7 +1,7 @@
 """Native exponentiation (`**`) parity tests.
 
 Regression coverage for the power-lowering seam in
-`na_ir_gen/math.impl.jac` and the `int ** int` type contract in
+`na_ir_gen_pass.impl/math.impl.jac` and the `int ** int` type contract in
 `compiler/types/operations.jac`. Each case compiles a fixture that
 previously lowered to invalid/unsound IR and asserts the JIT result against
 CPython semantics: literal & dynamic exponents, builtin `pow`, `**=`, the

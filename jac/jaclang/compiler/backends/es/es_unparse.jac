@@ -34,6 +34,7 @@ obj JSCodeGenerator {
     def gen_method_definition(nd: es.MethodDefinition) -> str;
     def gen_property_definition(nd: es.PropertyDefinition) -> str;
     def gen_identifier(nd: es.Identifier) -> str;
+    def gen_raw_code(nd: es.RawCode) -> str;
     def gen_private_identifier(nd: es.PrivateIdentifier) -> str;
     def gen_literal(nd: es.Literal) -> str;
     def gen_this_expression(nd: es.ThisExpression) -> str;

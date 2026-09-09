@@ -4,9 +4,6 @@ version = "0.1.0"
 description = "Real-cluster e2e for jac-scale KEDA HTTP Add-on activation (#7403/#7421), deployed via jac.toml wiring (#7475)"
 entry-point = "app.jac"
 
-[serve]
-base_route_app = "app"
-
 [dev]
 
 [scale.kubernetes]

@@ -18,7 +18,8 @@ glob _LOCAL_FALLBACK_NOTE: str = (
 
 glob PSS_ENFORCE_LABEL: str = "pod-security.kubernetes.io/enforce",
      PSS_WARN_LABEL: str = "pod-security.kubernetes.io/warn",
-     PSS_SOURCE_LABEL: str = "jac-scale.jaseci.org/pss-enforce-source";
+     PSS_SOURCE_LABEL: str = "jac-scale.jaseci.org/pss-enforce-source",
+     NAMESPACE_OWNER_LABEL: str = "jac-scale.jaseci.org/owned-by";
 
 def default_pss_labels -> dict[str, str];
 
@@ -54,7 +55,9 @@ def delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
 ) -> None;
 
-def ensure_namespace_exists(namespace: str) -> None;
+def ensure_namespace_exists(namespace: str, owner: str) -> None;
+
+def namespace_is_owned(core_v1: client.CoreV1Api, namespace: str, owner: str) -> bool;
 
 def delete_namespace(namespace: str) -> None;
 

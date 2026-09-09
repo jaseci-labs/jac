@@ -46,6 +46,11 @@ def _select_handshake_headers(
             out[k] = v;
         }
     }
+    offered: str = client_headers.get("sec-websocket-protocol", "")
+        or client_headers.get("Sec-WebSocket-Protocol", "");
+    if offered {
+        out["Sec-WebSocket-Protocol"] = offered;
+    }
     out["X-Forwarded-For"] = ", ".join(xff + [peer]);
     return out;
 }
@@ -93,7 +98,8 @@ async def websocket_forward(
     client_ws: any,
     upstream_url: str,
     request_headers: dict[str, str],
-    timeout: int = 30
+    timeout: int = 30,
+    on_upstream: any = None
 ) -> None {
     ws_url: str = _to_ws_scheme(upstream_url);
     peer: str = client_ws.client_host or "unknown";
@@ -108,6 +114,10 @@ async def websocket_forward(
             await client_ws.close(code=1011);
         } except Exception {}
         return;
+    }
+    if on_upstream is not None {
+        ready: any = on_upstream;
+        await ready(upstream_ws.subprotocol);
     }
     try {
         await asyncio.gather(

@@ -1,21 +1,63 @@
 [project]
 name = "microservice-fixtures"
+default-app = "order_service"
 
-# This fixture is a self-contained set of sv-import/microservice modules used by
-# its own tests. The jac.toml marks it as a separate project so a discovery scan
-# anchored at the parent fixtures/ tree treats it as a hard boundary and does not
-# absorb these services into an unrelated entry app (e.g. the monolith test_api).
+# Every module in this fixture is its own file-rooted service app, so the
+# compiler classifies imports between them as service bridges and the tests
+# can stand each one up as a provider. A discovery scan anchored at the parent
+# fixtures/ tree treats this jac.toml as a hard boundary.
 
-# The routes table is the authoritative service cut (#7772): every provider
-# module these fixtures import across the boundary is declared here so the
-# compiler lowers those imports to service RPC stubs.
-[scale.microservices.routes]
-calculator_service = "/calculator"
-dispatcher_service = "/dispatcher"
-inventory_service = "/inventory"
-math_service = "/math"
-notify_service = "/notify"
-order_service = "/order"
-level_a = "/level-a"
-level_b = "/level-b"
-level_c = "/level-c"
+[apps.calculator_service]
+kind = "service"
+entry-point = "calculator_service.jac"
+route = "/calculator"
+
+[apps.dispatcher_service]
+kind = "service"
+entry-point = "dispatcher_service.jac"
+route = "/dispatcher"
+
+[apps.inventory_service]
+kind = "service"
+entry-point = "inventory_service.jac"
+route = "/inventory"
+
+[apps.math_service]
+kind = "service"
+entry-point = "math_service.jac"
+route = "/math"
+
+[apps.notify_service]
+kind = "service"
+entry-point = "notify_service.jac"
+route = "/notify"
+
+[apps.order_service]
+kind = "service"
+entry-point = "order_service.jac"
+route = "/order"
+
+[apps.level_a]
+kind = "service"
+entry-point = "level_a.jac"
+route = "/level-a"
+
+[apps.level_b]
+kind = "service"
+entry-point = "level_b.jac"
+route = "/level-b"
+
+[apps.level_c]
+kind = "service"
+entry-point = "level_c.jac"
+route = "/level-c"
+
+[apps.narrator_service]
+kind = "service"
+entry-point = "narrator_service.jac"
+route = "/narrator"
+
+[apps.story_service]
+kind = "service"
+entry-point = "story_service.jac"
+route = "/story"

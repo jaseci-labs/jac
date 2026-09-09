@@ -54,7 +54,8 @@ glob MAGIC: bytes = b"JSCAT004",
      SYMF_NA_REGION_HANDLE: int = 4,
      SYMF_NA_STACK_OK: int = 8,
      SYMF_HAS_DEFAULT: int = 16,
-     SYMF_DEFER: int = 32;
+     SYMF_DEFER: int = 32,
+     SYMF_INSTANCE_METHOD: int = 64;
 
 obj Header {
     has n_strings: int = 0,

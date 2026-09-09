@@ -49,22 +49,6 @@ def create_mcjit_compiler(
     Check the system allows execution of in-memory JITted functions.
     An exception is raised otherwise.
     """
-def check_jit_execution -> object {
-    errno = ffi.lib.LLVMPY_TryAllocateExecutableMemory();
-    if (errno != 0) {
-        raise OSError(
-            errno,
-            "cannot allocate executable memory. "
-            "This may be due to security restrictions on your "
-            "system, such as SELinux or similar mechanisms."
-        );
-    }
-}
-
-"""An ExecutionEngine owns all Modules associated with it.
-    Deleting the engine will remove all associated modules.
-    It is an error to delete the associated modules.
-    """
 # Engines whose code addresses have escaped to callers. A raw function
 # address (ctypes, interop thunks) stays callable only while the engine that
 # JIT'd it lives, and nothing on the Python side references the engine once
@@ -354,8 +338,6 @@ with entry {
     ffi.lib.LLVMPY_FinalizeObject.argtypes = [ffi.LLVMExecutionEngineRef];
     ffi.lib.LLVMPY_GetExecutionEngineTargetData.argtypes = [ffi.LLVMExecutionEngineRef];
     ffi.lib.LLVMPY_GetExecutionEngineTargetData.restype = ffi.LLVMTargetDataRef;
-    ffi.lib.LLVMPY_TryAllocateExecutableMemory.argtypes = [];
-    ffi.lib.LLVMPY_TryAllocateExecutableMemory.restype = c_int;
     ffi.lib.LLVMPY_GetFunctionAddress.argtypes = [ffi.LLVMExecutionEngineRef, c_char_p];
     ffi.lib.LLVMPY_GetFunctionAddress.restype = c_uint64;
     ffi.lib.LLVMPY_GetGlobalValueAddress.argtypes = [

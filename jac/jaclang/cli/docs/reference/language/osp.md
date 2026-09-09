@@ -759,6 +759,96 @@ with entry {
 }
 ```
 
+### Construction Expressions
+
+Use `graph { ... }` to build and capture a structure. Ordinary `++>` expressions
+keep their existing result semantics. Inside construction, a nested child
+attaches by its roots and a following connection continues from every tip.
+
+`graph` is a reserved keyword. To use that spelling as an identifier, prefix
+it with a backtick: `` `graph ``. Construction expressions can appear directly
+in block heads, for example `if graph { a; }.root { ... }`.
+
+```jac
+node Part { has name: str; }
+edge Next { has weight: int = 0; }
+
+with entry {
+    a = Part("a");
+    b = Part("b");
+    c = Part("c");
+    d = Part("d");
+    f = graph { a ++> [b, c] +>:Next(weight=1):+> d; };
+    assert f.root is a;
+    assert len(f.nodes) == 4;
+    assert len(f.edges) == 4;
+    assert f.tips == [d];
+}
+```
+
+This creates `a -> b`, `a -> c`, `b -> d`, and `c -> d`. Nesting instead
+expresses a child structure: `graph { a ++> [b ++> c]; }` creates `a -> b`
+and `b -> c`.
+
+The result is a `GraphFragment[T]`, where `T` describes its root nodes.
+Interior nodes may have different node types.
+
+| Property | Meaning |
+| --- | --- |
+| `roots: list[T]` | Entry nodes, in construction order |
+| `root: T` | The sole entry node; raises `ValueError` for zero or multiple roots |
+| `tips: list[Node]` | Nodes from which a subsequent connection continues |
+| `nodes: list[Node]` | Participating nodes, deduplicated by identity |
+| `edges: list[Edge]` | Captured edge instances, including adopted fragment edges |
+
+Helpers can return fragments for composition. Import the result type when
+annotating a helper:
+
+```jac
+import from jaclang.runtime.graph_fragment { GraphFragment }
+
+node Part { has name: str; }
+
+def child -> GraphFragment[Part] {
+    return graph { Part("child") ++> Part("grandchild"); };
+}
+
+with entry {
+    tree = graph { Part("parent") ++> [child(), Part("sibling")]; };
+    assert tree.root.name == "parent";
+    assert len(tree.nodes) == 4;
+}
+```
+
+Construction is synchronous and evaluates immediately, once, in source order.
+Await values or consume asynchronous iterables before entering the expression.
+Each connection creates its edges after evaluating its operands. A fan-out creates edges in
+source-major, then target order, with a fresh edge constructor evaluation for
+each endpoint pair. Nested construction therefore creates inner edges before
+its enclosing connections. Fragments adopt their existing node and edge
+identities; they never clone or replay a helper's construction.
+
+Lists and list comprehensions can describe fan-outs. Repeated references in a
+fan-out contribute one root and one tip per identity. Separate connection
+expressions can still create parallel edges. Multiple semicolon-separated
+expressions form a forest; `graph {}` produces an empty fragment.
+Conditional expressions preserve the selected branch's roots and tips and
+evaluate only that branch. Other expressions contribute their returned values;
+a helper that builds a subgraph should return a fragment to preserve its ports.
+
+Fragment membership is a construction record, not a live traversal or an
+ownership boundary. Subsequent graph edits do not change the record. Deleting
+an edge captured in `edges` uses ordinary `del` semantics. Construction does
+not add a transaction: a later failure does not roll back earlier mutations.
+The construction body has a local scope; pass a fragment's `.root` explicitly
+to an API that expects a node.
+An immediate `(graph { ... }).root` projection skips membership collection
+while preserving node construction and connection effects.
+
+Outward directed arrows (`++>` and `+>:Edge:+>`) are supported inside
+construction expressions. Incoming and undirected connects remain available
+as ordinary graph mutations. Graph fragments do not provide pattern matching.
+
 ### 4 Deleting Nodes and Edges
 
 ```jac
@@ -866,8 +956,8 @@ walker:priv DeleteWithChildren {
 |----------|-------------|
 | `jid(node)` | Get unique Jac ID of object |
 | `jobj(node)` | Get Jac object wrapper |
-| `grant(node, level=AccessLevel.READ)` | Open a node to every other user at a level of the ambient `AccessLevel` enum - `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` (no import) |
-| `revoke(node)` | Remove a `grant` |
+| `grant(node, level=AccessLevel.READ)` | Open a node to every other user at a level of the ambient `AccessLevel` enum - `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` (no import). Changing a node's grants is a write on the node: only a caller holding `WRITE` on it (its owner, the system root, or a root granted `WRITE`) may do so; anyone else gets a permission-denied diagnostic (a `PermissionError` under `JAC_STRICT_PERMISSIONS`) and nothing changes |
+| `revoke(node)` | Remove a `grant` (same `WRITE` requirement) |
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |

@@ -1,7 +1,7 @@
 impl LocalDeployer._ensure_pm -> ServiceProcessManager {
     if self.process_manager is None {
         self.process_manager = ServiceProcessManager(
-            registry=self.registry, deployer=self
+            registry=self.registry, deployer=self, dev_mode=self.dev_mode
         );
     }
     return self.process_manager;

@@ -21,10 +21,14 @@ glob FIXTURES = os.path.join(
 
 """Compile a .jac fixture and return the JIT engine."""
 def compile_native(
-    fixture: str, gc_mode: str | None = None
+    fixture: str, gc_mode: str | None = None, opt_level: int | None = None
 ) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    opts = CompileOptions(na_gc_mode=gc_mode) if gc_mode is not None else None;
+    opts = (
+        CompileOptions(na_gc_mode=gc_mode, opt_level=opt_level)
+            if (gc_mode is not None or opt_level is not None)
+            else None
+    );
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
@@ -33,12 +37,19 @@ def compile_native(
     return (eng, ir);
 }
 
+"""Count call sites of `name` in either printer's spelling (quoted or bare)."""
+def calls_to(body: str, name: str) -> int {
+    return body.count('@"' + name + '"(') + body.count("@" + name + "(");
+}
+
 """Slice one function's textual IR out of the module dump."""
 def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
     for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside and ln.startswith("define") and (('@"' + name + '"') in ln) {
+        if not inside
+            and ln.startswith("define")
+            and ((('@"' + name + '"') in ln) or (("@" + name + "(") in ln)) {
             inside = True;
         }
         if inside {
@@ -52,17 +63,37 @@ def fn_ir(ir: uni.Module, name: str) -> str {
     return "\n".join(out);
 }
 
-test "arena: region interior bump-allocates and bulk-frees, not __rc_alloc" {
+test "arena: every droppable construction consults the current region" {
     # Stack-eligible objects (like region_arena's Box) may still take the
-    # stack path inside an open; droppable types must route to the arena.
-    (eng, ir) = compile_native("region_dtor.jac");
+    # stack path; droppable types carry a region-alloc arm beside the heap
+    # arm, selected by the thread's current region at run time.
+    (eng, ir) = compile_native("region_dtor.jac", opt_level=0);
     body = fn_ir(ir, "dtor_order");
-    n_arena = body.count('call i8* @"__jac_region_alloc"');
-    assert n_arena == 3 , f"expected 3 arena allocs in dtor_order, found {n_arena}";
-    n_rc = body.count('call i8* @"__rc_alloc"');
-    assert n_rc == 0 , f"region interior must not hit __rc_alloc, found {n_rc}";
-    n_drop = body.count('call void @"__jac_region_drop"');
+    n_cur = calls_to(body, "__jac_region_current");
+    assert n_cur == 3 , f"expected 3 current-region reads in dtor_order, found {n_cur}";
+    n_arena = calls_to(body, "__jac_region_alloc");
+    assert n_arena == 3 , f"expected 3 region-alloc arms in dtor_order, found {n_arena}";
+    n_drop = calls_to(body, "__jac_region_drop");
     assert n_drop >= 1 , f"expected a region drop at the close, found {n_drop}";
+}
+
+test "dynamic extent: a helper called under an open allocates in the region" {
+    (eng, ir) = compile_native("region_callee_extent.jac");
+    scenario = get_func(eng, "scenario", ctypes.c_int64);
+    result = scenario();
+    assert result == 3 , f"scenario() == {result}, expected 3";
+    read_log = get_func(eng, "read_log", ctypes.c_int64);
+    log = read_log();
+    # both helper results live in r: hooks fire LIFO at r's drop, not at
+    # build()'s frame exit
+    assert log == 21 , f"helper allocations must drop with the handle: {log} != 21";
+}
+
+test "dynamic extent: flow bodies under an open join and tear down once" {
+    (eng, ir) = compile_native("region_flow_extent.jac");
+    scenario = get_func(eng, "scenario", ctypes.c_int64);
+    result = scenario();
+    assert result == 60 , f"scenario() == {result}, expected 60";
 }
 
 test "arena: anonymous open sums correctly through the JIT" {
@@ -162,11 +193,17 @@ test "R4: own rebox copies a string out of a region" {
 }
 
 test "a user archetype named Region shadows the builtin cleanly" {
-    (eng, ir) = compile_native("region_shadow.jac");
+    (eng, ir) = compile_native("region_shadow.jac", opt_level=0);
     body = fn_ir(ir, "shadowed");
-    n_new = body.count('call i8* @"__jac_region_new"');
+    n_new = calls_to(body, "__jac_region_new");
     assert n_new == 0 , f"user Region must not intercept arena setup: {n_new}";
     shadowed = get_func(eng, "shadowed", ctypes.c_int64);
     result = shadowed();
     assert result == 7 , f"shadowed() == {result}, expected 7";
+}
+
+test "nested functions preserve an event's active region" {
+    (eng, _) = compile_native("region_nested_event.jac");
+    scenario = get_func(eng, "scenario", ctypes.c_int64);
+    assert scenario() == 12;
 }

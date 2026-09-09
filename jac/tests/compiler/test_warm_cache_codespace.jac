@@ -15,6 +15,13 @@ discipline `get_ir_gen_sched` already kept) so no compile is ever the first to
 import one, a compile that still manages to re-enter itself says so out loud
 instead of degrading, and a probe failure that comes from the compiler's own
 source refuses to answer at all.
+
+A fourth law closes the cold-start hole (#8982 items 3 and 4): the modules a
+schedule loader pre-imports are declared as data, and a compile nested inside
+any of their imports runs on the bootstrap tier whichever import reached the
+module first, so the tier a compiler module is built with never depends on
+import order. When that tier cannot produce a module's bytecode, the retained
+failure names the dependency that was mid-import.
 """
 
 import os;
@@ -27,7 +34,18 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
-import from jaclang.compiler.driver.schedules { get_ir_gen_sched, get_symtab_ir_sched }
+import from jaclang.compiler.driver.schedules {
+    ANALYSIS_SCHED_DEPS,
+    CODEGEN_SCHED_DEPS,
+    IR_SCHED_DEPS,
+    get_analysis_sched,
+    get_ir_gen_sched,
+    get_py_code_gen,
+    get_symtab_ir_sched,
+    providers_of,
+    schedule_tier_reason
+}
+import from jaclang.compiler.driver.source_failures { bootstrap_tier_failure_details }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
     set_effective_default_codespace
@@ -151,6 +169,90 @@ test "the ir-gen schedule pre-imports the narrowing keys its passes reach" {
         );
     } finally {
         sys.modules["jaclang.compiler.expr_keys"] = saved_mod;
+    }
+}
+
+
+"""Mark the real module `name` as mid-import, as the importer does while its body runs."""
+def _with_in_flight(name: str, path: str) -> types.ModuleType {
+    saved = sys.modules[name];
+    sys.modules[name] = initializing_stub(path);
+    return saved;
+}
+
+
+test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
+    name = "jaclang.compiler.symbol_utils";
+    assert name in IR_SCHED_DEPS , "symbol_utils left the ir-gen dependency list";
+    saved = _with_in_flight(name, SYMBOL_UTILS);
+    try {
+        reason = schedule_tier_reason();
+        assert name in reason , f"tier reason does not name the module in flight: {reason!r}";
+        sched = get_ir_gen_sched();
+        assert "CfgSucc" not in providers_of(sched) , (
+            "the full ir-gen schedule was built while one of its dependencies was "
+            "mid-import; a pass reaching that module at run time re-enters it"
+        );
+        tail = [p.__name__ for p in get_py_code_gen()];
+        assert tail == ["JcirGenPass", "JcirBytecodeGenPass"] , tail;
+    } finally {
+        sys.modules[name] = saved;
+    }
+    assert schedule_tier_reason() == "" , "the tier reason outlived the import";
+    assert "CfgSucc" in providers_of(get_ir_gen_sched());
+}
+
+
+test "a silent internal compile failure names the dependency mid-import" {
+    victim = os.path.join(
+        os.path.dirname(str(jaclang.__file__)), "project", "config.jac"
+    );
+    assert bootstrap_tier_failure_details(victim) == "" , (
+        "no dependency is in flight, so there is nothing to explain"
+    );
+    name = "jaclang.compiler.symbol_utils";
+    saved = _with_in_flight(name, SYMBOL_UTILS);
+    try {
+        details = bootstrap_tier_failure_details(victim);
+    } finally {
+        sys.modules[name] = saved;
+    }
+    assert name in details and "bootstrap tier" in details , details;
+    assert "IR_SCHED_DEPS" in details , f"the fix is not named: {details}";
+}
+
+
+test "every scheduled pass and loader import is a declared schedule dependency" {
+    import from jaclang.bootstrap_manifest { is_seed_source }
+    `root = os.path.dirname(str(jaclang.__file__));
+
+    def seed(mod_name: str) -> bool {
+        rel = mod_name.removeprefix("jaclang.").replace(".", os.sep) + ".jac";
+        return is_seed_source(rel);
+    }
+    schedules = {
+        "ir-gen": (get_ir_gen_sched(), IR_SCHED_DEPS),
+        "analysis": (get_analysis_sched(), ANALYSIS_SCHED_DEPS),
+        "codegen": (get_py_code_gen(native=False), CODEGEN_SCHED_DEPS)
+    };
+    for (origin, (passes, deps)) in schedules.items() {
+        for dep in deps {
+            mod = sys.modules.get(dep);
+            assert mod is not None , f"{origin}: loader did not import {dep}";
+            assert not getattr(mod.__spec__, "_initializing", False) , (
+                f"{origin}: {dep} came back half-initialized"
+            );
+        }
+        for p in passes {
+            owner = p.__module__;
+            covered = seed(owner)
+                or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
+            assert covered , (
+                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
+                "seed module nor in the schedule's dependency list; a compile "
+                "reached from its import would run the schedule that needs it"
+            );
+        }
     }
 }
 

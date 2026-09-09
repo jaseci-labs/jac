@@ -201,3 +201,72 @@ test "an explicitly lowered shared-root level is respected" {
         Jac.set_shared_root_resolver(None);
     }
 }
+
+
+test "a reader's first touch of the commons writes nothing and warns nothing" {
+    # The scheduled-task shape: the guest root already sits in the store
+    # (hash stamped, access enforced) and the first principal to touch
+    # root.shared in this process is NOT its owner. The CONNECT floor is
+    # policy in the access check, not a grant the toucher writes, so the
+    # request carries no denial and the commons' stored level is untouched.
+    with TemporaryDirectory() as tmpdir {
+        client = make_shared_client(tmpdir);
+        client.register_user("alice", "secret123");
+        client.close();
+        client2 = make_shared_client(tmpdir);
+        assert client2.login("alice", "secret123").ok;
+        read = client2.post("/walker/read_notes", json={});
+        assert read.ok;
+        warnings = _as_any(read.data).get("warnings") or [];
+        assert warnings == [] , (
+            f"a reader's touch of the commons produced a denial: {warnings}"
+        );
+        assert read.data["reports"][0] == [];
+        note = client2.post("/walker/leave_note", json={"text": "hello"});
+        assert note.ok;
+        assert (_as_any(note.data).get("warnings") or []) == [] , (
+            f"attaching to the commons produced a denial: {note.data}"
+        );
+        level = client2.post("/walker/shared_level", json={});
+        assert level.ok;
+        assert level.data["reports"][0] in ("NONE", "NO_ACCESS") , (
+            f"a reader materialized the floor as a stored grant: {level.data}"
+        );
+        client2.close();
+        client3 = make_shared_client(tmpdir);
+        anon = client3.post("/walker/read_notes", json={});
+        assert anon.ok;
+        assert anon.data["reports"][0] == ["hello"] , "commons note not visible after reload";
+        stored = client3.post("/walker/shared_level", json={});
+        assert stored.ok;
+        assert stored.data["reports"][0] in ("NONE", "NO_ACCESS") , (
+            f"the floor was persisted as a grant: {stored.data}"
+        );
+        client3.close();
+        Jac.set_shared_root_resolver(None);
+    }
+}
+
+
+test "a typed hop back onto the commons sees it under the floor" {
+    # The commons' CONNECT floor is runtime policy; a hop typed to Root is
+    # resolved by the runtime rather than by the store's ACL pushdown, so a
+    # reader walking note -> root lands on the shared root.
+    with TemporaryDirectory() as tmpdir {
+        client = make_shared_client(tmpdir);
+        client.register_user("alice", "secret123");
+        note = client.post("/walker/leave_note", json={"text": "homed"});
+        assert note.ok;
+        shared_id = note.data["reports"][0];
+        client.close();
+        client2 = make_shared_client(tmpdir);
+        client2.register_user("bob", "secret123");
+        home = client2.post("/walker/note_home", json={"text": "homed"});
+        assert home.ok;
+        assert home.data["reports"][0] == [shared_id] , (
+            f"typed hop onto the commons was filtered: {home.data}"
+        );
+        client2.close();
+        Jac.set_shared_root_resolver(None);
+    }
+}

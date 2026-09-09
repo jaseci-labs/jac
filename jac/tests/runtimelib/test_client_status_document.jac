@@ -20,6 +20,21 @@ import from jaclang.testing.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
+"""Records every message the logger accepts, before any handler sees it.
+
+A logger filter runs at emit time on the logger object itself, so an empty
+tap separates "nothing was ever emitted to this logger" from "a handler or
+its stream dropped the record" -- the two causes an empty buffer conflates.
+"""
+obj _EmitTap {
+    has seen: list[str] = [];
+
+    def filter(record: any) -> bool {
+        self.seen.append(record.getMessage());
+        return True;
+    }
+}
+
 def _as_any(v: any) -> any {
     return v;
 }
@@ -276,7 +291,14 @@ test "the /cl/__error__ endpoint logs a rendered diagnostic with a Jac location"
         buf = io.StringIO();
         sink = logging.StreamHandler(buf);
         logger = logging.getLogger("jaclang.client_errors");
+        tap = _EmitTap();
         logger.addHandler(sink);
+        # The sink must see the record whatever level the root logger was left
+        # at, so the level is pinned here and restored below.
+        old_level = logger.level;
+        logger.setLevel(logging.ERROR);
+        logger.addFilter(tap);
+        attached_to = id(logger);
         _error_rate_limiter._seen = {};
         _error_rate_limiter._count = 0;
         client = JacTestClient.from_file(
@@ -304,10 +326,16 @@ test "the /cl/__error__ endpoint logs a rendered diagnostic with a Jac location"
             );
             sink.flush();
             logged = buf.getvalue();
+            live = logging.getLogger("jaclang.client_errors");
             assert "error[E7003]" in logged , (
                 f"diagnostic never reached the sink; response={body}; "
-                f"logger disabled={logger.disabled} level={logger.level} "
-                f"handlers={logger.handlers} propagate={logger.propagate}; "
+                f"emitted={len(tap.seen)} records={tap.seen}; "
+                f"logger id at attach={attached_to} at assert={id(live)}; "
+                f"sink still attached={sink in live.handlers}; "
+                f"disabled={live.disabled} level={live.level} "
+                f"effective={live.getEffectiveLevel()} "
+                f"global_disable={logging.root.manager.disable}; "
+                f"handlers={live.handlers} propagate={live.propagate}; "
                 f"buffer={logged!r}"
             );
             assert "--> app.jac:2" in logged , logged;
@@ -316,7 +344,9 @@ test "the /cl/__error__ endpoint logs a rendered diagnostic with a Jac location"
             assert "  Stack: TypeError" in logged , logged;
             assert "at app (app.jac:2:" in logged , logged;
         } finally {
+            logger.removeFilter(tap);
             logger.removeHandler(sink);
+            logger.setLevel(old_level);
             client.close();
             _reset_client_globals();
         }

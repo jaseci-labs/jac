@@ -2,65 +2,70 @@
 
 A graph built from fresh node locals, connected only among themselves,
 and consumed by an expression-statement spawn is provably unrooted: the
-conservative may-reach-root scan stamps it, and codegen wraps the extent
-in an implicit anonymous region -- arena allocation for the nodes, graph
-rows retired via the region keyring, bulk free after the spawn. Any
-contact with root or an escape declines the inference. Output stays
-byte-identical across gc modes either way.
+conservative may-reach-root scan proves it, and RegionInferPass wraps the
+extent in a real `in Region() { }` open -- arena allocation for the nodes,
+graph rows retired at the handle's death, bulk free after the spawn, and
+the same drop hooks on the Python backend. Any contact with root or an
+escape declines the inference. Output stays byte-identical across gc modes
+either way.
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import sys;
 import tempfile;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.passes.rc_facts_pass { loop_body_locals }
+import jaclang.compiler.frontend.unitree as uni;
 
 glob FIXDIR = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      MODE_FLAGS = {
-         "none": ["--gc", "none"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _compile_mod(fixture: str) -> any {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
             file_path=os.path.join(FIXDIR, fixture),
-            options=CompileOptions(aot_mode=True, na_gc_mode="rc")
+            options=CompileOptions(aot_mode=True, memory_profile="rc")
         );
         assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
         return ir;
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
-test "unrooted spawn stamps one anonymous-region group" {
+test "unrooted spawn desugars to one anonymous open" {
     ir = _compile_mod("anon_region_spawn.jac");
-    assert len(ir.anon_region_open) == 1 , ir.anon_region_open;
-    assert len(ir.anon_region_close) == 1 , ir.anon_region_close;
-    assert list(ir.anon_region_locals.values()) == [["a", "b", "c"]] , ir.anon_region_locals;
+    opens = ir.get_all_sub_nodes(uni.OpenStmt);
+    assert len(opens) == 1 , opens;
+    assert isinstance(opens[0].target, uni.FuncCall) , opens[0].target;
+    assert loop_body_locals(opens[0].body) == ["a", "b", "c"] , loop_body_locals(
+        opens[0].body
+    );
 }
 
 test "root contact declines the inference" {
     ir = _compile_mod("anon_region_rooted.jac");
-    assert not ir.anon_region_open , ir.anon_region_open;
+    assert not ir.get_all_sub_nodes(uni.OpenStmt) , ir.get_all_sub_nodes(uni.OpenStmt);
 }
 
 test "escaping member declines the inference" {
     ir = _compile_mod("anon_region_escape.jac");
-    assert not ir.anon_region_open , ir.anon_region_open;
+    assert not ir.get_all_sub_nodes(uni.OpenStmt) , ir.get_all_sub_nodes(uni.OpenStmt);
 }
 
 test "inferred region drops LIFO at close in every gc mode" {
@@ -73,7 +78,8 @@ test "inferred region drops LIFO at close in every gc mode" {
                     sys.executable,
                     "-m",
                     "jaclang",
-                    "nacompile",
+                    "build",
+                    "--native",
                     os.path.join(FIXDIR, "anon_region_spawn.jac")
                 ]
                     + MODE_FLAGS[mode]
@@ -101,9 +107,10 @@ test "declined fixtures still run correctly" {
                     sys.executable,
                     "-m",
                     "jaclang",
-                    "nacompile",
+                    "build",
+                    "--native",
                     os.path.join(FIXDIR, fixture),
-                    "--gc",
+                    "--memory",
                     "rc",
                     "-o",
                     out_bin

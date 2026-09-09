@@ -77,8 +77,13 @@ def _registry_entries -> dict[str, JacTypeEntry] {
 obj JacTypeRegistry {
     has _entries: dict[str, JacTypeEntry],
         _builtin_names: frozenset[str],
+        _non_retaining_builtins: frozenset[str],
         _exception_parents: dict[str, str | None],
         _shapes: dict[str, ScalarShape];
+
+    def is_non_retaining_builtin(name: str) -> bool {
+        return name in self._non_retaining_builtins;
+    }
 
     def shape_of(name: str) -> ScalarShape | None {
         return self._shapes.get(name, None);
@@ -229,6 +234,25 @@ obj JacTypeRegistry {
     }
 }
 
+def _non_retaining_builtin_set -> frozenset[str] {
+    return frozenset(
+        {
+            "print",
+            "len",
+            "repr",
+            "str",
+            "int",
+            "float",
+            "bool",
+            "isinstance",
+            "type",
+            "id",
+            "hash",
+            "region_of"
+        }
+    );
+}
+
 def _builtin_name_set -> frozenset[str] {
     names: set[str] = {
         "wrapping_add",
@@ -262,7 +286,10 @@ def _builtin_name_set -> frozenset[str] {
         "new",
         "unsafe_html",
         "managed",
+        "take",
+        "swap",
         "Region",
+        "region_of",
         "repr",
         "format",
         "ascii",
@@ -315,6 +342,7 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
          _entries=_registry_entries(),
          _shapes=_shape_table(),
          _builtin_names=_builtin_name_set(),
+         _non_retaining_builtins=_non_retaining_builtin_set(),
          _exception_parents={
              "BaseException": None,
              "Exception": "BaseException",

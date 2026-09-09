@@ -248,7 +248,7 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 
 1. Go to **GitHub Actions** -> **Release**
 2. Click **Run workflow**, set `action` to `create-pr`, and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
-3. The workflow bumps the version in the root `jac.toml` (the single source of truth) and opens a PR from a `release/*` branch
+3. The workflow bumps the version in the root `jac.toml` (the single source of truth), updates `jac/examples/jaclang_org/jac.toml` to pin that exact Jac version, and opens a PR from a `release/*` branch
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
@@ -262,6 +262,7 @@ After the release PR is merged, the **Release** workflow triggers automatically:
 2. The workflow then handles everything automatically:
    - Tags `v<version>` at the release PR's merge commit, and builds that exact commit (the build is pinned to the sha, not to the tag), then creates/updates the GitHub Release
    - Builds the native `jac` binary per platform (Linux x86_64 + aarch64 at a pinned glibc 2.17 floor, macOS arm64), smoke-tests each on real hardware, verifies the Linux glibc floors, and attaches the binaries + checksums to the Release
+   - The Intel-Mac binary (macos-x86_64) is not part of the release matrix; it is a manual lane, see the troubleshooting table below
 
 Every step is idempotent: re-running a partial release converges instead of erroring (a tag already on the release commit is left in place, the release is updated in place, and asset uploads clobber).
 
@@ -277,3 +278,4 @@ A tag that points at a *different* commit is a refusal, not a re-run. The tag is
 | Binaries missing from the release | Re-run **Build jac native binaries** via `workflow_dispatch` with the release tag (e.g. `v0.30.4`); it rebuilds and re-attaches idempotently. An empty tag builds artifacts only (a dry run that attaches nothing) |
 | Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from the root `jac.toml` |
 | `Refusing to release vX.Y.Z: the tag already exists and points at a different commit` | The version was cut once already, from a commit that is not the one you are releasing now (a reverted release, say). Either bump the version and release that instead, or, **only if `vX.Y.Z` was never published** (its Release is still a draft with no assets), retire the stale tag and draft with `gh release delete vX.Y.Z --cleanup-tag --yes` and re-run. Never move a tag whose release was published: its assets and notes describe the old commit, and users who installed it keep that build |
+| Need an Intel-Mac (macos-x86_64) binary for a release | The leg is manual: it is off the release matrix (broken since #8805, and it sat on every release's critical path on the slowest runners while shipping nothing). Dispatch **Build jac native binaries** with `only: macos-x86_64` and `tag: vX.Y.Z`; it builds that one leg and attaches the asset to the already-published release. `plan` refuses `only` + `tag` for any blocking leg, so this lane can never publish a partial release. A weekly probe in nightly.yml (`intel-mac-probe`) builds the leg with no tag so it keeps a signal |

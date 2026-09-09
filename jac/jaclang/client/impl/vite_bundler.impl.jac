@@ -35,14 +35,30 @@ impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
         config = get_config();
         if config is not None {
             config_root = config.project_root;
-            if config_root is not None
-                and config_root.resolve() == self.project_dir.resolve() {
-                return config.get_client_dir();
+            if config_root is not None {
+                cfg_root = config_root.resolve();
+                cur_dir = self.project_dir.resolve();
+                if cur_dir == cfg_root or cfg_root in cur_dir.parents {
+                    return config.get_client_dir();
+                }
             }
         }
     } except ImportError {}
 
     return self.project_dir / '.jac' / 'client';
+}
+
+impl ViteBundler._client_app_dir(self: ViteBundler) -> Path {
+    client_dir = self._get_client_dir();
+    try {
+        import from jaclang.project.config { get_config }
+        import from jaclang.client.targets.registry { client_workspace_app }
+        app = client_workspace_app(get_config());
+        if app is not None {
+            return client_dir / app.name;
+        }
+    } except ImportError {}
+    return client_dir;
 }
 
 impl ViteBundler.create_package_json(
@@ -395,6 +411,22 @@ impl ViteBundler._format_define_entries(
     return ',\n'.join(entries);
 }
 
+def _proxy_entry(key: str, api_port: int) -> str {
+    return (
+        f'\n      "{key}": {{'
+        f'\n        target: "http://localhost:{api_port}",'
+        '\n        changeOrigin: true,'
+        '\n      },'
+    );
+}
+
+
+def _exact_proxy_key(path: str) -> str {
+    import re;
+    return '^' + re.escape(path).replace('\\', '\\\\') + '$';
+}
+
+
 impl ViteBundler._generate_vite_config_content(
     self: ViteBundler,
     is_dev: bool,
@@ -402,11 +434,10 @@ impl ViteBundler._generate_vite_config_content(
     api_base_url: str,
     base_path: str,
     api_port: int = 8000,
-    for_mobile_dev: bool = False,
-    mobile_hmr_host: str = "",
-    mobile_hmr_port: int = 0,
     for_desktop_dev: bool = False,
-    desktop_broker_port: int = 0
+    desktop_broker_port: int = 0,
+    api_paths: (list[str] | None) = None,
+    client_paths: (list[str] | None) = None
 ) -> str {
     build_dir = self._get_client_dir();
     vite_config_data = self.config_loader.get_vite_config();
@@ -417,15 +448,21 @@ impl ViteBundler._generate_vite_config_content(
         entry_relative = entry_file.as_posix();
     }
 
-    if entry_relative.endswith('/build/main.js') {
+    entry_dir = entry_relative.rpartition('/')[0];
+    if is_dev {
+        compiled_base = (self._client_app_dir() / 'compiled').relative_to(
+            build_dir
+        ).as_posix();
+    } elif entry_relative.endswith('/build/main.js') {
         compiled_base = entry_relative[:-13] + '/compiled';
+    } elif entry_dir.rpartition('/')[2] == 'compiled' {
+        compiled_base = entry_dir;
     } else {
         compiled_base = 'compiled';
     }
     compiled_utils_relative = f"{compiled_base}/client_runtime.js";
     compiled_pwa_relative = f"{compiled_base}/pwa_runtime.js";
     compiled_desktop_relative = f"{compiled_base}/desktop_api.js";
-    compiled_wasm_host_relative = f"{compiled_base}/wasm_host.js";
     compiled_ui_relative = f"{compiled_base}/client_mobui.js";
     compiled_assets_relative = f"{compiled_base}/assets";
 
@@ -469,11 +506,18 @@ impl ViteBundler._generate_vite_config_content(
         desktop_alias_str = f'\n      "@jac/desktop": path.resolve(buildDir, "{compiled_desktop_relative}"),';
     }
 
-    wasm_host_alias_str = '';
-    if os.path.isfile(
-        os.path.join(str(self._get_client_dir()), compiled_wasm_host_relative)
-    ) {
-        wasm_host_alias_str = f'\n      "@jac/wasm_host": path.resolve(buildDir, "{compiled_wasm_host_relative}"),';
+    import from jaclang.client.runtime_source { JAC_VIRTUAL_MODULE_SOURCES }
+    virtual_alias_str = '';
+    for (module_name, source_name) in JAC_VIRTUAL_MODULE_SOURCES.items() {
+        if module_name in ('mobui', 'pwa') {
+            continue;
+        }
+        compiled_relative = f"{compiled_base}/{source_name}.js";
+        if os.path.isfile(
+            os.path.join(str(self._get_client_dir()), compiled_relative)
+        ) {
+            virtual_alias_str += f'\n      "@jac/{module_name}": path.resolve(buildDir, "{compiled_relative}"),';
+        }
     }
     plugins = [];
     plugin_imports = [];
@@ -529,27 +573,39 @@ impl ViteBundler._generate_vite_config_content(
             if (isinstance(server_config, dict) and server_config)
             else '';
 
-        reload_enabled: bool = for_mobile_dev or for_desktop_dev;
-        if for_mobile_dev and mobile_hmr_host {
-            hmr_host = mobile_hmr_host;
-            hmr_port = mobile_hmr_port or 5173;
-            mobile_hmr_str = (
-                f'\n    hmr: {{ protocol: "ws", host: "{hmr_host}", port: {hmr_port}, clientPort: {hmr_port}, overlay: false }},'
-            );
-        } elif reload_enabled {
-            mobile_hmr_str = "\n    hmr: { overlay: false },";
-        } else {
-            mobile_hmr_str = "";
-        }
+        reload_enabled: bool = for_desktop_dev;
+        hmr_str = "\n    hmr: { overlay: false }," if reload_enabled else "";
         compiled_reload_plug_in: str = "\n    jacCompiledReload(),"
             if reload_enabled
             else "";
-        if for_mobile_dev and mobile_hmr_host {
-            host_value = f'"{mobile_hmr_host}"';
-        } elif for_desktop_dev {
-            host_value = '"127.0.0.1"';
-        } else {
-            host_value = 'true';
+        host_value = '"127.0.0.1"' if for_desktop_dev else 'true';
+        claimed = {p for p in (client_paths or [])};
+        builtin_proxy_str: str = "";
+        for prefix in DEV_PROXY_PREFIXES {
+            if prefix in claimed {
+                continue;
+            }
+            builtin_proxy_str += _proxy_entry(prefix, api_port);
+        }
+        declared_seen: set[str] = set();
+        declared_proxy_str: str = "";
+        for declared_path in (api_paths or []) {
+            if not declared_path.startswith('/') or declared_path == '/' {
+                continue;
+            }
+            if '{' in declared_path {
+                key = declared_path.split('{')[0].rstrip('/');
+                if not key or key in claimed {
+                    continue;
+                }
+            } else {
+                key = _exact_proxy_key(declared_path);
+            }
+            if key in declared_seen {
+                continue;
+            }
+            declared_seen.add(key);
+            declared_proxy_str += _proxy_entry(key, api_port);
         }
         desktop_server_extras: str = "";
         desktop_proxy_str: str = "";
@@ -567,7 +623,7 @@ impl ViteBundler._generate_vite_config_content(
         mobile_compiled_block: str = (
             r'''
 
-// When Jac recompiles, push full-reload to the WebView (Capacitor does not watch project files)
+// When Jac recompiles, push full-reload to the webview (the desktop shell does not watch project files)
 function sendFullReload(server) {
   let sent = false;
   // Broadcast over the websocket first (works for both Vite 5 and Vite 6 clients).
@@ -597,7 +653,7 @@ function jacCompiledReload() {
   return {
     name: "jac-compiled-reload",
     configureServer(server) {
-      const compiled = path.resolve(buildDir, "compiled");
+      const compiled = path.resolve(buildDir, __JAC_COMPILED_DIR__);
       try { server.watcher.add(compiled); } catch (e) {}
       let timer = null;
       const fire = (file) => {
@@ -625,6 +681,9 @@ function jacCompiledReload() {
 '''
                 if reload_enabled
                 else ""
+        );
+        mobile_compiled_block = mobile_compiled_block.replace(
+            '__JAC_COMPILED_DIR__', json.dumps(compiled_base)
         );
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
@@ -836,58 +895,13 @@ export default defineConfig({{
         "**/*.db-shm",
       ],
     }},
-    proxy: {{
-      "/walker": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/function": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/user": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/introspect": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/static": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/docs": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/openapi.json": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/admin": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/graph": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/redoc": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      // Backend serves project assets/ dir in dev; Vite owns /assets/* only at build time.
-      "/assets": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},{desktop_proxy_str}
+    proxy: {{{builtin_proxy_str}{declared_proxy_str}{desktop_proxy_str}
     }},
-{server_config_str}{mobile_hmr_str}{desktop_server_extras}
+{server_config_str}{hmr_str}{desktop_server_extras}
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{wasm_host_alias_str}{framework_alias_str}{ui_alias_str}
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{virtual_alias_str}{framework_alias_str}{ui_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -979,7 +993,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{wasm_host_alias_str}{framework_alias_str}{ui_alias_str}
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{virtual_alias_str}{framework_alias_str}{ui_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
@@ -997,11 +1011,10 @@ impl ViteBundler.create_vite_config(
     api_base_url_override: str = "",
     is_dev: bool = False,
     api_port: int = 8000,
-    for_mobile_dev: bool = False,
-    mobile_hmr_host: str = "",
-    mobile_hmr_port: int = 0,
     for_desktop_dev: bool = False,
-    desktop_broker_port: int = 0
+    desktop_broker_port: int = 0,
+    api_paths: (list[str] | None) = None,
+    client_paths: (list[str] | None) = None
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
@@ -1017,11 +1030,10 @@ impl ViteBundler.create_vite_config(
         api_base_url=api_base_url,
         base_path=base_path,
         api_port=api_port,
-        for_mobile_dev=for_mobile_dev,
-        mobile_hmr_host=mobile_hmr_host,
-        mobile_hmr_port=mobile_hmr_port,
         for_desktop_dev=for_desktop_dev,
-        desktop_broker_port=desktop_broker_port
+        desktop_broker_port=desktop_broker_port,
+        api_paths=api_paths,
+        client_paths=client_paths
     );
     config_path.write_text(config_content, encoding='utf-8');
     if is_dev {
@@ -1111,12 +1123,14 @@ impl ViteBundler.init(
     minify: bool = False,
     config_path: Optional[Path] = None
 ) {
-    self.project_dir = project_dir;
+    import from jaclang.project.config { find_project_root }
+    project_root = find_project_root(project_dir);
+    self.project_dir = project_root[0] if project_root else project_dir;
     self.minify = minify;
     self.config_path = config_path;
-    self.config_loader = JacClientConfig(project_dir);
+    self.config_loader = JacClientConfig(self.project_dir);
 
-    self.output_dir = output_dir or (self._get_client_dir() / 'dist');
+    self.output_dir = output_dir or (self._client_app_dir() / 'dist');
 
     self.dev_server_port = 0;
 }
@@ -1354,6 +1368,9 @@ def _dev_head_scripts -> str {
 
 impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None {
     index_html = build_dir / 'index.html';
+    entry_relative = (self._client_app_dir() / 'compiled' / '_entry.js').relative_to(
+        self._get_client_dir()
+    ).as_posix();
     index_content = '''<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -1393,7 +1410,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
         window.$RefreshReg$ = function() {};
         window.$RefreshSig$ = function() { return function(type) { return type; }; };
         window.__jac_refresh_installed__ = true;
-        return import("/compiled/_entry.js");
+        return import(__JAC_DEV_ENTRY__);
       }).then(function() {
         // entry loaded cleanly: clears the client slot in /__build_status
         try { import.meta.hot.send("jac:client-ready"); } catch(e) {}
@@ -1407,12 +1424,15 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
         });
       });
     } else {
-      import("/compiled/_entry.js").catch(function() {});
+      import(__JAC_DEV_ENTRY__).catch(function() {});
     }
     </script>
   </body>
 </html>
 ''';
+    index_content = index_content.replace(
+        '__JAC_DEV_ENTRY__', json.dumps('/' + entry_relative)
+    );
     if head_scripts := _dev_head_scripts() {
         index_content = index_content.replace('  </head>', f'{head_scripts}  </head>');
     }

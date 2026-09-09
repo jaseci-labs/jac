@@ -38,10 +38,49 @@ test "fstring escape brace" {
     assert not had_error;
 }
 
+test "graph object lookup remains distinct from ownership borrows" {
+    import from jaclang.compiler.frontend.constant { OwnershipKind }
+    (module, errors) = rd_parse(
+        "with entry { a = &(id); b = & id; c = &value; d = &mut value; }", ""
+    );
+    assert not errors;
+    expressions = module.get_all_sub_nodes(uni.UnaryExpr);
+    assert [expr.ownership for expr in expressions]
+        == [
+            OwnershipKind.NONE,
+            OwnershipKind.NONE,
+            OwnershipKind.BORROW,
+            OwnershipKind.MUT_BORROW
+        ];
+}
+
 test "parser fam" {
     (module, had_error) = rd_parse(load_fixture("fam.jac"), "");
     assert not had_error;
 }
+
+test "a comprehension iterable is any operator expression short of the ternary" {
+    # #8982 item 8: the iterable stopped at an atomic chain, so `[h] + rows`
+    # after `in` read as a stray `]`.
+    for src in [
+        "with entry { widths = [len(r) for r in [header] + rows]; }",
+        "with entry { errs = [e for e in prog.errors_had + prog.warnings_had]; }",
+        "with entry { s = ', '.join(str(e) for e in a + b); }",
+        "with entry { d = {k: v for k in d1 + d2}; }",
+        "with entry { st = {x for x in a or b}; }",
+        "with entry { ys = [x for x in xs |> f]; }",
+        "with entry { zs = [x for x in xs if x > 1 if x < 9]; }",
+        "with entry { ts = [x for x in (a if c else b)]; }"
+    ] {
+        (module, had_error) = rd_parse(src, "");
+        assert not had_error , src;
+    }
+    (module, _) = rd_parse("with entry { w = [len(r) for r in [h] + rows]; }", "");
+    compr = [n for n in module.get_all_sub_nodes(uni.InnerCompr)];
+    assert len(compr) == 1;
+    assert isinstance(compr[0].collection, uni.BinaryExpr) , type(compr[0].collection);
+}
+
 
 test "staticmethod checks out" {
     (module, had_error) = rd_parse(load_fixture("staticcheck.jac"), "");

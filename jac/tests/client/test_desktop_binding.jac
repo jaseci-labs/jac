@@ -1,7 +1,7 @@
 """Dependency-free tests for the Jac-native webview binding.
 
 Compile-only: these need ONLY the jac toolchain - no WebKitGTK, no libpython-dev,
-no display. `jac nacompile` records the needed shared libraries (DT_NEEDED) and an
+no display. `jac build --native` records the needed shared libraries (DT_NEEDED) and an
 $ORIGIN runpath without dlopening them, so a host that binds libwebview.so (or
 libpython) links cleanly with nothing installed. This catches binding-signature
 drift, wrong/missing externs, wrong soname, and codegen regressions.
@@ -78,7 +78,7 @@ def _compile_host(host_src: str, extra_files: dict[str, str] = None) -> tuple {
             f.write(host_src);
         }
         result = subprocess.run(
-            [jac, "nacompile", "host.jac", "-o", "out"],
+            [jac, "build", "--native", "host.jac", "-o", "out"],
             cwd=tmp,
             capture_output=True,
             text=True,

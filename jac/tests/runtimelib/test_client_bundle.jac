@@ -25,9 +25,9 @@ test "base builder compiles a client module to JS and extracts its manifest surf
     mod_file = module.__file__;
     assert mod_file is not None;
     source_path = Path(mod_file.replace(".py", ".jac")).resolve();
-    (js, mod) = builder._compile_to_js(source_path);
-    assert js;  # ES output was generated
-    manifest = mod.gen.client_manifest if mod else None;
+    artifact = builder._compile_to_js(source_path);
+    assert artifact.js;  # ES output was generated
+    manifest = artifact.manifest;
     exports = builder._extract_client_exports(manifest);
     assert isinstance(exports, list);
     globals_map = builder._extract_client_globals(manifest, module);

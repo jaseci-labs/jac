@@ -48,3 +48,28 @@ test "python backend: objects made outside any open never register" {
     }
     assert log == [4];
 }
+
+node Item {
+    has v: int = 0;
+
+    def drop {
+        log.append(self.v);
+    }
+}
+
+walker Sum {
+    can add with Item entry {
+        visit [-->];
+    }
+}
+
+test "python backend: an inferred anonymous open runs drop hooks LIFO too" {
+    log.clear();
+    a = Item(v=1);
+    b = Item(v=2);
+    c = Item(v=3);
+    a ++> b;
+    b ++> c;
+    Sum() spawn a;
+    assert log == [3, 2, 1] , f"log={log}";
+}

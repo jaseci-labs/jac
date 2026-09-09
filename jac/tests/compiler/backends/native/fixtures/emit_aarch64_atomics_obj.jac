@@ -16,7 +16,7 @@ property only aarch64 CI could check into one every run checks.
 
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 import from jaclang.compiler.backends.native.shared_emit { init_object_codegen }
-import from jaclang.cli.commands.nacompile { _finalize_native_ir }
+import from jaclang.cli.commands.native_build { _finalize_native_ir }
 
 glob TRIPLE = "aarch64-unknown-linux-gnu",
      EM_AARCH64 = 183;

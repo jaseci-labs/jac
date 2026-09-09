@@ -8,6 +8,10 @@ bindings, and non-scalar inner elements stay fenced (E1406).
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import sys;
 import tempfile;
@@ -19,21 +23,17 @@ glob OWNFIELD_DIR = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "nogc_ownfield"
      ),
      MODE_FLAGS = {
-         "none": ["--enforce-nogc", "--gc", "none", "--assert-no-rc"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 def _compile(path: str) -> tuple {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
-            path,
-            options=CompileOptions(
-                aot_mode=True, na_gc_mode="none", nogc_enforce_all=True
-            )
+            path, options=CompileOptions(aot_mode=True, memory_profile="nogc")
         );
         codes = [
             a.code.code
@@ -45,11 +45,7 @@ def _compile(path: str) -> tuple {
         text = str(ir.gen.llvm_ir) if ir is not None and ir.gen.llvm_ir else "";
         return (codes, text);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -66,7 +62,7 @@ test "nested list output stays byte-identical across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"nl_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", fixture]
+                [sys.executable, "-m", "jaclang", "build", "--native", fixture]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

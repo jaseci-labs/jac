@@ -4,10 +4,13 @@ import struct;
 import from jaclang.compiler.frontend.unitree {
     Ability,
     Archetype,
+    Assignment,
+    AtomTrailer,
     ElseIf,
     DictCompr,
     ElseStmt,
     Enum,
+    FuncSignature,
     HasVar,
     IfStmt,
     InnerCompr,
@@ -16,6 +19,8 @@ import from jaclang.compiler.frontend.unitree {
     KWPair,
     Module,
     ModulePath,
+    Name,
+    ParamVar,
     Symbol,
     UniScopeNode
 }
@@ -70,6 +75,7 @@ import from jaclang.compiler.types.stubcat.format {
     SH_XREF,
     SYMF_DEFER,
     SYMF_HAS_DEFAULT,
+    SYMF_INSTANCE_METHOD,
     SYMF_NA_ESCAPES,
     SYMF_NA_REGION_HANDLE,
     SYMF_NA_STACK_OK,
@@ -308,7 +314,8 @@ obj CatalogWriter {
         boundary: (Module | None) = None,
         failures: int = 0,
         evaluated: int = 0,
-        failure_log: list[str] = [];
+        failure_log: list[str] = [],
+        orphans: list[str] = [];
 
     def postinit {
         self.strings = {};
@@ -544,12 +551,57 @@ obj CatalogWriter {
         }
     }
 
+    def _materialize_lazy_members(scope: UniScopeNode) -> None {
+        if not isinstance(scope, Archetype) {
+            return;
+        }
+        owner = scope.name_spec.sym;
+        if owner is None {
+            return;
+        }
+        cls_t: any = None;
+        try {
+            cls_t = self.evaluator.get_type_of_symbol(owner);
+        } except Exception {
+            return;
+        }
+        if not isinstance(cls_t, ClassType) {
+            return;
+        }
+        for method_name in ("init", "__post_init__") {
+            method_sym = scope.lookup(method_name, deep=False);
+            if method_sym is None or not isinstance(method_sym.decl.name_of, Ability) {
+                continue;
+            }
+            ability = method_sym.decl.name_of;
+            sig = ability.signature;
+            if isinstance(sig, FuncSignature) and sig.params {
+                for param in sig.params {
+                    if isinstance(param, ParamVar) and param.name.value != "self" {
+                        cls_t.lookup_member_symbol(param.name.value);
+                    }
+                }
+            }
+            for trailer in ability.get_all_sub_nodes(AtomTrailer) {
+                holder = trailer.parent;
+                if not isinstance(holder, Assignment)
+                    or trailer is not holder.target[0] {
+                    continue;
+                }
+                if isinstance(trailer.right, Name) {
+                    cls_t.lookup_member_symbol(trailer.right.value);
+                }
+            }
+        }
+    }
+
     def force_scope(scope: UniScopeNode) -> None {
         key = self._scope_ident(scope);
         if key in self.forced_scopes {
             return;
         }
         self.forced_scopes.add(key);
+        self._materialize_lazy_members(scope);
         members = collect_scope_members(scope);
         if isinstance(scope, Module) {
             for (name, sym) in star_import_members(scope, self.evaluator).items() {
@@ -599,6 +651,28 @@ obj CatalogWriter {
             and self.in_boundary(module_of(own_scope)) {
             self.force_scope(own_scope);
         }
+    }
+
+    def _jac_method_of(sym: Symbol) -> (Ability | None) {
+        decl = sym.decl;
+        node_ = decl.name_of if decl is not None else None;
+        if not isinstance(node_, Ability) or not node_.is_method {
+            return None;
+        }
+        if node_.is_static or node_.is_cls_method {
+            return None;
+        }
+        sig = node_.signature;
+        if isinstance(sig, FuncSignature) and sig.is_in_py_class {
+            return None;
+        }
+        for dec in (node_.decorators or ()) {
+            if isinstance(dec, Name)
+                and dec.sym_name in ("staticmethod", "classmethod") {
+                return None;
+            }
+        }
+        return node_;
     }
 
     def property_facts(sym: Symbol) -> tuple[int, int, (TypeBase | None)] {
@@ -1091,6 +1165,9 @@ obj CatalogWriter {
         if sym.na_stack_ok {
             symbits |= SYMF_NA_STACK_OK;
         }
+        if self._jac_method_of(sym) is not None {
+            symbits |= SYMF_INSTANCE_METHOD;
+        }
         try {
             decl_node = sym.decl.name_of if sym.decl else None;
             if isinstance(decl_node, HasVar) {
@@ -1248,11 +1325,20 @@ obj CatalogWriter {
         return bytes(out);
     }
 
+    def note_orphan(sh: ClassDetailsShared) {
+        key = sh.canonical_key();
+        site = f"{key[0]}:{key[1]}:{key[2]}" if key is not None else "<no site>";
+        self.orphans.append(f"{sh.class_name} @ {site}");
+    }
+
     def encode_shared(idx: int) -> bytes {
         sh = self.shareds[idx];
         out = bytearray();
         put_uvar(out, self.sid(sh.class_name or ""));
         home_mod = module_of(sh.symbol_table) if sh.symbol_table is not None else None;
+        if self.boundary is not None and home_mod is None {
+            self.note_orphan(sh);
+        }
         if (
             self.boundary is not None
             and home_mod is not None
@@ -1296,7 +1382,13 @@ obj CatalogWriter {
             bits |= SH_ENUM;
         }
         put_uvar(out, bits);
-        put_ref(out, self.ref_scope(sh.symbol_table));
+        scope_ref = self.ref_scope(sh.symbol_table);
+        if scope_ref < 0
+            and self.boundary is not None
+            and sh.symbol_table is not None {
+            self.note_orphan(sh);
+        }
+        put_ref(out, scope_ref);
         mro: list[TypeBase] = [];
         for cls in (sh.mro or []) {
             mro.append(cls);

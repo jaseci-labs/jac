@@ -33,12 +33,12 @@ glob _PARKED: str = "# parked for the deploy\ndocsite/\nevaluation/\n",
      _SECRET: str = "sk-live-8104";
 
 
-def _builder(project_dir: str, client: (dict | None) = None) -> ManifestBuilder {
+def _builder(
+    project_dir: str, client_entry: (str | None) = "main.jac"
+) -> ManifestBuilder {
     mb = ManifestBuilder(
         k8s_config=KubernetesConfig(app_name="shop", namespace="jb-shop"),
-        microservices_config={
-            "client": {"entry": "main.jac"} if client is None else client
-        }
+        client_entry=client_entry
     );
     mb.project_dir = project_dir;
     return mb;
@@ -171,7 +171,7 @@ def _control_build(cwd: str) -> any {
     while True {
         attempt += 1;
         result = subprocess.run(
-            [jac_executable(), "build", "main.jac", "--client", "web"],
+            [jac_executable(), "build", "--as", "client", "main.jac"],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -190,10 +190,22 @@ def _control_build(cwd: str) -> any {
 }
 
 
+"""Every built dist under .jac/client: the deploy ships to .jac/client/dist,
+while a raw `jac build` writes the app's own .jac/client/<app>/dist."""
 def _dist_mentions(project_dir: str, needle: str) -> list[str] {
-    dist = Path(project_dir) / ".jac" / "client" / "dist";
+    client = Path(project_dir) / ".jac" / "client";
+    dists = [client / "dist"]
+        + [
+            child / "dist"
+            for child in sorted(client.iterdir())
+            if child.is_dir() and child.name != "node_modules"
+        ]
+        if client.is_dir()
+        else [];
     return [
-        p.relative_to(dist).as_posix()
+        p.relative_to(client).as_posix()
+        for dist in dists
+        if dist.is_dir()
         for p in sorted(dist.rglob("*"))
         if p.is_file() and needle in p.read_bytes().decode("utf-8", errors="ignore")
     ];
@@ -433,9 +445,7 @@ test "a declared client entry that does not exist fails the deploy, not silently
     project_dir = _app(_PARKED);
     raised = None;
     try {
-        _builder(project_dir, client={"entry": "man.jac"})._build_client_bundle(
-            project_dir
-        );
+        _builder(project_dir, client_entry="man.jac")._build_client_bundle(project_dir);
     } except ValueError as e {
         raised = e;
     } finally {
@@ -443,13 +453,13 @@ test "a declared client entry that does not exist fails the deploy, not silently
     }
 
     assert raised is not None , (
-        "a typo in [scale.microservices.client] entry must fail the deploy, "
-        "not ship a gateway with nothing to serve"
+        "a client entry that does not exist must fail the deploy, "
+        "not ship a served app with nothing to serve"
     );
     message = str(raised);
     assert "man.jac" in message , message;
-    assert "[scale.microservices.client]" in message , message;
-    assert "entry = false" in message , (
+    assert "client_entry" in message , message;
+    assert "client_entry = \"\"" in message , (
         f"the error must say how to deploy without a client: {message}"
     );
 }
@@ -458,7 +468,7 @@ test "a declared client entry that does not exist fails the deploy, not silently
 test "an undeclared entry that does not exist skips the build and says so" {
     project_dir = _app(_PARKED);
     os.remove(os.path.join(project_dir, "main.jac"));
-    mb = _builder(project_dir, client={});
+    mb = _builder(project_dir, client_entry=None);
     assert mb._declared_client_entry() == "" , "nothing was declared";
     assert mb._client_entry() , "the default entry still resolves";
     out = io.StringIO();
@@ -479,18 +489,15 @@ test "an undeclared entry that does not exist skips the build and says so" {
     assert "skipping the client build" in out.getvalue() , (
         f"the skip must be said out loud: {out.getvalue()!r}"
     );
-    assert "[scale.microservices.client]" in out.getvalue() , out.getvalue();
+    assert "client target" in out.getvalue() , out.getvalue();
 }
 
 
-test "entry = false is not a declared entry" {
+test "client_entry = \"\" is not a declared entry" {
     project_dir = _app(_PARKED);
     try {
-        assert _builder(project_dir, client={"entry": False})._declared_client_entry()
-            == "";
-        assert _builder(
-            project_dir, client={"entry": " app.jac "}
-        )._declared_client_entry()
+        assert _builder(project_dir, client_entry="")._declared_client_entry() == "";
+        assert _builder(project_dir, client_entry=" app.jac ")._declared_client_entry()
             == "app.jac";
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
@@ -498,14 +505,12 @@ test "entry = false is not a declared entry" {
 }
 
 
-test "entry = false with no client source skips the build and says so" {
+test "client_entry = \"\" with no client source skips the build and says so" {
     project_dir = _app(_PARKED);
     out = io.StringIO();
     try {
         with redirect_stdout(out) {
-            _builder(project_dir, client={"entry": False})._build_client_bundle(
-                project_dir
-            );
+            _builder(project_dir, client_entry="")._build_client_bundle(project_dir);
         }
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
@@ -514,20 +519,20 @@ test "entry = false with no client source skips the build and says so" {
         f"a deploy with no client must say it is skipping the build: "
         f"{out.getvalue()!r}"
     );
-    assert "entry = false" in out.getvalue() , (
+    assert 'client_entry = ""' in out.getvalue() , (
         f"the skip must name the explicit opt-out: {out.getvalue()!r}"
     );
 }
 
 
-test "entry = false with client source still skips the build" {
+test "client_entry = \"\" with client source still skips the build" {
     project_dir = _app(_PARKED);
     os.mkdir(os.path.join(project_dir, "pages"));
-    mb = _builder(project_dir, client={"entry": False});
+    mb = _builder(project_dir, client_entry="");
     out = io.StringIO();
     try {
         assert mb._client_entry() == "" , (
-            "an explicit entry = false must win over the client-source guess"
+            "an explicit client_entry = \"\" must win over the client-source guess"
         );
         with redirect_stdout(out) {
             mb._build_client_bundle(project_dir);
@@ -537,7 +542,7 @@ test "entry = false with client source still skips the build" {
         shutil.rmtree(project_dir, ignore_errors=True);
     }
     assert not built , "the skip must happen before anything is built";
-    assert "entry = false" in out.getvalue() , (
+    assert 'client_entry = ""' in out.getvalue() , (
         f"the skip must name the explicit opt-out: {out.getvalue()!r}"
     );
     assert "skipping the client build" in out.getvalue() , (
@@ -552,8 +557,7 @@ test "a jac.toml the loader rejects fails the deploy instead of skipping the cli
         f.write("[project\nname = \"shop\"\n");
     }
     mb = ManifestBuilder(
-        k8s_config=KubernetesConfig(app_name="shop", namespace="jb-shop"),
-        microservices_config=None
+        k8s_config=KubernetesConfig(app_name="shop", namespace="jb-shop")
     );
     mb.project_dir = project_dir;
     reset_scale_config();
@@ -652,6 +656,57 @@ test "a diagnosis that fits says nothing about a remainder" {
         assert "more" not in diagnosis , (
             f"nothing was withheld, so nothing should be claimed: {diagnosis}"
         );
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+    }
+}
+
+
+test "workspace served web app declares its client even without root client hints" {
+    import from jaclang.scale.runtime.fleet { FleetMember, FleetSpec }
+    project_dir = _app();
+    try {
+        Path(project_dir, "jac.toml").write_text(
+            '[project]\nname = "shop"\ndefault-app = "svc"\n'
+            '[apps.web]\nkind = "web-app"\nentry-point = "main.jac"\n'
+            '[apps.svc]\nkind = "service"\nentry-point = "svc.jac"\n'
+        );
+        mb = _builder(project_dir, client_entry=None);
+        mb.fleet = FleetSpec();
+        mb.fleet.add(
+            FleetMember(app="web", file="main.jac", is_root=True, client=True)
+        );
+        assert mb._declared_client_entry() == "main.jac";
+        assert mb._client_entry() == "main.jac";
+        mb.dry_run = True;
+        out = io.StringIO();
+        with redirect_stdout(out) {
+            mb._build_client_bundle(project_dir);
+        }
+        assert "dry-run: skipped the host client bundle build (main.jac)"
+            in out.getvalue();
+        with tempfile.TemporaryDirectory() as record_dir {
+            import from unittest.mock { patch }
+            script = _recording_jac(record_dir, record_dir);
+            script_path = Path(script);
+            script_path.write_text(
+                script_path.read_text().replace(
+                    ".jac/client/dist", ".jac/client/web/dist"
+                )
+            );
+            mb.dry_run = False;
+            with patch.dict(os.environ, {"JAC_EXECUTABLE": script}) {
+                raised = _run_build(mb, project_dir, record_dir);
+            }
+            assert raised is None , str(raised);
+            assert Path(project_dir, ".jac", "client", "dist", "index.html").is_file();
+            assert Path(record_dir, "cwd").is_file();
+        }
+        mb.fleet = FleetSpec();
+        mb.fleet.add(FleetMember(app="svc", file="svc.jac", is_root=True));
+        assert mb._client_entry() == "";
+        mb.client_entry = "";
+        assert mb._client_entry() == "";
     } finally {
         shutil.rmtree(project_dir, ignore_errors=True);
     }

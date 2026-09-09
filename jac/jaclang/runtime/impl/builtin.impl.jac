@@ -102,6 +102,7 @@ impl __getattr__(name: str) -> object {
         name
         in (
             'Region',
+            'region_of',
             '_jac_region_open',
             '_jac_region_close',
             '_jac_region_register',
@@ -111,6 +112,7 @@ impl __getattr__(name: str) -> object {
         import jaclang.runtime.region as _region_mod;
         _region_map = {
             'Region': 'JacRegion',
+            'region_of': 'region_of',
             '_jac_region_open': 'open_region',
             '_jac_region_close': 'close_region',
             '_jac_region_register': 'register_drop',
@@ -390,6 +392,47 @@ impl JacListView.__setitem__(i: any, v: any) -> None {
 
 impl JacListView.__iter__ -> any {
     return iter([self.backing[k] for k in range(self.start, self.stop)]);
+}
+
+impl _jac_take_attr(owner: any, name: str) -> any {
+    value = getattr(owner, name);
+    setattr(owner, name, None);
+    return value;
+}
+
+impl _jac_take_item(seq: any, key: any) -> any {
+    value = seq[key];
+    seq[key] = None;
+    return value;
+}
+
+impl _jac_replace_attr(owner: any, name: str, value: any) -> any {
+    old = getattr(owner, name);
+    setattr(owner, name, value);
+    return old;
+}
+
+impl _jac_replace_item(seq: any, key: any, value: any) -> any {
+    old = seq[key];
+    seq[key] = value;
+    return old;
+}
+
+impl _jac_swap_places(
+    owner_a: any, key_a: any, attr_a: bool, owner_b: any, key_b: any, attr_b: bool
+) -> None {
+    value_a = getattr(owner_a, key_a) if attr_a else owner_a[key_a];
+    value_b = getattr(owner_b, key_b) if attr_b else owner_b[key_b];
+    if attr_a {
+        setattr(owner_a, key_a, value_b);
+    } else {
+        owner_a[key_a] = value_b;
+    }
+    if attr_b {
+        setattr(owner_b, key_b, value_a);
+    } else {
+        owner_b[key_b] = value_a;
+    }
 }
 
 impl _jac_chunks(xs: any, n: int) -> list {

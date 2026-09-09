@@ -60,7 +60,7 @@ impl PgBackplane.start -> None {
     if self._store is not None {
         return;
     }
-    import from jaclang.scale.persistence.pg { shared_store }
+    import from jaclang.server.shared_store { shared_store }
     store = await asyncio.to_thread(shared_store);
     if store is None {
         raise RuntimeError(
@@ -181,7 +181,7 @@ impl build_backplane(cfg: dict) -> BaseBackplane {
             "Expected 'memory' or 'pg'."
         );
     }
-    import from jaclang.scale.persistence.pg { scale_db_url }
+    import from jaclang.server.shared_store { scale_db_url }
     if scale_db_url() {
         return PgBackplane();
     }

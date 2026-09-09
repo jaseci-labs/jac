@@ -1,4 +1,3 @@
-import from dataclasses { field }
 import from jaclang.compiler.frontend.unitree {
     Ability,
     ArchHas,
@@ -56,7 +55,7 @@ import from jaclang.compiler.frontend.constant { SymbolAccess }
 import from jaclang.compiler.passes.uni_pass { UniPass }
 import from jaclang.compiler.frontend.diagnostics { E0064, E0077 }
 
-glob TEST_ASSERT_METHOD_NAMES = (
+glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
          'assertAlmostEqual',
          'assertCountEqual',
          'assertDictEqual',
@@ -102,7 +101,7 @@ glob TEST_ASSERT_METHOD_NAMES = (
 
 walker SymTabBuildPass(UniPass) {
     static has PROVIDES: tuple = ('SymOf', 'Defines', 'InScope', 'ScopeChild');
-    has cur_sym_tab: list[UniScopeNode] = field(default_factory=`list);
+    has cur_sym_tab: list[UniScopeNode] = [];
 
     def before_pass -> None;
     def push_scope_and_link(key_node: UniScopeNode) -> None;

@@ -6,6 +6,3 @@ enum Platforms {
 }
 
 enum Operations { LOGIN = 'login', REGISTER = 'register', }
-
-
-enum CredentialType { PASSWORD = 'password', }

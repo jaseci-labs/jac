@@ -16,7 +16,7 @@ import glob;
 import os;
 import jaclang.compiler.backends.es.jac_runtime_js as _rtjs;
 import jaclang.compiler.backends.native.na_compile_pass as _nacp;
-import from jaclang.compiler.backends.kernel_units {
+import from jaclang.compiler.backends.common.kernel_units {
     OSP_CORE_PARTS,
     osp_core_unit_path,
     store_unit_artifact,
@@ -81,7 +81,7 @@ test "an artifact store leaves another compiler generation's artifact alone" {
 
 test "a superseded generation's artifacts retire once they go untouched" {
     import time;
-    import from jaclang.compiler.backends.kernel_units { _RETIRED_UNITS }
+    import from jaclang.compiler.backends.common.kernel_units { _RETIRED_UNITS }
     unit = osp_core_unit_path('cl');
     units_dir = os.path.dirname(unit);
     aged = os.path.join(

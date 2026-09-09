@@ -79,11 +79,8 @@ test "create jac app" {
             assert config_data["project"]["name"] == test_project_name , (
                 f"project table: {config_data.get('project')}"
             );
-
-            # Verify serve config includes base_route_app for CL apps
-            assert "serve" in config_data , f"toml tables: {list(config_data.keys())}";
-            assert config_data["serve"]["base_route_app"] == "app" , (
-                f"serve table: {config_data['serve']}"
+            assert "base_route_app" not in config_data.get("serve", {}) , (
+                f"serve table still carries the deleted key: {config_data.get('serve')}"
             );
 
             # Verify .gitignore was created with correct content
@@ -238,11 +235,23 @@ test "create jac app with button component" {
             assert config_data["project"]["name"] == test_project_name , (
                 f"project table: {config_data.get('project')}"
             );
+            assert "base_route_app" not in config_data.get("serve", {}) , (
+                f"serve table still carries the deleted key: {config_data.get('serve')}"
+            );
 
-            # Verify serve config includes base_route_app for CL apps
-            assert "serve" in config_data , f"toml tables: {list(config_data.keys())}";
-            assert config_data["serve"]["base_route_app"] == "app" , (
-                f"serve table: {config_data['serve']}"
+            # The mobile scaffold is a single-app mobUI project: the kind
+            # alone makes it a React Native app with the mobUI vocabulary.
+            assert "client_kind" not in config_data["project"] , (
+                f"[project] client_kind is gone: {config_data['project']}"
+            );
+            assert "client" not in config_data["project"] , (
+                f"[project] client is gone: {config_data['project']}"
+            );
+            assert "apps" not in config_data , (
+                f"a single-app scaffold has no [apps] table: {config_data.get('apps')}"
+            );
+            assert config_data["project"].get("kind") == "mobile" , (
+                f"project table: {config_data['project']}"
             );
 
             # Verify components directory and Button.jac were created at project root
@@ -268,20 +277,38 @@ test "create jac app with button component" {
                 f"Button.jac head: {button_content[:400]}"
             );
 
-            # Verify main.jac includes Jac component import
+            # main.jac is the shell: it renders the Home screen, which is where
+            # the Button component is used.
             app_jac_path = os.path.join(project_path, "main.jac");
             assert os.path.exists(app_jac_path) , (
-                f"no app.jac; project has: {os.listdir(project_path)}"
+                f"no main.jac; project has: {os.listdir(project_path)}"
             );
 
             with open(app_jac_path) as f {
                 app_jac_content = f.read();
             }
 
-            assert "import from .components.Button { Button }" in app_jac_content , (
+            assert "import from .screens.Home { HomeScreen }" in app_jac_content , (
                 f"main.jac head: {app_jac_content[:400]}"
             );
-            assert "<Button" in app_jac_content;
+            assert "<HomeScreen" in app_jac_content;
+            assert 'import from "@jac/mobui"' in app_jac_content , (
+                f"a mobUI app renders @jac/mobui primitives only: {app_jac_content[:400]}"
+            );
+
+            home_jac_path = os.path.join(project_path, "screens", "Home.jac");
+            assert os.path.exists(home_jac_path) , (
+                f"no screens/Home.jac; project has: {os.listdir(project_path)}"
+            );
+
+            with open(home_jac_path) as f {
+                home_jac_content = f.read();
+            }
+
+            assert "import from ..components.Button { Button }" in home_jac_content , (
+                f"Home.jac head: {home_jac_content[:400]}"
+            );
+            assert "<Button" in home_jac_content;
 
             # Verify README.md includes component information
             readme_path = os.path.join(project_path, "README.md");
@@ -915,7 +942,7 @@ test "raw template config files from jac toml" {
 
             # Create jac.toml with raw template config
             raw_content = 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";\n\nexport const docs = defineDocs({\n  dir: "content/docs",\n});\n\nexport default defineConfig({});';
-            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
+            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^19.2.0"\nreact-dom = "^19.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^19.2.0"\n"@types/react-dom" = "^19.2.0"\n\n[client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -957,7 +984,7 @@ test "npmrc from jac toml" {
 
             # Create jac.toml with npm scoped registry and auth config
             # Include required npm deps to avoid auto-injection modifying the file
-            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^19.2.0"\nreact-dom = "^19.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^19.2.0"\n"@types/react-dom" = "^19.2.0"\n\n[client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -1119,7 +1146,7 @@ test "start dev with client does initial compilation" {
             os.chdir(temp_dir);
             # Create a client project
             process = Popen(
-                ["jac", "create", "--kind", "mobile", test_project_name],
+                ["jac", "create", "--kind", "web-app", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,

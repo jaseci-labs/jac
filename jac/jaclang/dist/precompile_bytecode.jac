@@ -18,6 +18,7 @@ import from jaclang.compiler.driver.jir {
     HEADER_SIZE,
     SECTIONS_MAGIC,
     SEC_BYTECODE,
+    SEC_CTDEPS,
     SEC_DEBUG_SRC,
     FORMAT_VERSION,
     compute_precompile_module_key,
@@ -25,6 +26,7 @@ import from jaclang.compiler.driver.jir {
     is_module_cache_valid,
     precompiled_jir_matches_source,
     read_section_bytes,
+    rebase_ct_deps_section,
     running_compiler_digest,
     PRECOMPILE_SENTINEL
 }
@@ -262,6 +264,32 @@ def _emit_unit_diagnostics(jac_path: str, programs: list) {
 
 glob _unit_program: list = [];
 
+def _ct_deps_extra(jac_path: str, pkg_root: str) -> dict[int, bytes] {
+    try {
+        cache_path = get_module_cache_path(jac_path);
+        if not cache_path.exists() {
+            return {};
+        }
+        raw = read_section_bytes(cache_path.read_bytes(), SEC_CTDEPS);
+        if not raw {
+            return {};
+        }
+        return {
+            int(SEC_CTDEPS): rebase_ct_deps_section(raw, os.path.normpath(pkg_root))
+        };
+    } except Exception {
+        return {};
+    }
+}
+
+def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes] {
+    extra: dict[int, bytes] = _ct_deps_extra(jac_path, pkg_root);
+    if embed_src {
+        extra[int(SEC_DEBUG_SRC)] = zlib.compress(Path(jac_path).read_bytes(), 9);
+    }
+    return extra;
+}
+
 def precompile_unit(
     jac_path: str, pkg_root: str, embed_src: bool = False, collect: bool = True
 ) -> bytes | None {
@@ -279,19 +307,11 @@ def precompile_unit(
                 rewrapped = patch_co_filenames_bytes(
                     cached_bc, pkg_root, PRECOMPILE_SENTINEL
                 );
-                wrap_extra: dict[int, bytes] | None = None;
-                if embed_src {
-                    wrap_extra = {
-                        int(SEC_DEBUG_SRC): zlib.compress(
-                            Path(jac_path).read_bytes(), 9
-                        )
-                    };
-                }
                 return write_precompiled_jir(
                     rewrapped,
                     compute_precompile_module_key(jac_path),
                     FLAG_PRECOMPILED,
-                    wrap_extra
+                    _unit_extra(jac_path, pkg_root, embed_src)
                 );
             }
         }
@@ -317,12 +337,11 @@ def precompile_unit(
     patched = patch_co_filenames_bytes(
         marshal.dumps(code), pkg_root, PRECOMPILE_SENTINEL
     );
-    extra: dict[int, bytes] | None = None;
-    if embed_src {
-        extra = {int(SEC_DEBUG_SRC): zlib.compress(Path(jac_path).read_bytes(), 9)};
-    }
     return write_precompiled_jir(
-        patched, compute_precompile_module_key(jac_path), FLAG_PRECOMPILED, extra
+        patched,
+        compute_precompile_module_key(jac_path),
+        FLAG_PRECOMPILED,
+        _unit_extra(jac_path, pkg_root, embed_src)
     );
 }
 
@@ -426,20 +445,45 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
-def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
+def bundle_app(config: any, app: str = "") -> any {
+    if app {
+        named = config.app(app);
+        if named is not None {
+            return named;
+        }
+    }
+    try {
+        return config.resolve_app("");
+    } except ValueError {}
+    serving = config.serving_apps();
+    if serving {
+        return serving[0];
+    }
+    for candidate in config.apps.values() {
+        return candidate;
+    }
+    return None;
+}
+
+def app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any] {
     if not (pkg_path / "jac.toml").is_file() {
         return {};
     }
     import from jaclang.project.config { get_config_for_path }
-    import from jaclang.project.kinds { resolve_project_kind, resolve_entry }
+    import from jaclang.project.kinds { resolve_app_kind, resolve_entry }
     import from jaclang.server.sealed_serve { CLIENT_DIST_REL, NATIVE_DIR_REL }
 
     config = get_config_for_path(pkg_path);
     if config is None {
         return {};
     }
-    entry_path = resolve_entry(config, str(pkg_path));
-    kind = resolve_project_kind(config, entry_path);
+    chosen = bundle_app(config, app);
+    entry_path = resolve_entry(config, str(pkg_path), chosen)
+        if chosen is not None
+        else "";
+    kind = (
+        resolve_app_kind(config, chosen, entry_path) if chosen is not None else "cli"
+    );
 
     `entry: dict[str, str] = {};
     if entry_path and Path(entry_path).is_file() {
@@ -466,7 +510,12 @@ def app_metadata(pkg_path: Path, pkg_name: str) -> dict[str, any] {
         caps.append("attachable");
     }
 
-    meta = {"kind": kind, "capabilities": caps, "entry": `entry};
+    meta = {
+        "kind": kind,
+        "app": chosen.name if chosen is not None else "",
+        "capabilities": caps,
+        "entry": `entry
+    };
     native_dir = pkg_path / NATIVE_DIR_REL;
     if native_dir.is_dir() {
         triples = sorted(
@@ -513,7 +562,12 @@ def collect_payloads(pkg_path: Path) -> dict[str, str] {
 }
 
 def seal_finalize(
-    pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
+    pkg_path: Path,
+    precompiled_dir: Path,
+    pkg_name: str,
+    pyver: str,
+    embed_src: bool,
+    app: str = ""
 ) -> int {
     writes = (
         FORMAT_VERSION,
@@ -559,16 +613,17 @@ def seal_finalize(
     for p in sealable_sources(str(pkg_path)) {
         rel = Path(p).relative_to(pkg_path);
         jir = precompiled_dir / pyver / rel.with_suffix(".jir");
-        if not precompiled_jir_matches_source(jir.read_bytes(), p, identity) {
+        if not precompiled_jir_matches_source(
+            jir.read_bytes(), p, identity, str(pkg_path)
+        ) {
             foreign.append(str(rel));
         }
     }
     if foreign {
         console.error(
-            f"Seal aborted: {len(foreign)} module(s) carry a JIR this compiler "
-            f"did not produce (first: {foreign[:5]}). Their module keys name a "
-            "different compiler content digest, so the seed served bytecode "
-            "built by another compiler at this same version (#8178). Delete "
+            f"Seal aborted: {len(foreign)} module(s) carry stale JIRs "
+            f"(first: {foreign[:5]}). Their source, compiler identity, or "
+            "compile-time dependencies no longer match. Delete "
             f"{precompiled_dir} and re-run the precompile."
         );
         return 1;
@@ -613,7 +668,7 @@ def seal_finalize(
     if payloads {
         console.print(f"  Payload files: {len(payloads)}");
     }
-    app_meta = app_metadata(pkg_path, pkg_name);
+    app_meta = app_metadata(pkg_path, pkg_name, app);
     if app_meta {
         console.print(
             f"  App: kind={app_meta.get('kind')} caps={app_meta.get('capabilities')}"
@@ -696,9 +751,13 @@ def main {
     finalize_only = "--seal-finalize" in args;
     embed_src = "--debug-src" in args;
     jobs_arg = "";
+    app_arg = "";
     for a in args {
         if a.startswith("--jobs=") {
             jobs_arg = a[len("--jobs="):];
+        }
+        if a.startswith("--app=") {
+            app_arg = a[len("--app="):];
         }
     }
     args = [
@@ -746,7 +805,8 @@ def main {
         seal_compile=seal_compile,
         finalize_only=finalize_only,
         embed_src=embed_src,
-        jobs_arg=jobs_arg
+        jobs_arg=jobs_arg,
+        app=app_arg
     );
 }
 
@@ -756,7 +816,8 @@ def run_precompile(
     seal_compile: bool = False,
     finalize_only: bool = False,
     embed_src: bool = False,
-    jobs_arg: str = ""
+    jobs_arg: str = "",
+    app: str = ""
 ) {
     exclude_seed = seal or seal_compile;
     package_dir = find_package_dir(source_dir);
@@ -784,7 +845,7 @@ def run_precompile(
         console.print(f"Sealing {pkg_name} for {pyver} (finalize)...");
         precompile_exit(
             seal_finalize(
-                Path(package_dir), precompiled_dir, pkg_name, pyver, embed_src
+                Path(package_dir), precompiled_dir, pkg_name, pyver, embed_src, app
             )
         );
     }
@@ -853,7 +914,9 @@ def run_precompile(
         try {
             if jir_path.is_file() {
                 existing = jir_path.read_bytes();
-                if precompiled_jir_matches_source(existing, jac_path)
+                if precompiled_jir_matches_source(
+                    existing, jac_path, package_root=package_dir
+                )
                     and embed_src == (read_debug_source(existing) is not None) {
                     return {"status": "reused", "rel": str(rel)};
                 }
@@ -955,7 +1018,7 @@ def run_precompile(
 
     if seal {
         precompile_exit(
-            seal_finalize(pkg_path, precompiled_dir, pkg_name, pyver, embed_src)
+            seal_finalize(pkg_path, precompiled_dir, pkg_name, pyver, embed_src, app)
         );
     }
 

@@ -4,6 +4,7 @@ impl AccessCheckPass.postinit -> None {
 
 impl AccessCheckPass._run_impl(ir_in: Module) -> Module {
     self._enforce = ir_in.access_enforced;
+    self._collect_bridged_imports(ir_in);
 
     checked: set[int] = set();
     for tr in ir_in.get_all_sub_nodes(typ=AtomTrailer) {
@@ -22,14 +23,73 @@ impl AccessCheckPass._run_impl(ir_in: Module) -> Module {
     return ir_in;
 }
 
-impl AccessCheckPass._check_use(use_node: AstSymbolNode, sym: Symbol) -> None {
-    if (sym.access == SymbolAccess.PUBLIC) {
-        return;
+impl AccessCheckPass._collect_bridged_imports(ir_in: Module) -> None {
+    self._bridged_syms = set();
+    self._bridged_mods = set();
+
+    def note_path(path: (str | None)) {
+        if path {
+            self._bridged_mods.add(os.path.normpath(path));
+        }
     }
+
+    def resolved_path(nd: (ModulePath | ModuleItem)) -> (str | None) {
+        if nd.abs_path {
+            return nd.abs_path;
+        }
+        try {
+            found = nd.resolve_relative_path();
+        } except Exception {
+            return None;
+        }
+        return found if isinstance(found, str) else None;
+    }
+
+    import from jaclang.compiler.driver.boundary_classify { classify_cross_app_import }
+    for imp in ir_in.get_all_sub_nodes(typ=Import) {
+        facts = imp.boundary_facts;
+        if facts is not None {
+            kind = facts.cross_app_kind;
+        } else {
+            kind = classify_cross_app_import(imp, None).value;
+        }
+        if kind == 'local' {
+            continue;
+        }
+        if imp.from_loc is not None {
+            note_path(resolved_path(imp.from_loc));
+        }
+        for item in imp.items {
+            if isinstance(item, ModuleItem) {
+                if isinstance(item.name, Name) and item.name.sym is not None {
+                    self._bridged_syms.add(id(item.name.sym));
+                }
+                note_path(resolved_path(item));
+            } elif isinstance(item, ModulePath) {
+                note_path(resolved_path(item));
+            }
+        }
+    }
+}
+
+impl AccessCheckPass._check_use(use_node: AstSymbolNode, sym: Symbol) -> None {
     decl = sym.decl;
     def_mod = decl.loc.mod_path if decl else "";
 
     if (not def_mod) or (not def_mod.endswith(".jac")) {
+        return;
+    }
+    use_mod = use_node.loc.mod_path;
+    if def_mod != use_mod {
+        def_module = self._declaring_module(sym);
+        if (
+            def_module is not None
+            and not self._check_app_laws(use_node, sym, def_module)
+        ) {
+            return;
+        }
+    }
+    if (sym.access == SymbolAccess.PUBLIC) {
         return;
     }
 
@@ -43,7 +103,6 @@ impl AccessCheckPass._check_use(use_node: AstSymbolNode, sym: Symbol) -> None {
     if not isinstance(def_tab, Module) {
         return;
     }
-    use_mod = use_node.loc.mod_path;
     if (def_mod == use_mod) {
         return;
     }
@@ -67,6 +126,67 @@ impl AccessCheckPass._check_use(use_node: AstSymbolNode, sym: Symbol) -> None {
             );
         }
     }
+}
+
+impl AccessCheckPass._module_app_facts(
+    mod: Module
+) -> tuple[(str | None), (str | None)] {
+    if not mod.stub_only or mod.app is not None {
+        return (mod.app, mod.jac_project_root);
+    }
+    mod_path = mod.loc.mod_path if mod.loc else '';
+    if not mod_path {
+        return (None, mod.jac_project_root);
+    }
+    import from jaclang.compiler.driver.modresolver { find_jac_project_root }
+    import from jaclang.compiler.placement.workspace { app_for_path }
+    app = app_for_path(mod_path);
+    return (
+        app.name if app is not None else None,
+        mod.jac_project_root or find_jac_project_root(mod_path)
+    );
+}
+
+impl AccessCheckPass._check_app_laws(
+    use_node: AstSymbolNode, sym: Symbol, def_module: Module
+) -> bool {
+    (def_app, def_root) = self._module_app_facts(def_module);
+    if def_app is None or def_module is self.ir_in {
+        return True;
+    }
+    if def_root != self.ir_in.jac_project_root {
+        return True;
+    }
+    use_app = self.ir_in.app;
+    if def_app == use_app {
+        return True;
+    }
+    if id(sym) in self._bridged_syms {
+        return True;
+    }
+    def_path = def_module.loc.mod_path if def_module.loc else '';
+    if def_path and os.path.normpath(def_path) in self._bridged_mods {
+        return True;
+    }
+    if use_app is None {
+        use_path = self.ir_in.loc.mod_path if self.ir_in.loc else '';
+        self.emit(
+            E2040 if self._enforce else W2040,
+            node_override=use_node,
+            module=os.path.basename(use_path),
+            name=sym.sym_name,
+            app=def_app
+        );
+        return False;
+    }
+    self.emit(
+        E2039 if self._enforce else W2039,
+        node_override=use_node,
+        name=sym.sym_name,
+        app=def_app,
+        user_app=use_app
+    );
+    return False;
 }
 
 impl AccessCheckPass._check_member(
@@ -98,6 +218,14 @@ impl AccessCheckPass._check_member(
 
 impl AccessCheckPass._declaring_archetype(sym: Symbol) -> (Archetype | None) {
     return sym.parent_tab if isinstance(sym.parent_tab, Archetype) else None;
+}
+
+impl AccessCheckPass._declaring_module(sym: Symbol) -> (Module | None) {
+    if isinstance(sym.parent_tab, Module) {
+        return sym.parent_tab;
+    }
+    decl = sym.decl;
+    return decl.find_parent_of_type(Module) if decl is not None else None;
 }
 
 impl AccessCheckPass._base_archetype(expr: UniNode) -> (Archetype | None) {

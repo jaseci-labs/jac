@@ -153,7 +153,8 @@ special_ref ::=
     | "enum"
 
 atom ::=
-    atom_literal
+    graph_expr
+    | atom_literal
     | multistring
     | builtin_type
     | special_ref
@@ -164,6 +165,8 @@ atom ::=
     | bracket_expr
     | brace_expr
     | jsx_element
+
+graph_expr ::= "graph" "{" (expression ";"?)* "}"
 
 tuple_item ::= "**" expression | expression
 
@@ -220,7 +223,7 @@ dict_spread_entry ::= "**" expression | expression ":" expression
 
 comprehension_clauses ::= compr_clause compr_clause*
 
-compr_clause ::= "async"? "for" atomic_chain "in" pipe_call ("if" walrus_assign)*
+compr_clause ::= "async"? "for" atomic_chain "in" pipe ("if" walrus_assign)*
 
 lambda_expr ::=
     "lambda" ("(" func_params ")")? ("->" expression)? "{" code_block_stmts "}"
@@ -398,7 +401,7 @@ assert_stmt ::= "comptime"? "assert" expression ("," expression)? ";"
 
 delete_stmt ::= "del" expression ("," expression)* ";"
 
-ownership_prefix ::= ("own" | "imm" | "&" "mut"?)?
+ownership_prefix ::= ("own" | "lin" | "imm" | "&" "mut"?)?
 
 assignment_with_target ::=
     (":" ownership_prefix pipe)? (

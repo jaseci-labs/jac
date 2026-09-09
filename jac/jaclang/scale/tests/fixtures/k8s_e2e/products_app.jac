@@ -2,7 +2,7 @@
 
 Exposes public functions for browsing products. Callable via:
   - HTTP: POST /products/function/{name}
-  - sv import: `sv import from products_app { list_products, get_product }`
+  - app bridge: `import from products_app { list_products, get_product }` from another app
 """
 
 import from shared.models { Products, Product, Cart, Order }

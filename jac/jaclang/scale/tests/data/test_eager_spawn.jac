@@ -7,8 +7,9 @@ import from pathlib { Path }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import from jaclang.server { sv_client as __jac_sv }
+import from jaclang.server.bridge { BridgeUnavailable }
 import from jaclang.testing.testkit { ServingTestClient as TestClient }
-import from jaclang.scale.server.serve { JacAPIServer }
+import from jaclang.server.server { JacAPIServer }
 
 glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
 
@@ -81,13 +82,13 @@ test "eager spawn: ensure_all no-op when all already resolved" {
 test "eager spawn: ensure_all registers URLs from env vars" {
     __jac_sv.clear_test_clients();
     __jac_sv._registry.clear();
-    os.environ["JAC_SV_EAGER_ENV_MOD_URL"] = "http://eager-env-mod.example";
+    os.environ["JAC_APP_EAGER_ENV_MOD_URL"] = "http://eager-env-mod.example";
     try {
         __jac_sv.ensure_all(["eager_env_mod"]);
         assert __jac_sv._registry.get("eager_env_mod")
             == "http://eager-env-mod.example";
     } finally {
-        del os.environ["JAC_SV_EAGER_ENV_MOD_URL"];
+        del os.environ["JAC_APP_EAGER_ENV_MOD_URL"];
         if "eager_env_mod" in __jac_sv._registry {
             del __jac_sv._registry["eager_env_mod"];
         }
@@ -277,8 +278,8 @@ def _probe_env_restore(saved: str | None) {
 # orders-app-service. The env key keeps the raw name, and a reader that rebuilt
 # it from the Kubernetes name would look up the wrong variable.
 test "peer url: the env key keeps the raw module name" {
-    assert __jac_sv.peer_url_env_key("orders_app") == "JAC_SV_ORDERS_APP_URL";
-    assert __jac_sv.peer_url_env_key("main") == "JAC_SV_MAIN_URL";
+    assert __jac_sv.peer_url_env_key("orders_app") == "JAC_APP_ORDERS_APP_URL";
+    assert __jac_sv.peer_url_env_key("main") == "JAC_APP_MAIN_URL";
 }
 
 
@@ -332,7 +333,8 @@ test "peer url: the env is used when nothing is registered" {
 
 
 # Previously any value counted as present, so a blank one resolved to "" and the
-# caller failed later with no indication of where the empty URL came from.
+# caller failed later with no indication of where the empty URL came from. The
+# unresolved peer surfaces as the bridge family's BridgeUnavailable.
 test "peer url: a blank env value raises instead of resolving to an empty URL" {
     key = __jac_sv.peer_url_env_key(_PROBE);
     saved = os.environ.get(key);
@@ -343,7 +345,7 @@ test "peer url: a blank env value raises instead of resolving to an empty URL" {
         raised = "";
         try {
             __jac_sv.resolve_url(_PROBE);
-        } except RuntimeError as err {
+        } except BridgeUnavailable as err {
             raised = str(err);
         }
 

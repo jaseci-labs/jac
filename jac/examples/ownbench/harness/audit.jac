@@ -26,10 +26,10 @@ glob BENCH = Path(str(__file__)).resolve().parent.parent,
      ],
      MODES = ["none", "rc", "cycles"];
 
-"""nacompile flags for a memory mode."""
+"""Native build flags for a memory mode."""
 def mode_flags(mode: str) -> list[str] {
     if mode == "none" {
-        return ["--enforce-nogc", "--gc", "none", "--assert-no-rc"];
+        return ["--memory", "nogc"];
     }
     return ["--gc", mode];
 }
@@ -42,7 +42,7 @@ def audit(kernel: str, mode: str) -> dict {
     ll = BENCH / "results" / f"{kernel}_{mode}.ll";
     ll.parent.mkdir(exist_ok=True);
     env = dict(os.environ, JAC_DUMP_IR=str(ll));
-    cmd = ["jac", "nacompile", str(src)] + mode_flags(mode) + ["-o", str(out)];
+    cmd = ["jac", "build", "--native", str(src)] + mode_flags(mode) + ["-o", str(out)];
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env);
     if r.returncode != 0 {
         sys.`exit(f"compile failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}");

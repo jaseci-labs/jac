@@ -444,6 +444,44 @@
         "sonner"
       ],
       "peerComponents": []
+    },
+    "message": {
+      "file": "message.jac",
+      "npmDeps": [],
+      "peerComponents": []
+    },
+    "direction": {
+      "file": "direction.jac",
+      "npmDeps": [
+        "radix-ui"
+      ],
+      "peerComponents": []
+    },
+    "marker": {
+      "file": "marker.jac",
+      "npmDeps": [
+        "class-variance-authority",
+        "radix-ui"
+      ],
+      "peerComponents": []
+    },
+    "bubble": {
+      "file": "bubble.jac",
+      "npmDeps": [
+        "class-variance-authority",
+        "radix-ui"
+      ],
+      "peerComponents": []
+    },
+    "attachment": {
+      "file": "attachment.jac",
+      "npmDeps": [
+        "class-variance-authority",
+        "radix-ui"
+      ],
+      "peerComponents": [
+        "button"
+      ]
     }
   },
   "sharedDeps": {

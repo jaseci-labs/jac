@@ -181,7 +181,8 @@ obj ScaleClient {
             secrets=dict(spec.secrets),
             env=dict(spec.env),
             events=sink,
-            microservices_config=spec.to_microservices_config()
+            gateway_config=spec.to_gateway_config(),
+            app_overrides=spec.app_overrides()
         );
     }
 
@@ -196,6 +197,8 @@ obj ScaleClient {
         (code_folder, file_name) = spec.resolve_entry();
 
         posix_folder = pathlib.Path(os.path.relpath(code_folder)).as_posix();
-        return AppConfig(code_folder=posix_folder, file_name=file_name);
+        return AppConfig(
+            code_folder=posix_folder, file_name=file_name, served_app=spec.app
+        );
     }
 }

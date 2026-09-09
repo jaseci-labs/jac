@@ -1,3 +1,12 @@
+import from jaclang.compiler.backends.native.linker_common {
+    encode_sleb128,
+    encode_uleb128,
+    encode_uleb128_padded5,
+    read_leb_name,
+    read_sleb128,
+    read_uleb128
+}
+
 glob _PLACEHOLDER: set = {
          "__linear_memory",
          "__indirect_function_table",
@@ -6,99 +15,21 @@ glob _PLACEHOLDER: set = {
          "__table_base"
      };
 
-def _rd_uleb(b: bytes, o: int) -> tuple[int, int] {
-    r = 0;
-    s = 0;
-    while True {
-        x = b[o];
-        o += 1;
-        r |= (x & 0x7f) << s;
-        s += 7;
-        if not (x & 0x80) {
-            return (r, o);
-        }
-    }
-}
-
-def _rd_sleb(b: bytes, o: int) -> tuple[int, int] {
-    r = 0;
-    s = 0;
-    while True {
-        x = b[o];
-        o += 1;
-        r |= (x & 0x7f) << s;
-        s += 7;
-        if not (x & 0x80) {
-            if x & 0x40 {
-                r |= -(1 << s);
-            }
-            return (r, o);
-        }
-    }
-}
-
-def _uleb(v: int) -> bytes {
-    out = bytearray();
-    while True {
-        x = v & 0x7f;
-        v >>= 7;
-        if v {
-            out.append(x | 0x80);
-        } else {
-            out.append(x);
-            return bytes(out);
-        }
-    }
-}
-
-def _uleb5(v: int) -> bytes {
-    out = bytearray();
-    i = 0;
-    while i < 5 {
-        x = (v >> (7 * i)) & 0x7f;
-        if i < 4 {
-            out.append(x | 0x80);
-        } else {
-            out.append(x);
-        }
-        i += 1;
-    }
-    return bytes(out);
-}
-
-def _sleb_bytes(v: int) -> bytes {
-    out = bytearray();
-    while True {
-        x = v & 0x7f;
-        v >>= 7;
-        if (v == 0 and not (x & 0x40)) or (v == -1 and (x & 0x40)) {
-            out.append(x);
-            return bytes(out);
-        }
-        out.append(x | 0x80);
-    }
-}
-
 def _u32le(v: int) -> bytes {
     return (v & 0xffffffff).to_bytes(4, "little");
 }
 
-def _rd_name(b: bytes, o: int) -> tuple[str, int] {
-    (n, o) = _rd_uleb(b, o);
-    return (b[o:o + n].decode("latin1"), o + n);
-}
-
 def _nm_bytes(s: str) -> bytes {
     e = s.encode("utf-8");
-    return _uleb(len(e)) + e;
+    return encode_uleb128(len(e)) + e;
 }
 
 def _section(sid: int, payload: bytes) -> bytes {
-    return bytes([sid]) + _uleb(len(payload)) + payload;
+    return bytes([sid]) + encode_uleb128(len(payload)) + payload;
 }
 
 def _vec(items: list) -> bytes {
-    return _uleb(len(items)) + b"".join(items);
+    return encode_uleb128(len(items)) + b"".join(items);
 }
 
 def _patch(buf: bytearray, off: int, data: bytes) {
@@ -143,48 +74,48 @@ impl WasmObj.parse -> None {
     while o < len(b) {
         sid = b[o];
         o += 1;
-        (size, o) = _rd_uleb(b, o);
+        (size, o) = read_uleb128(b, o);
         end = o + size;
         if sid == 1 {
-            (n, o) = _rd_uleb(b, o);
+            (n, o) = read_uleb128(b, o);
             ci = 0;
             while ci < n {
                 st = o;
                 o += 1;
-                (np, o) = _rd_uleb(b, o);
+                (np, o) = read_uleb128(b, o);
                 o += np;
-                (nr, o) = _rd_uleb(b, o);
+                (nr, o) = read_uleb128(b, o);
                 o += nr;
                 self.types_raw.append(b[st:o]);
                 ci += 1;
             }
         } elif sid == 2 {
-            (n, o) = _rd_uleb(b, o);
+            (n, o) = read_uleb128(b, o);
             ci = 0;
             while ci < n {
-                (mod, o) = _rd_name(b, o);
-                (fld, o) = _rd_name(b, o);
+                (mod, o) = read_leb_name(b, o);
+                (fld, o) = read_leb_name(b, o);
                 k = b[o];
                 o += 1;
                 if k == 0 {
-                    (ti, o) = _rd_uleb(b, o);
+                    (ti, o) = read_uleb128(b, o);
                     self.imports.append(["func", mod, fld, ti]);
                 } elif k == 1 {
                     et = b[o];
                     o += 1;
                     fl = b[o];
                     o += 1;
-                    (mn, o) = _rd_uleb(b, o);
+                    (mn, o) = read_uleb128(b, o);
                     if fl & 1 {
-                        (mx, o) = _rd_uleb(b, o);
+                        (mx, o) = read_uleb128(b, o);
                     }
                     self.imports.append(["table", mod, fld, et]);
                 } elif k == 2 {
                     fl = b[o];
                     o += 1;
-                    (mn, o) = _rd_uleb(b, o);
+                    (mn, o) = read_uleb128(b, o);
                     if fl & 1 {
-                        (mx, o) = _rd_uleb(b, o);
+                        (mx, o) = read_uleb128(b, o);
                     }
                     self.imports.append(["mem", mod, fld, mn]);
                 } elif k == 3 {
@@ -197,10 +128,10 @@ impl WasmObj.parse -> None {
                 ci += 1;
             }
         } elif sid == 3 {
-            (n, o) = _rd_uleb(b, o);
+            (n, o) = read_uleb128(b, o);
             ci = 0;
             while ci < n {
-                (t, o) = _rd_uleb(b, o);
+                (t, o) = read_uleb128(b, o);
                 self.func_types.append(t);
                 ci += 1;
             }
@@ -209,7 +140,7 @@ impl WasmObj.parse -> None {
         } elif sid == 11 {
             self.data_raw = b[o:end];
         } elif sid == 0 {
-            (nm, o2) = _rd_name(b, o);
+            (nm, o2) = read_leb_name(b, o);
             if nm == "linking" {
                 self.parse_linking(o2, end);
             } elif nm.startswith("reloc.") {
@@ -222,50 +153,50 @@ impl WasmObj.parse -> None {
 
 impl WasmObj.parse_linking(o: int, end: int) -> None {
     b = self.b;
-    (ver, o) = _rd_uleb(b, o);
+    (ver, o) = read_uleb128(b, o);
     while o < end {
         sub = b[o];
         o += 1;
-        (pl, o) = _rd_uleb(b, o);
+        (pl, o) = read_uleb128(b, o);
         se = o + pl;
         if sub == 8 {
-            (cnt, o) = _rd_uleb(b, o);
+            (cnt, o) = read_uleb128(b, o);
             ci = 0;
             while ci < cnt {
                 kind = b[o];
                 o += 1;
-                (flags, o) = _rd_uleb(b, o);
+                (flags, o) = read_uleb128(b, o);
                 undef = flags & 0x10;
                 if kind == 1 {
-                    (nm, o) = _rd_name(b, o);
+                    (nm, o) = read_leb_name(b, o);
                     info = None;
                     if not undef {
-                        (sg, o) = _rd_uleb(b, o);
-                        (of, o) = _rd_uleb(b, o);
-                        (sz, o) = _rd_uleb(b, o);
+                        (sg, o) = read_uleb128(b, o);
+                        (of, o) = read_uleb128(b, o);
+                        (sz, o) = read_uleb128(b, o);
                         info = (sg, of, sz);
                     }
                     self.symtab.append([kind, flags, info, nm]);
                 } elif kind == 3 {
-                    (idx, o) = _rd_uleb(b, o);
+                    (idx, o) = read_uleb128(b, o);
                     self.symtab.append([kind, flags, idx, None]);
                 } else {
-                    (idx, o) = _rd_uleb(b, o);
+                    (idx, o) = read_uleb128(b, o);
                     opt_nm: (str | None) = None;
                     if (not undef) or (flags & 0x40) {
-                        (opt_nm, o) = _rd_name(b, o);
+                        (opt_nm, o) = read_leb_name(b, o);
                     }
                     self.symtab.append([kind, flags, idx, opt_nm]);
                 }
                 ci += 1;
             }
         } elif sub == 5 {
-            (cnt, o) = _rd_uleb(b, o);
+            (cnt, o) = read_uleb128(b, o);
             ci = 0;
             while ci < cnt {
-                (nm, o) = _rd_name(b, o);
-                (al, o) = _rd_uleb(b, o);
-                (fl, o) = _rd_uleb(b, o);
+                (nm, o) = read_leb_name(b, o);
+                (al, o) = read_uleb128(b, o);
+                (fl, o) = read_uleb128(b, o);
                 self.seg_info.append((nm, al, fl));
                 ci += 1;
             }
@@ -279,17 +210,17 @@ impl WasmObj.parse_reloc(nm: str, o: int, end: int) -> None {
         return;
     }
     b = self.b;
-    (sec, o) = _rd_uleb(b, o);
-    (cnt, o) = _rd_uleb(b, o);
+    (sec, o) = read_uleb128(b, o);
+    (cnt, o) = read_uleb128(b, o);
     ci = 0;
     while ci < cnt {
         rt = b[o];
         o += 1;
-        (off, o) = _rd_uleb(b, o);
-        (sym, o) = _rd_uleb(b, o);
+        (off, o) = read_uleb128(b, o);
+        (sym, o) = read_uleb128(b, o);
         add = 0;
         if rt == 3 or rt == 4 or rt == 5 {
-            (add, o) = _rd_sleb(b, o);
+            (add, o) = read_sleb128(b, o);
         }
         self.relocs.append([nm, rt, off, sym, add]);
         ci += 1;
@@ -301,20 +232,20 @@ def _parse_data_segments(b: bytes) -> list {
         return [];
     }
     o = 0;
-    (n, o) = _rd_uleb(b, o);
+    (n, o) = read_uleb128(b, o);
     segs = [];
     ci = 0;
     while ci < n {
-        (flags, o) = _rd_uleb(b, o);
+        (flags, o) = read_uleb128(b, o);
         if flags == 0 {
             o += 1;
-            (_v, o) = _rd_sleb(b, o);
+            (_v, o) = read_sleb128(b, o);
             o += 1;
-            (sz, o) = _rd_uleb(b, o);
+            (sz, o) = read_uleb128(b, o);
             segs.append(b[o:o + sz]);
             o += sz;
         } elif flags == 1 {
-            (sz, o) = _rd_uleb(b, o);
+            (sz, o) = read_uleb128(b, o);
             segs.append(b[o:o + sz]);
             o += sz;
         } else {
@@ -462,12 +393,18 @@ impl WasmLinker.link(
             continue;
         }
         if rt == 0 {
-            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base, heap_base)));
+            _patch(
+                code,
+                off,
+                encode_uleb128_padded5(_sym_val(ob, sym, old2new, seg_base, heap_base))
+            );
         } elif rt == 1 {
             _patch(
                 code,
                 off,
-                _uleb5(slot_of[_sym_val(ob, sym, old2new, seg_base, heap_base)])
+                encode_uleb128_padded5(
+                    slot_of[_sym_val(ob, sym, old2new, seg_base, heap_base)]
+                )
             );
         } elif rt == 2 {
             _patch(
@@ -477,16 +414,24 @@ impl WasmLinker.link(
             );
         } elif rt == 3 or rt == 4 {
             _patch(
-                code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base, heap_base) + add)
+                code,
+                off,
+                encode_uleb128_padded5(
+                    _sym_val(ob, sym, old2new, seg_base, heap_base) + add
+                )
             );
         } elif rt == 5 {
             _patch(
                 code, off, _u32le(_sym_val(ob, sym, old2new, seg_base, heap_base) + add)
             );
         } elif rt == 6 {} elif rt == 7 {
-            _patch(code, off, _uleb5(_sym_val(ob, sym, old2new, seg_base, heap_base)));
+            _patch(
+                code,
+                off,
+                encode_uleb128_padded5(_sym_val(ob, sym, old2new, seg_base, heap_base))
+            );
         } elif rt == 20 {
-            _patch(code, off, _uleb5(0));
+            _patch(code, off, encode_uleb128_padded5(0));
         } else {
             raise ValueError(f"unsupported reloc type {rt}");
         }
@@ -497,16 +442,18 @@ impl WasmLinker.link(
     out += _section(1, _vec(ob.types_raw));
     imps = [];
     for im in kept {
-        imps.append(_nm_bytes(im[1]) + _nm_bytes(im[2]) + b"\x00" + _uleb(im[3]));
+        imps.append(
+            _nm_bytes(im[1]) + _nm_bytes(im[2]) + b"\x00" + encode_uleb128(im[3])
+        );
     }
     out += _section(2, _vec(imps));
-    out += _section(3, _vec([_uleb(t) for t in ob.func_types]));
+    out += _section(3, _vec([encode_uleb128(t) for t in ob.func_types]));
     if needs_table {
-        out += _section(4, _vec([b"\x70\x00" + _uleb(nslot)]));
+        out += _section(4, _vec([b"\x70\x00" + encode_uleb128(nslot)]));
     }
-    out += _section(5, _vec([b"\x00" + _uleb(mem_pages)]));
-    g_sp = b"\x7f\x01\x41" + _sleb_bytes(stack_top) + b"\x0b";
-    g_hb = b"\x7f\x00\x41" + _sleb_bytes(heap_base) + b"\x0b";
+    out += _section(5, _vec([b"\x00" + encode_uleb128(mem_pages)]));
+    g_sp = b"\x7f\x01\x41" + encode_sleb128(stack_top) + b"\x0b";
+    g_hb = b"\x7f\x00\x41" + encode_sleb128(heap_base) + b"\x0b";
     out += _section(6, _vec([g_sp, g_hb]));
 
     ef = export_funcs;
@@ -518,9 +465,9 @@ impl WasmLinker.link(
             }
         }
     }
-    exps = [_nm_bytes("memory") + b"\x02" + _uleb(0)];
-    exps.append(_nm_bytes("__stack_pointer") + b"\x03" + _uleb(0));
-    exps.append(_nm_bytes("__heap_base") + b"\x03" + _uleb(1));
+    exps = [_nm_bytes("memory") + b"\x02" + encode_uleb128(0)];
+    exps.append(_nm_bytes("__stack_pointer") + b"\x03" + encode_uleb128(0));
+    exps.append(_nm_bytes("__heap_base") + b"\x03" + encode_uleb128(1));
     for nm in ef {
         fi = -1;
         for e in ob.symtab {
@@ -529,7 +476,7 @@ impl WasmLinker.link(
             }
         }
         if fi >= 0 {
-            exps.append(_nm_bytes(nm) + b"\x00" + _uleb(fi));
+            exps.append(_nm_bytes(nm) + b"\x00" + encode_uleb128(fi));
         }
     }
     out += _section(7, _vec(exps));
@@ -541,8 +488,8 @@ impl WasmLinker.link(
         }
         pairs.sort();
         funcidxs = [p[1] for p in pairs];
-        expr = b"\x41" + _sleb_bytes(1) + b"\x0b";
-        elem = b"\x00" + expr + _vec([_uleb(fi) for fi in funcidxs]);
+        expr = b"\x41" + encode_sleb128(1) + b"\x0b";
+        elem = b"\x00" + expr + _vec([encode_uleb128(fi) for fi in funcidxs]);
         out += _section(9, _vec([elem]));
     }
     out += _section(10, bytes(code));
@@ -550,9 +497,9 @@ impl WasmLinker.link(
     dsegs = [];
     i = 0;
     while i < len(segs) {
-        expr = b"\x41" + _sleb_bytes(seg_base[i]) + b"\x0b";
+        expr = b"\x41" + encode_sleb128(seg_base[i]) + b"\x0b";
         c = segs[i];
-        dsegs.append(b"\x00" + expr + _uleb(len(c)) + c);
+        dsegs.append(b"\x00" + expr + encode_uleb128(len(c)) + c);
         i += 1;
     }
     if dsegs {
@@ -578,10 +525,10 @@ impl WasmLinker.link(
     nm_entries.sort();
     nm_map = bytearray();
     for pair in nm_entries {
-        nm_map += _uleb(pair[0]) + _nm_bytes(pair[1]);
+        nm_map += encode_uleb128(pair[0]) + _nm_bytes(pair[1]);
     }
-    sub = _uleb(len(nm_entries)) + bytes(nm_map);
-    payload = _nm_bytes("name") + b"\x01" + _uleb(len(sub)) + sub;
+    sub = encode_uleb128(len(nm_entries)) + bytes(nm_map);
+    payload = _nm_bytes("name") + b"\x01" + encode_uleb128(len(sub)) + sub;
     out += _section(0, payload);
     return bytes(out);
 }

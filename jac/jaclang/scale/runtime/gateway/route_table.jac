@@ -1,7 +1,8 @@
 import logging;
 import from jaclang.scale.runtime.gateway.service_registry {
     ServiceRegistry,
-    ServiceEntry
+    ServiceEntry,
+    ServiceStatus
 }
 
 glob _rt_logger = logging.getLogger(__name__),
@@ -58,6 +59,7 @@ async def learn_service_routes(
     if not due {
         return 0;
     }
+    due.sort(key=lambda (pair: tuple) { 0 if pair[1].is_root else 1; });
     answers: dict[str, SpecFetch] = {};
 
     async def ask(name: str, service_entry: ServiceEntry) {
@@ -73,10 +75,17 @@ async def learn_service_routes(
     for (name, `entry) in due {
         got: SpecFetch | None = answers.get(name);
         if got is None or not got.answered() {
+            _rt_logger.debug(
+                f"service '{name}' did not answer /openapi.json yet "
+                f"(status={`entry.status.value}); it stays due"
+            );
             continue;
         }
         table.mark_spec_seen(`entry, now);
         if got.doc is None {
+            if `entry.status != ServiceStatus.HEALTHY {
+                continue;
+            }
             table.unlearn(name);
             _rt_logger.warning(
                 f"service '{name}' publishes no readable /openapi.json "

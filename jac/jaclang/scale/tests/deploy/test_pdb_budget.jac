@@ -18,6 +18,8 @@ import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.runtime.cli.diagnostics { PlanValidator }
 
+import from jaclang.scale.runtime.fleet { fleet_of }
+
 
 def _pdbs(services: dict) -> dict {
     import tempfile;
@@ -30,10 +32,11 @@ def _pdbs(services: dict) -> dict {
             k8s_config=KubernetesConfig(
                 app_name="shop", namespace="shop-ns", bundle_storage_class="standard"
             ),
-            microservices_config={
-                "routes": {name: f"/{name}" for name in services},
-                "services": services
-            },
+            fleet=fleet_of(
+                {name: f"/{name}" for name in services},
+                root_app="main",
+                overrides=services
+            ),
             dry_run=True
         );
         bundle = builder.generate_manifests(
@@ -107,7 +110,7 @@ test "min_available brings the budget back at one replica" {
 test "the plan validator warns about the pair that produces no budget" {
     validator = PlanValidator(
         bundle={"deployments": {"orders_app": {"spec": {"replicas": 1}}}},
-        ms_cfg={"routes": {"orders_app": "/orders"}},
+        routes={"orders_app": "/orders"},
         svc_configs={
             "orders_app": {"hpa": {"enabled": False}, "pdb": {"max_unavailable": 1}}
         }
@@ -129,7 +132,7 @@ test "the plan validator warns about the pair that produces no budget" {
 test "the validator stays quiet when the budget actually holds" {
     validator = PlanValidator(
         bundle={"deployments": {"orders_app": {"spec": {"replicas": 3}}}},
-        ms_cfg={"routes": {"orders_app": "/orders"}},
+        routes={"orders_app": "/orders"},
         svc_configs={
             "orders_app": {"hpa": {"enabled": False}, "pdb": {"max_unavailable": 1}}
         }
@@ -176,7 +179,7 @@ test "the plan validator skips the HPA and PDB checks for an HTTP_ACTIVATION ser
             "deployments": {"billing_ops": {"spec": {"replicas": 1}}},
             "scaling": {"billing_ops": {"mode": ScalingMode.HTTP_ACTIVATION}}
         },
-        ms_cfg={"routes": {"billing_ops": "/billing-ops"}},
+        routes={"billing_ops": "/billing-ops"},
         svc_configs={
             "billing_ops": {"hpa": {"min": 5, "max": 1}, "pdb": {"max_unavailable": 1}}
         }

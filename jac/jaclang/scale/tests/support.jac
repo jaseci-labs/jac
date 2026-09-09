@@ -16,9 +16,11 @@ import shutil;
 import socket;
 import subprocess;
 import time;
+import unittest;
 import requests;
 import from pathlib { Path }
 import from typing { cast }
+import from jaclang.testing.test_runner { STRICT_ENV, strict_mode }
 
 """A port nothing is listening on."""
 def get_free_port -> int {
@@ -28,6 +30,30 @@ def get_free_port -> int {
         port = s.getsockname()[1];
     }
     return port;
+}
+
+"""The jac binary `zig build` writes, resolved from this file's depth in tests/."""
+def pod_binary -> Path {
+    return Path(__file__).parents[3] / "zig-out" / "bin" / "jac";
+}
+
+"""The pod binary, or a named skip that JAC_TEST_STRICT turns into a failure.
+
+Mirrors `jaclang.testing.requires`, which cannot express a build artifact:
+this one is neither an importable module nor a tool on PATH.
+"""
+def require_pod_binary -> Path {
+    binary = pod_binary();
+    if not binary.is_file() {
+        detail = f"missing build artifact '{binary}' (run `zig build` to produce it)";
+        if strict_mode() {
+            raise AssertionError(
+                f"{detail}; {STRICT_ENV} is set, so this is a failure"
+            );
+        }
+        raise unittest.SkipTest(detail);
+    }
+    return binary;
 }
 
 """Delete SQLite, legacy shelf, and client-build leftovers under fixtures_dir."""
@@ -109,7 +135,7 @@ def register_user(base_url: str, username: str, password: str = "pass123") -> st
 `env` overlays the inherited environment, for fixtures that need a variable
 set for the server process (a PYTHONPATH entry, say). A server that exits
 before answering is reported immediately with its output rather than waited
-out. The 120s budget covers a cold compile cache, where the first boot must
+out. The 300s budget covers a cold compile cache, where the first boot must
 compile the app before it can serve /healthz.
 """
 def start_server(
@@ -130,7 +156,12 @@ def start_server(
         env=proc_env
     );
     base_url = f"http://localhost:{port}";
-    for _ in range(120) {
+    # A subprocess that has to compile the tree cold takes minutes, and a
+    # health check that answers anything but 200 used to burn the whole budget
+    # without pausing, so the wait is a wall clock that sleeps on every outcome
+    # short of ready. A server that exits still ends the wait immediately.
+    deadline = time.monotonic() + 300.0;
+    while time.monotonic() < deadline {
         if server.poll() is not None {
             (stdout, stderr) = server.communicate();
             raise RuntimeError(
@@ -143,15 +174,14 @@ def start_server(
             if r.status_code == 200 {
                 return server;
             }
-        } except Exception {
-            time.sleep(1);
-        }
+        } except Exception {}
+        time.sleep(1);
     }
     server.kill();
     (stdout, stderr) = server.communicate(timeout=5);
     raise RuntimeError(
         f"server did not answer /healthz for {jac_file.name} on port {port} "
-        f"within 120s\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+        f"within 300s\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
     );
 }
 
@@ -172,4 +202,36 @@ def stop_server(server: subprocess.Popen | None) {
     }
     time.sleep(0.2);
     gc.collect();
+}
+
+
+import from jaclang.server.identity.user_manager { UserManager }
+import from jaclang.server.server { EndpointHost }
+import from jaclang.server.serving.endpoint { JEndPoint }
+
+
+"""An endpoint host that only records what gets registered on it."""
+obj RecordingHost(EndpointHost) {
+    has _endpoints: list[JEndPoint] = [],
+        users: (UserManager | None) = None,
+        metrics: any = None,
+        emailer: any = None,
+        base_path: str = "";
+
+    has user_manager: UserManager { getter; }
+
+    def add_endpoint(ep: JEndPoint) {
+        self._endpoints.append(ep);
+    }
+
+    def identity -> UserManager {
+        if self.users is None {
+            raise RuntimeError("RecordingHost has no user manager attached");
+        }
+        return self.users;
+    }
+}
+
+impl RecordingHost.user_manager.getter -> UserManager {
+    return self.identity();
 }

@@ -18,6 +18,10 @@ import weakref;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
+import from jaclang.compiler.passes.transform { Transform }
+import from unittest.mock { patch }
 
 glob VIRTUAL_PATH: str = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "_lifetime_probe.jac"
@@ -67,4 +71,34 @@ test "the evaluator does not hold the pass that ran over it" {
         f"type evaluator still points at {type(held).__name__} after the pass "
         "finished; that back-pointer pins the pass's whole program graph"
     );
+}
+
+test "failed checker phases restore the enclosing diagnostic context" {
+    prog = compile_once();
+    mod = prog.mod.main_mod;
+    assert mod is not None;
+    evaluator = prog.get_type_evaluator();
+    enclosing = Transform(ir_in=mod);
+    evaluator._pass = enclosing;
+    evaluator.ct_quiet = True;
+    try {
+        for phase in ["_insert_builtin_symbols", "traverse", "_stamp_fixed_width"] {
+            failed = False;
+            with patch.object(
+                TypeCheckPass, phase, side_effect=RuntimeError("phase failure")
+            ) {
+                try {
+                    run_pass(TypeCheckPass, mod, prog=prog);
+                } except RuntimeError as error {
+                    assert str(error) == "phase failure";
+                    failed = True;
+                }
+            }
+            assert failed , phase;
+            assert evaluator._pass is enclosing , phase;
+            assert evaluator.ct_quiet , phase;
+        }
+    } finally {
+        evaluator._pass = None;
+    }
 }

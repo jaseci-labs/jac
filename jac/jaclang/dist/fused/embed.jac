@@ -225,6 +225,13 @@ obj CStrArray {
 def:pub open_tree(rt: str, exe_path: str) -> Embed {
     os.environ["JAC_STANDALONE"] = "1";
     os.environ["JAC_EXECUTABLE"] = exe_path;
+
+    ca_bundle = rt + "/python/floor/cacert.pem";
+    if not os.environ.get("SSL_CERT_FILE", "")
+        and not os.environ.get("SSL_CERT_DIR", "")
+        and os.path.isfile(ca_bundle) {
+        os.environ["SSL_CERT_FILE"] = ca_bundle;
+    }
     libpath = f"{rt}/python/lib/libpython{PY_VER}{SHLIB_EXT}";
     handle = dlopen(libpath, i32(RTLD_NOW | RTLD_GLOBAL));
     if handle == 0 {

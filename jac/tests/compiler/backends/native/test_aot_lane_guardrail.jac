@@ -4,7 +4,7 @@ A dropped comma in `esast_gen_pass.jac` once made `get_py_code_gen` swallow the
 ImportError that source raised and hand back the Python-only schedule. A
 natively-decided program then compiled with no native passes in it: no LLVM IR,
 no alert in the ledger, and a bare "Native compilation produced no LLVM IR" from
-`jac nacompile`, while `jac check` and `jac run` stayed green because the run
+`jac build --native`, while `jac check` and `jac run` stayed green because the run
 lane simply used the Python bytecode. These tests pin both halves of the
 contract. The schedule really carries the native passes, and an AOT compile that
 ends with no IR names the module and the reason rather than going quiet. The
@@ -86,7 +86,16 @@ test "the chess example compiles to a binary that plays a game" {
     with tempfile.TemporaryDirectory() as tmp {
         out_bin = os.path.join(tmp, "chess");
         comp = subprocess.run(
-            [sys.executable, "-m", "jaclang", "nacompile", CHESS, "-o", out_bin],
+            [
+                sys.executable,
+                "-m",
+                "jaclang",
+                "build",
+                "--native",
+                CHESS,
+                "-o",
+                out_bin
+            ],
             capture_output=True,
             text=True,
             timeout=1800

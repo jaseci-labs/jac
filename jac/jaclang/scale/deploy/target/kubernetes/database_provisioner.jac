@@ -3,6 +3,7 @@ import from jaclang.scale._optdeps.kubernetes { client }
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists
 }
+import from jaclang.scale.deploy.target.kubernetes.manifest_builder { k8s_safe_name }
 
 
 obj DatabaseProvisioner {
@@ -29,7 +30,7 @@ obj DatabaseProvisioner {
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         namespace: str = cfg.namespace;
-        ensure_namespace_exists(namespace);
+        ensure_namespace_exists(namespace, k8s_safe_name(cfg.app_name));
 
         if self.logger {
             self.logger.info(

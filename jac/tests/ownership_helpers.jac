@@ -20,9 +20,7 @@ def compile_fixture(fixture_name: str, enforce: bool = False) -> JacProgram {
     program = JacProgram();
     if enforce {
         import from jaclang.compiler.driver.compile_options { CompileOptions }
-        program.compile(
-            path, options=CompileOptions(na_gc_mode="none", nogc_enforce_all=True)
-        );
+        program.compile(path, options=CompileOptions(memory_profile="nogc"));
     } else {
         program.compile(path);
     }

@@ -47,3 +47,42 @@ test "a bool-valued dict does not alias an int or enum-valued dict's storage" {
     );
     assert "__dict_set_ptr_i64" in llvm_text , "the int/enum dicts keep i64 helpers";
 }
+
+
+test "dictionary values preserve nested set layouts during iteration" {
+    prog = JacProgram();
+    module = prog.compile(
+        file_path=os.path.join(FIXTURES, "dictionary_value_sets.jac"),
+        use_str="""
+def probe -> int {
+    groups: dict[str, set[str]] = {
+        "first": {"one", "two"}, "second": {"two", "three"}
+    };
+    combined: set[str] = set();
+    for names in groups.values() { combined = combined | names; }
+    return len(combined) * 100 + int("one" in combined) * 10
+        + int("three" in combined);
+}
+""",
+        options=native_force_opts()
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    engine = module.gen.native_engine;
+    assert engine is not None;
+    probe = ctypes.CFUNCTYPE(ctypes.c_int64)(engine.get_function_address("probe"));
+    assert probe() == 311;
+}
+
+
+test "object hash layouts stay distinct from strings and other object classes" {
+    import from tests.support { compile_native, get_func }
+    import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+    (engine, module) = compile_native("object_hash_layouts.jac");
+    issues = native_lowering_issues(str(module.gen.llvm_ir));
+    assert not issues , "\n".join(issue.detail for issue in issues);
+    probe = get_func(engine, "probe", ctypes.c_int64);
+    assert probe() == 157;
+}

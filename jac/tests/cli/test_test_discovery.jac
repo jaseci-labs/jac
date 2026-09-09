@@ -240,3 +240,130 @@ test "a suite below a non-package directory still resolves its package root" {
         f"gapped suite must import gappkg.support and pass; got exit {rc}"
     );
 }
+
+
+"""Create a temp project with NO `[test]` table at all, holding conventionally
+named suites at two depths plus traps that collection must never sweep in:
+tool-owned directories (`.jac/`, `node_modules/`, `__pycache__/`), a
+`fixtures/` input, and a plain module that is not named like a test. Every
+trap carries an always-failing `test` block. Returns the project root."""
+def make_unconfigured_project -> str {
+    proj = tempfile.mkdtemp(prefix="jacroot-");
+    (Path(proj) / "jac.toml").write_text('[project]\nname = "r"\n');
+    (Path(proj) / "shared.jac").write_text("glob VALUE: int = 7;\n");
+    (Path(proj) / "shared.test.jac").write_text(
+        'test "root suite" {\n    assert VALUE == 7;\n}\n'
+    );
+    nested = Path(proj) / "socialize";
+    nested.mkdir();
+    (nested / "test_graph.jac").write_text(
+        'test "nested suite" {\n    assert True;\n}\n'
+    );
+    trap = 'test "must not be collected" {\n    assert False;\n}\n';
+    (Path(proj) / "app.jac").write_text(trap);
+    for skipped in [".jac", "node_modules", "__pycache__"] {
+        d = Path(proj) / skipped;
+        d.mkdir();
+        (d / "test_stale.jac").write_text(trap);
+    }
+    fixtures = nested / "fixtures";
+    fixtures.mkdir();
+    (fixtures / "test_input.jac").write_text(trap);
+    return proj;
+}
+
+
+test "bare `jac test` collects the project root when no [test] table exists" {
+    # Regression guard: with no `[test] directories` the no-argument default
+    # resolved to an empty root, `discover` skipped it, and the run exited 5
+    # ("no tests ran (no test files collected)") in a project full of suites.
+    # The documented contract is that an unset `[test]` scope walks the
+    # project root, under the same naming rules a positional directory
+    # target uses -- so `app.jac` (a module, not a suite) stays out.
+    proj = make_unconfigured_project();
+    try {
+        rc = run_in(proj, []);
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    # exit 5 = nothing collected (the bug); exit 1 = a trap was collected.
+    assert rc == 0 , (
+        "bare `jac test` must collect the project root's suites and skip the "
+        f"traps; got exit {rc}"
+    );
+}
+
+
+test "bare `jac test` outside any project collects the working directory" {
+    # No jac.toml at all is the same question with `cfg is None`: the cwd is
+    # the only root there is.
+    proj = tempfile.mkdtemp(prefix="jacnotoml-");
+    (Path(proj) / "test_solo.jac").write_text('test "solo" {\n    assert True;\n}\n');
+    try {
+        rc = run_in(proj, []);
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    assert rc == 0 , (
+        f"bare `jac test` with no jac.toml must scan the cwd; got exit {rc}"
+    );
+}
+
+
+test "`--test_name` without a filepath still refuses to run" {
+    # The project-root fallback fills in `paths`, so the "name across all
+    # files is ambiguous" guard has to be asked before the fallback runs,
+    # not after.
+    proj = make_unconfigured_project();
+    old = os.getcwd();
+    os.chdir(proj);
+    reset_config();
+    try {
+        rc = int(getattr(analysis_cmds, "test")([], test_name="root suite"));
+    } finally {
+        os.chdir(old);
+        reset_config();
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    assert rc == 1 , (
+        f"`jac test --test_name X` with no filepath must still error; got exit {rc}"
+    );
+}
+
+
+"""Create a temp project whose `[test] directories` (plural) names two roots,
+with a third directory holding an always-failing suite that neither root
+covers. Returns the project root."""
+def make_multi_root_project -> str {
+    proj = tempfile.mkdtemp(prefix="jacdirs-");
+    (Path(proj) / "jac.toml").write_text(
+        '[project]\nname = "r"\n\n[test]\ndirectories = ["alpha", "beta"]\n'
+    );
+    for name in ["alpha", "beta"] {
+        d = Path(proj) / name;
+        d.mkdir();
+        (d / "suite.jac").write_text(f'test "{name} runs" {{\n    assert True;\n}}\n');
+    }
+    outside = Path(proj) / "gamma";
+    outside.mkdir();
+    (outside / "suite.jac").write_text(
+        'test "must not be collected" {\n    assert False;\n}\n'
+    );
+    return proj;
+}
+
+
+test "`[test] directories` collects every named root and nothing else" {
+    # The plural key is what the jaclang.org example used; only the singular
+    # `directory` had a guard.
+    proj = make_multi_root_project();
+    try {
+        rc = run_in(proj, []);
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    # exit 5 = a root was skipped, exit 1 = gamma/ was swept in.
+    assert rc == 0 , (
+        f"both declared roots must run and gamma/ must not; got exit {rc}"
+    );
+}

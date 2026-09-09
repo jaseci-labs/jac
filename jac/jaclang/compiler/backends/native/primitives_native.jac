@@ -1,5 +1,5 @@
 import from jaclang.compiler.backends.native.llvm { ir }
-import from jaclang.compiler.primitives {
+import from jaclang.compiler.backends.common.primitives {
     IntEmitter,
     FloatEmitter,
     ComplexEmitter,
@@ -15,12 +15,14 @@ import from jaclang.compiler.primitives {
 }
 import type from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.diagnostics { E5092 }
+import from jaclang.compiler.frontend.unitree { Expr, UniNode }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
         type_key: str = "",
         call_kwargs: dict = {},
-        arg_nodes: list = [];
+        arg_nodes: list[UniNode] = [],
+        call_node: UniNode | None = None;
 }
 
 
@@ -293,6 +295,14 @@ class NativeStrEmitter(StrEmitter[(ir.Value, NativeEmitCtx)]) {
         ctx: NativeEmitCtx,
         target: ir.Value,
         args: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def _emit_affix(
+        self: NativeStrEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        suffix: bool
     ) -> (ir.Value | None);
 
     def emit_startswith(
@@ -889,6 +899,31 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_aos_pop(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        args: list[ir.Value],
+        elem_struct: ir.Type
+    ) -> ir.Value;
+
+    def _emit_aos_del_at(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        del_idx: ir.Value,
+        elem_struct: ir.Type
+    ) -> ir.Value;
+
+    def _emit_aos_insert(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        insert_idx: ir.Value,
+        insert_val: ir.Value,
+        elem_struct: ir.Type
+    ) -> ir.Value;
+
     def emit_del_at(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,
@@ -907,6 +942,12 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         del_idx = args[0];
+        _aos_struct = p._aos_elem_struct(ctx.type_key);
+        if _aos_struct is not None {
+            return self._emit_aos_del_at(
+                ctx, target, p._coerce_type(del_idx, i64), _aos_struct
+            );
+        }
 
         if isinstance(helpers["elem_type"], ir.PointerType) {
             if p.rc_release_simple_fn is None {
@@ -1848,9 +1889,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             and isinstance(args[2].type, ir.IntType) {
             return self.emit_pow_mod(ctx, base, exp, args[2]);
         }
-        exp_node = None;
+        exp_node: Expr | None = None;
         if len(ctx.arg_nodes) >= 2 {
-            exp_node = ctx.arg_nodes[1];
+            exponent = ctx.arg_nodes[1];
+            if isinstance(exponent, Expr) {
+                exp_node = exponent;
+            }
         }
         return p._codegen_pow(base, exp, exp_node);
     }

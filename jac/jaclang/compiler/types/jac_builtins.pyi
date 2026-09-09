@@ -43,6 +43,7 @@ __all__ = [
     "EdgeDir",
     "LLMModel",
     "Region",
+    "region_of",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -78,6 +79,8 @@ __all__ = [
     "schedule",
     "unsafe_html",
     "managed",
+    "take",
+    "swap",
     "JacListView",
     # Schema evolution rule builders
     "schema_was",
@@ -168,6 +171,10 @@ class Region:
     def partition(self) -> Region: ...
     @overload
     def partition(self, n: int) -> tuple[Region, ...]: ...
+
+# The region a value was allocated in (the growth anchor of a traversal),
+# or None for a managed value.
+def region_of(__x: object) -> Region | None: ...
 
 class EdgeDir:
     OUT: int
@@ -339,6 +346,15 @@ def schedule(**kwargs: object) -> Callable[..., Any]: ...
 _ManagedT = TypeVar("_ManagedT")
 
 def managed(x: _ManagedT) -> _ManagedT: ...
+
+_TakeT = TypeVar("_TakeT")
+
+# Move the value out of an optional owned place (a local or an attribute),
+# leaving None behind. The exit from a place, as a call.
+def take(place: _TakeT) -> _TakeT: ...
+
+# Exchange the values of two places of one type, in place.
+def swap(a: _TakeT, b: _TakeT) -> None: ...
 
 # A window onto a slice of a backing sequence, without copying it.
 class JacListView:

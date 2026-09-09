@@ -46,7 +46,8 @@ impl parse_style_css(style_name: str) -> dict[str, str] {
         content = f.read();
     }
 
-    pattern = re.compile(r'\.(cn-[\w-]+)\s*\{\s*@apply\s+([^;]+);');
+    content = re.sub(r'/\*.*?\*/', "", content, flags=re.DOTALL);
+    pattern = re.compile(r'\.(cn-[\w-]+)\s*\{\s*@apply\s+([^;}]+)[;}]');
     resolution_map: dict[str, str] = {};
     for `match in pattern.findall(content) {
         resolution_map[`match[0]] = `match[1].strip();

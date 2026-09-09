@@ -30,7 +30,8 @@ obj Scheduler {
         _running: bool = False,
         _stop_event: (threading.Event | None) = None,
         _done_event: (threading.Event | None) = None,
-        dynamic_handler: (Callable | None) = None;
+        dynamic_handler: (Callable | None) = None,
+        lease: (Callable[[str, int], bool] | None) = None;
 
     static def instance -> Scheduler;
     def register(
@@ -38,6 +39,9 @@ obj Scheduler {
     ) -> None;
 
     def start -> None;
+    def start_if_pending -> None;
+    def _lease_ttl(spec: ScheduleSpec) -> int;
+    def _may_fire(task: ScheduledTask) -> bool;
     def stop -> None;
     def `wait -> None;
     def has_pending -> bool;

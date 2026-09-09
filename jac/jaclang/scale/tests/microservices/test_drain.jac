@@ -1,259 +1,111 @@
+"""The transport's drain state: what SIGTERM flips and what the middleware,
+readiness probe and gateway read from it."""
+
 import asyncio;
 import json;
-import time;
-import threading;
-import from jaclang.scale.runtime.lifecycle.drain {
-    is_draining,
-    inflight,
-    start_drain,
-    incr_inflight,
-    decr_inflight,
-    wait_for_zero,
-    reset_drain,
-    drain_timeout_s,
-    build_drain_middleware,
-    install_signal_drain
+import from jaclang.server.serving.datatypes { JSONResponse, Request, URL }
+import from jaclang.server.serving.drain { DrainState, drain_middleware }
+
+
+def _request(path: str) -> Request {
+    return Request(method="GET", url=URL(path=path));
 }
 
 
-test "initial state is not draining and inflight is zero" {
-    reset_drain();
-    assert not is_draining();
-    assert inflight() == 0;
+def _run(coro: any) -> any {
+    return asyncio.run(coro);
 }
 
 
-test "start_drain flips is_draining True" {
-    reset_drain();
-    assert not is_draining();
-    start_drain(5.0);
-    assert is_draining();
-    reset_drain();
+test "initial state is not draining and keeps its budget" {
+    state = DrainState(timeout=4.0);
+    assert not state.draining;
+    assert state.remaining() == 4.0;
+    assert state.reason == "";
 }
 
 
-test "start_drain is idempotent; second call preserves original timeout" {
-    reset_drain();
-    start_drain(7.0);
-    start_drain(99.0);
-    assert is_draining();
-    assert drain_timeout_s() == 7.0;
-    reset_drain();
+test "start flips draining once and keeps the first reason" {
+    state = DrainState(timeout=7.0);
+    assert state.start("signal SIGTERM");
+    assert state.draining;
+    assert state.reason == "signal SIGTERM";
+    assert not state.start("second");
+    assert state.reason == "signal SIGTERM";
+    state.reset();
+    assert not state.draining;
 }
 
 
-test "inflight counter increments and decrements" {
-    reset_drain();
-    assert inflight() == 0;
-    incr_inflight();
-    incr_inflight();
-    assert inflight() == 2;
-    decr_inflight();
-    assert inflight() == 1;
-    decr_inflight();
-    assert inflight() == 0;
-    reset_drain();
+test "remaining counts down from the budget once draining" {
+    state = DrainState(timeout=10.0);
+    state.start("test");
+    left = state.remaining();
+    assert 0.0 < left <= 10.0;
 }
 
 
-test "inflight cannot go negative" {
-    reset_drain();
-    decr_inflight();
-    decr_inflight();
-    assert inflight() == 0;
-    reset_drain();
-}
+test "middleware passes through when not draining" {
+    state = DrainState();
+    called: list[str] = [];
 
-
-test "wait_for_zero returns True when already zero" {
-    reset_drain();
-    assert wait_for_zero(0.5);
-}
-
-
-test "wait_for_zero unblocks when inflight drops in another thread" {
-    reset_drain();
-    incr_inflight();
-
-    def dropper {
-        time.sleep(0.05);
-        decr_inflight();
+    async def handler(request: Request) -> JSONResponse {
+        called.append(request.url.path);
+        return JSONResponse(content={"ok": True});
     }
-
-    t = threading.Thread(target=dropper);
-    t.start();
-    t0 = time.time();
-    ok = wait_for_zero(1.0);
-    elapsed = time.time() - t0;
-    t.join();
-    assert ok;
-    assert elapsed < 0.5;
-    reset_drain();
+    mw = drain_middleware(state, "svc");
+    resp = _run(mw(_request("/walker/Foo"), handler));
+    assert resp.status_code == 200;
+    assert called == ["/walker/Foo"];
 }
 
 
-test "wait_for_zero times out when inflight stays stuck" {
-    reset_drain();
-    incr_inflight();
-    t0 = time.time();
-    ok = wait_for_zero(0.1);
-    elapsed = time.time() - t0;
-    assert not ok;
-    assert elapsed >= 0.1;
-    reset_drain();
+test "middleware answers 503 with Retry-After and an envelope when draining" {
+    state = DrainState();
+    state.start("test");
+
+    async def handler(request: Request) -> JSONResponse {
+        raise AssertionError("handler must not run while draining");
+    }
+    mw = drain_middleware(state, "orders");
+    resp = _run(mw(_request("/walker/Foo"), handler));
+    assert resp.status_code == 503;
+    assert resp.headers.get("Retry-After") == "1";
+    assert resp.headers.get("Connection") == "close";
+    body = json.loads(resp.body_bytes());
+    assert body["ok"] is False;
+    assert body["error"]["code"] == "SERVICE_UNAVAILABLE";
+    assert "orders" in body["error"]["message"];
 }
 
 
-def _run_async(coro: object) -> object {
-    loop = asyncio.new_event_loop();
-    try {
-        return loop.run_until_complete(coro);
-    } finally {
-        loop.close();
+test "health probes bypass the drain middleware" {
+    state = DrainState();
+    state.start("test");
+    seen: list[str] = [];
+
+    async def handler(request: Request) -> JSONResponse {
+        seen.append(request.url.path);
+        return JSONResponse(content={"status": "draining"});
     }
+    mw = drain_middleware(state, "svc");
+    for path in ["/healthz", "/healthz/live", "/healthz/ready"] {
+        resp = _run(mw(_request(path), handler));
+        assert resp.status_code == 200 , path;
+    }
+    assert seen == ["/healthz", "/healthz/live", "/healthz/ready"];
 }
 
 
-test "middleware passes through when not draining and tracks inflight=0 after" {
-    reset_drain();
-    mw = build_drain_middleware("test_svc");
-    called: dict[str, int] = {"n": 0};
+test "the transport flips its drain state on a termination signal" {
+    import from jaclang.server.serving.app { ServingApp }
+    import from jaclang.server.serving.server { ServingServer }
+    import from jaclang.server.settings { ServeSettings }
 
-    async def next_handler(req: object) -> object {
-        import from jaclang.server.serving.datatypes { JSONResponse }
-        called["n"] += 1;
-        return JSONResponse(status_code=200, content={"ok": True});
-    }
-
-    resp = _run_async(mw(object(), next_handler));
-    assert called["n"] == 1;
-    assert getattr(resp, "status_code") == 200;
-    assert inflight() == 0;
-    reset_drain();
-}
-
-
-test "middleware returns 503 with Retry-After + envelope when draining" {
-    reset_drain();
-    mw = build_drain_middleware("cart_app");
-    start_drain(10.0);
-
-    async def next_handler(req: object) -> object {
-        raise AssertionError("next_handler should not run during drain");
-    }
-
-    resp = _run_async(mw(object(), next_handler));
-    assert getattr(resp, "status_code") == 503;
-    headers = getattr(resp, "headers");
-    assert headers.get("Retry-After") == "2";
-
-    raw_body: bytes = bytes(getattr(resp, "body"));
-    body: dict = json.loads(raw_body.decode());
-    assert body["ok"] == False;
-    err: dict = body["error"];
-    assert err["code"] == "SERVICE_UNAVAILABLE";
-    assert err["service"] == "cart_app";
-    msg: str = err["message"];
-    assert "draining" in msg;
-    reset_drain();
-}
-
-
-test "middleware accounts inflight across concurrent in-flight requests" {
-    reset_drain();
-    mw = build_drain_middleware("svc");
-    observed: list[int] = [];
-
-    async def next_handler(req: object) -> object {
-        import from jaclang.server.serving.datatypes { JSONResponse }
-        observed.append(inflight());
-        return JSONResponse(status_code=200, content={"ok": True});
-    }
-
-    async def go {
-        await asyncio.gather(
-            mw(object(), next_handler),
-            mw(object(), next_handler),
-            mw(object(), next_handler)
-        );
-    }
-
-    _run_async(go());
-    assert inflight() == 0;
-    assert any(o >= 1 for o in observed);
-    reset_drain();
-}
-
-
-test "middleware decrements inflight even when handler raises" {
-    reset_drain();
-    mw = build_drain_middleware("svc");
-
-    async def bad_handler(req: object) -> object {
-        raise RuntimeError("boom");
-    }
-
-    raised = False;
-    try {
-        _run_async(mw(object(), bad_handler));
-    } except RuntimeError {
-        raised = True;
-    }
-    assert raised;
-    assert inflight() == 0;
-    reset_drain();
-}
-
-
-obj _FakeServer {
-    has stop_calls: int = 0;
-
-    def request_stop {
-        self.stop_calls += 1;
-    }
-}
-
-"""Capture the handlers install_signal_drain registers, without touching
-this process's real signal disposition."""
-def _install_capturing_signals(srv: any, timeout_s: float) -> dict {
-    import signal;
-    import unittest.mock;
-    registered: dict = {};
-
-    def _fake_signal(signum: any, handler: any) -> any {
-        registered[int(signum)] = handler;
-        return None;
-    }
-    patcher: any = unittest.mock.patch.object(signal, "signal", _fake_signal);
-    with patcher {
-        install_signal_drain(srv, timeout_s=timeout_s);
-    }
-    return registered;
-}
-
-
-test "install_signal_drain registers termination handlers and sets the timeout" {
-    import signal;
-    reset_drain();
-    srv = _FakeServer();
-    registered = _install_capturing_signals(srv, 3.0);
-    assert int(signal.SIGTERM) in registered;
-    assert int(signal.SIGINT) in registered;
-    assert drain_timeout_s() == 3.0;
-    reset_drain();
-}
-
-
-test "termination handler starts drain then stops the server" {
-    import signal;
-    reset_drain();
-    srv = _FakeServer();
-    registered = _install_capturing_signals(srv, 2.0);
-    assert not is_draining();
-
-    handler: any = registered[int(signal.SIGTERM)];
-    handler(int(signal.SIGTERM), None);
-    assert is_draining();
-    assert srv.stop_calls == 1;
-    reset_drain();
+    settings = ServeSettings();
+    settings.timeouts.drain = 3.5;
+    server = ServingServer(app=ServingApp(), settings=settings);
+    assert server.drain.timeout == 3.5;
+    assert not server.drain.draining;
+    assert server.app.state["drain"] is server.drain;
 }

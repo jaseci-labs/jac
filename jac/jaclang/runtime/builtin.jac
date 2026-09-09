@@ -103,6 +103,18 @@ obj JacListView {
 
 def _jac_chunks(xs: any, n: int) -> list;
 
+def _jac_take_attr(owner: any, name: str) -> any;
+
+def _jac_take_item(seq: any, key: any) -> any;
+
+def _jac_replace_attr(owner: any, name: str, value: any) -> any;
+
+def _jac_replace_item(seq: any, key: any, value: any) -> any;
+
+def _jac_swap_places(
+    owner_a: any, key_a: any, attr_a: bool, owner_b: any, key_b: any, attr_b: bool
+) -> None;
+
 
 glob __all__ = [
          'printgraph',
@@ -151,7 +163,13 @@ glob __all__ = [
          'wrapping_neg',
          'JacListView',
          '_jac_chunks',
+         '_jac_take_attr',
+         '_jac_take_item',
+         '_jac_replace_attr',
+         '_jac_replace_item',
+         '_jac_swap_places',
          'Region',
+         'region_of',
          '_jac_region_open',
          '_jac_region_close',
          '_jac_region_register',

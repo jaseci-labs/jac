@@ -146,7 +146,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         return _choose_from(list(tp));
     }
 
-    if is_dataclass(tp) {
+    if is_record(tp) {
         try {
             type_hints = get_type_hints(tp, include_extras=True);
         } except Exception {

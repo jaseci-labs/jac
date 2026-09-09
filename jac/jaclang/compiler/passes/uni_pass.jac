@@ -1,8 +1,10 @@
 import from jaclang.compiler.frontend.unitree { Module, TreeWalker, UniNode }
-import from jaclang.compiler.backends.py.module_codegen_pass { ModuleCodegenPass }
+import from jaclang.compiler.passes.transform { Transform }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 
-walker UniPass(ModuleCodegenPass, TreeWalker) {
+walker UniPass(Transform, TreeWalker) {
+    has ir_in: Module;
+
     can enter_walk with UniNode entry;
     can exit_walk with UniNode exit;
     def postinit -> None;

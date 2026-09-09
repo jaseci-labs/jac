@@ -6,11 +6,10 @@ import from jaclang.scale.config.project_env { load_project_env }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.runtime.routing {
-    ensure_main_service,
-    format_route_lines,
-    resolve_routes,
-    resolve_service_files
+import from jaclang.scale.runtime.fleet {
+    FleetSpec,
+    fleet_from_config,
+    format_fleet_lines
 }
 
 glob DELEGATED_ENV: str = "JAC_SCALE_PINNED_DEPLOY";
@@ -28,7 +27,9 @@ def pinned_deploy_argv(
 
 
 obj KubernetesRealizer {
-    has ms_config: dict[str, any];
+    has fleet: (FleetSpec | None) = None,
+        gateway_config: (dict[str, any] | None) = None,
+        served_app: str = "";
 
     def _deploy_on_pinned_jac(
         filename: str, target: str, enable_tls: bool, dry_run: bool
@@ -61,6 +62,42 @@ obj KubernetesRealizer {
         return code;
     }
 
+    def _resolve_fleet(code_folder: str) -> (FleetSpec | None) {
+        if self.fleet is not None {
+            return self.fleet;
+        }
+        import from jaclang.project.config { get_config_for_dir }
+        cfg = get_config_for_dir(code_folder);
+        if cfg is None or not cfg.is_workspace {
+            return None;
+        }
+        root_dir = str(cfg.project_root) if cfg.project_root else code_folder;
+        return fleet_from_config(
+            cfg, self.served_app, project_root=root_dir, relative_to=code_folder
+        );
+    }
+
+    def _print_fleet_banner(fleet: FleetSpec | None) -> None {
+        if fleet is None or not fleet.service_names() {
+            console.print(
+                "No service apps in this workspace; deploying the app as a "
+                "single pod behind a gateway.",
+                style="cyan"
+            );
+            return;
+        }
+        count = len(fleet.service_names());
+        plural = "s" if count != 1 else "";
+        console.print(
+            f"Deploying {count} service app{plural} plus '{fleet.root_app}' "
+            "behind a gateway.",
+            style="cyan"
+        );
+        for line in format_fleet_lines(fleet) {
+            console.print(f"  {line}", style="muted");
+        }
+    }
+
     def realize(
         filename: str,
         target: str = "kubernetes",
@@ -72,41 +109,18 @@ obj KubernetesRealizer {
 
         reset_deploy_version_cache();
 
-        if target == "kubernetes" {
-            routes: dict[str, str] = resolve_routes(self.ms_config);
-            if routes {
-                service_files = resolve_service_files(self.ms_config, routes);
-                ensure_main_service(routes, service_files, os.path.basename(filename));
-                raw_cfg = get_scale_config().load();
-                raw_ms = raw_cfg.setdefault("microservices", {});
-                raw_ms["routes"] = routes;
-                raw_ms["service_files"] = service_files;
-                self.ms_config["routes"] = routes;
-                self.ms_config["service_files"] = service_files;
-                plural = "s" if len(routes) != 1 else "";
-                console.print(
-                    f"Deploying {len(routes)} service{plural} behind a gateway.",
-                    style="cyan"
-                );
-                for line in format_route_lines(routes) {
-                    console.print(f"  {line}", style="muted");
-                }
-            } else {
-                console.print(
-                    "No [scale.microservices.routes] declared; deploying the app "
-                    "as a single service behind a gateway.",
-                    style="cyan"
-                );
-            }
-        }
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'");
+        }
+        code_folder = os.path.dirname(filename) or '.';
+        if target in ("kubernetes", "kubernetes-microservice") {
+            self.fleet = self._resolve_fleet(code_folder);
+            self._print_fleet_banner(self.fleet);
         }
         delegated = self._deploy_on_pinned_jac(filename, target, enable_tls, dry_run);
         if delegated is not None {
             return delegated;
         }
-        code_folder = os.path.dirname(filename) or '.';
         load_project_env(code_folder);
         if dry_run {
             import from jaclang.scale.injector.binary { deploy_generation_refusal }
@@ -129,6 +143,11 @@ obj KubernetesRealizer {
         );
         import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
             KubernetesTargetBase
+        }
+        import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
+        if isinstance(deployment_target, KubernetesTarget) {
+            deployment_target.fleet = self.fleet;
+            deployment_target.gateway_config = self.gateway_config;
         }
 
         if enable_tls and dry_run {
@@ -164,7 +183,11 @@ obj KubernetesRealizer {
             deployment_target.secrets = scale_config.get_secrets_config();
         }
 
-        app_config = AppConfig(code_folder=code_folder, file_name=base_file_path);
+        app_config = AppConfig(
+            code_folder=code_folder,
+            file_name=base_file_path,
+            served_app=self.served_app
+        );
         console.warning(
             "Copying local source into the cluster via PVC and installing "
             "jac at pod startup. Keep secrets in [scale.secrets] "

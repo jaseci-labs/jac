@@ -3,7 +3,6 @@ import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.frontend.constant { BROWSER_SEED_GLOBALS }
 
 glob _AMBIENT_CACHE: set[str] = set(),
-     _IDENT_RE: re.Pattern = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*"),
      _RAW_DECL_RE: re.Pattern = re.compile(
          r"\b(?:function|class|const|let|var)\s+\*?\s*([A-Za-z_$][A-Za-z0-9_$]*)"
      );
@@ -219,12 +218,12 @@ def _walk_value(
 def _walk(
     nd: es.Node, binding: bool, decls: set[str], refs: list[FreeIdentifier]
 ) -> None {
+    if isinstance(nd, es.RawCode) {
+        _harvest_raw(nd.code, decls);
+        return;
+    }
     if isinstance(nd, es.Identifier) {
         if nd.name in _SYNTACTIC_IDENTIFIERS {
-            return;
-        }
-        if _IDENT_RE.fullmatch(nd.name) is None {
-            _harvest_raw(nd.name, decls);
             return;
         }
         if binding {

@@ -92,7 +92,7 @@ def _inherited_dev_source() -> str | None:
     """The dev source a parent jac process exported, if it still holds a tree.
 
     ``apply_dev_source_override`` exports ``JAC_DEV_SOURCE`` whenever the loop
-    engages, so a child jac spawned from any cwd (a ``nacompile`` into a temp
+    engages, so a child jac spawned from any cwd (a native build into a temp
     dir, a desktop build compiling its host) inherits the same compiler instead
     of silently falling back to the bundled copy.
     """
@@ -145,7 +145,7 @@ def apply_dev_source_override() -> None:
        stanza.
     2. Otherwise, an inherited ``JAC_DEV_SOURCE`` -- exported by a jac process
        whose loop engaged, so the children it spawns (``jac test`` running a
-       ``nacompile`` into a temp dir, a desktop build compiling its host) stay
+       a native build into a temp dir, a desktop build compiling its host) stay
        on the same compiler whatever their cwd. Without this a child outside the
        repo would silently fall back to the bundled copy.
     3. Otherwise, a ``jac_linked_source`` marker baked into a linked dev binary

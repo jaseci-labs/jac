@@ -19,13 +19,13 @@ import from jaclang.server.serving.endpoint {
     ParameterType
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.identity.user_manager { UserRole, JacScaleUserManager }
+import from jaclang.server.identity.user_manager { UserRole, UserManager }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
 
-impl JacAPIServerAdmin._require_user_manager -> JacScaleUserManager {
+impl JacAPIServerAdmin._require_user_manager -> UserManager {
     manager = self.user_manager;
     if manager is None {
         raise RuntimeError(
@@ -35,23 +35,23 @@ impl JacAPIServerAdmin._require_user_manager -> JacScaleUserManager {
     return manager;
 }
 
-impl JacAPIServerAdmin.register_admin_endpoints -> None {
+impl JacAPIServerAdmin.register_admin_endpoints -> bool {
     admin_config = get_scale_config().get_admin_config();
     if not admin_config.get('enabled', False) {
         logger.info(
             "Admin portal is disabled. Set [scale.admin] enabled = true in "
             "jac.toml to serve it."
         );
-        return;
+        return False;
     }
 
     if not self.bootstrap_admin() {
-        return;
+        return False;
     }
 
     server = self.server;
     if server is None {
-        return;
+        return False;
     }
 
     server.add_endpoint(
@@ -536,21 +536,22 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
         )
     );
     logger.info("Admin portal endpoints registered at /admin");
+    return True;
 }
 
 impl JacAPIServerAdmin.bootstrap_admin -> bool {
-    result = self._require_user_manager().bootstrap_admin_user();
+    admin_config = get_scale_config().get_admin_config();
+    result = self._require_user_manager().bootstrap_admin_user(
+        admin_username=str(admin_config.get('username', 'admin')),
+        bootstrap_password=str(admin_config.get('default_password') or ''),
+        require_password_reset=bool(admin_config.get('require_password_reset', True))
+    );
     if 'error' in result {
         logger.error(
-            f"Admin portal not served: {result.get('error', 'bootstrap failed')}"
+            f"Admin portal not served: {result.get('error', 'bootstrap failed')}. "
+            "Set [scale.admin] default_password or JAC_ADMIN_PASSWORD."
         );
         return False;
-    }
-    if 'created' in result.get('message', '').lower() {
-        logger.warning(
-            "Admin user created with the configured bootstrap password. "
-            "It must be rotated on first login."
-        );
     }
     return True;
 }
@@ -1312,7 +1313,7 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     logger.info("Building admin client from source...");
     try {
         result = subprocess.run(
-            ["jac", "build", "main.jac", "--client", "web"],
+            ["jac", "build", "--as", "client", "main.jac"],
             cwd=str(ui_dir),
             capture_output=True,
             text=True,

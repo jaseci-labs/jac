@@ -17,7 +17,17 @@ def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
     return (base, mod);
 }
 
-impl WebTarget.setup(project_dir: Path) -> None {}
+def _pwa_enabled(project_dir: Path) -> bool {
+    import from jaclang.client.config_loader { JacClientConfig }
+    return JacClientConfig(project_dir).is_pwa_enabled();
+}
+
+impl WebTarget.setup(project_dir: Path) -> None {
+    if _pwa_enabled(project_dir) {
+        import from jaclang.client.targets.pwa_build { ensure_pwa_icons }
+        ensure_pwa_icons(project_dir);
+    }
+}
 
 impl WebTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
@@ -25,6 +35,7 @@ impl WebTarget.dev(
     import from jaclang.cli.console { console }
     import from jaclang.client.targets.client_dev_common {
         _ClientHmrHandler,
+        dev_proxy_paths,
         ensure_watchdog_common,
         prepare_vite_dev_compilation,
         stop_dev_watcher,
@@ -36,7 +47,14 @@ impl WebTarget.dev(
     hot_watcher: any = None;
     (prepared, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
     bundler = cast(ViteBundler, prepared);
-    bundler.create_vite_config(entry_file, is_dev=True, api_port=api_p);
+    (dev_api_paths, dev_client_paths) = dev_proxy_paths(project_dir, entry_file);
+    bundler.create_vite_config(
+        entry_file,
+        is_dev=True,
+        api_port=api_p,
+        api_paths=dev_api_paths,
+        client_paths=dev_client_paths
+    );
 
     try {
         if ensure_watchdog_common("the browser") {
@@ -142,6 +160,10 @@ impl WebTarget.build(
         loaded_mod=loaded_mod,
         project_dir=project_dir
     );
+    if _pwa_enabled(project_dir) {
+        import from jaclang.client.targets.pwa_build { apply_pwa }
+        apply_pwa(dist_dir, project_dir);
+    }
     return bundle_path;
 }
 

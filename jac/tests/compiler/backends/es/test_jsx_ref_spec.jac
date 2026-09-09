@@ -1,7 +1,7 @@
 """Executable spec -- ambient `Ref[T]` + `useRef` lowering (#6082 item 8).
 
 Expected to FAIL until the `has`-field -> hook lowering in
-`esast_gen_pass.impl.jac` learns to lower a `Ref[T]`-typed field to
+`esast_gen_pass.impl/view.impl.jac` learns to lower a `Ref[T]`-typed field to
 `useRef(null)` (parallel to the existing `has x: int = 0;` ->
 `useState(0)` path) and auto-import `useRef` from react.
 

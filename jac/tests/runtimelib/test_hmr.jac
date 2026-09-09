@@ -182,7 +182,9 @@ test "classify declarations server only" {
         reloader = HotReloader(
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
-        (has_client, has_server) = reloader._classify_declarations(str(test_file));
+        (has_client, has_server, has_native) = reloader._classify_declarations(
+            str(test_file)
+        );
         # Server code should be detected
         assert has_server is True;
     }

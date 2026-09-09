@@ -8,7 +8,7 @@ into the anchor store as a **storage segment** and load it back.
 
 ## 1. What exists today (the facts this design builds on)
 
-- **Connect-as-seal** (`ownership_check_pass.region.impl.jac`,
+- **Connect-as-seal** (`ownership_check_pass.impl/region.impl.jac`,
   `_seal_connect_handle`): a directed connect from a managed anchor into
   a region-local node, under an open on an owned named handle, consumes
   the handle and promotes the subgraph into the managed world. Pages
@@ -28,7 +28,7 @@ into the anchor store as a **storage segment** and load it back.
   through its seal anchor, so today it would persist as ordinary
   per-anchor rows -- one row and one UUID per node, all arena locality
   lost at the store boundary.
-- **The arena** (`na_ir_gen/arena.impl.jac`): a sealed
+- **The arena** (`na_ir_gen_pass.impl/region.impl.jac`): a sealed
   region's memory is a chunk list of bump-allocated pages; objects
   reference each other by raw pointer. This is the locality the store
   currently throws away.
@@ -133,7 +133,7 @@ segment as an L1 population event keyed by every exported UUID.
   over `JacRegion` with identical observable behavior; annotations
   stripped, same rows written.
 - **Mode invariance**: build-seal-commit-reload-traverse produces
-  byte-identical output under `--gc none/rc/cycles`.
+  byte-identical output under `--memory nogc/rc/cycles`.
 - **Round trip**: promote then hydrate reproduces the traversal digest
   of the never-persisted graph; the existing ownbench digest machinery
   (`test_ownbench_differential.jac` pattern) extends to a

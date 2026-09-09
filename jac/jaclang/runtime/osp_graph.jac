@@ -510,7 +510,10 @@ obj OspGraph {
         if row.src == origin {
             return row.tgt;
         }
-        return row.src;
+        if row.tgt == origin {
+            return row.src;
+        }
+        return -1;
     }
 
     def _unlink(rid: int) {
@@ -844,16 +847,6 @@ def osp_adj_pairs(origin: int, dir: int) -> list[int] {
         }
     }
     return out;
-}
-
-def osp_graph_wipe -> int {
-    DEFAULT_GRAPH.adj = {};
-    DEFAULT_GRAPH.rows = [];
-    DEFAULT_GRAPH.free_rows = [];
-    DEFAULT_GRAPH.row_of = {};
-    DEFAULT_GRAPH.dead = {};
-    DEFAULT_GRAPH.regions = {};
-    return 0;
 }
 
 def osp_has_edge(eh: int) -> int {

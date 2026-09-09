@@ -41,7 +41,7 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
         }
         loading = True;
         result = await jacSignup(username, password);
-        if result["success"] {
+        if result.success {
             # /user/register creates the account but does not return a
             # session token; sign in immediately to establish one.
             logged_in = await jacLogin(username, password);
@@ -53,7 +53,7 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
             }
         } else {
             loading = False;
-            error = str(result["error"]) if result["error"] else "Signup failed";
+            error = str(result.error) if result.error else "Signup failed";
         }
     }
 

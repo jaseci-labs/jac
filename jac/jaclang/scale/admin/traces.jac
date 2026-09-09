@@ -6,10 +6,10 @@ import from jaclang.server.serving.endpoint {
     APIParameter,
     ParameterType
 }
-import from jaclang.scale.server.native_server { NativeJServer }
+import from jaclang.server.server { EndpointHost }
 
 obj JacAPIServerTraces {
-    has server: (NativeJServer | None) = None;
+    has server: (EndpointHost | None) = None;
 
     def require_admin_json(Authorization: str | None) -> (JSONResponse | None);
     def register_traces_endpoints -> None;

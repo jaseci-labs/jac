@@ -156,6 +156,7 @@ impl ConsoleRenderer.clear_status -> None {
 }
 
 impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
+    self.clear_status();
     out = stream if stream is not None else sys.stdout;
 
     can_style = self.use_color and _stream_is_tty(out);
@@ -180,6 +181,7 @@ impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
 impl ConsoleRenderer.emit_raw(
     args: list, stream: any, style: str | None, kwargs: dict
 ) -> None {
+    self.clear_status();
     out = stream if stream is not None else sys.stdout;
 
     can_style = self.use_color and _stream_is_tty(out);
@@ -475,7 +477,6 @@ impl JacConsole.success(message: str, emoji: bool = True) -> None {
 impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
-    self._renderer.clear_status();
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
 
     if message.startswith("Error: ") {

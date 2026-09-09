@@ -16,9 +16,6 @@ jac-client-node = "1.0.7"
 [dev-dependencies]
 watchdog = ">=3.0.0"
 
-[serve]
-base_route_app = "app"
-
 [client]
 
 [jacpack]
@@ -28,6 +25,3 @@ jaclang = "0.9.8"
 
 [jacpack.options]
 directories = [".jac", "assets"]
-
-[scale.microservices.routes]
-"endpoints" = "/endpoints"

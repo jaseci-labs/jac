@@ -1,6 +1,6 @@
 ---
 name: jac-codespaces
-description: Inferred client/server/native code placement - how the whole-program solver decides what runs where (JSX/npm imports mark code client, python imports and graph archetypes anchor code server, extern C declarations mark code native), what never moves (def:pub endpoints, walkers, shared objs), the [placement.pins] override table, and the --placements review tooling. Load when deciding where code runs, pinning a declaration server-side, migrating marker-era code with `jac fix placement`, or debugging why something landed in the wrong bundle.
+description: Inspect and constrain client, server, and native placement. Use for placement pins, unexpected bundles, or migration from explicit codespace markers.
 ---
 
 **Placement is inferred - there is no syntax for it.** Jac compiles one language to three codespaces: server (Python - the default), client (JavaScript/JSX), and native (LLVM). A whole-program placement solver reads the evidence in your code and places every top-level element. The old `sv`/`cl`/`na` markers (blocks, statement prefixes, and the `.sv.jac` / `.cl.jac` / `.na.jac` suffixes) were removed - marker code is a syntax error and suffixed files fail loudly; run `jac fix placement` to migrate old code (see Migration below). Overrides live in `jac.toml` under `[placement.pins]`, not in the source. Project kind constrains the solver before it runs: a kind whose codespace roster has no server (`js-package`) compiles every module client by construction, so a `pub` element can never silently land on a server that cannot exist.
@@ -11,7 +11,7 @@ description: Inferred client/server/native code placement - how the whole-progra
 2. **Server is anchored by server-only facts.** Python imports (`import os;`, `import from datetime { datetime }`), graph archetypes (`node`/`edge`/`walker`), `::py::` blocks, and typed context blocks anchor their module server. Unreferenced pure code defaults to server too. A client-placed use of a symbol from a bare Python import is **E5084** ("no client-side presence"): the import cannot join the client bundle, so npm packages must use the quoted string form (`import from "react" { useRef }`).
 3. **Native is seeded by extern C declarations** - an import whose braces declare C-ABI functions is an FFI surface only the native backend can satisfy; it and its users go native. Importing a native module is also native evidence for the importer's crossing, not a relocation (see below).
 4. **Placement propagates through references, across modules.** Helpers, `glob`s, and imports that client code uses join the client bundle when their whole closure can move - including helpers imported from other modules (cross-module pulls happen before codegen, so `jac check` sees what `jac build` sees). Requirement-free code reached from both sides is **dual-emitted** into each. A reference whose closure cannot move **bridges** instead: `def:pub` calls over RPC, archetypes as wire types, native calls over the interop edge.
-5. **Whole anchor-free modules prefer native.** Under `[build] default_codespace = "native"` (the default), the placement solver compiles a module whole-module native when its import closure has no native blockers (Python imports, `pub` endpoints, JSX, `root`/persistence access, async or event abilities, ...); a module that prefers native but cannot lower demotes back to the server with a note. `pub` anchors a *standalone* module server (endpoint semantics), but a module pulled in as a native dependency may still use `pub` freely as its C-ABI export marker.
+5. **Whole anchor-free modules prefer native.** Under `[placement] default = "native"` (the default), the placement solver compiles a module whole-module native when its import closure has no native blockers (Python imports, `pub` endpoints, JSX, `root`/persistence access, async or event abilities, ...); a module that prefers native but cannot lower demotes back to the server with a note. `pub` anchors a *standalone* module server (endpoint semantics), but a module pulled in as a native dependency may still use `pub` freely as its C-ABI export marker.
 
 A complete markerless full-stack module - every placement is inferred:
 
@@ -87,17 +87,22 @@ def summarize(text: str) -> str {   # pinned server; client callers bridge over 
 
 Pins feed the solver exactly like the old markers did: a pinned element is immovable, and everything else re-solves around it. A **module-level `"server"` pin** additionally makes client imports of that module full service-boundary imports (non-pub items callable with auth, boundary types collected) - the trust-boundary form. Pins are part of the program: changing them invalidates the compilation cache and shows up in `--placements` evidence as `pinned 'server' ([placement.pins])`.
 
-## Service topology is a config fact, not an import form
+## App boundaries are a config fact, not an import form
 
-Declaring that a module runs as its own service happens ONLY in `jac.toml`:
+Declaring that a module runs as its own service happens ONLY in `jac.toml`, as an **app**:
 
 ```toml
-[scale.microservices.routes]
-math_service = ""          # "" derives the route prefix (/math_service)
-orders_app   = "/api/orders"
+[apps.math]                          # file-rooted service app: owns exactly this file
+kind = "service"
+entry-point = "core/math.jac"
+
+[apps.orders]                        # dir-rooted: owns everything under orders/
+kind = "service"
+path = "orders"
+route = "/api/orders"                # default would be /api/orders anyway
 ```
 
-Modules in the routes table (the **service cut**) are server-anchored by definition; plain imports of them lower to RPC service stubs automatically - synchronous Python stubs server-to-server, async JS stubs client-to-service. `jac scale split <module>` writes an entry for you. There is no auto-discovery from source. See `jac-sv-microservices`.
+Every module carries stamped **app facts** (`app`, `app_root`, `app_kind`, `owner_app`); modules under no app root are shared. A service app's elements are server-anchored by definition and owned by it; plain imports of its walkers / `def:pub` functions from any other app lower to bridge stubs automatically - typed-async Python stubs server-to-server (`await`), async JS stubs client-to-server. Two laws ride on the same facts: an app may use another app's declarations only through that bridge surface (`E2039`), and shared code may never import from an app (`E2040`). `jac create --app <name> --kind service` writes the table. There is no auto-discovery from source. See `jac-sv-microservices`.
 
 ## Native inference - extern C declarations are the seed
 
@@ -114,7 +119,7 @@ def open_window() -> None {        # uses InitWindow -> native
 - **Consuming a native module is NOT a signal.** `import from mymod { fast_fn }` where `mymod` is native code stays a server-side import - that is the server-to-native ctypes interop crossing, not a reason to relocate the importer. From client code the same import takes the wasm edge only when the target is decidedly native - pinned `"native"`, already native-compiled, or carrying a real native anchor (ownership annotations, clib extern decls, native imports); a plain `pub` module with no anchor reads as a server endpoint and bridges over RPC instead. On the wasm edge the target compiles to `/static/<stem>.wasm` and binds lazy async wasm stubs (see `jac-native-wasm`).
 - **`test` blocks are never pulled native.** `jac test` runs them on the server, where they reach the native code through the generated interop stubs - native-placed modules included.
 - **Referenced by both sides -> stays server.** Client and native inference run independently in one file; a declaration referenced by BOTH sides is placed server, where each side can bridge to it (auto-RPC for the client, py-interop for native).
-- **Pure code in a server-anchored module stays server without a pin.** Compatibility is not intent: with no FFI seed, going native inside a mixed module is an explicit choice - a `[placement.pins]` entry mapping to `"native"`, or `jac nacompile` / `jac build --as native` at the project level. Whole anchor-free modules are different: they compile native by the rule-5 verdict. See `jac-native`.
+- **Pure code in a server-anchored module stays server without a pin.** Compatibility is not intent: with no FFI seed, going native inside a mixed module is an explicit choice - a `[placement.pins]` entry mapping to `"native"`, or `jac build --native` / `jac build --as native` at the project level. Whole anchor-free modules are different: they compile native by the rule-5 verdict. See `jac-native`.
 
 ## Rules
 
@@ -129,6 +134,6 @@ def open_window() -> None {        # uses InitWindow -> native
 
 - `jac-fullstack-patterns` - entry wiring, RPC call styles, endpoint registration
 - `jac-cl-organization` - file layout for multi-component client apps
-- `jac-sv-microservices` - the routes-table service cut between server modules
+- `jac-sv-microservices` - service apps: the app boundary between server modules, the bridge, the outbox
 - `jac-native` - the native codespace
 - `jac-project-kinds` - which codespaces each project kind combines

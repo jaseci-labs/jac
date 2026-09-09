@@ -13,24 +13,22 @@ impl JcirBytecodeGenPass.process_modules(root_module: Module) -> None {
 
 impl JcirBytecodeGenPass.transcribe_module(mod: Module) -> None {
     import ast as ast3;
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
+    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
     if not mod.gen.jcir {
         if not mod.gen.py_bytecode {
             self.emit(E5040, node_override=mod, path=mod.loc.mod_path);
         }
         return;
     }
-    (tmods, diags) = transcribe(mod.gen.jcir);
-    if tmods {
-        mod.gen.py_ast = [tmods[0][1]];
-        mod.gen.py = ast3.unparse(tmods[0][1]);
-    }
     result = compile_ir(mod.gen.jcir);
     for d in result.diags {
         self.emit(E5043, node_override=mod, error=d.message);
     }
     if result.modules {
-        mod.gen.py_bytecode = result.modules[0].bytecode;
+        compiled = result.modules[0];
+        mod.gen.py_ast = [compiled.tree];
+        mod.gen.py = ast3.unparse(compiled.tree);
+        mod.gen.py_bytecode = compiled.bytecode;
     }
 }
 

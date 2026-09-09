@@ -3,6 +3,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.scale.injector.bundle { pack_jab, content_address }
 import from jaclang.scale.injector.binary { pack_binary_bytes }
+import from jaclang.scale.tests.support { pod_binary, require_pod_binary }
 import from jaclang.compiler.driver.jir {
     FLAG_PRECOMPILED,
     compiler_source_digest,
@@ -16,7 +17,7 @@ import from jaclang.compiler.driver.jir {
 }
 
 
-glob _JAC_BIN: Path = Path(__file__).parents[4] / "zig-out" / "bin" / "jac";
+glob _JAC_BIN: Path = pod_binary();
 
 
 test "identical content packs to identical bytes (content-address stable)" {
@@ -24,9 +25,7 @@ test "identical content packs to identical bytes (content-address stable)" {
     # zeroed gzip header time and normalized member mtimes/owners.
     assert pack_binary_bytes(b"ELF") == pack_binary_bytes(b"ELF");
 
-    if not _JAC_BIN.is_file() {
-        return;
-    }
+    require_pod_binary();
     binary = _JAC_BIN.read_bytes();
     d = tempfile.mkdtemp();
     src = Path(d, "svc.jac");
@@ -159,7 +158,8 @@ test "the running compiler digest covers the real compiler tree" {
         "compiler/driver/jir.jac",
         "compiler/frontend/unitree.jac",
         "compiler/backends/py/jcir_gen_pass.jac",
-        "compiler/backends/py/impl/jcir_gen_pass.impl.jac",
+        "compiler/backends/py/jcir_gen_pass.impl/expr.impl.jac",
+        "compiler/backends/native/na_ir_gen_pass.impl/core.impl.jac",
         "compiler/passes/type_checker_pass.jac",
         "dist/precompile_bytecode.jac"
     ] {

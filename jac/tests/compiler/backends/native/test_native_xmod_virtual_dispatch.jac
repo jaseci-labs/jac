@@ -85,7 +85,8 @@ def na_run(fixture: str) -> str {
             sys.executable,
             "-m",
             "jaclang",
-            "nacompile",
+            "build",
+            "--native",
             os.path.join(FIXTURES, fixture),
             "-o",
             out_bin

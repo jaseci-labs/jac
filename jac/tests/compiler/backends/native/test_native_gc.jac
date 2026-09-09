@@ -1,8 +1,8 @@
 """End-to-end GC effectiveness tests for the native LLVM backend.
 
-Each test AOT-compiles a fixture via `jac nacompile`, then runs the resulting
+Each test AOT-compiles a fixture via `jac build --native`, then runs the resulting
 binary twice — once with the reference-counted GC enabled (default), and once
-with it disabled (`JAC_NO_GC=1`). Maximum resident set size is captured via
+with it disabled (`JAC_GC=off`). Maximum resident set size is captured via
 `/usr/bin/time -v` and we assert that GC reduces peak RSS.
 
 Fixtures exercised:
@@ -87,7 +87,7 @@ def _nacompile(fixture: str, out_bin: str) {
     src = os.path.join(FIXTURES, fixture);
     assert os.path.exists(src) , f"fixture missing: {src}";
     comp = subprocess.run(
-        [sys.executable, "-m", "jaclang", "nacompile", src, "-o", out_bin],
+        [sys.executable, "-m", "jaclang", "build", "--native", src, "-o", out_bin],
         capture_output=True,
         text=True,
         timeout=300,
@@ -103,7 +103,7 @@ def _nacompile(fixture: str, out_bin: str) {
 """Compile + run twice (with / without GC) and return (gc_rss, nogc_rss).
 
 Asserts that both runs exit cleanly and that — for non-lenient fixtures — peak
-RSS with the GC enabled is strictly lower than with `JAC_NO_GC=1`.  For lenient
+RSS with the GC enabled is strictly lower than with `JAC_GC=off`.  For lenient
 fixtures we only assert that the GC-enabled run does not regress beyond a small
 slack window.
 """
@@ -126,12 +126,12 @@ def _measure_gc_savings(
         # GC disabled — every allocation leaks until process exit.
         (nogc_rss, nogc_rc, _nogc_out) = _run_with_time(
             bin_path,
-            env_extra={"JAC_NO_GC": "1"},
+            env_extra={"JAC_GC": "off"},
             stdin_data=stdin_data,
             timeout=timeout,
         );
-        assert nogc_rc == 0 , f"{fixture} (JAC_NO_GC=1) exited non-zero: {nogc_rc}";
-        assert nogc_rss >= 0 , f"{fixture} (JAC_NO_GC=1) failed to capture RSS";
+        assert nogc_rc == 0 , f"{fixture} (JAC_GC=off) exited non-zero: {nogc_rc}";
+        assert nogc_rss >= 0 , f"{fixture} (JAC_GC=off) failed to capture RSS";
         if fixture in LENIENT_FIXTURES {
             # Lenient: just don't regress badly.
             assert gc_rss <= nogc_rss + lenient_slack_kb , (
@@ -160,7 +160,7 @@ def _measure_gc_savings(
                  leaks AND (post cycles-gating fix) the purple-root buffer is
                  never allocated, so RSS must track no_gc's cyclic leak without
                  an extra buffer-growth penalty on top.
-  - no_gc      : `JAC_NO_GC=1` — every allocation leaks until exit.
+  - no_gc      : `JAC_GC=off` — every allocation leaks until exit.
 
 Asserts:
   1. cycles_on reclaims: `no_gc - cycles_on >= min_savings_kb`. A collector that
@@ -189,9 +189,9 @@ def _measure_cycle_collection(
         );
         assert off_rc == 0 , f"{fixture} (cycles off) exited non-zero: {off_rc}";
         (nogc_rss, nogc_rc, _n) = _run_with_time(
-            bin_path, env_extra={"JAC_NO_GC": "1"}, timeout=timeout
+            bin_path, env_extra={"JAC_GC": "off"}, timeout=timeout
         );
-        assert nogc_rc == 0 , f"{fixture} (JAC_NO_GC=1) exited non-zero: {nogc_rc}";
+        assert nogc_rc == 0 , f"{fixture} (JAC_GC=off) exited non-zero: {nogc_rc}";
         assert on_rss >= 0 and off_rss >= 0 and nogc_rss >= 0 , (
             f"{fixture}: failed to capture RSS (on={on_rss} off={off_rss} nogc={nogc_rss})"
         );

@@ -3,6 +3,7 @@ import shutil;
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { cast }
+import from jaclang.compiler.frontend.codeinfo { ClientArtifact }
 import from jaclang.client.client_bundle {
     ClientBundle,
     ClientBundleBuilder,

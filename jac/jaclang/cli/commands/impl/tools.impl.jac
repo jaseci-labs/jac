@@ -84,7 +84,7 @@ impl dot(
         mod_ns = vars(module) if module else {};
         try {
             nd = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
-            graph = printgraph(
+            rendered_graph = printgraph(
                 nd=nd,
                 depth=depth,
                 traverse=traverse,
@@ -100,11 +100,11 @@ impl dot(
             return 1;
         }
         if to_screen {
-            console.print(graph);
+            console.print(rendered_graph);
         } else {
             file_name = saveto or f"{mod}.dot";
             with open(file_name, 'w') as file {
-                file.write(graph);
+                file.write(rendered_graph);
             }
             console.print(
                 f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}"

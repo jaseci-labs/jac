@@ -7,6 +7,7 @@ on:
   schedule:
     - cron: '0 3 * * *'   # notes-app CEF smoke
     - cron: '17 8 * * *'  # installer against the LIVE latest release
+    - cron: '41 9 * * 1'  # Intel-Mac probe (the manual release leg)
   workflow_dispatch:
 
 permissions:
@@ -29,26 +30,27 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
           libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-          libasound2t64
+          libasound2t64 patchelf
 
     - name: Build notes-app example
       run: |
         cd jac/examples/notes-app
-        jac build --client cef
+        jac build   # [project] kind = "desktop", [desktop] engine = "cef"
 
     - name: Bundle existence audit
       working-directory: jac/examples/notes-app
       run: |
-        BUNDLE=.jac/client/cef
+        BUNDLE=.jac/client/desktop
         test -f $BUNDLE/libcef.so
         test -f $BUNDLE/cef-subprocess
         test -f $BUNDLE/minimal-fonts.conf
         test -f $BUNDLE/icudtl.dat
         test -d $BUNDLE/locales
+        test -f $BUNDLE/app.jab
         ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
     - name: Headless smoke with timeout (X11)
-      working-directory: jac/examples/notes-app/.jac/client/cef
+      working-directory: jac/examples/notes-app/.jac/client/desktop
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!
@@ -89,6 +91,24 @@ jobs:
   macos-native:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     uses: ./.github/workflows/_macos-native.yml
+
+  # The Intel-Mac leg left the release matrix: it is `manual` in
+  # build-binaries.yml (broken since #8805, ~25 min of critical path on the
+  # slowest runners, shipping nothing). This weekly artifact-only build is the
+  # leg's signal: the day #8805 is fixed shows up here, and a regression in
+  # the from-source LLVM slice or the 12.0 floor pin cannot sit unnoticed for
+  # weeks the way it once did inside the matrix. No tag, so nothing is
+  # uploaded and the post-build jobs stay skipped.
+  intel-mac-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '41 9 * * 1' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-binaries.yml
+    with:
+      # Empty tag = build and smoke the artifact, attach it nowhere.
+      tag: ""
+      channel: release
+      only: macos-x86_64
 
   # Real-app microservice e2e on kind. Two pod-base legs: `slim` = the plain
   # python default; `official-image` = an image built from this checkout's

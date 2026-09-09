@@ -184,8 +184,21 @@ impl resolve_route_exports(module_path: Path) -> tuple[((str | None), (str | Non
     if program is None {
         return (None, None);
     }
+    resolved = str(module_path.resolve());
     try {
-        mod = program.compile(str(module_path.resolve()));
+        artifact = program.get_client_artifact(resolved);
+    } except Exception {
+        artifact = None;
+    }
+    if artifact is not None
+        and (
+            artifact.manifest.page_export is not None
+            or artifact.manifest.layout_export is not None
+        ) {
+        return (artifact.manifest.page_export, artifact.manifest.layout_export);
+    }
+    try {
+        mod = program.compile(resolved);
     } except Exception {
         return (None, None);
     }
@@ -225,4 +238,15 @@ impl _route_exports_from_ast(mod: any) -> tuple[((str | None), (str | None))] {
         }
     }
     return (page_name, layout_name);
+}
+
+impl entry_drops_route_children(manifest: any) -> bool {
+    if manifest is None or "app" not in manifest.exports {
+        return False;
+    }
+    names = manifest.params.get("app");
+    if names is None {
+        return False;
+    }
+    return "children" not in names and names != ["props"];
 }

@@ -30,8 +30,8 @@ Every interop edge is one of two fundamentally different things:
   (CPython ↔ V8, CPython ↔ machine code, machine code ↔ a wasm host). A call
   becomes an RPC or an FFI thunk, and every value that crosses must be
   *serialised* into a representation both sides understand. `cl↔sv`,
-  `sv↔na`, `na↔C`, `na↔cl`, and the opt-in `sv→sv` microservice split are
-  marshalled.
+  `sv↔na`, `na↔C`, `na↔cl`, and the `sv→sv` crossing between two apps of a
+  workspace are marshalled.
 
 The compiler decides which is which automatically. One analysis pass does
 the discovery:
@@ -42,9 +42,9 @@ the discovery:
   native code, etc.) and re-reads the *provider* module's AST to extract
   the public surface -- walker `has`-fields, `def` signatures, struct
   layouts -- into an `InteropBinding`. On an import, service-boundary
-  status is a config fact (the target module is in
-  `[scale.microservices.routes]` or pinned `"server"` in
-  `[placement.pins]`); the import's own `code_context` is its
+  status is an **app fact**: the target element's `owner_app` (stamped by
+  the driver from `[apps]` in `jac.toml`) differs from the importing
+  module's; the import's own `code_context` is its
   placement, which determines the caller side of the binding. The same pass
   walks call sites, records the caller's and callee's `CodeContext` plus
   the boundary types, and accumulates every binding into an
@@ -68,7 +68,7 @@ remaining rows.
 | # | Direction | Boundary kind | Mechanism | What crosses | Synthesised by |
 |---|-----------|---------------|-----------|--------------|----------------|
 | 1 | **`sv → sv`** (in-process) | Free | Direct Python call | Live CPython objects (by ref) | -- (plain `import`) |
-| 2 | **`sv → sv`** (microservice) | Marshalled | HTTP `POST` between deployments | JSON (`_to_wire`/`_from_wire`) | `JcirGenPass` (service RPC stub for routes-table imports) + `jaclang.scale` |
+| 2 | **`sv → sv`** (cross-app) | Marshalled | Typed-async stub keyed by provider app: in-process when colocated, HTTP `POST` when the provider app runs apart | JSON (`_to_wire`/`_from_wire`) | `JcirGenPass` (service bridge stub) + `jaclang.server.sv_client` + `jaclang.scale` |
 | 3 | **`cl → cl`** | Free | Direct JS call | JS values (by ref) | -- (plain client-side `import`) |
 | 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
 | 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jaclang.scale` |
@@ -79,7 +79,7 @@ remaining rows.
 | 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | `WasmLinker` import table + cl host shim |
 | 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live CPython objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
 | 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars & structs (by value or pointer) | `NaIRGenPass` clib marshaller |
-| 13 | **`na → C host`** | Marshalled (ABI) | `--shared` C-ABI export | Scalars by value; Jac objects as opaque handles | `nacompile` `_inject_shared_init` + platform linkers |
+| 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | `nacompile` `_inject_shared_init` + platform linkers |
 
 The rest of the document is one section per group of rows.
 
@@ -342,7 +342,7 @@ parameter lowers to `i8*`. A clib declaration with a *body* is an error
 |-------|------|----------------|
 | **Declaration model** | `compiler/backends/native/foreign.jac` | What the user declared: scalar sizes (`FOREIGN_SCALARS`), C struct layout (`foreign_struct_layout` -- byte offsets, alignment, tail padding, nested-by-value flattening) |
 | **psABI classifier** | `compiler/backends/native/abi.jac` | Pure calling-convention logic: `classify_struct` dispatches on the triple -- `aarch64`/`arm64` → AAPCS, else System V AMD64 |
-| **Backend marshaller** | `na_ir_gen/clib_abi.impl.jac` | Emits the actual call: applies the plan, builds the parallel `.cabi` LLVM type, copies between Jac and C layouts |
+| **Backend marshaller** | `na_ir_gen_pass.impl/clib_abi.impl.jac` | Emits the actual call: applies the plan, builds the parallel `.cabi` LLVM type, copies between Jac and C layouts |
 
 ### How structs cross
 
@@ -384,7 +384,7 @@ the C runtime owns their lifetime.
 
 ## `na → C host`: shared libraries (row 13)
 
-The inverse of FFI-in. `jac nacompile mathlib.jac --shared` packages a
+The inverse of FFI-in. `jac build --native mathlib.jac --lib` packages a
 native module as a C-ABI `.so` / `.dylib` / `.dll` that any host (a C
 program, or Python via `ctypes`) can load across a process/module boundary.
 
@@ -399,7 +399,7 @@ program, or Python via `ctypes`) can load across a process/module boundary.
   handles**; the host must not dereference them. `@jac_retain` / `@jac_release`
   (public wrappers over the RC primitives) let the host manage their
   lifetime.
-- **Scalars** pass by value (`int → int64`, `float → double`). `--shared`
+- **Scalars** pass by value (`int → int64`, `float → double`). `--lib`
   forces PIC and skips `internalize` so the public symbols survive.
 
 ---
@@ -407,10 +407,10 @@ program, or Python via `ctypes`) can load across a process/module boundary.
 ## `na ↔ cl`: WebAssembly (rows 9, 10)
 
 Native code reaches the *client* by compiling to wasm.
-`jac nacompile --target wasm32` (and the client bundler's `_emit_na_wasm`,
+`jac build --native --target wasm32` (and the client bundler's `_emit_na_wasm`,
 which serves `/static/<stem>.wasm`) both route through
 `wasm_build.compile_to_wasm`: it sets the `wasm32-unknown-unknown` triple,
-compiles AOT, honors the project's `[gc]` settings (`default = "none"`
+compiles AOT, honors the project's `[memory]` settings (`profile = "nogc"`
 builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
 **without** `internalize` (so defined functions stay exported), and links
 with the pure-Jac `WasmLinker` (no wasm-ld/emscripten).
@@ -429,7 +429,7 @@ manifest records the target as NATIVE with a CLIENT caller
 discovery signal (the client build compiles the target module to
 `/static/<stem>.wasm`; the module never has to be imported anywhere else),
 and it binds each name to a generated stub: `exit_import` in `EsastGenPass`
-emits `const { init, frame } = __na_bind("arena", ["init", "frame"])`, where
+emits a `__na_bind` call carrying the serialized export and host contracts, where
 `__na_bind` (in `@jac/wasm_host`) lazily instantiates the module on first
 call and dispatches to its exports. Calls to the bound names type-check as
 async in client code (the same coroutine-wrapping that client calls to
@@ -439,7 +439,7 @@ executes the native module under CPython, which is what distinguishes it
 from a server-consumed import of the same native module (row 7's ctypes
 crossing). A module that declares app FFI
 registers its host implementations before the first call with
-`set_na_env("<stem>", shim, {"env": {...}})`; an FFI-free module needs no
+`bind_na_host(native_export, typed_host)`; an FFI-free module needs no
 setup at all.
 
 Underneath, the interop model is the standard wasm import/export contract:
@@ -457,31 +457,64 @@ Underneath, the interop model is the standard wasm import/export contract:
 
 ---
 
-## `sv → sv` microservice split (row 2)
+## One cross-app import rule
+
+Every import that reaches across modules is classified exactly once, by
+`classify_cross_app_import(nd, manifest)` in
+`compiler/driver/boundary_classify.jac`, from the app facts the driver stamps
+on each module before any pass runs (`app`, `app_root`, `app_kind`,
+`owner_app`; see [Placement -- App facts](../reference/placement.md#app-facts)):
+
+| `CrossAppKind` | When | Transport |
+|---|---|---|
+| `LOCAL` | same app, or shared code, in the same codespace | a plain import (rows 1, 3, 4) |
+| `CLIENT_BRIDGE` | a `CLIENT`-context consumer importing server-placed elements (same app or another) | HTTP from the browser (row 5) |
+| `SERVICE_BRIDGE` | a `SERVER` (or `NATIVE`) consumer importing server-placed elements whose `owner_app` differs from its own | the typed-async `__jac_sv_client` stub (row 2) |
+| `NATIVE_BIND` | a client consumer binding a decidedly-native module | the wasm edge (rows 9, 10) |
+
+`Import.is_client_boundary_import` and `Import.is_service_import` are thin
+predicates over the classifier. There is no routes table, no import form, and
+no module-stem vocabulary: one rule, three transports, all keyed by **app
+name**. `BoundaryAnalysisPass` records each `consumer app → provider app`
+edge into the `InteropManifest`; the driver checks the edges for cycles
+(`E5104`) and every bridged binding for a `pub` provider element (`E5106`).
+
+## `sv → sv` across apps (row 2)
 
 By default an import between two server modules is a free, in-process
-Python import. Listing the provider in `[scale.microservices.routes]` (or
-pinning it `"server"` at module level in `[placement.pins]`) turns the same
-import into an HTTP boundary even between two server deployments:
+Python import. When the imported element is **owned by a different app** of
+the workspace (a walker or `def:pub` in a file-rooted `service` app, or a
+server-placed shared module whose owner is another serving app), the same
+import is a `SERVICE_BRIDGE`:
 
 ```jac
-import from billing { ChargeCard }   # billing is in the routes table
+import from core.billing { ChargeCard }   # core/billing.jac is [apps.billing]'s entry file
 ```
 
-`exit_import` checks `Import.is_service_import` (routes-table membership /
-module-level server pin via `compiler/placement/service_cut.jac` and
-`compiler/placement/placement_pins.jac` -- not `code_context`, which is `SERVER` for
-everything by default) and calls `_generate_sv_to_sv_stubs`, replacing the
-import with generated Python:
+`exit_import` asks the classifier and calls `_generate_sv_to_sv_stubs`,
+replacing the import with generated Python keyed by the **provider app name**:
 
-- functions → a stub whose body is
-  `__jac_sv_client.call('<module>', '<func>', {args})`, with boundary types
+- functions → `async def f(a, b): return T._from_wire(await
+  __jac_sv_client.call('<app>', '<fn>', {...}))`, with boundary types
   serialised via `_to_wire()` / `<Type>._from_wire(...)`;
-- walkers → `__jac_sv_client.spawn_walker(...)`.
+- walkers → a stub class carrying `__jac_fields__`, `__jac_walker_name__`,
+  `__jac_provider_app__` and `__jac_boundary_types__`, whose construction
+  returns the coroutine from `__jac_sv_client.spawn_walker('<app>',
+  '<Walker>', kwargs, cls)`, so `await Greet(name=x)` yields the rehydrated
+  instance with `reports` attached; plus a `_deferred(**kwargs)` classmethod.
+- an expression statement that spawns a bridged walker and is not awaited
+  lowers to `Stub._deferred(**kwargs)` -- an outbox enqueue, delivered
+  at-least-once with an idempotency key (`jaclang.server.outbox`).
 
-At runtime the provider URL comes from `JAC_SV_<MODULE>_URL`, else an
-auto-started loopback sibling. This is the only place a `.jac` → Python
-lowering converts an import into an RPC; it is consumed by the built-in `scale` subsystem.
+The type evaluator treats every `SERVICE_BRIDGE` and `CLIENT_BRIDGE` symbol as
+coroutine-returning, so a missing `await` is `E1042` in server code exactly as
+in client code. At runtime `jaclang.server.sv_client` resolves the provider by
+app name: a locally registered module when the app is colocated
+(`register_local`, no HTTP), else a registered URL, else `JAC_APP_<APP>_URL`;
+failures raise the `BridgeError` family from `jaclang.server.bridge`. This is
+the only place a `.jac` → Python lowering converts an import into an RPC; the
+built-in `scale` subsystem boots providers before consumers from the
+manifest's app edges.
 
 ---
 
@@ -584,7 +617,7 @@ serialise and cannot cross.
 
 For `na`, an additional hard limit applies: the **native capability
 boundary**. `native_capability_violations` (the single authority behind
-`E5090`, run identically at `jac check` and `jac nacompile`) rejects
+`E5090`, run identically at `jac check` and `jac build --native`) rejects
 constructs the native backend cannot lower -- non-allowlisted imports
 (allowlist: `sys`, `math`, `time`, `os`, `random`), structural match
 patterns, generators (`yield`), inline Python (`::py::`), `by llm()`, and a
@@ -626,29 +659,30 @@ height = 700
 ```
 
 ```bash
-jac build --client desktop   # -> .jac/client/desktop/<app> (binary + dist/ + libwebview.so)
-jac run --client desktop     # build if needed, then launch the native window
-jac run --client desktop --dev     # HMR: Vite on 127.0.0.1 + recompile on .jac saves
+jac build <app>         # -> .jac/client/desktop/<app> (binary + dist/ + libwebview.so)
+jac run <app>           # build if needed, then launch the native window
+jac run --dev <app>     # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 (cd .jac/client/desktop && ./my-app)   # or run the binary directly
 ```
 
-`--client desktop` resolves through the client framework's target registry
-(`get_target_type("desktop") → TargetType.DESKTOP`), which lazy-loads the
-core-registered `NativeDesktopTarget`. There is no separate CLI verb -- the
-core `build`/`start` commands delegate to the target.
+The client follows the app's kind: `target_for_kind` in
+`client/targets/registry.jac` maps `kind = "desktop"` to the core-registered
+`DesktopTarget`, and `[desktop] engine` (`"native"`, the default, or `"cef"`)
+picks the shell it builds. There is no separate CLI verb -- the core
+`build`/`run` commands delegate to the target.
 
 ### How the targets combine
 
 | Layer | Codespace / tech | Role |
 |-------|------------------|------|
-| UI | `cl` (Vite/React bundle) | `NativeDesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
-| Host binary | `na` (LLVM, pure-Jac linker) | A generated `host.jac`, compiled by `jac nacompile`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
+| UI | `cl` (Vite/React bundle) | `DesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
+| Host binary | `na` (LLVM, pure-Jac linker) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
 | Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
 | Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
 | Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
 
 The generated host wires it all together (paraphrasing
-`native_desktop_target.impl.jac`):
+`_host_bootstrap.jac` and `webview_shell.jac`):
 
 <!-- jac-skip -->
 ```jac
@@ -697,16 +731,16 @@ RPC to the backend). It is the matrix in miniature.
 |---------|-------|
 | Boundary discovery | `compiler/passes/impl/boundary_analysis_pass.impl.jac`; `BoundaryAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
 | Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
-| `cl → sv` | `compiler/backends/es/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `client/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
-| `sv → cl` | `client/impl/{compiler,vite_bundler}.impl.jac`; `server/impl/server.impl.jac`; `passes/ast_gen/impl/jsx_processor.impl.jac` |
+| `cl → sv` | `compiler/backends/es/esast_gen_pass.impl/{calls,osp}.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `client/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
+| `sv → cl` | `client/impl/{compiler,vite_bundler}.impl.jac`; `server/impl/server.impl.jac`; `backends/es/impl/jsx_processor.impl.jac` |
 | `sv ↔ na` | `runtime/interop_bridge.jac`; `backends/py/impl/jcir_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `backends/native/impl/na_compile_pass.impl.jac` |
-| `na ↔ C` | `compiler/backends/native/{foreign,abi}.jac`; `backends/native/na_ir_gen/{clib_abi,clib_vtable}.impl.jac` |
+| `na ↔ C` | `compiler/backends/native/{foreign,abi}.jac`; `backends/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
 | `na → C host` | `cli/commands/impl/nacompile.impl.jac` (`_inject_shared_init`); `backends/native/impl/{elf,macho,pe}_linker.impl.jac` |
 | `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_linker}.jac`; `client/impl/compiler.impl.jac` |
 | Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `backends/py/impl/jcir_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
 | Marshalling | `data/impl/serializer.impl.jac`; `server/impl/{server,transport}.impl.jac` |
 | Capability boundary | `compiler/passes/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/diagnostics.jac) (`E5090`) |
-| Desktop | `client/targets/desktop/native_desktop_target.jac` (+ impl); `client/targets/desktop/native/webview/webview.jac`; `client/targets/registry.jac` |
+| Desktop | `client/targets/desktop/desktop_target.jac` (+ impl); `client/targets/desktop/{webview_shell,cef_shell,_host_bootstrap}.jac`; `client/targets/desktop/native/webview/webview.jac`; `client/targets/registry.jac` |
 
 ---
 

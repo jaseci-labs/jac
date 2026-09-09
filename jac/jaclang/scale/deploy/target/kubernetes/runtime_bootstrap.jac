@@ -44,7 +44,11 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
         "else "
         "export DEBIAN_FRONTEND=noninteractive && "
         "apt-get update && apt-get install -y --no-install-recommends "
-        f"{pkg_list}; fi && "
+        f"{pkg_list} "
+        f"|| echo '[jac-scale] could not install system packages ({pkg_list}): "
+        "apt-get failed (a non-root container cannot install packages); "
+        "starting without them' >&2; "
+        "fi; "
     );
 }
 

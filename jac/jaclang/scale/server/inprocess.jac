@@ -5,8 +5,8 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.compiler.frontend.constant { Constants as Con }
 import type from jaclang.runtime.context { ExecutionContext }
 import from jaclang.jac0core.ext_registry { base_stem }
-import from jaclang.scale.identity.user_manager { JacScaleUserManager }
-import from jaclang.scale.server.serve { JacAPIServer }
+import from jaclang.server.server { JacAPIServer, ServerExtension }
+import from jaclang.server.settings { ServeSettings }
 
 
 obj PreparedInProcessRuntime {
@@ -32,37 +32,18 @@ obj PreparedInProcessRuntime {
 }
 
 
-def _register_endpoint_profile(server: any, profile: str) {
+def _extensions_for(profile: str) -> list[ServerExtension] {
     if profile == "desktop" {
-        server.register_health_endpoint();
-        server.register_auth_endpoints();
-        server.register_walkers_endpoints();
-        server.register_functions_endpoints();
-    } elif profile == "test" {
-        import from jaclang.server.serving.openapi { register_docs_endpoints }
-        server.register_health_endpoint();
-        server.register_auth_endpoints();
-        server.register_graph_endpoint();
-        server.register_admin_endpoints();
-        server.register_llm_telemetry_endpoints();
-        server.register_workloads_endpoints();
-        server.register_walkers_endpoints();
-        server.register_functions_endpoints();
-        server.register_webhook_endpoints();
-        server.register_static_file_endpoint();
-        server.register_page_endpoint();
-        server.register_client_js_endpoint();
-        server._configure_openapi_security();
-        register_docs_endpoints(server.server.app);
-    } elif profile == "full" {
-        server._register_endpoints();
-    } else {
-        raise ValueError(
-            "unknown endpoint_profile '"
-                + str(profile)
-                + "' (expected 'desktop', 'test', or 'full')"
-        );
+        return [];
     }
+    if profile in ("test", "full") {
+        return list(Jac.get_server_extensions());
+    }
+    raise ValueError(
+        "unknown endpoint_profile '"
+            + str(profile)
+            + "' (expected 'desktop', 'test', or 'full')"
+    );
 }
 
 
@@ -71,30 +52,31 @@ def prepare_inprocess_runtime(
     base_path: str,
     endpoint_profile: str = "full",
     setup_background_services: bool = True,
-    transport_kind: str = "testclient"
+    transport_kind: str = "testclient",
+    extensions: (list[ServerExtension] | None) = None,
+    overrides: (dict[str, any] | None) = None
 ) -> PreparedInProcessRuntime {
     import from jaclang.testing.testkit { ServingTestClient }
 
-    if transport_kind != "testclient" {
+    if transport_kind not in ("testclient", "listener") {
         raise NotImplementedError(
             "transport_kind='"
                 + str(transport_kind)
-                + "' is not implemented; "
-                + "only 'testclient' (in-process, single serialized worker) is "
-                + "supported today. 'asgi' / 'isolated_worker' are reserved for the "
-                + "execution-isolation choice recorded in #6596 P0-0."
+                + "' is not implemented; 'testclient' drives the app in-memory and "
+                + "'listener' prepares a server for serve_background()."
         );
     }
 
+    import from jaclang.scale.plugin { mark_scale_runtime }
     (base, _) = os.path.split(jac_file);
     base = base or "./";
     mod = base_stem(jac_file);
     os.makedirs(base_path, exist_ok=True);
+    mark_scale_runtime();
     Jac.set_base_path(base_path);
 
     prior_ctx = Jac.exec_ctx;
-    import from jaclang.scale.memory.context { JScaleExecutionContext }
-    mach = JScaleExecutionContext();
+    mach = Jac.create_j_context(user_root=None);
     Jac.set_context(mach);
     try {
         if mod in Jac.loaded_modules {
@@ -104,36 +86,40 @@ def prepare_inprocess_runtime(
             del sys.modules[mod];
         }
         Jac.jac_import(target=mod, base_path=base, lng="jac");
+        import from jaclang.project.config { get_config_for_dir }
+        import from jaclang.server.assembly { assemble_served_program }
+        cfg = get_config_for_dir(base);
+        served = cfg.app_for_path(os.path.abspath(jac_file))
+            if cfg is not None
+            else None;
+        if cfg is not None and served is not None and not served.implicit {
+            assemble_served_program(cfg, served, base);
+        }
 
+        serve_overrides: dict[str, any] = {'no_client': True};
+        serve_overrides.update(overrides or {});
         server = JacAPIServer(
-            module_name=mod, port=0, base_path=base_path, module_file=jac_file
+            module_name=mod,
+            port=int(serve_overrides.get('port') or 0),
+            base_path=base_path,
+            module_file=jac_file,
+            settings=ServeSettings.load(base_path, serve_overrides),
+            extensions=_extensions_for(endpoint_profile) + list(extensions or [])
         );
         server.load_module();
-
-        _register_endpoint_profile(server, endpoint_profile);
-
-        _um = server.user_manager;
-        assert isinstance(_um, JacScaleUserManager) , "the scale server builds a JacScaleUserManager";
-        if _um.get_root_id(Con.GUEST.value) is None {
-            _um.create_internal_user(Con.GUEST.value, "__no_password__");
-        }
-        def _shared_root_id -> (str | None) {
-            return _um.get_root_id(Con.GUEST.value);
-        }
-        Jac.set_shared_root_resolver(_shared_root_id);
-
+        server._ensure_internal_users();
+        app = server.build_app();
         if setup_background_services {
-            server.setup_emailer();
-            server._setup_scheduler();
-            server._setup_events();
+            server._register_scheduled_tasks();
+            server.scheduler.start_if_pending();
+            for ext in (server.extensions or []) {
+                ext.on_worker_start(server);
+            }
         }
-
-        native_server = server.server;
-        if native_server is None {
-            raise RuntimeError("in-process runtime requires a started server");
-        }
-        client = ServingTestClient(
-            app=native_server.app, raise_server_exceptions=False
+        client = (
+            ServingTestClient(app=app, raise_server_exceptions=False)
+                if transport_kind == "testclient"
+                else None
         );
         return PreparedInProcessRuntime(
             server=server,

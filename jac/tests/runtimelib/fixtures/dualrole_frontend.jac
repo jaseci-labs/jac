@@ -1,6 +1,6 @@
 """Client component that reaches the guestbook walkers over RPC (#6507).
 
-The `sv import from .dualrole_guestbook` is the cl->sv edge that makes the
+The client-context `import from .dualrole_guestbook` is the cl->sv edge that makes the
 guestbook module load server-side as an endpoint provider for the browser.
 """
 

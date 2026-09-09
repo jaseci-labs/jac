@@ -109,8 +109,8 @@ walker ASTValidationPass(UniPass) {
     can enter_has_var with HasVar entry;
     can enter_expr_as_item with ExprAsItem entry;
     can enter_delete_stmt with DeleteStmt entry;
-    def _reject_non_bindable(target: object) -> None;
-    def _reject_undeletable(target: object) -> None;
+    def _reject_non_bindable(target: UniNode) -> None;
+    def _reject_undeletable(target: UniNode) -> None;
     can enter_param_var with ParamVar entry;
     can enter_yield_expr with YieldExpr entry;
     can enter_ctrl_stmt with CtrlStmt entry;

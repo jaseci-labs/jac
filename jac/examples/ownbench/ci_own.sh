@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fast differential-identity gate: every kernel, three GC modes, small sizes.
 # Byte-identical stdout (minus the ns= timing line) across modes, and the
-# enforced build must pass --assert-no-rc. Also validates the eraser: the
+# enforced build must pass. Also validates the eraser: the
 # fully erased source must reproduce the annotated digest under rc.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -23,11 +23,11 @@ fail=0
 for k in own_binarytrees own_vecdot own_histogram own_vm own_rbtree own_deriv; do
   for mode in none rc cycles; do
     if [ "$mode" = none ]; then
-      flags=(--enforce-nogc --gc none --assert-no-rc)
+      flags=(--memory nogc)
     else
       flags=(--gc "$mode")
     fi
-    jac nacompile "kernels/$k.jac" "${flags[@]}" -o "bin/${k}_${mode}" \
+    jac build --native "kernels/$k.jac" "${flags[@]}" -o "bin/${k}_${mode}" \
       > "$TMP/${k}_${mode}.log" 2>&1 || {
         echo "FAIL compile $k/$mode"; tail -3 "$TMP/${k}_${mode}.log"; fail=1; continue;
       }
@@ -42,7 +42,7 @@ for k in own_binarytrees own_vecdot own_histogram own_vm own_rbtree own_deriv; d
     echo "IDENTITY FAIL: $k"; fail=1
   fi
   jac run harness/erase.jac "kernels/$k.jac" > "$TMP/${k}_bare.jac"
-  jac nacompile "$TMP/${k}_bare.jac" --gc rc -o "$TMP/${k}_bare" \
+  jac build --native "$TMP/${k}_bare.jac" --memory rc -o "$TMP/${k}_bare" \
     > "$TMP/${k}_bare.log" 2>&1 || {
       echo "FAIL erased compile $k"; tail -3 "$TMP/${k}_bare.log"; fail=1; continue;
     }

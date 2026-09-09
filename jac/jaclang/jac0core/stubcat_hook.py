@@ -10,17 +10,20 @@ once a catalog is open. Nothing here imports jaclang.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING
 
-_ACTIVE: list = [None]
+if TYPE_CHECKING:
+    from jaclang.compiler.types.stubcat.reader import StubCatalog
+
+_ACTIVE: list[StubCatalog | None] = [None]
 
 
-def active() -> Any:
+def active() -> StubCatalog | None:
     """The open catalog, or None (no catalog yet, or catalogs disabled)."""
     return _ACTIVE[0]
 
 
-def set_active(catalog: Any) -> None:
+def set_active(catalog: StubCatalog | None) -> None:
     _ACTIVE[0] = catalog
 
 

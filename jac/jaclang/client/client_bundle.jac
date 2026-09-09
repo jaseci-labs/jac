@@ -2,14 +2,14 @@ import hashlib;
 import os;
 import from pathlib { Path }
 import from types { ModuleType }
-import type from jaclang.compiler.frontend.codeinfo { ClientManifest }
+import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
 import type from jaclang.compiler.frontend.unitree { Module }
 
 class ClientBundleError(RuntimeError) {}
 
 class MissingBunError(ClientBundleError) {}
 
-def _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None);
+def _client_target_module(source_key: str, program: any) -> (Module | None);
 
 def _ensure_js_generated(mod: Module, program: any) -> None;
 
@@ -36,11 +36,11 @@ obj ClientBundleBuilder {
     def build(module: ModuleType, force: bool = False) -> ClientBundle;
     def _extract_client_exports(manifest: (ClientManifest | None)) -> list[str];
     def _extract_client_globals(
-        manifest: (ClientManifest | None), module: ModuleType
+        manifest: (ClientManifest | None), module: (ModuleType | None)
     ) -> dict[str, any];
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
-    def _compile_to_js(source_path: Path) -> tuple[str, Module];
+    def _compile_to_js(source_path: Path) -> ClientArtifact;
     def _emitted_digest -> str;
     static def _signature(paths: Iterable[Path]) -> str;
 }

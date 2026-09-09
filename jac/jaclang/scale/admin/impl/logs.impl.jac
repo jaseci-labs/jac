@@ -42,19 +42,25 @@ def _app_name -> str {
 }
 
 
-def _is_microservice_mode -> bool {
+def _fleet_names -> list[str] {
     try {
-        routes: dict = get_scale_config().get_microservices_config().get("routes", {});
-        return bool(routes);
+        import from jaclang.scale.runtime.fleet { fleet_member_names }
+        return fleet_member_names();
     } except Exception {
-        return False;
+        return [];
     }
 }
 
 
-def _services_for_mode(microservice: bool, routes: dict, app_name: str) -> list[str] {
+def _is_microservice_mode -> bool {
+    return bool(_fleet_names());
+}
+
+
+def _services_for_mode(
+    microservice: bool, names: list[str], app_name: str
+) -> list[str] {
     if microservice {
-        names: list[str] = list(routes.keys());
         return ["gateway"] + sorted(names);
     }
     return [app_name] if app_name else [];
@@ -62,13 +68,8 @@ def _services_for_mode(microservice: bool, routes: dict, app_name: str) -> list[
 
 
 def _microservice_services -> list[str] {
-    try {
-        ms = get_scale_config().get_microservices_config();
-        routes: dict = ms.get("routes", {});
-        return _services_for_mode(bool(routes), routes, _app_name());
-    } except Exception {
-        return [];
-    }
+    names = _fleet_names();
+    return _services_for_mode(bool(names), names, _app_name());
 }
 
 
@@ -241,8 +242,8 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             tags=["Logs"],
             summary="Service dropdown options",
             description=(
-                "Microservices declared in [scale.microservices.routes] "
-                "+ 'gateway'. Used by the admin LogsPage service filter."
+                "The workspace's fleet apps + 'gateway'. Used by the admin "
+                "LogsPage service filter."
             )
         )
     );

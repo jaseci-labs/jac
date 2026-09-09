@@ -20,15 +20,15 @@ if ! grep -q "e2e-harness overlay" "${PROJECT_DIR}/jac.toml"; then
     cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
 
 # --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
-[scale.microservices.logs]
+[scale.gateway.logs]
 enabled = true
 
-[scale.microservices.ingress]
+[scale.gateway.ingress]
 enabled = true
 host = "jac-shop.local"
 ingress_class_name = "nginx"
 
-[scale.microservices.cors]
+[scale.gateway.cors]
 allow_origins = ["http://app.example.com"]
 allow_methods = ["GET", "POST", "OPTIONS"]
 allow_headers = ["Authorization", "Content-Type"]
@@ -246,13 +246,11 @@ echo "=== verify per-service routing ==="
 # 503 from the gateway means upstream service unreachable; 404/405 means
 # we reached a healthy service that just doesn't have that walker.
 ROUTES=$(jac -c "
-import tomllib
-from jaclang.scale.runtime.routing import resolve_routes
-with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
-    cfg = tomllib.load(f)
-ms = cfg.get('scale', {}).get('microservices', {}) \
-    or cfg.get('plugins', {}).get('scale', {}).get('microservices', {})
-for prefix in resolve_routes(dict(ms)).values():
+from pathlib import Path
+from jaclang.project.config import JacConfig
+from jaclang.scale.runtime.fleet import fleet_from_config
+cfg = JacConfig.load(Path('${PROJECT_DIR}/jac.toml'))
+for prefix in fleet_from_config(cfg, project_root='${PROJECT_DIR}').routes().values():
     print(prefix)
 ")
 for prefix in ${ROUTES}; do
@@ -426,8 +424,8 @@ rm -f "${OVL_JSON}"
 
 _t "profile+overlay OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
-# When [scale.microservices.logs].enabled = true (the fixture
-# default) the microservice target also calls MonitoringDeployer, which
+# When [scale.gateway.logs].enabled = true (the fixture
+# default) the kubernetes target also calls MonitoringDeployer, which
 # adds Prometheus + Grafana + Loki + Alloy + kube-state-metrics +
 # node-exporter to the namespace. Verify each Deployment + the Alloy
 # DaemonSet rolls out, Loki responds to /ready, and a LogQL query for
@@ -437,7 +435,7 @@ LOGS_ENABLED=$(jac - <<PYEOF
 import tomllib
 with open("${PROJECT_DIR}/jac.toml", "rb") as f:
     cfg = tomllib.load(f)
-logs = cfg.get("plugins", {}).get("scale", {}).get("microservices", {}).get("logs", {})
+logs = cfg.get("scale", {}).get("gateway", {}).get("logs", {})
 print(int(bool(logs.get("enabled", False))))
 PYEOF
 )
@@ -534,7 +532,7 @@ INGRESS_INFO=$(jac - <<PYEOF
 import tomllib
 with open("${PROJECT_DIR}/jac.toml", "rb") as f:
     cfg = tomllib.load(f)
-ing = cfg.get("plugins", {}).get("scale", {}).get("microservices", {}).get("ingress", {})
+ing = cfg.get("scale", {}).get("gateway", {}).get("ingress", {})
 print(f"{int(bool(ing.get('enabled', False)))}|{str(ing.get('host', '')).strip()}")
 PYEOF
 )
@@ -665,13 +663,11 @@ run_availability_assertion "gateway" \
 # tolerance for transient endpoint-propagation noise.
 FIRST_PREFIX=$(echo "${ROUTES}" | head -n1)
 FIRST_SVC=$(jac -c "
-import tomllib
-from jaclang.scale.runtime.routing import resolve_routes
-with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
-    cfg = tomllib.load(f)
-ms = cfg.get('scale', {}).get('microservices', {}) \
-    or cfg.get('plugins', {}).get('scale', {}).get('microservices', {})
-for name, prefix in resolve_routes(dict(ms)).items():
+from pathlib import Path
+from jaclang.project.config import JacConfig
+from jaclang.scale.runtime.fleet import fleet_from_config
+cfg = JacConfig.load(Path('${PROJECT_DIR}/jac.toml'))
+for name, prefix in fleet_from_config(cfg, project_root='${PROJECT_DIR}').routes().items():
     if prefix == '${FIRST_PREFIX}':
         print(name.replace('_', '-'))
         break

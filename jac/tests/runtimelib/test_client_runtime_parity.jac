@@ -1,6 +1,6 @@
 """Contract parity across the `@jac/runtime` implementations.
 
-One public API, three runtimes (React, Solid, react-native) plus two cores, so a
+One public API, three runtimes (React, Solid, native/React Native) plus two cores, so a
 name taking different parameters per target is a silent portability bug. Asserting
 each function merely *exists* (`test_solid_backend.jac`) stayed green right through
 #8023, while React's `AuthGuard(redirect)` and Solid's `AuthGuard(redirect,
@@ -35,7 +35,7 @@ glob _RT = Path(jaclang.__file__).parent / "client",
      _ROUTER_RUNTIMES: dict[str, Path] = {
          "react": _RT / "client_runtime.jac",
          "solid": _RT / "solid_runtime.jac",
-         "react-native": _RT / "client_runtime_native.jac"
+         "native": _RT / "client_runtime_native.jac"
      },
      # The two cores underneath them (auth, walker calls, form plumbing).
      _RUNTIME_CORES: dict[str, Path] = {
@@ -43,11 +43,12 @@ glob _RT = Path(jaclang.__file__).parent / "client",
          "native": _RT / "client_react_core.jac"
      },
      # `target -> (backend, no-children fallback)` for the compiled-body test.
-     # react-native rides the React backend. Solid's fallback is None: its entry
-     # always passes `props.children`, so it has no `<Outlet/>` branch to keep.
+     # The native (React Native) runtime rides the React backend. Solid's
+     # fallback is None: its entry always passes `props.children`, so it has
+     # no `<Outlet/>` branch to keep.
      _AUTHGUARD_TARGETS: dict[str, tuple[any, (str | None)]] = {
          "react": (ReactBackend, "ReactRouterOutlet"),
-         "react-native": (ReactBackend, "__nativeOutlet"),
+         "native": (ReactBackend, "__nativeOutlet"),
          "solid": (SolidBackend, None)
      };
 
@@ -221,7 +222,7 @@ test "runtime cores declare one signature per shared symbol" {
 test "AuthGuard takes redirect and children on every target" {
     # The specific contract #8023 turned on, pinned by name so a regression
     # reports itself rather than arriving as an anonymous parity diff. React and
-    # react-native once declared `redirect` alone and discarded any wrapped page.
+    # the native runtime once declared `redirect` alone and discarded any wrapped page.
     for (target, path) in _ROUTER_RUNTIMES.items() {
         params = _signatures(path).get("AuthGuard");
         assert params is not None , f"{target} does not declare AuthGuard";

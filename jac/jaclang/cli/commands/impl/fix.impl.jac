@@ -370,6 +370,102 @@ def _append_toml_entries(
 }
 
 
+def _append_app_table(
+    toml_path: str, name: str, table: dict[str, str], dry_run: bool
+) -> list[str] {
+    import tomllib;
+    import from jaclang.project.config { _toml_append_section }
+    text = _read_text_if_exists(toml_path);
+    try {
+        doc = tomllib.loads(text);
+    } except Exception {
+        doc = {};
+    }
+    apps = doc.get('apps', {}) if isinstance(doc, dict) else {};
+    if isinstance(apps, dict) and name in apps {
+        return [];
+    }
+    lines: list[str] = text.split("\n");
+    before = len(lines);
+    _toml_append_section(lines, ('apps', name), table);
+    added = [
+        ln
+        for ln in lines[before:]
+        if ln and not ln.startswith('[')
+    ];
+    if dry_run {
+        return added;
+    }
+    with open(toml_path, 'w') as f {
+        f.write("\n".join(lines));
+    }
+    return added;
+}
+
+
+def _ensure_workspace(toml_path: str, dry_run: bool) -> str {
+    import tomllib;
+    import from pathlib { Path }
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.project.template_loader { migrate_implicit_app }
+    text = _read_text_if_exists(toml_path);
+    doc = tomllib.loads(text);
+    apps = doc.get('apps') if isinstance(doc, dict) else None;
+    if isinstance(apps, dict) and apps {
+        return '';
+    }
+    base = JacConfig.load(Path(toml_path));
+    lines: list[str] = text.split("\n");
+    base_name = migrate_implicit_app(lines, base);
+    if not dry_run {
+        with open(toml_path, 'w') as f {
+            f.write("\n".join(lines));
+        }
+    }
+    return base_name;
+}
+
+
+def _service_file_for(
+    target: str, importer: str, root_dir: str, scanned: list[str]
+) -> str {
+    dots = len(target) - len(target.lstrip('.'));
+    parts = [
+        p
+        for p in target.strip('.').split('.')
+        if p
+    ];
+    if not parts {
+        return '';
+    }
+    importer_dir = os.path.dirname(os.path.abspath(importer));
+    bases: list[str] = [];
+    if dots {
+        base = importer_dir;
+        for _ in range(dots - 1) {
+            base = os.path.dirname(base);
+        }
+        bases.append(base);
+    } else {
+        bases.append(root_dir);
+        bases.append(importer_dir);
+    }
+    for base in bases {
+        candidate = os.path.join(base, os.sep.join(parts)) + '.jac';
+        if os.path.isfile(candidate) {
+            return os.path.abspath(candidate);
+        }
+    }
+    want = parts[-1] + '.jac';
+    for p in scanned {
+        if os.path.basename(p) == want {
+            return os.path.abspath(p);
+        }
+    }
+    return '';
+}
+
+
 def _project_entry_stem(toml_path: str) -> str {
     try {
         import tomllib;
@@ -491,6 +587,7 @@ impl fix(
     renamed: list[tuple] = [];
     claims_by_file: dict[str, list[MarkerClaim]] = {};
     sv_imports_by_file: dict[str, list[str]] = {};
+    scanned: list[str] = [];
     skipped: list[str] = [];
     for path in files {
         try {
@@ -527,6 +624,7 @@ impl fix(
                 renamed.append((path, candidate));
             }
         }
+        scanned.append(final_path);
         if not res.changed and final_path == path {
             continue;
         }
@@ -581,27 +679,44 @@ impl fix(
             _verify_claims(path, claims, pins, unverified);
         }
     }
-    routes_by_root: dict[str, dict[str, str]] = {};
+    apps_by_root: dict[str, dict[str, dict[str, str]]] = {};
     orphaned: list[str] = [];
     for (path, targets) in sv_imports_by_file.items() {
-        route_root = find_jac_project_root(path);
-        if not route_root {
+        app_root = find_jac_project_root(path);
+        if not app_root {
             orphaned.append(path);
             continue;
         }
-        entry_stem = _project_entry_stem(os.path.join(route_root, 'jac.toml'));
-        routes = routes_by_root.setdefault(route_root, {});
+        entry_stem = _project_entry_stem(os.path.join(app_root, 'jac.toml'));
+        tables = apps_by_root.setdefault(app_root, {});
         for tgt in targets {
             stem = tgt.strip('.').rsplit('.', 1)[-1];
-            if stem and stem != entry_stem {
-                slug = stem[:-4] if stem.endswith('_app') else stem;
-                routes[stem] = f"/{slug}";
+            if not stem or stem == entry_stem or stem in tables {
+                continue;
             }
+            service_file = _service_file_for(tgt, path, app_root, scanned);
+            if not service_file {
+                skipped.append(
+                    f"[apps.{stem}] (service module '{tgt}' imported by {path} "
+                    "was not found; declare the app by hand)"
+                );
+                continue;
+            }
+            table: dict[str, str] = {
+                'kind': 'service',
+                'entry-point': os.path.relpath(service_file, app_root)
+            };
+            slug = stem[:-4] if stem.endswith('_app') else stem;
+            old_route = f"/{slug}";
+            if old_route != f"/api/{stem}" {
+                table['route'] = old_route;
+            }
+            tables[stem] = table;
         }
     }
 
     pins_added: list[str] = [];
-    routes_added: list[str] = [];
+    apps_added: list[str] = [];
     for (pin_root, pins) in sorted(pins_by_root.items()) {
         if pins {
             added = _append_toml_entries(
@@ -610,20 +725,40 @@ impl fix(
             pins_added.extend([f"{pin_root}: {a}" for a in added]);
         }
     }
-    for (route_root, routes) in sorted(routes_by_root.items()) {
-        if routes {
-            added = _append_toml_entries(
-                os.path.join(route_root, 'jac.toml'),
-                '[scale.microservices.routes]',
-                routes,
-                dry_run
+    for (app_root, tables) in sorted(apps_by_root.items()) {
+        toml_path = os.path.join(app_root, 'jac.toml');
+        try {
+            base_name = _ensure_workspace(toml_path, dry_run);
+        } except Exception as e {
+            skipped.append(
+                f"{toml_path} ([project] could not be migrated into [apps]: {e}; "
+                "declare the service apps by hand)"
             );
-            routes_added.extend([f"{route_root}: {a}" for a in added]);
+            continue;
+        }
+        if base_name {
+            apps_added.append(
+                f"{app_root}: [apps.{base_name}] migrated from [project] "
+                f"kind/entry-point (default-app = \"{base_name}\")"
+            );
+        }
+        for (name, table) in sorted(tables.items()) {
+            if name == base_name {
+                skipped.append(
+                    f"[apps.{name}] (service module shares the project app's name; "
+                    "declare it by hand)"
+                );
+                continue;
+            }
+            added = _append_app_table(toml_path, name, table, dry_run);
+            if added {
+                apps_added.append(f"{app_root}: [apps.{name}] " + " ".join(added));
+            }
         }
     }
     if orphaned {
         console.warning(
-            "No jac.toml found for service routes from: " + ", ".join(orphaned)
+            "No jac.toml found for the service apps imported by: " + ", ".join(orphaned)
         );
     }
 
@@ -635,8 +770,8 @@ impl fix(
     for `entry in pins_added {
         console.print(f"  [placement.pins] {`entry}");
     }
-    for `entry in routes_added {
-        console.print(f"  [scale.microservices.routes] {`entry}");
+    for `entry in apps_added {
+        console.print(f"  {`entry}");
     }
     for msg in skipped {
         console.warning(f"  skipped: {msg}");

@@ -8,6 +8,10 @@ browser LinkError. These tests skip when the vendored bitcode is absent
 """
 
 import os;
+import from jaclang.compiler.driver.compile_options {
+    push_native_target,
+    pop_native_target
+}
 import subprocess;
 import shutil;
 import tempfile;
@@ -39,8 +43,7 @@ def _require_libc {
 
 """Compile the shared fixture to LLVM IR text (the emit_wasm_from_ir input)."""
 def fixture_ir -> str {
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
+    prev = push_native_target("wasm32-unknown-unknown");
     try {
         prog = JacProgram();
         ir = prog.compile(
@@ -50,11 +53,7 @@ def fixture_ir -> str {
         assert not prog.errors_had;
         return str(ir.gen.llvm_ir);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -187,7 +186,7 @@ console.log(`out=${JSON.stringify(out)} compute=${c}`);
     last = proc.stdout.strip().splitlines()[-1];
     # float repr, alloc-churning concat, and str.lower all format in-module and
     # arrive through jac_host1.write — the exact #7048 breakage surface.
-    assert last == 'out="3.14\\n11\\nup\\n" compute=21' , f"unexpected: {last}";
+    assert last == 'out="3.14\\n11\\nup\\nfinished\\n7\\n" compute=21' , f"unexpected: {last}";
 }
 
 # ─── stale-floor detection ───────────────────────────────────────────────────
@@ -366,7 +365,7 @@ test "a floor without a manifest still links" {
     }
 }
 
-"""[gc] default = "none" promises an RC-free artifact; the audit is what makes
+"""[memory] profile = "nogc" promises an RC-free artifact; the audit is what makes
 compile_to_wasm fail loudly instead of shipping RC machinery the shim then has
 to service. Pure-IR checks -- no vendored libc needed."""
 test "rc audit passes clean IR and rejects rc machinery" {
@@ -385,7 +384,7 @@ test "rc audit passes clean IR and rejects rc machinery" {
 
 test "rc audit rejects entry-point gc env probes" {
     import from jaclang.compiler.backends.native.wasm_build { _assert_ir_rc_free }
-    probing = '@.s = constant [10 x i8] c"JAC_NO_GC\\00"';
+    probing = '@.s = constant [7 x i8] c"JAC_GC\\00"';
     raised = False;
     try {
         _assert_ir_rc_free(probing, "probe.jac");

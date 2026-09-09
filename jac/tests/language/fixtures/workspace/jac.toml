@@ -1,0 +1,18 @@
+# Three-app workspace for the `jac check` / `jac test` workspace-mode tests.
+# web/ and cli/ are dir-rooted apps, svc is file-rooted (it owns exactly
+# core/svc.jac); everything else under core/ is shared.
+[project]
+name = "wscheck"
+default-app = "web"
+
+[apps.web]
+kind = "web-app"
+path = "web"
+
+[apps.svc]
+kind = "service"
+entry-point = "core/svc.jac"
+
+[apps.cli]
+kind = "cli"
+path = "cli"

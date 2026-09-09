@@ -8,7 +8,7 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "E0108": "jac-comptime",
          "E0109": "jac-comptime",
          "W0060": "jac-core-cheatsheet",
-         "W0061": "jac-sv-persistence",
+         "E1042": "jac-sv-microservices",
          "E1050": "jac-walker-patterns",
          "E1102": "jac-cl-components",
          "E1104": "jac-npm-packages",
@@ -34,8 +34,17 @@ glob _CODE_GUIDE_MAP: dict[str, str] = {
          "W1310": "jac-native-memory",
          "E2004": "jac-has-fields",
          "E2025": "jac-npm-packages",
+         "E2039": "jac-apps",
+         "E2040": "jac-apps",
+         "W2039": "jac-apps",
+         "W2040": "jac-apps",
          "W2075": "jac-sv-persistence",
          "W3037": "jac-types",
+         "E5104": "jac-apps",
+         "E5105": "jac-apps",
+         "E5106": "jac-apps",
+         "E5107": "jac-apps",
+         "E5108": "jac-apps",
 
      },
      _CATEGORY_GUIDE_MAP: dict[str, str] = {"type": "jac-types",};
@@ -52,9 +61,15 @@ glob GUIDE_GROUP_ORDER: list[str] = [
          "Other",
 
      ],
-     _START_HERE_ORDER: list[str] = ["jac-project-kinds", "jac-core-cheatsheet"],
+     _START_HERE_ORDER: list[str] = [
+         "jac-essentials",
+         "jac-project-kinds",
+         "jac-apps",
+         "jac-core-cheatsheet"
+     ],
      _GUIDE_GROUP_MAP: dict[str, str] = {
          "jac-project-kinds": "Start here",
+         "jac-essentials": "Start here",
          "jac-core-cheatsheet": "Start here",
          "jac-types": "Language",
          "jac-comptime": "Language",
@@ -73,6 +88,7 @@ glob GUIDE_GROUP_ORDER: list[str] = [
          "jac-mobui": "Client & fullstack",
          "jac-scaffold": "Tooling & workflow",
          "jac-config": "Tooling & workflow",
+         "jac-apps": "Start here",
          "jac-testing": "Tooling & workflow",
          "jac-debugging": "Tooling & workflow",
          "jac-packaging": "Tooling & workflow",
@@ -540,4 +556,74 @@ impl guide_for_diagnostic(code: str, category: str = "") -> str | None {
         return "reference/diagnostics";
     }
     return None;
+}
+
+
+impl guide_sections(g: Guide) -> list[GuideSection] {
+    lines = g.body.splitlines();
+    headings: list[tuple[int, int, str, str]] = [];
+    counts: dict[str, int] = {};
+    fence_char = "";
+    fence_length = 0;
+    for (i, line) in enumerate(lines) {
+        fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line);
+        if fence is not None {
+            marker = fence.group(1);
+            if not fence_char {
+                fence_char = marker[0];
+                fence_length = len(marker);
+            } elif marker[0] == fence_char
+                and len(marker) >= fence_length
+                and not fence.group(2).strip() {
+                fence_char = "";
+            }
+            continue;
+        }
+        if fence_char {
+            continue;
+        }
+        heading = re.match(r"^ {0,3}(#{1,6})[ \t]+(.+?)\s*$", line);
+        if heading is None {
+            continue;
+        }
+        title = re.sub(r"\s+#+\s*$", "", heading.group(2));
+        custom = re.search(r"\s+\{:?\s*#([^\s}]+)[^}]*\}\s*$", title);
+        if custom is not None {
+            title = title[:custom.start()];
+        }
+        title = _clean_markdown(title);
+        base = custom.group(1)
+            if custom is not None
+            else re.sub(r"[^\w\s-]", "", title.lower());
+        base = re.sub(r"[\s-]+", "-", base).strip("-") or "section";
+        ordinal = counts.get(base, 0) + 1;
+        slug = base if ordinal == 1 else f"{base}-{ordinal}";
+
+        while slug in [h[3] for h in headings] {
+            ordinal += 1;
+            slug = f"{base}-{ordinal}";
+        }
+        counts[base] = ordinal;
+        headings.append((i, len(heading.group(1)), title, slug));
+    }
+    sections: list[GuideSection] = [];
+    for (index, h) in enumerate(headings) {
+        end = len(lines);
+        for following in headings[index + 1:] {
+            if following[1] <= h[1] {
+                end = following[0];
+                break;
+            }
+        }
+        sections.append(
+            GuideSection(
+                title=h[2],
+                slug=h[3],
+                level=h[1],
+                line_no=h[0] + 1,
+                body="\n".join(lines[h[0]:end]).strip()
+            )
+        );
+    }
+    return sections;
 }

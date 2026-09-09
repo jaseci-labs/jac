@@ -14,6 +14,7 @@ import tempfile;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.backends.native.llvm.binding.module { parse_bitcode }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "region_partition.jac"
@@ -35,27 +36,32 @@ glob FIXTURE = os.path.join(
          "region_page_share.jac"
      ),
      MODE_FLAGS = {
-         "none": ["--gc", "none"],
-         "rc": ["--gc", "rc"],
-         "cycles": ["--gc", "cycles"]
+         "none": ["--memory", "nogc"],
+         "rc": ["--memory", "rc"],
+         "cycles": ["--memory", "managed"]
      };
 
 test "children draw pages from the parent behind the reabsorb contract" {
     prog = JacProgram();
     ir = prog.compile(
-        file_path=SHARE_FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode="rc")
+        file_path=SHARE_FIXTURE,
+        options=CompileOptions(aot_mode=True, memory_profile="rc")
     );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     text = str(ir.gen.llvm_ir);
-    assert "raw.draw.lock" in text , "no parent draw path in __jac_region_raw";
-    assert "raw.run" in text , "no run carving in __jac_region_raw";
-    assert "merge.run" in text , "no run splice in __jac_region_drop";
+    assert "__jac_region_partition" in text , "no partition call in the module";
+    bitcode = ir.gen.native_bitcode;
+    assert bitcode is not None , "native linking produced no bitcode";
+    linked = parse_bitcode(bitcode);
+    fn_names = {str(f.name) for f in linked.functions};
+    assert "_draw_page" in fn_names , "the region kernel's parent draw path is not linked";
+    assert "_reabsorb" in fn_names , "the region kernel's reabsorb path is not linked";
     with tempfile.TemporaryDirectory() as tmp {
         outs: dict[str, str] = {};
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"share_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", SHARE_FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", SHARE_FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -79,7 +85,7 @@ test "partition(n) sugar reabsorbs like the per-child form across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"partn_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", SUGAR_FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", SUGAR_FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,
@@ -105,7 +111,7 @@ test "partition reabsorb and zombie teardown across gc modes" {
         for mode in ("none", "rc", "cycles") {
             out_bin = os.path.join(tmp, f"part_{mode}");
             res = subprocess.run(
-                [sys.executable, "-m", "jaclang", "nacompile", FIXTURE]
+                [sys.executable, "-m", "jaclang", "build", "--native", FIXTURE]
                     + MODE_FLAGS[mode]
                     + ["-o", out_bin],
                 capture_output=True,

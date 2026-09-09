@@ -2,8 +2,9 @@ import ctypes;
 import json;
 import os;
 import sys;
-import from ctypes { c_char_p, c_int64, c_void_p, cast, py_object }
-import from jaclang.runtime.osp_model { stable_osp_tag }
+import from ctypes { c_char_p, c_double, c_int64, c_void_p, cast, py_object }
+import from jaclang.runtime.osp_tag { stable_osp_tag }
+import type from jaclang.compiler.passes.transform { PassResult }
 
 glob CODE_INT: int = 1,
      CODE_BOOL: int = 2,
@@ -13,7 +14,8 @@ glob CODE_INT: int = 1,
      CODE_OBJ: int = 6,
      CODE_NATLIST: int = 7,
      CODE_UNION: int = 8,
-     CODE_OPTENUM: int = 9;
+     CODE_OPTENUM: int = 9,
+     CODE_NATDICT: int = 10;
 
 glob CLASS_MODULES: tuple = (
          "jaclang.compiler.frontend.unitree",
@@ -23,6 +25,8 @@ glob CLASS_MODULES: tuple = (
          "jaclang.compiler.frontend.parser.tokens",
          "jaclang.compiler.frontend.roles",
          "jaclang.compiler.frontend.relations",
+         "jaclang.compiler.frontend.diagnostics",
+         "jaclang.compiler.passes.transform",
 
      );
 
@@ -31,7 +35,8 @@ def _enum_class(name: str) -> any {
     import importlib;
     for modname in (
         "jaclang.compiler.frontend.constant",
-        "jaclang.compiler.frontend.parser.tokens"
+        "jaclang.compiler.frontend.parser.tokens",
+        "jaclang.compiler.frontend.diagnostics"
     ) {
         mod = importlib.import_module(modname);
         cls = getattr(mod, name, None);
@@ -67,6 +72,7 @@ class NativeCompiler {
         }
         self._keep = [];
         self.classes = {};
+        self._value_rows: dict[str, int] = {};
         self._bind();
         self._register();
     }
@@ -80,13 +86,7 @@ class NativeCompiler {
             fn.argtypes = [c_void_p, c_void_p, c_int64, c_void_p, c_void_p, c_int64];
             fn.restype = c_int64;
         }
-        for name in (
-            "jc_probe",
-            "jc_err_count",
-            "jc_lex_errs",
-            "jc_mz_skipped",
-            "jc_graph_wipe"
-        ) {
+        for name in ("jc_probe", "jc_err_count", "jc_lex_errs", "jc_mz_skipped") {
             fn = getattr(L, name);
             fn.argtypes = [];
             fn.restype = c_int64;
@@ -115,6 +115,17 @@ class NativeCompiler {
         L.jc_reg_edge.restype = c_int64;
         L.jc_reg_hint_tags.argtypes = [c_int64] * 2;
         L.jc_reg_hint_tags.restype = c_int64;
+        self.supports_early: bool = hasattr(L, "jc_set_early");
+        if self.supports_early {
+            L.jc_set_early.argtypes = [c_int64];
+            L.jc_set_early.restype = c_int64;
+            L.jc_completed.argtypes = [];
+            L.jc_completed.restype = c_int64;
+            L.jc_pass_time.argtypes = [c_int64];
+            L.jc_pass_time.restype = c_double;
+            L.jc_take_pass_alerts.argtypes = [c_int64, c_int64];
+            L.jc_take_pass_alerts.restype = c_void_p;
+        }
     }
 
     def _hold(self: NativeCompiler, o: any) -> int {
@@ -150,10 +161,11 @@ class NativeCompiler {
     }
 
     def _field_annotations(self: NativeCompiler, cls: any) -> dict {
-        import dataclasses;
+        import from jaclang.runtime.object_interop { fields }
+        import from jaclang.runtime.object_model { MISSING }
         out = {};
         try {
-            for f in dataclasses.fields(cls) {
+            for f in fields(cls) {
                 out[f.name] = str(f.`type);
             }
         } except TypeError {}
@@ -195,6 +207,9 @@ class NativeCompiler {
                 enum_h = self._hold(table);
             } elif code == "natlist" {
                 nat_code = CODE_NATLIST;
+            } elif code == "natdict" {
+                nat_code = CODE_NATDICT;
+                aux_tag = self._register_value(f["schema"]);
             } elif code == "union" {
                 nat_code = CODE_UNION;
                 parts = [x.strip(" ()") for x in anns.get(fname, "").split("|")];
@@ -232,15 +247,46 @@ class NativeCompiler {
         }
     }
 
+    def _register_value(self: NativeCompiler, schema: dict) -> int {
+        key = json.dumps(schema, sort_keys=True);
+        cached = self._value_rows.get(key);
+        if cached is not None {
+            return cached;
+        }
+        child = self._register_value(schema["element"]) if "element" in schema else 0;
+        index = len(self._value_rows) + 1;
+        self._value_rows[key] = index;
+        codes = {
+            "str": CODE_STR,
+            "obj": CODE_OBJ,
+            "list": CODE_NATLIST,
+            "dict": CODE_NATDICT
+        };
+        fn = self.lib.jc_reg_value;
+        fn.argtypes = [c_int64] * 7;
+        fn.restype = c_int64;
+        fn(
+            index,
+            codes[schema["code"]],
+            self._class_tag(schema["class"]) if "class" in schema else 0,
+            child,
+            schema.get("key_offset", 0),
+            schema.get("data_offset", 0),
+            schema.get("order_offset", 0)
+        );
+        return index;
+    }
+
     def _register_defaults(self: NativeCompiler, cls: any, tag: int) {
-        import dataclasses;
+        import from jaclang.runtime.object_interop { fields }
+        import from jaclang.runtime.object_model { MISSING }
         try {
-            dc_fields = dataclasses.fields(cls);
+            dc_fields = fields(cls);
         } except TypeError {
             return;
         }
         for f in dc_fields {
-            if f.`default is not dataclasses.MISSING {
+            if f.`default is not MISSING {
                 continue;
             }
             descr = getattr(cls, f.name, None);
@@ -248,7 +294,7 @@ class NativeCompiler {
                 continue;
             }
             kind = -1;
-            if f.default_factory is not dataclasses.MISSING {
+            if f.default_factory is not None {
                 if f.default_factory is `list {
                     kind = 1;
                 } elif f.default_factory is `dict {
@@ -299,6 +345,7 @@ class NativeCompiler {
     }
 
     def _register(self: NativeCompiler) {
+        import from jaclang.runtime.archetype { NodeArchetype }
         import from jaclang.compiler.frontend.roles {
             AccessorsRole,
             BodyRole,
@@ -329,7 +376,7 @@ class NativeCompiler {
             if info.get("tag") and info.get("tag_offset", -1) >= 0 {
                 tagged = 1;
             }
-            is_node = 1 if "_role_shapes" in info["fields"] else 0;
+            is_node = 1 if issubclass(cls, NodeArchetype) else 0;
             self.lib.jc_reg_class(tag, self._hold(cls), info["size"], tagged, is_node);
             self._register_defaults(cls, tag);
             self._register_fields(name, cls, tag);
@@ -365,6 +412,46 @@ class NativeCompiler {
 
     def run(self: NativeCompiler, source: str, path: str) -> int {
         return self._call_str2("jc_run", source, path);
+    }
+
+    def prepare_early(self: NativeCompiler, context: str) {
+        if self.supports_early {
+            self.lib.jc_set_early(
+                {"server": 1, "client": 2, "native": 3}.get(context, 0)
+            );
+        }
+    }
+
+    def take_pass_results(self: NativeCompiler) -> dict[str, PassResult] {
+        import from jaclang.compiler.passes.transform { PassResult }
+        import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
+        import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
+        out: dict[str, PassResult] = {};
+        if not self.supports_early {
+            return out;
+        }
+        completed = self.lib.jc_completed();
+        passes: list[tuple[int, type]] = [(1, ASTValidationPass), (2, SymTabBuildPass)];
+        for (pass_id, pass_cls) in passes {
+            if not (completed & pass_id) {
+                continue;
+            }
+            errors = self._take(self.lib.jc_take_pass_alerts(pass_id, 0)) or [];
+            warnings = self._take(self.lib.jc_take_pass_alerts(pass_id, 1)) or [];
+            for alert in errors + warnings {
+                alert.from_pass = pass_cls;
+                if alert.code is not None {
+                    import from jaclang.compiler.frontend.diagnostics { DIAGNOSTICS }
+                    alert.code = DIAGNOSTICS[alert.code.code];
+                }
+            }
+            out[pass_cls.__name__] = PassResult(
+                errors_had=errors,
+                warnings_had=warnings,
+                time_taken=self.lib.jc_pass_time(pass_id)
+            );
+        }
+        return out;
     }
 
     def _take(self: NativeCompiler, ptr: any) -> any {
@@ -461,6 +548,9 @@ def _find_lib -> (str | None) {
     cand = os.path.join(here, name);
     if os.path.isfile(cand) and os.path.isfile(cand + ".layout.json") {
         return cand;
+    }
+    if os.environ.get("JAC_DEV_SOURCE") {
+        return None;
     }
     for p in sys.path {
         if not p {

@@ -1,9 +1,9 @@
 ---
 name: jac-node-edge-patterns
-description: Shaping the graph - the entities-and-relationships side of Object-Spatial Programming (OSP) in Jac. Defining nodes and edges, connecting, deleting, nested traversal filters by type/field/edge attributes, multi-hop reads, assign comprehensions for bulk updates. Load when modeling graph-persistent data or writing graph queries / OSP code. Pair with `jac-walker-patterns` (traversal logic over the graph).
+description: Model transient or persistent graphs with typed nodes, edges, queries, and deletion. Use when building graph relationships or filtering topology.
 ---
 
-Nodes are graph-persistent entities; edges are connections (plain or typed `edge` archetypes with `has` fields). Connect with arrow operators; read with list-comprehension references.
+Nodes represent graph entities, either transient or persistent; edges are connections (plain or typed `edge` archetypes with `has` fields). Connect with arrow operators; read with list-comprehension references.
 
 ```jac
 node Person {
@@ -106,8 +106,8 @@ del index["alice"];
 index["alice"] = None;
 ```
 
-- A node needs `root` attachment (or a path from root) to be reachable later. A freshly constructed `Person(name="x")` with no incoming edge is unreachable from `[root -->]` reads - the node exists in memory but no walker or list-read can find it. Always attach: `root ++> person;`.
-- **`jac run` persists graph state** in the cwd's `.jac/` directory. Re-running a script duplicates its nodes, and changing archetype definitions between runs yields `NodeAnchor ... is not a valid reference!` errors. Reset with `jac clean --all` (requires a jac.toml; for a bare script directory, `rm -rf .jac/`).
+- `[root -->]` reads nodes connected from the current root; it cannot find an unconnected node merely because the node exists. Attach nodes where your query or traversal starts. A transient node can also be used directly as a query source or walker spawn location; root attachment is not required for in-memory graph work.
+- **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.
 - Per-user vs shared data on a server: the commons graph hangs off `root.shared` - see `jac-sv-multi-user`.
 
 Related guides: `jac-walker-patterns` (traversal), `jac-testing` (per-test root isolation), `jac-debugging` (NodeAnchor/stale-cache triage).

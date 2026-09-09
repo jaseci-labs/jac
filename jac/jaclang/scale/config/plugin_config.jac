@@ -1,7 +1,7 @@
 def _http_activation_nested_schema -> dict[str, any] {
     """The `nested` fields shared verbatim by [scale.kubernetes.http_activation]
-    and [scale.microservices.services.NAME.http_activation] -- factored out so
-    the two call sites (top-level default, per-service override) can't drift
+    and [apps.NAME.scale.http_activation] -- factored out so
+    the two call sites (top-level default, per-app override) can't drift
     out of sync on a field's type/default the way two independent copies
     would.
     """;
@@ -130,6 +130,134 @@ def _http_activation_nested_schema -> dict[str, any] {
 }
 
 
+def app_scale_schema -> dict[str, any] {
+    return {
+        "rpc_timeout": {
+            "type": "float",
+            "default": 10.0,
+            "description": "App-to-app RPC call timeout in seconds"
+        },
+        "http_forward_timeout": {
+            "type": "float",
+            "default": 30.0,
+            "description": "Gateway-to-app forward timeout in seconds"
+        },
+        "replicas": {
+            "type": "int",
+            "default": 1,
+            "description": "K8s Deployment.spec.replicas"
+        },
+        "cpu_request": {
+            "type": "string",
+            "default": None,
+            "description": "K8s container CPU request, e.g. '100m'"
+        },
+        "cpu_limit": {
+            "type": "string",
+            "default": None,
+            "description": "K8s container CPU limit, e.g. '2000m'"
+        },
+        "memory_request": {
+            "type": "string",
+            "default": None,
+            "description": "K8s container memory request, e.g. '128Mi'"
+        },
+        "memory_limit": {
+            "type": "string",
+            "default": None,
+            "description": "K8s container memory limit, e.g. '4Gi'"
+        },
+        "env": {
+            "type": "dict",
+            "default": {},
+            "description": "Extra container env vars merged with the auto-set JAC_SV_NAME, JAC_SV_FILE and JAC_APP_<PEER>_URL"
+        },
+        "read_cache": {
+            "type": "bool",
+            "default": False,
+            "description": "Cache bridged calls whose provider endpoint declares no effects, invalidated when an effectful call to the same provider goes through"
+        },
+        "workers": {
+            "type": "string",
+            "default": None,
+            "description": "Worker processes for this app's pods (overrides [serve.workers] count). 'auto' sizes from the pod's CPU quota. A CPU-bound app on a 2-core limit wants 2; an I/O-bound one is fine at 1."
+        },
+        "threads": {
+            "type": "string",
+            "default": None,
+            "description": "Sync-handler threads per worker for this app's pods (overrides [serve.workers] threads)."
+        },
+        "hpa": {
+            "type": "dict",
+            "default": {},
+            "description": "Autoscaler settings for this app",
+            "nested": {
+                "enabled": {
+                    "type": "bool",
+                    "default": True,
+                    "description": "Emit an HPA/ScaledObject for this app"
+                },
+                "min": {"type": "int", "default": 1, "description": "Minimum replicas"},
+                "max": {"type": "int", "default": 3, "description": "Maximum replicas"},
+                "cpu_target": {
+                    "type": "int",
+                    "default": 50,
+                    "description": "CPU utilization target percent"
+                },
+                "memory_target": {
+                    "type": "int",
+                    "default": 80,
+                    "description": "Memory utilization target percent (of the memory request)"
+                },
+                "behavior": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Raw HPA behavior fragment deep-merged over generated defaults"
+                }
+            }
+        },
+        "pdb": {
+            "type": "dict",
+            "default": {},
+            "description": "PodDisruptionBudget settings for this app",
+            "nested": {
+                "enabled": {
+                    "type": "bool",
+                    "default": True,
+                    "description": "Emit a PDB for this app"
+                },
+                "max_unavailable": {
+                    "type": "int",
+                    "default": 1,
+                    "description": "PDB maxUnavailable. A budget that permits evicting every replica protects nothing, so no PDB is emitted when this is at or above the app's replica floor (hpa.min, or replicas when the HPA is off)."
+                },
+                "min_available": {
+                    "type": "int",
+                    "default": None,
+                    "description": "PDB minAvailable. Set it to keep a floor of healthy pods through voluntary disruption; it wins over max_unavailable."
+                }
+            }
+        },
+        "deployment_overlay": {
+            "type": "dict",
+            "default": {},
+            "description": "Raw Deployment-manifest fragment merged into the generated manifest: maps merge recursively, lists whose members all carry `name` merge by that name, anything else replaces; identity fields are reasserted after the merge"
+        },
+        "triggers": {
+            "type": "list",
+            "default": [],
+            "description": "(KEDA only) Per-app event-driven trigger dicts: `type`, `metadata`, optional `name`, optional `auth.secret_refs`. Requires autoscaler_engine = \"keda\" in [scale.kubernetes]."
+        },
+        "http_activation": {
+            "type": "dict",
+            "default": {},
+            "description": "(KEDA HTTP Add-on only) Per-app HTTP scale-to-zero activation. Same keys as [scale.kubernetes.http_activation]; the target Service is always this app's own generated Service. Falls back to [scale.kubernetes.http_activation]'s values for any key left unset.",
+            "nested": _http_activation_nested_schema()
+        }
+    };
+}
+
+
 class JacScalePluginConfig {
     static def get_plugin_metadata -> dict[str, any] {
         return {
@@ -143,28 +271,6 @@ class JacScalePluginConfig {
         return {
             "section": "scale",
             "options": {
-                "jwt": {
-                    "type": "dict",
-                    "default": {},
-                    "description": "JWT authentication configuration",
-                    "nested": {
-                        "secret": {
-                            "type": "string",
-                            "default": "supersecretkey_for_testing_only!",
-                            "description": "Secret key for JWT signing"
-                        },
-                        "algorithm": {
-                            "type": "string",
-                            "default": "HS256",
-                            "description": "JWT encoding algorithm"
-                        },
-                        "exp_delta_days": {
-                            "type": "int",
-                            "default": 7,
-                            "description": "JWT token expiration in days"
-                        }
-                    }
-                },
                 "sso": {
                     "type": "dict",
                     "default": {},
@@ -375,7 +481,7 @@ class JacScalePluginConfig {
                         "extra_triggers": {
                             "type": "list",
                             "default": [],
-                            "description": "(KEDA only) Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). For per-service triggers use [[scale.microservices.services.NAME.triggers]] instead."
+                            "description": "(KEDA only) Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). For per-app triggers use [[apps.NAME.scale.triggers]] instead."
                         },
                         "postgres_storage_size": {
                             "type": "string",
@@ -485,12 +591,12 @@ class JacScalePluginConfig {
                         "loki_enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Deploy the Loki + Alloy log pipeline (see [scale.microservices.logs])"
+                            "description": "Deploy the Loki + Alloy log pipeline (see [scale.gateway.logs])"
                         },
                         "tracing_enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Deploy the tracing stack (see [scale.microservices.tracing])"
+                            "description": "Deploy the tracing stack (see [scale.gateway.tracing])"
                         },
                         "ingress_node_port": {
                             "type": "int",
@@ -585,7 +691,7 @@ class JacScalePluginConfig {
                         "http_activation": {
                             "type": "dict",
                             "default": {},
-                            "description": "KEDA HTTP Add-on scale-to-zero activation for the monolith app (or shared defaults inherited by microservices unless overridden per-service). Requires the KEDA HTTP Add-on installed separately from core KEDA. For per-service activation use [scale.microservices.services.NAME.http_activation] instead.",
+                            "description": "KEDA HTTP Add-on scale-to-zero activation defaults shared by every fleet app unless overridden per app. Requires the KEDA HTTP Add-on installed separately from core KEDA. For per-app activation use [apps.NAME.scale.http_activation] instead.",
                             "nested": _http_activation_nested_schema()
                         }
                     }
@@ -598,28 +704,8 @@ class JacScalePluginConfig {
                 "server": {
                     "type": "dict",
                     "default": {},
-                    "description": "Server configuration",
+                    "description": "Serving-process logging. Listener, worker, limit and timeout settings live in [serve]",
                     "nested": {
-                        "port": {
-                            "type": "int",
-                            "default": 8000,
-                            "description": "Server port"
-                        },
-                        "host": {
-                            "type": "string",
-                            "default": "0.0.0.0",
-                            "description": "Server host"
-                        },
-                        "docs_enabled": {
-                            "type": "bool",
-                            "default": True,
-                            "description": "Serve the interactive API docs at /docs"
-                        },
-                        "suppress_health_check_logs": {
-                            "type": "bool",
-                            "default": False,
-                            "description": "Suppress health-check endpoint access log entries (/docs, /, /openapi.json, /health, /healthz, /healthz/ready, /healthz/live) from CLI output and Kubernetes pod logs. Off by default."
-                        },
                         "structured_logs": {
                             "type": "bool",
                             "default": True,
@@ -627,15 +713,15 @@ class JacScalePluginConfig {
                         }
                     }
                 },
-                "microservices": {
+                "gateway": {
                     "type": "dict",
                     "default": {},
-                    "description": "Microservice mode - run declared Jac files as independent service processes behind an API gateway",
+                    "description": "The gateway that fronts a workspace's service apps: its port, host, drain and forward timeouts, boot budgets, rate limiting, CORS, identity ownership, ingress, observability lanes, shared volumes and the pod settings of the gateway itself. Which apps are services is declared by [apps.<name>] kind = \"service\" (route = /api/<name> by default); per-app overrides live in [apps.<name>.scale].",
                     "nested": {
-                        "enabled": {
+                        "colocate": {
                             "type": "bool",
-                            "default": None,
-                            "description": "Deprecated - declaring [scale.microservices.routes] is what turns microservice mode on; set false to force single-process while keeping the routes table. Absent means auto-detect (enable when routes exist). Ignored inside deployed fleet pods (the deploy already realized the topology). A future release removes this key."
+                            "default": True,
+                            "description": "Serve the workspace's service apps inside the served app's process (bridged calls stay in-process). Set false to run them as separate local processes behind the gateway on every `jac run`; `jac run --fleet` does the same for one run. Deploys always run as a fleet and ignore this key."
                         },
                         "gateway_port": {
                             "type": "int",
@@ -647,47 +733,52 @@ class JacScalePluginConfig {
                             "default": "0.0.0.0",
                             "description": "Gateway host"
                         },
-                        "drain_timeout_seconds": {
-                            "type": "float",
-                            "default": 10.0,
-                            "description": "Graceful shutdown window (seconds). On SIGTERM, gateway + services flip a drain flag (503s on new requests) and wait up to this many seconds for in-flight requests to finish before the server force-closes; the serving core mirrors K8s `terminationGracePeriodSeconds`."
-                        },
                         "http_forward_timeout": {
                             "type": "float",
                             "default": 30.0,
-                            "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service RPC calls. Override per-service with `[scale.microservices.services.NAME].http_forward_timeout`."
+                            "description": "Gateway-to-app forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from an app's `rpc_timeout`, which controls app-to-app RPC calls. Override per app with [apps.NAME.scale] http_forward_timeout."
                         },
                         "boot_health_timeout": {
                             "type": "float",
                             "default": None,
-                            "description": "How long a service process may take to answer /healthz before it is given up on (seconds); absent uses the process manager default (60). Applies both when the orchestrator starts the declared services at boot and when an inter-service import spawns a peer lazily. For the lazy spawn this is a stall budget rather than a wall-clock cap: a child that is still writing to its log keeps the clock resetting, so a slow cold compile is not cut off, while a child that dies is reported immediately. Raise it for services with an expensive import graph."
+                            "description": "How long a service app process may take to answer /healthz before it is given up on (seconds); absent uses the process manager default (60). Raise it for apps with an expensive import graph."
                         },
                         "boot_max_wait": {
                             "type": "int",
                             "default": 90,
-                            "description": "Overall window (seconds) the orchestrator waits for the whole service set to report healthy at boot before it proceeds anyway. Distinct from `boot_health_timeout`, which is per service."
+                            "description": "Overall window (seconds) the orchestrator waits for the whole fleet to report healthy at boot before it proceeds anyway. Distinct from `boot_health_timeout`, which is per app."
                         },
                         "health_monitor_interval": {
                             "type": "float",
                             "default": None,
-                            "description": "Cadence (seconds) of the background health check that restarts services which died after boot; absent uses the process manager default (10)."
+                            "description": "Cadence (seconds) of the background health check that restarts fleet members which died after boot; absent uses the process manager default (10). While any member is not healthy the monitor polls at 2s regardless, and steps back to this cadence once the fleet settles."
+                        },
+                        "app_boot_timeout": {
+                            "type": "float",
+                            "default": 900.0,
+                            "description": "How long the orchestrator waits for the served app (the fleet's root member) to finish booting before it starts the service apps (seconds). The root member compiles the client, and a module another member analyzed first reaches the client backend with its calls unresolved, so it goes first and alone. Like `boot_health_timeout` this is a stall budget, not a wall-clock cap: while the member is still writing to its log the clock resets, so a cold client build is not cut off. Only applies when the root member serves a client (a local `--fleet` run of a web-app); a headless fleet starts every member in parallel."
+                        },
+                        "route_refresh_seconds": {
+                            "type": "float",
+                            "default": None,
+                            "description": "How often (seconds) the gateway re-reads each member's /openapi.json to learn the root paths it declares; absent uses the default (30)."
                         },
                         "identity": {
                             "type": "dict",
                             "default": {},
-                            "description": "Who owns user records in a fleet. The gateway serves /user/register and /user/login, so a session token it mints names a user that only the gateway's store knows; a service receiving that token has no local record for the subject.",
+                            "description": "Who owns user records in a fleet. The gateway serves /user/register and /user/login, so a session token it mints names a user that only the gateway's store knows; an app receiving that token has no local record for the subject.",
                             "nested": {
                                 "gateway_owned": {
                                     "type": "bool",
                                     "default": True,
-                                    "description": "A fleet service that receives a signature-valid, unexpired token for a user it does not know provisions that user's root once, instead of rejecting the request. Set false when a deployment manages identity itself and a service should reject unknown subjects."
+                                    "description": "A fleet app that receives a signature-valid, unexpired token for a user it does not know provisions that user's root once, instead of rejecting the request. Set false when a deployment manages identity itself and an app should reject unknown subjects."
                                 }
                             }
                         },
                         "ingress": {
                             "type": "dict",
                             "default": {},
-                            "description": "Optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. HTTP only - TLS via cert-manager / ACM is deployment-specific. Routes all external traffic to gateway-service:container_port; the gateway dispatches /<svc>/* internally (member-subpath; the /api prefix was dropped).",
+                            "description": "Optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. HTTP only - TLS via cert-manager / ACM is deployment-specific. Routes all external traffic to gateway-service:container_port; the gateway dispatches each app's route (/api/<name> by default) internally and everything else to the served app.",
                             "nested": {
                                 "enabled": {
                                     "type": "bool",
@@ -708,138 +799,6 @@ class JacScalePluginConfig {
                                     "type": "dict",
                                     "default": {},
                                     "description": "Controller-specific annotations, e.g. nginx.ingress.kubernetes.io/proxy-body-size"
-                                }
-                            }
-                        },
-                        "routes": {
-                            "type": "dict",
-                            "default": {},
-                            "description": "The service cut: module-name -> gateway-prefix map. Each key runs as its own service process (or pod) behind the gateway; an empty prefix derives /<module-slug>. This table is the single source of truth for which modules are services (`jac scale split <module>` adds an entry)."
-                        },
-                        "services": {
-                            "type": "dict",
-                            "default": {},
-                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `file` (str, the service's entry file relative to the project root; default `<name>.jac`), `rpc_timeout` (float, default 10s, inter-service RPC calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 50), `memory_target` (int percent of memory request, default 80), `behavior` (table, default `{}`): a raw HPA `behavior` fragment (`scaleUp`/`scaleDown`, each with `stabilizationWindowSeconds`/`policies`/`selectPolicy`) deep-merged over the generated scale-rate defaults - same merge semantics as `deployment_overlay` (maps merge recursively, the `policies` list has no `name` key so it replaces wholesale rather than merging by entry); applies to both \"hpa\" and \"keda\" engines since both route through the same `Autoscaler._build_behavior` (for keda it only governs scaling above zero replicas - the drop to zero remains controlled by `autoscaler_cooldown`, the ScaledObject's cooldownPeriod). Use it to slow scale-down for connection-heavy services (e.g. `[services.NAME.hpa.behavior.scaleDown] stabilizationWindowSeconds = 600, selectPolicy = 'Min', policies = [{ type = 'Pods', value = 2, periodSeconds = 300 }]`) without imposing the same rate limit on every service via the app-global `autoscaler_cooldown`. `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1; no PDB is emitted when it is at or above the service's replica floor, since such a budget permits evicting every replica), `min_available` (int, default unset; wins over `max_unavailable` and is the only way to ask for a budget that holds at one replica). `deployment_overlay` (table): a raw Deployment-manifest fragment merged into the generated manifest at build time - maps merge recursively, lists whose members all carry `name` (containers, volumes, env, initContainers, volumeMounts) merge by that name, anything else replaces; identity fields (metadata.name/namespace, selector, the app/managed template labels) are reasserted after the merge. The main container's `name` is the k8s-safe service name (e.g. `builder-sv`; gateway is `gateway`). Use it for nodeSelector, probe tuning, extra volumes/env/init containers - anything the schema has no first-class key for - so pods are right on the FIRST rollout instead of being kubectl-patched into a second one. Overlays add and override only: there is no delete directive (setting a key to null stores null rather than removing the generated field). Gateway uses the `__gateway__` key. `[[services.NAME.triggers]]` array (KEDA only): per-service event-driven triggers; each entry has `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = \"keda\"` in [scale.kubernetes]. `http_activation` sub-table (KEDA HTTP Add-on only): per-service HTTP scale-to-zero activation, same keys as [scale.kubernetes.http_activation] (`enabled`, `min_replicas`, `max_replicas`, `target_port`/`target_port_name`, `concurrency_target`/`request_rate_target`, `[[rules]]`, cold-start and timeout keys, `scale_target_kind`/`scale_target_api_version`/`scale_target_plural`); the target Service is always the service's own generated Service, never user-set. Falls back to [scale.kubernetes.http_activation]'s values for any key left unset. Example: [scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60",
-                            "nested_each": {
-                                "file": {
-                                    "type": "string",
-                                    "default": None,
-                                    "description": "Service entry file relative to the project root; default <name>.jac"
-                                },
-                                "rpc_timeout": {
-                                    "type": "float",
-                                    "default": 10.0,
-                                    "description": "Inter-service RPC call timeout in seconds"
-                                },
-                                "http_forward_timeout": {
-                                    "type": "float",
-                                    "default": 30.0,
-                                    "description": "Gateway-to-service forward timeout in seconds"
-                                },
-                                "replicas": {
-                                    "type": "int",
-                                    "default": 1,
-                                    "description": "K8s Deployment.spec.replicas"
-                                },
-                                "cpu_request": {
-                                    "type": "string",
-                                    "default": None,
-                                    "description": "K8s container CPU request, e.g. '100m'"
-                                },
-                                "cpu_limit": {
-                                    "type": "string",
-                                    "default": None,
-                                    "description": "K8s container CPU limit, e.g. '2000m'"
-                                },
-                                "memory_request": {
-                                    "type": "string",
-                                    "default": None,
-                                    "description": "K8s container memory request, e.g. '128Mi'"
-                                },
-                                "memory_limit": {
-                                    "type": "string",
-                                    "default": None,
-                                    "description": "K8s container memory limit, e.g. '4Gi'"
-                                },
-                                "env": {
-                                    "type": "dict",
-                                    "default": {},
-                                    "description": "Extra container env vars merged with auto-set JAC_SV_NAME"
-                                },
-                                "hpa": {
-                                    "type": "dict",
-                                    "default": {},
-                                    "description": "Per-service autoscaler settings",
-                                    "nested": {
-                                        "enabled": {
-                                            "type": "bool",
-                                            "default": True,
-                                            "description": "Emit an HPA/ScaledObject for this service"
-                                        },
-                                        "min": {
-                                            "type": "int",
-                                            "default": 1,
-                                            "description": "Minimum replicas"
-                                        },
-                                        "max": {
-                                            "type": "int",
-                                            "default": 3,
-                                            "description": "Maximum replicas"
-                                        },
-                                        "cpu_target": {
-                                            "type": "int",
-                                            "default": 50,
-                                            "description": "CPU utilization target percent"
-                                        },
-                                        "memory_target": {
-                                            "type": "int",
-                                            "default": 80,
-                                            "description": "Memory utilization target percent (of the memory request)"
-                                        },
-                                        "behavior": {
-                                            "type": "dict",
-                                            "default": {},
-                                            "description": "Raw HPA behavior fragment deep-merged over generated defaults"
-                                        }
-                                    }
-                                },
-                                "pdb": {
-                                    "type": "dict",
-                                    "default": {},
-                                    "description": "Per-service PodDisruptionBudget settings",
-                                    "nested": {
-                                        "enabled": {
-                                            "type": "bool",
-                                            "default": True,
-                                            "description": "Emit a PDB for this service"
-                                        },
-                                        "max_unavailable": {
-                                            "type": "int",
-                                            "default": 1,
-                                            "description": "PDB maxUnavailable. A budget that permits evicting every replica protects nothing, so no PDB is emitted when this is at or above the service's replica floor (hpa.min, or replicas when the HPA is off)."
-                                        },
-                                        "min_available": {
-                                            "type": "int",
-                                            "default": None,
-                                            "description": "PDB minAvailable. Set it to keep a floor of healthy pods through voluntary disruption; it wins over max_unavailable. min_available = 1 on a single-replica service refuses node drains until the service is scaled up, which is the trade for never going to zero."
-                                        }
-                                    }
-                                },
-                                "deployment_overlay": {
-                                    "type": "dict",
-                                    "default": {},
-                                    "description": "Raw Deployment-manifest fragment merged into the generated manifest"
-                                },
-                                "triggers": {
-                                    "type": "list",
-                                    "default": [],
-                                    "description": "(KEDA only) Per-service event-driven trigger dicts"
-                                },
-                                "http_activation": {
-                                    "type": "dict",
-                                    "default": {},
-                                    "description": "(KEDA HTTP Add-on only) Per-service HTTP scale-to-zero activation. Same keys as [scale.kubernetes.http_activation]; the target Service is always this service's own generated Service, never user-set. Falls back to [scale.kubernetes.http_activation]'s values for any key left unset.",
-                                    "nested": _http_activation_nested_schema()
                                 }
                             }
                         },
@@ -868,16 +827,17 @@ class JacScalePluginConfig {
                                     "default": 2.0,
                                     "description": "Bucket capacity = rpm * burst_multiplier / 60 (allows short bursts above the steady rate)."
                                 },
+                                "shared": {
+                                    "type": "bool",
+                                    "default": True,
+                                    "description": "Keep buckets in the project database so the limit is enforced once across every gateway process and replica. false keeps buckets in process memory, which only makes sense for a single-process dev gateway."
+                                },
                                 "exempt_paths": {
                                     "type": "list",
                                     "default": ["/health", "/healthz", "/metrics"],
                                     "description": "Paths that bypass rate limiting entirely (monitoring + probes)."
                                 },
-                                "trusted_proxies": {
-                                    "type": "list",
-                                    "default": [],
-                                    "description": "IPs/CIDRs of proxies fronting the gateway (e.g. the k8s Ingress pods or a load balancer). X-Forwarded-For is honored only when the TCP peer is in this list, and the per-IP key is the rightmost forwarded entry not itself listed here, so clients cannot mint buckets by forging the header. Empty (default) means the header is never trusted and the per-IP key is the TCP peer address; set this when the gateway runs behind an ingress, or all traffic will share the ingress address's bucket."
-                                }
+
                             }
                         },
                         "cors": {
@@ -917,33 +877,6 @@ class JacScalePluginConfig {
                                 }
                             }
                         },
-                        "client": {
-                            "type": "dict",
-                            "default": {},
-                            "description": "Client UI build settings (optional)",
-                            "nested": {
-                                "entry": {
-                                    "type": "string",
-                                    "default": "",
-                                    "description": "jac-client entry point (e.g., client/main.jac)"
-                                },
-                                "dist_dir": {
-                                    "type": "string",
-                                    "default": ".jac/client/dist",
-                                    "description": "Build output directory for static assets"
-                                },
-                                "base_route": {
-                                    "type": "string",
-                                    "default": "/",
-                                    "description": "SPA base route"
-                                },
-                                "static_mounts": {
-                                    "type": "list",
-                                    "default": [],
-                                    "description": "Extra static directories served by the gateway; array of tables, each with `url_prefix` and `local_path`"
-                                }
-                            }
-                        },
                         "logs": {
                             "type": "dict",
                             "default": {},
@@ -959,7 +892,7 @@ class JacScalePluginConfig {
                         "tracing": {
                             "type": "dict",
                             "default": {},
-                            "description": "Distributed tracing for gateway and services. Off by default.",
+                            "description": "Distributed tracing for the gateway and every fleet app. Off by default.",
                             "nested": {
                                 "enabled": {
                                     "type": "bool",
@@ -978,15 +911,55 @@ class JacScalePluginConfig {
                                 }
                             }
                         },
-                        "service_files": {
-                            "type": "dict",
-                            "default": {},
-                            "description": "Module-name -> entry-file map for services whose file differs from <name>.jac; normally maintained by the deploy pipeline rather than by hand"
-                        },
                         "shared_volumes": {
                             "type": "list",
                             "default": [],
-                            "description": "Volume declarations mounted into every service pod"
+                            "description": "Volume declarations mounted into fleet pods; each entry names the apps that mount it under `apps`."
+                        },
+                        "replicas": {
+                            "type": "int",
+                            "default": 1,
+                            "description": "K8s Deployment.spec.replicas for the gateway pod"
+                        },
+                        "cpu_request": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Gateway container CPU request, e.g. '100m'"
+                        },
+                        "cpu_limit": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Gateway container CPU limit, e.g. '2000m'"
+                        },
+                        "memory_request": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Gateway container memory request, e.g. '128Mi'"
+                        },
+                        "memory_limit": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Gateway container memory limit, e.g. '4Gi'"
+                        },
+                        "env": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Extra container env vars for the gateway pod"
+                        },
+                        "hpa": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Gateway autoscaler settings; same keys as [apps.NAME.scale.hpa]"
+                        },
+                        "pdb": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Gateway PodDisruptionBudget settings; same keys as [apps.NAME.scale.pdb]"
+                        },
+                        "deployment_overlay": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Raw Deployment-manifest fragment merged into the generated gateway manifest"
                         }
                     }
                 },
@@ -999,11 +972,6 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": None,
                             "description": "Broadcast backplane: 'memory' (single-pod, in-process fan-out) or 'pg' (cross-pod fan-out over Postgres LISTEN/NOTIFY). Unset auto-selects 'pg' when a scale database resolves, else 'memory'."
-                        },
-                        "allowed_origins": {
-                            "type": "list",
-                            "default": [],
-                            "description": "Origins allowed to open cross-origin WebSocket upgrades. Default [] refuses cross-origin browsers (same-origin and non-browser clients always pass); list origins explicitly or use [\"*\"] to allow any."
                         },
                         "max_message_bytes": {
                             "type": "int",
@@ -1104,7 +1072,7 @@ class JacScalePluginConfig {
                         "namespace": {
                             "type": "string",
                             "default": "jaclang_scale",
-                            "description": "Metrics namespace prefix (e.g., myapp_http_requests_total)"
+                            "description": "Metrics namespace prefix (e.g., myapp_http_requests_total). Sanitized to [a-zA-Z0-9_] before use; a rewritten value logs a warning at startup"
                         },
                         "walker_metrics": {
                             "type": "bool",
@@ -1369,11 +1337,6 @@ class JacScalePluginConfig {
                             "default": "auth_tokens",
                             "description": "Collection name where auth tokens are persisted"
                         },
-                        "password_hash_cost": {
-                            "type": "int",
-                            "default": 14,
-                            "description": "bcrypt cost factor, clamped to 10..17 (JAC_SCALE_PASSWORD_HASH_COST env overrides)"
-                        },
                         "forgot_password_rate_per_hour": {
                             "type": "int",
                             "default": 3,
@@ -1409,7 +1372,7 @@ class JacScalePluginConfig {
                 "tracing": {
                     "type": "dict",
                     "default": {},
-                    "description": "Tracing intent (enabled = true installs the tracing extras at install time); runtime tracing settings live under [scale.microservices.tracing]."
+                    "description": "Tracing intent (enabled = true installs the tracing extras at install time); runtime tracing settings live under [scale.gateway.tracing]."
                 },
                 "fat_bundle": {
                     "type": "bool",

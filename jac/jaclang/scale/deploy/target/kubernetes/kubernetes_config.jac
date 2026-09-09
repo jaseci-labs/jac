@@ -1,3 +1,4 @@
+import from jaclang.comptime { fields, get_field }
 import from jaclang.scale.config.base_config { BaseConfig }
 
 glob DATABASE_MODES = ('auto', 'provision', 'external', 'none');
@@ -114,151 +115,26 @@ obj KubernetesConfig(BaseConfig) {
     }
 
     override def to_dict -> dict[str, any] {
-        base = super.to_dict();
-        base.update(
-            {
-                'container_port': self.container_port,
-                'database_mode': self.database_mode,
-                'database_url': self.database_url,
-                'database_namespace': self.database_namespace,
-                'cpu_request': self.cpu_request,
-                'cpu_limit': self.cpu_limit,
-                'memory_request': self.memory_request,
-                'memory_limit': self.memory_limit,
-                'readiness_initial_delay': self.readiness_initial_delay,
-                'readiness_period': self.readiness_period,
-                'liveness_initial_delay': self.liveness_initial_delay,
-                'liveness_period': self.liveness_period,
-                'liveness_failure_threshold': self.liveness_failure_threshold,
-                'min_replicas': self.min_replicas,
-                'max_replicas': self.max_replicas,
-                'revision_history_limit': self.revision_history_limit,
-                'cpu_utilization_target': self.cpu_utilization_target,
-                'memory_utilization_target': self.memory_utilization_target,
-                'autoscaler_engine': self.autoscaler_engine,
-                'autoscaler_scale_up_stabilization': self.autoscaler_scale_up_stabilization,
-                'autoscaler_scale_up_max_pods': self.autoscaler_scale_up_max_pods,
-                'idle_replicas': self.idle_replicas,
-                'autoscaler_polling_interval': self.autoscaler_polling_interval,
-                'autoscaler_cooldown': self.autoscaler_cooldown,
-                'autoscaler_initial_cooldown': self.autoscaler_initial_cooldown,
-                'extra_triggers': self.extra_triggers,
-                'http_activation': self.http_activation,
-                'health_check_path': self.health_check_path,
-                'python_image': self.python_image,
-                'wait_image': self.wait_image,
-                'bundle_storage_class': self.bundle_storage_class,
-                'bundle_access_mode': self.bundle_access_mode,
-                'resource_deletion_wait': self.resource_deletion_wait,
-                'aws_nlb_wait': self.aws_nlb_wait,
-                'app_mount_path': self.app_mount_path,
-                'code_mount_path': self.code_mount_path,
-                'workspace_path': self.workspace_path,
-                'additional_packages': self.additional_packages,
-                'service_dependencies': self.service_dependencies,
-                'monitoring_enabled': self.monitoring_enabled,
-                'k8s_metrics_enabled': self.k8s_metrics_enabled,
-                'loki_enabled': self.loki_enabled,
-                'tracing_enabled': self.tracing_enabled,
-                'prometheus_admin_password': self.prometheus_admin_password,
-                'admin_username': self.admin_username,
-                'ingress_node_port': self.ingress_node_port,
-                'shared_ingress': self.shared_ingress,
-                'shared_ingress_class': self.shared_ingress_class,
-                'shared_ingress_annotations': self.shared_ingress_annotations,
-                'shared_ingress_tls': self.shared_ingress_tls,
-                'shared_ingress_skip_reachability': self.shared_ingress_skip_reachability,
-                'ingress_limit_rps': self.ingress_limit_rps,
-                'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
-                'ingress_limit_connections': self.ingress_limit_connections,
-                'ingress_session_affinity': self.ingress_session_affinity,
-                'domain': self.domain,
-                'cert_manager_email': self.cert_manager_email,
-                'service_account_name': self.service_account_name,
-                'ops_console': self.ops_console,
-                'ops_console_mutations': self.ops_console_mutations,
-                'kube_context': self.kube_context,
-                'kubeconfig': self.kubeconfig,
-                'labels': self.labels
-            }
-        );
-        return base;
+        out: dict[str, any] = {};
+        comptime for f in fields(KubernetesConfig) {
+            out[f.name] = get_field(self, f.name);
+        }
+        return out;
     }
 
     static def from_dict(cls: type, config: dict[str, any]) -> KubernetesConfig {
-        return cls(
-            app_name=config.get('app_name', 'jaseci'),
-            namespace=config.get('namespace', 'default'),
-            container_port=config.get('container_port', 8000),
-            database_mode=resolve_database_mode(config),
-            database_url=str(config.get('database_url') or ''),
-            database_namespace=str(config.get('database_namespace') or ''),
-            cpu_request=config.get('cpu_request'),
-            cpu_limit=config.get('cpu_limit'),
-            memory_request=config.get('memory_request'),
-            memory_limit=config.get('memory_limit'),
-            readiness_initial_delay=config.get('readiness_initial_delay', 10),
-            readiness_period=config.get('readiness_period', 20),
-            liveness_initial_delay=config.get('liveness_initial_delay', 10),
-            liveness_period=config.get('liveness_period', 20),
-            liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
-            min_replicas=config.get('min_replicas', 1),
-            max_replicas=config.get('max_replicas', 3),
-            revision_history_limit=config.get('revision_history_limit', 10),
-            cpu_utilization_target=config.get('cpu_utilization_target', 50),
-            memory_utilization_target=config.get('memory_utilization_target', 80),
-            autoscaler_engine=config.get('autoscaler_engine', 'hpa'),
-            autoscaler_scale_up_stabilization=config.get(
-                'autoscaler_scale_up_stabilization', 60
-            ),
-            autoscaler_scale_up_max_pods=config.get('autoscaler_scale_up_max_pods', 2),
-            idle_replicas=config.get('idle_replicas'),
-            autoscaler_polling_interval=config.get('autoscaler_polling_interval', 30),
-            autoscaler_cooldown=config.get('autoscaler_cooldown', 300),
-            autoscaler_initial_cooldown=config.get('autoscaler_initial_cooldown', 0),
-            extra_triggers=config.get('extra_triggers', []),
-            http_activation=config.get('http_activation', {}),
-            health_check_path=config.get('health_check_path', '/docs'),
-            python_image=config.get('python_image', ''),
-            wait_image=config.get('wait_image', 'busybox'),
-            bundle_storage_class=config.get('bundle_storage_class', ''),
-            bundle_access_mode=config.get('bundle_access_mode', 'ReadWriteMany'),
-            resource_deletion_wait=config.get('resource_deletion_wait', 5),
-            aws_nlb_wait=config.get('aws_nlb_wait', 60),
-            app_mount_path=config.get('app_mount_path', '/app'),
-            code_mount_path=config.get('code_mount_path', '/code'),
-            workspace_path=config.get('workspace_path', '/code/workspace'),
-            additional_packages=config.get('additional_packages', []),
-            service_dependencies=config.get('service_dependencies', []),
-            monitoring_enabled=config.get('monitoring_enabled', False),
-            k8s_metrics_enabled=config.get('k8s_metrics_enabled', True),
-            loki_enabled=config.get('loki_enabled', False),
-            tracing_enabled=config.get('tracing_enabled', False),
-            prometheus_admin_password=config.get(
-                'prometheus_admin_password', 'Adminpassword123'
-            ),
-            ingress_node_port=config.get('ingress_node_port', 30080),
-            shared_ingress=config.get('shared_ingress', False),
-            shared_ingress_class=config.get('shared_ingress_class', 'nginx'),
-            shared_ingress_annotations=config.get('shared_ingress_annotations', {}),
-            shared_ingress_tls=config.get('shared_ingress_tls', False),
-            shared_ingress_skip_reachability=config.get(
-                'shared_ingress_skip_reachability', False
-            ),
-            ingress_limit_rps=config.get('ingress_limit_rps', 20),
-            ingress_limit_burst_multiplier=config.get(
-                'ingress_limit_burst_multiplier', 5
-            ),
-            ingress_limit_connections=config.get('ingress_limit_connections', 20),
-            ingress_session_affinity=config.get('ingress_session_affinity', True),
-            domain=config.get('domain', ''),
-            cert_manager_email=config.get('cert_manager_email', ''),
-            service_account_name=config.get('service_account_name', ''),
-            ops_console=config.get('ops_console', False),
-            ops_console_mutations=config.get('ops_console_mutations', False),
-            kube_context=config.get('kube_context', ''),
-            kubeconfig=config.get('kubeconfig', ''),
-            labels=config.get('labels', {})
-        );
+        """A key absent from config is not passed, so the has-declaration above
+        is the only place a default for it exists. The three assignments after
+        the loop are the only fields whose value is not the config's verbatim.""";
+        kw: dict[str, any] = {};
+        comptime for f in fields(KubernetesConfig) {
+            if f.name in config {
+                kw[f.name] = config[f.name];
+            }
+        }
+        kw['database_mode'] = resolve_database_mode(config);
+        kw['database_url'] = str(config.get('database_url') or '');
+        kw['database_namespace'] = str(config.get('database_namespace') or '');
+        return cls(**kw);
     }
 }

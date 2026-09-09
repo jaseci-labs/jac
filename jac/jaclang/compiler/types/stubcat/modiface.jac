@@ -5,6 +5,22 @@ import from jaclang.compiler.types.stubcat.writer { CatalogWriter }
 
 glob IFACE_HASH_LEN: int = 64;
 
+class IncoherentInterface(RuntimeError) {
+    has mod_path: str,
+        orphans: list[str];
+
+    def init(self: IncoherentInterface, mod_path: str, orphans: list[str]) {
+        RuntimeError.__init__(
+            self,
+            f"interface of {mod_path} references {len(orphans)} class scope(s) "
+            "with no live module: "
+                + ", ".join(orphans)
+        );
+        self.mod_path = mod_path;
+        self.orphans = list(orphans);
+    }
+}
+
 def build_module_iface(mod: Module, evaluator: any, pkg_dir: str) -> bytes {
     writer = CatalogWriter(evaluator=evaluator, pkg_dir=pkg_dir, boundary=mod);
     dotted = mod.name or "";
@@ -12,6 +28,9 @@ def build_module_iface(mod: Module, evaluator: any, pkg_dir: str) -> bytes {
     writer.force_all();
     key = mod.loc.mod_path if mod.loc else dotted;
     body = writer.emit(key, {});
+    if writer.orphans {
+        raise IncoherentInterface(key, writer.orphans);
+    }
     digest = hashlib.sha256(body).hexdigest();
     return digest.encode("utf-8") + body;
 }

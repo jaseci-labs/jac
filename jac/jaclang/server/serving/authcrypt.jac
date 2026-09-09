@@ -15,12 +15,112 @@ glob SCRYPT_N: int = 16384,
      SCRYPT_SALT_BYTES: int = 16,
      SCRYPT_MAXMEM: int = 48 * 1024 * 1024,
      _BCRYPT_PREFIXES: tuple = ('$2a$', '$2b$', '$2y$'),
+     _SHA256_HEX_LEN: int = 64,
+     _HEX_DIGITS: str = '0123456789abcdef',
+     PLACEHOLDER_JWT_SECRET: str = 'supersecretkey_for_testing_only!',
+     DEV_SECRET_FILENAME: str = 'jwt_secret',
+     DEV_SECRET_BYTES: int = 48,
      _legacy_warned: set[str] = set(),
      logger = logging.getLogger(__name__);
 
 
 def is_prescrypt_hash(stored: str) -> bool {
     return isinstance(stored, str) and stored.startswith(_BCRYPT_PREFIXES);
+}
+
+
+def is_legacy_sha256_hash(stored: str) -> bool {
+    if not isinstance(stored, str) or len(stored) != _SHA256_HEX_LEN {
+        return False;
+    }
+    lowered = stored.lower();
+    for ch in lowered {
+        if ch not in _HEX_DIGITS {
+            return False;
+        }
+    }
+    return True;
+}
+
+
+def needs_rehash(stored: str) -> bool {
+    return is_legacy_sha256_hash(stored);
+}
+
+
+def project_data_dir(base_path: str) -> str {
+    import os;
+    data_path_override = os.environ.get('JAC_DATA_PATH');
+    effective = data_path_override or base_path or '.';
+    return os.path.join(effective, '.jac', 'data');
+}
+
+
+def project_signing_secret(base_path: str) -> str {
+    import os;
+    data_dir = project_data_dir(base_path);
+    path = os.path.join(data_dir, DEV_SECRET_FILENAME);
+    existing = _read_secret(path);
+    if existing {
+        return existing;
+    }
+    minted = secrets.token_urlsafe(DEV_SECRET_BYTES);
+    try {
+        _persist_secret(data_dir, path, minted);
+    } except OSError as e {
+        raise RuntimeError(_unpersistable_secret(path, f"{type(e).__name__}: {e}"));
+    }
+    stored = _read_secret(path);
+    if not stored {
+        raise RuntimeError(
+            _unpersistable_secret(path, 'it is empty or unreadable after writing')
+        );
+    }
+    return stored;
+}
+
+
+def _unpersistable_secret(path: str, reason: str) -> str {
+    return (
+        f"no [serve.auth] secret is configured and none could be kept at {path} "
+        f"({reason}). Refusing to sign with a secret this process would keep to "
+        'itself: every other process serving this project would reject the '
+        'tokens it issues, and every session would end when it does. Set '
+        '[serve.auth] secret, or make the project data directory writable '
+        '(JAC_DATA_PATH points it elsewhere).'
+    );
+}
+
+
+def _persist_secret(data_dir: str, path: str, minted: str) {
+    import os;
+    os.makedirs(data_dir, exist_ok=True);
+    staging = os.path.join(data_dir, f"{DEV_SECRET_FILENAME}.{os.getpid()}.tmp");
+    fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600);
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle {
+        handle.write(minted);
+    }
+    try {
+        os.link(staging, path);
+    } except FileExistsError {} finally {
+        try {
+            os.unlink(staging);
+        } except OSError {}
+    }
+    try {
+        os.chmod(path, 0o600);
+    } except OSError {}
+}
+
+
+def _read_secret(path: str) -> str {
+    try {
+        with open(path, 'r', encoding='utf-8') as handle {
+            return handle.read().strip();
+        }
+    } except OSError {
+        return '';
+    }
 }
 
 
@@ -170,6 +270,20 @@ def verify_password(password: str, stored: str) -> bool {
             'accounts). The client sees generic invalid-credentials.'
         );
         return False;
+    }
+    if is_legacy_sha256_hash(stored) {
+        legacy = hashlib.sha256(password.encode('utf-8')).hexdigest();
+        if not hmac.compare_digest(legacy, stored.lower()) {
+            return False;
+        }
+        _warn_once(
+            stored,
+            'Verified a password against a legacy unsalted sha256 hash. The '
+            'row is rehashed to scrypt on this login; sha256 credentials are '
+            'accepted only to carry accounts written before the scrypt '
+            'migration.'
+        );
+        return True;
     }
     try {
         parts = stored.split('$');

@@ -1,4 +1,5 @@
 import logging;
+import time;
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
     KubernetesTargetBase
 }
@@ -10,7 +11,10 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
     delete_if_exists,
+    delete_k8s_secret,
+    delete_namespace,
     get_cluster_provider,
+    namespace_is_owned,
     privileged_pss_labels,
     PSS_ENFORCE_LABEL,
     _resolve_current_rs_hashes,
@@ -34,9 +38,7 @@ import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     Trigger,
-    TriggerAuth,
-    DEFAULT_CPU_UTILIZATION_TARGET,
-    DEFAULT_MEMORY_UTILIZATION_TARGET
+    TriggerAuth
 }
 import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 import from jaclang.scale.deploy.autoscale.http_activation_config {
@@ -45,7 +47,11 @@ import from jaclang.scale.deploy.autoscale.http_activation_config {
 }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jaclang.scale.config.config_loader { get_scale_config }
-import from jaclang.scale.injector.pvc_injector { bundle_keys_from_pod_spec }
+import from jaclang.scale.injector.pvc_injector {
+    bundle_keys_from_pod_spec,
+    bundle_pvc_name
+}
+import from jaclang.scale.runtime.fleet { FleetSpec }
 
 glob logger = logging.getLogger(__name__),
      REVISION_ANNOTATION: str = "deployment.kubernetes.io/revision",
@@ -213,18 +219,16 @@ def reap_stale_scaling_resources_for_bundle(
 
 obj KubernetesTarget(KubernetesTargetBase) {
     has _deploy_context: DeployContext = DeployContext(),
-        microservices_config: (dict[str, any] | None) = None;
+        fleet: (FleetSpec | None) = None,
+        gateway_config: (dict[str, any] | None) = None,
+        app_overrides: dict[str, dict[str, any]] = {};
 
-    def _ms_cfg -> dict[str, any] {
-        if self.microservices_config is not None {
-            return self.microservices_config;
+    def _gateway_cfg -> dict[str, any] {
+        import from jaclang.scale.config.config_loader { normalize_gateway_config }
+        if self.gateway_config is not None {
+            return normalize_gateway_config(self.gateway_config);
         }
-        try {
-            import from jaclang.scale.config.config_loader { get_scale_config }
-            return get_scale_config().get_microservices_config();
-        } except Exception {
-            return {};
-        }
+        return get_scale_config().get_gateway_config();
     }
 
     def deploy(app_config: AppConfig) -> DeploymentResult {
@@ -815,8 +819,8 @@ obj KubernetesTarget(KubernetesTargetBase) {
     }
 
     def _observability_requested -> bool {
-        logs_cfg = self._read_microservices_logs_config();
-        tracing_cfg = self._read_microservices_tracing_config();
+        logs_cfg = self._read_gateway_logs_config();
+        tracing_cfg = self._read_gateway_tracing_config();
         return bool(self.k8s_config.monitoring_enabled)
             or bool(logs_cfg.get("enabled", False))
             or bool(tracing_cfg.get("enabled", False));
@@ -938,43 +942,21 @@ obj KubernetesTarget(KubernetesTargetBase) {
 
     def _build_observability_config -> KubernetesConfig {
         overrides: dict[str, any] = dict(self.k8s_config.to_dict());
-        overrides["loki_enabled"] = self._read_microservices_logs_config().get(
+        overrides["loki_enabled"] = self._read_gateway_logs_config().get(
             "enabled", False
         );
-        overrides["tracing_enabled"] = self._read_microservices_tracing_config().get(
+        overrides["tracing_enabled"] = self._read_gateway_tracing_config().get(
             "enabled", False
         );
         return KubernetesConfig.from_dict(KubernetesConfig, overrides);
     }
 
-    def _read_microservices_logs_config -> dict[str, any] {
-        try {
-            ms_cfg = self._ms_cfg();
-            return dict(ms_cfg.get("logs", {}));
-        } except Exception as e {
-            if self.logger {
-                self.logger.warn(
-                    f"Could not read [scale.microservices.logs] - "
-                    f"observability stack will not be deployed: {e}"
-                );
-            }
-            return {};
-        }
+    def _read_gateway_logs_config -> dict[str, any] {
+        return dict(self._gateway_cfg().get("logs", {}));
     }
 
-    def _read_microservices_tracing_config -> dict[str, any] {
-        try {
-            ms_cfg = self._ms_cfg();
-            return dict(ms_cfg.get("tracing", {}));
-        } except Exception as e {
-            if self.logger {
-                self.logger.warn(
-                    f"Could not read [scale.microservices.tracing] - "
-                    f"tracing stack will not be deployed: {e}"
-                );
-            }
-            return {};
-        }
+    def _read_gateway_tracing_config -> dict[str, any] {
+        return dict(self._gateway_cfg().get("tracing", {}));
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
@@ -988,7 +970,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
             deploy_context=self._context_with_env(),
             logger=self.logger,
             project_dir=app_config.code_folder,
-            microservices_config=self.microservices_config,
+            fleet=self.fleet,
+            gateway_config=self.gateway_config,
+            app_overrides=dict(self.app_overrides),
             dry_run=self.dry_run
         );
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
@@ -1024,7 +1008,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
                     type="cpu",
                     metadata={
                         "averageUtilization": str(
-                            cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
+                            cfg.get(
+                                "cpu_target", self.k8s_config.cpu_utilization_target
+                            )
                         )
                     }
                 )
@@ -1036,7 +1022,8 @@ obj KubernetesTarget(KubernetesTargetBase) {
                         metadata={
                             "averageUtilization": str(
                                 cfg.get(
-                                    "memory_target", DEFAULT_MEMORY_UTILIZATION_TARGET
+                                    "memory_target",
+                                    self.k8s_config.memory_utilization_target
                                 )
                             )
                         }
@@ -1087,8 +1074,8 @@ obj KubernetesTarget(KubernetesTargetBase) {
             autoscaler_name=autoscaler.resource_name_for(k8s_name),
             app_name=k8s_name,
             namespace=namespace,
-            min_replicas=int(cfg.get("min", 1)),
-            max_replicas=int(cfg.get("max", 3)),
+            min_replicas=int(cfg.get("min", self.k8s_config.min_replicas)),
+            max_replicas=int(cfg.get("max", self.k8s_config.max_replicas)),
             idle_replicas=self.k8s_config.idle_replicas,
             polling_interval=self.k8s_config.autoscaler_polling_interval,
             cooldown_period=self.k8s_config.autoscaler_cooldown,
@@ -1143,7 +1130,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
             );
         }
 
-        ensure_namespace_exists(namespace);
+        ensure_namespace_exists(namespace, k8s_safe_name(self.k8s_config.app_name));
         self.ensure_alb_readiness_gates(core_v1, namespace);
 
         ops_rbac = bundle.get("ops_rbac");
@@ -1776,28 +1763,14 @@ obj KubernetesTarget(KubernetesTargetBase) {
         }
     }
 
-    def destroy(app_name: str, component: str = "") {
-        if self.logger {
-            self.logger.info(
-                f"Destroying microservice topology in namespace "
-                f"'{self.k8s_config.namespace}'",
-                {"app_name": app_name}
-            );
-        }
-
-        self._load_cluster_config();
-        apps_v1 = client.AppsV1Api();
-        core_v1 = client.CoreV1Api();
-        policy_v1 = client.PolicyV1Api();
-        networking_v1 = client.NetworkingV1Api();
-        namespace: str = self.k8s_config.namespace;
-
-        selector: str = FLEET_SELECTOR;
+    def _destroy_fleet_workloads(
+        namespace: str, apps_v1: any, core_v1: any, policy_v1: any, networking_v1: any
+    ) {
         ms_selector: str = "managed=jac-scale";
 
         try {
             apps_v1.delete_collection_namespaced_deployment(
-                namespace=namespace, label_selector=selector
+                namespace=namespace, label_selector=FLEET_SELECTOR
             );
         } except ApiException as e {
             if e.status != 404 {
@@ -1883,17 +1856,389 @@ obj KubernetesTarget(KubernetesTargetBase) {
                 raise;
             }
         }
+    }
 
+    def _destroy_monitoring(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any, strict: bool = False
+    ) -> bool {
         try {
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.destroy(app_name, namespace, apps_v1, core_v1);
+            return True;
         } except Exception as e {
+            if strict {
+                raise;
+            }
             if self.logger {
-                self.logger.info(
-                    f"Observability stack destroy reported a non-fatal error: {e}",
+                self.logger.warning(
+                    f"Observability stack destroy failed, leaving its "
+                    f"cluster-scoped RBAC in place: {e}",
                     {"app_name": app_name}
                 );
             }
+            return False;
+        }
+    }
+
+    def _postgres_pvc_name(app_name: str) -> str {
+        """Name the PVC the postgres volumeClaimTemplates entry creates.""";
+        pg_name: str = f"{app_name}-postgres";
+        return f"{pg_name}-data-{pg_name}-0";
+    }
+
+    def _app_pvc_names(app_name: str) -> list[str] {
+        return [
+            bundle_pvc_name(k8s_safe_name(app_name)),
+            self._postgres_pvc_name(app_name)
+        ];
+    }
+
+    def _destroy_pvcs(pvc_names: list[str], namespace: str, core_v1: any) {
+        for pvc_name in pvc_names {
+            delete_if_exists(
+                core_v1.delete_namespaced_persistent_volume_claim,
+                pvc_name,
+                namespace,
+                'PersistentVolumeClaim'
+            );
+        }
+    }
+
+    def _destroy_app_pvcs(app_name: str, namespace: str, core_v1: any) {
+        self._destroy_pvcs(self._app_pvc_names(app_name), namespace, core_v1);
+    }
+
+    def _report_unowned_shared_volumes(namespace: str, core_v1: any) {
+        if not self.logger {
+            return;
+        }
+        try {
+            pvcs = core_v1.list_namespaced_persistent_volume_claim(
+                namespace=namespace,
+                label_selector="managed=jac-scale,jac-scale.role=shared-volume,"
+                "!jac-scale.owner"
+            );
+        } except ApiException {
+            return;
+        }
+        names: list[str] = [pvc.metadata.name for pvc in pvcs.items];
+        if names {
+            self.logger.warning(
+                f"Kept shared volumes that name no app: {', '.join(names)}. They "
+                f"predate volume ownership, so another app in this namespace may "
+                f"own them. Label one with 'jac-scale.owner' or delete it by hand.",
+                {"namespace": namespace}
+            );
+        }
+    }
+
+    def _destroy_shared_volume_pvcs(
+        app_name: str, namespace: str, core_v1: any, sole_tenant: bool
+    ) {
+        shared: str = "managed=jac-scale,jac-scale.role=shared-volume";
+        selectors: list[str] = [f"{shared},jac-scale.owner={k8s_safe_name(app_name)}"];
+        if sole_tenant {
+            selectors.append(f"{shared},!jac-scale.owner");
+        } else {
+            self._report_unowned_shared_volumes(namespace, core_v1);
+        }
+        for selector in selectors {
+            try {
+                core_v1.delete_collection_namespaced_persistent_volume_claim(
+                    namespace=namespace, label_selector=selector
+                );
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
+        }
+    }
+
+    def _list_managed(lister: any, namespace: str, selector: str) -> list[any] {
+        """List the objects a lister returns, tolerating a kind the cluster lacks.""";
+        try {
+            return lister(namespace=namespace, label_selector=selector).items;
+        } except ApiException as e {
+            if e.status == 404 {
+                return [];
+            }
+            raise;
+        }
+    }
+
+    def _foreign_app_resources(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
+    ) -> list[str] {
+        """Name the jac-scale resources in this namespace another app owns.""";
+        owner: str = k8s_safe_name(app_name);
+        our_bundle: str = bundle_pvc_name(owner);
+        our_postgres: str = f"{app_name}-postgres";
+        managed: str = "managed=jac-scale";
+        found: list[str] = [];
+        for pvc in self._list_managed(
+            core_v1.list_namespaced_persistent_volume_claim, namespace, managed
+        ) {
+            labels: dict[str, str] = pvc.metadata.labels or {};
+            role: str = labels.get("jac-scale.role", "");
+            volume_owner: str = labels.get("jac-scale.owner", "");
+            foreign_bundle: bool = (
+                role == "bundle-store" and pvc.metadata.name != our_bundle
+            );
+            foreign_volume: bool = (
+                role == "shared-volume" and bool(volume_owner) and volume_owner != owner
+            );
+            if foreign_bundle or foreign_volume {
+                found.append(f"PersistentVolumeClaim/{pvc.metadata.name}");
+            }
+        }
+        for sts in self._list_managed(
+            apps_v1.list_namespaced_stateful_set, namespace, managed
+        ) {
+            if sts.metadata.name != our_postgres {
+                found.append(f"StatefulSet/{sts.metadata.name}");
+            }
+        }
+        return found;
+    }
+
+    def _co_tenants_best_effort(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
+    ) -> list[str] {
+        try {
+            return self._foreign_app_resources(app_name, namespace, apps_v1, core_v1);
+        } except ApiException {
+            return [];
+        }
+    }
+
+    def _warn_co_tenant_workloads_removed(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
+    ) {
+        if not self.logger {
+            return;
+        }
+        co_tenants: list[str] = self._co_tenants_best_effort(
+            app_name, namespace, apps_v1, core_v1
+        );
+        if not co_tenants {
+            return;
+        }
+        self.logger.warning(
+            f"Another app has resources in '{namespace}': "
+            f"{', '.join(co_tenants)}. Its data was kept, but this removed its "
+            f"deployments, autoscalers and disruption budgets along with this "
+            f"app's, so redeploy it to restore service.",
+            {"app_name": app_name}
+        );
+    }
+
+    def _destroy_ops_rbac(app_name: str, namespace: str) {
+        rbac_v1 = client.RbacAuthorizationV1Api();
+        ms_selector: str = f"managed=jac-scale,app={app_name}";
+        for delete_collection in [
+            rbac_v1.delete_collection_namespaced_role_binding,
+            rbac_v1.delete_collection_namespaced_role
+        ] {
+            try {
+                delete_collection(namespace=namespace, label_selector=ms_selector);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
+        }
+    }
+
+    def _wait_for_namespace_deletion(
+        namespace: str, core_v1: any, timeout: int = 300
+    ) -> bool {
+        elapsed = 0.0;
+        poll = 2.0;
+        while elapsed < timeout {
+            try {
+                core_v1.read_namespace(name=namespace);
+            } except ApiException as e {
+                if e.status == 404 {
+                    return True;
+                }
+                raise;
+            }
+            time.sleep(poll);
+            elapsed = elapsed + poll;
+        }
+        return False;
+    }
+
+    def _reclaim_namespace(namespace: str, core_v1: any) -> bool {
+        try {
+            delete_namespace(namespace);
+        } except ApiException as e {
+            if e.status != 403 {
+                raise;
+            }
+            return False;
+        }
+        if self._wait_for_namespace_deletion(namespace, core_v1) {
+            if self.logger {
+                self.logger.info(f"Namespace '{namespace}' deleted");
+            }
+        } elif self.logger {
+            self.logger.warning(
+                f"Timed out waiting for namespace '{namespace}' to be deleted"
+            );
+        }
+        return True;
+    }
+
+    def _destroy_app_database(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
+    ) {
+        pg_name: str = f"{app_name}-postgres";
+        delete_if_exists(
+            apps_v1.delete_namespaced_stateful_set, pg_name, namespace, 'StatefulSet'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{pg_name}-service",
+            namespace,
+            'Service'
+        );
+        delete_k8s_secret(core_v1, namespace, f"{pg_name}-secret");
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-external-db");
+        delete_if_exists(
+            core_v1.delete_namespaced_service_account,
+            f"{pg_name}-sa",
+            namespace,
+            'ServiceAccount'
+        );
+    }
+
+    def _destroy_in_shared_namespace(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any, sole_tenant: bool
+    ) {
+        self._destroy_app_database(app_name, namespace, apps_v1, core_v1);
+        self._destroy_app_pvcs(app_name, namespace, core_v1);
+        self._destroy_shared_volume_pvcs(app_name, namespace, core_v1, sole_tenant);
+        self._destroy_ops_rbac(app_name, namespace);
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
+    }
+
+    def destroy(app_name: str, component: str = "") {
+        if self.logger {
+            self.logger.info(
+                f"Destroying microservice topology in namespace "
+                f"'{self.k8s_config.namespace}'",
+                {"app_name": app_name}
+            );
+        }
+
+        self._load_cluster_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        policy_v1 = client.PolicyV1Api();
+        networking_v1 = client.NetworkingV1Api();
+        namespace: str = self.k8s_config.namespace;
+
+        if component {
+            self._destroy_named_component(
+                app_name,
+                namespace,
+                component,
+                apps_v1,
+                core_v1,
+                policy_v1,
+                networking_v1
+            );
+            return;
+        }
+
+        self._destroy_fleet_workloads(
+            namespace, apps_v1, core_v1, policy_v1, networking_v1
+        );
+
+        monitoring_reclaimed = self._destroy_monitoring(
+            app_name, namespace, apps_v1, core_v1
+        );
+        owner: str = k8s_safe_name(app_name);
+
+        created_namespace: bool = namespace_is_owned(core_v1, namespace, owner);
+        co_tenants: list[str] = (
+            self._foreign_app_resources(app_name, namespace, apps_v1, core_v1)
+                if created_namespace
+                else []
+        );
+        sole_tenant: bool = created_namespace and not co_tenants;
+
+        if sole_tenant {
+            if monitoring_reclaimed {
+                if self._reclaim_namespace(namespace, core_v1) {
+                    return;
+                }
+                if self.logger {
+                    self.logger.warning(
+                        f"Not permitted to delete namespace '{namespace}', so "
+                        f"this app's resources inside it are removed instead",
+                        {"app_name": app_name}
+                    );
+                }
+            } elif self.logger {
+                self.logger.warning(
+                    f"Keeping namespace '{namespace}': its monitoring RBAC is "
+                    f"cluster-scoped and is named after this namespace, so "
+                    f"deleting it now would orphan roles nothing can attribute",
+                    {"app_name": app_name}
+                );
+            }
+        } elif co_tenants and self.logger {
+            self.logger.warning(
+                f"Keeping namespace '{namespace}': this app created it, but "
+                f"{', '.join(co_tenants)} in it belongs to another app. That "
+                f"app's database and volumes are kept, but workloads in this "
+                f"namespace were removed, so redeploy it to restore service.",
+                {"app_name": app_name}
+            );
+        } elif not created_namespace {
+            self._warn_co_tenant_workloads_removed(
+                app_name, namespace, apps_v1, core_v1
+            );
+        }
+        self._destroy_in_shared_namespace(
+            app_name, namespace, apps_v1, core_v1, sole_tenant
+        );
+    }
+
+    def _destroy_named_component(
+        app_name: str,
+        namespace: str,
+        component: str,
+        apps_v1: any,
+        core_v1: any,
+        policy_v1: any,
+        networking_v1: any
+    ) {
+        if component == 'application' {
+            self._destroy_fleet_workloads(
+                namespace, apps_v1, core_v1, policy_v1, networking_v1
+            );
+            self._warn_co_tenant_workloads_removed(
+                app_name, namespace, apps_v1, core_v1
+            );
+        } elif component == 'database' {
+            self._destroy_app_database(app_name, namespace, apps_v1, core_v1);
+            self._destroy_pvcs([self._postgres_pvc_name(app_name)], namespace, core_v1);
+        } elif component == 'monitoring' {
+            self._destroy_monitoring(
+                app_name, namespace, apps_v1, core_v1, strict=True
+            );
+        } else {
+            raise ValueError(
+                f"Unknown component: '{component}'. Valid choices: application, "
+                f"database, monitoring"
+            );
+        }
+        if self.logger {
+            self.logger.info(f"Component '{component}' of '{app_name}' destroyed");
         }
     }
 }

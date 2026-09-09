@@ -1,0 +1,223 @@
+@font-face { font-family: "Geist"; src: url("/static/assets/Geist.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
+/* jaclang.org custom layer — sits on top of the generated shadcn global.css.
+   Safe from `jac retheme` (which only overwrites global.css). */
+
+code, pre, kbd, .font-mono {
+    font-family: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html { scroll-behavior: smooth; }
+section[id] { scroll-margin-top: 4.5rem; }
+
+/* ---- scrollbars ---- */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* inside code windows: slimmer, always dark */
+.code-window * {
+    scrollbar-color: rgb(255 255 255 / 0.14) transparent;
+}
+.code-window ::-webkit-scrollbar { width: 8px; height: 8px; }
+.code-window ::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 0.14);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+.code-window ::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 0.28);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+/* ---- brand gradient text ---- */
+.text-gradient {
+    background: linear-gradient(100deg, #f7931e 0%, #ff6b35 55%, #e8442c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+}
+
+/* ---- docs graph map ---- */
+.docmap-halo {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+/* ---- hero atmosphere ---- */
+.hero-glow {
+    background:
+        radial-gradient(ellipse 60% 45% at 50% 0%, oklch(0.705 0.213 47.604 / 0.16), transparent 70%),
+        radial-gradient(ellipse 40% 35% at 80% 20%, oklch(0.646 0.222 41.116 / 0.08), transparent 70%);
+}
+.dot-grid {
+    background-image: radial-gradient(oklch(0.985 0 0 / 0.055) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 75% 65% at 50% 35%, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 35%, black 30%, transparent 75%);
+}
+:root:not(.dark) .dot-grid {
+    background-image: radial-gradient(oklch(0.145 0 0 / 0.08) 1px, transparent 1px);
+}
+
+/* ---- entrance animations (hero, on load) ---- */
+@keyframes fade-up {
+    from { opacity: 0; transform: translateY(26px); }
+    to   { opacity: 1; transform: none; }
+}
+/* `backwards` (not `both`): a forwards-filled transform animation retains an
+   identity matrix, which silently turns ancestor into a containing block and
+   breaks position:fixed descendants (the floating source browser). */
+.anim-fade-up { animation: fade-up 0.9s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.anim-d1 { animation-delay: 0.08s; }
+.anim-d2 { animation-delay: 0.18s; }
+.anim-d3 { animation-delay: 0.28s; }
+.anim-d4 { animation-delay: 0.38s; }
+.anim-d5 { animation-delay: 0.5s; }
+
+/* ---- scroll reveal ---- */
+.reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-shown { opacity: 1; transform: none; }
+
+/* ---- graph backdrop (SVG constellation) ---- */
+@keyframes node-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+.g-node { animation: node-pulse 4s ease-in-out infinite; }
+@keyframes edge-flow { to { stroke-dashoffset: -22; } }
+.g-edge {
+    stroke-dasharray: 3 8;
+    animation: edge-flow 2.6s linear infinite;
+}
+.g-walker { filter: drop-shadow(0 0 6px #ff6b35) drop-shadow(0 0 14px #ff6b35); }
+
+/* ---- terminal / code windows (always dark, both themes) ---- */
+.code-window {
+    background: #060607;
+    border: 1px solid oklch(1 0 0 / 0.09);
+    box-shadow: 0 16px 48px -16px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.2);
+}
+.code-window .code-titlebar {
+    background: oklch(1 0 0 / 0.04);
+    border-bottom: 1px solid oklch(1 0 0 / 0.07);
+}
+.code-scroll { overflow-x: auto; }
+
+/* caret blink */
+@keyframes caret-blink { 50% { opacity: 0; } }
+.caret {
+    display: inline-block;
+    width: 8px;
+    height: 1.05em;
+    vertical-align: text-bottom;
+    background: #ff6b35;
+    animation: caret-blink 1s step-end infinite;
+}
+
+/* ---- Jac syntax tokens (on the dark code window) ---- */
+.tok-kw  { color: #ff7b72; }
+.tok-ty  { color: #ffa657; }
+.tok-fn  { color: #d2a8ff; }
+.tok-str { color: #a5d6ff; }
+.tok-num { color: #79c0ff; }
+.tok-lit { color: #79c0ff; }
+.tok-var { color: #ffa198; font-style: italic; }
+.tok-com { color: #7d8590; font-style: italic; }
+.tok-op  { color: #ff9e64; font-weight: 600; }
+.tok-dec { color: #ffa657; }
+.code-plain { color: #e6edf3; }
+
+/* shell snippets */
+.sh-prompt { color: #ff6b35; }
+.sh-cmd { color: #e6edf3; }
+.sh-out { color: #8b949e; }
+.sh-ok { color: #56d364; }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.anim-fade-in { animation: fade-in 0.25s ease both; }
+
+@keyframes float-in {
+    from { opacity: 0; transform: translateY(80px) scale(0.92); }
+    60%  { opacity: 1; }
+    to   { opacity: 1; }
+}
+.float-in { animation: float-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+
+@keyframes sync-slide {
+    0% { transform: translateX(-130%); }
+    100% { transform: translateX(330%); }
+}
+.sync-bar-fill { animation: sync-slide 1.4s ease-in-out infinite; }
+
+/* ---- diagram animations ---- */
+@keyframes dash-drift { to { stroke-dashoffset: -24; } }
+.dash-drift { animation: dash-drift 2.8s linear infinite; }
+
+@keyframes x-pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+.x-pulse { animation: x-pulse 2.2s ease-in-out infinite; }
+
+@keyframes pulse-ring {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.16); opacity: 0.3; }
+}
+.pulse-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pulse-ring 3s ease-in-out infinite;
+}
+
+/* ---- misc ---- */
+.strike-chip { position: relative; }
+.strike-chip::after {
+    content: "";
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 50%;
+    height: 2px;
+    border-radius: 1px;
+    background: linear-gradient(90deg, #f7931e, #e8442c);
+    transform: rotate(-4deg);
+}
+
+.footer-hex-fade {
+    mask-image: linear-gradient(to bottom, black, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .anim-fade-up, .g-node, .g-edge, .caret, .dash-drift, .x-pulse, .pulse-ring { animation: none !important; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* Collapsible docs admonitions (??? blocks) */
+.md-details > summary { list-style: none; }
+.md-details > summary::-webkit-details-marker { display: none; }
+.md-details[open] > summary .md-chev { transform: rotate(90deg); }

@@ -1,4 +1,4 @@
-"""Must-pass under --enforce-nogc: fully annotated ownership coverage."""
+"""Must-pass under --memory nogc: fully annotated ownership coverage."""
 
 obj Point {
     has x: float = 0.0,

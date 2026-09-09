@@ -36,7 +36,14 @@ glob RUNTIME_PKG_NAME: str = "@jaseci/runtime",
              "__invalidateEndpoint",
              "__overlaps",
              "__jacReportError",
-             "__jacInstallErrorHandlers"
+             "__jacInstallErrorHandlers",
+             "BridgeError",
+             "BridgeUnavailable",
+             "BridgeTimeout",
+             "BridgeRejected",
+             "__bridgeErrorFor",
+             "__bridgeErrorFromFetch",
+             "__bridgeApiBase"
          ]
      );
 

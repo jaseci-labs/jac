@@ -2,6 +2,7 @@
 name = "notes-app"
 version = "0.1.0"
 description = "Notes app example exercising the CEF desktop target"
+kind = "desktop"
 entry-point = "main.jac"
 
 [client]
@@ -15,8 +16,8 @@ width = 960
 height = 720
 
 [dependencies.npm]
-react = "^18.2.0"
-react-dom = "^18.2.0"
+react = "^19.2.0"
+react-dom = "^19.2.0"
 react-router-dom = "^6.22.0"
 react-error-boundary = "^5.0.0"
 react-hook-form = "^7.71.0"
@@ -27,5 +28,5 @@ zod = "^4.3.6"
 vite = "^6.4.1"
 "@vitejs/plugin-react" = "^4.2.1"
 typescript = "^5.3.3"
-"@types/react" = "^18.2.0"
-"@types/react-dom" = "^18.2.0"
+"@types/react" = "^19.2.0"
+"@types/react-dom" = "^19.2.0"

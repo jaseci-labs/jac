@@ -25,6 +25,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# ...but the jac-shadcn registry ships one: its component templates
+# import `...lib.utils`, so the module that placeholder names is source.
+!jaclang/cli/shadcn/registry/lib/
 lib64/
 parts/
 sdist/

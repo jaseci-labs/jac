@@ -67,7 +67,7 @@ def _traces_chain(p: dict) -> dict {
                 "name": "config tracing.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[scale.microservices.tracing].enabled"
+                "detail": "[scale.gateway.tracing].enabled"
                     + (
                         " = true"
                             if p.get("cfg_enabled", False)
@@ -111,7 +111,7 @@ def _logs_chain(p: dict) -> dict {
                 "name": "config logs.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[scale.microservices.logs].enabled"
+                "detail": "[scale.gateway.logs].enabled"
                     + (
                         " = true"
                             if p.get("cfg_enabled", False)
@@ -193,8 +193,8 @@ def _prometheus_base_url -> str {
 
 def _ms_section_enabled(section: str) -> bool {
     try {
-        ms = get_scale_config().get_microservices_config();
-        return bool(ms.get(section, {}).get("enabled", False));
+        gw = get_scale_config().get_gateway_config();
+        return bool(gw.get(section, {}).get("enabled", False));
     } except Exception {
         return False;
     }
@@ -294,7 +294,7 @@ async def _loki_recent_count -> int {
 
 def _postgres_ping_blocking -> tuple[bool, str] {
     try {
-        import from jaclang.scale.persistence.pg {
+        import from jaclang.server.shared_store {
             NO_DATABASE_RESOLVED,
             shared_store,
             shared_store_failure

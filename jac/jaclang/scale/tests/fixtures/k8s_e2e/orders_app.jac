@@ -3,7 +3,8 @@
 Demonstrates inter-service communication via `sv import`:
   Orders service imports functions from cart_app and calls them like
   normal functions. The compiler generates HTTP stubs; the runtime
-  auto-spawns cart_app via our `ensure_sv_service` provider.
+  reaches cart_app through the app bridge (sv_client), which resolves the
+provider from JAC_APP_CART_APP_URL in a fleet or in-process when colocated.
 
 Exposes public functions for order operations. Callable via:
   - HTTP: POST /orders/function/{name}

@@ -14,7 +14,7 @@ of reasoning about which retain the codegen happened to emit.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, compile_native_ir }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -30,7 +30,7 @@ glob FIXTURES = os.path.join(
 def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
     opts = CompileOptions(
-        force_codespace='native', force_target_program=True, na_gc_mode="cycles"
+        force_codespace='native', force_target_program=True, memory_profile="managed"
     );
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, FIXTURE)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
@@ -134,7 +134,7 @@ test "the same field bound twice is destroyed exactly once" {
 
 # --- The box destructor is what makes the borrows balance ---
 test "a boxed tuple carries a destructor that releases its fields" {
-    (eng, ir) = compile_fixture();
+    ir = compile_native_ir(FIXTURE);
     text = str(ir.gen.llvm_ir);
     assert '__rc_release_tuple0' in text , (
         "no tuple-box destructor was emitted; boxed tuple fields would be "

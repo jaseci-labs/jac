@@ -428,7 +428,7 @@ test "jac test err" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     sys.stderr = captured_output;
-    analysis.`test([fixture_path("baddy.jac")]);
+    analysis.`test(paths=[fixture_path("baddy.jac")]);
     sys.stdout = sys.__stdout__;
     sys.stderr = sys.__stderr__;
     stdout_value = captured_output.getvalue();
@@ -500,7 +500,7 @@ test "run test" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.`test([fixture_path("run_test.jac")], maxfail=2);
+        analysis.`test(paths=[fixture_path("run_test.jac")], maxfail=2);
         out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
@@ -522,7 +522,7 @@ test "run test native codespace file" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        analysis.`test([fixture_path("native_run_test.jac")], maxfail=2);
+        analysis.`test(paths=[fixture_path("native_run_test.jac")], maxfail=2);
         out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
@@ -547,7 +547,7 @@ test "run test native broken import surfaces error" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        rc = analysis.`test([fixture_path("native_broken_import_test.jac")]);
+        rc = analysis.`test(paths=[fixture_path("native_broken_import_test.jac")]);
         out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
@@ -683,7 +683,9 @@ test "run specific test only" {
     sys.stdout = captured;
     try {
         analysis.`test(
-            [fixture_path("jactest_main.jac")], test_name="from 2 to 10", verbose=True
+            paths=[fixture_path("jactest_main.jac")],
+            test_name="from 2 to 10",
+            verbose=True
         );
         out = captured.getvalue();
     } finally {
@@ -1263,20 +1265,26 @@ test "jac create and run no root files" {
 
         files_before_run = get_root_files(project_path);
 
-        # Run jac run main.jac (change to project directory first)
+        # The cli scaffold dispatches argparse subcommands, so a bare run is
+        # a usage error; `jac run main.jac -- greet <name>` is the happy path.
+        # The template ends in sys.`exit(main()), which surfaces as SystemExit.
         os.chdir(project_path);
         captured = io.StringIO();
         old_stdout = sys.stdout;
         sys.stdout = captured;
+        saved_argv = list(sys.argv);
         try {
-            result = execution.run("main.jac");
+            result = execution.run("main.jac", args=["greet", project_name]);
+        } except SystemExit as e {
+            result = int(e.code or 0);
         } finally {
             sys.stdout = old_stdout;
+            sys.argv = saved_argv;
         }
         stdout = captured.getvalue();
 
-        assert result == 0 , "jac run failed";
-        assert f"Hello from {project_name}!" in stdout;
+        assert result == 0 , f"jac run failed: {stdout}";
+        assert f"Hello, {project_name}! This is {project_name}." in stdout , stdout;
 
         # Record files after run
         files_after_run = get_root_files(project_path);
@@ -2051,13 +2059,13 @@ test "error traceback shows source code" {
     # Should show the error message
     assert "Error" in stderr , "stderr should contain Error";
     assert (
-        "attempted relative import" in stderr
+        "No module named" in stderr
         or "ImportError" in stderr
-        or "__package__" in stderr
+        or "ModuleNotFoundError" in stderr
     ) , "stderr should contain import error message";
 
     # Should show the source code line that caused the error
-    assert "import from .nonexistent_module" in stderr , (
+    assert "import from jac_nonexistent_module" in stderr , (
         "stderr should show the problematic import statement"
     );
 

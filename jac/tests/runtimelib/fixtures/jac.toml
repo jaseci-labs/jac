@@ -7,6 +7,3 @@
 "crossbound_server" = "server"
 "failload_server" = "server"
 "serve_api.greet" = "server"
-
-[scale.microservices.routes]
-"dualrole_analytics" = "/analytics"

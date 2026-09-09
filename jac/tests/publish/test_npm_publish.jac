@@ -364,7 +364,7 @@ test "build_runtime_tarball packages the runtime with exports" {
         # versioned from the canonical React client-dep set. `react-dom` lives in
         # the generated entry script (not this module), so it is absent here.
         peers = pj["peerDependencies"];
-        assert peers["react"] == "^18.2.0";
+        assert peers["react"] == "^19.2.0";
         assert peers["react-router-dom"] == "^6.22.0";
         assert peers["@tanstack/react-form"] == "^1.33.0";
         assert peers["zod"] == "^4.3.6";
@@ -382,7 +382,7 @@ test "runtime_peer_deps raises for unknown imported packages" {
     }
     assert raised;
     peers = runtime_peer_deps('import { useState } from "react";\n');
-    assert peers["react"] == "^18.2.0";
+    assert peers["react"] == "^19.2.0";
 }
 
 test "runtime_pkg_name suffixes non-react backends so packages never collide" {

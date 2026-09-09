@@ -2,7 +2,7 @@ import sys;
 import from pathlib { Path }
 import from jaclang.scale.emailer.emailer { Emailer }
 import from jaclang.scale.emailer.factory { create as create_emailer, register }
-import from jaclang.scale.identity.auth_tokens {
+import from jaclang.server.identity.auth_tokens {
     AuthTokenStore,
     reset_auth_token_store
 }

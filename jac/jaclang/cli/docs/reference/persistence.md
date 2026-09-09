@@ -1,6 +1,6 @@
 # Persistence & Schema Migration
 
-Jac apps persist their object-spatial graph automatically, under one rule: whatever is reachable from `root` persists. The rule is called *persistence by reachability*, and the `root` node is the distinguished node anchoring every topology (each served user is issued a root of their own). But the schema of your `node`/`obj`/`edge`/`walker` archetypes inevitably evolves: you add a field, rename one, change a type, rename a class. This page covers what happens when you do.
+Jac applications can persist their object-spatial graph through the runtime. In a persistence-enabled context, attaching transient nodes to persistent graph state promotes them into storage. This page explains that lifecycle and what happens when archetype schemas change: adding or renaming fields, changing types, and renaming classes.
 
 The short version: **edits never delete persisted data**. Schema changes are tolerated, type changes are coerced, and rows that genuinely can't be loaded land in a quarantine sidecar instead of being dropped. For changes that need intent -- a field rename, a custom value transform -- archetypes declare their history in a [`__jac_schema__` hook](#declared-drift-rules-__jac_schema__) and the runtime repairs old rows on load.
 
@@ -8,7 +8,7 @@ The short version: **edits never delete persisted data**. Schema changes are tol
 
 ## What gets persisted, and where
 
-Every Jac archetype instance has a backing **anchor** that the runtime tracks. When an anchor is reachable from `root` (directly or via edges) and marked `persistent`, the runtime writes it to the store when the unit of work commits (each served request commits at its end; a `jac run` commits at process exit).
+Every Jac archetype instance has a backing **anchor** that the runtime tracks. Persistent anchors are written when the unit of work commits. Successful served requests commit at their transaction boundary; script persistence follows the runtime session lifecycle. A transient graph can also be used without durable storage.
 
 ```jac
 node Person { has name: str; }
@@ -30,8 +30,8 @@ walker create {
 
 Anchors live in an `anchors` table with `jsonb` payloads; the same database also carries the `quarantine` sidecar, a `kv_state` utility table, and (under jac-scale) the `jac_docs` table for scheduler jobs and webhook API keys. `jac db inspect` summarizes anchors by kind and archetype; `jac db sql "..."` runs one SQL statement against the project store when you need to look closer.
 
-!!! info "Why reachability? Persistence is a predicate, not an event"
-    In the I/O conception, persistence is something a program *does* at a moment -- open a session, call save -- and forgetting to do it is a bug. Jac makes persistence a *predicate*: a datum is durable exactly while it stands in a reachable position, the same way a value is live under garbage collection exactly while it's reachable from the collector's roots. One rule serves both temporal directions -- reachability decides what survives the past (collection) and what survives into the future (persistence). The idea has a research lineage (it is the identification rule of *orthogonal persistence*, pioneered in PS-algol in the 1980s), with one deliberate restriction that makes it practical: Jac persists the **topology** (nodes and edges), not the whole language heap -- closures, walker-local state, and ordinary objects stay transient, because they are the moving parts, not the remembered world.
+!!! info "Attachment, disconnection, and deletion"
+    Reachability from persistent graph state promotes transient nodes and edges into storage. It is not a continuous garbage-collection rule for stored records: removing an edge does not automatically delete a previously persisted node. Use explicit deletion when the record should be destroyed. Ordinary local values and transient graphs do not become durable merely because their types are declared in Jac.
 
 ---
 

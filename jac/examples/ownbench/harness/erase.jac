@@ -10,7 +10,7 @@ Deletes every ownership annotation from a kernel source:
 The kernels are authored in a constrained style (annotations only in the
 shapes above, no bitwise &) so the transform is exact for them; it is NOT a
 general-purpose Jac rewriter. Validation: the erased source must compile
-without enforcement under --gc rc/cycles and produce a digest identical to
+without enforcement under --memory rc/cycles and produce a digest identical to
 the annotated build (checked by ci_identity.sh and the ownbench
 differential test suite).
 

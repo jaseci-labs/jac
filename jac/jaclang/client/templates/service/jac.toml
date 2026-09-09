@@ -1,0 +1,19 @@
+[project]
+name = "{{name}}"
+version = "0.1.0"
+description = "Headless Jac API service (server walkers, no client)"
+entry-point = "main.jac"
+kind = "service"
+
+[dependencies]
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[jacpack]
+name = "service"
+description = "Headless Jac API service (server walkers, no client)"
+jaclang = "0.9.8"
+
+[jacpack.options]
+directories = [".jac"]

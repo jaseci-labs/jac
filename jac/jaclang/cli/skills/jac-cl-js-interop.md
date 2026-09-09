@@ -1,6 +1,6 @@
 ---
 name: jac-cl-js-interop
-description: JavaScript interop in client Jac - the `new()` builtin for browser constructors (WebSocket, URL, Date, CustomEvent), `.call(None, ...)` for callbacks, `glob` module state, browser globals (localStorage, window, document), polling/debounce/RAF recipes, jac2js gotchas (chr(10) newlines, let-scoping/TDZ), and debugging compiled output. Load when client code needs a browser API that isn't a React pattern.
+description: Call browser APIs and JavaScript libraries from client Jac. Use for constructors, callbacks, timers, browser globals, or generated-JavaScript debugging.
 ---
 
 Client Jac compiles to JavaScript, so the whole browser API surface is reachable - but a few idioms differ from both Python and JS. The three you cannot guess: `new(Cls, ...)`, `.call(None, ...)`, and `glob` module state. (All of it applies to any client code - plain `.jac` inferred client from JSX/npm imports. See `jac-codespaces`.)

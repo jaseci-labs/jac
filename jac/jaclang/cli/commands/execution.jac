@@ -5,20 +5,29 @@ import from jaclang.comptime { name as ct_name }
 
 comptime SPEC_RUN: CommandSpec = CommandSpec(
          name="run",
-         help="Run a Jac program or project (executes or serves, per project kind)",
+         help="Run an app or a Jac file (executes or serves, per app kind)",
          tier="core",
          args=[
              Arg.create(
-                 "filename",
+                 "target",
                  kind=ArgKind.POSITIONAL,
                  `default="",
-                 help="Path to .jac, .py or .jab file (omit to use the project's jac.toml)"
+                 help=(
+                     "App name from [apps], or a path to a .jac, .py or .jab file "
+                     "(omit: [project] default-app, or the sole app)"
+                 )
+             ),
+             Arg.create(
+                 "backend",
+                 `default="",
+                 choices=["python", "native"],
+                 help="Execution backend (omit for automatic selection)"
              ),
              Arg.create(
                  "show",
                  typ=bool,
                  `default=False,
-                 help="Print the resolved run plan without executing it",
+                 help="Print the resolved run plan (every app's plan in a workspace) without executing it",
                  short="s"
              ),
              Arg.create(
@@ -84,7 +93,7 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  typ=bool,
                  `default=None,
                  short="",
-                 help="Serve instead of executing (default: the project kind decides)"
+                 help="Serve instead of executing (default: the app kind decides)"
              ),
              Arg.create(
                  "port",
@@ -128,24 +137,26 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  short="f"
              ),
              Arg.create(
-                 "client",
-                 typ=str,
-                 `default=None,
-                 help=(
-                     "Client build target for the dev server (web, pwa, mobile, desktop). "
-                     "Choices reflect installed targets (desktop builds a native webview app)."
-                 ),
-                 choices=["web", "pwa", "mobile", "desktop"],
-                 short=""
-             ),
-             Arg.create(
                  "host",
                  typ=str,
                  `default=None,
                  short="",
                  help=(
-                     "Mobile dev (--client mobile --dev): optional host/IP override for "
-                     "Capacitor live-reload. When omitted, jac auto-selects a host."
+                     "Interface to bind (serving only; default [serve] host, 0.0.0.0). "
+                     "Use 127.0.0.1 to keep a dev server off the network. For mobile "
+                     "dev (--client mobile --dev) this is also the host the device "
+                     "reaches this machine on."
+                 )
+             ),
+             Arg.create(
+                 "workers",
+                 typ=str,
+                 `default=None,
+                 short="w",
+                 help=(
+                     "Worker processes to serve with (serving only; default [serve.workers] "
+                     "count, 1). 'auto' sizes from the CPU quota. Each worker is a full "
+                     "process with its own thread pool; the parent only supervises."
                  )
              ),
              Arg.create(
@@ -153,10 +164,11 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  typ=str,
                  `default=None,
                  help=(
-                     "Mobile serving: android or ios (auto = use [client.mobile] "
-                     "default_platform or android)"
+                     "Mobile apps: android or ios runs on a device or simulator, web runs "
+                     "the same app in a browser via react-native-web "
+                     "(auto = the app's [apps.<name>] platform, else android)"
                  ),
-                 choices=["auto", "android", "ios"],
+                 choices=["auto", "android", "ios", "web"],
                  short=""
              ),
              Arg.create(
@@ -164,8 +176,20 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  typ=bool,
                  `default=None,
                  help=(
-                     "Evict any other session holding this project's database "
-                     "before serving (use when a previous jac process is stuck)"
+                     "Run a named file as the surrounding project even when the "
+                     "file lives outside it (--no-takeover runs it standalone), "
+                     "and evict any other session holding this project's "
+                     "database before serving"
+                 ),
+                 short=""
+             ),
+             Arg.create(
+                 "fleet",
+                 typ=bool,
+                 `default=False,
+                 help=(
+                     "Run the workspace's service apps as separate local processes "
+                     "instead of colocating them in this server (serving only)"
                  ),
                  short=""
              ),
@@ -176,7 +200,8 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
          ],
          examples=[
              ("jac run hello.jac", "Run a simple program"),
-             ("jac run", "Run the current project per its jac.toml kind"),
+             ("jac run", "Run the default app per its kind"),
+             ("jac run web", "Run the app named 'web' from [apps]"),
              (
                  "jac run app.jab",
                  "Run a sealed app bundle (kind-aware; servable kinds serve on the app's configured port)"
@@ -185,7 +210,7 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
              ("jac run --debug app.jac", "Run under the Python debugger"),
              (
                  "jac run --show",
-                 "Print what the project would run/serve/build, without doing it"
+                 "Print what each app would run/serve/build, without doing it"
              ),
              ("jac run --no-cache app.jac", "Run without caching"),
              ("jac run --profile prod app.jac", "Run with production profile"),
@@ -198,14 +223,22 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  "jac run --serve app.jac",
                  "Serve a file that no jac.toml marks as servable"
              ),
-             ("jac run --port 3000", "Serve the current project on port 3000"),
-             ("jac run --dev", "Serve the current project with hot module replacement"),
+             ("jac run --port 3000", "Serve the default app on port 3000"),
+             ("jac run --dev", "Serve the default app with hot module replacement"),
              ("jac run --dev --no-client", "HMR mode without client bundling"),
-             ("jac run --faux", "Print the project's endpoint docs without serving"),
-             ("jac run --client mobile", "Run the mobile client dev server"),
+             ("jac run --faux", "Print the app's endpoint docs without serving"),
+             ("jac run --platform web mobile", "Run a mobile app in the browser"),
+             (
+                 "jac run web --fleet",
+                 "Serve 'web' with the workspace's service apps as local processes"
+             ),
              (
                  "jac run --takeover",
                  "Evict a stuck session holding this project's database"
+             ),
+             (
+                 "jac run --no-takeover tool.jac",
+                 "Run a project file standalone, leaving the project untouched"
              ),
 
          ],
@@ -214,7 +247,7 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
      );
 
 def run(
-    filename: str = "",
+    target: str = "",
     show: bool = False,
     main: bool = True,
     cache: bool = True,
@@ -229,11 +262,13 @@ def run(
     api_port: int | None = None,
     no_client: bool | None = None,
     faux: bool | None = None,
-    client: str | None = None,
     host: str | None = None,
     platform: str | None = None,
     takeover: bool | None = None,
-    args: list[str] = []
+    fleet: bool = False,
+    workers: str | None = None,
+    args: list[str] = [],
+    backend: str = ""
 ) -> int;
 
 def serve(
@@ -244,10 +279,12 @@ def serve(
     dev: bool = False,
     api_port: int = 0,
     no_client: bool = False,
-    client: str = "web",
     host: str = "",
-    platform: str = "auto",
-    takeover: bool = False
+    platform: str = "",
+    takeover: bool = False,
+    fleet: bool = False,
+    app: str = "",
+    workers: str = ""
 ) -> int;
 
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;

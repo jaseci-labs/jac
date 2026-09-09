@@ -1,18 +1,27 @@
 ---
 name: jac-sv-microservices
-description: Splitting a Jac backend into microservices with the [scale.microservices.routes] table - the service cut in jac.toml (written by `jac scale split`), plain imports that lower to HTTP RPC stubs between server modules, provider discovery (JAC_SV_<MOD>_URL, auto-spawn), remote walker spawns, boundary types, streaming pass-through, the gateway mode. Load when one server module must call another deployed as its own service. Pair with `jac-sv-endpoints`, `jac-sv-deploy` (k8s), `jac-sv-streaming` (SSE across services).
+description: Connect service apps through awaited bridges and typed errors. Use for cross-app calls, fleet execution, outbox behavior, or service discovery.
 ---
 
-Services are declared in ONE place: the `[scale.microservices.routes]` table in `jac.toml`. Each key is a module that runs as its own service process (or pod) behind the gateway; the value is its public route prefix (`""` derives `/<module-slug>`). `jac scale split <module>` writes an entry for you. There is NO discovery from source - no import form declares a service, and a module absent from the table is an ordinary in-process import.
+Services are declared in ONE place: an `[apps.<name>]` table in `jac.toml` with `kind = "service"`. A **file-rooted** service app (`entry-point = "<file>"`, no `path`) owns exactly that file; a dir-rooted one (`path = "<dir>"`) owns everything under it. `jac create --app <name> --kind service` writes the table. There is NO discovery from source and no import form - what makes an import a bridge is that the imported element is **owned by a different app** than the importer.
 
-Once a module is in the cut, **plain imports of it lower to RPC stubs automatically**: the provider is never loaded into the consumer's process; calling `add(1, 2)` issues `POST /function/add` against the provider's URL, and the source still reads like a normal import. The same code runs as a monolith (empty routes table), a one-command local cluster, or N Kubernetes deployments - the split lives in config, not source.
+Once a module belongs to another app, **plain imports of its walkers and `def:pub` functions lower to typed-async bridge stubs**: the provider is never loaded as the consumer's own code; `await add(1, 2)` calls the `math` app (in-process when colocated, `POST /function/add` when it runs apart), and the source still reads like a normal import. Same code, three topologies: colocated (`jac run <app>`), local fleet (`--fleet`), deployed fleet (`jac scale deploy`). **The boundary is structural, the topology is profile.**
 
 ```
 # jac.toml
-[scale.microservices.routes]
-math_service = ""            # "" derives the route (/math_service); fine for internal-only services
+[project]
+name = "calc"
+default-app = "calculator"
 
-# math_service.jac (provider - a plain server module)
+[apps.calculator]
+kind = "service"
+entry-point = "calculator_service.jac"
+
+[apps.math]                     # file-rooted service app: owns exactly math_service.jac
+kind = "service"
+entry-point = "math_service.jac"
+
+# math_service.jac (provider - owned by the math app)
 obj DivResult {
     has result: float | None = None,
         error: str = "";
@@ -22,79 +31,114 @@ def:pub add(a: int, b: int) -> int {
     return a + b;
 }
 
-# calculator_service.jac (consumer - a plain import; math_service is in the cut)
+# calculator_service.jac (consumer - a plain import; math owns the target)
 import from math_service { add, DivResult }
 
-def:pub sum_list(numbers: list[int]) -> int {
+async def:pub sum_list(numbers: list[int]) -> int {
     result = 0;
     for n in numbers {
-        result = add(result, n);    # HTTP call per iteration (verified live)
+        result = await add(result, n);    # bridged call, one per iteration
     }
     return result;
 }
 ```
 
 ```bash
-jac scale split math_service                    # writes the routes entry
-jac run --port 8002 calculator_service.jac      # consumer auto-starts math_service
+jac check                                       # the workspace gate: one program per app + orphan sweep
+jac run --port 8002                             # default-app; math is COLOCATED in this process
+jac run --port 8002 --fleet                     # math as its own local process behind the gateway
 curl -X POST http://localhost:8002/function/sum_list \
   -H "Content-Type: application/json" -d '{"numbers":[1,2,3,4,5]}'
 ```
 
-**Server-to-server stubs are SYNCHRONOUS** - call them like local functions, no `await` (the stub blocks on the HTTP hop and resolves directly to the typed result). This is the opposite of client-to-service stubs, which are async and must be awaited (`jac-fullstack-patterns`).
+**Bridge stubs are ASYNC in every context** - server-to-server as much as client-to-server. `result = add(1, 2)` without `await` is `E1042` from `jac check` (the type is a coroutine). Make the enclosing `def`/`can` `async`.
 
-**Cross-service calls need `def:pub` / `walker:pub`** - that is the cross-space contract. A non-pub call compiles fine, then fails at runtime with `sv-to-sv RPC 'math_service.secret_op' failed: Unauthorized` (plain/`:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header but anonymous chains have none). Verified live.
+**The bridge surface is walkers + `def:pub`.** A plain `def` is private to its app; importing it from another app is `E5106` at compile time (and a 404 `BridgeRejected` if you get past the checker some other way). `:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header but an anonymous chain has none.
 
-**The routes table is part of the program.** Adding a module to it changes how its imports compile (in-process -> RPC) on the next build; removing it fuses the services back into one process. Modules in the cut are server-anchored by definition - their placement never needs pinning (`jac-codespaces`).
+**Ownership of shared code.** A module under no app root is shared. If it carries walkers or node/edge archetypes, it needs exactly ONE owner: a file-rooted service app that names it, the sole serving app, or `[project] default-app` when several apps serve. Two serving apps, no default app, and no explicit owner = `E5107` - give it an `[apps.<name>]` table or pin `[apps.<owner>.placement.pins] "<module>" = "server"`. Client apps (`mobile`, `web-static`, `cli`) are always consumers; a CLI never touches another app's store.
+
+**The app graph is a DAG.** Consumer → provider edges are recorded per import; a cycle is `E5104` on the import that closes it. Providers boot first.
+
+## Failures: the BridgeError family (awaited calls)
+
+`import from jaclang.server.bridge { BridgeError, BridgeUnavailable, BridgeTimeout, BridgeRejected }` - each carries `app`, `name`, `detail`, `status`:
+
+- `BridgeUnavailable` - no route to the provider (not colocated, not registered, no `JAC_APP_<APP>_URL`, connection refused)
+- `BridgeTimeout` - the provider did not answer within `rpc_timeout`
+- `BridgeRejected` - 4xx: unknown / non-pub element, unauthorized, bad arguments
+- `BridgeError` - anything else (5xx); base class of the three above
+
+Exception parity with an in-process spawn: the same `try { ... } except BridgeUnavailable { ... }` works colocated, in a fleet, and deployed. Client code gets the same four classes from `@jac/runtime`.
+
+## Un-awaited = deferred (the outbox)
+
+A bridged **walker spawn in statement position that is not awaited** is not dropped - it lowers to `Stub._deferred(**kwargs)`: written to the outbox inside the caller's request, delivered by a background worker with exponential backoff (8 attempts, then `dead`), at-least-once with an idempotency key (`X-Jac-Idempotency-Key`; default = hash of app + walker + args; receiver dedupes). **Never raises at the call site.** Use it for notifications, audit records, recounts - anything that must happen eventually but not inside this request.
+
+```
+walker:pub post_and_notify {
+    has text: str;
+    async can run with Root entry {
+        posted = await create_tweet(content=self.text);   # need the answer: await (raises on failure)
+        notify_followers(tweet_id=posted.id);             # fire-and-forget: outbox, at-least-once
+        report posted;
+    }
+}
+```
+
+Explicit key when args alone are not identity: `import from jaclang.server { outbox }; outbox.enqueue("billing", "Charge", {...}, idempotency_key=f"charge:{order_id}")`. Storage: the project's Postgres store when configured, else `.jac/data/outbox.sqlite`. `outbox.dead_letters()` lists the dead.
+
+**ACID within an app per request, eventual across apps.** Reads go to the owner (owner-read); `[apps.<consumer>.scale] read_cache = true` opts into caching effect-free provider reads, invalidated on any effectful call to that provider.
 
 ## Discovery chain (first match wins)
 
-1. **Test client** - `sv_client.register_test_client(module, client)` routes calls in-process for tests (`import from jaclang.server { sv_client }`; call `clear_test_clients()` between tests).
-2. **Registered URL** - `sv_client.register(module, url)` programmatically.
-3. **`JAC_SV_<UPPERCASED_MODULE>_URL` env var** - the production knob. Module name = exactly the routes-table key, upper-cased (hyphens→underscores): `JAC_SV_MATH_SERVICE_URL=http://localhost:8001`.
-4. **Auto-spawn** - the built-in scale subsystem starts the provider as a sibling at `jac run` time.
+1. **Local registration** - the provider app is colocated (`sv_client.register_local(app, module)`, what `jac run` does by default). In-process, no sockets, still awaited.
+2. **Test client** - `sv_client.register_test_client(app, client)` routes calls in-process for tests (`import from jaclang.server { sv_client }`; `clear_test_clients()` between tests).
+3. **Registered URL** - `sv_client.register(app, url, route="")` programmatically (the fleet orchestrator and `jac scale deploy` do this).
+4. **`JAC_APP_<APP>_URL` env var** - the production knob for a provider on another host. App name upper-cased, non-alphanumerics → `_`: `JAC_APP_SOCIAL_GRAPH_URL=http://host:8001` (+ `JAC_APP_SOCIAL_GRAPH_ROUTE` for a non-default route).
 
-Auto-spawn rules: siblings bind **127.0.0.1 only** (single-host mode - unreachable from other machines); ports **18000-18999 are reserved** for them (pick your own `--port` outside that range); the provider `.jac` must sit in the directory you ran `jac run` from (default file `<routes-key>.jac`; override with `[scale.microservices.services.<name>] file = "other.jac"`); a `jac.toml` must exist in the cwd; transitive deps come up too (A→B→C). Startup is **fail-fast**: any provider that can't come up (missing file, syntax error, slow health check) crashes the consumer at startup, not at first request.
+Everything is keyed by **app name** (the `[apps]` key), never by module stem. Nothing found = `BridgeUnavailable` at the first awaited call.
 
 ## Walker imports = spawn-and-execute
 
-A `walker:pub` can cross the boundary too - but **constructing it runs it remotely**. There is no unexecuted remote walker: `Greet(name="x")` POSTs `/walker/Greet`, executes on the provider, and returns the finished instance with `reports` populated.
+A walker can cross the boundary too - but **constructing it spawns it remotely**. There is no unexecuted remote walker: `await Greet(name="x")` spawns `Greet` on the owner app, executes it, and yields the finished instance with `reports` populated. Keyword args map to `has` fields; `isinstance(rg, Greet)` works. Types used in `has` fields / `report` must be imported alongside the walker.
 
 ```
-# math_service is in [scale.microservices.routes]; Greet is walker:pub there
-import from math_service { Greet }
+import from core.social_graph { Greet }     # core/social_graph.jac is [apps.social_graph]'s entry
 
 walker:pub TriggerGreet {
     has who: str;
-    can run with Root entry {
-        rg: any = Greet(name=self.who);    # remote spawn, already executed
+    async can run with Root entry {
+        rg = await Greet(name=self.who);    # remote spawn, already executed
         report rg.reports[0];
     }
 }
 ```
 
-Keyword args map to `has` fields; `isinstance(rg, Greet)` works. This is server-to-server only - a browser client cannot import a walker; wrap it in a `def:pub` server-side for client callers.
+The same shape works from client apps (`root spawn Greet(...)` in a page or a mobUI screen) - the flagship's `mobile/` and `cli/` apps are both clients of the `social_graph` service app.
 
 ## Boundary types
 
 **Cross the wire:** `obj` types (recursively hydrated - list them in the import alongside the function/walker), `enum`s (by name), primitives, `list[T]`, `dict[K, V]`, `None`.
-**Streams cross live:** calling a provider's streaming endpoint (`-> Generator`) through the stub returns a LIVE generator - iterate and re-yield to forward frames unbuffered (the gateway pattern in `jac-sv-streaming`).
+**Streams cross live:** a provider's streaming endpoint (`-> Generator`) through the stub is a LIVE async generator - iterate and re-yield to forward frames unbuffered (`jac-sv-streaming`).
 **Don't:** node/edge anchors, closures, file/DB handles. Pass `jid(node)` strings and re-resolve with `jobj` on the other side.
 
-Failures surface at the call site as `RuntimeError`: `sv-to-sv RPC '<module>.<func>' failed: <reason>` (functions) / `sv-to-sv walker spawn '<module>.<walker>' failed: <reason>` (walkers). Catch where you want graceful degradation; transport failures are retried with backoff behind a per-provider circuit breaker.
+## Topology: colocated, fleet, deployed
 
-## Gateway mode (many services)
+- **Colocated (default).** `jac run <app>` loads every service app it bridges to (transitively, providers first) into its own process. One port, one process, the cut still compiled.
+- **Local fleet.** `jac run <app> --fleet`, or `[scale.gateway] colocate = false`: each service app is its own local process behind the served app's gateway - one public port, one `/docs`, one `/metrics`, `X-Trace-Id` threaded through every hop; `jac scale status|logs|restart|stop <app>` manage members. Startup is fail-fast (a service that cannot come up crashes the served app at boot).
+- **Deployed.** `jac scale deploy` is ALWAYS a fleet: each serving app its own Deployment/Service/HPA/PDB, the served app hosts the gateway, `JAC_APP_<APP>_URL` injected on every pod (in-cluster DNS - don't set them by hand), boot order from the app DAG; `colocate` is ignored. `--dry-run` previews the per-app plan.
 
-`jac scale split <module>` (per service; `jac setup microservice --add <file>` also works) fills `[scale.microservices.routes]` in `jac.toml`; `jac run` on the project root then brings the whole stack up behind one API gateway - one public port, one unified `/docs`, one `/metrics`. `X-Trace-Id` is minted at the edge and threaded through every RPC hop. Key knob: per-service `rpc_timeout` (`[scale.microservices.services.NAME] rpc_timeout = 120.0`) defaults to **10s - bump to 120-300 for LLM-backed workers** or the gateway times out long generations. With `jac scale deploy` in this mode, every pod gets its peers' `JAC_SV_<MOD>_URL` auto-injected (in-cluster service DNS) - don't set them by hand; `--dry-run` previews the plan.
+Gateway knobs: `[scale.gateway]` (`gateway_port`, `boot_health_timeout`, `boot_max_wait`, `health_monitor_interval`, `cors`, `rate_limit`, `logs`, `tracing`, `shared_volumes`, `colocate`). Per-app knobs: `[apps.<name>.scale]` (`replicas`, resources, `rpc_timeout` - **default 10s, bump to 120-300 for LLM-backed apps**, `http_activation`, `env`, `hpa`, `pdb`, `triggers`, `deployment_overlay`).
 
 ## Pitfalls
 
-- **404/`Unauthorized` on a cross-service call** = the provider symbol isn't `:pub`. First thing to check.
-- **Calls run in-process when you expected RPC** = the provider module isn't in `[scale.microservices.routes]`. The cut is declared there and only there - run `jac scale split <module>` and rebuild.
-- **`ModuleNotFoundError: No module named '<provider>'` at consumer startup** = auto-spawn couldn't find the provider source in the cwd. Co-locate the services (or set `[scale.microservices.services.<name>].file`), or set `JAC_SV_<MOD>_URL` to a provider running elsewhere.
-- **`Error: No jac.toml found`** - `jac run <relative-path>` needs a `jac.toml` in the cwd.
-- **`{"detail": "Invalid anchor id ..."}` 500s** = stale persisted anchors after a schema change - stop, `rm -rf .jac/data/`, restart (not service-specific; full story in `jac-sv-persistence`).
-- Auto-spawn waits ~15s for the sibling's health check - on slow machines or cold caches it can fail-fast spuriously. Start the provider yourself and use `JAC_SV_<MOD>_URL` (this also gives you separate logs per service).
-- Auto-spawn port collisions (something else squatting in 18000-18999) break discovery the same way - pin the provider URL explicitly (`JAC_SV_ANALYTICS_URL=http://127.0.0.1:18999 jac run ...`) instead of fighting the spawner.
-- Multi-host = env-var wiring, always. Auto-spawned siblings can never serve another machine.
-- Service module names must not collide with builtin gateway segments (`api`, `walker`, `function`, `health`, ...) - `jac scale split` rejects them with a rename suggestion.
+- **`E1042` on a call you thought was local** = the target is owned by another app. `await` it; make the caller `async`.
+- **`E5106` / 404 `BridgeRejected`** = the element isn't on the bridge surface. `def:pub` it, or move it to shared code if both apps need it in-process.
+- **Calls run in-process when you expected RPC** = they are colocated (the default) - that IS the bridge, just without sockets. `--fleet` to split; the code does not change.
+- **`E5107`** = a shared server module with two possible owners. Name the owner (`[apps.<name>]` service table or a pin).
+- **`E2039`** = an app reaching into another app's non-bridge declarations. Shared code goes under no app root; app code stays behind the bridge.
+- **`BridgeUnavailable: app 'x' is not registered`** = not colocated (no `[apps.x]` in this workspace) and no `JAC_APP_X_URL`.
+- **`Error: No jac.toml found`** - `jac run <app>` needs the workspace's `jac.toml` in the cwd or an ancestor.
+- **Invalid anchors after a change:** check the reference, selected app/store, and schema migration state. Follow `jac-debugging` and `jac-sv-persistence`; do not infer that an anchor error requires deleting project data.
+- Multi-host = env-var wiring, always. Colocated providers can never serve another machine.
+- Route collisions (`[apps.a] route` = `[apps.b] route`, or an app route that a page owns) are hard config errors; the default is `/api/<name>`.

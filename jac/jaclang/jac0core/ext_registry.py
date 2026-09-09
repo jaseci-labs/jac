@@ -191,25 +191,39 @@ def is_annex_path_of(candidate_path: str, base_path: str) -> bool:
 
     A pure path predicate (no filesystem access, so it also matches annexes
     that were deleted): for base ``/a/foo.jac`` it accepts ``/a/foo.impl.jac``,
-    dotted variants like ``/a/foo.x.impl.jac``, and anything under the
-    module-scoped annex folders ``/a/foo.impl/`` and ``/a/foo.test/``. An
-    independent dotted-name sibling such as ``/a/foo.bar.jac`` is rejected.
-    Derived from ``ANNEX_FOLDER``; both paths must be normalized alike.
+    dotted variants like ``/a/foo.x.impl.jac``, anything under the
+    module-scoped annex folders ``/a/foo.impl/`` and ``/a/foo.test/``, and the
+    shared annex folders ``/a/impl/foo.impl.jac`` and ``/a/test/foo.test.jac``
+    (the same three layouts ``discover_annex_files`` searches). An independent
+    dotted-name sibling such as ``/a/foo.bar.jac`` is rejected. Derived from
+    ``ANNEX_FOLDER``; both paths must be normalized alike.
     """
     stem = (
         base_path[: -len(JAC_SUFFIX)]
         if base_path.endswith(JAC_SUFFIX)
         else base_path
     )
-    if not candidate_path.startswith(stem):
-        return False
-    rest = candidate_path[len(stem) :]
-    if not rest.startswith("."):
-        return False
+    if candidate_path.startswith(stem):
+        rest = candidate_path[len(stem) :]
+        if not rest.startswith("."):
+            return False
+        return any(
+            rest.endswith(suffix) or rest.startswith(folder + os.sep)
+            for suffix, folder in ANNEX_FOLDER.items()
+        )
+    base_dir, base_name = os.path.split(stem)
+    cand_dir, cand_name = os.path.split(candidate_path)
     return any(
-        rest.endswith(suffix) or rest.startswith(folder + os.sep)
-        for suffix, folder in ANNEX_FOLDER.items()
+        cand_dir == os.path.join(base_dir, shared_annex_folder(suffix))
+        and cand_name.startswith(base_name + ".")
+        and cand_name.endswith(suffix)
+        for suffix in ANNEX_FOLDER
     )
+
+
+def shared_annex_folder(suffix: str) -> str:
+    """The shared annex folder name for an annex suffix: ``impl`` or ``test``."""
+    return suffix[1 : -len(JAC_SUFFIX)]
 
 
 def is_impl(path: str) -> bool:

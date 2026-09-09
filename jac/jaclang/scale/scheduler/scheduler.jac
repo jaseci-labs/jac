@@ -11,7 +11,7 @@ import from jaclang.scale._optdeps.apscheduler {
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.server.task_scheduler { Scheduler, ScheduleTrigger }
-import from jaclang.scale.persistence.pg { open_docs_store }
+import from jaclang.server.shared_store { open_docs_store }
 
 glob _jaclang_scale_scheduler: (JacScaleScheduler | None) = None,
      JOBS_CHANGED_CHANNEL: str = 'jac_jobs_changed',
@@ -99,7 +99,6 @@ obj JacScaleScheduler {
     def setup(system_user_id: str, server: any | None = None) -> None;
     def start -> None;
     def stop(drain: bool = False) -> None;
-    def register_static_tasks(walkers: dict, functions: dict, server: any) -> None;
     def register_dynamic_tasks_from_db -> None;
     def create_job(name: str, spec: TriggerSpec, created_by: str) -> dict;
     def list_jobs(

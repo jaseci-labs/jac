@@ -73,7 +73,7 @@ test "webhook - endpoint exists" {
     try {
         srv = client._server;
         assert srv is not None , "server must be running";
-        schema = srv.server.app.openapi();
+        schema = srv.app.openapi();
         paths = schema.get("paths", {});
 
         assert "/webhook/PaymentReceived" in paths , (
@@ -92,7 +92,7 @@ test "webhook - normal walker not in webhook" {
     try {
         srv = client._server;
         assert srv is not None , "server must be running";
-        schema = srv.server.app.openapi();
+        schema = srv.app.openapi();
         paths = schema.get("paths", {});
 
         assert "/webhook/NormalPayment" not in paths , (

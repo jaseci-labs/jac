@@ -1,49 +1,37 @@
 import from typing { Optional }
 import from pathlib { Path }
+import type from jaclang.project.apps { AppConfig }
 
-enum TargetType {
-    WEB = "web",
-    DESKTOP = "desktop",
-    DESKTOP_CEF = "cef",
-    PWA = "pwa",
-    STATIC = "static",
-    MOBILE = "mobile",
-    REACT_NATIVE = "react-native"
+glob KIND_TARGET: dict[str, str] = {
+         "web-app": "web",
+         "js-package": "web",
+         "web-static": "static",
+         "desktop": "desktop",
+         "mobile": "mobile"
+     };
+
+def client_workspace_app(config: any, entry_path: str = "") -> AppConfig | None {
+    return config.app_for_target(entry_path) if config is not None else None;
 }
 
-def get_target_type(name: str) -> TargetType {
-    name_lower = name.lower().strip();
-    if name_lower == "" or name_lower == "web" {
-        return TargetType.WEB;
-    }
-    if name_lower == "desktop" {
-        return TargetType.DESKTOP;
-    }
-    if name_lower == "cef" {
-        return TargetType.DESKTOP_CEF;
-    }
-    if name_lower == "pwa" {
-        return TargetType.PWA;
-    }
-    if name_lower == "static" {
-        return TargetType.STATIC;
-    }
-    if name_lower == "mobile" {
-        return TargetType.MOBILE;
-    }
+def client_app_dir_for(config: any, entry_path: str = "") -> Path {
+    base = config.get_client_dir();
+    app = client_workspace_app(config, entry_path);
+    return base / app.name if app is not None else base;
+}
 
-    if name_lower in ("react-native", "react_native", "rn") {
-        return TargetType.REACT_NATIVE;
+def client_app_root(config: any, project_dir: Path, entry_path: str = "") -> Path {
+    app = client_workspace_app(config, entry_path);
+    if app is None or config.project_root is None {
+        return project_dir;
     }
-    raise ValueError(
-        f"Unknown target: {name}. Available: {', '.join([t.value for t in TargetType])}"
-    );
+    app_root = app.root_dir(str(config.project_root));
+    return Path(app_root) if app_root else project_dir;
 }
 
 class ClientTarget {
     has name: str,
         project_dir: Optional[Path] = None,
-        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "",
         required_dependencies: list[str] = [],
@@ -79,14 +67,10 @@ obj TargetRegistry {
     def clear -> None;
 }
 
-obj TargetFactory {
-    def create(name: str, project_dir: Path) -> ClientTarget;
-    def create_by_type(target_type: TargetType, project_dir: Path) -> ClientTarget;
-    def get_available_target_names -> list[str];
-}
+def target_for_kind(kind: str, project_dir: Path) -> ClientTarget;
+def target_for_app(app: AppConfig, project_dir: Path) -> ClientTarget;
 
-glob _registry: TargetRegistry | None = None,
-     _factory: TargetFactory | None = None;
+glob _registry: TargetRegistry | None = None;
 
 def get_target_registry -> TargetRegistry {
     import from jaclang.client.targets.registry { TargetRegistry }
@@ -97,12 +81,4 @@ def get_target_registry -> TargetRegistry {
         register_targets();
     }
     return _registry;
-}
-
-def get_target_factory -> TargetFactory {
-    import from jaclang.client.targets.registry { TargetFactory }
-    if _factory is None {
-        _factory = TargetFactory();
-    }
-    return _factory;
 }

@@ -28,18 +28,35 @@ impl PluginConfigBase.postinit{
     );
     self.config_file = self.project_dir / 'jac.toml';
     self._config = None;
+    self._config_app = '';
     self._jac_config = None;
 }
 
+impl PluginConfigBase.effective_jac_config -> JacConfig {
+    jac_config = self.get_jac_config();
+    app = jac_config.app_for_target();
+    if app is None {
+        return jac_config;
+    }
+    try {
+        return jac_config.effective_for_app(app.name);
+    } except ValueError {
+        return jac_config;
+    }
+}
+
 impl PluginConfigBase.load -> dict[str, any] {
-    if self._config is not None {
+    target_app = self.get_jac_config().app_for_target();
+    app_name = target_app.name if target_app is not None else '';
+    if self._config is not None and self._config_app == app_name {
         return self._config;
     }
     default_config = self.get_default_config();
-    jac_config = self.get_jac_config();
+    jac_config = self.effective_jac_config();
 
     plugin_name = self.get_plugin_name();
     plugin_config = jac_config.get_plugin_config(plugin_name);
+    self._config_app = app_name;
 
     if plugin_config is not None {
         self._validate_declared_keys(plugin_config);
@@ -87,7 +104,6 @@ impl PluginConfigBase.get_jac_config -> JacConfig {
             import os;
             profile: str = (
                 os.environ.get("JAC_PROFILE", "").strip()
-                or os.environ.get("JAC_ENV", "").strip()
                 or config.environment.default_profile
             );
             config.apply_profile_overlay(profile or None);

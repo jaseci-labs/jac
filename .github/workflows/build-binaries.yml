@@ -37,10 +37,12 @@ on:
         # Diagnostic lane: build ONE leg instead of the whole matrix, so a
         # single red platform can be iterated on without burning three other
         # runners per attempt. Empty (the default) keeps the channel's full
-        # leg list. `plan` rejects a non-empty filter whenever `tag` is set,
-        # so a release can never ship a partial matrix by mistake -- that
-        # guard is what lets workflow_dispatch expose this too.
-        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list."
+        # leg list. With `tag` set, `plan` accepts the filter only when every
+        # selected leg is one no release is obliged to ship (the manual
+        # Intel-Mac lane: only=macos-x86_64) and refuses any blocking leg, so
+        # a release can never ship a partial matrix by mistake -- that guard
+        # is what lets workflow_dispatch expose this too.
+        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list. With `tag`, only non-required legs (e.g. macos-x86_64) may be selected."
         required: false
         default: ""
         type: string
@@ -83,7 +85,7 @@ on:
         type: choice
         options: [release, dev]
       only:
-        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list. Rejected when `tag` is set."
+        description: "Comma-separated platform filter (e.g. macos-aarch64). Empty = the channel's full leg list. With `tag`, only non-required legs may be selected: only=macos-x86_64 plus tag=v<version> is the manual Intel-Mac lane."
         required: false
         default: ""
         type: string
@@ -111,19 +113,26 @@ jobs:
   # release). macos-15-intel is GitHub's last Intel image (retires Fall
   # 2027).
   #
-  # The Intel-Mac leg is release-only: it exists to pin the macOS 12.0
-  # floor for versioned releases, and on the dev channel it was the
-  # critical path (~24 min/merge on the slow Intel runners) for a
-  # rolling prerelease Intel users don't consume. Versioned releases
-  # still build macos-x86_64: inputs.channel is empty on the release event and
-  # defaults to `release` on dispatch, so those keep the full list.
+  # The Intel-Mac leg is `manual`: in no channel's default matrix, built only
+  # when `only` names it. It used to be a release-channel leg marked
+  # `optional` (its abort() on `jac --version`, #8805, could not veto
+  # publish), but `publish` still waits for the whole matrix, and the Intel
+  # runners finished ~25 min after the arm64 leg while shipping a binary
+  # nobody could run; 0.37.2 already went out without it. Two lanes replace
+  # the matrix slot: nightly.yml's weekly `intel-mac-probe` (artifact only,
+  # the leg's signal) and the manual release lane (dispatch this workflow
+  # with only=macos-x86_64 and tag=v<version> to attach that one asset to
+  # an already-published release).
   #
   # `optional` marks a leg that still builds but no longer gates: the matrix
   # runs it under continue-on-error and it is left out of `required`, the list
-  # `publish` verifies before revealing a release. One flag decides both, so a
-  # platform can never be non-blocking in the matrix and mandatory at publish
-  # time. Everything here is one array: adding or dropping a platform is an
-  # edit to LEGS and nowhere else.
+  # `publish` verifies before revealing a release. `manual` goes one further:
+  # the leg is left out of the default matrix too, and on the lane that exists
+  # to build it a failure is red (no continue-on-error). Each flag decides
+  # matrix membership and the required set together, so a platform can never
+  # be non-blocking in the matrix and mandatory at publish time. Everything
+  # here is one array: adding or dropping a platform is an edit to LEGS and
+  # nowhere else.
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -138,31 +147,18 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          # macos-x86_64 is optional because it is currently broken: it builds
-          # and then dies with abort() on `jac --version` (#8805). Keeping it
-          # in the matrix keeps the signal -- this is a release-only leg, and
-          # eighteen days with no signal at all is how it collected two bugs
-          # unnoticed -- while `optional` stops that one platform vetoing
-          # everyone else's release. Delete the flag when the abort is fixed
-          # and the leg goes green again; that restores it as a blocking leg
-          # and as a required asset in one edit.
+          # macos-x86_64 is `manual` (see the comment above this job): not in
+          # any channel's default matrix, built only when `only` names it,
+          # never required to publish, and not `optional`, so the lane that
+          # exists to build it goes red when it fails. Delete the flag when
+          # #8805 is fixed and the leg should carry a release again; that
+          # restores it as a blocking leg and a required asset in one edit.
           LEGS='[
-            {"os": "ubuntu-latest",    "platform": "linux-x86_64",  "zig_target": "x86_64-linux-gnu.2.17"},
+            {"os": "blacksmith-4vcpu-ubuntu-2404", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
             {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
             {"os": "macos-14",         "platform": "macos-aarch64"},
-            {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "optional": true}
+            {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "manual": true}
           ]'
-          if [ "$CHANNEL" = "dev" ]; then
-            LEGS="$(jq -c 'map(select(.platform != "macos-x86_64"))' <<<"$LEGS")"
-          fi
-          # `only` is a diagnostic lane, never a release path: uploading a
-          # filtered matrix to a real tag would publish a release missing
-          # assets for the legs it dropped. workflow_call never pairs them;
-          # this guard is what makes the dispatch input safe to expose.
-          if [ -n "${ONLY:-}" ] && [ -n "${TAG:-}" ]; then
-            echo "::error::platform filter '$ONLY' cannot be combined with tag '$TAG': a filtered matrix would publish a release missing assets."
-            exit 1
-          fi
           if [ -n "${ONLY:-}" ]; then
             LEGS="$(jq -c --arg only "$ONLY" \
               '($only | split(",") | map(ltrimstr(" ") | rtrimstr(" "))) as $want
@@ -172,18 +168,36 @@ jobs:
               echo "::error::platform filter '$ONLY' matched no leg on channel '${CHANNEL:-release}'"
               exit 1
             }
+          else
+            # No filter: the channel's default matrix, which never holds a
+            # manual leg.
+            LEGS="$(jq -c 'map(select(.manual != true))' <<<"$LEGS")"
+          fi
+          # `only` with a tag uploads a filtered matrix's assets to a real
+          # release. That is the point of the manual lane for a leg no release
+          # is obliged to ship, and a mistake for any blocking leg: a release
+          # published from such a run would be missing assets. release.yml
+          # never passes `only`, so this refusal is what makes the dispatch
+          # input safe to expose.
+          if [ -n "${ONLY:-}" ] && [ -n "${TAG:-}" ]; then
+            BLOCKING="$(jq -r 'map(select(.optional != true and .manual != true)) | map(.platform) | join(" ")' <<<"$LEGS")"
+            if [ -n "$BLOCKING" ]; then
+              echo "::error::platform filter '$ONLY' cannot upload to tag '$TAG': it selects blocking leg(s) '$BLOCKING', and a filtered matrix would publish a release missing assets. Only non-required legs (e.g. macos-x86_64) may be built alone against a tag."
+              exit 1
+            fi
           fi
           echo "include=$(jq -c . <<<"$LEGS")" >> "$GITHUB_OUTPUT"
 
           # The platforms a release is obliged to ship, read off the same array
-          # the matrix was. Absence of the key means blocking, so a new leg is
-          # required until someone says otherwise.
-          REQUIRED="$(jq -r 'map(select(.optional != true)) | map(.platform) | join(" ")' <<<"$LEGS")"
+          # the matrix was. Absence of both flags means blocking, so a new leg
+          # is required until someone says otherwise.
+          REQUIRED="$(jq -r 'map(select(.optional != true and .manual != true)) | map(.platform) | join(" ")' <<<"$LEGS")"
           # A release whose every leg is optional has nothing to verify, and
-          # publishing it would reveal whatever the draft happened to hold. The
-          # `only` lane has no tag and is allowed to narrow to a single optional
-          # leg -- that is how the broken one gets iterated on.
-          if [ -z "$REQUIRED" ] && [ -n "${TAG:-}" ]; then
+          # publishing it would reveal whatever the draft happened to hold.
+          # Only the unfiltered matrix feeds a publish (release.yml); the
+          # `only` lane narrows to non-required legs on purpose and publishes
+          # nothing, so an empty required set is expected there.
+          if [ -z "$REQUIRED" ] && [ -n "${TAG:-}" ] && [ -z "${ONLY:-}" ]; then
             echo "::error::no blocking platform left for tag '$TAG': every leg is marked optional, so a release would publish without checking anything."
             exit 1
           fi
@@ -747,7 +761,10 @@ jobs:
   # it to the release as its own asset for the deploy driver to download.
   admin-dist:
     needs: build
-    if: github.event_name == 'release' || inputs.tag != ''
+    # Not on a filtered matrix: a single-leg run (the manual Intel-Mac lane)
+    # produces no linux artifact for this job to consume, and its release
+    # already carries what this job builds.
+    if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -816,7 +833,10 @@ jobs:
   # is skipped when the secrets are absent (forks).
   docker-image:
     needs: build
-    if: github.event_name == 'release' || inputs.tag != ''
+    # Not on a filtered matrix: a single-leg run (the manual Intel-Mac lane)
+    # produces no linux artifact for this job to consume, and its release
+    # already carries what this job builds.
+    if: (github.event_name == 'release' || inputs.tag != '') && inputs.only == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read

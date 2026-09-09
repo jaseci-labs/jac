@@ -8,7 +8,6 @@ def serve_static_dir(dist_dir: Path, host: str, port: int) -> None;
 
 obj StaticTarget(WebTarget) {
     has name: str = "static",
-        `default: bool = False,
         requires_setup: bool = False,
         config_section: str = "plugin.client",
         output_dir: Path = Path(".jac/client/dist");

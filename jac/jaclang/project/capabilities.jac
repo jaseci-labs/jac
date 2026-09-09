@@ -52,7 +52,7 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          "llm": {
              "context": "runtime",
              "deps": {
-                 "litellm": ">=1.70.0,<=1.82.6",
+                 "litellm": ">=1.75.2,<=1.82.6",
                  "pillow": ">=12.0.0,<13.0.0",
                  "httpx": ">=0.27.0",
                  "loguru": ">=0.7.2,<0.8.0"

@@ -22,7 +22,7 @@ silently loses everything it inherited.
 On top of that gate sit the three erasures. `cast` lowers to its second
 argument, which is what `typing.cast` returns in Python too, so the lanes
 agree by construction. A `TypeVar` glob is skipped by native glob lowering as
-a compile-time declaration (`ModuleCodegenPass.is_erased_type_decl`). An
+a compile-time declaration (`ModuleFacts.is_erased_type_decl`). An
 `ABC` base leaves the native parent list entirely, so an archetype whose only
 base is the marker keeps a bare layout with no vtable slot -- Jac's own `abst`
 keyword is what carries abstractness natively.

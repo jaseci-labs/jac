@@ -273,10 +273,8 @@ test "ws route rejects with 1012 during drain" {
     import from jaclang.scale.runtime.gateway.microservice_gateway {
         MicroserviceGateway
     }
-    import from jaclang.scale.runtime.lifecycle.drain { reset_drain, start_drain }
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
 
-    reset_drain();
     reg = ServiceRegistry();
     reg.register(
         ServiceEntry(
@@ -292,7 +290,7 @@ test "ws route rejects with 1012 during drain" {
     gw.setup();
 
     client = TestClient(gw.app);
-    start_drain(10.0);
+    gw.drain.start("test");
     try {
         raised = False;
         try {
@@ -304,7 +302,7 @@ test "ws route rejects with 1012 during drain" {
         }
         assert raised;
     } finally {
-        reset_drain();
+        gw.drain.reset();
     }
 }
 
@@ -314,7 +312,12 @@ obj FakeClientWS {
         sent: list,
         closed: bool = False,
         close_code: int = 0,
-        client_host: str = "";
+        client_host: str = "",
+        accepts: list[str] = [];
+
+    async def accept(subprotocol: str = '') {
+        self.accepts.append(subprotocol);
+    }
 
     async def receive -> dict {
         return await self.inbound.get();
@@ -440,4 +443,94 @@ test "websocket_forward closes the client with 1011 when the upstream handshake 
     result = _run(body());
     assert result["closed"] == True;
     assert result["code"] == 1011;
+}
+
+
+"""Upstream that selects a subprotocol, the way vite's HMR server does."""
+def _spawn_ws_upstream_with_protocol(protocol: str) -> tuple[any, any, str] {
+    import from jaclang.server.serving.app { ServingApp }
+    import from jaclang.server.serving.endpoint { WSEndPoint }
+    import from jaclang.server.serving.server { ServingServer }
+
+    async def ws_echo(ws: any) {
+        offered: str = str(ws.headers.get("sec-websocket-protocol") or "");
+        await ws.accept(subprotocol=protocol if protocol in offered else "");
+        while True {
+            msg = await ws.receive();
+            if msg["type"] == "websocket.disconnect" {
+                break;
+            }
+            if "text" in msg {
+                await ws.send_text(msg["text"]);
+                break;
+            }
+        }
+    }
+    app = ServingApp();
+    app.add_ws_endpoint(WSEndPoint(path="/ws", handler=ws_echo));
+    server = ServingServer(app=app, host="127.0.0.1", port=0);
+    stop = server.serve_background();
+    return (stop, server, f"http://127.0.0.1:{server.bound_port}/ws");
+}
+
+
+test "the client is accepted once, after the upstream chose the subprotocol" {
+    async def body -> dict {
+        (stop_upstream, server, base) = _spawn_ws_upstream_with_protocol("vite-hmr");
+        try {
+            client = FakeClientWS(
+                inbound=asyncio.Queue(), sent=[], accepts=[], client_host="127.0.0.1"
+            );
+            client.inbound.put_nowait({"type": "websocket.receive", "text": "ping"});
+            client.inbound.put_nowait({"type": "websocket.disconnect"});
+
+            chosen: list[str] = [];
+
+            async def on_upstream(selected: str) {
+                chosen.append(selected);
+                await client.accept(subprotocol=selected);
+            }
+            await websocket_forward(
+                client,
+                base,
+                {"Sec-WebSocket-Protocol": "vite-hmr"},
+                on_upstream=on_upstream
+            );
+            return {"accepts": client.accepts, "chosen": chosen};
+        } finally {
+            server.request_stop();
+        }
+    }
+    out = asyncio.run(body());
+    assert out["chosen"] == ["vite-hmr"] , (
+        f"the forwarder must report what the upstream selected; got {out['chosen']}"
+    );
+    assert out["accepts"] == ["vite-hmr"] , (
+        f"the client is accepted exactly once, with the upstream's protocol - "
+        f"answering 101 before the upstream handshake is what made a browser "
+        f"tear the socket down and reconnect in a loop; got {out['accepts']}"
+    );
+}
+
+
+test "a failed upstream handshake never accepts the client" {
+    async def body -> dict {
+        client = FakeClientWS(
+            inbound=asyncio.Queue(), sent=[], accepts=[], client_host="127.0.0.1"
+        );
+        accepted: list[str] = [];
+
+        async def on_upstream(selected: str) {
+            accepted.append(selected);
+        }
+        await websocket_forward(
+            client, "http://127.0.0.1:1/ws", {}, on_upstream=on_upstream
+        );
+        return {"accepted": accepted, "closed": client.closed};
+    }
+    out = asyncio.run(body());
+    assert out["accepted"] == [] , (
+        "no upstream means nothing to proxy; the client must not be handed a 101"
+    );
+    assert out["closed"];
 }

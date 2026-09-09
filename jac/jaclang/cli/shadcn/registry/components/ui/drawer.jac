@@ -21,7 +21,10 @@ def:pub DrawerOverlay(props: any) -> JsxElement {
     <DrawerPrimitive.Overlay
         {**props}
         data-slot="drawer-overlay"
-        className={cn("cn-drawer-overlay fixed inset-0 z-50", props["className"])}
+        className={cn(
+            "cn-drawer-overlay fixed inset-0 z-50 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+            props["className"]
+        )}
     />
 }
 
@@ -29,13 +32,14 @@ def:pub DrawerContent(props: any) -> JsxElement {
     <DrawerPrimitive.Portal data-slot="drawer-portal">
         <DrawerPrimitive.Overlay
             data-slot="drawer-overlay"
-            className="cn-drawer-overlay fixed inset-0 z-50"
+            className="cn-drawer-overlay fixed inset-0 z-50 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
         <DrawerPrimitive.Content
             {**props}
             data-slot="drawer-content"
             className={cn(
-                "cn-drawer-content group/drawer-content fixed z-50", props["className"]
+                "cn-drawer-content group/drawer-content fixed z-50 data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[80vh] data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[80vh] data-[vaul-drawer-direction=left]:sm:max-w-sm data-[vaul-drawer-direction=right]:sm:max-w-sm",
+                props["className"]
             )}
         >
             <div
@@ -51,7 +55,10 @@ def:pub DrawerHeader(props: any) -> JsxElement {
     <div
         {**attrs}
         data-slot="drawer-header"
-        className={cn("cn-drawer-header flex flex-col", props["className"])}
+        className={cn(
+            "cn-drawer-header flex flex-col group-data-[vaul-drawer-direction=bottom]/drawer-content:text-center group-data-[vaul-drawer-direction=top]/drawer-content:text-center",
+            props["className"]
+        )}
     />
 }
 

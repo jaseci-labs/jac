@@ -1,6 +1,6 @@
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.passes { UniPass }
-import from jaclang.compiler.frontend.parser.tokens { TokenKind }
+import from jaclang.compiler.frontend.parser.tokens { BUILTIN_TYPE_KINDS, TokenKind }
 import from jaclang.runtime.osp_kernel { osp_skip_rest }
 
 def is_nil_expr(nd: object) -> bool {
@@ -127,11 +127,7 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
      SPECIAL_LOOKAHEAD_TOKENS: dict[str, list] = {
          "check_name": ["NAME", "KWESC_NAME"],
          "is_keyword_token": ["NAME"],
-         "is_builtin_type_token": [
-             kind.name
-             for kind in TokenKind
-             if kind.name.startswith("TYP_")
-         ]
+         "is_builtin_type_token": sorted(kind.name for kind in BUILTIN_TYPE_KINDS)
      };
 
 obj ConditionResult {

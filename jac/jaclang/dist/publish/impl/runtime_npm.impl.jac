@@ -35,7 +35,7 @@ impl runtime_api_names(framework: str = "") -> set[str] {
     names: set[str] = set();
 
     for m in re.finditer(
-        r"(?m)^(?:async\s+)?(?:def|glob)(?::\w+)?\s+([A-Za-z_][A-Za-z0-9_]*)", text
+        r"(?m)^(?:async\s+)?(?:def|glob|obj)(?::\w+)?\s+([A-Za-z_][A-Za-z0-9_]*)", text
     ) {
         names.add(m.group(1));
     }
@@ -118,17 +118,16 @@ def _pkg_root(spec: str) -> (str | None) {
     return parts[0];
 }
 
-glob _PEER_VERSIONS: dict[str, str] = {
-         "react": "^18.2.0",
-         "react-dom": "^18.2.0",
-         "react-router-dom": "^6.22.0",
-         "react-error-boundary": "^5.0.0",
-         "@tanstack/react-form": "^1.33.0",
+glob _SOLID_PEER_VERSIONS: dict[str, str] = {
          "@tanstack/solid-form": "^1.33.0",
          "solid-js": "^1.9.13",
-         "@solidjs/router": "^0.16.1",
-         "zod": "^4.3.6"
+         "@solidjs/router": "^0.16.1"
      };
+
+def _peer_versions -> dict[str, str] {
+    import from jaclang.client.npm_provider { CORE_RUNTIME_DEPS, OPTIONAL_RUNTIME_DEPS }
+    return {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS, ** _SOLID_PEER_VERSIONS};
+}
 
 def _runtime_peer_deps(js: str) -> dict[str, str] {
     roots: set[str] = set();
@@ -147,12 +146,14 @@ def _runtime_peer_deps(js: str) -> dict[str, str] {
         }
     }
     peers: dict[str, str] = {};
+    known = _peer_versions();
     for pkg in sorted(roots) {
-        version = _PEER_VERSIONS.get(pkg);
+        version = known.get(pkg);
         if version is None {
             raise ValueError(
                 f"runtime imports unknown peer package {pkg!r}; "
-                "add it to _PEER_VERSIONS in runtime_npm.impl.jac and the "
+                "add it to CORE_RUNTIME_DEPS/OPTIONAL_RUNTIME_DEPS in "
+                "npm_provider.jac (or _SOLID_PEER_VERSIONS here) and the "
                 "client dependency defaults"
             );
         }

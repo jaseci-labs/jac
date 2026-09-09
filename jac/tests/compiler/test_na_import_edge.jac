@@ -12,6 +12,8 @@ edge is placement-inferred; these tests pin the host module client via
 """
 
 import os;
+import json;
+import re;
 import tempfile;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
@@ -65,7 +67,35 @@ test "native import binds generated wasm stubs in the client js" {
     js = mod.gen.js;
     assert '__na_bind' in js , "expected the @jac/wasm_host stub factory import";
     assert '"kernel"' in js , "expected the module stem in the bind call";
-    assert '"fib"' in js , "expected the export name in the bind call";
+    encoded = re.search(r'__jac_na_bind\("kernel",\s*("(?:\\.|[^"\\])*")\)', js);
+    assert encoded is not None , js;
+    contract = json.loads(json.loads(encoded.group(1)));
+    assert set(contract["exports"]) == {"fib"};
+    assert contract["exports"]["fib"]["params"]
+        == [
+            {
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "mode": "value",
+                "bits": 64,
+                "signed": True,
+                "numeric": "int",
+                "minimum": "-9223372036854775808",
+                "maximum": "9223372036854775807"
+            }
+        ];
+    assert contract["exports"]["fib"]["result"]
+        == {
+            "type": "int",
+            "kind": "scalar",
+            "mode": "value",
+            "bits": 64,
+            "signed": True,
+            "numeric": "int",
+            "minimum": "-9223372036854775808",
+            "maximum": "9223372036854775807"
+        };
     assert "fast_fib" in js , "expected the alias as the local binding";
 }
 
