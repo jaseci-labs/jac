@@ -11,6 +11,29 @@ import from jaclang.compiler.backends.native.na_compile_pass {
 }
 import from tests.support { compile_native }
 
+test "AOT debug compilation leaves object emission to the final linker" {
+    import from pathlib { Path }
+    import from unittest.mock { patch }
+    import from tests.support { NATIVE_FIXTURES, native_force_opts }
+    import from jaclang.compiler.driver.program { JacProgram }
+    options = native_force_opts(opt_level=0);
+    options.aot_mode = True;
+    options.native_debug = True;
+    options.native_closed_world = True;
+    options.no_ir_cache = True;
+    prog = JacProgram();
+    with patch.object(llvm.TargetMachine, "emit_object") as emit {
+        ast = prog.compile(
+            file_path=str(Path(NATIVE_FIXTURES) / "inheritance.jac"), options=options
+        );
+        emit.assert_not_called();
+    }
+    assert not prog.errors_had;
+    assert ast is not None;
+    assert ast.gen.native_bitcode is not None;
+    assert "llvm.type.checked.load" in str(ast.gen.llvm_ir);
+}
+
 test "closed world Jac lowering annotates inherited virtual calls" {
     import from tests.support { compile_native_ir, native_force_opts }
     options = native_force_opts();

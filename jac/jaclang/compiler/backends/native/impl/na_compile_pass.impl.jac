@@ -453,6 +453,11 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
         }
         module.gen.native_linked_ir = str(mod) if _kernel_linked else None;
 
+        if _compile_opts.aot_mode {
+            module.gen.native_bitcode = _mod_bitcode(mod);
+            return ir_in;
+        }
+
         import os as _os;
         _opt_level = int(_compile_opts.opt_level or 0);
 
@@ -500,10 +505,6 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
 
                 module.gen.native_bitcode = _mod_bitcode(mod);
             } except Exception as _dbg_err {}
-        }
-
-        if _compile_opts.aot_mode {
-            return ir_in;
         }
 
         if self.errors_had {
