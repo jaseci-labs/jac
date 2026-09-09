@@ -252,7 +252,7 @@ async def _run_function_with_occ(
                 logging.getLogger('jaclang.serve').exception(
                     f"{unit_key or 'request'} raised {type(e).__name__}: {e}"
                 );
-                return {'error': str(e)};
+                return {'error': str(e), 'error_code': 'execution_error'};
             } finally {
                 ctx.call_state.reset(call_token);
             }
@@ -1417,7 +1417,11 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         def target {
             outcome = asyncio.run(_run());
-            if isinstance(outcome, dict) and 'error' in outcome {
+            if (
+                isinstance(outcome, dict)
+                and 'error' in outcome
+                and outcome.get('error_code') != 'execution_error'
+            ) {
                 logger.error(f"scheduled {name} failed: {outcome.get('error')}");
             }
         }
