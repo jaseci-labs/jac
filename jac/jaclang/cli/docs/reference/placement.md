@@ -96,6 +96,11 @@ async, its result is a `Promise<T>` where the server function's is `T`, which
 binding can cover is `E5086` at build time rather than a `ReferenceError` at
 module load.
 
+Within one app, server-placed `def:priv` and `def:protect` functions also get
+client RPC forwarders, preserving their authenticated access rules without
+a module placement pin. This does not grant access from another app: the
+cross-app function surface remains `def:pub`.
+
 The analysis proposes; lowering disposes. A module that prefers native but
 fails to lower is demoted to the server with a note naming the cause, and a
 client-pulled element that fails ES lowering demotes the same way (its call

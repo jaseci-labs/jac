@@ -44,5 +44,5 @@ async def:pub getLogs(
 }
 
 async def:pub getTraceLogs(token: str, traceId: str) -> dict {
-    return await get("/admin/logs/trace/" + encodeURIComponent(traceId), token);
+    return await get(f"/admin/logs/trace/{encodeURIComponent(traceId)}", token);
 }

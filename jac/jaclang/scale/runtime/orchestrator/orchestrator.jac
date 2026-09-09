@@ -105,8 +105,13 @@ obj FleetOrchestrator {
         }
 
         registry = self._build_registry();
-        _mark_all_healthy_k8s(registry);
+        for (_name, _entry) in registry.entries.items() {
+            _entry.status = ServiceStatus.STARTING;
+        }
         _populate_k8s_urls(registry);
+
+        health_monitor = ServiceProcessManager(registry=registry);
+        health_monitor.start_health_monitor(interval=_BOOT_RECHECK_INTERVAL);
 
         gateway = ProcessGateway(
             registry=registry,
@@ -235,13 +240,6 @@ def start_fleet_mode(fleet: FleetSpec, gateway_config: dict[str, any]) {
 
 def start_gateway_only(fleet: FleetSpec, gateway_config: dict[str, any]) {
     FleetOrchestrator(fleet=fleet, gateway_config=gateway_config).start_gateway_only();
-}
-
-
-def _mark_all_healthy_k8s(registry: ServiceRegistry) {
-    for (_name, _entry) in registry.entries.items() {
-        _entry.status = ServiceStatus.HEALTHY;
-    }
 }
 
 
