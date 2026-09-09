@@ -35,6 +35,22 @@ impl JacAPIServerAdmin._require_user_manager -> UserManager {
     return manager;
 }
 
+impl JacAPIServerAdmin._warn_dormant_admin(admin_username: str) -> None {
+    manager = self.user_manager;
+    if manager is None {
+        return;
+    }
+    existing = manager.find_user_by_identity(admin_username);
+    if existing is None or not manager.is_admin(str(existing.get('user_id', ''))) {
+        return;
+    }
+    logger.warning(
+        f"Admin account '{admin_username}' exists in the identity store but the "
+        "admin portal is disabled, so it cannot log in. Set [scale.admin] "
+        "enabled = true or JAC_ADMIN_ENABLED=true to serve /admin again."
+    );
+}
+
 impl JacAPIServerAdmin.register_admin_endpoints -> bool {
     admin_config = get_scale_config().get_admin_config();
     if not admin_config.get('enabled', False) {
@@ -42,6 +58,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> bool {
             "Admin portal is disabled. Set [scale.admin] enabled = true in "
             "jac.toml to serve it."
         );
+        self._warn_dormant_admin(str(admin_config.get('username', 'admin')));
         return False;
     }
 

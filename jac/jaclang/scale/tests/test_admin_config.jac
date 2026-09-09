@@ -208,6 +208,56 @@ test "bootstrap_admin reads require_password_reset from jac.toml" {
 }
 
 
+test "a disabled portal warns when an admin account is dormant in the identity store" {
+    import from jaclang.scale.admin.admin_portal { JacAPIServerAdmin }
+
+    project_dir = tempfile.mkdtemp();
+    username = _admin_name();
+    (Path(project_dir) / "jac.toml").write_text(
+        "[project]\n"
+        'name = "admin-config"\n\n'
+        "[scale.admin]\n"
+        "enabled = false\n"
+        f'username = "{username}"\n'
+    );
+    with patch.dict(os.environ) {
+        os.environ.pop("JAC_ADMIN_ENABLED", None);
+        os.environ.pop("JAC_ADMIN_PASSWORD", None);
+        reset_scale_config();
+        try {
+            get_scale_config(project_dir=Path(project_dir));
+            manager = UserManager(base_path=project_dir);
+            portal = JacAPIServerAdmin(user_manager=manager);
+            seen: list[str] = [];
+
+            def register {
+                assert not portal.register_admin_endpoints();
+            }
+            seen = _capture_warnings(register);
+            assert [
+                m
+                for m in seen
+                if username in m
+            ]
+                == [] , seen;
+
+            created = manager.bootstrap_admin_user(username, "boot-pass-1");
+            assert "error" not in created;
+            seen = _capture_warnings(register);
+            dormant = [
+                m
+                for m in seen
+                if username in m and "disabled" in m
+            ];
+            assert len(dormant) == 1 , seen;
+        } finally {
+            reset_scale_config();
+            shutil.rmtree(project_dir, ignore_errors=True);
+        }
+    }
+}
+
+
 test "bootstrap refuses to provision an admin without a configured password" {
     tmp = tempfile.mkdtemp();
     try {
