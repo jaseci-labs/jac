@@ -207,3 +207,29 @@ test "rotating through update_password clears a pending reset" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+test "recovering through reset_password_by_user_id clears a pending reset" {
+    tmp = tempfile.mkdtemp();
+    try {
+        manager = UserManager(base_path=tmp);
+        result = manager.bootstrap_admin_user(_admin_name(), "boot-pass-1");
+        assert "error" not in result;
+        user_id = result["user_id"];
+        assert manager.requires_password_reset(user_id);
+
+        missing = manager.reset_password_by_user_id("no-such-user", "recovered-pass-1");
+        assert "error" in missing;
+        assert manager.requires_password_reset(user_id);
+
+        recovered = manager.reset_password_by_user_id(user_id, "recovered-pass-1");
+        assert "error" not in recovered;
+        assert not manager.requires_password_reset(user_id);
+        recovered_login = manager.authenticate(
+            manager.get_username(user_id) or "", "recovered-pass-1"
+        );
+        assert recovered_login is not None;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

@@ -158,7 +158,11 @@ impl UserManager.update_password(
 impl UserManager.reset_password_by_user_id(
     user_id: str, new_password: str
 ) -> dict[str, str] {
-    return self._identity_storage.reset_password(user_id, new_password);
+    result = self._identity_storage.reset_password(user_id, new_password);
+    if 'error' not in result {
+        self.set_requires_password_reset(user_id, False);
+    }
+    return result;
 }
 
 impl UserManager.add_identity(user_id: str, identity: dict[str, any]) -> bool {
