@@ -1,7 +1,7 @@
 [project]
 name = "jaclang_org"
 default-app = "web"
-jac-version = "==0.37.10"
+jac-version = "==0.37.11"
 
 # Makes this site scaffoldable as a template: `jac create <name> --awesome`
 # dumps it (the payload bundles this tree as awesome_template beside the
