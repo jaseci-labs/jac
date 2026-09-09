@@ -40,6 +40,7 @@ import from jaclang.compiler.frontend.unitree {
     ReturnStmt,
     Semi,
     SubTag,
+    Test,
     Token,
     UniNode,
     UniScopeNode,

@@ -177,7 +177,7 @@ test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
 
 # Inline cl block with def:pub produces __jacCallFunction
 test "inline cl block with defpub generates stubs" {
-    code = '"""Test."""\n\nimport os;\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\ndef:pub app() -> Any {\n    data = await get_data("World");\n    return <div>{data}</div>;\n}\n';
+    code = '"""Test."""\n\nimport os;\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name + os.sep};\n}\n\nasync def:pub app() -> Any {\n    data = await get_data("World");\n    return <div>{data}</div>;\n}\n';
     mod = compile_inline(code);
     js = mod.gen.js;
     assert "__jacCallFunction" in js;
@@ -186,7 +186,7 @@ test "inline cl block with defpub generates stubs" {
 
 # Endpoint effects correctly classify readers and writers
 test "endpoint effects classify readers and writers" {
-    code = '"""Test."""\n\nnode Item { has name: str; }\n\nwalker read_items {\n    can visit_root with Root entry { report [-->]; }\n}\n\nwalker add_item {\n    has name: str;\n    can do_add with Root entry { here ++> Item(name=self.name); }\n}\n\ndef:pub get_count() -> int { return 0; }\n\ndef:pub delete_all() -> None { items = []; del items; }\n\ndef:pub app() -> Any {\n    root spawn read_items();\n    root spawn add_item(name="x");\n    c = await get_count();\n    await delete_all();\n    return <div>{c}</div>;\n}\n';
+    code = '"""Test."""\n\nnode Item { has name: str; }\n\nwalker read_items {\n    can visit_root with Root entry { report [-->]; }\n}\n\nwalker add_item {\n    has name: str;\n    can do_add with Root entry { here ++> Item(name=self.name); }\n}\n\ndef:pub get_count() -> int { return 0; }\n\ndef:pub delete_all() -> None { items = []; del items; }\n\nasync def:pub app() -> Any {\n    root spawn read_items();\n    root spawn add_item(name="x");\n    c = await get_count();\n    await delete_all();\n    return <div>{c}</div>;\n}\n';
     mod = compile_inline(code);
     effects = mod.gen.client_manifest.endpoint_effects;
     assert endpoint_key(mod, "walker", "read_items") in effects;

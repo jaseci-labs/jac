@@ -405,13 +405,14 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
     }
 
     for nd in mod.get_all_sub_nodes(typ=AwaitExpr) {
-        if nd.in_client_context() {
-            continue;
-        }
         in_async = False;
         parent = nd.parent;
         while parent is not None {
             if isinstance(parent, LambdaExpr) {
+                break;
+            }
+            if isinstance(parent, Test) {
+                in_async = parent.in_client_context();
                 break;
             }
             if isinstance(parent, Ability) {

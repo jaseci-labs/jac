@@ -918,14 +918,27 @@ with entry {
 }
 
 
-test "E2085 permits inferred client functions and async client tests" {
+test "E2085 permits async client functions and implicit async client tests" {
     prog = JacProgram();
     prog.compile(
         use_str='import from "@jac/runtime" { jacLogin }\n'
-        'def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'async def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
         'test "login" { await jacLogin("a", "b"); }\n',
         file_path="await_client.jac",
         no_cgen=True
     );
     assert not prog.errors_had , str(prog.errors_had);
+}
+
+
+test "E2085 rejects plain client functions and lambdas inside async tests" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='import from "@jac/runtime" { jacLogin }\n'
+        'def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'test "login" { callback = lambda { await jacLogin("a", "b"); }; }\n',
+        file_path="invalid_await_client.jac",
+        no_cgen=True
+    );
+    assert count_diagnostic_code(prog, "E2085") == 2;
 }
