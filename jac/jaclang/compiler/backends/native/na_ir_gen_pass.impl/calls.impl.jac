@@ -1474,6 +1474,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if _erased_ctor is not None {
                 return self._codegen_instantiation(nd, type_name_override=_erased_ctor);
             }
+            self._pending_lambda_captures = None;
+            callable_value = self._codegen_expr(nd.target);
+            captures = self._pending_lambda_captures or [];
+            self._pending_lambda_captures = None;
+            if callable_value is not None {
+                return self._codegen_callable_value(nd, callable_value, captures);
+            }
             return None;
         }
     }
@@ -2290,50 +2297,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if func_name in self.local_vars {
             _alloca = self.local_vars[func_name];
             _loaded = self.builder.load(_alloca, name=f"fptr.{func_name}");
-            _clos_name = self._closure_struct_of(_loaded.type);
-            if _clos_name is not None {
-                return self._codegen_closure_call(nd, _loaded, _clos_name);
-            }
-            if (
-                isinstance(_loaded.type, ir.PointerType)
-                and isinstance(_loaded.type.pointee, ir.FunctionType)
-            ) {
-                _fn_type = _loaded.type.pointee;
-                _iargs: list[ir.Value] = [];
-                _iparams = nd.params or [];
-                for _ip in _iparams {
-                    _iv = self._codegen_expr(_ip);
-                    if _iv is not None {
-                        _iargs.append(_iv);
-                    }
-                }
-                _icoerced: list[ir.Value] = [];
-                for (_ii, _ia) in enumerate(_iargs) {
-                    if _ii < len(_fn_type.args) {
-                        _icoerced.append(self._coerce_type(_ia, _fn_type.args[_ii]));
-                    } else {
-                        _icoerced.append(_ia);
-                    }
-                }
-
-                if func_name in self.lambda_captures {
-                    for (_cname, _c_alloca) in self.lambda_captures[func_name] {
-                        _cval = self.builder.load(_c_alloca, name=f"cap.{_cname}");
-                        _icoerced.append(_cval);
-                    }
-                }
-                _icall_result = self.builder.call(
-                    _loaded, _icoerced, name=f"icall.{func_name}"
-                );
-
-                for _icarg in _iargs {
-                    if isinstance(_icarg.type, ir.PointerType)
-                        and self._is_owned(_icarg) {
-                        self._emit_rc_release_simple(_icarg, op="icall_arg", loc="");
-                    }
-                }
-                return _icall_result;
-            }
+            return self._codegen_callable_value(
+                nd, _loaded, self.lambda_captures.get(func_name) or []
+            );
         }
 
         if func_name in self.global_vars {
@@ -3663,4 +3629,37 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
     self.builder.store(_b, _slots[0]);
     self.builder.store(_a, _slots[1]);
     return ir.Constant(ir.IntType(64), 0);
+}
+
+impl NaIRGenPass._codegen_callable_value(
+    nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
+) -> (ir.Value | None) {
+    closure_name = self._closure_struct_of(value.type);
+    if closure_name is not None {
+        return self._codegen_closure_call(nd, value, closure_name);
+    }
+    if not isinstance(value.type, ir.PointerType)
+        or not isinstance(value.type.pointee, ir.FunctionType) {
+        return None;
+    }
+    signature = value.type.pointee;
+    args = self._codegen_call_args(nd);
+    coerced: list[ir.Value] = [];
+    for (index, arg) in enumerate(args) {
+        coerced.append(
+            self._coerce_type(arg, signature.args[index])
+                if index < len(signature.args)
+                else arg
+        );
+    }
+    for (name, slot) in captures {
+        coerced.append(self.builder.load(slot, name=f"cap.{name}"));
+    }
+    result = self.builder.call(value, coerced, name="icall");
+    for arg in args {
+        if isinstance(arg.type, ir.PointerType) and self._is_owned(arg) {
+            self._emit_rc_release_simple(arg, op="icall_arg", loc="");
+        }
+    }
+    return result;
 }

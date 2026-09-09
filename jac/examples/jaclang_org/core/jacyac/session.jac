@@ -1,5 +1,4 @@
 import from "@jac/runtime" {
-    jacSignup,
     jacLogin,
     jacLogout,
     jacIsLoggedIn,
@@ -9,6 +8,7 @@ import from "@jac/runtime" {
 }
 import from core.jacyac.github.auth { github_enabled }
 import from core.jacyac.github.login { github_login }
+import from core.jacyac.registration { register_with_challenge }
 
 obj Session {
     has loggedIn: bool,
@@ -83,9 +83,11 @@ def:pub useSession -> Session {
         busy = True;
         try {
             if signup {
-                result = await jacSignup(username.strip(), password);
-                if not result.success {
-                    error = str(result.error or "Signup failed");
+                registration_error = await register_with_challenge(
+                    username.strip(), password
+                );
+                if registration_error {
+                    error = registration_error;
                     return;
                 }
             }

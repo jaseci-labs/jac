@@ -836,6 +836,10 @@ obj ManifestBuilder {
         if self.client_entry is not None {
             return self.client_entry.strip();
         }
+        root_member = self.fleet.root_member() if self.fleet is not None else None;
+        if root_member is not None and root_member.client {
+            return root_member.file;
+        }
         return "";
     }
 

@@ -107,8 +107,11 @@ impl Parser.expect(kind: TokenKind) -> LexToken {
     return self.current();
 }
 
-impl Parser.consume_uni(kind: TokenKind) -> Token {
+impl Parser.consume_uni(kind: TokenKind, value: str | None = None) -> Token {
     tok = self.expect(kind);
+    if value is not None and tok.value != value {
+        self.emit_diag(f"Expected '{value}', got '{tok.value}'", "E0001", loc=tok.loc);
+    }
     return self.make_uni_token(tok);
 }
 
@@ -1812,6 +1815,9 @@ impl Parser.parse_special_ref -> Expr | None {
 }
 
 impl Parser.parse_atom -> Expr {
+    if self.check(TokenKind.KW_GRAPH) {
+        return self.parse_graph_expr();
+    }
     if self.check_any(
         TokenKind.INT,
         TokenKind.HEX,
@@ -1927,6 +1933,30 @@ impl Parser.parse_atom -> Expr {
         f"Unexpected token in expression: '{self.current().kind.value}'", "E0004"
     );
     return self.make_name(self.advance());
+}
+
+impl Parser.parse_graph_expr -> GraphExpr {
+    kid: list[UniNode] = [
+        self.consume_uni(TokenKind.KW_GRAPH),
+        self.consume_uni(TokenKind.LBRACE)
+    ];
+    exprs: list[Expr] = [];
+    while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        start = self.pos;
+        expr = self.parse_expression();
+        exprs.append(expr);
+        kid.append(expr);
+        if self.check(TokenKind.SEMI) {
+            kid.append(self.consume_uni(TokenKind.SEMI));
+        } elif not self.check(TokenKind.RBRACE) {
+            kid.append(self.consume_uni(TokenKind.SEMI));
+        }
+        if self.pos == start {
+            self.advance();
+        }
+    }
+    kid.append(self.consume_uni(TokenKind.RBRACE));
+    return GraphExpr(exprs=exprs, kid=kid);
 }
 
 impl Parser.parse_tuple_item -> Expr | KWPair {

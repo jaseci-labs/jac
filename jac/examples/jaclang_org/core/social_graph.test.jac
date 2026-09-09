@@ -145,36 +145,34 @@ test "create tweet shows up in the feed" {
 }
 
 test "like and comment on a tweet" {
-    client = make_client();
-    login_as(client, "alice", "secret123");
-    client.post("/walker/setup_profile", json={"username": "alice"});
-    tweet = first_report(
-        client.post("/walker/create_tweet", json={"content": "rate this"})
-    );
-    tweet_id = jid_of(tweet);
-
-    liked = first_report(
-        client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
-    );
-    assert liked["liked"] == True;
-    assert "alice" in list(liked["likes"]);
-
-    unliked = first_report(
-        client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
-    );
-    assert unliked["liked"] == False;
-
-    commented = first_report(
-        client.post(
-            "/walker/add_comment", json={"tweet_id": tweet_id, "content": "nice one"}
-        )
-    );
-    assert commented["success"] == True;
-
-    profile = first_report(client.post("/walker/get_profile", json={}));
-    assert len(list(profile["tweets"][0]["comments"])) == 1;
-
-    close_client(client);
+    with patch(posting_limit.__module__ + ".consume_limit", return_value=0) {
+        client = make_client();
+        login_as(client, "alice", "secret123");
+        client.post("/walker/setup_profile", json={"username": "alice"});
+        tweet = first_report(
+            client.post("/walker/create_tweet", json={"content": "rate this"})
+        );
+        tweet_id = jid_of(tweet);
+        liked = first_report(
+            client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
+        );
+        assert liked["liked"] == True;
+        assert "alice" in list(liked["likes"]);
+        unliked = first_report(
+            client.post("/walker/like_tweet", json={"tweet_id": tweet_id})
+        );
+        assert unliked["liked"] == False;
+        commented = first_report(
+            client.post(
+                "/walker/add_comment",
+                json={"tweet_id": tweet_id, "content": "nice one"}
+            )
+        );
+        assert commented["success"] == True;
+        profile = first_report(client.post("/walker/get_profile", json={}));
+        assert len(list(profile["tweets"][0]["comments"])) == 1;
+        close_client(client);
+    }
 }
 
 test "delete a tweet removes it from the feed" {
@@ -197,33 +195,35 @@ test "delete a tweet removes it from the feed" {
 }
 
 test "search filters the feed by content" {
-    client = make_client();
-    login_as(client, "alice", "secret123");
-    client.post("/walker/setup_profile", json={"username": "alice"});
-    client.post("/walker/create_tweet", json={"content": "jac is great"});
-    client.post("/walker/create_tweet", json={"content": "python is fine"});
-
-    hits = first_report(client.post("/walker/load_feed", json={"search_query": "jac"}));
-    assert len(list(hits)) == 1;
-    assert hits[0]["content"] == "jac is great";
-
-    close_client(client);
+    with patch(posting_limit.__module__ + ".consume_limit", return_value=0) {
+        client = make_client();
+        login_as(client, "alice", "secret123");
+        client.post("/walker/setup_profile", json={"username": "alice"});
+        client.post("/walker/create_tweet", json={"content": "jac is great"});
+        client.post("/walker/create_tweet", json={"content": "python is fine"});
+        hits = first_report(
+            client.post("/walker/load_feed", json={"search_query": "jac"})
+        );
+        assert len(list(hits)) == 1;
+        assert hits[0]["content"] == "jac is great";
+        close_client(client);
+    }
 }
 
 test "trending surfaces hashtags" {
-    client = make_client();
-    login_as(client, "alice", "secret123");
-    client.post("/walker/setup_profile", json={"username": "alice"});
-    client.post("/walker/create_tweet", json={"content": "learning #jac today"});
-    client.post("/walker/create_tweet", json={"content": "#jac is fun"});
-    client.post("/walker/create_tweet", json={"content": "also #osp"});
-
-    trending = first_report(client.post("/walker/get_trending", json={}));
-    tags = {row["tag"]: row["count"] for row in trending};
-    assert tags["#jac"] == 2;
-    assert tags["#osp"] == 1;
-
-    close_client(client);
+    with patch(posting_limit.__module__ + ".consume_limit", return_value=0) {
+        client = make_client();
+        login_as(client, "alice", "secret123");
+        client.post("/walker/setup_profile", json={"username": "alice"});
+        client.post("/walker/create_tweet", json={"content": "learning #jac today"});
+        client.post("/walker/create_tweet", json={"content": "#jac is fun"});
+        client.post("/walker/create_tweet", json={"content": "also #osp"});
+        trending = first_report(client.post("/walker/get_trending", json={}));
+        tags = {row["tag"]: row["count"] for row in trending};
+        assert tags["#jac"] == 2;
+        assert tags["#osp"] == 1;
+        close_client(client);
+    }
 }
 
 test "follow and unfollow another user" {
@@ -615,4 +615,46 @@ test "Legacy Ninja Scores migrate once into an archive profile" {
     assert projects[0].legacy_import and not projects[0].owner_verified;
     assert projects[0].owner_username == "ninja_scores_archive";
     assert projects[0].breakdown.total == 42;
+}
+
+test "posts comments and channel posts use the same account quota before mutation" {
+    me = root ++> Profile(username='quota_user');
+    tweet = me +>:Post():+> Tweet(content='original', author_username='quota_user');
+    channel = me +>:Member():+> Channel(
+        name='quota-test', description='', creator_username='quota_user'
+    );
+    with patch(
+        create_tweet.__module__ + '.posting_limit',
+        return_value=PostingDenied('Wait', 10)
+    ) as quota {
+        denied = (root spawn create_tweet(content='blocked')).reports[0];
+        assert isinstance(denied, PostingDenied);
+        assert denied.message == 'Wait';
+        assert len([me->:Post:->[?:Tweet]]) == 1;
+        root spawn add_comment(tweet_id=jid(tweet), content='blocked comment');
+        assert not tweet.comments;
+        root spawn create_channel_tweet(
+            channel_id=jid(channel), content='blocked channel post'
+        );
+        assert not [channel->:ChannelPost:->[?:Tweet]];
+        assert quota.call_count == 3;
+        for call in quota.call_args_list {
+            assert call.args[0] == jid(root);
+        }
+    }
+}
+
+test "daily quota denies after burst check and database failures deny posting" {
+    with patch(
+        posting_limit.__module__ + '.consume_limit', side_effect=[0, 123]
+    ) as quota {
+        denied = posting_limit('account');
+        assert denied is not None;
+        assert denied.retry_after_seconds == 123;
+        quota.assert_any_call('jacyac-post-burst', 'account', 1, 10);
+        quota.assert_any_call('jacyac-post-day', 'account', 50, 86400);
+    }
+    with patch(posting_limit.__module__ + '.consume_limit', return_value=-1) {
+        assert posting_limit('account') is not None;
+    }
 }

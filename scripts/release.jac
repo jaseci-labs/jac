@@ -40,6 +40,21 @@ def update_release_notes(
     assemble_package(repo_root, pkg_name, new_version, dry_run=dry_run);
 }
 
+def update_site_jac_pin(
+    repo_root: Path, new_version: str, dry_run: bool = False
+) -> str {
+    relative = "jac/examples/jaclang_org/jac.toml";
+    path = repo_root / relative;
+    if dry_run {
+        print(f"[dry-run] Would update {relative} -> jac-version =={new_version}");
+        return relative;
+    }
+    data = tomlkit.loads(path.read_text());
+    data["project"]["jac-version"] = "==" + new_version;
+    path.write_text(tomlkit.dumps(data));
+    return relative;
+}
+
 def parse_args -> argparse.Namespace {
     parser = argparse.ArgumentParser(
         description="Release packages in the jaseci monorepo"
@@ -110,6 +125,14 @@ def main -> None {
         print(f"Bump:     {bump_type}");
         print(f"New:      {new_version}");
         print();
+        if pkg_name == "jaclang" {
+            site_manifest = update_site_jac_pin(
+                repo_root, new_version, dry_run=args.dry_run
+            );
+            if not args.dry_run {
+                modified_files.append(site_manifest);
+            }
+        }
         if args.dry_run {
             if jac_toml_path.exists() {
                 print(
@@ -160,6 +183,9 @@ def main -> None {
         pr_body += f"- Bump type: {rel['bump']}\n\n";
     }
     pr_body += "- Updated release notes\n";
+    if "jaclang" in releasing_packages {
+        pr_body += "- Pinned the jaclang.org workspace to the new Jac release\n";
+    }
     set_output("branch_name", branch_name);
     set_output("pr_title", pr_title);
     set_output("pr_body", pr_body);

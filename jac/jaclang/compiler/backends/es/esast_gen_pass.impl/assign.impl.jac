@@ -17,9 +17,9 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             here.value.gen.es_ast = folded;
         }
     }
-    value_expr = here.value.gen.es_ast
-        if (here.value and here.value.gen.es_ast)
-        else None;
+    value_expr = cast(
+        es.Expression | None, here.value.gen.es_ast if here.value is not None else None
+    );
 
     if (
         len(here.target) == 1
@@ -69,9 +69,9 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             state_update = StateUpdate(
                 name=target_name, value=setter_arg, aug_op=aug_op
             );
-            self._ensure_backend();
+            backend = self._ensure_backend();
             setter_call = self.sync_loc(
-                self.backend.lower_state_update(state_update), jac_node=here
+                backend.lower_state_update(state_update), jac_node=here
             );
             expr_stmt = self.sync_loc(
                 es.ExpressionStatement(expression=setter_call), jac_node=here

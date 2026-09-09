@@ -30,12 +30,27 @@ def:pub TweetCard(
     avatars: dict[str, str],
     onViewProfile: Callable[[str], None],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], None],
+    onComment: Callable[[str, str], bool],
     onDelete: Callable[[str], None],
     onRepost: Callable[[str, str, str], None],
 ) -> JsxElement {
     has showComments: bool = False,
-        commentText: str = "";
+        commentText: str = "",
+        replying: bool = False;
+
+    async def submitComment {
+        if replying or not commentText.strip() {
+            return;
+        }
+        replying = True;
+        try {
+            if await onComment(jid(tweet), commentText) {
+                commentText = "";
+            }
+        } finally {
+            replying = False;
+        }
+    }
 
     is_mine = tweet.author_username != "" and tweet.author_username == myUsername;
     is_liked = myUsername in tweet.likes;
@@ -229,19 +244,14 @@ def:pub TweetCard(
                             placeholder="Post your reply..."
                             value={commentText}
                             onChange={lambda (e: ChangeEvent) { commentText = e.target.value; }}
-                            onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter"
-                                and commentText.strip() {
-                                onComment(jid(tweet), commentText);
-                                commentText = "";
+                            onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter" {
+                                submitComment();
                             }}}
                         />
                         <Button
                             size="icon"
-                            disabled={not commentText.strip()}
-                            onClick={lambda { if commentText.strip() {
-                                onComment(jid(tweet), commentText);
-                                commentText = "";
-                            }}}
+                            disabled={replying or not commentText.strip()}
+                            onClick={lambda { submitComment(); }}
                         >
                             <Send size={16}/>
                         </Button>

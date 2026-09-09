@@ -78,7 +78,14 @@ def transport_to_response(tr: TransportResponse) -> JSONResponse {
             body['meta'] = meta_dict;
         }
     }
-    return JSONResponse(content=body, status_code=status);
+    response = JSONResponse(content=body, status_code=status);
+    if status == 429 and tr.meta and tr.meta.extra {
+        retry = tr.meta.extra.get("retry_after_seconds");
+        if isinstance(retry, int) and retry > 0 {
+            response.headers.set("Retry-After", str(retry));
+        }
+    }
+    return response;
 }
 
 def _slash_alternate(path: str) -> (str | None) {

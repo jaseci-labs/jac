@@ -1483,6 +1483,7 @@ node DeleteStmt(CodeBlockStmt) {
     def leaf_targets -> list[Expr];
     static def unwrap_target(target: Expr) -> Expr;
     static def is_location(target: Expr) -> bool;
+    static def type_has_graph_member(t: (TypeBase | None)) -> bool;
     static def type_may_hold_graph(t: (TypeBase | None)) -> bool;
     static def target_may_hold_graph(target: Expr) -> bool;
 }
@@ -1879,6 +1880,14 @@ node AtomUnit(Expr) {
     def __repr__ -> str;
 }
 
+node GraphExpr(Expr) {
+    has exprs: Sequence[Expr] { getter; }
+
+    def init(*, exprs: Sequence[Expr], kid: Sequence[UniNode] = []) -> None;
+    def postinit -> None;
+    def __repr__ -> str;
+}
+
 node YieldExpr(Expr) {
     has with_from: bool;
     has expr: (Expr | None) { getter; }
@@ -1989,7 +1998,9 @@ node DisconnectOp(WalkerStmtOnlyNode) {
 }
 
 node ConnectOp(UniNode) {
-    has edge_dir: EdgeDir;
+    has edge_dir: EdgeDir,
+        capture_edges: bool = False;
+
     has conn_type: (Expr | None) { getter; }
     has conn_assign: (AssignCompr | None) { getter; }
 
@@ -2779,4 +2790,4 @@ def is_client_destined(nd: UniNode) -> bool;
 
 def type_only_import_of(nd: NameAtom) -> (ModuleItem | None);
 
-def in_type_position(nd: UniNode) -> bool;
+def in_type_position(nd: UniNode, include_subscripts: bool = True) -> bool;

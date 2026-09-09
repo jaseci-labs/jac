@@ -22,7 +22,7 @@ def:pub ProfileScreen(
     onCancelEdit: Callable[[], None],
     onLogout: Callable[[], None],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], None],
+    onComment: Callable[[str, str], bool],
     onDelete: Callable[[str], None],
 ) -> JsxElement {
     theme = useTheme();

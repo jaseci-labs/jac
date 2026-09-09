@@ -308,8 +308,21 @@ def _compiled_app_edges(
         );
     }
     edges: list[tuple[str, str]] = [];
-    for hub in prog._search_hubs() {
-        for mod in hub.values() {
+    seen: set[int] = set();
+    while True {
+        fresh: list[any] = [];
+        for hub in list(prog._search_hubs()) {
+            for mod in list(hub.values()) {
+                if id(mod) not in seen {
+                    seen.add(id(mod));
+                    fresh.append(mod);
+                }
+            }
+        }
+        if not fresh {
+            break;
+        }
+        for mod in fresh {
             if not (mod and mod.gen) {
                 continue;
             }
@@ -322,6 +335,9 @@ def _compiled_app_edges(
                     prog.run_schedule(mod, get_boundary_analysis_sched());
                     man = mod.gen.interop_manifest;
                 } except Exception {
+                    continue;
+                }
+                if man is None {
                     continue;
                 }
             }

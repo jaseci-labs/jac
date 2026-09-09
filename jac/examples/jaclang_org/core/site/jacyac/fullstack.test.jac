@@ -1,4 +1,5 @@
-import from "@jac/runtime" { jacSignup, jacLogin, __setLocalStorage, __getLocalStorage }
+import from "@jac/runtime" { jacLogin, __setLocalStorage, __getLocalStorage }
+import from core.jacyac.registration { register_with_challenge }
 import from core.social_graph { setup_profile, create_tweet, follow_user, load_feed }
 
 obj TestClient {
@@ -6,7 +7,7 @@ obj TestClient {
 
     async def signup(username: str, password: str) {
         __setLocalStorage("jac_token", "");
-        await jacSignup(username, password);
+        assert await register_with_challenge(username, password) == "";
         await jacLogin(username, password);
         self.token = __getLocalStorage("jac_token") or "";
     }

@@ -1,6 +1,7 @@
 import from core.social_graph { create_tweet, load_feed }
+import from core.jacyac.limits { PostingDenied }
 import from jaclang.server.bridge { BridgeError }
-import from .common { EXIT_OK, EXIT_USAGE, explain_bridge_error, warn }
+import from .common { EXIT_OK, EXIT_USAGE, EXIT_REJECTED, explain_bridge_error, warn }
 
 obj FeedLine {
     has author: str = "",
@@ -64,6 +65,10 @@ async def run_post(text: str) -> int {
         posted = made.reports;
         if posted {
             tweet = posted[0];
+            if isinstance(tweet, PostingDenied) {
+                warn(tweet.message);
+                return EXIT_REJECTED;
+            }
             print(
                 "posted as @" + (tweet.author_username or "you") + ": " + tweet.content
             );

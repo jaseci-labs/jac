@@ -248,7 +248,7 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 
 1. Go to **GitHub Actions** -> **Release**
 2. Click **Run workflow**, set `action` to `create-pr`, and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
-3. The workflow bumps the version in the root `jac.toml` (the single source of truth) and opens a PR from a `release/*` branch
+3. The workflow bumps the version in the root `jac.toml` (the single source of truth), updates `jac/examples/jaclang_org/jac.toml` to pin that exact Jac version, and opens a PR from a `release/*` branch
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 

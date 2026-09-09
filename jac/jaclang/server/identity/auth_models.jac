@@ -96,7 +96,8 @@ obj CredentialInput(ApiModel) {
 obj RegisterRequest(ApiModel) {
     has identities: list[IdentityInputModel],
         credential: CredentialInput,
-        profile: (dict[str, any] | None) = None;
+        profile: (dict[str, any] | None) = None,
+        challenge: (dict[str, any] | None) = None;
 
     static def from_dict(data: any) -> RegisterRequest {
         if not isinstance(data, dict) {
@@ -112,7 +113,10 @@ obj RegisterRequest(ApiModel) {
         return RegisterRequest(
             identities=[IdentityInputModel.from_dict(item) for item in raw_identities],
             credential=CredentialInput.from_dict(data.get('credential')),
-            profile=validate_profile(data.get('profile'))
+            profile=validate_profile(data.get('profile')),
+            challenge=data.get('challenge')
+                if isinstance(data.get('challenge'), dict)
+                else None
         );
     }
 }

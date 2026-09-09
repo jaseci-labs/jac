@@ -1,5 +1,6 @@
 import from core.jacyac.validation { valid_post }
 import from core.jacyac.genius { GuideSample, random_guide, optional_fact }
+import from core.jacyac.limits { PostingDenied, posting_limit }
 import re;
 import base64;
 import datetime;
@@ -895,7 +896,7 @@ walker get_channels {
 
 walker create_tweet {
     has content: str,
-        reports: list[Tweet] = [];
+        reports: list[Tweet | PostingDenied] = [];
 
     can run with Root entry {
         if not valid_post(self.content) {
@@ -905,6 +906,11 @@ walker create_tweet {
     }
 
     can make with Profile entry {
+        denied = posting_limit(jid(root));
+        if denied is not None {
+            report denied;
+            disengage;
+        }
         new = here +>:Post():+> Tweet(
             content=self.content, author_username=here.username, created_at=_now()
         );
@@ -1026,6 +1032,14 @@ walker add_comment(find_tweet) {
             return;
         }
         if jid(here) == self.tweet_id {
+            if not [root-->[?:Profile]] {
+                disengage;
+            }
+            denied = posting_limit(jid(root));
+            if denied is not None {
+                report denied;
+                disengage;
+            }
             comment = {
                 "username": self.actor,
                 "content": self.content,
@@ -1099,6 +1113,11 @@ walker create_channel_tweet(find_channel) {
         if jid(here) == self.channel_id {
             me = [root-->[?:Profile]][0];
             if [edge me->:Member:->here] {
+                denied = posting_limit(jid(root));
+                if denied is not None {
+                    report denied;
+                    disengage;
+                }
                 new = here +>:ChannelPost():+> Tweet(
                     content=self.content, author_username=me.username, created_at=_now()
                 );

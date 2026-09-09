@@ -523,6 +523,17 @@ test "E2083: disengage outside walker" {
     assert has_diagnostic_code(prog, "E2083");
 }
 
+test "E2085: await outside async function or ability (issue #8998)" {
+    # jac check must catch what only jac run's bytecode compile caught before:
+    # a plain `can`/`def` body that awaits is invalid, and the checker had no
+    # opinion on it at all -- `await` was never visited by any checking pass.
+    (prog, _) = compile_and_check("context_E2085_await_outside_async.jac");
+    assert count_diagnostic_code(prog, "E2085") == 1 , f"expected exactly 1 E2085 (the plain 'can', not the 'async can'), got "
+    f"{count_diagnostic_code(prog, 'E2085')}; errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 6: LINT DIAGNOSTICS (W3020-W3037)
 #  Infrastructure: None required (pure AST patterns)
@@ -904,4 +915,30 @@ with entry {
         validate_reject_test,
         id_fn=lambda (x: tuple[str, str]) { x[0]; }
     );
+}
+
+
+test "E2085 permits async client functions and implicit async client tests" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='import from "@jac/runtime" { jacLogin }\n'
+        'async def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'test "login" { await jacLogin("a", "b"); }\n',
+        file_path="await_client.jac",
+        no_cgen=True
+    );
+    assert not prog.errors_had , str(prog.errors_had);
+}
+
+
+test "E2085 rejects plain client functions and lambdas inside async tests" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='import from "@jac/runtime" { jacLogin }\n'
+        'def app -> JsxElement { await jacLogin("a", "b"); return <div/>; }\n'
+        'test "login" { callback = lambda { await jacLogin("a", "b"); }; }\n',
+        file_path="invalid_await_client.jac",
+        no_cgen=True
+    );
+    assert count_diagnostic_code(prog, "E2085") == 2;
 }

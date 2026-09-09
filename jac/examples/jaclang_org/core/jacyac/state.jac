@@ -84,7 +84,7 @@ obj JacYacState {
         refreshAvatars: Callable[[], None],
         postTweet: Callable[[], None],
         handleLike: Callable[[str], None],
-        handleComment: Callable[[str, str], None],
+        handleComment: Callable[[str, str], bool],
         handleDelete: Callable[[str], None],
         handleFollow: Callable[[str], None],
         handleUnfollow: Callable[[str], None],
@@ -166,7 +166,7 @@ def:pub useJacYac -> JacYacState {
     async def refreshAvatars -> None;
     async def postTweet -> None;
     async def handleLike(tweetId: str) -> None;
-    async def handleComment(tweetId: str, content: str) -> None;
+    async def handleComment(tweetId: str, content: str) -> bool;
     async def handleDelete(tweetId: str) -> None;
     async def handleFollow(profileId: str) -> None;
     async def handleUnfollow(profileId: str) -> None;

@@ -36,7 +36,7 @@ def:pub WasmGame -> JsxElement {
                         <h2
                             className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
                         >
-                            This entire experience is one Jac program.
+                            This experience is one Jac program becoming 6 distinct apps.
                         </h2>
                         <p className="mt-4 text-balance text-lg text-muted-foreground">
                             Frontend (codegen to JS in your browser), Backend (codegen to Python on the server), and this game (same codegen backend Rust, Zig, C &amp; C++ use). Jac is{" "}

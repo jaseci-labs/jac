@@ -18,7 +18,7 @@ def ChannelDetail(
     onLeave: Callable[[str], None],
     onPost: Callable[[str], bool],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], None],
+    onComment: Callable[[str, str], bool],
     onDelete: Callable[[str], None],
 ) -> JsxElement {
     theme = useTheme();
@@ -132,7 +132,7 @@ def:pub ChannelsScreen(
     onBack: Callable[[], None],
     onPost: Callable[[str], bool],
     onLike: Callable[[str], None],
-    onComment: Callable[[str, str], None],
+    onComment: Callable[[str, str], bool],
     onDelete: Callable[[str], None],
 ) -> JsxElement {
     theme = useTheme();
